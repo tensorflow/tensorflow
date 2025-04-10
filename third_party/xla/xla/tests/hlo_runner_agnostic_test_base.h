@@ -118,16 +118,16 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
 
   // Executes the given module and return the result as a Literal.
   absl::StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
-                                  absl::Span<Literal* const> arguments,
+                                  absl::Span<const Literal* const> arguments,
                                   bool run_hlo_passes = true);
 
   // Same as above, except the module will be executed without running any HLO
   // passes on it.
   Literal ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
-                             absl::Span<Literal* const> arguments);
+                             absl::Span<const Literal* const> arguments);
 
   Literal ExecuteAndTransfer(std::unique_ptr<HloModule> module,
-                             absl::Span<Literal* const> arguments);
+                             absl::Span<const Literal* const> arguments);
 
   // Compile the given module to an executable.
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
@@ -141,14 +141,16 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // with a thread-per-replica, vs using an implicitly async call such as
   // Executable::ExecuteOnStreams.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-      int64_t num_replicas, bool use_threads, bool run_hlo_passes = false);
+      std::unique_ptr<HloModule> module,
+      absl::Span<const Literal* const> arguments, int64_t num_replicas,
+      bool use_threads, bool run_hlo_passes = false);
 
   // Same as above, but uses specified device assignment.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-      int64_t num_replicas, DeviceAssignment* device_assignment,
-      bool run_hlo_passes, bool use_threads);
+      std::unique_ptr<HloModule> module,
+      absl::Span<const Literal* const> arguments, int64_t num_replicas,
+      DeviceAssignment* device_assignment, bool run_hlo_passes,
+      bool use_threads);
 
   // Same as above, but allows passing different programs for replicas.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
@@ -208,7 +210,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // Same as below, except requires passing fake arguments.
   ::testing::AssertionResult RunAndCompareTwoModules(
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-      absl::Span<Literal* const> arguments,
+      absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
   // Same as below, except requires passing the modules.
@@ -238,7 +240,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   ::testing::AssertionResult RunAndCompareTwoModules(
       absl::string_view hlo_string_module_0,
       absl::string_view hlo_string_module_1,
-      absl::Span<Literal* const> arguments,
+      absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
   // Executes an hlo module with fake inputs on multiple replicas.
@@ -283,7 +285,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // error happens before the results are computed, returns the error status.
   absl::StatusOr<::testing::AssertionResult> RunAndCompareTwoModulesInternal(
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-      absl::Span<Literal* const> arguments,
+      absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes);
 
   std::unique_ptr<HloRunnerInterface> test_runner_;

@@ -94,7 +94,7 @@ class ClientLibraryTestRunnerMixin : public T {
 
   absl::StatusOr<Literal> ExecuteAndTransfer(
       const XlaComputation& computation,
-      const absl::Span<Literal* const> arguments,
+      const absl::Span<const Literal* const> arguments,
       const Shape* const shape_with_output_layout = nullptr) {
     ExecutionOptions execution_options = execution_options_;
     if (shape_with_output_layout != nullptr) {
@@ -108,7 +108,8 @@ class ClientLibraryTestRunnerMixin : public T {
   }
 
   absl::StatusOr<Literal> ExecuteAndTransfer(
-      XlaBuilder* const builder, const absl::Span<Literal* const> arguments,
+      XlaBuilder* const builder,
+      const absl::Span<const Literal* const> arguments,
       const Shape* shape_with_output_layout = nullptr) {
     // Build the computation, as a convenience.
     TF_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
@@ -118,8 +119,9 @@ class ClientLibraryTestRunnerMixin : public T {
 
   // Run a computation and return its value as a string. If an error
   // occurs, then instead return the error as a string.
-  std::string ExecuteToString(XlaBuilder* const builder,
-                              const absl::Span<Literal* const> arguments) {
+  std::string ExecuteToString(
+      XlaBuilder* const builder,
+      const absl::Span<const Literal* const> arguments) {
     const absl::StatusOr<Literal> result =
         ExecuteAndTransfer(builder, arguments);
     if (!result.ok()) {
@@ -132,7 +134,7 @@ class ClientLibraryTestRunnerMixin : public T {
   // Compare with reference.
   // Side effect: EXPECT_OK
   void ComputeAndCompare(XlaBuilder* const builder,
-                         const absl::Span<Literal* const> arguments,
+                         const absl::Span<const Literal* const> arguments,
                          const std::optional<ErrorSpec> error = std::nullopt) {
     TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder->Build());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -142,10 +144,10 @@ class ClientLibraryTestRunnerMixin : public T {
 
   // Compare with literal.
   // Side effect: EXPECT_OK
-  void ComputeAndCompareLiteral(XlaBuilder* const builder,
-                                const Literal& expected,
-                                const absl::Span<Literal* const> arguments,
-                                const Shape* shape_with_layout) {
+  void ComputeAndCompareLiteral(
+      XlaBuilder* const builder, const Literal& expected,
+      const absl::Span<const Literal* const> arguments,
+      const Shape* shape_with_layout) {
     return ComputeAndCompareLiteral(builder, expected, arguments, std::nullopt,
                                     shape_with_layout);
   }
@@ -154,7 +156,7 @@ class ClientLibraryTestRunnerMixin : public T {
   // Side effect: EXPECT_OK
   void ComputeAndCompareLiteral(
       XlaBuilder* const builder, const Literal& expected,
-      const absl::Span<Literal* const> arguments,
+      const absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec> error = std::nullopt,
       const Shape* shape_with_layout = nullptr) {
     if (error == std::nullopt) {
@@ -195,14 +197,14 @@ class ClientLibraryTestRunnerMixin : public T {
   // Compare with literal.
   // Side effect: EXPECT_OK
   void ComputeAndCompareTuple(XlaBuilder* builder, const Literal& expected,
-                              absl::Span<Literal* const> arguments,
+                              absl::Span<const Literal* const> arguments,
                               std::optional<ErrorSpec> error = std::nullopt) {
     return ComputeAndCompareLiteral(builder, expected, arguments, error);
   }
 
   template <typename NativeT>
   void ComputeAndCompareR0(XlaBuilder* builder, NativeT expected,
-                           absl::Span<Literal* const> arguments,
+                           absl::Span<const Literal* const> arguments,
                            std::optional<ErrorSpec> error = std::nullopt) {
     CheckErrorSpec<NativeT>(error);
     Literal expected_literal = LiteralUtil::CreateR0<NativeT>(expected);
@@ -212,7 +214,7 @@ class ClientLibraryTestRunnerMixin : public T {
   template <typename NativeT>
   void ComputeAndCompareR1(XlaBuilder* builder,
                            absl::Span<const NativeT> expected,
-                           absl::Span<Literal* const> arguments,
+                           absl::Span<const Literal* const> arguments,
                            std::optional<ErrorSpec> error = std::nullopt) {
     CheckErrorSpec<NativeT>(error);
     Literal expected_literal = LiteralUtil::CreateR1<NativeT>(expected);
@@ -221,7 +223,7 @@ class ClientLibraryTestRunnerMixin : public T {
 
   void ComputeAndCompareR1(XlaBuilder* builder,
                            const tsl::core::Bitmap& expected,
-                           absl::Span<Literal* const> arguments,
+                           absl::Span<const Literal* const> arguments,
                            std::optional<ErrorSpec> error = std::nullopt) {
     Literal expected_literal = LiteralUtil::CreateR1(expected);
     ComputeAndCompareLiteral(builder, expected_literal, arguments, error);
@@ -230,7 +232,7 @@ class ClientLibraryTestRunnerMixin : public T {
   template <typename NativeT>
   void ComputeAndCompareR2(XlaBuilder* builder,
                            const Array2D<NativeT>& expected,
-                           absl::Span<Literal* const> arguments,
+                           absl::Span<const Literal* const> arguments,
                            std::optional<ErrorSpec> error = std::nullopt) {
     CheckErrorSpec<NativeT>(error);
     Literal expected_literal =
@@ -241,7 +243,7 @@ class ClientLibraryTestRunnerMixin : public T {
   template <typename NativeT>
   void ComputeAndCompareR3(XlaBuilder* builder,
                            const Array3D<NativeT>& expected,
-                           absl::Span<Literal* const> arguments,
+                           absl::Span<const Literal* const> arguments,
                            std::optional<ErrorSpec> error = std::nullopt) {
     CheckErrorSpec<NativeT>(error);
     Literal expected_literal =
@@ -252,7 +254,7 @@ class ClientLibraryTestRunnerMixin : public T {
   template <typename NativeT>
   void ComputeAndCompareR4(XlaBuilder* builder,
                            const Array4D<NativeT>& expected,
-                           absl::Span<Literal* const> arguments,
+                           absl::Span<const Literal* const> arguments,
                            std::optional<ErrorSpec> error = std::nullopt) {
     CheckErrorSpec<NativeT>(error);
     Literal expected_literal =
