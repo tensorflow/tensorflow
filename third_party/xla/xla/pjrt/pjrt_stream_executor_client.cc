@@ -87,6 +87,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -118,6 +119,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/pjrt/semaphore.h"
+#include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
@@ -3183,8 +3185,23 @@ PjRtStreamExecutorLoadedExecutable::GetOutputMemoryKinds() const {
   return out;
 }
 
-void PjRtStreamExecutorClient::UpdateCompileOptions(CompileOptions* options) {
+absl::Status PjRtStreamExecutorClient::UpdateCompileOptions(
+    CompileOptions* options) {
+  return UpdateCompileOptionsInternal(options, /*returned_extras=*/nullptr);
+}
+
+absl::StatusOr<PjRtStreamExecutorClient::ExecutableExtras>
+PjRtStreamExecutorClient::UpdateCompileOptionsAndGetExecutableExtras(
+    CompileOptions* options) {
+  ExecutableExtras extras;
+  TF_RETURN_IF_ERROR(UpdateCompileOptionsInternal(options, &extras));
+  return extras;
+}
+
+absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
+    CompileOptions* options, ExecutableExtras* returned_extras) {
   ExecutableBuildOptions& build_options = options->executable_build_options;
+  const int original_device_ordinal = build_options.device_ordinal();
   if (!build_options.compile_thread_pool()) {
     build_options.set_compile_thread_pool(thread_pool());
   }
@@ -3224,15 +3241,17 @@ void PjRtStreamExecutorClient::UpdateCompileOptions(CompileOptions* options) {
   if (build_options.device_ordinal() < 0) {
     build_options.set_device_ordinal(0);
   }
-}
 
-absl::StatusOr<PjRtStreamExecutorClient::ExecutableExtras>
-PjRtStreamExecutorClient::UpdateCompileOptionsAndGetExecutableExtras(
-    CompileOptions* options) {
-  const int original_device_ordinal =
-      options->executable_build_options.device_ordinal();
-
-  UpdateCompileOptions(options);
+  // We need the information of device assignment for
+  //   1) XLA GPU shard autotuning, as the process count and the current process
+  //   index are needed;
+  //   2) getting executable extras, as the addressable devices are needed.
+  const bool use_xla_gpu_shard_autotuning =
+      build_options.has_debug_options() &&
+      build_options.debug_options().xla_gpu_shard_autotuning();
+  if (!use_xla_gpu_shard_autotuning && returned_extras == nullptr) {
+    return absl::OkStatus();
+  }
 
   ExecutableExtras extras;
   std::shared_ptr<DeviceAssignment>& device_assignment =
@@ -3284,7 +3303,6 @@ PjRtStreamExecutorClient::UpdateCompileOptionsAndGetExecutableExtras(
           device_assignment->ToString());
     }
 
-    ExecutableBuildOptions& build_options = options->executable_build_options;
     if (original_device_ordinal < 0) {
       build_options.set_device_ordinal(
           addressable_devices.front()->local_hardware_id().value());
@@ -3293,17 +3311,20 @@ PjRtStreamExecutorClient::UpdateCompileOptionsAndGetExecutableExtras(
     build_options.set_process_index(*this_process_index);
     build_options.set_process_count(all_process_indices.size());
   }
-  return extras;
+  if (returned_extras != nullptr) {
+    *returned_extras = std::move(extras);
+  }
+  return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 PjRtStreamExecutorClient::CompileInternal(
     const XlaComputation& computation,
     const std::vector<const Shape*>& argument_layout_pointers,
     LayoutCanonicalizationCallback layout_canonicalization_callback,
     CompileOptions options) {
-  tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::Compile");
-  VLOG(1) << "PjRtStreamExecutorClient::Compile";
+  tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::CompileInternal");
+  VLOG(1) << "PjRtStreamExecutorClient::CompileInternal";
   if (key_value_store().has_value() &&
       !options.executable_build_options.key_value_store()) {
     options.executable_build_options.set_key_value_store(*key_value_store());
@@ -3311,14 +3332,7 @@ PjRtStreamExecutorClient::CompileInternal(
   auto input_options = options;
 
   TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
-
-  TF_ASSIGN_OR_RETURN(ExecutableExtras extras,
-                      UpdateCompileOptionsAndGetExecutableExtras(&options));
-  std::shared_ptr<DeviceAssignment>& device_assignment =
-      extras.device_assignment;
-  std::vector<PjRtStreamExecutorLoadedExecutable::LogicalDeviceIds>&
-      addressable_device_logical_ids = extras.addressable_device_logical_ids;
-  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
+  TF_RETURN_IF_ERROR(UpdateCompileOptions(&options));
 
   // It is important to set the canonicalization callback after creating
   // a copy of the options so that the executable's options remain without
@@ -3333,26 +3347,39 @@ PjRtStreamExecutorClient::CompileInternal(
       client()->Compile(computation, argument_layout_pointers,
                         options.executable_build_options));
 
-  auto executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
-      std::move(local_executables), options.parameter_is_tupled_arguments,
-      std::move(device_assignment), std::move(input_options),
-      std::move(addressable_device_logical_ids), std::move(addressable_devices),
-      this);
-
-  TF_RETURN_IF_ERROR(
-      executable->SetUpDonation(options.parameter_is_tupled_arguments));
-  const auto& ex_options = options.executable_build_options;
-  if (ex_options.has_debug_options() &&
-      ex_options.debug_options().xla_gpu_dump_hlo_unoptimized_snapshots()) {
-    executable->SetInputHloSnapshotBits(
-        computation.proto(), options.executable_build_options.debug_options());
-  }
-  return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
+  return BuildPjRtExecutable(std::move(local_executables), input_options);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::CompileAndLoad(mlir::ModuleOp module,
-                                         CompileOptions options) {
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
+                                  CompileOptions options) {
+  std::vector<const Shape*> argument_layout_pointers;
+  const ExecutableBuildOptions& build_options =
+      options.executable_build_options;
+  const bool allow_auto_layout =
+      build_options.has_debug_options() &&
+      build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
+  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+      computation,
+      [local_client = client(),
+       allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
+        if (allow_auto_layout && !shape.has_layout()) {
+          return shape;
+        }
+        return local_client->backend()
+            .transfer_manager()
+            ->ChooseCompactLayoutForShape(shape);
+      },
+      options.argument_layouts, &options.executable_build_options,
+      &argument_layout_pointers));
+  return CompileInternal(computation, argument_layout_pointers,
+                         /* layout_canonicalization_callback = */ nullptr,
+                         options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
+                                  CompileOptions options) {
   XlaComputation xla_computation;
   const ExecutableBuildOptions& exec_build_options =
       options.executable_build_options;
@@ -3364,7 +3391,7 @@ PjRtStreamExecutorClient::CompileAndLoad(mlir::ModuleOp module,
   // If the compile options specify argument layout, then let's
   // fall back to using the options to determine layouts.
   if (options.argument_layouts) {
-    return CompileAndLoad(xla_computation, options);
+    return Compile(xla_computation, options);
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
@@ -3414,28 +3441,17 @@ PjRtStreamExecutorClient::CompileAndLoad(mlir::ModuleOp module,
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::CompileAndLoad(const XlaComputation& computation,
                                          CompileOptions options) {
-  std::vector<const Shape*> argument_layout_pointers;
-  const ExecutableBuildOptions& build_options =
-      options.executable_build_options;
-  const bool allow_auto_layout =
-      build_options.has_debug_options() &&
-      build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
-  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
-      computation,
-      [local_client = client(),
-       allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
-        if (allow_auto_layout && !shape.has_layout()) {
-          return shape;
-        }
-        return local_client->backend()
-            .transfer_manager()
-            ->ChooseCompactLayoutForShape(shape);
-      },
-      options.argument_layouts, &options.executable_build_options,
-      &argument_layout_pointers));
-  return CompileInternal(computation, argument_layout_pointers,
-                         /* layout_canonicalization_callback = */ nullptr,
-                         options);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                      Compile(computation, options));
+  return Load(std::move(executable), LoadOptions());
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtStreamExecutorClient::CompileAndLoad(mlir::ModuleOp module,
+                                         CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                      Compile(module, options));
+  return Load(std::move(executable), LoadOptions());
 }
 
 absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
@@ -3472,21 +3488,55 @@ absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
   return proto.SerializeAsString();
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::LoadSerializedExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options,
-    const LoadOptions& load_options) {
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+PjRtStreamExecutorClient::BuildPjRtExecutable(
+    std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+    CompileOptions compile_options) {
+  if (local_executables.empty()) {
+    return Internal("No local executable");
+  }
+  if (local_executables.size() != 1) {
+    return Unimplemented("Multiple executables are not supported");
+  }
+  Executable* built_executable = local_executables[0]->executable();
+  if (!built_executable->has_module()) {
+    return absl::InternalError("Executable does not have HLO modules.");
+  }
+  const auto& hlo_module = built_executable->module();
+
+  const int num_replicas = hlo_module.config().replica_count();
+  const int num_partitions = hlo_module.config().num_partitions();
+  const std::string name = hlo_module.name();
+  const std::string fingerprint = hlo_module.GetFingerprint128();
+
+  return std::make_unique<StreamExecutorExecutable>(
+      std::move(compile_options), std::move(local_executables), client_,
+      num_replicas, num_partitions, name, fingerprint,
+      memory_spaces()[0]->kind());
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+PjRtStreamExecutorClient::DeserializeExecutable(
+    absl::string_view serialized,
+    std::optional<CompileOptions> compile_options) {
+  TF_ASSIGN_OR_RETURN(
+      auto local_executables_and_options,
+      DeserializeToLocalExecutable(serialized, compile_options));
+
+  return BuildPjRtExecutable(std::move(local_executables_and_options.first),
+                             local_executables_and_options.second);
+}
+
+absl::StatusOr<
+    std::pair<std::vector<std::unique_ptr<LocalExecutable>>, CompileOptions>>
+PjRtStreamExecutorClient::DeserializeToLocalExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options) {
   ExecutableAndOptionsProto proto;
   if (serialized.size() > std::numeric_limits<int>::max()) {
-    return Internal(
-        "PjRtStreamExecutorClient::DeserializeExecutable proto too large "
-        "(>2GB)");
+    return Internal("Proto is too large (>2GB)");
   }
   if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
-    return Internal(
-        "PjRtStreamExecutorClient::DeserializeExecutable proto "
-        "deserialization "
-        "failed");
+    return Internal("Proto deserialization failed");
   }
 
   CompileOptions compile_options;
@@ -3496,11 +3546,39 @@ PjRtStreamExecutorClient::LoadSerializedExecutable(
     TF_ASSIGN_OR_RETURN(compile_options,
                         CompileOptions::FromProto(proto.compile_options()));
   }
-  auto input_options = compile_options;
 
   tsl::profiler::TraceMe traceme(
-      "PjRtStreamExecutorClient::DeserializeExecutable");
-  VLOG(1) << "PjRtStreamExecutorClient::DeserializeExecutable";
+      "PjRtStreamExecutorClient::DeserializeToLocalExecutable");
+  VLOG(1) << "PjRtStreamExecutorClient::DeserializeToLocalExecutable";
+
+  std::string str = std::move(*proto.mutable_serialized_executable());
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<LocalExecutable> loaded,
+      client()->Load(str, compile_options.executable_build_options));
+
+  std::vector<std::unique_ptr<LocalExecutable>> local_executables;
+  local_executables.push_back(std::move(loaded));
+
+  return std::make_pair(std::move(local_executables), compile_options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtStreamExecutorClient::LoadSerializedExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options,
+    const LoadOptions& load_options) {
+  TF_ASSIGN_OR_RETURN(auto local_executables_and_options,
+                      DeserializeToLocalExecutable(serialized, options));
+  return LoadInternal(std::move(local_executables_and_options.first),
+                      local_executables_and_options.second);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtStreamExecutorClient::LoadInternal(
+    std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+    CompileOptions compile_options) {
+  auto input_options = compile_options;
+
+  TF_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
 
   TF_ASSIGN_OR_RETURN(
       ExecutableExtras extras,
@@ -3511,13 +3589,14 @@ PjRtStreamExecutorClient::LoadSerializedExecutable(
       addressable_device_logical_ids = extras.addressable_device_logical_ids;
   std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
-  std::string str = std::move(*proto.mutable_serialized_executable());
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<LocalExecutable> loaded,
-      client()->Load(str, compile_options.executable_build_options));
-
-  std::vector<std::unique_ptr<LocalExecutable>> local_executables;
-  local_executables.push_back(std::move(loaded));
+  const auto& ex_options = compile_options.executable_build_options;
+  const bool xla_gpu_dump_hlo_unoptimized_snapshots =
+      ex_options.has_debug_options() &&
+      ex_options.debug_options().xla_gpu_dump_hlo_unoptimized_snapshots();
+  HloModuleProto hlo_module_proto;
+  if (xla_gpu_dump_hlo_unoptimized_snapshots) {
+    hlo_module_proto = local_executables[0]->executable()->module().ToProto();
+  }
 
   auto executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
       std::move(local_executables),
@@ -3528,7 +3607,27 @@ PjRtStreamExecutorClient::LoadSerializedExecutable(
 
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(compile_options.parameter_is_tupled_arguments));
+  if (xla_gpu_dump_hlo_unoptimized_snapshots) {
+    executable->SetInputHloSnapshotBits(
+        std::move(hlo_module_proto),
+        compile_options.executable_build_options.debug_options());
+  }
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtStreamExecutorClient::Load(std::unique_ptr<PjRtExecutable> executable,
+                               const LoadOptions& load_options) {
+  auto se_executable = absl::WrapUnique(
+      tensorflow::down_cast<StreamExecutorExecutable*>(executable.release()));
+  CompileOptions compile_options = se_executable->compile_options();
+
+  tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::Load");
+  VLOG(1) << "PjRtStreamExecutorClient::Load";
+
+  TF_ASSIGN_OR_RETURN(auto local_executables, se_executable->ConsumeExecutable(
+                                                  client(), compile_options));
+  return LoadInternal(std::move(local_executables), compile_options);
 }
 
 bool PjRtStreamExecutorClient::IsDmaMapped(const void* data_start,

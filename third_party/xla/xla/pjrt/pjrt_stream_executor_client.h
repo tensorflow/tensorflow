@@ -277,13 +277,21 @@ class PjRtStreamExecutorClient : public PjRtClient {
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      mlir::ModuleOp mlir_module, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp mlir_module, CompileOptions options) override;
 
   virtual absl::StatusOr<std::string> SerializeExecutable(
       const PjRtLoadedExecutable& executable) const;
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
 
   // For PjRtStreamExecutorClient, `options` is mandatory.
   // This function returns an InvalidArgument error if `std::nullopt` is passed.
@@ -292,6 +300,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
   LoadSerializedExecutable(absl::string_view serialized,
                            std::optional<CompileOptions> options,
                            const LoadOptions& load_options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::unique_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options) override;
 
   absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
@@ -413,17 +425,35 @@ class PjRtStreamExecutorClient : public PjRtClient {
   };
 
   // Updates `options` for compilation.
-  void UpdateCompileOptions(CompileOptions* options);
+  absl::Status UpdateCompileOptions(CompileOptions* options);
 
   // Same as above, but also returns the executable extras.
   absl::StatusOr<ExecutableExtras> UpdateCompileOptionsAndGetExecutableExtras(
       CompileOptions* options);
 
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
+  // Updates `options` for compilation, and gets the executable extras if
+  // `returned_extras` is not null.
+  absl::Status UpdateCompileOptionsInternal(CompileOptions* options,
+                                            ExecutableExtras* returned_extras);
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
       const XlaComputation& computation,
       const std::vector<const Shape*>& argument_layout_pointers,
       LayoutCanonicalizationCallback layout_canonicalization_callback,
       CompileOptions options);
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> BuildPjRtExecutable(
+      std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+      CompileOptions compile_options);
+
+  absl::StatusOr<
+      std::pair<std::vector<std::unique_ptr<LocalExecutable>>, CompileOptions>>
+  DeserializeToLocalExecutable(absl::string_view serialized,
+                               std::optional<CompileOptions> options);
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
+      std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+      CompileOptions compile_options);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBufferInternal(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
