@@ -202,9 +202,7 @@ ENTRY e {
   EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
 }
 
-// TODO(bchetioui): there is already a change out to fix this, enable once it
-// lands.
-TEST_F(TritonTest, DISABLED_TestGemmWithTrivialNonContractingDimension) {
+TEST_F(TritonTest, TestGemmWithTrivialNonContractingDimension) {
   constexpr absl::string_view kHloText = R"(
 HloModule t, is_scheduled=true
 
@@ -2500,10 +2498,8 @@ ENTRY e {
 // into Triton fusions.
 using CompareTest = TritonGemmTest;
 
-// TODO(bchetioui): same as
-// TritonTest.TestGemmWithTrivialNonContractingDimension.
-TEST_F(CompareTest, DISABLED_F32WithTrivialNonContractingDimension) {
-  constexpr absl::string_view hlo_text_ref = R"(
+TEST_F(CompareTest, F32WithTrivialNonContractingDimension) {
+  constexpr absl::string_view kHloTextRef = R"(
 HloModule r
 
 ENTRY e {
@@ -2516,7 +2512,7 @@ ENTRY e {
 }
 )";
 
-  constexpr absl::string_view hlo_text_triton = R"(
+  constexpr absl::string_view kHloText = R"(
 HloModule t
 
 triton_dot {
@@ -2534,12 +2530,19 @@ ENTRY e {
     triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,
                          "split_k":1,"num_stages":1,"num_warps":1,
                          "num_ctas":1}}}
-}
-)";
+})";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
-                                      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
-                                      /*run_hlo_passes=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ModuleAndNestedFusionMetadata test_module_and_metadata,
+      GetModuleAndNestedFusionMetadata(kHloText));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                          ParseAndReturnVerifiedModule(kHloTextRef));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(ref_module), std::move(test_module_and_metadata.module),
+      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
+      /*run_hlo_passes=*/false));
 }
 
 // TODO(b/353484968, b/393299275): the e2e test path was never really testing
