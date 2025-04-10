@@ -50,13 +50,12 @@ static bool WaitForReadyWithTimeout(RendezvousStateSynchronization& state,
     });
 
     bool timed_out = state.cv.WaitWithTimeout(&state.mutex, timeout);
-    bool ready = state.ready;
 
     // We are done and ready.
-    if (ready) return true;
+    if (state.ready) return true;
 
     // We are done with waiting because the timeout is exceeded.
-    if (timed_out && !ready) {
+    if (timed_out && !state.ready) {
       return false;
     }
 

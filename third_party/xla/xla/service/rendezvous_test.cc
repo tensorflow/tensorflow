@@ -37,8 +37,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-absl::Duration Timeout() { return absl::Seconds(10); }
-absl::Duration Terminate() { return absl::Seconds(10); }
+absl::Duration Timeout() { return absl::Seconds(5); }
+absl::Duration Terminate() { return absl::Seconds(5); }
 
 tsl::thread::ThreadPool CreateThreadPool(int32_t size) {
   return tsl::thread::ThreadPool(tsl::Env::Default(), "rendezvous_test", size);
@@ -108,8 +108,9 @@ TEST(RendezvousTest, RepeatRendezvous) {
     absl::BlockingCounter counter(2);
 
     auto task = [&] {
-      TF_ASSERT_OK(
-          Rendezvous<int32_t>("rendezvous_test", i, 2, [] { return 42; }));
+      TF_ASSERT_OK(Rendezvous<int32_t>(
+          "rendezvous_test", /*key=*/0, /*num_threads=*/2, [] { return 42; },
+          Timeout(), Terminate()));
       counter.DecrementCount();
     };
 
@@ -117,6 +118,28 @@ TEST(RendezvousTest, RepeatRendezvous) {
     thread_pool.Schedule(task);
     counter.Wait();
   }
+}
+
+TEST(RendezvousTest, BackToBackRendezvous) {
+  auto thread_pool = CreateThreadPool(2);
+
+  absl::BlockingCounter counter(2);
+
+  // In contrast to the previous test, both task do back to back rendezvous
+  // without synchronization with a main thread. We check that in this case
+  // rendezvous do not step on each other and execute correctly.
+  auto task = [&] {
+    for (int32_t i = 0; i < 10; ++i) {
+      TF_ASSERT_OK(Rendezvous<int32_t>(
+          "rendezvous_test", /*key=*/0, /*num_threads=*/2, [] { return 42; },
+          Timeout(), Terminate()));
+    }
+    counter.DecrementCount();
+  };
+
+  thread_pool.Schedule(task);
+  thread_pool.Schedule(task);
+  counter.Wait();
 }
 
 TEST(RendezvousTest, ReturningStatusOr) {
@@ -268,8 +291,9 @@ static void BM_Rendezvous(benchmark::State& state) {
     absl::BlockingCounter counter(num_threads);
     for (int64_t i = 0; i < num_threads; ++i) {
       thread_pool.Schedule([&] {
-        CHECK_OK(Rendezvous<int32_t>("rendezvous_test", 0, num_threads,
-                                     [] { return 42; }));
+        CHECK_OK(Rendezvous<int32_t>(
+            "rendezvous_test", /*key=*/0, num_threads, [] { return 42; },
+            Timeout(), Terminate()));
         counter.DecrementCount();
       });
     }
@@ -285,9 +309,9 @@ static void BM_RendezvousWithValues(benchmark::State& state) {
     absl::BlockingCounter counter(num_threads);
     for (int64_t i = 0; i < num_threads; ++i) {
       thread_pool.Schedule([&, i] {
-        int32_t value = i;
-        CHECK_OK(Rendezvous<int32_t>("rendezvous_test", 0, value, num_threads,
-                                     [](auto) { return 42; }));
+        CHECK_OK(Rendezvous<int32_t>(
+            "rendezvous_test", /*key=*/0, /*value=*/i, num_threads,
+            [](auto) { return 42; }, Timeout(), Terminate()));
         counter.DecrementCount();
       });
     }
@@ -306,8 +330,9 @@ static void BM_GroupedRendezvous(benchmark::State& state) {
     for (int64_t group = 0; group < num_groups; ++group) {
       for (int64_t i = 0; i < group_size; ++i) {
         thread_pool.Schedule([&, group] {
-          CHECK_OK(Rendezvous<int32_t>("rendezvous_test", group, group_size,
-                                       [] { return 42; }));
+          CHECK_OK(Rendezvous<int32_t>(
+              "rendezvous_test", /*key=*/group, /*num_threads=*/group_size,
+              [] { return 42; }, Timeout(), Terminate()));
           counter.DecrementCount();
         });
       }
