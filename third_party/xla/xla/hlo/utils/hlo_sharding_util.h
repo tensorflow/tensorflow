@@ -463,9 +463,9 @@ GroupedSharding GroupShardingOnReplicatedDim(
     int64_t data_rank, absl::Span<const int64_t> replicable_dims = {});
 
 // Get group sharding for replicated sharding.
-GroupedSharding GetGroupedReplicatedSharding(const int64_t num_groups,
-                                             const int64_t num_tiles,
-                                             const int64_t data_rank);
+GroupedSharding GetGroupedReplicatedSharding(int64_t num_groups,
+                                             int64_t num_tiles,
+                                             int64_t data_rank);
 
 // Get group sharding for each manual subgroup.
 GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding);
