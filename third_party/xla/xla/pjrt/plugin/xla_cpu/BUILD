@@ -15,7 +15,6 @@ cc_library(
     ],
     hdrs = ["xla_cpu_pjrt_client.h"],
     deps = [
-        ":cpu_client_options",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/cpu:cpu_client",
         "@com_google_absl//absl/status:statusor",

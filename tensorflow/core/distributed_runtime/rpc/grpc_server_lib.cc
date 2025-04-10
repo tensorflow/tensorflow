@@ -27,6 +27,7 @@ limitations under the License.
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server_builder.h"
 #include "absl/strings/numbers.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -524,7 +525,7 @@ absl::Status GrpcServer::SetCoordinationServiceAgentInstance(
 }
 
 absl::Status GrpcServer::SetCoordinationServiceInstance(
-    tsl::CoordinationServiceInterface* service) {
+    tsl::CoordinationService* service) {
   auto* coord_service =
       static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
   coord_service->SetCoordinationServiceInstance(service);
