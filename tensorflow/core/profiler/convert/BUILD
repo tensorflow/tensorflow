@@ -440,7 +440,6 @@ cc_library(
         "@org_xprof//xprof/utils:hlo_module_map",
         "@org_xprof//xprof/utils:kernel_stats_utils",
         "@org_xprof//xprof/utils:op_utils",
-        "@org_xprof//xprof/utils:xprof_gpu_cost_analysis",
     ],
 )
 
