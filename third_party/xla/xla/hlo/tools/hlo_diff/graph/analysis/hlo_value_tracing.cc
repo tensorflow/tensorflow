@@ -1215,6 +1215,6 @@ absl::StatusOr<std::unique_ptr<HloValueTracing>> HloValueTracing::Run(
   }
   absl::c_sort(hlo_value_tracing->values_vector_, HloValue::IdLessThan);
 
-  return std::move(hlo_value_tracing);
+  return hlo_value_tracing;
 }
 }  // namespace xla

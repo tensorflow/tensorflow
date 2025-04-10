@@ -641,7 +641,7 @@ absl::StatusOr<ShapeTree<HloSharding>> HloSharding::AsShapeTree(
     for (auto& index_to_sharding : result.leaves()) {
       index_to_sharding.second = *it++;
     }
-    return std::move(result);
+    return result;
   } else {
     return ShapeTree<HloSharding>(shape, *this);
   }

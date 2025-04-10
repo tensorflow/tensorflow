@@ -488,7 +488,7 @@ class Shape {
       if (kIsLayoutSensitive) {
         h = H::combine(std::move(h), state->layout);
       }
-      return std::move(h);
+      return h;
     }
     return H::combine(std::move(h), s.element_type_);
   }

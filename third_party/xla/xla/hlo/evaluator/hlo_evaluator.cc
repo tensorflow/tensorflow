@@ -133,7 +133,7 @@ absl::StatusOr<Literal> Compare(const Shape& shape, Comparison comparison,
             return compare_op(lhs, rhs);
           }));
     }
-    return std::move(result);
+    return result;
   };
   switch (comparison.GetDirection()) {
     case ComparisonDirection::kEq:
@@ -3839,7 +3839,7 @@ absl::StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
         return stochastic_convert_op(operand_literal.Get<Fp>(multi_index),
                                      random_literal.Get<Uint>(multi_index));
       }));
-  return std::move(result);
+  return result;
 }
 
 // Converts from primitive types to native types.

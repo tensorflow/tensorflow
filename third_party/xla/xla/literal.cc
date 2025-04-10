@@ -402,7 +402,7 @@ absl::Status LiteralBase::SerializeToString(std::string* output) const {
 absl::StatusOr<std::string> LiteralBase::SerializeAsString() const {
   std::string result;
   TF_RETURN_IF_ERROR(SerializeToString(&result));
-  return std::move(result);
+  return result;
 }
 
 template <typename NativeT>
@@ -541,7 +541,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
         return absl::OkStatus();
       }));
 
-  return std::move(literal);
+  return literal;
 }
 
 Literal Literal::SubLiteral(ShapeIndexView shape_index) {
@@ -1210,7 +1210,7 @@ absl::StatusOr<Literal> LiteralBase::Reshape(
         ShapeUtil::HumanString(shape()),
         ShapeUtil::HumanString(output.shape()));
   }
-  return std::move(output);
+  return output;
 }
 
 Literal LiteralBase::Transpose(absl::Span<const int64_t> permutation) const {

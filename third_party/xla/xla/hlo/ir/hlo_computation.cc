@@ -1217,7 +1217,7 @@ HloComputation::CreateFromProto(
   if (!proto.execution_thread().empty()) {
     computation->SetExecutionThread(proto.execution_thread());
   }
-  return std::move(computation);
+  return computation;
 }
 
 void HloComputation::AppendInstructionsIntoCalledComputation(

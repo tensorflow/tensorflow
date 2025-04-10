@@ -150,7 +150,7 @@ TuplePointsToAnalysis::Run(const HloModule* module) {
   std::unique_ptr<TuplePointsToAnalysis> analysis(new TuplePointsToAnalysis(
       module, std::move(logical_buffer_analysis).value()));
   TF_RETURN_IF_ERROR(analysis->Analyze());
-  return std::move(analysis);
+  return analysis;
 }
 
 absl::Status TuplePointsToAnalysis::Analyze() {

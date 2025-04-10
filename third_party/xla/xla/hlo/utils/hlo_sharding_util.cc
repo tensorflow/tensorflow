@@ -3144,7 +3144,7 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
     bool allow_aggressive_resharding) {
   // Always allow improve the sharding if it's straightly better.
   if (to_improved != nullptr && IsShardingStrictlyBetter(from, *to_improved)) {
-    return std::move(from);
+    return from;
   }
   // We don't want to propagate tile maximal shardings.
   if (!IsSpatiallyPartitioned(from)) {
@@ -3152,7 +3152,7 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
   }
   // Any sharding is better than no sharding.
   if (to_improved == nullptr) {
-    return std::move(from);
+    return from;
   }
   // We don't want to propagate manual shardings.
   if (from.IsManual()) {
@@ -3172,7 +3172,7 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
         return std::nullopt;
       }
     }
-    return std::move(from);
+    return from;
   }
   return std::nullopt;
 }

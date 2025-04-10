@@ -158,7 +158,7 @@ mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHloInput(
 
   // Try HLO Text
   auto module_from_text = GetModuleFromHLOText(content, context, emit_mhlo);
-  if (module_from_text.ok()) return std::move(module_from_text.value());
+  if (module_from_text.ok()) return std::move(module_from_text).value();
   if (module_from_text.status().message() != kLoadHloError) {
     emitError() << "Failed to convert HLO to MLIR: "
                 << module_from_text.status().message();
@@ -168,7 +168,7 @@ mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHloInput(
   // Try HLO Proto
   auto module_from_proto =
       GetModuleFromHLOProto(std::string(content), context, emit_mhlo);
-  if (module_from_proto.ok()) return std::move(module_from_proto.value());
+  if (module_from_proto.ok()) return std::move(module_from_proto).value();
   if (module_from_proto.status().message() != kLoadHloError) {
     emitError() << "Failed to convert HLO to MLIR: "
                 << module_from_proto.status().message();

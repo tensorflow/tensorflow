@@ -1966,7 +1966,7 @@ class HloInstruction {
   absl::StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
     TF_RETURN_IF_ERROR(backend_config_.GetProto(&proto));
-    return std::move(proto);
+    return proto;
   }
 
   absl::Status set_backend_config(const tsl::protobuf::Message& proto) {

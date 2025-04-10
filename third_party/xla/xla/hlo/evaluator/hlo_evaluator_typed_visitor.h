@@ -98,7 +98,7 @@ auto ToArithmeticSafeType(T t) {
     return static_cast<detail::unsigned_promoted_type_t<T>>(t);
   }
   if constexpr (!std::is_integral_v<T>) {
-    return std::move(t);
+    return t;
   }
 }
 

@@ -1766,7 +1766,7 @@ absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
 
   XLA_VLOG_LINES(1, dataflow_analysis->ToString());
 
-  return std::move(dataflow_analysis);
+  return dataflow_analysis;
 }
 
 absl::Status HloDataflowAnalysis::Verify() const {

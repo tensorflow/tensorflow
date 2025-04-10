@@ -39,7 +39,7 @@ absl::StatusOr<ShapeTree<XlaOp>> DisassembleTuple(XlaOp tuple) {
       *element = GetTupleElement(parent, index.back());
     }
   });
-  return std::move(result);
+  return result;
 }
 
 XlaOp AssembleTuple(XlaBuilder* builder, ShapeTree<XlaOp> elements) {

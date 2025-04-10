@@ -7282,7 +7282,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
   auto module = std::make_unique<HloModule>(/*name=*/"_", config);
   HloParserImpl parser(str, options);
   TF_RETURN_IF_ERROR(parser.Run(module.get()));
-  return std::move(module);
+  return module;
 }
 
 absl::StatusOr<HloSharding> ParseSharding(absl::string_view str) {

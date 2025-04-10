@@ -437,7 +437,7 @@ class LiteralBase {
       }
     });
 
-    return std::move(state);
+    return state;
   }
 
   // Templated wrapper struct to control layout sensitivity during Absl::Hash.

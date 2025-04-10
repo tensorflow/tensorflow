@@ -3454,7 +3454,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   cloned->set_padding_type(padding_type_);
   *cloned->mutable_precision_config() = precision_config();
   cloned->set_custom_call_schedule(custom_call_schedule_);
-  return std::move(cloned);
+  return cloned;
 }
 
 HloPadInstruction::HloPadInstruction(const Shape& shape,

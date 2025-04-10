@@ -136,7 +136,7 @@ mlir::OwningOpRef<mlir::ModuleOp> HloTextToStablehloTranslateFunction(
     return nullptr;
   }
 
-  return std::move(stablehlo_module.value());
+  return std::move(stablehlo_module).value();
 }
 
 }  // namespace xla

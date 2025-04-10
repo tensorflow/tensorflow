@@ -737,7 +737,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
       module->stack_frame_index_ = std::move(proto.stack_frame_index());
     }
   }
-  return std::move(module);
+  return module;
 }
 
 /* static */

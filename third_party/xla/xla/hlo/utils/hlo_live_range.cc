@@ -49,7 +49,7 @@ absl::StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
   hlo_live_range->FlattenSchedule(*computation);
   hlo_live_range->CalculateBufferStartEndMap();
   hlo_live_range->NormalizeAliasedBuffers();
-  return std::move(hlo_live_range);
+  return hlo_live_range;
 }
 
 void HloLiveRange::NormalizeAliasedBuffers() {
