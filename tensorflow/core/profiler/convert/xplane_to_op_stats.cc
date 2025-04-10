@@ -54,11 +54,9 @@ limitations under the License.
 #include "xprof/utils/event_span.h"  // from @org_xprof
 #include "xprof/utils/gpu_event_stats.h"  // from @org_xprof
 #include "xprof/utils/hardware_type_utils.h"  // from @org_xprof
-#include "xprof/utils/hlo_cost_analysis_wrapper.h"  // from @org_xprof
 #include "xprof/utils/hlo_module_map.h"  // from @org_xprof
 #include "xprof/utils/kernel_stats_utils.h"  // from @org_xprof
 #include "xprof/utils/op_utils.h"  // from @org_xprof
-#include "xprof/utils/xprof_gpu_cost_analysis.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
@@ -315,14 +313,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
   HloModuleMap hlo_module_map;
   if (options.generate_kernel_stats_db ||
       (is_tpu && options.generate_op_metrics_db)) {
-    tensorflow::profiler::HloCostAnalysisWrapper::Factory create_cost_analysis =
-        []() { return nullptr; };
-    if (is_gpu) {
-      create_cost_analysis = []() {
-        return tensorflow::profiler::CreateXprofGpuCostAnalysis();
-      };
-    }
-    ProcessHloModuleMapFromXSpace(hlo_module_map, &space, create_cost_analysis);
+    ProcessHloModuleMapFromXSpace(hlo_module_map, &space);
   }
   for (const XPlane* device_trace : device_planes) {
     if (options.generate_op_metrics_db) {
@@ -331,8 +322,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       }
       if (!is_tpu) {
         OpMetricsDb device_op_metrics_db =
-            ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace,
-                                                  hlo_module_map);
+            ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
         op_metrics_db_combiner.Combine(device_op_metrics_db);
       } else {
         // TODO(b/397774568): Remove this once the SparseCore OpMetricsDb is
