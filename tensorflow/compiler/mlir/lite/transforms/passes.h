@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/push_transpose_through_ewise_pass.h"
@@ -340,7 +341,7 @@ inline void registerTensorFlowLitePasses() {
   Register<OptimizePass, OptimizePassOptions>();
   Register<OptimizeBatchMatmulPass>();
   Register<UnfreezeMutableGlobalTensorsPass>();
-  Register<OptimizeBroadcastLikePass>();
+  Register<OptimizeBroadcastLikePass, OptimizeBroadcastLikePassOptions>();
   Register<PushTransposeThroughEwisePass>();
   Register<CanonicalizeBoundaryValuePass>();
 
