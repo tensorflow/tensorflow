@@ -71,6 +71,13 @@ namespace tflite {
 namespace xnnpack {
 namespace {
 
+// VisitDotAttentionNode uses a clamp to add a constant value to the XNNPack
+// subgraph. The constant data must outlive the XNNPack delegate and there is no
+// simple way of doing this. Therefore a clamp was used to clamp some arbitrary
+// data to this constant value. The static input data to the clamp can be
+// anything.
+const float kConstantClampData = 0.f;
+
 constexpr char kOdmlSDPA[] = "odml.scaled_dot_product_attention";
 
 template <typename T>
@@ -5886,7 +5893,7 @@ class Subgraph {
         TF_LITE_ENSURE_EQ(
             logging_context, xnn_status_success,
             xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
-                                    /*dims=*/nullptr, &query_proj.dims->data[3],
+                                    /*dims=*/nullptr, &kConstantClampData,
                                     XNN_INVALID_VALUE_ID, 0, &scale_orig_id));
         TF_LITE_ENSURE_EQ(
             logging_context, xnn_status_success,
