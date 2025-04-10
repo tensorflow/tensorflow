@@ -607,54 +607,6 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
      tblgen = "@llvm-project//mlir:mlir-tblgen",
      td_file = "stablehlo/dialect/VhloOps.td",
      deps = [
-diff --ruN a/stablehlo/stablehlo/testdata/fft_complex128_14_15_0_17.mlir b/stablehlo/stablehlo/testdata/fft_complex128_14_15_0_17.mlir
---- stablehlo/stablehlo/testdata/fft_complex128_14_15_0_17.mlir
-+++ stablehlo/stablehlo/testdata/fft_complex128_14_15_0_17.mlir
-@@ -12,7 +12,7 @@
-     return %2 : tensor<14x15x0x33xf64>
-   }
-   func.func private @inputs() -> (tensor<14x15x0x17xcomplex<f64>> {mhlo.layout_mode = "default"}) {
--    %cst = stablehlo.constant dense<> : tensor<14x15x0x17xcomplex<f64>>
-+    %cst = stablehlo.constant dense<(0.0, 0.0)> : tensor<14x15x0x17xcomplex<f64>>
-     return %cst : tensor<14x15x0x17xcomplex<f64>>
-   }
-   func.func private @expected() -> (tensor<14x15x0x33xf64> {mhlo.layout_mode = "default"}) {
-diff --ruN a/stablehlo/stablehlo/testdata/fft_complex64_14_15_0_17.mlir b/stablehlo/stablehlo/testdata/fft_complex64_14_15_0_17.mlir
---- stablehlo/stablehlo/testdata/fft_complex64_14_15_0_17.mlir
-+++ stablehlo/stablehlo/testdata/fft_complex64_14_15_0_17.mlir
-@@ -12,7 +12,7 @@
-     return %2 : tensor<14x15x0x33xf32>
-   }
-   func.func private @inputs() -> (tensor<14x15x0x17xcomplex<f32>> {mhlo.layout_mode = "default"}) {
--    %cst = stablehlo.constant dense<> : tensor<14x15x0x17xcomplex<f32>>
-+    %cst = stablehlo.constant dense<(0.0, 0.0)> : tensor<14x15x0x17xcomplex<f32>>
-     return %cst : tensor<14x15x0x17xcomplex<f32>>
-   }
-   func.func private @expected() -> (tensor<14x15x0x33xf32> {mhlo.layout_mode = "default"}) {
-diff --ruN a/stablehlo/stablehlo/testdata/fft_float32_14_15_0_17.mlir b/stablehlo/stablehlo/testdata/fft_float32_14_15_0_17.mlir
---- stablehlo/stablehlo/testdata/fft_float32_14_15_0_17.mlir
-+++ stablehlo/stablehlo/testdata/fft_float32_14_15_0_17.mlir
-@@ -16,7 +16,7 @@
-     return %cst : tensor<14x15x0x17xf32>
-   }
-   func.func private @expected() -> (tensor<14x15x0x9xcomplex<f32>> {mhlo.layout_mode = "default"}) {
--    %cst = stablehlo.constant dense<> : tensor<14x15x0x9xcomplex<f32>>
-+    %cst = stablehlo.constant dense<(0.0, 0.0)> : tensor<14x15x0x9xcomplex<f32>>
-     return %cst : tensor<14x15x0x9xcomplex<f32>>
-   }
- }
-diff --ruN a/stablehlo/stablehlo/testdata/fft_float64_14_15_0_17.mlir b/stablehlo/stablehlo/testdata/fft_float64_14_15_0_17.mlir
---- stablehlo/stablehlo/testdata/fft_float64_14_15_0_17.mlir
-+++ stablehlo/stablehlo/testdata/fft_float64_14_15_0_17.mlir
-@@ -16,7 +16,7 @@
-     return %cst : tensor<14x15x0x17xf64>
-   }
-   func.func private @expected() -> (tensor<14x15x0x9xcomplex<f64>> {mhlo.layout_mode = "default"}) {
--    %cst = stablehlo.constant dense<> : tensor<14x15x0x9xcomplex<f64>>
-+    %cst = stablehlo.constant dense<(0.0, 0.0)> : tensor<14x15x0x9xcomplex<f64>>
-     return %cst : tensor<14x15x0x9xcomplex<f64>>
-   }
- }
 diff --ruN a/stablehlo/stablehlo/tests/BUILD.bazel b/stablehlo/stablehlo/tests/BUILD.bazel
 --- stablehlo/stablehlo/tests/BUILD.bazel
 +++ stablehlo/stablehlo/tests/BUILD.bazel
@@ -699,31 +651,4 @@ diff --ruN a/stablehlo/stablehlo/tests/BUILD.bazel b/stablehlo/stablehlo/tests/B
      tblgen = "@llvm-project//mlir:mlir-tblgen",
      td_file = "TestUtils.td",
      deps = [
-diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
---- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
-+++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
-@@ -1539,8 +1539,8 @@
- 
- void populateStablehloHloImportCanonicalizationPatterns(
-     MLIRContext *context, RewritePatternSet *patterns) {
--  patterns->add<TupleIsRepacking, TupleIsUnpacked, WhileOpImplicitCapture>(
--      context);
-+  patterns->add<ReshapeIsNoop, TupleIsRepacking, TupleIsUnpacked,
-+                WhileOpImplicitCapture>(context);
- }
- 
- std::unique_ptr<Pass> createStablehloAggressiveSimplificationPass(
-diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
---- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
-+++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
-@@ -366,7 +366,8 @@
-           (StableHLO_ReshapeOpWithShape $reshape, $operand)>;
- 
- // Pattern: reshape(X, [X.shape]) -> X
--def : Pat<(StableHLO_ReshapeOp:$reshape $operand),
-+def ReshapeIsNoop
-+    : Pat<(StableHLO_ReshapeOp:$reshape $operand),
-           (replaceWithValue $operand),
-           [(TypesEqual $reshape, $operand)]>;
- 
 
