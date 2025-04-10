@@ -75,6 +75,33 @@ class TritonEmitterTest : public GpuCodegenTest {
   }
 };
 
+// TODO(bchetioui): turn this into a general binary elementwise test.
+TEST_F(TritonEmitterTest, MinimumIsEmittedCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+computation {
+  p0 = f32[8,4] parameter(0)
+  p1 = f32[8,4] parameter(1)
+  ROOT minimum = f32[8,4] minimum(p0, p1)
+}
+
+ENTRY entry_computation {
+  p0 = f32[8,4] parameter(0)
+  p1 = f32[8,4] parameter(1)
+  ROOT fusion = f32[8,4] fusion(p0, p1), kind=kCustom,
+    calls=computation,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "4"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
 TEST_F(TritonEmitterTest, ReductionOnMinormostAxisIsEmittedCorrectly) {
   constexpr absl::string_view kHloText = R"(
 HloModule m

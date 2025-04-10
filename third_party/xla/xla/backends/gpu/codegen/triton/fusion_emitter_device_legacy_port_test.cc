@@ -637,33 +637,7 @@ ENTRY e {
                                ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_NoPadding) {
-  constexpr absl::string_view kHloText = R"(
-HloModule t
-
-ENTRY e {
-  p0 = f16[15,19] parameter(0)
-  p1 = s8[19,17] parameter(1)
-  cp1 = f16[19,17] convert(p1)
-  ROOT _ = f16[15,17] dot(p0, cp1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: ROOT
-; CHECK-SAME: fusion(
-; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: "block_m":
-; CHECK-NOT: pad
-; CHECK-NOT: slice
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
+// TODO(b/393299275): requires enabling mixed-type dots for s8xs8->s32.
 TEST_F(TritonGemmTest, DISABLED_S8xS8) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
@@ -674,6 +648,7 @@ ENTRY f {
   ROOT z = s32[1024,1024]{1,0} dot(x, y),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
+  MatchOptimizedHlo(kHloText, "CHECK: __triton_nested_gemm_fusion");
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
@@ -1128,40 +1103,6 @@ ENTRY e {
 )");
 }
 
-TEST_F(TritonGemmTest, DISABLED_SingleElementTileIsHandled) {
-  if (std::holds_alternative<se::RocmComputeCapability>(
-          GpuComputeCapability())) {
-    GTEST_SKIP() << "Not using autotuner on ROCM yet.";
-  }
-  MatchOptimizedHlo(R"(
-t {
-  p0 = f32[2,7,3]{2,1,0} parameter(0)
-  p1 = s32[2,1]{1,0} parameter(1)
-  c = s32[] constant(1)
-  br0 = s32[2,1]{1,0} broadcast(c), dimensions={}
-  cmp = pred[2,1]{1,0} compare(p1, br0), direction=LT
-  bc0 = pred[2]{0} bitcast(cmp)
-  br1 = pred[2,1,3,3]{3,2,0,1} broadcast(bc0), dimensions={0}
-  cvt = f32[2,1,3,3]{3,2,0,1} convert(br1)
-  bc1 = f32[2,3,3]{2,1,0} bitcast(cvt)
-  ROOT d = f32[2,7,3]{2,1,0} dot(p0, bc1),
-    lhs_batch_dims={0}, lhs_contracting_dims={2},
-    rhs_batch_dims={0}, rhs_contracting_dims={1}
-}
-
-ENTRY e {
-  p0 = f32[2,7,3]{2,1,0} parameter(0)
-  p1 = s32[2,1]{1,0} parameter(1)
-  ROOT r = f32[2,7,3]{2,1,0} fusion(p0, p1), kind=kCustom,
-    calls=t, backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
-})",
-                    // This partially optimized HLO will go through the
-                    // autotuner which will run the fusion through the emitter
-                    // multiple times and assign block sizes on success.
-                    R"(
-; CHECK: block_m
-)");
-}
 
 TEST_F(TritonGemmTest,
        BroadcastsOfTriviallySizedNonContractingDimensionsAreSupported) {
@@ -1262,28 +1203,6 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, DISABLED_SameInput) {
-  constexpr absl::string_view kHloText = R"(
-HloModule m
-
-ENTRY e {
-  p0 = pred[5,5]{1,0} parameter(0)
-  c = f32[5,5]{1,0} convert(p0)
-  ROOT r = f32[5,5]{1,0} dot(c, c),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-})";
-
-  // The fusion has separate parameters for each scope.
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
-; CHECK: %[[p0:.*]] = pred[5,5]{1,0} parameter(0)
-; CHECK: fusion(%[[p0]], %[[p0]]), kind=kCustom
-; CHECK-PTX-SAME: "block_m":
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
-}
-
 TEST_F(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInLhsEndToEnd) {
   // The select is used to restrict the start index to values that make sense.
   // If it was constant, then the dynamic-slice would be optimized to slice. It
@@ -1351,35 +1270,6 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
-}
-
-TEST_F(TritonGemmTest, DISABLED_MultiplePathsToSameOperandWorks) {
-  constexpr absl::string_view kHloText = R"(
-triton_computation {
-  p0 = bf16[8192,512]{1,0} parameter(0)
-  p1 = bf16[512,512]{1,0} parameter(1)
-  dot = bf16[8192,512]{1,0} dot(bf16[8192,512]{1,0} p0, bf16[512,512]{1,0} p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  p2 = bf16[8192,512]{1,0} parameter(2)
-  multiply.1 = bf16[8192,512]{1,0} multiply(bf16[8192,512]{1,0} dot, bf16[8192,512]{1,0} p2)
-  ROOT multiply.2 = bf16[8192,512]{1,0} multiply(bf16[8192,512]{1,0} multiply.1, bf16[8192,512]{1,0} p2)
-}
-
-ENTRY e {
-  p0 = bf16[8192,512]{1,0} parameter(0)
-  p1 = bf16[512,512]{1,0} parameter(1)
-  p2 = bf16[8192,512]{1,0} parameter(2)
-  ROOT fusion = bf16[8192,512]{1,0} fusion(p0,p1,p2), kind=kCustom, calls=triton_computation,
-  backend_config={"fusion_backend_config":
-      {"kind":"__triton_gemm", "triton_gemm_config":{"block_m":"64","block_n":"256","block_k":"32","split_k":"1","num_stages":"4","num_warps":"4","num_ctas":"1"}}}
-})";
-
-  TF_ASSERT_OK(
-      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_computation", R"(
-        CHECK:      tt.dot
-        CHECK-SAME: tensor<64x32xbf16> * tensor<32x256xbf16> -> tensor<64x256xf32>
-        CHECK:      arith.mulf
-        CHECK:      arith.mulf
-    )"));
 }
 
 class TritonGemmDynamicSliceClampingTest
@@ -1935,198 +1825,6 @@ e {
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2,
                                                 /*arel=*/1e-2}));
-}
-
-TEST_F(TritonGemmTest, DISABLED_MinimumHandlesNaNsOnTheLeft) {
-  constexpr absl::string_view kHloText = R"(
-HloModule t
-
-ENTRY e {
-  p0 = f32[5,5] parameter(0)
-  neg1 = f32[] constant(-1)
-  neg1s = f32[5,5] broadcast(neg1), dimensions={}
-  nans = f32[5,5] sqrt(neg1s)
-  min = f32[5,5] minimum(nans, neg1s)
-  ROOT _ = f32[5,5] dot(p0, min),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion(
-; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: block_m
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, DISABLED_MinimumHandlesNaNsOnTheRight) {
-  constexpr absl::string_view kHloText = R"(
-HloModule t
-
-ENTRY e {
-  p0 = f32[5,5] parameter(0)
-  neg1 = f32[] constant(-1)
-  neg1s = f32[5,5] broadcast(neg1), dimensions={}
-  nans = f32[5,5] sqrt(neg1s)
-  min = f32[5,5] minimum(neg1s, nans)
-  ROOT _ = f32[5,5] dot(p0, min),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion(
-; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: block_m
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, DISABLED_MaximumHandlesNaNsOnTheLeft) {
-  constexpr absl::string_view kHloText = R"(
-HloModule t
-
-ENTRY e {
-  p0 = f32[5,5] parameter(0)
-  neg1 = f32[] constant(-1)
-  neg1s = f32[5,5] broadcast(neg1), dimensions={}
-  nans = f32[5,5] sqrt(neg1s)
-  max = f32[5,5] maximum(nans, neg1s)
-  ROOT _ = f32[5,5] dot(p0, max),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion(
-; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: block_m
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, DISABLED_MaximumHandlesNaNsOnTheRight) {
-  constexpr absl::string_view kHloText = R"(
-HloModule t
-
-ENTRY e {
-  p0 = f32[5,5] parameter(0)
-  neg1 = f32[] constant(-1)
-  neg1s = f32[5,5] broadcast(neg1), dimensions={}
-  nans = f32[5,5] sqrt(neg1s)
-  max = f32[5,5] maximum(neg1s, nans)
-  ROOT _ = f32[5,5] dot(p0, max),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion(
-; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: block_m
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, DISABLED_MinimumReturnsLHS) {
-  constexpr absl::string_view kHloText = R"(
-HloModule t
-
-ENTRY e {
-  p0 = f32[5,5] parameter(0)
-  zero = f32[] constant(0)
-  zeros = f32[5,5] broadcast(zero), dimensions={}
-  one = f32[] constant(1)
-  ones = f32[5,5] broadcast(one), dimensions={}
-  min = f32[5,5] minimum(zeros, ones)
-  ROOT _ = f32[5,5] dot(p0, min),
-  lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion(
-; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: block_m
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
-                                                /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, DISABLED_MinimumReturnsRHS) {
-  constexpr absl::string_view kHloText = R"(
-HloModule t
-
-ENTRY e {
-  p0 = f32[5,5] parameter(0)
-  zero = f32[] constant(0)
-  zeros = f32[5,5] broadcast(zero), dimensions={}
-  one = f32[] constant(1)
-  ones = f32[5,5] broadcast(one), dimensions={}
-  min = f32[5,5] minimum(ones, zeros)
-  ROOT _ = f32[5,5] dot(p0, min),
-  lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion(
-; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: block_m
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
-                                                /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, DISABLED_MaximumReturnsLHS) {
-  constexpr absl::string_view kHloText = R"(
-HloModule t
-
-ENTRY e {
-  p0 = f32[5,5] parameter(0)
-  zero = f32[] constant(0)
-  zeros = f32[5,5] broadcast(zero), dimensions={}
-  one = f32[] constant(1)
-  ones = f32[5,5] broadcast(one), dimensions={}
-  max = f32[5,5] maximum(ones, zeros)
-  ROOT _ = f32[5,5] dot(p0, max),
-  lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion(
-; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: block_m
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
-                                                /*arel=*/1e-3}));
-}
-
-TEST_F(TritonGemmTest, DISABLED_MaximumReturnsRHS) {
-  constexpr absl::string_view kHloText = R"(
-HloModule t
-
-ENTRY e {
-  p0 = f32[5,5] parameter(0)
-  zero = f32[] constant(0)
-  zeros = f32[5,5] broadcast(zero), dimensions={}
-  one = f32[] constant(1)
-  ones = f32[5,5] broadcast(one), dimensions={}
-  max = f32[5,5] maximum(zeros, ones)
-  ROOT _ = f32[5,5] dot(p0, max),
-  lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion(
-; CHECK-SAME: kind=kCustom
-; CHECK-PTX-SAME: block_m
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
-                                                /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, SineOutputIsNotFused) {
