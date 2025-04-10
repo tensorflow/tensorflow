@@ -17,7 +17,6 @@
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.compiler.mlir.lite.python import _pywrap_converter_api
-from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 
 
 def wrapped_convert(
@@ -33,7 +32,6 @@ def wrapped_convert(
       input_data_str,
       False,  # extended_return
       debug_info_str,
-      py_function_lib.PyFunctionLibrary(),
   )
 
 

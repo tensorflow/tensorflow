@@ -13,36 +13,53 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <Python.h>
+
 #include <string>
 #include <vector>
 
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "mlir-c/Bindings/Python/Interop.h"  // from @llvm-project
+#include "mlir-c/IR.h"                       // from @llvm-project
+#include "mlir/Bindings/Python/Nanobind.h"
+#include "mlir/Bindings/Python/NanobindAdaptors.h"
+#include "mlir/lib/Bindings/Python/Globals.h"
+#include "mlir/lib/Bindings/Python/IRModule.h"
+#include "mlir/lib/Bindings/Python/NanobindUtils.h"
+#include "mlir/lib/Bindings/Python/Pass.h"
+#include "nanobind/nanobind.h"  // from @nanobind
 #include "tensorflow/compiler/mlir/lite/python/converter_python_api.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
-#include "tensorflow/python/lib/core/pybind11_lib.h"
+#include "tensorflow/compiler/mlir/lite/python/model_utils_core.h"
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
-PYBIND11_MODULE(_pywrap_converter_api, m) {
+namespace {
+
+inline nb::object PyoOrThrow(PyObject* ptr) {
+  if (PyErr_Occurred() || ptr == nullptr) {
+    throw nb::python_error();
+  }
+  return nb::steal<nb::object>(ptr);
+}
+
+}  // namespace
+
+NB_MODULE(_pywrap_converter_api, m) {
   m.def(
       "Convert",
-      [](py::object model_flags_proto_txt_raw,
-         py::object converter_flags_proto_txt_raw,
-         py::object input_contents_txt_raw, bool extended_return,
-         py::object debug_info_txt_raw,
-         const tensorflow::quantization::PyFunctionLibrary*
-             quantization_py_function_library) {
-        return tensorflow::PyoOrThrow(tflite::Convert(
+      [](nb::object model_flags_proto_txt_raw,
+         nb::object converter_flags_proto_txt_raw,
+         nb::object input_contents_txt_raw, bool extended_return,
+         nb::object debug_info_txt_raw) {
+        return PyoOrThrow(tflite::Convert(
             model_flags_proto_txt_raw.ptr(),
             converter_flags_proto_txt_raw.ptr(), input_contents_txt_raw.ptr(),
-            extended_return, debug_info_txt_raw.ptr(),
-            quantization_py_function_library));
+            extended_return, debug_info_txt_raw.ptr()));
       },
-      py::arg("model_flags_proto_txt_raw"),
-      py::arg("converter_flags_proto_txt_raw"),
-      py::arg("input_contents_txt_raw"), py::arg("extended_return") = false,
-      py::arg("debug_info_txt_raw") = py::none(),
-      py::arg("quantization_py_function_library") = py::none(),
+      nb::arg("model_flags_proto_txt_raw"),
+      nb::arg("converter_flags_proto_txt_raw"),
+      nb::arg("input_contents_txt_raw") = nb::none(),
+      nb::arg("extended_return") = false,
+      nb::arg("debug_info_txt_raw") = nb::none(),
       R"pbdoc(
       Convert a model represented in `input_contents`. `model_flags_proto`
       describes model parameters. `flags_proto` describes conversion
@@ -54,14 +71,14 @@ PYBIND11_MODULE(_pywrap_converter_api, m) {
     )pbdoc");
   m.def(
       "ExperimentalMlirQuantizeModel",
-      [](py::object input_contents_txt_raw, bool disable_per_channel,
+      [](nb::object input_contents_txt_raw, bool disable_per_channel,
          bool fully_quantize, int inference_type, int input_data_type,
          int output_data_type, bool enable_numeric_verify,
-         bool enable_whole_model_verify, py::object op_blocklist,
-         py::object node_blocklist, bool enable_variable_quantization,
+         bool enable_whole_model_verify, nb::object op_blocklist,
+         nb::object node_blocklist, bool enable_variable_quantization,
          bool disable_per_channel_for_dense_layers,
-         py::object debug_options_proto_txt_raw) {
-        return tensorflow::PyoOrThrow(tflite::MlirQuantizeModel(
+         nb::object debug_options_proto_txt_raw) {
+        return PyoOrThrow(tflite::MlirQuantizeModel(
             input_contents_txt_raw.ptr(), disable_per_channel, fully_quantize,
             inference_type, input_data_type, output_data_type,
             enable_numeric_verify, enable_whole_model_verify,
@@ -69,36 +86,36 @@ PYBIND11_MODULE(_pywrap_converter_api, m) {
             enable_variable_quantization, disable_per_channel_for_dense_layers,
             debug_options_proto_txt_raw.ptr()));
       },
-      py::arg("input_contents_txt_raw"), py::arg("disable_per_channel") = false,
-      py::arg("fully_quantize") = true, py::arg("inference_type") = 9,
-      py::arg("input_data_type") = 0, py::arg("output_data_type") = 0,
-      py::arg("enable_numeric_verify") = false,
-      py::arg("enable_whole_model_verify") = false,
-      py::arg("op_blocklist") = py::none(),
-      py::arg("node_blocklist") = py::none(),
-      py::arg("enable_variable_quantization") = false,
-      py::arg("disable_per_channel_for_dense_layers") = false,
-      py::arg("debug_options_proto_txt_raw") = nullptr,
+      nb::arg("input_contents_txt_raw"), nb::arg("disable_per_channel") = false,
+      nb::arg("fully_quantize") = true, nb::arg("inference_type") = 9,
+      nb::arg("input_data_type") = 0, nb::arg("output_data_type") = 0,
+      nb::arg("enable_numeric_verify") = false,
+      nb::arg("enable_whole_model_verify") = false,
+      nb::arg("op_blocklist") = nb::none(),
+      nb::arg("node_blocklist") = nb::none(),
+      nb::arg("enable_variable_quantization") = false,
+      nb::arg("disable_per_channel_for_dense_layers") = false,
+      nb::arg("debug_options_proto_txt_raw") = nullptr,
       R"pbdoc(
       Returns a quantized model.
     )pbdoc");
   m.def(
       "ExperimentalMlirSparsifyModel",
-      [](py::object input_contents_txt_raw) {
-        return tensorflow::PyoOrThrow(
+      [](nb::object input_contents_txt_raw) {
+        return PyoOrThrow(
             tflite::MlirSparsifyModel(input_contents_txt_raw.ptr()));
       },
-      py::arg("input_contents_txt_raw"),
+      nb::arg("input_contents_txt_raw"),
       R"pbdoc(
       Returns a sparsified model.
     )pbdoc");
   m.def(
       "RegisterCustomOpdefs",
-      [](py::object custom_opdefs_txt_raw) {
-        return tensorflow::PyoOrThrow(
+      [](nb::object custom_opdefs_txt_raw) {
+        return PyoOrThrow(
             tflite::RegisterCustomOpdefs(custom_opdefs_txt_raw.ptr()));
       },
-      py::arg("custom_opdefs_txt_raw"),
+      nb::arg("custom_opdefs_txt_raw"),
       R"pbdoc(
       Registers the given custom opdefs to the TensorFlow global op registry.
     )pbdoc");
@@ -107,10 +124,11 @@ PYBIND11_MODULE(_pywrap_converter_api, m) {
       []() {
         std::vector<std::string> collected_errors =
             tflite::RetrieveCollectedErrors();
-        pybind11::list serialized_message_list(collected_errors.size());
+        nb::list serialized_message_list;
         int i = 0;
         for (const auto& error_data : collected_errors) {
-          serialized_message_list[i++] = pybind11::bytes(error_data);
+          serialized_message_list.append(
+              nb::bytes(error_data.data(), error_data.size()));
         }
         return serialized_message_list;
       },
@@ -125,4 +143,128 @@ PYBIND11_MODULE(_pywrap_converter_api, m) {
       R"pbdoc(
       Returns MLIR dump of the given TFLite model.
     )pbdoc");
+
+  m.def("MU_RegisterMlirPasses",
+        []() { tflite::model_utils::RegisterMlirPasses(); });
+  m.def("MU_RegisterDialects", [](MlirContext context) {
+    tflite::model_utils::RegisterDialects(context);
+  });
+  m.def("MU_CreateIRContext", []() {
+    return nb::steal<nb::object>(
+        mlirPythonContextToCapsule(tflite::model_utils::CreateIRContext()));
+  });
+  m.def("MU_FlatBufferToMlir", [](nb::bytes buffer, MlirContext context) {
+    return tflite::model_utils::FlatBufferToMlir(
+        absl::string_view(static_cast<const char*>(buffer.data()),
+                          buffer.size()),
+        context);
+  });
+  m.def("MU_MlirToFlatbuffer", [](MlirOperation op) {
+    std::string buffer = tflite::model_utils::MlirToFlatbuffer(op);
+    return nb::bytes(buffer.data(), buffer.size());
+  });
+  m.def("MU_GetOperationAttributeNames", [](MlirOperation op) {
+    return tflite::model_utils::GetOperationAttributeNames(op);
+  });
+  m.def("MU_MlirOpVerify",
+        [](MlirOperation op) { return tflite::model_utils::MlirOpVerify(op); });
+
+  auto _mlir = m.def_submodule("_mlir", "MLIR Bindings");
+  _mlir.doc() = "MLIR Python Native Extension";
+
+  using namespace mlir::python;
+  nb::class_<mlir::python::PyGlobals>(_mlir, "_Globals")
+      .def_prop_rw("dialect_search_modules",
+                   &PyGlobals::getDialectSearchPrefixes,
+                   &PyGlobals::setDialectSearchPrefixes)
+      .def("append_dialect_search_prefix", &PyGlobals::addDialectSearchPrefix,
+           nb::arg("module_name"))
+      .def(
+          "_check_dialect_module_loaded",
+          [](mlir::python::PyGlobals& self,
+             const std::string& dialectNamespace) {
+            return self.loadDialectModule(dialectNamespace);
+          },
+          nb::arg("dialect_namespace"))
+      .def("_register_dialect_impl", &PyGlobals::registerDialectImpl,
+           nb::arg("dialect_namespace"), nb::arg("dialect_class"),
+           "Testing hook for directly registering a dialect")
+      .def("_register_operation_impl", &PyGlobals::registerOperationImpl,
+           nb::arg("operation_name"), nb::arg("operation_class"), nb::kw_only(),
+           nb::arg("replace") = false,
+           "Testing hook for directly registering an operation");
+
+  // Aside from making the globals accessible to python, having python manage
+  // it is necessary to make sure it is destroyed (and releases its python
+  // resources) properly.
+  _mlir.attr("globals") =
+      nb::cast(new mlir::python::PyGlobals, nb::rv_policy::take_ownership);
+
+  // Registration decorators.
+  _mlir.def(
+      "register_dialect",
+      [](nb::type_object pyClass) {
+        std::string dialectNamespace =
+            nanobind::cast<std::string>(pyClass.attr("DIALECT_NAMESPACE"));
+        mlir::python::PyGlobals::get().registerDialectImpl(dialectNamespace,
+                                                           pyClass);
+        return pyClass;
+      },
+      nb::arg("dialect_class"),
+      "Class decorator for registering a custom Dialect wrapper");
+  _mlir.def(
+      "register_operation",
+      [](const nb::type_object& dialectClass, bool replace) -> nb::object {
+        return nb::cpp_function(
+            [dialectClass,
+             replace](nb::type_object opClass) -> nb::type_object {
+              std::string operationName =
+                  nanobind::cast<std::string>(opClass.attr("OPERATION_NAME"));
+              mlir::python::PyGlobals::get().registerOperationImpl(
+                  operationName, opClass, replace);
+              // Dict-stuff the new opClass by name onto the dialect class.
+              nb::object opClassName = opClass.attr("__name__");
+              dialectClass.attr(opClassName) = opClass;
+              return opClass;
+            });
+      },
+      nb::arg("dialect_class"), nb::kw_only(), nb::arg("replace") = false,
+      "Produce a class decorator for registering an Operation class as part of "
+      "a dialect");
+  _mlir.def(
+      MLIR_PYTHON_CAPI_TYPE_CASTER_REGISTER_ATTR,
+      [](MlirTypeID mlirTypeID, bool replace) -> nb::object {
+        return nb::cpp_function([mlirTypeID, replace](
+                                    nb::callable typeCaster) -> nb::object {
+          PyGlobals::get().registerTypeCaster(mlirTypeID, typeCaster, replace);
+          return typeCaster;
+        });
+      },
+      nb::arg("typeid"), nb::kw_only(), nb::arg("replace") = false,
+      "Register a type caster for casting MLIR types to custom user types.");
+  _mlir.def(
+      MLIR_PYTHON_CAPI_VALUE_CASTER_REGISTER_ATTR,
+      [](MlirTypeID mlirTypeID, bool replace) -> nb::object {
+        return nb::cpp_function(
+            [mlirTypeID, replace](nb::callable valueCaster) -> nb::object {
+              PyGlobals::get().registerValueCaster(mlirTypeID, valueCaster,
+                                                   replace);
+              return valueCaster;
+            });
+      },
+      nb::arg("typeid"), nb::kw_only(), nb::arg("replace") = false,
+      "Register a value caster for casting MLIR values to custom user values.");
+
+  // Define and populate IR submodule.
+  auto irModule = _mlir.def_submodule("ir", "MLIR IR Bindings");
+  populateIRCore(irModule);
+  populateIRAffine(irModule);
+  populateIRAttributes(irModule);
+  populateIRInterfaces(irModule);
+  populateIRTypes(irModule);
+
+  // Define and populate PassManager submodule.
+  auto passModule =
+      _mlir.def_submodule("passmanager", "MLIR Pass Management Bindings");
+  populatePassManagerSubmodule(passModule);
 }

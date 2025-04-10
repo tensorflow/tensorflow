@@ -18,12 +18,24 @@ load("//tensorflow/compiler/mlir/lite:symlink_files.bzl", "symlink_inputs")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/compiler/mlir/lite:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/compiler/mlir/lite:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
+    ],
     features = [
         # Cannot use header_modules (parse_headers feature fails).
         "-use_header_modules",
     ],
     licenses = ["notice"],
+)
+
+py_library(
+    name = "mlir_all",
+    deps = [
+        ":ir",
+        ":mlir",
+        ":pass_manager",
+    ],
 )
 
 symlink_inputs(
@@ -34,10 +46,33 @@ symlink_inputs(
     }},
 )
 
+symlink_inputs(
+    name = "ir",
+    rule = py_library,
+    symlinked_inputs = {"srcs": {
+        ".": ["@llvm-project//mlir/python:IRPyFiles"],
+    }},
+    deps = [
+        ":mlir",
+    ],
+)
+
+symlink_inputs(
+    name = "pass_manager",
+    rule = py_library,
+    symlinked_inputs = {"srcs": {
+        ".": ["@llvm-project//mlir/python:PassManagerPyFiles"],
+    }},
+    deps = [
+        ":mlir",
+    ],
+)
+
 py_library(
     name = "mlir",
+    srcs = ["__init__.py"],
     deps = [
         ":mlir_libs",
-        "//tensorflow/compiler/mlir/lite/integrations/python/mlir/_mlir_libs:_mlir",
+        # "//tensorflow/compiler/mlir/lite/python/mlir/_mlir_libs:_mlir",
     ],
 )

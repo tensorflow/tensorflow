@@ -32,28 +32,28 @@ COPTS = [
     "-frtti",
 ]
 
-pybind_extension(
-    name = "_mlir",
-    srcs = [
-        "@llvm-project//mlir:lib/Bindings/Python/MainModule.cpp",
-    ],
-    copts = COPTS,
-    pytype_srcs = [
-        ":_mlirPyi",
-    ],
-    deps = [
-        "@llvm-project//mlir:MLIRBindingsPythonCore",
-        "@llvm-project//mlir:MLIRBindingsPythonNanobindHeaders",
-        "@nanobind",
-    ],
-)
+# pybind_extension(
+#     name = "_mlir",
+#     srcs = [
+#         "@llvm-project//mlir:lib/Bindings/Python/MainModule.cpp",
+#     ],
+#     copts = COPTS,
+#     pytype_srcs = [
+#         ":_mlirPyi",
+#     ],
+#     deps = [
+#         "@llvm-project//mlir:MLIRBindingsPythonCore",
+#         "@llvm-project//mlir:MLIRBindingsPythonNanobindHeaders",
+#         "@nanobind",
+#     ],
+# )
 
-symlink_files(
-    name = "_mlirPyi",
-    srcs = [
-        "@llvm-project//mlir/python:IRPyIFiles",
-        "@llvm-project//mlir/python:PassManagerPyIFiles",
-    ],
-    dst = "_mlir",
-    flatten = True,
-)
+# symlink_files(
+#     name = "_mlirPyi",
+#     srcs = [
+#         "@llvm-project//mlir/python:IRPyIFiles",
+#         "@llvm-project//mlir/python:PassManagerPyIFiles",
+#     ],
+#     dst = "_mlir",
+#     flatten = True,
+# )
