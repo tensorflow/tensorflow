@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace xla {
 namespace cpu {
@@ -142,7 +143,7 @@ StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilderBase& builder,
 }
 
 MemrefInfo::MemrefInfo(void* pod_data)
-    : pod_(reinterpret_cast<MemrefInfoPOD*>(pod_data)) {
+    : pod_(tsl::safe_reinterpret_cast<MemrefInfoPOD*>(pod_data)) {
   // TODO(intel-tf): verify pod_
 }
 

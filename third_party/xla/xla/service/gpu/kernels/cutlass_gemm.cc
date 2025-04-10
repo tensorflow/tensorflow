@@ -23,6 +23,8 @@ limitations under the License.
 
 #if !defined(PLATFORM_WINDOWS)
 #include <dlfcn.h>
+
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #endif
 
 namespace xla::gpu::kernel::gemm_universal {
@@ -121,34 +123,37 @@ std::optional<Dim3> Adaptor<DlOpenedKernel>::ClusterDim() const {
 
 Dim3 Adaptor<DlOpenedKernel>::BlockDim(int32_t m, int32_t n, int32_t k) const {
   Dim3 dim;
-  reinterpret_cast<BlockDimFn>(block_dim_fn_)(m, n, k, &dim.x, &dim.y, &dim.z);
+  tsl::safe_reinterpret_cast<BlockDimFn>(block_dim_fn_)(m, n, k, &dim.x, &dim.y,
+                                                        &dim.z);
   return dim;
 }
 
 Dim3 Adaptor<DlOpenedKernel>::ThreadDim() const {
   Dim3 dim;
-  reinterpret_cast<ThreadDimFn>(thread_dim_fn_)(&dim.x, &dim.y, &dim.z);
+  tsl::safe_reinterpret_cast<ThreadDimFn>(thread_dim_fn_)(&dim.x, &dim.y,
+                                                          &dim.z);
   return dim;
 }
 
 int32_t Adaptor<DlOpenedKernel>::SharedMemoryBytes() const {
-  return reinterpret_cast<SharedMemoryBytesFn>(shared_memory_bytes_fn_)();
+  return tsl::safe_reinterpret_cast<SharedMemoryBytesFn>(
+      shared_memory_bytes_fn_)();
 }
 
 bool Adaptor<DlOpenedKernel>::CanImplement(const Arguments& args) const {
-  return reinterpret_cast<CanImplementFn>(can_implement_fn_)(args.m, args.n,
-                                                             args.k);
+  return tsl::safe_reinterpret_cast<CanImplementFn>(can_implement_fn_)(
+      args.m, args.n, args.k);
 }
 
 int64_t Adaptor<DlOpenedKernel>::WorkspaceSize(const Arguments& args) const {
-  return reinterpret_cast<WorkspaceSizeFn>(workspace_size_fn_)(args.m, args.n,
-                                                               args.k);
+  return tsl::safe_reinterpret_cast<WorkspaceSizeFn>(workspace_size_fn_)(
+      args.m, args.n, args.k);
 }
 
 void Adaptor<DlOpenedKernel>::Initialize(void* params, const Arguments& args,
                                          int32_t device_sms,
                                          int32_t sm_occupancy) const {
-  reinterpret_cast<InitializeFn>(initialize_fn_)(
+  tsl::safe_reinterpret_cast<InitializeFn>(initialize_fn_)(
       params, args.m, args.n, args.k, args.lhs, args.rhs, args.out,
       args.workspace, args.slices.out, device_sms, sm_occupancy);
 }
@@ -193,7 +198,7 @@ std::optional<DeviceKernel<DlOpenedKernel>> DeviceKernel<DlOpenedKernel>::Load(
 }
 
 void* DeviceKernel<DlOpenedKernel>::symbol() const {
-  return reinterpret_cast<KernelSymboFn>(symbol_fn_)();
+  return tsl::safe_reinterpret_cast<KernelSymboFn>(symbol_fn_)();
 }
 
 DeviceKernel<DlOpenedKernel>::DeviceKernel(void* handle, void* symbol_fn)

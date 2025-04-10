@@ -33,6 +33,7 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/executable_run_options.h"
 #include "xla/service/custom_call_status_internal.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/logging.h"
 
 using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
@@ -84,6 +85,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
   CHECK_NE(run_options->intra_op_thread_pool(), nullptr);
 
   ComputeFunctionType function =
+      // TODO(wan): fix.
       reinterpret_cast<ComputeFunctionType>(function_ptr);
   // Compute partition stride in 'partitions' array.
   const int64_t stride = 2 * num_partitioned_dims;
@@ -131,9 +133,8 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
           absl::StrAppend(out,
                           absl::StrFormat("Partition %d error: %s", idx, msg));
         });
-    XlaCustomCallStatusSetFailure(
-        reinterpret_cast<XlaCustomCallStatus*>(status), error_message.data(),
-        error_message.length());
+    XlaCustomCallStatusSetFailure(static_cast<XlaCustomCallStatus*>(status),
+                                  error_message.data(), error_message.length());
   }
   VLOG(2) << "ParallelForkJoin EXIT";
 }

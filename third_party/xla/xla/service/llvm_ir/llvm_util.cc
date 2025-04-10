@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/byte_order.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
@@ -233,10 +234,10 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
         // C++ standard dictates the memory layout of std::complex is contiguous
         // real followed by imaginary. C++11 section 26.4 [complex.numbers]:
         // If z is an lvalue expression of type cv std::complex<T> then the
-        // expression reinterpret_cast<cv T(&)[2]>(z) shall be well-formed,
-        // reinterpret_cast<cv T(&)[2]>(z)[0] shall designate the real part of
-        // z, and reinterpret_cast<cv T(&)[2]>(z)[1] shall designate the
-        // imaginary part of z.
+        // expression tsl::safe_reinterpret_cast<cv T(&)[2]>(z) shall be
+        // well-formed, tsl::safe_reinterpret_cast<cv T(&)[2]>(z)[0] shall
+        // designate the real part of z, and tsl::safe_reinterpret_cast<cv
+        // T(&)[2]>(z)[1] shall designate the imaginary part of z.
         return llvm::StructType::create(
             {llvm::Type::getFloatTy(context), llvm::Type::getFloatTy(context)},
             "complex64", /*isPacked=*/true);

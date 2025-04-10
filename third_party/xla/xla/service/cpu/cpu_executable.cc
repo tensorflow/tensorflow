@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
@@ -75,7 +76,6 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
-
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<FunctionLibrary> function_library,
@@ -100,6 +100,7 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
               entry_function_name));
 
   VLOG(1) << "compute_function_ at address "
+          // TODO(wan): fix.
           << reinterpret_cast<void*>(executable->compute_function_);
 
   return executable;

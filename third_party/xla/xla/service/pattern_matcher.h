@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -1304,9 +1305,9 @@ class HloInstructionIsImpl {
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     if (inst != inst_) {
       EXPLAIN << "HloInstruction " << std::hex << std::nouppercase
-              << std::showbase << reinterpret_cast<uint64_t>(inst) << " is not "
-              << reinterpret_cast<uint64_t>(inst_) << " ("
-              << InstToString(inst_) << ")";
+              << std::showbase << tsl::safe_reinterpret_cast<uint64_t>(inst)
+              << " is not " << tsl::safe_reinterpret_cast<uint64_t>(inst_)
+              << " (" << InstToString(inst_) << ")";
       return false;
     }
     return true;
@@ -1314,8 +1315,8 @@ class HloInstructionIsImpl {
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "which is " << std::hex << std::nouppercase << std::showbase
-        << reinterpret_cast<uint64_t>(inst_) << " (" << InstToString(inst_)
-        << ")";
+        << tsl::safe_reinterpret_cast<uint64_t>(inst_) << " ("
+        << InstToString(inst_) << ")";
   }
 
  private:

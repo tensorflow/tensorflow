@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -306,6 +307,7 @@ absl::Status ReadDynamicShapesOnCpu(
         }
         auto buffer_8 = static_cast<const int8_t*>(memory);
         auto metadata_buffer =
+            // TODO(wan): fix.
             reinterpret_cast<const int32_t*>(buffer_8 + offset);
 
         // Update shape size from metadata.

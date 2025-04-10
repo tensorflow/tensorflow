@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -115,10 +116,10 @@ absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
   // computation is not necessarily unique.
   std::string fingerprint = GetComputationFingerprint(&nested_computation_, {});
   size_t hash = absl::Hash<std::string>{}(fingerprint);
-  std::string function_name = llvm_ir::SanitizeFunctionName(
-      absl::StrCat(nested_computation_.name(), "_",
-                   absl::Hex(reinterpret_cast<intptr_t>(&nested_computation_)),
-                   "_", absl::Hex(hash)));
+  std::string function_name = llvm_ir::SanitizeFunctionName(absl::StrCat(
+      nested_computation_.name(), "_",
+      absl::Hex(tsl::safe_reinterpret_cast<intptr_t>(&nested_computation_)),
+      "_", absl::Hex(hash)));
 
   auto* function =
       ir_emitter_context_->llvm_module()->getFunction(function_name);

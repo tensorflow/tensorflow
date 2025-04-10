@@ -84,6 +84,7 @@ cc_library(
         "//xla/service/cpu:cpu_options",
         "//xla/tsl/platform:byte_order",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",

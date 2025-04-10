@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/util/onednn_threadpool.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -939,7 +940,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       // Casting to int32 because of issues in proto config for decimal types
       // handling.
       fusions_config->set_alpha_typecast(
-          *(reinterpret_cast<int32_t*>(&constant_value.value())));
+          *(tsl::safe_reinterpret_cast<int32_t*>(&constant_value.value())));
       TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
       HloInstruction* new_instr;
       if (optional_convert != nullptr &&

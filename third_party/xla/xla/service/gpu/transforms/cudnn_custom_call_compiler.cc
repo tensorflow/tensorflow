@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -496,9 +497,9 @@ class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
       // compilation results to match a fingerprint computed by the emitter.
       TF_ASSIGN_OR_RETURN(const std::string fingerprint_with_workspace,
                           FingerprintWithBackendConfig<GpuBackendConfig>(*hlo));
-      compilation_results_[fingerprint_with_workspace] =
-          std::string(reinterpret_cast<char *>(serialized_graph.data()),
-                      serialized_graph.size());
+      compilation_results_[fingerprint_with_workspace] = std::string(
+          tsl::safe_reinterpret_cast<char *>(serialized_graph.data()),
+          serialized_graph.size());
     } else {
       VLOG(4) << "Cache hit.";
       AddWorkspace(*hlo, workspace_size_it->second);

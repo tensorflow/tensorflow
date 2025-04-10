@@ -85,6 +85,7 @@ limitations under the License.
 #endif  // CUDNN_VERSION >= 90000
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #endif
 
 namespace xla {
@@ -360,7 +361,7 @@ absl::StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
   fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
   *fail->mutable_msg() = redzone_check.RedzoneFailureMsg();
   fail->set_buffer_address(
-      reinterpret_cast<uint64_t>(redzone_check.user_buffer_address));
+      tsl::safe_reinterpret_cast<uint64_t>(redzone_check.user_buffer_address));
 
   LOG(ERROR) << absl::StreamFormat(
       "Detected cudnn out-of-bounds write in conv %s buffer! This is likely a "
@@ -771,7 +772,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
         fail->set_buffer_address(
-            reinterpret_cast<uint64_t>(result_buffers[i].opaque()));
+            tsl::safe_reinterpret_cast<uint64_t>(result_buffers[i].opaque()));
         *fail->mutable_reference_algorithm() =
             (*reference_result)->algorithm.ToProto();
       }
@@ -889,13 +890,13 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       *instr_log.mutable_instruction() = instr->ToProto();
       for (int i = 0; i < instr->operand_count(); i++) {
         *instr_log.add_operand_shapes() = instr->operand(i)->shape().ToProto();
-        instr_log.add_operand_addresses(reinterpret_cast<uint64_t>(
+        instr_log.add_operand_addresses(tsl::safe_reinterpret_cast<uint64_t>(
             runtime_arguments.rz_buffers.input_buffers()[i].opaque()));
       }
       for (se::DeviceMemoryBase result_buffer :
            runtime_arguments.rz_buffers.output_buffers()) {
         instr_log.add_result_addresses(
-            reinterpret_cast<uint64_t>(result_buffer.opaque()));
+            tsl::safe_reinterpret_cast<uint64_t>(result_buffer.opaque()));
       }
       log.mutable_instr()->PackFrom(instr_log);
     }

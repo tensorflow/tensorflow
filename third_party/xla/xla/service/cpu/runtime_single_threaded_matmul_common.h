@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "Eigen/Core"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
@@ -29,7 +30,7 @@ limitations under the License.
 namespace xla {
 
 static inline bool Is16BytesAligned(void* ptr) {
-  return reinterpret_cast<uintptr_t>(ptr) % 16 == 0;
+  return tsl::safe_reinterpret_cast<uintptr_t>(ptr) % 16 == 0;
 }
 
 template <typename T, Eigen::AlignmentType Alignment>

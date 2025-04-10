@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "xla/tsl/util/safe_reinterpret_cast.h"
+
 namespace xla::gpu::repeat_buffer_kernel {
 namespace {
 // Populate the last `buffer_size - repeat_size` bytes of `buffer` by repeating
@@ -33,5 +35,5 @@ __global__ void RepeatBufferKernel(char* buffer, int64_t repeat_size,
   }
 }
 }  // namespace
-void* kernel() { return reinterpret_cast<void*>(RepeatBufferKernel); }
+void* kernel() { return absl::implicit_cast<void*>(RepeatBufferKernel); }
 }  // namespace xla::gpu::repeat_buffer_kernel
