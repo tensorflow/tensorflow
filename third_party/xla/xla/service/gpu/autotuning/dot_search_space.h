@@ -106,6 +106,11 @@ class TritonDotFusionSearchSpace {
   // splitting the contracting dimension for a given output tile.
   int64_t GetNumResultTiles(OutputTile output_tile) const;
 
+  // Computes how many warps per Cooperative Thread Array (aka. CTA, aka. CUDA
+  // block) is reasonable for the given output tile and restrictions on
+  // instruction shape.
+  int GetMaxWarpsPerCta(OutputTile output_tile) const;
+
   // Computes the maximum sensible split in the contracting dimension
   // (split_k) to sufficiently occupy all available cores when using the given
   // output tile.
@@ -121,6 +126,13 @@ class TritonDotFusionSearchSpace {
   // more configs in the output.
   void AddOutputTilings(const ConfigWithNotes& config,
                         std::vector<ConfigWithNotes>& updated_configs);
+
+  // Finds all promising values for the Cooperative Thread Array (aka. CTA, aka.
+  // CUDA block) size (num_warps), based on `config` with already determined
+  // output tiling and appends them to `updated_configs`. Each config in the
+  // input list might yield zero or more configs in the output.
+  void AddCtaSizeParameter(const ConfigWithNotes& config,
+                           std::vector<ConfigWithNotes>& updated_configs);
 
   // Removes configs that are marked with `not_enough_tiles` from the list. If
   // this results in an empty list, adds a config that should be the most
