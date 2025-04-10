@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
@@ -135,11 +137,7 @@ TEST_F(CpuFusionEmitterTest, ScatterMlir) {
       hlo_module->entry_computation()->root_instruction());
   CpuScatterFusion emitter(mlir_context_.get(), &llvm_context_,
                            *buffer_assignment, fusion);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto mlir_module,
-      emitter.CreateMLIRModule(*mlir_context_, *fusion,
-                               std::string(fusion->name()) + "_entry",
-                               *buffer_assignment));
+  TF_ASSERT_OK_AND_ASSIGN(auto mlir_module, emitter.Emit());
   auto mlir_dump = MlirModuleToString(*mlir_module);
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                           RunFileCheck(mlir_dump, kExpected));
@@ -165,8 +163,15 @@ TEST_F(CpuFusionEmitterTest, ScatterLlvm) {
       hlo_module->entry_computation()->root_instruction());
   CpuScatterFusion emitter(mlir_context_.get(), &llvm_context_,
                            *buffer_assignment, fusion);
-  TF_ASSERT_OK_AND_ASSIGN(auto result, emitter.Emit());
-  auto llvm_dump = LlvmModuleToString(*result.llvm_module);
+  TF_ASSERT_OK_AND_ASSIGN(auto mlir_module, emitter.Emit());
+  FusionCompiler compiler(FusionCompiler::Options{});
+  llvm::LLVMContext llvm_context;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<llvm::Module> llvm_module,
+                          compiler.Compile(llvm_context, mlir_module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      absl::flat_hash_set<int64_t> invariant_arguments,
+      SetKernelFunctionAttributes(*llvm_module, *buffer_assignment, fusion));
+  auto llvm_dump = LlvmModuleToString(*llvm_module);
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                           RunFileCheck(llvm_dump, kExpected));
   EXPECT_TRUE(filecheck_matched);

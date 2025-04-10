@@ -213,18 +213,30 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionWithFusionEmitters(
                       fusion_emitter_kind, fusion->ToString());
   }
 
-  TF_ASSIGN_OR_RETURN(auto fusion_result, emitter->Emit());
+  TF_ASSIGN_OR_RETURN(auto mlir_module, emitter->Emit());
+
+  FusionCompiler compiler(FusionCompiler::Options{});
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<llvm::Module> llvm_module,
+      compiler.Compile(module_->getContext(), mlir_module.get()));
+
+  // TODO(willfroom): This should be done as part of the fusion emitter and
+  // lowered by the above compiler.
+  TF_ASSIGN_OR_RETURN(
+      absl::flat_hash_set<int64_t> invariant_arguments,
+      SetKernelFunctionAttributes(*llvm_module,
+                                  nested_ir_emitter_->assignment(), fusion));
+
   // Match data layouts to avoid warning messages.
-  fusion_result.llvm_module->setDataLayout(module_->getDataLayout());
-  if (llvm::Linker::linkModules(*module_,
-                                std::move(fusion_result.llvm_module))) {
+  llvm_module->setDataLayout(module_->getDataLayout());
+  if (llvm::Linker::linkModules(*module_, std::move(llvm_module))) {
     return Internal("Cannot link additional LLVM module for fusion %s",
                     fusion->name());
   }
-  return kernels_.emplace_back(KernelInfo(
-      std::string(fusion->name()), se::BlockDim(),
-      se::ThreadDim(emitter->num_threads()), fusion_result.invariant_arguments,
-      emitter->BackendExtraOptions()));
+  return kernels_.emplace_back(
+      KernelInfo(std::string(fusion->name()), se::BlockDim(),
+                 se::ThreadDim(emitter->num_threads()), invariant_arguments,
+                 emitter->BackendExtraOptions()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(

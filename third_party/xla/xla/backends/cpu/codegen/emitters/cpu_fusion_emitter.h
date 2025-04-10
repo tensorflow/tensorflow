@@ -16,13 +16,11 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_EMITTERS_CPU_FUSION_EMITTER_H_
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/IR/LLVMContext.h"
@@ -30,10 +28,8 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -43,11 +39,6 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
-
-struct CpuFusionEmissionResult {
-  std::unique_ptr<llvm::Module> llvm_module;
-  absl::flat_hash_set<int64_t> invariant_arguments;
-};
 
 IndexingMap GetDefaultIndexingMap(absl::Span<const int64_t> thread_tile_sizes,
                                   absl::Span<const int64_t> shape,
@@ -69,17 +60,12 @@ absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
 void SetDataLayoutAttribute(mlir::ModuleOp module,
                             const HloFusionInstruction& fusion);
 
+absl::StatusOr<absl::flat_hash_set<int64_t>> SetKernelFunctionAttributes(
+    llvm::Module& module, const BufferAssignment& buffer_assignment,
+    const HloFusionInstruction* fusion);
+
 class CpuFusionEmitterBase {
  public:
-  CpuFusionEmitterBase(mlir::MLIRContext* mlir_context,
-                       llvm::LLVMContext* llvm_context,
-                       const BufferAssignment& buffer_assignment,
-                       const HloFusionInstruction* fusion)
-      : mlir_context_(mlir_context),
-        llvm_context_(llvm_context),
-        buffer_assignment_(buffer_assignment),
-        fusion_(fusion) {}
-
   virtual ~CpuFusionEmitterBase() = default;
 
   virtual int64_t num_threads() const = 0;
@@ -92,42 +78,7 @@ class CpuFusionEmitterBase {
 
   virtual std::string BackendExtraOptions() { return {}; }
 
-  absl::StatusOr<CpuFusionEmissionResult> Emit() const;
-
-  // Visible for testing.
-  absl::StatusOr<std::unique_ptr<llvm::Module>> CreateLLVMModule(
-      mlir::MLIRContext& mlir_context, llvm::LLVMContext& llvm_context,
-      const HloFusionInstruction& fusion,
-      const BufferAssignment& buffer_assignment) const;
-
-  // Visible for testing.
-  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
-      mlir::MLIRContext& context, const HloFusionInstruction& fusion,
-      const std::string& entry_function_name,
-      const BufferAssignment& buffer_assignment,
-      mlir::interpreter::MlirCompilationTrace* trace = nullptr) const;
-
- protected:
-  virtual absl::Status EmitEntryFunction(
-      const emitters::PartitionedComputations& computations,
-      const emitters::CallTargetProvider& call_targets,
-      mlir::func::FuncOp entry_function,
-      const HloFusionInstruction& fusion) const = 0;
-
-  virtual std::vector<emitters::EpilogueSpecification> GetEpilogues(
-      const HloFusionInstruction& fusion,
-      mlir::MLIRContext* mlir_context) const {
-    // We don't actually support epilogues for scatter, but this is how we tell
-    // the base class that we don't want it to generate code for the scatter.
-    return {};
-  }
-
-  mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
-
-  mlir::MLIRContext* mlir_context_;
-  llvm::LLVMContext* llvm_context_;
-  const BufferAssignment& buffer_assignment_;
-  const HloFusionInstruction* fusion_;
+  virtual absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Emit() const = 0;
 };
 
 int64_t CeilDiv(int64_t a, int64_t b);

@@ -17,12 +17,18 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/IR/LLVMContext.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Value.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -51,18 +57,27 @@ class CpuScatterFusion : public CpuFusionEmitterBase {
 
   std::string BackendExtraOptions() override;
 
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Emit() const final;
+
  protected:
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
       const emitters::CallTargetProvider& call_targets,
       mlir::func::FuncOp entry_function,
-      const HloFusionInstruction& fusion) const override;
+      const HloFusionInstruction& fusion) const;
 
   std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
-      mlir::MLIRContext* mlir_context) const override;
+      mlir::MLIRContext* mlir_context) const;
 
  private:
+  mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
+
+  mlir::MLIRContext* mlir_context_;
+  llvm::LLVMContext* llvm_context_;
+  const BufferAssignment& buffer_assignment_;
+  const HloFusionInstruction* fusion_;
+
   int64_t vector_size_;
   int64_t num_threads_;
 };
