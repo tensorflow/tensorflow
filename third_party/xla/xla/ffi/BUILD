@@ -10,7 +10,10 @@ cc_library(
     name = "api",
     hdrs = ["//xla/ffi/api:api_headers"],
     visibility = ["//visibility:private"],
-    deps = ["//xla/ffi/api:c_api"],
+    deps = [
+        "//xla/ffi/api:c_api",
+        "//xla/tsl/util:safe_reinterpret_cast",
+    ],
 )
 
 cc_library(
@@ -96,6 +99,7 @@ cc_library(
     deps = [
         ":type_id_registry",
         "//xla:util",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -138,6 +142,7 @@ cc_library(
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
@@ -173,6 +178,7 @@ cc_library(
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",

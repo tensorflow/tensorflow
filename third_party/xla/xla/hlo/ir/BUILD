@@ -98,6 +98,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
@@ -288,6 +289,7 @@ cc_library(
     hdrs = ["ptrvec.h"],
     deps = [
         "//xla/tsl/platform:logging",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/log:check",
     ],
 )
@@ -314,6 +316,7 @@ cc_library(
         "//xla:array",
         "//xla:printer",
         "//xla:util",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",

@@ -29,6 +29,7 @@ cc_library(
         "tensor_or_memref.h",
     ],
     deps = [
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

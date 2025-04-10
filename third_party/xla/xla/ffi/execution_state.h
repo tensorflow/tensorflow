@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/ffi/type_id_registry.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::ffi {
@@ -81,13 +82,13 @@ class ExecutionState {
 template <typename T>
 absl::Status ExecutionState::Set(std::unique_ptr<T> state) {
   return Set(TypeIdRegistry::GetTypeId<T>(), state.release(),
-             [](void* state) { delete reinterpret_cast<T*>(state); });
+             [](void* state) { delete tsl::safe_reinterpret_cast<T*>(state); });
 }
 
 template <typename T>
 absl::StatusOr<T*> ExecutionState::Get() const {
   TF_ASSIGN_OR_RETURN(void* state, Get(TypeIdRegistry::GetTypeId<T>()));
-  return reinterpret_cast<T*>(state);
+  return tsl::safe_reinterpret_cast<T*>(state);
 }
 
 }  // namespace xla::ffi

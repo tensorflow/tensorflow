@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/bitmap.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -3076,7 +3077,7 @@ XlaOp ConstantR0(XlaBuilder* builder, NativeT value) {
 template <typename NativeT>
 XlaOp ConstantR1(XlaBuilder* builder, absl::Span<const NativeT> values) {
   BorrowingLiteral literal(
-      reinterpret_cast<const char*>(values.begin()),
+      tsl::safe_reinterpret_cast<const char*>(values.begin()),
       ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<NativeT>(),
                            {static_cast<int64_t>(values.size())}));
   return ConstantLiteral(builder, literal);

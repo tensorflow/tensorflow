@@ -24,6 +24,7 @@
 
 #include "absl/log/check.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace xla {
 
@@ -100,17 +101,17 @@ class PtrVec {
     // If T has enough alignment, ptr bottom bit must be zero, so we can store
     // it inline without ambiguity. Otherwise we do a dynamic check.
     if constexpr (alignof(decltype(*ptr)) >= 2) {
-      DCHECK_EQ(reinterpret_cast<uintptr_t>(ptr) & 0x1, 0);
+      DCHECK_EQ(tsl::safe_reinterpret_cast<uintptr_t>(ptr) & 0x1, 0);
       return true;
     }
-    return ((reinterpret_cast<uintptr_t>(ptr) & 0x1) == 0);
+    return ((tsl::safe_reinterpret_cast<uintptr_t>(ptr) & 0x1) == 0);
   }
 
   inline bool is_big() const { return (rep_ & kTagMask) == kBigTag; }
 
   inline Big* big() const {
     DCHECK(is_big());
-    return reinterpret_cast<Big*>(rep_ & ~kTagMask);
+    return tsl::safe_reinterpret_cast<Big*>(rep_ & ~kTagMask);
   }
 
   // big_size returns the number of bytes to allocate for a Big representation
@@ -132,7 +133,7 @@ class PtrVec {
     Big* big = static_cast<Big*>(malloc(big_size(capacity)));
     big->size = 0;
     big->capacity = capacity;
-    rep_ = reinterpret_cast<uintptr_t>(big) | kBigTag;
+    rep_ = tsl::safe_reinterpret_cast<uintptr_t>(big) | kBigTag;
     return big;
   }
 
@@ -173,7 +174,7 @@ inline PtrVec<T>& PtrVec<T>::operator=(const PtrVec& x) {
       }
       T single = x.front();
       if (can_inline(single)) {
-        rep_ = reinterpret_cast<uintptr_t>(single);
+        rep_ = tsl::safe_reinterpret_cast<uintptr_t>(single);
         DCHECK(!empty());
         DCHECK(!is_big());
         return *this;
@@ -230,11 +231,14 @@ inline bool PtrVec<T>::empty() const {
 
 template <class T>
 inline T* PtrVec<T>::data() {
+  // TODO(wan): fix.
   return is_big() ? big()->data : reinterpret_cast<T*>(&rep_);
 }
 
 template <class T>
 inline T const* PtrVec<T>::data() const {
+  // TODO(wan): fix.
+  // From = const uintptr_t *, To = xla::HloInstruction *const *
   return is_big() ? big()->data : reinterpret_cast<T const*>(&rep_);
 }
 
@@ -304,7 +308,7 @@ inline void PtrVec<T>::push_back(T x) {
     if (rep_ == kEmptyTag) {
       if (can_inline(x)) {
         // Switch from empty to singleton representation.
-        rep_ = reinterpret_cast<uintptr_t>(x);
+        rep_ = tsl::safe_reinterpret_cast<uintptr_t>(x);
         DCHECK(!empty());
         DCHECK(!is_big());
       } else {

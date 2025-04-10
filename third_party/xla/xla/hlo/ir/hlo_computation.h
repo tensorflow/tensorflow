@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -229,8 +230,8 @@ class HloComputation {
 
   HloInstruction* instruction() const {
     DCHECK(instruction_type() <= InstructionType::kLast);
-    return reinterpret_cast<HloInstruction*>(instruction_and_type_ &
-                                             ~kInstructionTypeMask);
+    return tsl::safe_reinterpret_cast<HloInstruction*>(instruction_and_type_ &
+                                                       ~kInstructionTypeMask);
   }
   // Add an instruction to the computation. The computation takes ownership of
   // the instruction.
@@ -914,8 +915,8 @@ class HloComputation {
       return {};
     }
 
-    auto* instr =
-        reinterpret_cast<HloInstruction*>(callers_ & ~kCallerTypeMask);
+    auto* instr = tsl::safe_reinterpret_cast<HloInstruction*>(callers_ &
+                                                              ~kCallerTypeMask);
     if (caller_opcode == std::nullopt || instr->opcode() == *caller_opcode) {
       return {instr};
     }

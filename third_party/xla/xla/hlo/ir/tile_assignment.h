@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/printer.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace xla {
 
@@ -125,9 +126,11 @@ class IotaTileAssignment {
 
   explicit IotaTileAssignment(int ndims, int reshape_ndims);
 
-  int64_t* dims_ptr() { return reinterpret_cast<int64_t*>(storage_.get()); }
+  int64_t* dims_ptr() {
+    return tsl::safe_reinterpret_cast<int64_t*>(storage_.get());
+  }
   const int64_t* dims_ptr() const {
-    return reinterpret_cast<const int64_t*>(storage_.get());
+    return tsl::safe_reinterpret_cast<const int64_t*>(storage_.get());
   }
   const int64_t* reshape_dims_ptr() const { return dims_ptr() + ndims_; }
   int64_t* reshape_dims_ptr() {
@@ -135,6 +138,7 @@ class IotaTileAssignment {
         const_cast<const IotaTileAssignment*>(this)->reshape_dims_ptr());
   }
   const int* transpose_perm_ptr() const {
+    // TODO(wan): fix.
     return reinterpret_cast<const int*>(reshape_dims_ptr() + reshape_ndims_);
   }
   int* transpose_perm_ptr() {

@@ -59,6 +59,7 @@ limitations under the License.
 // defined in this file.
 
 #include "xla/ffi/api/c_api.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 #ifdef __has_builtin
 #define XLA_FFI_HAS_BUILTIN(x) __has_builtin(x)
@@ -1408,6 +1409,7 @@ class Handler : public Ffi {
     if (call_frame->extension_start != nullptr &&
         call_frame->extension_start->type == XLA_FFI_Extension_Metadata) {
       return PopulateMetadata(call_frame->api,
+                              // TODO(wan): fix.
                               reinterpret_cast<XLA_FFI_Metadata_Extension*>(
                                   call_frame->extension_start));
     }
@@ -1673,13 +1675,13 @@ class Handler : public Ffi {
         return diagnostic.Emit("Wrong attribute type: expected ")     \
                << XLA_FFI_AttrType_SCALAR << " but got " << type;     \
       }                                                               \
-                                                                      \
+      /* TODO(wan): fix. */                                           \
       auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);         \
       if (XLA_FFI_PREDICT_FALSE(scalar->dtype != TYPE)) {             \
         return diagnostic.Emit("Wrong scalar data type: expected ")   \
                << TYPE << " but got " << scalar->dtype;               \
       }                                                               \
-                                                                      \
+      /* TODO(wan): fix. */                                           \
       return *reinterpret_cast<T*>(scalar->value);                    \
     }                                                                 \
   }
@@ -1801,7 +1803,7 @@ auto DictionaryDecoder(Members... m) {
                                                                               \
       auto decoder = ::xla::ffi::internal::DictionaryDecoder<T>(__VA_ARGS__); \
       return decltype(decoder)::Decode(                                       \
-          reinterpret_cast<const XLA_FFI_Attrs*>(attr),                       \
+          tsl::safe_reinterpret_cast<const XLA_FFI_Attrs*>(attr),             \
           internal::StructMemberNames(__VA_ARGS__), diagnostic);              \
     }                                                                         \
   };                                                                          \
@@ -1826,7 +1828,7 @@ auto DictionaryDecoder(Members... m) {
                << XLA_FFI_AttrType_SCALAR << " but got " << attr_type;        \
       }                                                                       \
                                                                               \
-      auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);                 \
+      auto* scalar = tsl::safe_reinterpret_cast<XLA_FFI_Scalar*>(attr);       \
       auto expected_dtype =                                                   \
           ::xla::ffi::internal::NativeTypeToCApiDataType<U>();                \
       if (XLA_FFI_PREDICT_FALSE(scalar->dtype != expected_dtype)) {           \
@@ -1834,7 +1836,7 @@ auto DictionaryDecoder(Members... m) {
                << expected_dtype << " but got " << scalar->dtype;             \
       }                                                                       \
                                                                               \
-      auto underlying = *reinterpret_cast<U*>(scalar->value);                 \
+      auto underlying = *tsl::safe_reinterpret_cast<U*>(scalar->value);       \
       return static_cast<Type>(underlying);                                   \
     }                                                                         \
   };                                                                          \

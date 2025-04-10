@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -240,8 +241,8 @@ void HloComputation::SetInstruction(HloInstruction* instruction,
     type = instruction_type();
   }
 
-  instruction_and_type_ =
-      reinterpret_cast<uintptr_t>(instruction) | static_cast<uintptr_t>(type);
+  instruction_and_type_ = tsl::safe_reinterpret_cast<uintptr_t>(instruction) |
+                          static_cast<uintptr_t>(type);
 }
 
 HloInstruction* HloComputation::AddInstruction(
@@ -302,15 +303,15 @@ void HloComputation::AddCallee(HloInstruction* caller, HloComputation* callee) {
   if (auto* map = callee->GetCallersMap()) {
     ++(*map)[caller];
   } else if (callee->callers_ == 0) {
-    callee->callers_ = reinterpret_cast<uintptr_t>(caller);
+    callee->callers_ = tsl::safe_reinterpret_cast<uintptr_t>(caller);
   } else {
     // Convert the single instruction to a map.
-    auto* current_caller = reinterpret_cast<const HloInstruction*>(
+    auto* current_caller = tsl::safe_reinterpret_cast<const HloInstruction*>(
         callee->callers_ & ~kCallerTypeMask);
     auto* map = new absl::flat_hash_map<const HloInstruction*, int>();
     (*map)[current_caller] = 1;
     ++(*map)[caller];
-    callee->callers_ = reinterpret_cast<uintptr_t>(map) |
+    callee->callers_ = tsl::safe_reinterpret_cast<uintptr_t>(map) |
                        static_cast<uintptr_t>(CallersType::kCallerCountHashMap);
   }
 
@@ -326,7 +327,7 @@ void HloComputation::RemoveCallee(HloInstruction* caller,
   DecrementCount(callee_computations_, callee);
   DecrementCount(callee->caller_computations_, this);
 
-  if (callee->callers_ == reinterpret_cast<uintptr_t>(caller)) {
+  if (callee->callers_ == tsl::safe_reinterpret_cast<uintptr_t>(caller)) {
     // The callee had just this single caller, so we reset it to 0 (no caller).
     callee->callers_ = 0;
   } else {
@@ -347,8 +348,9 @@ void HloComputation::RemoveCallee(HloInstruction* caller,
 absl::flat_hash_map<HloInstruction*, int>* HloComputation::GetCallersMap() {
   if (static_cast<CallersType>(callers_ & kCallerTypeMask) ==
       CallersType::kCallerCountHashMap) {
-    return reinterpret_cast<absl::flat_hash_map<HloInstruction*, int>*>(
-        callers_ & ~kCallerTypeMask);
+    return tsl::safe_reinterpret_cast<
+        absl::flat_hash_map<HloInstruction*, int>*>(callers_ &
+                                                    ~kCallerTypeMask);
   }
   return nullptr;
 }
@@ -357,8 +359,9 @@ absl::flat_hash_map<HloInstruction*, int>* const HloComputation::GetCallersMap()
     const {
   if (static_cast<CallersType>(callers_ & kCallerTypeMask) ==
       CallersType::kCallerCountHashMap) {
-    return reinterpret_cast<absl::flat_hash_map<HloInstruction*, int>* const>(
-        callers_ & ~kCallerTypeMask);
+    return tsl::safe_reinterpret_cast<
+        absl::flat_hash_map<HloInstruction*, int>*>(callers_ &
+                                                    ~kCallerTypeMask);
   }
   return nullptr;
 }

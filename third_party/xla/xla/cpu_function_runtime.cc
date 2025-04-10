@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/cpu_function_runtime.h"
 
 #include "absl/base/dynamic_annotations.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace xla {
 namespace {
@@ -84,13 +85,13 @@ void* MallocContiguousBuffers(const BufferInfo* buffer_infos, size_t n,
       ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(contiguous, total);
     }
   }
-  uintptr_t pos = reinterpret_cast<uintptr_t>(contiguous);
+  uintptr_t pos = tsl::safe_reinterpret_cast<uintptr_t>(contiguous);
   for (size_t i = 0; i < n; ++i) {
     bool should_allocate =
         buffer_infos[i].is_temp_buffer() ||
         (buffer_infos[i].is_entry_parameter() && allocate_entry_params);
     if (should_allocate) {
-      bufs[i] = reinterpret_cast<void*>(pos);
+      bufs[i] = tsl::safe_reinterpret_cast<void*>(pos);
       pos += align_to(buffer_infos[i].size(), Align());
     } else {
       bufs[i] = nullptr;
