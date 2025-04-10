@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/env.h"
 
 namespace aux {
@@ -220,8 +221,8 @@ class SocketListener::Handler : public PollEventLoop::Handler {
 
   absl::StatusOr<int> Accept(SocketAddress& recv_addr) {
     socklen_t addr_len = sizeof(recv_addr);
-    int cfd = accept4(fd_, reinterpret_cast<sockaddr*>(&recv_addr), &addr_len,
-                      accept_flags_ | SOCK_CLOEXEC);
+    int cfd = accept4(fd_, tsl::safe_reinterpret_cast<sockaddr*>(&recv_addr),
+                      &addr_len, accept_flags_ | SOCK_CLOEXEC);
     if (cfd == -1) {
       return absl::ErrnoToStatus(errno, "accept");
     }
@@ -263,7 +264,8 @@ absl::StatusOr<std::unique_ptr<SocketListener>> SocketListener::Listen(
   if (setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &value, sizeof(value)) != 0) {
     return absl::ErrnoToStatus(errno, "setsockopt");
   }
-  if (bind(sfd, reinterpret_cast<const struct sockaddr*>(&addr.address()),
+  if (bind(sfd,
+           tsl::safe_reinterpret_cast<const struct sockaddr*>(&addr.address()),
            addr.address().sa_family == AF_INET6 ? sizeof(sockaddr_in6)
                                                 : sizeof(sockaddr_in)) != 0) {
     return absl::ErrnoToStatus(errno, "bind");
@@ -277,8 +279,9 @@ absl::StatusOr<std::unique_ptr<SocketListener>> SocketListener::Listen(
     sockaddr_in6 new_sock_name = addr.address_ipv6();
     sockaddr_in6 new_sock_name2;
     socklen_t addr_len = sizeof(new_sock_name2);
-    if (getsockname(sfd, reinterpret_cast<struct sockaddr*>(&new_sock_name2),
-                    &addr_len) != 0) {
+    if (getsockname(
+            sfd, tsl::safe_reinterpret_cast<struct sockaddr*>(&new_sock_name2),
+            &addr_len) != 0) {
       return absl::ErrnoToStatus(errno, "getsockname");
     }
     new_sock_name.sin6_port = new_sock_name2.sin6_port;
@@ -287,8 +290,9 @@ absl::StatusOr<std::unique_ptr<SocketListener>> SocketListener::Listen(
     sockaddr_in new_sock_name = addr.address_ipv4();
     sockaddr_in new_sock_name2;
     socklen_t addr_len = sizeof(new_sock_name2);
-    if (getsockname(sfd, reinterpret_cast<struct sockaddr*>(&new_sock_name2),
-                    &addr_len) != 0) {
+    if (getsockname(
+            sfd, tsl::safe_reinterpret_cast<struct sockaddr*>(&new_sock_name2),
+            &addr_len) != 0) {
       return absl::ErrnoToStatus(errno, "getsockname");
     }
     new_sock_name.sin_port = new_sock_name2.sin_port;

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace aux {
 
@@ -53,7 +54,8 @@ class StringFutureChunkDestination : public aux::ChunkDestination {
     {
       absl::MutexLock l(&mu_);
       chunks_.emplace_back(
-          offset, std::string(reinterpret_cast<const char*>(data), size));
+          offset,
+          std::string(tsl::safe_reinterpret_cast<const char*>(data), size));
     }
     std::move(on_done)();
     return absl::OkStatus();
@@ -257,8 +259,8 @@ AllocateNetworkPinnedMemory(size_t size) {
   }
   out->size = size;
   close(sfd);
-  out->data =
-      absl::Span<uint8_t>(reinterpret_cast<uint8_t*>(out->buffer), size);
+  out->data = absl::Span<uint8_t>(
+      tsl::safe_reinterpret_cast<uint8_t*>(out->buffer), size);
   return std::shared_ptr<absl::Span<uint8_t>>(out, &out->data);
 }
 
@@ -278,7 +280,8 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAlignedMemory(
   auto owner = std::make_shared<aligned_memory_state>();
   owner->buffer = data;
   owner->size = size;
-  owner->data = absl::MakeSpan(reinterpret_cast<uint8_t*>(data), size);
+  owner->data =
+      absl::MakeSpan(tsl::safe_reinterpret_cast<uint8_t*>(data), size);
   return std::shared_ptr<absl::Span<uint8_t>>(owner, &owner->data);
 }
 

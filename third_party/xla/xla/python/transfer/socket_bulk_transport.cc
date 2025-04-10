@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/python/transfer/event_loop.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace aux {
 
@@ -145,7 +146,8 @@ absl::Status ZeroCopySendAckTable::HandleSocketErrors(int fd) {
           absl::StrCat("Unknown cmsg level: ", cmsg->cmsg_level,
                        " type: ", cmsg->cmsg_type));
     }
-    auto* err = reinterpret_cast<struct sock_extended_err*>(CMSG_DATA(cmsg));
+    auto* err =
+        tsl::safe_reinterpret_cast<struct sock_extended_err*>(CMSG_DATA(cmsg));
     if (err->ee_origin != SO_EE_ORIGIN_ZEROCOPY) {
       return absl::InternalError(
           absl::StrCat("Unknown cmsg origin: ", err->ee_origin));
@@ -197,7 +199,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
     size_t offset = 0;
     while (offset < msg.size) {
       ssize_t send_count =
-          send(fd_, reinterpret_cast<char*>(msg.data) + offset,
+          send(fd_, tsl::safe_reinterpret_cast<char*>(msg.data) + offset,
                std::min(msg.size - offset, artificial_send_limit_), 0);
       if (send_count <= 0) {
         break;
@@ -214,7 +216,7 @@ class SendConnectionHandler : public PollEventLoop::Handler {
     size_t offset = 0;
     while (offset < msg.size) {
       ssize_t send_count = send(
-          fd_, reinterpret_cast<char*>(msg.data) + offset,
+          fd_, tsl::safe_reinterpret_cast<char*>(msg.data) + offset,
           std::min(msg.size - offset, artificial_send_limit_), MSG_ZEROCOPY);
       if (send_count <= 0) {
         break;
@@ -528,7 +530,7 @@ absl::Status RecvThreadState::HandleRecvItem(recv_work_item& work,
     }
     while (offset != work.recv_size) {
       ssize_t recv_count =
-          recv(work.fd, reinterpret_cast<char*>(alloc.data) + offset,
+          recv(work.fd, tsl::safe_reinterpret_cast<char*>(alloc.data) + offset,
                work.recv_size - offset, 0);
       if (recv_count < 0) {
         std::move(alloc.on_done)();
@@ -647,13 +649,17 @@ class SocketBulkTransportFactory : public BulkTransportFactory {
                 .value();
         int cfd =
             socket(addrs[i].address().sa_family, SOCK_STREAM | SOCK_CLOEXEC, 0);
-        CHECK_EQ(bind(cfd, reinterpret_cast<const struct sockaddr*>(&addrs[i]),
-                      sizeof(SocketAddress)),
-                 0)
+        CHECK_EQ(
+            bind(cfd,
+                 tsl::safe_reinterpret_cast<const struct sockaddr*>(&addrs[i]),
+                 sizeof(SocketAddress)),
+            0)
             << strerror(errno) << " " << errno;
-        CHECK_EQ(connect(cfd, reinterpret_cast<const struct sockaddr*>(&addr),
-                         sizeof(addr)),
-                 0)
+        CHECK_EQ(
+            connect(cfd,
+                    tsl::safe_reinterpret_cast<const struct sockaddr*>(&addr),
+                    sizeof(addr)),
+            0)
             << strerror(errno) << " " << errno;
 
         int value = 1;

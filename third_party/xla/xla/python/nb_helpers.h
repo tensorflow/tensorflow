@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "nanobind/nanobind.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace xla {
 
@@ -52,14 +53,16 @@ void PythonDeprecationWarning(int stacklevel,
 
 template <typename Func>
 nanobind::object nb_property_readonly(Func&& get) {
-  nanobind::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
+  nanobind::handle property(
+      tsl::safe_reinterpret_cast<PyObject*>(&PyProperty_Type));
   return property(nanobind::cpp_function(std::forward<Func>(get)),
                   nanobind::none(), nanobind::none(), "");
 }
 
 template <typename GetFunc, typename SetFunc>
 nanobind::object nb_property(GetFunc&& get, SetFunc&& set) {
-  nanobind::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
+  nanobind::handle property(
+      tsl::safe_reinterpret_cast<PyObject*>(&PyProperty_Type));
   return property(nanobind::cpp_function(std::forward<GetFunc>(get)),
                   nanobind::cpp_function(std::forward<SetFunc>(set)),
                   nanobind::none(), "");

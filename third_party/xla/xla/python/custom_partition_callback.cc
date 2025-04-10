@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -257,7 +258,7 @@ bool PopulateErrorHeader(JAX_CustomCallPartitioner_version_and_error& header,
   if (header.has_error) {
     auto* status_copy = new absl::Status(status);
     header.data = status_copy;
-    header.cleanup_fn = reinterpret_cast<void (*)(void*)>(
+    header.cleanup_fn = tsl::safe_reinterpret_cast<void (*)(void*)>(
         +[](absl::Status* data) { delete data; });
     header.code = pjrt::StatusCodeToPjrtErrorCode(status_copy->code());
     header.error_msg.data = status_copy->message().data();
@@ -285,7 +286,7 @@ void PopulateResults(
   }
   auto* scratch = new ResultScratch;
   args->header.data = scratch;
-  args->header.cleanup_fn = reinterpret_cast<void (*)(void*)>(
+  args->header.cleanup_fn = tsl::safe_reinterpret_cast<void (*)(void*)>(
       +[](ResultScratch* data) { delete data; });
   auto& [mlir_module, shardings, result_shardings] = *results;
   scratch->strings.reserve(2 + args->num_args);
@@ -438,7 +439,7 @@ void PopulateResults(
   if (result->has_value()) {
     auto* data = new std::string((*result)->ToProto().SerializeAsString());
     args->header.data = data;
-    args->header.cleanup_fn = reinterpret_cast<void (*)(void*)>(
+    args->header.cleanup_fn = tsl::safe_reinterpret_cast<void (*)(void*)>(
         +[](std::string* data) { delete data; });
     args->result_sharding.data = data->data();
     args->result_sharding.size = data->size();
@@ -491,7 +492,7 @@ void PopulateResults(
   }
   auto* data = new std::string(result->ToProto().SerializeAsString());
   args->header.data = data;
-  args->header.cleanup_fn = reinterpret_cast<void (*)(void*)>(
+  args->header.cleanup_fn = tsl::safe_reinterpret_cast<void (*)(void*)>(
       +[](std::string* data) { delete data; });
   args->result_sharding.data = data->data();
   args->result_sharding.size = data->size();

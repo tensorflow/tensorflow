@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/python/transfer/streaming.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace aux {
 
@@ -74,7 +75,7 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> MapPjrtMemory(
     return s;
   }
   auto result = std::make_shared<PremappedPjRtBuffer>(
-      absl::MakeSpan(reinterpret_cast<uint8_t*>(data), buffer_size),
+      absl::MakeSpan(tsl::safe_reinterpret_cast<uint8_t*>(data), buffer_size),
       pjrt_client, std::move(owner));
   return std::shared_ptr<absl::Span<uint8_t>>(result, result->data());
 }
@@ -118,8 +119,8 @@ PremappedCopierState::PremappedCopierState(
   max_copies_ = std::min(max_copies_, size_t(8));
   available_copy_offsets_.reserve(max_copies_);
   for (size_t i = 0; i < max_copies_; ++i) {
-    available_copy_offsets_.push_back(reinterpret_cast<char*>(scratch->data()) +
-                                      i * xfer_size_);
+    available_copy_offsets_.push_back(
+        tsl::safe_reinterpret_cast<char*>(scratch->data()) + i * xfer_size_);
   }
 }
 

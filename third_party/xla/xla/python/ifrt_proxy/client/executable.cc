@@ -68,6 +68,7 @@
 #include "xla/tsl/platform/status_to_from_proto.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/mem.h"
@@ -117,7 +118,7 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
     const int64_t size = xla::ShapeUtil::ByteSizeOf(spec.shape);
     void* p = tsl::port::AlignedMalloc(size, kAlignment);
     CHECK(p != nullptr);
-    std::unique_ptr<char, Deleter> buffer(reinterpret_cast<char*>(p));
+    std::unique_ptr<char, Deleter> buffer(tsl::safe_reinterpret_cast<char*>(p));
 
     if (reader.Available() < size) {
       return absl::InternalError(absl::StrCat(
@@ -148,7 +149,7 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
 
     result_ptrs.push_back(data);
     result_buffer.AppendExternalMemory(
-        absl::string_view(reinterpret_cast<char*>(data), size), data,
+        absl::string_view(tsl::safe_reinterpret_cast<char*>(data), size), data,
         &tsl::port::AlignedFree);
   }
 
