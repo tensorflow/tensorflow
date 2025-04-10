@@ -9,6 +9,7 @@
 
 """
 
+load("@cuda_nccl//:version.bzl", _nccl_version = "VERSION")
 load(
     "//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
     "HERMETIC_CUDA_VERSION",
@@ -132,7 +133,7 @@ alias(
 
 def _create_local_nccl_repository(repository_ctx):
     cuda_version = get_cuda_version(repository_ctx).split(".")[:2]
-    nccl_version = repository_ctx.read(repository_ctx.attr.nccl_version)
+    nccl_version = _nccl_version
 
     if get_host_environ(repository_ctx, _TF_NCCL_USE_STUB, "0") == "0":
         repository_ctx.file("BUILD", _NCCL_ARCHIVE_BUILD_CONTENT)
@@ -160,7 +161,7 @@ def _nccl_autoconf_impl(repository_ctx):
         # Add a dummy build file to make bazel query happy.
         repository_ctx.file("BUILD", _NCCL_DUMMY_BUILD_CONTENT)
         if use_cuda_redistributions(repository_ctx):
-            nccl_version = repository_ctx.read(repository_ctx.attr.nccl_version)
+            nccl_version = _nccl_version
             repository_ctx.file(
                 "nccl_config.h",
                 "#define TF_NCCL_VERSION \"%s\"" % nccl_version,
@@ -185,7 +186,6 @@ nccl_configure = repository_rule(
     implementation = _nccl_autoconf_impl,
     attrs = {
         "environ": attr.string_dict(),
-        "nccl_version": attr.label(default = Label("@cuda_nccl//:version.txt")),
         "generated_names_tpl": attr.label(default = Label("//third_party/nccl:generated_names.bzl.tpl")),
         "build_defs_tpl": attr.label(default = Label("//third_party/nccl:build_defs.bzl.tpl")),
     },

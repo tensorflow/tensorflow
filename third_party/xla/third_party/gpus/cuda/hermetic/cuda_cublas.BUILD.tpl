@@ -4,9 +4,6 @@ load(
     "cuda_rpath_flags",
 )
 
-exports_files([
-    "version.txt",
-])
 %{multiline_comment}
 cc_import(
     name = "cublas_shared_library",

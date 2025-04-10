@@ -232,6 +232,12 @@ def _create_cuda_version_file(repository_ctx, lib_name_to_version_dict):
             "MAJOR_CUDA_VERSION = \"{}\"".format(major_cudart_version),
         )
 
+def create_version_file(repository_ctx, major_lib_version):
+    repository_ctx.file(
+        "version.bzl",
+        "VERSION = \"{}\"".format(major_lib_version),
+    )
+
 def use_local_path(repository_ctx, local_path, dirs):
     # buildifier: disable=function-docstring-args
     """Creates repository using local redistribution paths."""
@@ -255,7 +261,7 @@ def use_local_path(repository_ctx, local_path, dirs):
         lib_name_to_version_dict,
     )
     _create_cuda_version_file(repository_ctx, lib_name_to_version_dict)
-    repository_ctx.file("version.txt", major_version)
+    create_version_file(repository_ctx, major_version)
 
 def _use_local_cuda_path(repository_ctx, local_cuda_path):
     # buildifier: disable=function-docstring-args
@@ -329,7 +335,7 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
         # If no CUDA version is found, comment out all cc_import targets.
         create_dummy_build_file(repository_ctx)
         _create_cuda_version_file(repository_ctx, {})
-        repository_ctx.file("version.txt", major_version)
+        create_version_file(repository_ctx, major_version)
         return
 
     if len(repository_ctx.attr.url_dict) == 0:
@@ -338,7 +344,7 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
         ))  # buildifier: disable=print
         create_dummy_build_file(repository_ctx)
         _create_cuda_version_file(repository_ctx, {})
-        repository_ctx.file("version.txt", major_version)
+        create_version_file(repository_ctx, major_version)
         return
 
     # Download archive only when GPU config is used.
@@ -371,7 +377,7 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
     )
     _create_cuda_header_symlinks(repository_ctx)
     _create_cuda_version_file(repository_ctx, lib_name_to_version_dict)
-    repository_ctx.file("version.txt", major_version)
+    create_version_file(repository_ctx, major_version)
 
 def _cuda_repo_impl(repository_ctx):
     local_cuda_path = get_env_var(repository_ctx, "LOCAL_CUDA_PATH")
@@ -409,7 +415,7 @@ def _use_downloaded_cudnn_redistribution(repository_ctx):
     if not cudnn_version:
         # If no CUDNN version is found, comment out cc_import targets.
         create_dummy_build_file(repository_ctx)
-        repository_ctx.file("version.txt", major_version)
+        create_version_file(repository_ctx, major_version)
         return
 
     if len(repository_ctx.attr.url_dict) == 0:
@@ -417,7 +423,7 @@ def _use_downloaded_cudnn_redistribution(repository_ctx):
             repository_ctx.name,
         ))  # buildifier: disable=print
         create_dummy_build_file(repository_ctx)
-        repository_ctx.file("version.txt", major_version)
+        create_version_file(repository_ctx, major_version)
         return
 
     # Download archive only when GPU config is used.
@@ -455,7 +461,7 @@ def _use_downloaded_cudnn_redistribution(repository_ctx):
         major_version,
     )
 
-    repository_ctx.file("version.txt", major_version)
+    create_version_file(repository_ctx, major_version)
 
 def _cudnn_repo_impl(repository_ctx):
     local_cudnn_path = get_env_var(repository_ctx, "LOCAL_CUDNN_PATH")

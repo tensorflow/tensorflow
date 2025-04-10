@@ -4,10 +4,6 @@ load(
     "cuda_rpath_flags",
 )
 
-exports_files([
-    "version.txt",
-])
-
 filegroup(
     name = "static",
     srcs = ["lib/libcudart_static.a"],

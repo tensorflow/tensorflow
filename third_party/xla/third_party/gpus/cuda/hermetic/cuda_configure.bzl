@@ -23,6 +23,14 @@
     environment variable is used by GCC compiler.
 """
 
+load("@cuda_cublas//:version.bzl", _cublas_version = "VERSION")
+load("@cuda_cudart//:version.bzl", _cudart_version = "VERSION")
+load("@cuda_cudnn//:version.bzl", _cudnn_version = "VERSION")
+load("@cuda_cufft//:version.bzl", _cufft_version = "VERSION")
+load("@cuda_cupti//:version.bzl", _cupti_version = "VERSION")
+load("@cuda_curand//:version.bzl", _curand_version = "VERSION")
+load("@cuda_cusolver//:version.bzl", _cusolver_version = "VERSION")
+load("@cuda_cusparse//:version.bzl", _cusparse_version = "VERSION")
 load(
     "//third_party/gpus:compiler_common_tools.bzl",
     "get_cxx_inc_directories",
@@ -271,14 +279,14 @@ def _get_cuda_config(repository_ctx):
 
     return struct(
         cuda_version = get_cuda_version(repository_ctx),
-        cupti_version = repository_ctx.read(repository_ctx.attr.cupti_version),
-        cudart_version = repository_ctx.read(repository_ctx.attr.cudart_version),
-        cublas_version = repository_ctx.read(repository_ctx.attr.cublas_version),
-        cusolver_version = repository_ctx.read(repository_ctx.attr.cusolver_version),
-        curand_version = repository_ctx.read(repository_ctx.attr.curand_version),
-        cufft_version = repository_ctx.read(repository_ctx.attr.cufft_version),
-        cusparse_version = repository_ctx.read(repository_ctx.attr.cusparse_version),
-        cudnn_version = repository_ctx.read(repository_ctx.attr.cudnn_version),
+        cupti_version = _cupti_version,
+        cudart_version = _cudart_version,
+        cublas_version = _cublas_version,
+        cusolver_version = _cusolver_version,
+        curand_version = _curand_version,
+        cufft_version = _cufft_version,
+        cusparse_version = _cusparse_version,
+        cudnn_version = _cudnn_version,
         compute_capabilities = _compute_capabilities(repository_ctx),
         cpu_value = get_cpu_value(repository_ctx),
     )
@@ -645,20 +653,20 @@ cuda_configure = repository_rule(
     environ = _ENVIRONS,
     attrs = {
         "environ": attr.string_dict(),
-        "cccl_version": attr.label(default = Label("@cuda_cccl//:version.txt")),
-        "cublas_version": attr.label(default = Label("@cuda_cublas//:version.txt")),
-        "cudart_version": attr.label(default = Label("@cuda_cudart//:version.txt")),
-        "cudnn_version": attr.label(default = Label("@cuda_cudnn//:version.txt")),
-        "cufft_version": attr.label(default = Label("@cuda_cufft//:version.txt")),
-        "cupti_version": attr.label(default = Label("@cuda_cupti//:version.txt")),
-        "curand_version": attr.label(default = Label("@cuda_curand//:version.txt")),
-        "cusolver_version": attr.label(default = Label("@cuda_cusolver//:version.txt")),
-        "cusparse_version": attr.label(default = Label("@cuda_cusparse//:version.txt")),
+        "cccl_version": attr.label(default = Label("@cuda_cccl//:version.bzl")),
+        "cublas_version": attr.label(default = Label("@cuda_cublas//:version.bzl")),
+        "cudart_version": attr.label(default = Label("@cuda_cudart//:version.bzl")),
+        "cudnn_version": attr.label(default = Label("@cuda_cudnn//:version.bzl")),
+        "cufft_version": attr.label(default = Label("@cuda_cufft//:version.bzl")),
+        "cupti_version": attr.label(default = Label("@cuda_cupti//:version.bzl")),
+        "curand_version": attr.label(default = Label("@cuda_curand//:version.bzl")),
+        "cusolver_version": attr.label(default = Label("@cuda_cusolver//:version.bzl")),
+        "cusparse_version": attr.label(default = Label("@cuda_cusparse//:version.bzl")),
         "nvcc_binary": attr.label(default = Label("@cuda_nvcc//:bin/nvcc")),
-        "nvcc_version": attr.label(default = Label("@cuda_nvcc//:version.txt")),
-        "nvjitlink_version": attr.label(default = Label("@cuda_nvjitlink//:version.txt")),
-        "nvml_version": attr.label(default = Label("@cuda_nvml//:version.txt")),
-        "nvtx_version": attr.label(default = Label("@cuda_nvtx//:version.txt")),
+        "nvcc_version": attr.label(default = Label("@cuda_nvcc//:version.bzl")),
+        "nvjitlink_version": attr.label(default = Label("@cuda_nvjitlink//:version.bzl")),
+        "nvml_version": attr.label(default = Label("@cuda_nvml//:version.bzl")),
+        "nvtx_version": attr.label(default = Label("@cuda_nvtx//:version.bzl")),
         "local_config_cuda_build_file": attr.label(default = Label("//third_party/gpus:local_config_cuda.BUILD")),
         "build_defs_tpl": attr.label(default = Label("//third_party/gpus/cuda:build_defs.bzl.tpl")),
         "cuda_build_tpl": attr.label(default = Label("//third_party/gpus/cuda/hermetic:BUILD.tpl")),
