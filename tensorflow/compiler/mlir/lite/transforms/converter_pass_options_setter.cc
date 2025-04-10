@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/transforms/converter_pass_options_setter.h"
 
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/variable_freezing_pipeline_options.h"
@@ -31,6 +32,12 @@ void ConverterPassOptionsSetter::SetOptions(
 void ConverterPassOptionsSetter::SetOptions(
     VariableFreezingPipelineOptions& options) const {
   options.enable_tflite_variables = pass_config_.enable_tflite_variables;
+}
+
+void ConverterPassOptionsSetter::SetOptions(
+    OptimizeBroadcastLikePassOptions& options) const {
+  // options.unsafe_fuse_dynamic_shaped_broadcast =
+  //     converter_flags_.unsafe_fuse_dynamic_shaped_broadcast();
 }
 
 void ConverterPassOptionsSetter::SetOptions(EmptyPassOptions& options) const {}

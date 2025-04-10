@@ -107,6 +107,12 @@ struct PassConfig {
   // When set to true, convert +Inf/-Inf to MIN/MAX float value and output of
   // convert only contains finite values.
   bool canonicalizing_inf_as_min_max_float = true;
+
+  // When set to true, allows fusion of dynamic shaped broadcast ops. It helps
+  // fusing implicit broadcasting ops when output shape has dynamic dimensions,
+  // but it may cause incorrect results when broadcasting ops are introduced by
+  // explicit broadcasting in the source model.
+  bool unsafe_fuse_dynamic_shaped_broadcast = false;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -133,6 +139,8 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << pass_config.enable_stablehlo_conversion
             << "\nlegalize_custom_tensor_list_ops: "
             << pass_config.legalize_custom_tensor_list_ops
+            << "\nunsafe_fuse_dynamic_shaped_broadcast: "
+            << pass_config.unsafe_fuse_dynamic_shaped_broadcast
             << "\nreduce_type_precision: " << pass_config.reduce_type_precision
             << "\nconvert_qdq_format: "
             << GetQDQQuantModeString(pass_config.qdq_conversion_mode)
