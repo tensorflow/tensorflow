@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -166,8 +167,8 @@ absl::Status UpdateDiskKernelCache(
     auto [it_disk, inserted] = entries->insert({name, it_current->second});
     TF_RET_CHECK(inserted);
     TF_RET_CHECK(!binary.empty());
-    it_disk->second.set_binary(reinterpret_cast<const char*>(binary.data()),
-                               binary.size());
+    it_disk->second.set_binary(
+        tsl::safe_reinterpret_cast<const char*>(binary.data()), binary.size());
     VLOG(5) << "Cached kernel: " << name << ": " << binary.size();
     ++stored_kernel_count;
   }

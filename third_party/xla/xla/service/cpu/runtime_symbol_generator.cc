@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/service/cpu/onednn_layer_norm.h"
 #include "xla/service/cpu/onednn_matmul.h"
 #include "xla/service/cpu/onednn_softmax.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #endif
 
 namespace xla::cpu {
@@ -101,7 +102,7 @@ RuntimeSymbolGenerator::ResolveRuntimeSymbol(llvm::StringRef name) {
   }
 
   return llvm::orc::ExecutorSymbolDef{
-      llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(fn_addr)),
+      llvm::orc::ExecutorAddr(tsl::safe_reinterpret_cast<uint64_t>(fn_addr)),
       llvm::JITSymbolFlags::None};
 }
 
@@ -133,7 +134,7 @@ float __extendhfsf2(uint16_t a);
 
 #define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                               \
   do {                                                                       \
-    auto* function_address =                                                 \
+    auto* function_address = /* TODO(wan): fix. */                           \
         reinterpret_cast<void*>(__xla_cpu_runtime_##base_name);              \
     registry->Register(xla::cpu::runtime::k##base_name##SymbolName,          \
                        function_address, "Host");                            \
@@ -146,9 +147,9 @@ float __extendhfsf2(uint16_t a);
 // Mac so we need an explicit cast. This requires passing the function signature
 // for that case.
 #define REGISTER_LIBM_SYMBOL(name, double_sig)                                 \
-  do {                                                                         \
+  do { /* TODO(wan): fix. */                                                   \
     registry->Register(#name "f", reinterpret_cast<void*>(name##f), "Host");   \
-    registry->Register(#name,                                                  \
+    registry->Register(#name, /* TODO(wan): fix. */                            \
                        reinterpret_cast<void*>(static_cast<double_sig>(name)), \
                        "Host");                                                \
   } while (false)
@@ -156,6 +157,7 @@ float __extendhfsf2(uint16_t a);
 static bool RegisterKnownJITSymbols() {
   xla::CustomCallTargetRegistry* registry =
       xla::CustomCallTargetRegistry::Global();
+  // TODO(wan): fix.
   registry->Register("printf", reinterpret_cast<void*>(&printf), "Host");
   registry->Register("puts", reinterpret_cast<void*>(&puts), "Host");
 
@@ -315,6 +317,7 @@ static bool RegisterKnownJITSymbols() {
   registry->Register("free", reinterpret_cast<void*>(free), "Host");
 #ifndef _WIN32
   // TODO(b/246980307): fails to link on windows because it's marked dllimport.
+  // TODO(wan): fix.
   registry->Register("memrefCopy", reinterpret_cast<void*>(memrefCopy), "Host");
 #endif
 

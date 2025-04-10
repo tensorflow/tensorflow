@@ -16,6 +16,8 @@ limitations under the License.
 
 #include "xla/service/cpu/onednn_util.h"
 
+#include "xla/tsl/util/safe_reinterpret_cast.h"
+
 #define EIGEN_USE_THREADS
 
 namespace xla {
@@ -98,7 +100,7 @@ dnnl::post_ops PopulateOneDnnPostOps(
       } break;
       case OneDnnFusionConfig::LINEAR: {
         float const_float;
-        *(reinterpret_cast<int32_t*>(&const_float)) =
+        *(tsl::safe_reinterpret_cast<int32_t*>(&const_float)) =
             fusion_config->alpha_typecast();
         post_ops.append_eltwise(dnnl::algorithm::eltwise_linear, const_float,
                                 0.f);

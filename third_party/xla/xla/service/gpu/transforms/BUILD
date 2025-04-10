@@ -1077,7 +1077,10 @@ cc_library(
         "//xla/stream_executor/cuda:cudnn_plugin",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ]) + ["//xla/service/gpu:matmul_indexing_utils"],
+    ]) + [
+        "//xla/service/gpu:matmul_indexing_utils",
+        "//xla/tsl/util:safe_reinterpret_cast",
+    ],
 )
 
 cc_library(
@@ -1321,7 +1324,10 @@ cc_library(
         "//xla/stream_executor/cuda:cudnn_plugin",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ]) + ["@com_google_absl//absl/container:flat_hash_map"],
+    ]) + [
+        "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 cc_library(

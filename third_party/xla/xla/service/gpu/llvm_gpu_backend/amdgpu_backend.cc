@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/rocm_rocdl_path.h"
 #include "xla/tsl/util/env_var.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
@@ -276,7 +277,8 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
 
   std::vector<uint8_t> hsaco(hsaco_file_size);
   hsaco_file.seekg(0, std::ios::beg);
-  hsaco_file.read(reinterpret_cast<char*>(hsaco.data()), hsaco_file_size);
+  hsaco_file.read(tsl::safe_reinterpret_cast<char*>(hsaco.data()),
+                  hsaco_file_size);
   hsaco_file.close();
   if (!keep_tempfiles) {
     remove(ir_path.c_str());

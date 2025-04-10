@@ -80,6 +80,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/env_time.h"
@@ -621,7 +622,9 @@ static absl::Status CheckAlignment(const BufferAllocation& allocation,
     }
   }();
   if (!buffer.is_null() &&
-      reinterpret_cast<uintptr_t>(buffer.opaque()) % expected_alignment != 0) {
+      tsl::safe_reinterpret_cast<uintptr_t>(buffer.opaque()) %
+              expected_alignment !=
+          0) {
     return Internal(
         "Address of buffer %d must be a multiple of %x, but "
         "was %p",

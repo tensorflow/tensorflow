@@ -175,6 +175,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/human_readable_json.h"
@@ -1165,9 +1166,9 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
                                          void** buffers, const char* opaque,
                                          size_t opaque_len,
                                          XlaCustomCallStatus*) {
-        reinterpret_cast<CustomCallWithOpaqueStreamHandle>(call_target)(
-            stream->platform_specific_handle().stream, buffers, opaque,
-            opaque_len);
+        tsl::safe_reinterpret_cast<CustomCallWithOpaqueStreamHandle>(
+            call_target)(stream->platform_specific_handle().stream, buffers,
+                         opaque, opaque_len);
       };
       break;
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
@@ -1176,7 +1177,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
                                          void** buffers, const char* opaque,
                                          size_t opaque_len,
                                          XlaCustomCallStatus* status) {
-        reinterpret_cast<CustomCallWithStatusAndOpaqueStreamHandle>(
+        tsl::safe_reinterpret_cast<CustomCallWithStatusAndOpaqueStreamHandle>(
             call_target)(stream->platform_specific_handle().stream, buffers,
                          opaque, opaque_len, status);
       };

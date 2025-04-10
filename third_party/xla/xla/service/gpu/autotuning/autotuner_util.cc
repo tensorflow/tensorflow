@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/base64.h"
@@ -81,8 +82,8 @@ absl::StatusOr<std::string> GetBase64EncodedSha256Hash(absl::string_view s) {
   sha256.update(llvm::StringRef(s));
   std::array<uint8_t, 32> hash = sha256.final();
   // C++ strict aliasing rules allow reinterpret casting to (const) char*.
-  absl::string_view hash_view(reinterpret_cast<const char*>(hash.data()),
-                              hash.size());
+  absl::string_view hash_view(
+      tsl::safe_reinterpret_cast<const char*>(hash.data()), hash.size());
   std::string base64_encoded_hash;
   TF_RETURN_IF_ERROR(tsl::Base64Encode(hash_view, &base64_encoded_hash));
   return base64_encoded_hash;

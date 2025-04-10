@@ -26,6 +26,8 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "xla/tsl/util/safe_reinterpret_cast.h"
+
 namespace xla {
 
 // XLA JIT compilers use this registry to resolve symbolic CustomCall targets;
@@ -101,7 +103,7 @@ class RegisterCustomCallTarget {
                                                         platform, counter) \
   static ::xla::RegisterCustomCallTarget XLA_REGISTER_CUSTOM_CALL_CONCAT(  \
       custom_call_target_register, counter)(                               \
-      symbol, reinterpret_cast<void*>(address), platform)
+      symbol, absl::implicit_cast<void*>(address), platform)
 
 #define XLA_REGISTER_CUSTOM_CALL_TARGET(function, platform) \
   XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(#function, function, platform)

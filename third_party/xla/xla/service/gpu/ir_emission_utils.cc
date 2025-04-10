@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -618,18 +619,19 @@ absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
   if (primitive_util::IsSubByteNonPredType(element_type)) {
     auto bit_width = primitive_util::BitWidth(element_type);
     std::vector<uint8_t> output(CeilOfRatio<int64_t>(byte_size, 8 / bit_width));
-    absl::Span<char> output_span =
-        absl::MakeSpan(reinterpret_cast<char*>(output.data()), output.size());
-    PackIntN(
-        bit_width,
-        absl::MakeSpan(reinterpret_cast<const char*>(literal.untyped_data()),
-                       byte_size),
-        output_span);
+    absl::Span<char> output_span = absl::MakeSpan(
+        tsl::safe_reinterpret_cast<char*>(output.data()), output.size());
+    PackIntN(bit_width,
+             absl::MakeSpan(tsl::safe_reinterpret_cast<const char*>(
+                                literal.untyped_data()),
+                            byte_size),
+             output_span);
     return DenseDataIntermediate::Own(std::move(output));
   }
 
   return DenseDataIntermediate::Alias(absl::MakeSpan(
-      reinterpret_cast<const uint8_t*>(literal.untyped_data()), byte_size));
+      tsl::safe_reinterpret_cast<const uint8_t*>(literal.untyped_data()),
+      byte_size));
 }
 
 absl::StatusOr<std::string> GetProtoFingerprint(

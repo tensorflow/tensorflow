@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -433,12 +434,13 @@ class HloDotDumper {
  private:
   // Returns the dot graph identifier for the given instruction.
   std::string InstructionId(const HloInstruction* instruction) {
-    return StrCat(reinterpret_cast<uint64_t>(instruction));
+    return StrCat(tsl::safe_reinterpret_cast<uint64_t>(instruction));
   }
 
   // Returns the dot graph identifier for the given computation.
   std::string SubcomputationId(const HloComputation* computation) {
-    return StrCat("cluster_", reinterpret_cast<uint64_t>(computation));
+    return StrCat("cluster_",
+                  tsl::safe_reinterpret_cast<uint64_t>(computation));
   }
 
   // Generates graph header/footer.  These should be called *after* dumping all

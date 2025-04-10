@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/tsl/util/onednn_threadpool.h"
 // Below must come after `onednn_threadpool.h`
 #include "unsupported/Eigen/CXX11/Tensor"  // NOLINT
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace xla {
 namespace cpu {
@@ -85,7 +86,8 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnLayerNorm(
   auto shift_mem = memory(scaleshift_md, cpu_engine, beta_minfo.Data());
 
   float epsilon;
-  *(reinterpret_cast<int32_t*>(&epsilon)) = ln_config.epsilon_typecast();
+  *(tsl::safe_reinterpret_cast<int32_t*>(&epsilon)) =
+      ln_config.epsilon_typecast();
 
   auto lnorm_pd = layer_normalization_forward::primitive_desc(
       cpu_engine, prop_kind::forward_inference, src_md, dst_md, epsilon,

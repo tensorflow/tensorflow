@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "xla/service/gpu/kernels/ragged_all_to_all_kernel_common.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace xla::gpu {
 namespace {
@@ -59,7 +60,8 @@ __global__ void __launch_bounds__(128) RaggedAllToAllKernel(
   int64_t update_idx = blockIdx.x;
   int64_t output_idx = update_idx / num_updates_per_replica;
 
-  T* output_ptr = reinterpret_cast<T* __restrict__>(output_ptrs[output_idx]);
+  T* output_ptr =
+      tsl::safe_reinterpret_cast<T* __restrict__>(output_ptrs[output_idx]);
 
   int64_t input_offset = input_offsets_ptr[update_idx];
   int64_t send_size = send_sizes_ptr[update_idx];
@@ -80,7 +82,7 @@ __global__ void __launch_bounds__(128) RaggedAllToAllKernel(
 
 template <typename T>
 void* GetRaggedAllToAllKernel() {
-  return reinterpret_cast<void*>(&RaggedAllToAllKernel<T>);
+  return absl::implicit_cast<void*>(&RaggedAllToAllKernel<T>);
 }
 
 template void* GetRaggedAllToAllKernel<uint8_t>();

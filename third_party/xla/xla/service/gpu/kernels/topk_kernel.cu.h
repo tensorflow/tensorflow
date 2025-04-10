@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "xla/service/gpu/kernels/topk_kernel_common.h"
 #include "xla/tsl/lib/math/math_util.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 #if GOOGLE_CUDA
 
@@ -175,7 +176,8 @@ struct TopK {
   using KVT = typename Trait::KVT;
 
   __device__ TopK(void* buffer, int num_outputs)
-      : buffer_(reinterpret_cast<KVT*>(buffer)), num_outputs_(num_outputs) {}
+      : buffer_(tsl::safe_reinterpret_cast<KVT*>(buffer)),
+        num_outputs_(num_outputs) {}
 
   __device__ FORCEINLINE uint32_t Idx(uint32_t i) {
     return blockDim.x * i + threadIdx.x;
@@ -308,8 +310,8 @@ void* GetTopKKernelForK(int n) {
   // TODO(doak): Switch to uint32_t if we don't have an efficient
   // implementation for uint16_t.
   return n < std::numeric_limits<uint16_t>::max()
-             ? reinterpret_cast<void*>(&Run<K, T, uint16_t>)
-             : reinterpret_cast<void*>(&Run<K, T, uint32_t>);
+             ? absl::implicit_cast<void*>(&Run<K, T, uint16_t>)
+             : absl::implicit_cast<void*>(&Run<K, T, uint32_t>);
 }
 
 template <typename T>

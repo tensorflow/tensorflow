@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -717,8 +718,9 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
         [](const se::gpu::CudnnGraph& graph) -> absl::StatusOr<std::string> {
       std::vector<uint8_t> serialized_graph;
       RETURN_IF_CUDNN_FRONTEND_ERROR(graph.Graph().serialize(serialized_graph));
-      return std::string(reinterpret_cast<char*>(serialized_graph.data()),
-                         serialized_graph.size());
+      return std::string(
+          tsl::safe_reinterpret_cast<char*>(serialized_graph.data()),
+          serialized_graph.size());
     };
 
     if (IsWorkspaceAllocationRoot(*hlo->fused_expression_root())) {

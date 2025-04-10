@@ -151,6 +151,7 @@ cc_library(
         "//xla/stream_executor/cuda:subprocess_compilation",
         "//xla/tsl/platform:rocm_rocdl_path",
         "//xla/tsl/util:env_var",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

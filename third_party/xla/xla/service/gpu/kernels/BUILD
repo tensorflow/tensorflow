@@ -475,7 +475,10 @@ cc_library(
     name = "cutlass_gemm",
     srcs = ["cutlass_gemm.cc"],
     hdrs = ["cutlass_gemm.h"],
-    deps = ["//xla/tsl/platform:logging"],
+    deps = [
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/util:safe_reinterpret_cast",
+    ],
 )
 
 cuda_library(

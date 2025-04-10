@@ -33,6 +33,7 @@ limitations under the License.
 #include "cutlass/layout/matrix.h"
 #include "cutlass/util/packed_stride.hpp"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace xla::gpu::kernel::gemm_universal {
 
@@ -271,14 +272,16 @@ static typename Traits<Tag>::Arguments OpArguments(const Arguments &args) {
   Accumulator beta{0.0};
 
   typename Kernel::MainloopArguments mainloop_args{
-      reinterpret_cast<typename Operation::ElementA *>(args.lhs), stride_a,
-      reinterpret_cast<typename Operation::ElementB *>(args.rhs), stride_b};
+      tsl::safe_reinterpret_cast<typename Operation::ElementA *>(args.lhs),
+      stride_a,
+      tsl::safe_reinterpret_cast<typename Operation::ElementB *>(args.rhs),
+      stride_b};
 
   typename Kernel::EpilogueArguments epilogue_args{
       {alpha, beta},
-      reinterpret_cast<typename Operation::ElementC *>(args.out),
+      tsl::safe_reinterpret_cast<typename Operation::ElementC *>(args.out),
       stride_c,
-      reinterpret_cast<typename Operation::ElementC *>(args.out),
+      tsl::safe_reinterpret_cast<typename Operation::ElementC *>(args.out),
       stride_d,
       {{args.slices.out}, {args.m * args.n}},  // dynamic offsets for C
       {{args.slices.out}, {args.m * args.n}},  // dynamic offsets for D
@@ -399,7 +402,8 @@ __global__ void Kernel2EntryPoint(typename Kernel::Params params,
                                   DynamicSliceArguments dynamic_slices) {
   extern __shared__ int SharedStorageBase[];
   typename Kernel::SharedStorage *shared_storage =
-      reinterpret_cast<typename Kernel::SharedStorage *>(SharedStorageBase);
+      tsl::safe_reinterpret_cast<typename Kernel::SharedStorage *>(
+          SharedStorageBase);
 
   // Adjust output pointer to account for dynamic offsets.
   if (dynamic_slices.out) {
@@ -409,8 +413,8 @@ __global__ void Kernel2EntryPoint(typename Kernel::Params params,
     using ElementC = typename Kernel::ElementC;
     int64_t offset = sizeof(ElementC) * *dynamic_slices.out * (m * n);
 
-    char *ptr_c = reinterpret_cast<char *>(params.ptr_C);
-    char *ptr_d = reinterpret_cast<char *>(params.ptr_D);
+    char *ptr_c = tsl::safe_reinterpret_cast<char *>(params.ptr_C);
+    char *ptr_d = tsl::safe_reinterpret_cast<char *>(params.ptr_D);
 
     params.ptr_C = ptr_c + offset;
     params.ptr_D = ptr_d + offset;
@@ -441,9 +445,9 @@ void *DeviceKernel<Tag>::symbol() const {
   using Kernel = typename Traits<Tag>::Kernel;
 
   if constexpr (is_cutlass_3x<Tag>) {
-    return reinterpret_cast<void *>(Kernel3EntryPoint<Kernel>);
+    return tsl::safe_reinterpret_cast<void *>(Kernel3EntryPoint<Kernel>);
   } else {
-    return reinterpret_cast<void *>(Kernel2EntryPoint<Kernel>);
+    return tsl::safe_reinterpret_cast<void *>(Kernel2EntryPoint<Kernel>);
   }
 };
 

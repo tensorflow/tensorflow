@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 #include "xla/primitive_util.h"
 #include "xla/service/custom_call_status.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -159,7 +160,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_HandleFfiCall(
     int32_t* result_types, int64_t result_count, int64_t* result_dims) {
   auto target_name = absl::string_view(target_name_ptr, target_name_len);
   auto backend_config = absl::string_view(opaque_str_ptr, opaque_str_len);
-  auto xla_status = reinterpret_cast<XlaCustomCallStatus*>(status_opaque);
+  auto xla_status = static_cast<XlaCustomCallStatus*>(status_opaque);
 
   // Annotate memory coming from jit compiled function as initialized to
   // suppress false positives from msan sanitizer.
@@ -169,7 +170,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_HandleFfiCall(
                                       operand_count * sizeof(int32_t));
 
   const xla::ExecutableRunOptions* run_options =
-      reinterpret_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
+      static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
 
   absl::Status status = BuildAndCallFfi(
       run_options, target_name, backend_config,

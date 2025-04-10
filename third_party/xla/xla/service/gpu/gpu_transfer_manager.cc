@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -115,7 +116,7 @@ absl::Status GpuTransferManager::EnsurePinnedBuffersAllocated(
 
   static_assert(kPinnedChunkBytes % kPinnedBufferBytes == 0,
                 "assumption of loop below");
-  char* base = reinterpret_cast<char*>(pinned_chunk_->opaque());
+  char* base = tsl::safe_reinterpret_cast<char*>(pinned_chunk_->opaque());
   for (char* buf = base; buf < base + kPinnedChunkBytes;
        buf += kPinnedBufferBytes) {
     pinned_buffers_.push_back(buf);
@@ -193,15 +194,15 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
         void* buf = pinned_buffers_.back();
         pinned_buffers_.pop_back();
         checked_out_buffers.push_back(buf);
-        h2d_memcpy_dsts.push_back(reinterpret_cast<int32_t*>(buf));
+        h2d_memcpy_dsts.push_back(tsl::safe_reinterpret_cast<int32_t*>(buf));
       } else {
         LOG_FIRST_N(WARNING, 10)
             << "Unable to copy dynamic shape buffer of size " << src.size()
             << " to host using pinned memory.  Falling back to unpinned "
                "memory, which may be slow.";
         fallback_buffers.push_back(std::make_unique<char[]>(src.size()));
-        h2d_memcpy_dsts.push_back(
-            reinterpret_cast<int32_t*>(fallback_buffers.back().get()));
+        h2d_memcpy_dsts.push_back(tsl::safe_reinterpret_cast<int32_t*>(
+            fallback_buffers.back().get()));
       }
     }
   }
@@ -273,7 +274,7 @@ absl::Status GpuTransferManager::TransferBufferFromDevice(
     se::DeviceMemoryBase chunk = source.GetByteSlice(chunk_offset, chunk_size);
     TF_RETURN_IF_ERROR(stream->Memcpy(staging, chunk, chunk_size));
 
-    void* dst = reinterpret_cast<char*>(destination) + chunk_offset;
+    void* dst = tsl::safe_reinterpret_cast<char*>(destination) + chunk_offset;
     return stream->DoHostCallback(
         [=] { std::memcpy(dst, staging, chunk_size); });
   };
@@ -310,7 +311,8 @@ absl::Status GpuTransferManager::TransferBufferToDevice(
     VLOG(5) << "Transfer buffer chunk to device: offset=" << chunk_offset
             << " size=" << tsl::strings::HumanReadableNumBytes(chunk_size);
 
-    const void* src = reinterpret_cast<const char*>(source) + chunk_offset;
+    const void* src =
+        tsl::safe_reinterpret_cast<const char*>(source) + chunk_offset;
     TF_RETURN_IF_ERROR(
         stream->DoHostCallback([=] { std::memcpy(staging, src, chunk_size); }));
 

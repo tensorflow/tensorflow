@@ -291,6 +291,7 @@ limitations under the License.
 #ifdef PLATFORM_GOOGLE
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #endif  // PLATFORM_GOOGLE
 
 namespace xla {
@@ -2270,7 +2271,7 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
           continue;
         }
         const uint8_t* binary =
-            reinterpret_cast<const uint8_t*>(entry.binary().data());
+            tsl::safe_reinterpret_cast<const uint8_t*>(entry.binary().data());
         binaries_to_link.push_back(
             std::vector<uint8_t>(binary, binary + entry.binary().size()));
         VLOG(5) << "Using " << name << " from cache: " << entry.binary().size();

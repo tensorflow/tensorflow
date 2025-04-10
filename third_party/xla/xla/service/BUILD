@@ -848,6 +848,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:ptrvec",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
@@ -4590,6 +4591,7 @@ cc_library(
         "//xla/tsl/lib/gtl:map_util",
         "//xla/tsl/lib/io:zlib_compression_options",
         "//xla/tsl/lib/io:zlib_outputbuffer",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -5493,6 +5495,7 @@ cc_library(
     srcs = ["custom_call_target_registry.cc"],
     hdrs = ["custom_call_target_registry.h"],
     visibility = ["//visibility:public"],
+    deps = ["//xla/tsl/util:safe_reinterpret_cast"],
 )
 
 xla_cc_test(
