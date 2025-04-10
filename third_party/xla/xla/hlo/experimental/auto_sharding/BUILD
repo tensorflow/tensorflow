@@ -451,6 +451,7 @@ cc_library(
         "iopddl.h",
         "solver.h",
     ],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
@@ -471,5 +472,18 @@ cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "auto_sharding_iopddl",
+    srcs = ["auto_sharding_iopddl.cc"],
+    hdrs = ["auto_sharding_iopddl.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        ":iopddl_lib",
+        "//xla/hlo/experimental/auto_sharding:auto_sharding_proto_cc",
+        "//xla/hlo/experimental/auto_sharding:auto_sharding_strategy",
+        "@com_google_absl//absl/log:check",
     ],
 )
