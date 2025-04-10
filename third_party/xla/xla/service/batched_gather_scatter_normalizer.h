@@ -27,7 +27,7 @@ namespace xla {
 class BatchedGatherScatterNormalizer : public OpExpanderPass {
  public:
   absl::string_view name() const override {
-    return "batched_gather_scatter_normalizer";
+    return "gather_scatter_normalizer";
   }
 
  protected:
