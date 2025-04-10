@@ -33,6 +33,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/topology.pb.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/dcn_slack_analysis.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/topology.pb.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

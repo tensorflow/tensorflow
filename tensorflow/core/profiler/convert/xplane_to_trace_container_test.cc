@@ -26,6 +26,9 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/trace_events.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/trace_events_raw.pb.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

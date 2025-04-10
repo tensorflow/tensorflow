@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/kernel_stats.pb.h"  // from @org_xprof
 #include "xprof/utils/gpu_event_stats.h"  // from @org_xprof
 #include "xprof/utils/hlo_module_map.h"  // from @org_xprof
 #include "xprof/utils/kernel_stats_utils.h"  // from @org_xprof

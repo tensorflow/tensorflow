@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/tf_function.pb.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
