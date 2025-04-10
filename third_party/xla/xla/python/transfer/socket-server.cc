@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace aux {
 
@@ -61,7 +62,8 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
   void StartConnect() {
     int send_fd = socket(remote_addr_.address().sa_family,
                          SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-    connect(send_fd, reinterpret_cast<const struct sockaddr*>(&remote_addr_),
+    connect(send_fd,
+            tsl::safe_reinterpret_cast<const struct sockaddr*>(&remote_addr_),
             sizeof(remote_addr_));
     int value = 1;
     CHECK_GE(
@@ -167,7 +169,7 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
   void SendFrame(const SocketTransferRequest& req) {
     uint32_t header = req.ByteSizeLong();
     std::string opacket = std::string(absl::string_view(
-        reinterpret_cast<const char*>(&header), sizeof(header)));
+        tsl::safe_reinterpret_cast<const char*>(&header), sizeof(header)));
     req.AppendToString(&opacket);
     {
       absl::MutexLock l(&mu_);
