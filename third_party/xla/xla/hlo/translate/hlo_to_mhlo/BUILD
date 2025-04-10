@@ -193,6 +193,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:SparseTensorEnums",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

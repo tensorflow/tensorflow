@@ -5,7 +5,7 @@
 // minimized and named to reflect the test intent.
 
 // Regnerate them using the following command:
-// $ TFILE=/path/to/import_emit_stablehlo.hlo
+// $ TFILE=/path/to/xla/hlo/translate/hlo_to_mhlo/tests/import_emit_stablehlo.hlo
 // $ DELIM="Hlo Module" # Remove the space in the middle when running cmd. This comment needs the space since the source file is regex matched.
 // $ xla-translate $TFILE -hlo-text-to-mlir-hlo --emit-stablehlo --split-input-file --hlo-import-all-computations | \
 //     third_party/llvm/llvm-project/mlir/utils/generate-test-checks.py --source $TFILE --source_delim_regex="$DELIM" --starts_from_scope=0 -i
@@ -855,13 +855,13 @@ ENTRY %main.8 (Arg_0.1: f32[6], Arg_1.2: f32[6], Arg_2.3: s32[3], Arg_3.4: s32[3
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func private @top_k_gt_comparator.5(%[[VAL_0:.*]]: tensor<bf16>, %[[VAL_1:.*]]: tensor<bf16>, %[[VAL_2:.*]]: tensor<i32>, %[[VAL_3:.*]]: tensor<i32>) -> tensor<i1> {
-// CHECK:           %[[VAL_4:.*]] = mhlo.compare  GT, %[[VAL_0]], %[[VAL_1]] : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+// CHECK:           %[[VAL_4:.*]] = stablehlo.compare  GT, %[[VAL_0]], %[[VAL_1]] : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
 // CHECK:           return %[[VAL_4]] : tensor<i1>
 // CHECK:         }
 // CHECK:         func.func @main(%[[VAL_5:.*]]: tensor<16x256xbf16>, %[[VAL_6:.*]]: tensor<i32>, %[[VAL_7:.*]]: tensor<16x256xi32>, %[[VAL_8:.*]]: tensor<bf16>) -> tuple<tensor<16x4xbf16>, tensor<16x4xi32>> {
 // CHECK:           %[[VAL_9:.*]]:2 = "stablehlo.sort"(%[[VAL_5]], %[[VAL_7]]) <{dimension = 1 : i64, is_stable = false}> ({
 // CHECK:           ^bb0(%[[VAL_10:.*]]: tensor<bf16>, %[[VAL_11:.*]]: tensor<bf16>, %[[VAL_12:.*]]: tensor<i32>, %[[VAL_13:.*]]: tensor<i32>):
-// CHECK:             %[[VAL_14:.*]] = mhlo.compare  GT, %[[VAL_10]], %[[VAL_11]] : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+// CHECK:             %[[VAL_14:.*]] = stablehlo.compare  GT, %[[VAL_10]], %[[VAL_11]] : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
 // CHECK:             stablehlo.return %[[VAL_14]] : tensor<i1>
 // CHECK:           }) : (tensor<16x256xbf16>, tensor<16x256xi32>) -> (tensor<16x256xbf16>, tensor<16x256xi32>)
 // CHECK:           %[[VAL_15:.*]] = stablehlo.slice %[[VAL_16:.*]]#0 [0:16, 0:4] : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
@@ -900,11 +900,11 @@ ENTRY %main.20 (Arg_0.1: bf16[16,256], Arg_1.2: s32[], Arg_2.3: s32[16,256], Arg
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func private @top_k_gt_comparator.5(%[[VAL_0:.*]]: tensor<bf16>, %[[VAL_1:.*]]: tensor<bf16>, %[[VAL_2:.*]]: tensor<i32>, %[[VAL_3:.*]]: tensor<i32>) -> tensor<i1> {
-// CHECK:           %[[VAL_4:.*]] = mhlo.compare  GT, %[[VAL_0]], %[[VAL_1]] : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+// CHECK:           %[[VAL_4:.*]] = stablehlo.compare  GT, %[[VAL_0]], %[[VAL_1]] : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
 // CHECK:           return %[[VAL_4]] : tensor<i1>
 // CHECK:         }
 // CHECK:         func.func private @top_k_gt_comparator.14(%[[VAL_5:.*]]: tensor<bf16>, %[[VAL_6:.*]]: tensor<bf16>, %[[VAL_7:.*]]: tensor<i32>, %[[VAL_8:.*]]: tensor<i32>) -> tensor<i1> {
-// CHECK:           %[[VAL_9:.*]] = mhlo.compare  GT, %[[VAL_5]], %[[VAL_6]] : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+// CHECK:           %[[VAL_9:.*]] = stablehlo.compare  GT, %[[VAL_5]], %[[VAL_6]] : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
 // CHECK:           return %[[VAL_9]] : tensor<i1>
 // CHECK:         }
 // CHECK:         func.func @main(%[[VAL_10:.*]]: tensor<16x256xbf16>, %[[VAL_11:.*]]: tensor<i32>, %[[VAL_12:.*]]: tensor<16x256xi32>, %[[VAL_13:.*]]: tensor<bf16>) -> tuple<tensor<16x4xbf16>, tensor<16x4xi32>> {
@@ -913,7 +913,7 @@ ENTRY %main.20 (Arg_0.1: bf16[16,256], Arg_1.2: s32[], Arg_2.3: s32[16,256], Arg
 // CHECK:           %[[VAL_16:.*]] = stablehlo.get_tuple_element %[[VAL_14]][1] : (tuple<tensor<16x128xbf16>, tensor<16x128xi32>>) -> tensor<16x128xi32>
 // CHECK:           %[[VAL_17:.*]]:2 = "stablehlo.sort"(%[[VAL_15]], %[[VAL_16]]) <{dimension = 1 : i64, is_stable = false}> ({
 // CHECK:           ^bb0(%[[VAL_18:.*]]: tensor<bf16>, %[[VAL_19:.*]]: tensor<bf16>, %[[VAL_20:.*]]: tensor<i32>, %[[VAL_21:.*]]: tensor<i32>):
-// CHECK:             %[[VAL_22:.*]] = mhlo.compare  GT, %[[VAL_18]], %[[VAL_19]] : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+// CHECK:             %[[VAL_22:.*]] = stablehlo.compare  GT, %[[VAL_18]], %[[VAL_19]] : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
 // CHECK:             stablehlo.return %[[VAL_22]] : tensor<i1>
 // CHECK:           }) : (tensor<16x128xbf16>, tensor<16x128xi32>) -> (tensor<16x128xbf16>, tensor<16x128xi32>)
 // CHECK:           %[[VAL_23:.*]] = stablehlo.slice %[[VAL_24:.*]]#0 [0:16, 0:4] : (tensor<16x128xbf16>) -> tensor<16x4xbf16>
@@ -1046,7 +1046,7 @@ ENTRY %main.6 (Arg_0.1: f32[2,3]) -> (f32[2,3], f16[4,5]) {
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<3xi8>, %[[VAL_1:.*]]: tensor<3xi8>) -> tensor<i64> {
-// CHECK:           %[[VAL_2:.*]] = "mhlo.dot"(%[[VAL_0]], %[[VAL_1]]) <{precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}> : (tensor<3xi8>, tensor<3xi8>) -> tensor<i64>
+// CHECK:           %[[VAL_2:.*]] = stablehlo.dot %[[VAL_0]], %[[VAL_1]], precision = [DEFAULT, DEFAULT] : (tensor<3xi8>, tensor<3xi8>) -> tensor<i64>
 // CHECK:           return %[[VAL_2]] : tensor<i64>
 // CHECK:         }
 // CHECK:       }
@@ -1062,7 +1062,7 @@ ENTRY %main.4 (Arg_0.1: s8[3], Arg_1.2: s8[3]) -> s64[] {
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<3xi4>, %[[VAL_1:.*]]: tensor<3xi4>) -> tensor<i8> {
-// CHECK:           %[[VAL_2:.*]] = "mhlo.dot"(%[[VAL_0]], %[[VAL_1]]) <{precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}> : (tensor<3xi4>, tensor<3xi4>) -> tensor<i8>
+// CHECK:           %[[VAL_2:.*]] = stablehlo.dot %[[VAL_0]], %[[VAL_1]], precision = [DEFAULT, DEFAULT] : (tensor<3xi4>, tensor<3xi4>) -> tensor<i8>
 // CHECK:           return %[[VAL_2]] : tensor<i8>
 // CHECK:         }
 // CHECK:       }
@@ -1078,7 +1078,7 @@ ENTRY %main.4 (Arg_0.1: s4[3], Arg_1.2: s4[3]) -> s8[] {
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<3xui4>, %[[VAL_1:.*]]: tensor<3xui4>) -> tensor<ui8> {
-// CHECK:           %[[VAL_2:.*]] = "mhlo.dot"(%[[VAL_0]], %[[VAL_1]]) <{precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}> : (tensor<3xui4>, tensor<3xui4>) -> tensor<ui8>
+// CHECK:           %[[VAL_2:.*]] = stablehlo.dot %[[VAL_0]], %[[VAL_1]], precision = [DEFAULT, DEFAULT] : (tensor<3xui4>, tensor<3xui4>) -> tensor<ui8>
 // CHECK:           return %[[VAL_2]] : tensor<ui8>
 // CHECK:         }
 // CHECK:       }
@@ -1094,7 +1094,7 @@ ENTRY %main.4 (Arg_0.1: u4[3], Arg_1.2: u4[3]) -> u8[] {
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<2x2x2xi8>, %[[VAL_1:.*]]: tensor<2x2x3xi8>) -> tensor<2x2x3xi32> {
-// CHECK:           %[[VAL_2:.*]] = "mhlo.dot_general"(%[[VAL_0]], %[[VAL_1]]) <{dot_dimension_numbers = #mhlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}> : (tensor<2x2x2xi8>, tensor<2x2x3xi8>) -> tensor<2x2x3xi32>
+// CHECK:           %[[VAL_2:.*]] = stablehlo.dot_general %[[VAL_0]], %[[VAL_1]], batching_dims = [0] x [0], contracting_dims = [2] x [1], precision = [DEFAULT, DEFAULT] : (tensor<2x2x2xi8>, tensor<2x2x3xi8>) -> tensor<2x2x3xi32>
 // CHECK:           return %[[VAL_2]] : tensor<2x2x3xi32>
 // CHECK:         }
 // CHECK:       }
@@ -1127,7 +1127,7 @@ ENTRY %main.5 (Arg_0.1: bf16[10,16], Arg_1.2: bf16[32,20], Arg_2.3: u16[10,2]) -
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<3x4xi32>, %[[VAL_1:.*]]: tensor<4x5xi32>) -> tensor<3x5xi32> {
-// CHECK:           %[[VAL_2:.*]] = "mhlo.dot"(%[[VAL_0]], %[[VAL_1]]) <{precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}> {mhlo.frontend_attributes = {grad_x = "false", grad_y = "false"}} : (tensor<3x4xi32>, tensor<4x5xi32>) -> tensor<3x5xi32>
+// CHECK:           %[[VAL_2:.*]] = stablehlo.dot %[[VAL_0]], %[[VAL_1]], precision = [DEFAULT, DEFAULT] {mhlo.frontend_attributes = {grad_x = "false", grad_y = "false"}} : (tensor<3x4xi32>, tensor<4x5xi32>) -> tensor<3x5xi32>
 // CHECK:           %[[VAL_3:.*]] = stablehlo.transpose %[[VAL_2]], dims = [0, 1] : (tensor<3x5xi32>) -> tensor<3x5xi32>
 // CHECK:           return %[[VAL_3]] : tensor<3x5xi32>
 // CHECK:         }
@@ -1160,7 +1160,7 @@ ENTRY %main.3 (Arg_0.1: f32[3,9]) -> c64[3,5] {
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<200x100x300xf32>, %[[VAL_1:.*]]: tensor<10x2xi32>) -> tensor<10x300xf32> {
-// CHECK:           %[[VAL_2:.*]] = "mhlo.gather"(%[[VAL_0]], %[[VAL_1]]) <{dimension_numbers = #mhlo.gather<offset_dims = [1], collapsed_slice_dims = [0, 1], start_index_map = [0, 1], index_vector_dim = 1>, indices_are_sorted = true, slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>}> : (tensor<200x100x300xf32>, tensor<10x2xi32>) -> tensor<10x300xf32>
+// CHECK:           %[[VAL_2:.*]] = "stablehlo.gather"(%[[VAL_0]], %[[VAL_1]]) <{dimension_numbers = #stablehlo.gather<offset_dims = [1], collapsed_slice_dims = [0, 1], start_index_map = [0, 1], index_vector_dim = 1>, indices_are_sorted = true, slice_sizes = array<i64: 1, 1, 300>}> : (tensor<200x100x300xf32>, tensor<10x2xi32>) -> tensor<10x300xf32>
 // CHECK:           return %[[VAL_2]] : tensor<10x300xf32>
 // CHECK:         }
 // CHECK:       }
@@ -1176,7 +1176,7 @@ ENTRY %main.4 (Arg_0.1: f32[200,100,300], Arg_1.2: s32[10,2]) -> f32[10,300] {
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<200x100x300xf32>, %[[VAL_1:.*]]: tensor<100x200x1xi32>) -> tensor<100x200x300xf32> {
-// CHECK:           %[[VAL_2:.*]] = "mhlo.gather"(%[[VAL_0]], %[[VAL_1]]) <{dimension_numbers = #mhlo.gather<offset_dims = [2], operand_batching_dims = [0, 1], start_indices_batching_dims = [1, 0], start_index_map = [2], index_vector_dim = 2>, indices_are_sorted = true, slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>}> : (tensor<200x100x300xf32>, tensor<100x200x1xi32>) -> tensor<100x200x300xf32>
+// CHECK:           %[[VAL_2:.*]] = "stablehlo.gather"(%[[VAL_0]], %[[VAL_1]]) <{dimension_numbers = #stablehlo.gather<offset_dims = [2], operand_batching_dims = [0, 1], start_indices_batching_dims = [1, 0], start_index_map = [2], index_vector_dim = 2>, indices_are_sorted = true, slice_sizes = array<i64: 1, 1, 300>}> : (tensor<200x100x300xf32>, tensor<100x200x1xi32>) -> tensor<100x200x300xf32>
 // CHECK:           return %[[VAL_2]] : tensor<100x200x300xf32>
 // CHECK:         }
 // CHECK:       }
@@ -1508,11 +1508,11 @@ ENTRY %main.6 (Arg_0.1: token[]) -> token[] {
 // CHECK:           return %[[VAL_6]] : tuple<tensor<f32>, tensor<i32>>
 // CHECK:         }
 // CHECK:         func.func @main(%[[VAL_7:.*]]: tensor<1x10xf32>, %[[VAL_8:.*]]: tensor<1x10xi32>, %[[VAL_9:.*]]: tensor<f32>, %[[VAL_10:.*]]: tensor<i32>) -> tuple<tensor<1xf32>, tensor<1xi32>> {
-// CHECK:           %[[VAL_11:.*]]:2 = mhlo.reduce(%[[VAL_7]] init: %[[VAL_9]]), (%[[VAL_8]] init: %[[VAL_10]]) across dimensions = [1] : (tensor<1x10xf32>, tensor<1x10xi32>, tensor<f32>, tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>)
+// CHECK:           %[[VAL_11:.*]]:2 = stablehlo.reduce(%[[VAL_7]] init: %[[VAL_9]]), (%[[VAL_8]] init: %[[VAL_10]]) across dimensions = [1] : (tensor<1x10xf32>, tensor<1x10xi32>, tensor<f32>, tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>)
 // CHECK:            reducer(%[[VAL_12:.*]]: tensor<f32>, %[[VAL_13:.*]]: tensor<f32>) (%[[VAL_14:.*]]: tensor<i32>, %[[VAL_15:.*]]: tensor<i32>)  {
 // CHECK:             %[[VAL_16:.*]] = stablehlo.maximum %[[VAL_12]], %[[VAL_13]] : tensor<f32>
 // CHECK:             %[[VAL_17:.*]] = stablehlo.maximum %[[VAL_14]], %[[VAL_15]] : tensor<i32>
-// CHECK:             mhlo.return %[[VAL_16]], %[[VAL_17]] : tensor<f32>, tensor<i32>
+// CHECK:             stablehlo.return %[[VAL_16]], %[[VAL_17]] : tensor<f32>, tensor<i32>
 // CHECK:           }
 // CHECK:           %[[VAL_18:.*]] = mhlo.tuple %[[VAL_11]]#0, %[[VAL_11]]#1 {xla_shape = "(f32[1]{0}, s32[1]{0})"} : tuple<tensor<1xf32>, tensor<1xi32>>
 // CHECK:           return %[[VAL_18]] : tuple<tensor<1xf32>, tensor<1xi32>>
@@ -1650,10 +1650,10 @@ ENTRY %main.5 () -> f32[2,3,5] {
 // CHECK:           return %[[VAL_2]] : tensor<f32>
 // CHECK:         }
 // CHECK:         func.func @main(%[[VAL_3:.*]]: tensor<200x100x300xf32>, %[[VAL_4:.*]]: tensor<10x2xi32>, %[[VAL_5:.*]]: tensor<10x300xf32>) -> tensor<200x100x300xf32> {
-// CHECK:           %[[VAL_6:.*]] = "mhlo.scatter"(%[[VAL_3]], %[[VAL_4]], %[[VAL_5]]) <{indices_are_sorted = true, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1], scatter_dims_to_operand_dims = [0, 1], index_vector_dim = 1>, unique_indices = true}> ({
+// CHECK:           %[[VAL_6:.*]] = "stablehlo.scatter"(%[[VAL_3]], %[[VAL_4]], %[[VAL_5]]) <{indices_are_sorted = true, scatter_dimension_numbers = #stablehlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1], scatter_dims_to_operand_dims = [0, 1], index_vector_dim = 1>, unique_indices = true}> ({
 // CHECK:           ^bb0(%[[VAL_7:.*]]: tensor<f32>, %[[VAL_8:.*]]: tensor<f32>):
 // CHECK:             %[[VAL_9:.*]] = stablehlo.add %[[VAL_7]], %[[VAL_8]] : tensor<f32>
-// CHECK:             mhlo.return %[[VAL_9]] : tensor<f32>
+// CHECK:             stablehlo.return %[[VAL_9]] : tensor<f32>
 // CHECK:           }) : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) -> tensor<200x100x300xf32>
 // CHECK:           return %[[VAL_6]] : tensor<200x100x300xf32>
 // CHECK:         }
@@ -1681,10 +1681,10 @@ ENTRY %main.9 (Arg_0.1: f32[200,100,300], Arg_1.2: s32[10,2], Arg_2.3: f32[10,30
 // CHECK:           return %[[VAL_2]] : tensor<f32>
 // CHECK:         }
 // CHECK:         func.func @main(%[[VAL_3:.*]]: tensor<200x100x300xf32>, %[[VAL_4:.*]]: tensor<100x200x1xi32>, %[[VAL_5:.*]]: tensor<100x200x300xf32>) -> tensor<200x100x300xf32> {
-// CHECK:           %[[VAL_6:.*]] = "mhlo.scatter"(%[[VAL_3]], %[[VAL_4]], %[[VAL_5]]) <{indices_are_sorted = true, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [2], input_batching_dims = [0, 1], scatter_indices_batching_dims = [1, 0], scatter_dims_to_operand_dims = [2], index_vector_dim = 2>, unique_indices = true}> ({
+// CHECK:           %[[VAL_6:.*]] = "stablehlo.scatter"(%[[VAL_3]], %[[VAL_4]], %[[VAL_5]]) <{indices_are_sorted = true, scatter_dimension_numbers = #stablehlo.scatter<update_window_dims = [2], input_batching_dims = [0, 1], scatter_indices_batching_dims = [1, 0], scatter_dims_to_operand_dims = [2], index_vector_dim = 2>, unique_indices = true}> ({
 // CHECK:           ^bb0(%[[VAL_7:.*]]: tensor<f32>, %[[VAL_8:.*]]: tensor<f32>):
 // CHECK:             %[[VAL_9:.*]] = stablehlo.add %[[VAL_7]], %[[VAL_8]] : tensor<f32>
-// CHECK:             mhlo.return %[[VAL_9]] : tensor<f32>
+// CHECK:             stablehlo.return %[[VAL_9]] : tensor<f32>
 // CHECK:           }) : (tensor<200x100x300xf32>, tensor<100x200x1xi32>, tensor<100x200x300xf32>) -> tensor<200x100x300xf32>
 // CHECK:           return %[[VAL_6]] : tensor<200x100x300xf32>
 // CHECK:         }
@@ -1714,11 +1714,11 @@ ENTRY %main.9 (Arg_0.1: f32[200,100,300], Arg_1.2: s32[100,200,1], Arg_2.3: f32[
 // CHECK:           return %[[VAL_6]] : tuple<tensor<f32>, tensor<f32>>
 // CHECK:         }
 // CHECK:         func.func @main(%[[VAL_7:.*]]: tensor<200x100x300xf32>, %[[VAL_8:.*]]: tensor<10x2xi64>, %[[VAL_9:.*]]: tensor<10x300xf32>) -> tuple<tensor<200x100x300xf32>, tensor<200x100x300xf32>> {
-// CHECK:           %[[VAL_10:.*]]:2 = "mhlo.scatter"(%[[VAL_7]], %[[VAL_7]], %[[VAL_8]], %[[VAL_9]], %[[VAL_9]]) <{indices_are_sorted = false, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1], scatter_dims_to_operand_dims = [0, 1], index_vector_dim = 1>, unique_indices = false}> ({
+// CHECK:           %[[VAL_10:.*]]:2 = "stablehlo.scatter"(%[[VAL_7]], %[[VAL_7]], %[[VAL_8]], %[[VAL_9]], %[[VAL_9]]) <{indices_are_sorted = false, scatter_dimension_numbers = #stablehlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1], scatter_dims_to_operand_dims = [0, 1], index_vector_dim = 1>, unique_indices = false}> ({
 // CHECK:           ^bb0(%[[VAL_11:.*]]: tensor<f32>, %[[VAL_12:.*]]: tensor<f32>, %[[VAL_13:.*]]: tensor<f32>, %[[VAL_14:.*]]: tensor<f32>):
 // CHECK:             %[[VAL_15:.*]] = stablehlo.add %[[VAL_11]], %[[VAL_12]] : tensor<f32>
 // CHECK:             %[[VAL_16:.*]] = stablehlo.add %[[VAL_13]], %[[VAL_14]] : tensor<f32>
-// CHECK:             mhlo.return %[[VAL_15]], %[[VAL_16]] : tensor<f32>, tensor<f32>
+// CHECK:             stablehlo.return %[[VAL_15]], %[[VAL_16]] : tensor<f32>, tensor<f32>
 // CHECK:           }) : (tensor<200x100x300xf32>, tensor<200x100x300xf32>, tensor<10x2xi64>, tensor<10x300xf32>, tensor<10x300xf32>) -> (tensor<200x100x300xf32>, tensor<200x100x300xf32>)
 // CHECK:           %[[VAL_17:.*]] = mhlo.tuple %[[VAL_18:.*]]#0, %[[VAL_18]]#1 {xla_shape = "(f32[200,100,300]{2,1,0}, f32[200,100,300]{2,1,0})"} : tuple<tensor<200x100x300xf32>, tensor<200x100x300xf32>>
 // CHECK:           return %[[VAL_17]] : tuple<tensor<200x100x300xf32>, tensor<200x100x300xf32>>
@@ -1769,7 +1769,7 @@ ENTRY %main.6 (Arg_0.1: pred[], Arg_1.2: s32[2,3], Arg_2.3: s32[2,3]) -> s32[2,3
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func private @region_0.4(%[[VAL_0:.*]]: tensor<f32>, %[[VAL_1:.*]]: tensor<f32>) -> tensor<i1> {
-// CHECK:           %[[VAL_2:.*]] = mhlo.compare  GE, %[[VAL_0]], %[[VAL_1]],  TOTALORDER : (tensor<f32>, tensor<f32>) -> tensor<i1>
+// CHECK:           %[[VAL_2:.*]] = stablehlo.compare  GE, %[[VAL_0]], %[[VAL_1]],  TOTALORDER : (tensor<f32>, tensor<f32>) -> tensor<i1>
 // CHECK:           return %[[VAL_2]] : tensor<i1>
 // CHECK:         }
 // CHECK:         func.func private @region_1.8(%[[VAL_3:.*]]: tensor<f32>, %[[VAL_4:.*]]: tensor<f32>) -> tensor<f32> {
@@ -1780,7 +1780,7 @@ ENTRY %main.6 (Arg_0.1: pred[], Arg_1.2: s32[2,3], Arg_2.3: s32[2,3]) -> s32[2,3
 // CHECK:           %[[VAL_8:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
 // CHECK:           %[[VAL_9:.*]] = "stablehlo.select_and_scatter"(%[[VAL_6]], %[[VAL_7]], %[[VAL_8]]) <{padding = dense<0> : tensor<4x2xi64>, window_dimensions = array<i64: 1, 2, 2, 1>, window_strides = array<i64: 1, 2, 2, 1>}> ({
 // CHECK:           ^bb0(%[[VAL_10:.*]]: tensor<f32>, %[[VAL_11:.*]]: tensor<f32>):
-// CHECK:             %[[VAL_12:.*]] = mhlo.compare  GE, %[[VAL_10]], %[[VAL_11]],  TOTALORDER : (tensor<f32>, tensor<f32>) -> tensor<i1>
+// CHECK:             %[[VAL_12:.*]] = stablehlo.compare  GE, %[[VAL_10]], %[[VAL_11]],  TOTALORDER : (tensor<f32>, tensor<f32>) -> tensor<i1>
 // CHECK:             stablehlo.return %[[VAL_12]] : tensor<i1>
 // CHECK:           }, {
 // CHECK:           ^bb0(%[[VAL_13:.*]]: tensor<f32>, %[[VAL_14:.*]]: tensor<f32>):
@@ -2568,8 +2568,8 @@ ENTRY %main.3 (Arg_0.1: f32[?,784]) -> f32[?,784] {
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func private @region_0.3(%[[VAL_0:.*]]: tensor<f32>, %[[VAL_1:.*]]: tensor<f32>) -> tensor<f32> {
 // CHECK:           %[[VAL_2:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK:           %[[VAL_3:.*]] = mhlo.compare  NE, %[[VAL_0]], %[[VAL_2]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK:           %[[VAL_4:.*]] = mhlo.compare  NE, %[[VAL_1]], %[[VAL_2]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
+// CHECK:           %[[VAL_3:.*]] = stablehlo.compare  NE, %[[VAL_0]], %[[VAL_2]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
+// CHECK:           %[[VAL_4:.*]] = stablehlo.compare  NE, %[[VAL_1]], %[[VAL_2]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
 // CHECK:           %[[VAL_5:.*]] = stablehlo.or %[[VAL_3]], %[[VAL_4]] : tensor<i1>
 // CHECK:           %[[VAL_6:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<f32>
 // CHECK:           %[[VAL_7:.*]] = stablehlo.select %[[VAL_5]], %[[VAL_6]], %[[VAL_2]] : tensor<i1>, tensor<f32>
@@ -2577,17 +2577,17 @@ ENTRY %main.3 (Arg_0.1: f32[?,784]) -> f32[?,784] {
 // CHECK:         }
 // CHECK:         func.func @main(%[[VAL_8:.*]]: tensor<2x2xf32>) -> tuple<tensor<i1>> {
 // CHECK:           %[[VAL_9:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK:           %[[VAL_10:.*]] = mhlo.reduce(%[[VAL_8]] init: %[[VAL_9]]) across dimensions = [0, 1] : (tensor<2x2xf32>, tensor<f32>) -> tensor<f32>
+// CHECK:           %[[VAL_10:.*]] = stablehlo.reduce(%[[VAL_8]] init: %[[VAL_9]]) across dimensions = [0, 1] : (tensor<2x2xf32>, tensor<f32>) -> tensor<f32>
 // CHECK:            reducer(%[[VAL_11:.*]]: tensor<f32>, %[[VAL_12:.*]]: tensor<f32>)  {
 // CHECK:             %[[VAL_13:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK:             %[[VAL_14:.*]] = mhlo.compare  NE, %[[VAL_11]], %[[VAL_13]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
-// CHECK:             %[[VAL_15:.*]] = mhlo.compare  NE, %[[VAL_12]], %[[VAL_13]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
+// CHECK:             %[[VAL_14:.*]] = stablehlo.compare  NE, %[[VAL_11]], %[[VAL_13]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
+// CHECK:             %[[VAL_15:.*]] = stablehlo.compare  NE, %[[VAL_12]], %[[VAL_13]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
 // CHECK:             %[[VAL_16:.*]] = stablehlo.or %[[VAL_14]], %[[VAL_15]] : tensor<i1>
 // CHECK:             %[[VAL_17:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<f32>
 // CHECK:             %[[VAL_18:.*]] = stablehlo.select %[[VAL_16]], %[[VAL_17]], %[[VAL_13]] : tensor<i1>, tensor<f32>
-// CHECK:             mhlo.return %[[VAL_18]] : tensor<f32>
+// CHECK:             stablehlo.return %[[VAL_18]] : tensor<f32>
 // CHECK:           }
-// CHECK:           %[[VAL_19:.*]] = mhlo.compare  NE, %[[VAL_10]], %[[VAL_9]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
+// CHECK:           %[[VAL_19:.*]] = stablehlo.compare  NE, %[[VAL_10]], %[[VAL_9]] : (tensor<f32>, tensor<f32>) -> tensor<i1>
 // CHECK:           %[[VAL_20:.*]] = mhlo.tuple %[[VAL_19]] {xla_shape = "(pred[])"} : tuple<tensor<i1>>
 // CHECK:           return %[[VAL_20]] : tuple<tensor<i1>>
 // CHECK:         }
@@ -2705,9 +2705,9 @@ ENTRY %main.9 (Arg_0.1: f32[2,17,31,7], Arg_1.2: f32[]) -> f32[2,16,30,7] {
 // CHECK:           return %[[VAL_1]] : tensor<i32>
 // CHECK:         }
 // CHECK:         func.func @main(%[[VAL_2:.*]]: tensor<3xi32>, %[[VAL_3:.*]]: tensor<1x1xi32>, %[[VAL_4:.*]]: tensor<1xi32>) -> tensor<3xi32> {
-// CHECK:           %[[VAL_5:.*]] = "mhlo.scatter"(%[[VAL_2]], %[[VAL_3]], %[[VAL_4]]) <{indices_are_sorted = false, scatter_dimension_numbers = #mhlo.scatter<inserted_window_dims = [0], scatter_dims_to_operand_dims = [0], index_vector_dim = 1>, unique_indices = false}> ({
+// CHECK:           %[[VAL_5:.*]] = "stablehlo.scatter"(%[[VAL_2]], %[[VAL_3]], %[[VAL_4]]) <{indices_are_sorted = false, scatter_dimension_numbers = #stablehlo.scatter<inserted_window_dims = [0], scatter_dims_to_operand_dims = [0], index_vector_dim = 1>, unique_indices = false}> ({
 // CHECK:           ^bb0(%[[VAL_6:.*]]: tensor<i32>, %[[VAL_7:.*]]: tensor<i32>):
-// CHECK:             mhlo.return %[[VAL_7]] : tensor<i32>
+// CHECK:             stablehlo.return %[[VAL_7]] : tensor<i32>
 // CHECK:           }) : (tensor<3xi32>, tensor<1x1xi32>, tensor<1xi32>) -> tensor<3xi32>
 // CHECK:           return %[[VAL_5]] : tensor<3xi32>
 // CHECK:         }
@@ -2731,7 +2731,7 @@ ENTRY %main.8 (Arg_0.1: s32[3], Arg_1.2: s32[1,1], Arg_2.3: s32[1]) -> s32[3] {
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func private @region_0.4(%[[VAL_0:.*]]: tensor<f32>, %[[VAL_1:.*]]: tensor<f32>) -> tensor<i1> {
 // CHECK:           %[[VAL_2:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK:           %[[VAL_3:.*]] = mhlo.compare  GE, %[[VAL_0]], %[[VAL_2]],  TOTALORDER : (tensor<f32>, tensor<f32>) -> tensor<i1>
+// CHECK:           %[[VAL_3:.*]] = stablehlo.compare  GE, %[[VAL_0]], %[[VAL_2]],  TOTALORDER : (tensor<f32>, tensor<f32>) -> tensor<i1>
 // CHECK:           return %[[VAL_3]] : tensor<i1>
 // CHECK:         }
 // CHECK:         func.func private @region_1.9(%[[VAL_4:.*]]: tensor<f32>, %[[VAL_5:.*]]: tensor<f32>) -> tensor<f32> {
@@ -2741,7 +2741,7 @@ ENTRY %main.8 (Arg_0.1: s32[3], Arg_1.2: s32[1,1], Arg_2.3: s32[1]) -> s32[3] {
 // CHECK:           %[[VAL_9:.*]] = "stablehlo.select_and_scatter"(%[[VAL_6]], %[[VAL_7]], %[[VAL_8]]) <{padding = dense<0> : tensor<4x2xi64>, window_dimensions = array<i64: 1, 2, 2, 1>, window_strides = array<i64: 1, 1, 1, 1>}> ({
 // CHECK:           ^bb0(%[[VAL_10:.*]]: tensor<f32>, %[[VAL_11:.*]]: tensor<f32>):
 // CHECK:             %[[VAL_12:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK:             %[[VAL_13:.*]] = mhlo.compare  GE, %[[VAL_10]], %[[VAL_12]],  TOTALORDER : (tensor<f32>, tensor<f32>) -> tensor<i1>
+// CHECK:             %[[VAL_13:.*]] = stablehlo.compare  GE, %[[VAL_10]], %[[VAL_12]],  TOTALORDER : (tensor<f32>, tensor<f32>) -> tensor<i1>
 // CHECK:             stablehlo.return %[[VAL_13]] : tensor<i1>
 // CHECK:           }, {
 // CHECK:           ^bb0(%[[VAL_14:.*]]: tensor<f32>, %[[VAL_15:.*]]: tensor<f32>):

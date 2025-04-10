@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -33,23 +34,50 @@ limitations under the License.
 
 namespace xla {
 
+namespace stablehlo {
+// Converts the gather dimensions to attributes.
+mlir::stablehlo::GatherDimensionNumbersAttr ConvertGatherDimensionNumbers(
+    const xla::GatherDimensionNumbers& dnums, mlir::Builder* builder);
+
+// Converts the scatter dimensions to attributes.
+mlir::stablehlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
+    const xla::ScatterDimensionNumbers& dnums, mlir::Builder* builder);
+
+// Converts the dot algorithm to attributes.
+mlir::stablehlo::DotAlgorithmAttr ConvertDotAlgorithm(
+    PrecisionConfig::Algorithm algorithm, mlir::Builder* builder);
+
+// Converts the dot dimensions to attributes.
+mlir::stablehlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
+    const DotDimensionNumbers& dnums, mlir::Builder* builder);
+
+// Converts an XLA PrecisionConfig to the corresponding MLIR attribute.
+mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
+                                       mlir::Builder* builder);
+
+}  // namespace stablehlo
+
 // Converts an XLA PrecisionConfig to the corresponding MLIR attribute.
 mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
                                        mlir::Builder* builder);
 
 // Converts the gather dimensions to attributes.
+// [Deprecated] Used in TF2XLA only.
 mlir::mhlo::GatherDimensionNumbersAttr ConvertGatherDimensionNumbers(
     const xla::GatherDimensionNumbers& dnums, mlir::Builder* builder);
 
 // Converts the scatter dimensions to attributes.
+// [Deprecated] Used in TF2XLA only.
 mlir::mhlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
     const xla::ScatterDimensionNumbers& dnums, mlir::Builder* builder);
 
 // Converts the dot algorithm to attributes.
+// Used by sparse dot.
 mlir::mhlo::DotAlgorithmAttr ConvertDotAlgorithm(
     PrecisionConfig::Algorithm algorithm, mlir::Builder* builder);
 
 // Converts the dot dimensions to attributes.
+// Used by sparse dot.
 mlir::mhlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
     const DotDimensionNumbers& dnums, mlir::Builder* builder);
 

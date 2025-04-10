@@ -900,47 +900,62 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 
     case HloOpcode::kDot: {
       auto dot = Cast<HloDotInstruction>(instruction);
+      if (dot->sparse_operands()) {
+        attributes.push_back(builder_->getNamedAttr(
+            "precision_config",
+            ConvertPrecisionConfig(&instruction->precision_config(),
+                                   builder_)));
+        if (instruction->precision_config().algorithm() !=
+            PrecisionConfig::ALG_UNSET) {
+          attributes.push_back(builder_->getNamedAttr(
+              "algorithm",
+              ConvertDotAlgorithm(instruction->precision_config().algorithm(),
+                                  builder_)));
+        }
+        attributes.push_back(builder_->getNamedAttr(
+            "dot_dimension_numbers",
+            ConvertDotDimensionNumbers(instruction->dot_dimension_numbers(),
+                                       builder_)));
+        for (const SparsityDescriptor& descriptor : dot->sparsity()) {
+          TF_ASSIGN_OR_RETURN(auto sparsity,
+                              ConvertSparsityDescriptor(descriptor, builder_));
+          attributes.push_back(builder_->getNamedAttr(
+              descriptor.index() == 0 ? "lhs_sparsity" : "rhs_sparsity",
+              sparsity));
+        }
+        // XLA Feature -- MHLO Only
+        return func_builder
+            ->create<mlir::mhlo::SparseDotOp>(loc, result_type, operands,
+                                              attributes)
+            .getOperation();
+      }
+
+      // Dot or DotGeneral
       attributes.push_back(builder_->getNamedAttr(
-          "precision_config",
-          ConvertPrecisionConfig(&instruction->precision_config(), builder_)));
+          "precision_config", stablehlo::ConvertPrecisionConfig(
+                                  &instruction->precision_config(), builder_)));
       if (instruction->precision_config().algorithm() !=
           PrecisionConfig::ALG_UNSET) {
         attributes.push_back(builder_->getNamedAttr(
             "algorithm",
-            ConvertDotAlgorithm(instruction->precision_config().algorithm(),
-                                builder_)));
+            stablehlo::ConvertDotAlgorithm(
+                instruction->precision_config().algorithm(), builder_)));
       }
       // Consider consolidating DotOps together.
       if (DotIsDefault(instruction) && !dot->sparse_operands()) {
-        // TODO(b/408024772) ToStablehlo: Convert[PrecisionConfig|DotAlgorithm]
         return func_builder
-            ->create<mlir::mhlo::DotOp>(loc, result_type, operands, attributes)
+            ->create<mlir::stablehlo::DotOp>(loc, result_type, operands,
+                                             attributes)
             .getOperation();
       }
 
       attributes.push_back(builder_->getNamedAttr(
           "dot_dimension_numbers",
-          ConvertDotDimensionNumbers(instruction->dot_dimension_numbers(),
-                                     builder_)));
-      if (!dot->sparse_operands()) {
-        // TODO(b/408024772) ToStablehlo: ConvertDotDimensionNumbers
-        return func_builder
-            ->create<mlir::mhlo::DotGeneralOp>(loc, result_type, operands,
-                                               attributes)
-            .getOperation();
-      }
-
-      for (const SparsityDescriptor& descriptor : dot->sparsity()) {
-        TF_ASSIGN_OR_RETURN(auto sparsity,
-                            ConvertSparsityDescriptor(descriptor, builder_));
-        attributes.push_back(builder_->getNamedAttr(
-            descriptor.index() == 0 ? "lhs_sparsity" : "rhs_sparsity",
-            sparsity));
-      }
-      // XLA Feature -- MHLO Only
+          stablehlo::ConvertDotDimensionNumbers(
+              instruction->dot_dimension_numbers(), builder_)));
       return func_builder
-          ->create<mlir::mhlo::SparseDotOp>(loc, result_type, operands,
-                                            attributes)
+          ->create<mlir::stablehlo::DotGeneralOp>(loc, result_type, operands,
+                                                  attributes)
           .getOperation();
     }
     case HloOpcode::kRaggedAllToAll: {
@@ -1231,10 +1246,9 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           compare->operand(0)->shape().element_type());
       if (compare->type() != default_type)
         attributes.push_back(ConvertComparisonType(compare->type()));
-      // TODO(b/408024772) ToStableHLO: ConvertComparison[Direction|Type]
       return func_builder
-          ->create<mlir::mhlo::CompareOp>(loc, result_type, operands,
-                                          attributes)
+          ->create<mlir::stablehlo::CompareOp>(loc, result_type, operands,
+                                               attributes)
           .getOperation();
     }
     case HloOpcode::kCholesky: {
@@ -1250,21 +1264,21 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto gather_instruction = Cast<HloGatherInstruction>(instruction);
       attributes.push_back(builder_->getNamedAttr(
           "dimension_numbers",
-          ConvertGatherDimensionNumbers(
+          stablehlo::ConvertGatherDimensionNumbers(
               gather_instruction->gather_dimension_numbers(), builder_)));
 
       std::vector<int64_t> slice_sizes(
           gather_instruction->gather_slice_sizes().begin(),
           gather_instruction->gather_slice_sizes().end());
       attributes.push_back(
-          builder_->getNamedAttr("slice_sizes", Convert(slice_sizes)));
+          builder_->getNamedAttr("slice_sizes", ConvertArray(slice_sizes)));
       attributes.push_back(builder_->getNamedAttr(
           "indices_are_sorted",
           builder_->getBoolAttr(gather_instruction->indices_are_sorted())));
 
-      // TODO(b/408024772) ToStableHLO: ConvertGatherDimensionNumbers
       return func_builder
-          ->create<mlir::mhlo::GatherOp>(loc, result_type, operands, attributes)
+          ->create<mlir::stablehlo::GatherOp>(loc, result_type, operands,
+                                              attributes)
           .getOperation();
     }
     case HloOpcode::kDynamicSlice: {
@@ -1357,8 +1371,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto scatter = Cast<HloScatterInstruction>(instruction);
       attributes.push_back(builder_->getNamedAttr(
           "scatter_dimension_numbers",
-          ConvertScatterDimensionNumbers(scatter->scatter_dimension_numbers(),
-                                         builder_)));
+          stablehlo::ConvertScatterDimensionNumbers(
+              scatter->scatter_dimension_numbers(), builder_)));
       attributes.push_back(builder_->getNamedAttr(
           "indices_are_sorted",
           builder_->getBoolAttr(scatter->indices_are_sorted())));
@@ -1368,8 +1382,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       llvm::SmallVector<Type> flattened_types;
       FlattenTupleType(result_type, flattened_types);
 
-      // TODO(b/408024772) ToStableHLO: ConvertScatterDimensionNumbers
-      auto scatter_op = func_builder->create<mlir::mhlo::ScatterOp>(
+      auto scatter_op = func_builder->create<mlir::stablehlo::ScatterOp>(
           loc, flattened_types, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*scatter->to_apply(),
                                         &scatter_op.getUpdateComputation()));
@@ -1692,12 +1705,10 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         return_types = llvm::to_vector<6>(tuple_ty.getTypes());
       }
 
-      // TODO(b/408024772) ToStablehlo: ReduceOp builder is different in
-      // StableHLO
-      auto reduce = func_builder->create<mlir::mhlo::ReduceOp>(
-          loc, return_types, llvm::ArrayRef(operands).take_front(num_inputs),
-          llvm::ArrayRef(operands).drop_front(num_inputs),
-          ConvertDimensions(instruction->dimensions()));
+      auto reduce = func_builder->create<mlir::stablehlo::ReduceOp>(
+          loc, return_types, mlir::ValueRange(operands).take_front(num_inputs),
+          mlir::ValueRange(operands).drop_front(num_inputs),
+          ConvertArray(ToArrayRef(instruction->dimensions())));
       TF_RETURN_IF_ERROR(
           ImportAsRegion(*instruction->to_apply(), &reduce.getBody()));
 
@@ -1785,7 +1796,6 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       if (rng_op->shape().IsArray()) {
         return op.getOperation();
       }
-      // TODO(b/408024772) ToStablehlo: CreateTupleFromOpResults
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       result_type);
     }
@@ -2385,8 +2395,8 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonDirection(
     ComparisonDirection direction) {
   return builder_->getNamedAttr(
       "comparison_direction",
-      mlir::mhlo::ComparisonDirectionAttr::get(
-          builder_->getContext(), mlir::mhlo::symbolizeComparisonDirection(
+      mlir::stablehlo::ComparisonDirectionAttr::get(
+          builder_->getContext(), mlir::stablehlo::symbolizeComparisonDirection(
                                       ComparisonDirectionToString(direction))
                                       .value()));
 }
@@ -2395,9 +2405,9 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonType(
     Comparison::Type type) {
   return builder_->getNamedAttr(
       "compare_type",
-      mlir::mhlo::ComparisonTypeAttr::get(
+      mlir::stablehlo::ComparisonTypeAttr::get(
           builder_->getContext(),
-          mlir::mhlo::symbolizeComparisonType(ComparisonTypeToString(type))
+          mlir::stablehlo::symbolizeComparisonType(ComparisonTypeToString(type))
               .value()));
 }
 
