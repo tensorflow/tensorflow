@@ -2568,6 +2568,18 @@ absl::Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
 absl::Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
   visiting_hlo_ = hlo;
   b_.set_visiting_hlo(hlo);
+
+  if (hlo->opcode() == HloOpcode::kAllReduce ||
+      hlo->opcode() == HloOpcode::kCall ||
+      hlo->opcode() == HloOpcode::kConditional ||
+      hlo->opcode() == HloOpcode::kInfeed ||
+      hlo->opcode() == HloOpcode::kOutfeed ||
+      hlo->opcode() == HloOpcode::kParameter ||
+      hlo->opcode() == HloOpcode::kRng || hlo->opcode() == HloOpcode::kTuple ||
+      hlo->opcode() == HloOpcode::kWhile) {
+    return absl::OkStatus();
+  }
+
   // Temporarily replace manual sharding to one-device sharding so that the
   // partitioner will not change the HLOs.
   auto manual_to_onedevice = [&](HloOpcode opcode, const Shape& shape,
@@ -2592,143 +2604,129 @@ absl::Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
     return sharding;
   };
 
-  if (hlo->opcode() != HloOpcode::kConditional &&
-      hlo->opcode() != HloOpcode::kTuple &&
-      hlo->opcode() != HloOpcode::kParameter &&
-      hlo->opcode() != HloOpcode::kWhile && hlo->opcode() != HloOpcode::kRng &&
-      hlo->opcode() != HloOpcode::kInfeed &&
-      hlo->opcode() != HloOpcode::kOutfeed &&
-      hlo->opcode() != HloOpcode::kAllReduce &&
-      hlo->opcode() != HloOpcode::kCall) {
-    const bool has_manual_sharding =
-        hlo->sharding().IsManual() ||
-        (hlo->sharding().IsTuple() &&
-         absl::c_any_of(
-             hlo->sharding().tuple_elements(),
-             [](const HloSharding& sharding) { return sharding.IsManual(); }));
-    if (has_manual_sharding && !hlo->IsCustomCall("SPMDFullToShardShape")) {
-      visiting_hlo_sharding_ = hlo->sharding();
-      auto get_sharding_shape = [](const HloInstruction* hlo) {
-        if (hlo->opcode() != HloOpcode::kOutfeed) {
-          return hlo->shape();
-        }
-        std::vector<Shape> operand_shapes(hlo->operand_count());
-        for (int i = 0; i < hlo->operand_count(); ++i) {
-          operand_shapes[i] = hlo->operand(i)->shape();
-        }
-        return ShapeUtil::MakeTupleShape(operand_shapes);
-      };
-      hlo->set_sharding(manual_to_onedevice(
-          hlo->opcode(), get_sharding_shape(hlo), *visiting_hlo_sharding_));
-
-      visiting_hlo_operand_shardings_.reserve(hlo->operand_count());
-      for (HloInstruction* operand : hlo->unique_operands()) {
-        visiting_hlo_operand_shardings_.push_back(operand->sharding());
-        operand->set_sharding(manual_to_onedevice(
-            hlo->opcode(), get_sharding_shape(operand), operand->sharding()));
-        GetPartitionedHlo(operand).hlo()->copy_sharding(operand);
+  const bool has_manual_sharding =
+      hlo->sharding().IsManual() ||
+      (hlo->sharding().IsTuple() &&
+       absl::c_any_of(
+           hlo->sharding().tuple_elements(),
+           [](const HloSharding& sharding) { return sharding.IsManual(); }));
+  const bool has_manual_subgroup =
+      hlo->sharding().IsManualSubgroup() ||
+      (hlo->sharding().IsTuple() &&
+       absl::c_any_of(hlo->sharding().tuple_elements(),
+                      [](const HloSharding& sharding) {
+                        return sharding.IsManualSubgroup();
+                      }));
+  if (has_manual_sharding && !hlo->IsCustomCall("SPMDFullToShardShape")) {
+    visiting_hlo_sharding_ = hlo->sharding();
+    auto get_sharding_shape = [](const HloInstruction* hlo) {
+      if (hlo->opcode() != HloOpcode::kOutfeed) {
+        return hlo->shape();
       }
-    } else {
-      const bool has_manual_subgroup =
-          hlo->sharding().IsManualSubgroup() ||
-          (hlo->sharding().IsTuple() &&
-           absl::c_any_of(hlo->sharding().tuple_elements(),
-                          [](const HloSharding& sharding) {
-                            return sharding.IsManualSubgroup();
-                          }));
-      if (has_manual_subgroup && !hlo->IsCustomCall("SPMDFullToShardShape") &&
-          !hlo->IsCustomCall("SPMDShardToFullShape") &&
-          hlo->opcode() != HloOpcode::kGetTupleElement) {
-        auto get_grouped_sharding =
-            [&](const HloSharding& sharding, const Shape& shape,
-                const GroupedSharding* ref =
-                    nullptr) -> absl::StatusOr<GroupedSharding> {
-          if (!sharding.IsTuple()) {
-            GroupedSharding grouped =
-                hlo_sharding_util::GetManualSubgroupSharding(sharding);
-            if (ref != nullptr) {
-              auto aligned =
-                  AlignGroupsWithIfCompatible(std::move(grouped), *ref);
-              TF_RET_CHECK(aligned.has_value())
-                  << "Incompatible manual sharding at " << hlo->ToString();
-              return *aligned;
-            }
-            return grouped;
-          }
-          std::vector<HloSharding> elements;
-          elements.reserve(sharding.tuple_elements().size());
-          CHECK(!sharding.tuple_elements().empty());
-          GroupedSharding grouped0 =
-              hlo_sharding_util::GetManualSubgroupSharding(
-                  sharding.tuple_elements()[0]);
-          if (ref != nullptr) {
-            auto aligned =
-                AlignGroupsWithIfCompatible(std::move(grouped0), *ref);
-            TF_RET_CHECK(aligned.has_value())
-                << "Incompatible manual sharding at " << hlo->ToString();
-            grouped0 = std::move(*aligned);
-          }
-          elements.push_back(std::move(grouped0.sharding));
-          for (int64_t i = 1; i < sharding.tuple_elements().size(); ++i) {
-            auto grouped_i = AlignGroupsWithIfCompatible(
-                hlo_sharding_util::GetManualSubgroupSharding(
-                    sharding.tuple_elements()[i]),
-                grouped0);
-            TF_RET_CHECK(grouped_i.has_value())
-                << "Incompatible manual sharding between tuple elements: "
-                << hlo->ToString();
-            elements.push_back(std::move(grouped_i->sharding));
-          }
-          grouped0.sharding = HloSharding::Tuple(shape, elements);
-          return grouped0;
-        };
-        TF_ASSIGN_OR_RETURN(
-            auto group_sharding,
-            get_grouped_sharding(hlo->sharding(), hlo->shape()));
-        // Update sharding.
-        visiting_hlo_sharding_ = hlo->sharding();
-        hlo->set_sharding(group_sharding.sharding);
-        // Update device_groups and num_partitions.
-        // Set device_groups_, visiting_partition_id_ and
-        // visiting_collective_ops_creator_ before MakePartitioningState() which
-        // uses them.
-        device_groups_ = group_sharding.device_groups;
-        visiting_num_partitions_ = num_partitions_;
-        num_partitions_ = num_partitions_ / group_sharding.device_groups.size();
-        visiting_partition_id_ = partition_id_;
-        visiting_collective_ops_creator_ = std::move(collective_ops_creator_);
-        auto grouped_state = MakePartitioningState();
-        collective_ops_creator_ =
-            std::move(grouped_state.collective_ops_creator);
-        partition_id_ = grouped_state.partition_id;
-
-        // Update sharding for the operands.
-        visiting_hlo_operand_shardings_.reserve(hlo->operand_count());
-        visiting_state_.reserve(hlo->operand_count());
-        for (HloInstruction* operand : hlo->unique_operands()) {
-          visiting_hlo_operand_shardings_.push_back(operand->sharding());
-          auto old_state = GetPartitionedHlo(operand).state();
-          visiting_state_.push_back(old_state);
-          if (operand->shape().IsArray() && operand->IsConstant() &&
-              operand->shape().dimensions_size() == 0 &&
-              !operand->sharding().IsManualSubgroup()) {
-            // We allowed scalar constants to be CSE'ed between manual/auto
-            // subgraphs. It's possible that it doesn't have a manual subgroup.
-            continue;
-          }
-          TF_ASSIGN_OR_RETURN(
-              auto op_group_sharding,
-              get_grouped_sharding(operand->sharding(), operand->shape(),
-                                   &group_sharding));
-          operand->set_sharding(op_group_sharding.sharding);
-          GetPartitionedHlo(operand).hlo()->copy_sharding(operand);
-          auto group_state = CreatePerGroupPartitioningState(
-              old_state, op_group_sharding.device_groups, &b_);
-          GetPartitionedHlo(operand).set_state(group_state);
-        }
+      std::vector<Shape> operand_shapes(hlo->operand_count());
+      for (int i = 0; i < hlo->operand_count(); ++i) {
+        operand_shapes[i] = hlo->operand(i)->shape();
       }
+      return ShapeUtil::MakeTupleShape(operand_shapes);
+    };
+    hlo->set_sharding(manual_to_onedevice(
+        hlo->opcode(), get_sharding_shape(hlo), *visiting_hlo_sharding_));
+
+    visiting_hlo_operand_shardings_.reserve(hlo->operand_count());
+    for (HloInstruction* operand : hlo->unique_operands()) {
+      visiting_hlo_operand_shardings_.push_back(operand->sharding());
+      operand->set_sharding(manual_to_onedevice(
+          hlo->opcode(), get_sharding_shape(operand), operand->sharding()));
+      GetPartitionedHlo(operand).hlo()->copy_sharding(operand);
+    }
+  } else if (has_manual_subgroup &&
+             !hlo->IsCustomCall("SPMDFullToShardShape") &&
+             !hlo->IsCustomCall("SPMDShardToFullShape") &&
+             hlo->opcode() != HloOpcode::kGetTupleElement) {
+    auto get_grouped_sharding =
+        [&](const HloSharding& sharding, const Shape& shape,
+            const GroupedSharding* ref =
+                nullptr) -> absl::StatusOr<GroupedSharding> {
+      if (!sharding.IsTuple()) {
+        GroupedSharding grouped =
+            hlo_sharding_util::GetManualSubgroupSharding(sharding);
+        if (ref != nullptr) {
+          auto aligned = AlignGroupsWithIfCompatible(std::move(grouped), *ref);
+          TF_RET_CHECK(aligned.has_value())
+              << "Incompatible manual sharding at " << hlo->ToString();
+          return *aligned;
+        }
+        return grouped;
+      }
+      std::vector<HloSharding> elements;
+      elements.reserve(sharding.tuple_elements().size());
+      CHECK(!sharding.tuple_elements().empty());
+      GroupedSharding grouped0 = hlo_sharding_util::GetManualSubgroupSharding(
+          sharding.tuple_elements()[0]);
+      if (ref != nullptr) {
+        auto aligned = AlignGroupsWithIfCompatible(std::move(grouped0), *ref);
+        TF_RET_CHECK(aligned.has_value())
+            << "Incompatible manual sharding at " << hlo->ToString();
+        grouped0 = std::move(*aligned);
+      }
+      elements.push_back(std::move(grouped0.sharding));
+      for (int64_t i = 1; i < sharding.tuple_elements().size(); ++i) {
+        auto grouped_i = AlignGroupsWithIfCompatible(
+            hlo_sharding_util::GetManualSubgroupSharding(
+                sharding.tuple_elements()[i]),
+            grouped0);
+        TF_RET_CHECK(grouped_i.has_value())
+            << "Incompatible manual sharding between tuple elements: "
+            << hlo->ToString();
+        elements.push_back(std::move(grouped_i->sharding));
+      }
+      grouped0.sharding = HloSharding::Tuple(shape, elements);
+      return grouped0;
+    };
+    TF_ASSIGN_OR_RETURN(auto group_sharding,
+                        get_grouped_sharding(hlo->sharding(), hlo->shape()));
+    // Update sharding.
+    visiting_hlo_sharding_ = hlo->sharding();
+    hlo->set_sharding(group_sharding.sharding);
+    // Update device_groups and num_partitions.
+    // Set device_groups_, visiting_partition_id_ and
+    // visiting_collective_ops_creator_ before MakePartitioningState() which
+    // uses them.
+    device_groups_ = group_sharding.device_groups;
+    visiting_num_partitions_ = num_partitions_;
+    num_partitions_ = num_partitions_ / group_sharding.device_groups.size();
+    visiting_partition_id_ = partition_id_;
+    visiting_collective_ops_creator_ = std::move(collective_ops_creator_);
+    auto grouped_state = MakePartitioningState();
+    collective_ops_creator_ = std::move(grouped_state.collective_ops_creator);
+    partition_id_ = grouped_state.partition_id;
+
+    // Update sharding for the operands.
+    visiting_hlo_operand_shardings_.reserve(hlo->operand_count());
+    visiting_state_.reserve(hlo->operand_count());
+    for (HloInstruction* operand : hlo->unique_operands()) {
+      visiting_hlo_operand_shardings_.push_back(operand->sharding());
+      auto old_state = GetPartitionedHlo(operand).state();
+      visiting_state_.push_back(old_state);
+      if (operand->shape().IsArray() && operand->IsConstant() &&
+          operand->shape().dimensions_size() == 0 &&
+          !operand->sharding().IsManualSubgroup()) {
+        // We allowed scalar constants to be CSE'ed between manual/auto
+        // subgraphs. It's possible that it doesn't have a manual subgroup.
+        continue;
+      }
+      TF_ASSIGN_OR_RETURN(
+          auto op_group_sharding,
+          get_grouped_sharding(operand->sharding(), operand->shape(),
+                               &group_sharding));
+      operand->set_sharding(op_group_sharding.sharding);
+      GetPartitionedHlo(operand).hlo()->copy_sharding(operand);
+      auto group_state = CreatePerGroupPartitioningState(
+          old_state, op_group_sharding.device_groups, &b_);
+      GetPartitionedHlo(operand).set_state(group_state);
     }
   }
+
   return absl::OkStatus();
 }
 
