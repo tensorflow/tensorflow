@@ -49,6 +49,7 @@ mlir::DictionaryAttr getFuncArgFrontendAttrs(mlir::func::FuncOp funcOp,
 // Adds `name` into the frontend attributes of `op` with value `value`. If
 // `name` already exists, it will be overwritten. Note that `value` will be
 // turned into a `StringAttr`.
+// TODO(tomnatan): cleanup `escapeAttr`
 void setFrontendAttribute(mlir::Operation* op, mlir::StringRef name,
                           mlir::Attribute value, bool escapeAttr = true);
 
@@ -56,8 +57,7 @@ void setFrontendAttribute(mlir::Operation* op, mlir::StringRef name,
 // with value `value`. If `name` already exists, it will be overwritten. Note
 // that `value` will be turned into a `StringAttr`.
 void setFrontendAttribute(mlir::func::FuncOp funcOp, mlir::StringRef name,
-                          mlir::Attribute value, int64_t argNum,
-                          bool escapeAttr = true);
+                          mlir::Attribute value, int64_t argNum);
 
 // Remove `attributeName` from the frontend attributes of `op`.
 void removeFrontendAttribute(mlir::Operation* op,

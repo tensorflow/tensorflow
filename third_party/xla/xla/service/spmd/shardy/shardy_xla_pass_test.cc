@@ -706,7 +706,7 @@ ENTRY %main.0 (Arg_0.0: s64[2]) -> s64[2] {
 
 TEST_F(ShardyXLATest, WhileShardingOnlyOnFreeVariables) {
   const char* const hloString = R"(
-    HloModule main, entry_computation_layout={(f32[32,96]{1,0}, f32[32,96]{1,0})->f32[32,96]{1,0}}, frontend_attributes={xla.sdy.meshes="{mesh = #sdy.mesh<[\"x\"=4]>}"}
+    HloModule main, entry_computation_layout={(f32[32,96]{1,0}, f32[32,96]{1,0})->f32[32,96]{1,0}}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["x"=4]>}}
 
     %region_0.6 (arg_tuple.7: (f32[32,96], s32[], f32[32,96])) -> (f32[32,96], s32[], f32[32,96]) {
       %arg_tuple.7 = (f32[32,96]{1,0}, s32[], f32[32,96]{1,0}) parameter(0)
@@ -756,7 +756,7 @@ TEST_F(ShardyXLATest, WhileShardingOnlyOnFreeVariables) {
 
 TEST_F(ShardyXLATest, EmptyResultLayout) {
   const char* const hloString = R"(
-    HloModule pjit_f_, entry_computation_layout={(s64[2,2,2]{2,1,0})->()}, num_partitions=2, frontend_attributes={xla.sdy.meshes="{maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<[\"x\"=2]>}"}
+    HloModule pjit_f_, entry_computation_layout={(s64[2,2,2]{2,1,0})->()}, num_partitions=2, frontend_attributes={xla.sdy.meshes={maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<["x"=2]>}}
 
     ENTRY %main.5 (Arg_0.1: s64[2,2,2]) -> () {
       %Arg_0.0 = s64[2,2,2]{2,1,0} parameter(0), sharding={devices=[2,1,1]<=[2]}, metadata={op_name="x"}
@@ -772,7 +772,7 @@ TEST_F(ShardyXLATest, EmptyResultLayout) {
 
 TEST_F(ShardyXLATest, EmptyOperandLayout) {
   const char* const hloString = R"(
-    HloModule pjit_f_, entry_computation_layout={()->s64[2,2]{1,0}}, num_partitions=2, frontend_attributes={xla.sdy.meshes="{maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<[\"x\"=2]>}"}
+    HloModule pjit_f_, entry_computation_layout={()->s64[2,2]{1,0}}, num_partitions=2, frontend_attributes={xla.sdy.meshes={maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>, mesh = #sdy.mesh<["x"=2]>}}
 
     ENTRY %main.5 () -> s64[2,2] {
       ROOT %constant = s64[2,2]{1,0} constant({{1,1},{1,1}})
@@ -787,7 +787,7 @@ TEST_F(ShardyXLATest, EmptyOperandLayout) {
 
 TEST_F(ShardyXLATest, RaggedDotMode1) {
   const char* const hloString = R"(
-  HloModule ragged_dot, allow_spmd_sharding_propagation_to_parameters={true,true,true}, allow_spmd_sharding_propagation_to_output={true}, frontend_attributes={xla.sdy.meshes="{mesh = #sdy.mesh<[\"a\"=2, \"b\"=2, \"c\"=2]>}"}
+  HloModule ragged_dot, allow_spmd_sharding_propagation_to_parameters={true,true,true}, allow_spmd_sharding_propagation_to_output={true}, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["a"=2, "b"=2, "c"=2]>}}
     ENTRY entry {
       p0 = f32[16,32,64] parameter(0), frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{\"a\", ?}, {\"b\", ?}, {\"c\", ?}]>"}
       p1 = f32[4,16,64,8] parameter(1)
