@@ -70,8 +70,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
@@ -502,27 +500,6 @@ CommandBufferCmd::BufferUseVector ComputationIdCmd::buffers() {
   return {{dest_, MemoryAccess::kWrite}};
 }
 
-absl::Status ComputationIdCmd::Initialize(const Thunk::InitializeParams& params,
-                                          StateManager& state) {
-  auto cuda_cc = std::get_if<stream_executor::CudaComputeCapability>(
-      &params.executor->GetDeviceDescription().gpu_compute_capability());
-  if (cuda_cc != nullptr) {
-    {
-      absl::MutexLock lock(&mutex_);
-      if (memset_kernels_.contains(params.executor)) return absl::OkStatus();
-    }
-
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
-                        CreateKernel("memset32", 3, kMemset32Kernel,
-                                     /*cubin_data=*/{}, params.executor,
-                                     /*shared_mem_bytes=*/0));
-
-    absl::MutexLock lock(&mutex_);
-    memset_kernels_.emplace(params.executor, std::move(kernel));
-  }
-  return absl::OkStatus();
-}
-
 absl::StatusOr<CommandBufferCmd::RecordedCommands> ComputationIdCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
@@ -545,30 +522,8 @@ absl::StatusOr<CommandBufferCmd::RecordedCommands> ComputationIdCmd::Record(
           << "; value=" << value;
   VLOG(5) << "  Id: " << dest_ << " (" << dst.opaque() << ")";
 
-  auto cuda_cc = std::get_if<stream_executor::CudaComputeCapability>(
-      &execute_params.stream->parent()
-           ->GetDeviceDescription()
-           .gpu_compute_capability());
-
-  if (cuda_cc != nullptr) {
-    se::Kernel* memset_kernel = [&] {
-      absl::MutexLock lock(&mutex_);
-      return memset_kernels_[execute_params.stream->parent()].get();
-    }();
-
-    if (memset_kernel == nullptr) {
-      return absl::InternalError(
-          "Memset kernel not loaded on a command buffer executor");
-    }
-
-    auto args = se::PackKernelArgs(/*shmem_bytes=*/0, int64_t{1}, value, dst);
-    return RecordedCommands::Create(command_buffer->Launch(
-        se::ThreadDim(1), se::BlockDim(1), *memset_kernel, *args, {}));
-
-  } else {
-    return RecordedCommands::Create(
-        command_buffer->Memset(&dst, value, /*num_elements=*/1, {}));
-  }
+  return RecordedCommands::Create(
+      command_buffer->Memset(&dst, value, /*num_elements=*/1, {}));
 }
 
 //===----------------------------------------------------------------------===//
