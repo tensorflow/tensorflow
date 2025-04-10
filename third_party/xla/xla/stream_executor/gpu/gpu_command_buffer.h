@@ -275,6 +275,10 @@ class GpuCommandBuffer : public CommandBuffer {
   // possible to add new commands to it, otherwise returns internal error.
   absl::Status CheckNotFinalized();
 
+  // Return OK status if command buffer is in the given state, otherwise returns
+  // an error.
+  absl::Status CheckInState(State state);
+
   // Returns OK status if the command buffer can be updated.
   virtual absl::Status CheckCanBeUpdated() = 0;
 
@@ -415,14 +419,6 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Gpu commands recorded into the command buffer.
   std::vector<std::unique_ptr<Command>> commands_;
-
-  // Tracks indices into data structures during command buffer updates.
-  struct UpdateState {
-    int64_t command_idx = 0;
-  };
-
-  // Tracks execution scope update state.
-  UpdateState update_state_;
 };
 
 }  // namespace stream_executor::gpu
