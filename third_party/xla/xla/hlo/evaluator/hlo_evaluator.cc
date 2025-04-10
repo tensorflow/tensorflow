@@ -1006,7 +1006,6 @@ bool HloEvaluator::TryEvaluate(const HloInstruction* instruction,
   return true;
 }
 
-
 absl::StatusOr<Literal> HloEvaluator::EvaluateElementwiseBinaryOp(
     HloOpcode opcode, const Literal& lhs, const Literal& rhs) {
   std::unique_ptr<HloInstruction> lhs_instr =
@@ -3200,9 +3199,14 @@ absl::Status HloEvaluator::HandleBroadcast(const HloInstruction* broadcast) {
         broadcast->ToString());
   }
 
-  TF_ASSIGN_OR_RETURN(
-      Literal literal,
-      operand.Broadcast(broadcast->shape(), broadcast->dimensions()));
+  auto shape = broadcast->shape();
+  // operand.Broadcast requires a layout, but there may not be one if we're in a
+  // fusion.
+  if (!shape.has_layout()) {
+    LayoutUtil::SetToDefaultLayout(&shape);
+  }
+  TF_ASSIGN_OR_RETURN(Literal literal,
+                      operand.Broadcast(shape, broadcast->dimensions()));
   SetEvaluatedLiteralFor(broadcast, std::move(literal));
 
   return absl::OkStatus();
@@ -3239,7 +3243,7 @@ absl::Status HloEvaluator::HandleGetTupleElement(
   const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
 
   Literal literal =
-      Literal(ShapeUtil::GetTupleElementShape(operand->shape(), index));
+      CreateLiteral(ShapeUtil::GetTupleElementShape(operand->shape(), index));
   TF_RETURN_IF_ERROR(literal.CopyFrom(operand_tuple_literal,
                                       /*dest_shape_index=*/{},
                                       /*src_shape_index=*/{index}));
@@ -3282,7 +3286,7 @@ absl::Status HloEvaluator::HandleAsyncStart(const HloInstruction* async_start) {
       embedded_evaluator->Evaluate(*async_start->async_wrapped_computation(),
                                    arg_literals));
 
-  Literal literal = Literal(async_start->shape());
+  Literal literal = CreateLiteral(async_start->shape());
 
   // Copy the operand values to the index {0, i} of the output.
   for (int i = 0; i < arg_literals.size(); ++i) {
@@ -3303,7 +3307,7 @@ absl::Status HloEvaluator::HandleAsyncUpdate(
     const HloInstruction* async_update) {
   const Literal& operand_tuple_literal =
       GetEvaluatedLiteralFor(async_update->operand(0));
-  Literal literal = Literal(async_update->shape());
+  Literal literal = CreateLiteral(async_update->shape());
   TF_RETURN_IF_ERROR(literal.CopyFrom(operand_tuple_literal,
                                       /*dest_shape_index=*/{},
                                       /*src_shape_index=*/{}));
@@ -3314,7 +3318,7 @@ absl::Status HloEvaluator::HandleAsyncUpdate(
 absl::Status HloEvaluator::HandleAsyncDone(const HloInstruction* async_done) {
   const Literal& operand_tuple_literal =
       GetEvaluatedLiteralFor(async_done->operand(0));
-  Literal literal = Literal(async_done->shape());
+  Literal literal = CreateLiteral(async_done->shape());
   TF_RETURN_IF_ERROR(literal.CopyFrom(operand_tuple_literal,
                                       /*dest_shape_index=*/{},
                                       /*src_shape_index=*/{1}));
@@ -3354,8 +3358,8 @@ absl::Status HloEvaluator::HandleCopyDone(const HloInstruction* copy_done) {
   }
 
   const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
-  Literal literal =
-      Literal(ShapeUtil::GetTupleElementShape(operand->shape(), /*index=*/0));
+  Literal literal = CreateLiteral(
+      ShapeUtil::GetTupleElementShape(operand->shape(), /*index=*/0));
   TF_RETURN_IF_ERROR(literal.CopyFrom(operand_tuple_literal,
                                       /*dest_shape_index=*/{},
                                       /*src_shape_index=*/{0}));
@@ -3386,39 +3390,26 @@ absl::Status HloEvaluator::HandleCall(const HloInstruction* call) {
 }
 
 absl::Status HloEvaluator::HandleFusion(const HloInstruction* fusion) {
-  HloModuleConfig config;
-  // Attach cloned computation to an empty HLO module so the existing ones are
-  // not modified.
-  HloModule empty_hlo_module("EmptyModuleForFusion", config,
-                             std::make_unique<CompilationEnvironments>(
-                                 fusion->GetModule()->comp_envs()));
-  HloCloneContext context(&empty_hlo_module);
-  auto cloned_fused_computation =
-      fusion->fused_instructions_computation()->Clone(
-          /*suffix=*/"clone_with_layout", &context);
-  for (auto* instruction : cloned_fused_computation->instructions()) {
-    if (!LayoutUtil::HasLayout(instruction->shape())) {
-      LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
-    }
-  }
-  auto readded_computation =
-      empty_hlo_module.AddEntryComputation(std::move(cloned_fused_computation));
+  auto* computation = fusion->fused_instructions_computation();
 
-  auto operands = fusion->operands();
-  std::vector<const Literal*> arg_literals;
-  arg_literals.reserve(operands.size());
-  for (auto operand : operands) {
-    const Literal& arg_literal = GetEvaluatedLiteralFor(operand);
-    arg_literals.push_back(&arg_literal);
-  }
-
+  const auto& operands = fusion->operands();
   std::unique_ptr<HloEvaluator> embedded_evaluator =
       CreateEmbedded(max_loop_iterations_);
   embedded_evaluator->set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
-  TF_ASSIGN_OR_RETURN(Literal result, embedded_evaluator->Evaluate(
-                                          *readded_computation, arg_literals));
 
+  absl::flat_hash_map<const HloInstruction*, const LiteralBase*> substitutions;
+  for (int i = 0; i < operands.size(); ++i) {
+    substitutions[computation->parameter_instruction(i)] =
+        &GetEvaluatedLiteralFor(operands[i]);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      Literal result,
+      embedded_evaluator->Evaluate(
+          fusion->fused_expression_root(),
+          /*precomputed_analyses=*/{},
+          /*recursively_evaluate_nonconstant_operands=*/true, substitutions));
   SetEvaluatedLiteralFor(fusion, std::move(result));
   return absl::OkStatus();
 }
@@ -4553,7 +4544,8 @@ absl::Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
 
   absl::InlinedVector<Literal, 1> results(num_args);
   for (int64_t i = 0; i < num_args; ++i) {
-    results[i] = Literal(is_tuple ? out_shape.tuple_shapes(i) : out_shape);
+    results[i] =
+        CreateLiteral(is_tuple ? out_shape.tuple_shapes(i) : out_shape);
   }
 
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexParallelWithStatus(
@@ -4656,7 +4648,7 @@ absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
           curr_val_literal_vec.reserve(input_literal_vec.size());
           for (const auto* input_literal : input_literal_vec) {
             // Evaluate computation with specified literal operands.
-            curr_val_literal_vec.push_back(Literal(ShapeUtil::MakeShape(
+            curr_val_literal_vec.push_back(CreateLiteral(ShapeUtil::MakeShape(
                 input_literal->shape().element_type(), {})));
             curr_val_literal_vec.back().CopyElementFrom(*input_literal,
                                                         operand_index, {});
@@ -4690,7 +4682,7 @@ absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
   if (inferred_return_shape.IsTuple()) {
     absl::InlinedVector<Literal, 1> results(num_args);
     for (int64_t i = 0; i < num_args; ++i) {
-      results[i] = Literal(inferred_return_shape.tuple_shapes(i));
+      results[i] = CreateLiteral(inferred_return_shape.tuple_shapes(i));
     }
     ShapeUtil::ForEachIndexParallel(
         inferred_return_shape.tuple_shapes(0),

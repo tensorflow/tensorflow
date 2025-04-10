@@ -3318,6 +3318,15 @@ TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutions) {
                                               {square, &square_literal}}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({11, 22, 33, 44}), result));
+
+  // Evaluate again, with a different substitution. This verifies we don't
+  // accidentally cache anything.
+  Literal param0_literal2 = LiteralUtil::CreateR1<float>({5, 6, 7, 8});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result2,
+      evaluator.Evaluate(add, {}, true, {{param0, &param0_literal2}}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({30, 42, 56, 72}), result2));
 }
 
 TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsRecursive) {
@@ -4461,6 +4470,31 @@ ENTRY main {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, Reduction2D) {
+  const std::string hlo_text = R"(
+HloModule Reduction2D
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  arg0 = f32[2,4] parameter(0)
+  init = f32[] constant(0)
+  ROOT %reduce = f32[2] reduce(arg0, init), dimensions={1}, to_apply=add_f32
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal arg = LiteralUtil::CreateR2<float>(
+      {{1.0f, 3.0f, -2.0f, 42.0f}, {4.0f, 5.0f, 6.0f, 7.0f}});
+  Literal expected = LiteralUtil::CreateR1<float>({44.0f, 22.0f});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&arg}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_F(HloEvaluatorTest, DontFailOnCallUnimplementedOps) {
   // Outfeed triggers unimplemented error within HandleCall, and we verify that
   // the Evaluator does fail in such case.
@@ -4988,6 +5022,23 @@ TEST_F(HloEvaluatorTest, AsyncOps) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   Literal expected = LiteralUtil::CreateR0<float>(-42.0f);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, AsyncOpsWithLayout) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+  ENTRY AsyncOps {
+    init = f32[2,2]{0,1} constant({{1.0, 2.0}, {3.0, 4.0}})
+    async-start = ((f32[2,2]{0,1}), f32[2,2]{0,1}, u32[]) negate-start(init)
+    async-update = ((f32[2,2]{0,1}), f32[2,2]{0,1}, u32[]) negate-update(async-start)
+    ROOT async-done = f32[2,2]{0,1} negate-done(async-update)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR2<float>({{-1.0, -2.0}, {-3.0, -4.0}});
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));

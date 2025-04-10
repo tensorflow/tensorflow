@@ -166,7 +166,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   bool TryEvaluate(const HloInstruction* instruction, Literal* result,
                    bool recursively_evaluate_nonconstant_operands = false);
 
-
   absl::StatusOr<Literal> EvaluateElementwiseBinaryOp(HloOpcode opcode,
                                                       const Literal& lhs,
                                                       const Literal& rhs);
@@ -413,6 +412,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // Returns the already-evaluated literal result for the instruction and
   // removes it from internal evaluate state.
   Literal ExtractEvaluatedLiteralFor(const HloInstruction* hlo) {
+    if (state_.has_evaluated(hlo)) {
+      return state_.extract_evaluated(hlo);
+    }
     if (hlo->IsConstant()) {
       return hlo->literal().Clone();
     }
@@ -420,9 +422,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
       return state_.arg(hlo->parameter_number())->Clone();
     }
 
-    CHECK(state_.has_evaluated(hlo))
-        << "could not find evaluated value for: " << hlo->ToString();
-    return state_.extract_evaluated(hlo);
+    LOG(FATAL) << "could not find evaluated value for: " << hlo->ToString();
   }
 
   // Returns true if the given hlo has been evaluated and cached.
@@ -543,6 +543,24 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
     EvaluationState* state_;
   };
 
+  static Literal CreateLiteral(const Shape& shape) {
+    // If the shape (and all subshapes, if it is a tuple) have a layout, we can
+    // just use it directly.
+    if (LayoutUtil::HasLayout(shape)) {
+      return Literal(shape);
+    }
+
+    // Otherwise, set all missing layouts in `shape` to the default.
+    Shape shape_copy = shape;
+    ShapeUtil::ForEachMutableLeafShape(
+        &shape_copy, [](Shape* subshape, const ShapeIndex& index) {
+          if (!subshape->has_layout()) {
+            LayoutUtil::SetToDefaultLayout(subshape);
+          }
+        });
+    return Literal(shape_copy);
+  }
+
   template <typename ReturnT, typename NativeT, typename UnaryOp>
   static absl::StatusOr<Literal> ElementWiseUnaryOpImpl(
       const HloInstruction* instruction, UnaryOp&& unary_op,
@@ -554,7 +572,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
     const auto* operand = instruction->operand(0);
     TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
 
-    Literal result(shape);
+    Literal result = CreateLiteral(shape);
     TF_RETURN_IF_ERROR(
         result.PopulateLinearParallel<ReturnT>([&](int64_t linear_index, int) {
           return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
