@@ -6283,32 +6283,7 @@ absl::Status CudnnSupport::GetConvolveRunners(
     ScratchAllocator* /*scratch_allocator*/,
     const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
-  // cuDNN frontend support for Tx32 convolutions added in 8.3.
-  // If the filter is not reordered, do not use frontend (it is slow).
-  const bool is_disabled_x32 =
-      input_descriptor.layout() == dnn::kBatchDepthYX32 &&
-      (filter_descriptor.layout() !=
-       dnn::FilterLayout::kOutputInputYX32_CudnnReordered);
-
-  const bool actually_use_cudnn_frontend =
-      use_cudnn_frontend && !is_disabled_x32;
-
-  if (use_cudnn_frontend && !actually_use_cudnn_frontend) {
-    // This will happen once per unique conv configuration/shape that gets
-    // affected (and not, for example, on every conv launch).  Confusion over
-    // whether this has happened or not has repeatedly wasted a lot of time
-    // debugging, so be sure it shows up in the logs.
-    LOG(INFO) << "Disabling cuDNN frontend for the following convolution:\n"
-              << "  input: " << input_descriptor.ToString() << "\n"
-              << "  filter: " << filter_descriptor.ToString() << "\n"
-              << "  " << convolution_descriptor.ToString() << "\n"
-              << "  ... because "
-              << (is_disabled_x32
-                      ? "Tx32 convolutions are disabled."
-                      : "the current cuDNN version does not support it.");
-  }
-
-  if (!actually_use_cudnn_frontend) {
+  if (!use_cudnn_frontend) {
     auto cuda_compute_capability = stream->GetCudaComputeCapability();
     std::vector<dnn::AlgorithmDesc> algorithms;
     bool got_algos = false;
@@ -6758,32 +6733,6 @@ absl::Status CudnnSupport::GetFusedConvolveRunners(
   // implicitly do ReLU on some engines, and we can't reliably detect which
   // ones.
 
-  // If the filter is not reordered, do not use frontend (it is slow).
-  const bool is_disabled_x32 =
-      input_descriptor.layout() == dnn::kBatchDepthYX32 &&
-      (filter_descriptor.layout() !=
-       dnn::FilterLayout::kOutputInputYX32_CudnnReordered);
-
-  const bool actually_use_cudnn_frontend =
-      use_cudnn_frontend && !is_disabled_x32;
-
-  if (use_cudnn_frontend && !actually_use_cudnn_frontend) {
-    const char* reason = "the current cuDNN version does not support it.";
-    if (is_disabled_x32) {
-      reason = "Tx32 convolutions are disabled.";
-    }
-
-    // This will happen once per unique conv configuration/shape that gets
-    // affected (and not, for example, on every conv launch).  Confusion over
-    // whether this has happened or not has repeatedly wasted a lot of time
-    // debugging, so be sure it shows up in the logs.
-    LOG(INFO) << "Disabling cuDNN frontend for the following convolution:\n"
-              << "  input: " << input_descriptor.ToString() << "\n"
-              << "  filter: " << filter_descriptor.ToString() << "\n"
-              << "  " << convolution_descriptor.ToString() << "\n"
-              << "  ... because " << reason;
-  }
-
   if (input_type == dnn::DataType::kInt8 &&
       !stream->GetCudaComputeCapability().IsAtLeast(6, 1)) {
     return tsl::errors::Unimplemented(
@@ -6801,7 +6750,7 @@ absl::Status CudnnSupport::GetFusedConvolveRunners(
         "{Relu, Relu6, Elu, <None>}.");
   }
 
-  if (!actually_use_cudnn_frontend) {
+  if (!use_cudnn_frontend) {
     std::vector<dnn::AlgorithmDesc> algorithms;
 
     auto cuda_compute_capability = stream->GetCudaComputeCapability();
