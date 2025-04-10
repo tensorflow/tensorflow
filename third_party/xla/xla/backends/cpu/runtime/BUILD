@@ -169,8 +169,10 @@ cc_library(
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
 )
