@@ -33,6 +33,7 @@ cc_library(
         ":symbol_finder",
         "//xla/mlir/tools/mlir_interpreter/framework",
         "//xla/mlir_hlo",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",

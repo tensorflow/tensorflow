@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -1302,8 +1303,9 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
 
 std::string HloModule::GetFingerprint128(const HloPrintOptions& options) const {
   const tsl::Fprint128 fingerprint = tsl::Fingerprint128(ToString(options));
-  absl::string_view fp_bytes(reinterpret_cast<const char*>(&fingerprint),
-                             sizeof(tsl::Fprint128));
+  absl::string_view fp_bytes(
+      tsl::safe_reinterpret_cast<const char*>(&fingerprint),
+      sizeof(tsl::Fprint128));
   return absl::BytesToHexString(fp_bytes);
 }
 

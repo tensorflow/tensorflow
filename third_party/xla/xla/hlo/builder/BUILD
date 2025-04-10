@@ -161,6 +161,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:shape_inference",
         "//xla/tsl/lib/core:bitmap",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

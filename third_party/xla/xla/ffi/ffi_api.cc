@@ -60,6 +60,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 //===----------------------------------------------------------------------===//
 // XLA FFI C structs definition
@@ -848,7 +849,7 @@ static XLA_FFI_Error* XLA_FFI_ThreadPool_NumThreads(
 //===----------------------------------------------------------------------===//
 
 static XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status) {
-  auto* absl_status = reinterpret_cast<absl::Status*>(status);
+  auto* absl_status = static_cast<absl::Status*>(status);
   if (ABSL_PREDICT_TRUE(absl_status->ok())) {
     return nullptr;
   }
@@ -856,7 +857,7 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status) {
 }
 
 static XLA_FFI_Future* XLA_FFI_INTERNAL_Future_Forward(void* async_value) {
-  auto* tsl_async_value = reinterpret_cast<tsl::AsyncValue*>(async_value);
+  auto* tsl_async_value = static_cast<tsl::AsyncValue*>(async_value);
   DCHECK(tsl_async_value) << "Async value must not be null";
 
   return new XLA_FFI_Future{
