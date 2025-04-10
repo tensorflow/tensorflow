@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -583,7 +584,8 @@ PjRtCApiClient::CreateViewOfDeviceBuffer(
     args.on_delete_callback_arg =
         new std::function(std::move(on_delete_callback));
     args.on_delete_callback = [](void* device_buffer_ptr, void* user_arg) {
-      auto* c_func = reinterpret_cast<std::function<void()>*>(user_arg);
+      auto* c_func =
+          tsl::safe_reinterpret_cast<std::function<void()>*>(user_arg);
       (*c_func)();
       delete c_func;
     };
@@ -597,7 +599,7 @@ PjRtCApiClient::CreateViewOfDeviceBuffer(
   if (stream.has_value()) {
     args.stream = *stream;
   } else {
-    args.stream = reinterpret_cast<intptr_t>(nullptr);
+    args.stream = tsl::safe_reinterpret_cast<intptr_t>(nullptr);
   }
   const PJRT_Api* c_api = pjrt_c_api();
 
@@ -1545,8 +1547,8 @@ PJRT_SendCallbackInfo CppSendCallbackToC(
         // `user_arg` captures `send_callback_function` which is
         // SendCallbackFunction*.
         PjRtCApiLoadedExecutable::SendCallbackFunction* send_callback =
-            reinterpret_cast<PjRtCApiLoadedExecutable::SendCallbackFunction*>(
-                user_arg);
+            tsl::safe_reinterpret_cast<
+                PjRtCApiLoadedExecutable::SendCallbackFunction*>(user_arg);
         return (*send_callback)(chunk, callback_error, total_size_in_bytes,
                                 done);
       }};
@@ -1647,8 +1649,8 @@ PJRT_RecvCallbackInfo CppRecvCallbackToC(
         // `user_arg` captures `recv_callback_function` which is
         // RecvCallbackFunction*.
         PjRtCApiLoadedExecutable::RecvCallbackFunction* recv_callback =
-            reinterpret_cast<PjRtCApiLoadedExecutable::RecvCallbackFunction*>(
-                user_arg);
+            tsl::safe_reinterpret_cast<
+                PjRtCApiLoadedExecutable::RecvCallbackFunction*>(user_arg);
         (*recv_callback)(stream);
       }};
 }

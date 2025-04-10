@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -106,7 +107,8 @@ absl::StatusOr<Literal> HandleEvaluatorCustomCall(
   void* const output_data = output.untyped_data();
 
   // Call the target function matching the C ABI used by the CPU backends.
-  auto* typed_fn = reinterpret_cast<void (*)(void*, const void**)>(target_fn);
+  auto* typed_fn =
+      tsl::safe_reinterpret_cast<void (*)(void*, const void**)>(target_fn);
   (*typed_fn)(output_data, operand_data.data());
 
   return std::move(output);

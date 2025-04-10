@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/connected_traceme.h"
@@ -416,7 +417,8 @@ PjRtFuture<> AbstractTfrtCpuBuffer::CopyRawToHostHelper(
     }
     const tsl::AsyncValueRef<CpuDeviceMemory>& b = device_buffer->buffer();
     CHECK(b.IsConcrete());
-    std::memcpy(dst, reinterpret_cast<char*>(b->untyped_data()) + offset,
+    std::memcpy(dst,
+                tsl::safe_reinterpret_cast<char*>(b->untyped_data()) + offset,
                 transfer_size);
     return absl::OkStatus();
   };
@@ -837,7 +839,8 @@ AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToSubBuffer(
   return FillRawDataToSubBuffer(
       buffer_index,
       [offset, data, transfer_size](void* b, int64_t size) {
-        std::memcpy(reinterpret_cast<char*>(b) + offset, data, transfer_size);
+        std::memcpy(tsl::safe_reinterpret_cast<char*>(b) + offset, data,
+                    transfer_size);
       },
       is_last_transfer, std::move(on_done));
 }
@@ -869,7 +872,8 @@ AbstractAsyncHostToHostMemoryTransferManager::FillRawDataToSubBuffer(
       absl::MutexLock l(&mu_);
       const auto& b = device_buffers_[buffer_index]->buffer();
       CHECK(b.IsConcrete());
-      fill_fn(reinterpret_cast<char*>(b->untyped_data()), b->size_bytes());
+      fill_fn(tsl::safe_reinterpret_cast<char*>(b->untyped_data()),
+              b->size_bytes());
       if (is_last_transfer) {
         last_transfer_finished_[buffer_index] = true;
       }

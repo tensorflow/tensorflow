@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace pjrt {
 namespace gpu_plugin {
@@ -409,11 +410,14 @@ PJRT_Error* PJRT_Gpu_Register_Custom_Call(
       xla::ffi::Ffi::RegisterStaticHandler(
           xla::ffi::GetXlaFfiApi(), function_name,
           PJRT_GPU_PLUGIN_PLATFORM_NAME,
-          XLA_FFI_Handler_Bundle{
-              reinterpret_cast<XLA_FFI_Handler*>(args->handler_instantiate),
-              reinterpret_cast<XLA_FFI_Handler*>(args->handler_prepare),
-              reinterpret_cast<XLA_FFI_Handler*>(args->handler_initialize),
-              reinterpret_cast<XLA_FFI_Handler*>(args->handler_execute)});
+          XLA_FFI_Handler_Bundle{tsl::safe_reinterpret_cast<XLA_FFI_Handler*>(
+                                     args->handler_instantiate),
+                                 tsl::safe_reinterpret_cast<XLA_FFI_Handler*>(
+                                     args->handler_prepare),
+                                 tsl::safe_reinterpret_cast<XLA_FFI_Handler*>(
+                                     args->handler_initialize),
+                                 tsl::safe_reinterpret_cast<XLA_FFI_Handler*>(
+                                     args->handler_execute)});
       return nullptr;
     default:
       return new PJRT_Error{absl::UnimplementedError(

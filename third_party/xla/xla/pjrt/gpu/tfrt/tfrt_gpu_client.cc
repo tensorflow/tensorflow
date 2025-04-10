@@ -107,6 +107,7 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -697,7 +698,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
     }
 
     se::DeviceMemoryBase dst(
-        reinterpret_cast<std::byte*>(dst_.opaque()) + current_bytes_,
+        tsl::safe_reinterpret_cast<std::byte*>(dst_.opaque()) + current_bytes_,
         dst_.size() - current_bytes_);
 
     current_bytes_ += chunk.size();

@@ -99,6 +99,7 @@ limitations under the License.
 #include "xla/ef57.h"
 #include "xla/permutation_util.h"
 #include "xla/pjrt/transpose_kernels.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -153,26 +154,26 @@ void MacroKernel(const char* __restrict a, int64_t lda, int outer_bs_a,
 
   if constexpr (transformation == TransposePlan::Transformation::kF64ToEf57) {
     DCHECK_EQ(outer_bs_a * inner_bs % 2, 0);
-    float* p = reinterpret_cast<float*>(scratch);
+    float* p = tsl::safe_reinterpret_cast<float*>(scratch);
     if (ABSL_PREDICT_TRUE(lda == sizeof(double) &&
                           outer_bs_a * inner_bs == 2)) {
       absl::Span<const double> input = absl::MakeConstSpan(
-          reinterpret_cast<const double*>(a), outer_bs_b * inner_bs);
-      absl::Span<float> output =
-          absl::MakeSpan(reinterpret_cast<float*>(p), input.size() * 2);
+          tsl::safe_reinterpret_cast<const double*>(a), outer_bs_b * inner_bs);
+      absl::Span<float> output = absl::MakeSpan(
+          tsl::safe_reinterpret_cast<float*>(p), input.size() * 2);
       ConvertF64ToEf57(input, output);
     } else {
       for (int i = 0; i < outer_bs_b * inner_bs; ++i) {
-        absl::Span<const double> input =
-            absl::MakeConstSpan(reinterpret_cast<const double*>(a + lda * i),
-                                outer_bs_a * inner_bs / 2);
+        absl::Span<const double> input = absl::MakeConstSpan(
+            tsl::safe_reinterpret_cast<const double*>(a + lda * i),
+            outer_bs_a * inner_bs / 2);
         absl::Span<float> output = absl::MakeSpan(
-            reinterpret_cast<float*>(p + outer_bs_a * inner_bs * i),
+            tsl::safe_reinterpret_cast<float*>(p + outer_bs_a * inner_bs * i),
             input.size() * 2);
         ConvertF64ToEf57(input, output);
       }
     }
-    a = reinterpret_cast<const char*>(scratch);
+    a = tsl::safe_reinterpret_cast<const char*>(scratch);
     lda = outer_bs_a * inner_bs * sizeof(float);
   }
 
