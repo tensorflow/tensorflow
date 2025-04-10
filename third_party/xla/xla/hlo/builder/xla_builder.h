@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/bitmap.h"
@@ -1224,8 +1225,19 @@ class XlaBuilder {
       const Shape& lhs_shape, const Shape& rhs_shape,
       const ConvolutionDimensionNumbers& dimension_numbers) const;
 
-  int64_t GetNextId() {
-    return parent_builder_ ? parent_builder_->GetNextId() : ++next_id_;
+  int64_t GetNextInstructionId() {
+    // Instruction Ids exist within the context of its parent computation. No
+    // need to uniquify across computations.
+    return ++next_instruction_id_;
+  }
+
+  int64_t GetNextComputationId() {
+    // Computation Ids exist within the context of its parent module. No need to
+    // uniquify across modules.
+    if (parent_builder_ == nullptr) {
+      return ++next_computation_id_;
+    }
+    return parent_builder_->GetNextComputationId();
   }
 
   // Populates the module with the input/output alias information stored within
@@ -1238,9 +1250,27 @@ class XlaBuilder {
 
   std::string name_;  // Name to use for the built computation.
 
-  // The next sequential ID for every instruction/computation contained within
+  // The next sequential ID for every instruction contained within
   // this computation. Unused if this builder has a parent.
-  int64_t next_id_ = 0;
+  int64_t next_instruction_id_ = 0;
+
+  // The next sequential ID for every computation contained within
+  // this module.
+  int64_t next_computation_id_ = 0;
+
+  // For uniquifying instruction names within this computation / module.
+  NameUniquer instruction_name_uniquer_ = NameUniquer(".");
+
+  // Uniquifies the names of instructions within this computation / module,
+  // using always the highest available parent builder.
+  std::string UniquifyInstructionName(absl::string_view name) {
+    XlaBuilder* highest_parent_builder = this;
+    while (highest_parent_builder->parent_builder_ != nullptr) {
+      highest_parent_builder = highest_parent_builder->parent_builder_;
+    }
+    return highest_parent_builder->instruction_name_uniquer_.GetUniqueName(
+        name);
+  }
 
   // The first error encountered while building the computation.
   // This is OK until the first error is encountered.

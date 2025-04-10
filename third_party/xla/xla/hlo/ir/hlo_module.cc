@@ -180,28 +180,21 @@ HloComputation* HloModule::AddComputationInternal(
       instruction->UniquifyName(&instruction_name_uniquer());
     }
 
-    // Pick unique IDs for each instruction.
-    for (auto* instruction : computation->instructions()) {
-      instruction->SetUniqueId(NewUniqueInstructionId());
-    }
     // Set unique id to this computation.
-    CHECK_NE(computation->root_instruction()->unique_id(), -1)
-        << "Root has no valid id: " << computation->ToString();
-    computation->SetUniqueId(computation->root_instruction()->unique_id());
+    computation->ClearUniqueIdInternal();
+    computation->SetUniqueId(ReadAndIncrementNextUniqueComputationId());
+    // Computation sets unique ID internally in sequence
+    // Recompacts the instructions vector to remove nullptr entries.
+    // computation->RecompactInstructions();
+    computation->Cleanup();
   } else {
     // Don't uniquify the names of the computation or instruction, but we must
     // run the names through the uniquifiers to prevent future name collisions
-    // for computations and instructions created later. Also, set the
-    // next_unique_id_ to the one greater than the max unique id of any
-    // instruction (or the computation) to avoid ID collisions.
+    // for computations and instructions created later.
+    ResyncNextUniqueComputationId(computation->unique_id());
     computation_name_uniquer().GetUniqueName(computation->name());
     for (auto* instruction : computation->instructions()) {
       instruction_name_uniquer().GetUniqueName(instruction->name());
-      next_unique_id_ =
-          std::max(next_unique_id_, instruction->unique_id_64_bits() + 1);
-    }
-    if (next_unique_id_ < computation->unique_id() + 1) {
-      next_unique_id_ = computation->unique_id() + 1;
     }
   }
 
@@ -292,12 +285,9 @@ void HloModule::MarkFusionDuplications(
 
 void HloModule::MoveComputationsFrom(HloModule* module,
                                      bool make_names_unique) {
-  for (size_t i = 0; i < module->computations_.size(); ++i) {
+  for (size_t i = 0; i < module->computation_count(); ++i) {
     if (module->computations_[i] == nullptr) {
       continue;
-    }
-    for (auto* instruction : module->computations_[i]->instructions()) {
-      instruction->ClearUniqueIdInternal();
     }
     module->computations_[i]->ClearUniqueIdInternal();
     auto computation_raw_ptr = module->computations_[i].get();
@@ -316,15 +306,8 @@ void HloModule::MoveComputationsFrom(HloModule* module,
         instruction->UniquifyName(&instruction_name_uniquer());
       }
     }
-    // Pick unique IDs for each instruction.
-    for (auto* instruction : computation_raw_ptr->instructions()) {
-      instruction->SetUniqueId(NewUniqueInstructionId());
-    }
     // Set unique id to this computation_raw_ptr.
-    CHECK_NE(computation_raw_ptr->root_instruction()->unique_id(), -1)
-        << "Root has no valid id: " << computation_raw_ptr->ToString();
-    computation_raw_ptr->SetUniqueId(
-        computation_raw_ptr->root_instruction()->unique_id());
+    computation_raw_ptr->SetUniqueId(ReadAndIncrementNextUniqueComputationId());
   }
   // Since the computations no longer belong to the old module, clear the list.
   module->computations_.clear();
@@ -639,14 +622,71 @@ absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
           << "Instruction name is not unique: " << instruction->name();
       instruction_names.insert(instruction->name());
 
-      TF_RET_CHECK(
-          !ContainsKey(instruction_ids, instruction->unique_id_64_bits()))
-          << "Instruction id is not unique: "
-          << instruction->unique_id_64_bits();
-      instruction_ids.insert(instruction->unique_id_64_bits());
+      TF_RET_CHECK(!ContainsKey(instruction_ids, instruction->unique_id()))
+          << "Instruction id is not unique: " << instruction->unique_id()
+          << " name: " << instruction->name()
+          << " Parent: " << computation->name()
+          << " Parent id: " << computation->unique_id();
+      instruction_ids.insert(instruction->unique_id());
     }
   }
   return absl::OkStatus();
+}
+
+/* static */
+absl::Status HloModule::UpdateIdsInSchedules(
+    HloModuleProto& proto,
+    absl::flat_hash_map<int64_t, int64_t>& old_instr_id_to_new_id) {
+  for (HloComputationProto& computation_proto : *proto.mutable_computations()) {
+    if (proto.schedule().sequences().contains(computation_proto.id())) {
+      HloScheduleProto::InstructionSequence& sequence =
+          (*proto.mutable_schedule()
+                ->mutable_sequences())[computation_proto.id()];
+      for (int64_t& instr_id : *sequence.mutable_instruction_ids()) {
+        TF_RET_CHECK(old_instr_id_to_new_id.contains(instr_id))
+            << "Instruction id " << instr_id
+            << " not found in map when updating schedule ids.";
+        instr_id = old_instr_id_to_new_id[instr_id];
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+/* static */
+absl::StatusOr<HloModuleProto> HloModule::RemapInstructionIds(
+    const HloModuleProto& proto) {
+  absl::flat_hash_map<int64_t, int64_t> old_instr_id_to_new_id;
+  HloModuleProto proto_copy = proto;
+  for (HloComputationProto& computation_proto :
+       *proto_copy.mutable_computations()) {
+    int64_t next_instr_id = 0;
+    for (HloInstructionProto& instr_proto :
+         *computation_proto.mutable_instructions()) {
+      int64_t old_instr_id = instr_proto.id();
+      instr_proto.set_id(next_instr_id++);
+      old_instr_id_to_new_id[old_instr_id] = instr_proto.id();
+    }
+    // Fix operands and control_predecessors.
+    for (HloInstructionProto& instr_proto :
+         *computation_proto.mutable_instructions()) {
+      for (int64_t& operand_id : *instr_proto.mutable_operand_ids()) {
+        operand_id = old_instr_id_to_new_id[operand_id];
+      }
+      for (int64_t& control_predecessor_id :
+           *instr_proto.mutable_control_predecessor_ids()) {
+        control_predecessor_id = old_instr_id_to_new_id[control_predecessor_id];
+      }
+    }
+    // Fix root_id.
+    TF_RET_CHECK(old_instr_id_to_new_id.contains(computation_proto.root_id()))
+        << "Root id " << computation_proto.root_id()
+        << " not found in computation proto.";
+    computation_proto.set_root_id(
+        old_instr_id_to_new_id[computation_proto.root_id()]);
+  }
+  TF_RETURN_IF_ERROR(UpdateIdsInSchedules(proto_copy, old_instr_id_to_new_id));
+  return proto_copy;
 }
 
 /* static */
@@ -1256,15 +1296,7 @@ void CopyUniqueIds(const HloModule& source, HloModule* clone,
     if (new_computation == nullptr) {
       continue;
     }
-    new_computation->ClearUniqueIdInternal();
-    new_computation->SetUniqueId(computation->unique_id());
-    for (HloInstruction* instruction : computation->instructions()) {
-      HloInstruction* new_instruction = context.FindInstruction(instruction);
-      if (new_instruction != nullptr) {
-        new_instruction->ClearUniqueIdInternal();
-        new_instruction->SetUniqueId(instruction->unique_id());
-      }
-    }
+    new_computation->CopyLocalIdsFromComputation(*computation, context);
   }
 }
 
@@ -1280,7 +1312,7 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
 
   // Preserve original instruction and computation ids.
   CopyUniqueIds(*this, module, *context);
-  module->next_unique_id_ = next_unique_id_;
+  module->SetNextUniqueComputationId(ReadNextUniqueComputationId());
 
   module->input_output_alias_config() = input_output_alias_config();
   module->buffer_donor_config() = buffer_donor_config();

@@ -162,7 +162,6 @@ limitations under the License.
 #include "xla/service/gather_expander.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/gpu/autotuning/custom_kernel_fusion_autotuner.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -1718,16 +1717,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           *r, gpu_target_config.device_description);
     });
 
-    // Greedy pattern matching for custom kernel fusions. We run it before
-    // Triton rewriter or a regular Gemm rewriter to be able to match compatible
-    // GEMMs before they matched into Triton gemm or a cuBLAS custom call.
-    if (debug_options.xla_gpu_enable_custom_fusions()) {
-      pipeline.AddPass<SimplifyFPConversions>();
-      pipeline.AddPass<CustomKernelFusionRewriter>(
-          &gpu_target_config.device_description);
-      pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
-    }
-
     // Rewrite GEMMs into custom calls.
     se::GpuComputeCapability gpu_version =
         gpu_target_config.device_description.gpu_compute_capability();
@@ -1760,7 +1749,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       pipeline.AddPass<SimplifyFPConversions>();
       pipeline.AddPass<CustomKernelFusionRewriter>(
           &gpu_target_config.device_description);
-      pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
     }
 
     // Rewrite GEMMs into custom calls.

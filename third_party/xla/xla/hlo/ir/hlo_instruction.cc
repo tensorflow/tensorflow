@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 
 #include <algorithm>
-#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -318,13 +317,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   std::unique_ptr<HloInstruction> instruction;
   const auto operands = [&instruction_map, &proto](int index) {
-    return instruction_map.at(proto.operand_ids(index));
+    return instruction_map.at(CalculateLocalId(proto.operand_ids(index)));
   };
   const auto all_operands = [&instruction_map, &proto]() {
     std::vector<HloInstruction*> result(proto.operand_ids_size());
     std::transform(proto.operand_ids().begin(), proto.operand_ids().end(),
                    result.begin(), [&instruction_map](int64_t operand_id) {
-                     return instruction_map.at(operand_id);
+                     return instruction_map.at(CalculateLocalId(operand_id));
                    });
     return result;
   };
@@ -354,14 +353,17 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     return result;
   };
 
-  TF_RET_CHECK(
-      absl::c_all_of(proto.operand_ids(),
-                     [&](int64_t id) { return instruction_map.contains(id); }))
+  TF_RET_CHECK(absl::c_all_of(proto.operand_ids(),
+                              [&](int64_t id) {
+                                return instruction_map.contains(
+                                    CalculateLocalId(id));
+                              }))
       << proto.name() << " instruction contains invalid operand id(s)";
-
-  TF_RET_CHECK(
-      absl::c_all_of(proto.called_computation_ids(),
-                     [&](int64_t id) { return computation_map.contains(id); }))
+  TF_RET_CHECK(absl::c_all_of(proto.called_computation_ids(),
+                              [&](int64_t id) {
+                                return computation_map.contains(
+                                    CalculateLocalId(id));
+                              }))
       << proto.name() << " instruction references invalid computation id(s)";
 
   TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
@@ -1337,7 +1339,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       }
 
       for (const int64_t operand_id : proto.operand_ids()) {
-        instruction->AppendOperand(instruction_map.at(operand_id));
+        instruction->AppendOperand(
+            instruction_map.at(CalculateLocalId(operand_id)));
       }
       for (const int64_t computation_id : proto.called_computation_ids()) {
         instruction->AppendComputation(computation_map.at(computation_id));
@@ -1351,9 +1354,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   }
 
   for (const int64_t predecessor_id : proto.control_predecessor_ids()) {
-    TF_RET_CHECK(ContainsKey(instruction_map, predecessor_id))
-        << "No instruction with id " << predecessor_id;
-    TF_RETURN_IF_ERROR(instruction_map.at(predecessor_id)
+    int32_t local_predecessor_id = CalculateLocalId(predecessor_id);
+    TF_RET_CHECK(ContainsKey(instruction_map, local_predecessor_id))
+        << "No instruction with id " << predecessor_id
+        << " (local id: " << local_predecessor_id << ") in computation "
+        << proto.name();
+    TF_RETURN_IF_ERROR(instruction_map.at(local_predecessor_id)
                            ->AddControlDependencyTo(instruction.get()));
   }
 
@@ -1367,15 +1373,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
-  // TODO(b/399394039): Reinforce the condition on INT64_MAX when upgrading
-  // unique_id_ to int64_t.
-  if (proto.id() > INT_MAX) {
-    LOG_EVERY_N(WARNING, 10000)
-        << "Instruction with id > INT_MAX: " << proto.id()
-        << " this is not intended behavior and might indicate a bug in the HLO "
-           "proto serialization.";
-  }
-  instruction->unique_id_ = proto.id();
+  // Drops the most significant 32 bits to ignore parent prefix.
+  instruction->local_id_ = CalculateLocalId(proto.id());
 
   if (proto.has_sharding()) {
     TF_ASSIGN_OR_RETURN(HloSharding sharding,
@@ -3923,7 +3922,7 @@ void HloInstruction::PrintWithCanonicalNameMap(
       // If we are canonicalizing instruction names and this is a top-level
       // HloInstruction::ToString() call, don't print an instruction name.
       DCHECK(!options.print_percent());  // no need to call PrintNameInternal
-      printer->Append(canonical_name_map->LookupOrInsert(unique_id_64_bits()));
+      printer->Append(canonical_name_map->LookupOrInsert(unique_id()));
       printer->Append(" = ");
     }
   } else {
@@ -4049,7 +4048,7 @@ void HloInstruction::PrintOperandsWithCanonicalNameMap(
           printer->Append(" ");
         }
         printer->Append(
-            canonical_name_map->LookupOrInsert(operand->unique_id_64_bits()));
+            canonical_name_map->LookupOrInsert(operand->unique_id()));
       }
     } else if (options.print_operand_names()) {
       if (add_space) {
@@ -4377,18 +4376,18 @@ std::string HloInstruction::ToShortString() const {
 
 HloInstructionProto HloInstruction::ToProto() const {
   HloInstructionProto proto;
-  CHECK(unique_id_ != -1)
+  CHECK(local_id_ != -1)
       << "This instruction does not have a valid id. Please make sure the "
          "instruction is inside a module before dumping it.";
-  proto.set_id(unique_id_);
+  proto.set_id(unique_id());
   proto.set_name(name_);
   *proto.mutable_opcode() = std::string(HloOpcodeString(opcode_));
   *proto.mutable_shape() = shape().ToProto();
   for (const HloInstruction* operand : operands_) {
-    proto.add_operand_ids(operand->unique_id_64_bits());
+    proto.add_operand_ids(operand->unique_id());
   }
   for (const HloInstruction* control : control_predecessors()) {
-    proto.add_control_predecessor_ids(control->unique_id_64_bits());
+    proto.add_control_predecessor_ids(control->unique_id());
   }
 
   *proto.mutable_metadata() = metadata();
@@ -4488,8 +4487,7 @@ bool HloInstruction::IsFusible() const {
 }
 
 HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
-    : unique_id_(-1),
-      index_in_parent_(~0u),
+    : local_id_(-1),
       opcode_(opcode),
       is_default_config_(false),
       cleaned_up_(false),
@@ -4773,7 +4771,7 @@ template <typename Visitor>
 inline bool PushDFSChild(Visitor* visitor, DFSStack* dfs_stack,
                          HloInstruction* child) {
   CHECK(child != nullptr);
-  const int64_t id = child->unique_id_64_bits();
+  const int64_t id = child->unique_id();
   CHECK_GE(id, 0) << "instruction may not have a parent computation";
   switch (visitor->GetVisitState(id)) {
     case Visitor::kVisiting:
@@ -4790,8 +4788,8 @@ inline bool PushDFSChild(Visitor* visitor, DFSStack* dfs_stack,
 }
 
 using InternalCompareFunction =
-    absl::FunctionRef<bool(std::pair<int, const HloInstruction*>,
-                           std::pair<int, const HloInstruction*>)>;
+    absl::FunctionRef<bool(std::pair<int64_t, const HloInstruction*>,
+                           std::pair<int64_t, const HloInstruction*>)>;
 template <typename Visitor>
 static absl::Status PostOrderDFS(
     HloInstruction* root, Visitor* visitor,
@@ -4799,19 +4797,19 @@ static absl::Status PostOrderDFS(
     bool ignore_control_predecessors, bool cross_computation) {
   visitor->ReserveVisitStates(root->parent()->instruction_count());
 
-  // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
+  // dfs_stack holds pairs of <HloInstruction*->unique_id, HloInstruction*>.
   //
   // We need to keep track of both the id and the instruction because
   // instructions can get deleted while they are on the stack, so we
   // can't always use the (potentially dead) instruction object to grab
   // its id.
   DFSStack dfs_stack;
-  dfs_stack.emplace_back(root->unique_id_64_bits(), root);
+  dfs_stack.emplace_back(root->unique_id(), root);
 
   do {
     DCHECK(!dfs_stack.empty());
 
-    int current_id = dfs_stack.back().first;
+    int64_t current_id = dfs_stack.back().first;
     HloInstruction* current_node = dfs_stack.back().second;
     CHECK_GE(current_id, 0) << current_id << ": " << current_node->name()
                             << ": instruction may not have parent computation";
@@ -4917,8 +4915,8 @@ absl::Status HloInstruction::AcceptWithOperandOrder(
     DfsHloVisitor* visitor, CompareFunction operand_order,
     bool call_finish_visit) {
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder(%" << name() << ")";
-  auto func = [operand_order](std::pair<int, const HloInstruction*> a,
-                              std::pair<int, const HloInstruction*> b) {
+  auto func = [operand_order](std::pair<int64_t, const HloInstruction*> a,
+                              std::pair<int64_t, const HloInstruction*> b) {
     // Call the client's comparison function on the actual HloInstruction*
     // objects (ignoring the internal ids we also have in our stack entries)
     return operand_order(a.second, b.second);
@@ -5408,7 +5406,21 @@ bool HloPtrComparator::operator()(const HloInstruction* const& lhs,
       lhs_module->unique_id() != rhs_module->unique_id()) {
     return lhs_module->unique_id() < rhs_module->unique_id();
   }
-  return lhs->unique_id_64_bits() < rhs->unique_id_64_bits();
+  return lhs->unique_id() < rhs->unique_id();
+}
+
+bool HloPtrComparatorInternal::operator()(
+    const HloInstruction* const& lhs, const HloInstruction* const& rhs) const {
+  // Nothing compares less than nullptr.
+  if (rhs == nullptr) {
+    return false;
+  }
+  if (lhs == nullptr) {
+    return true;
+  }
+  CHECK(lhs->GetModule() == rhs->GetModule())
+      << "Instructions are not in the same module or both outside a module.";
+  return lhs->local_id() < rhs->local_id();
 }
 
 const PrecisionConfig& HloInstruction::precision_config() const {
@@ -5462,8 +5474,21 @@ void HloInstruction::UniquifyName(HloModule* module) {
   UniquifyName(&module->instruction_name_uniquer());
 }
 
-void HloInstruction::UniquifyId(HloModule* module) {
-  SetUniqueId(module->NewUniqueInstructionId());
+int64_t HloInstruction::unique_id() const {
+  CHECK(parent_ != nullptr)
+      << "Instruction " << name()
+      << " must have a parent in order to have a unique ID.";
+  // The parent's unique ID is stored in the most significant 32 bits of the
+  // unique ID.
+  return CalculateUniqueId(parent_->unique_id(), local_id_);
+}
+
+int32_t HloInstruction::local_id() const { return local_id_; }
+
+int64_t HloInstruction::CalculateUniqueId(int32_t computation_unique_id,
+                                          int32_t instruction_local_id) {
+  return ((static_cast<int64_t>(computation_unique_id) << 32) |
+          static_cast<int64_t>(instruction_local_id));
 }
 
 void HloInstruction::SortInstructionUsersAndControlLists(

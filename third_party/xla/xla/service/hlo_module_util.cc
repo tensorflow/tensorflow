@@ -91,10 +91,16 @@ absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromBinaryProtoFile(
-    absl::string_view filename, const DebugOptions& debug_options) {
+    absl::string_view filename, const DebugOptions& debug_options,
+    bool remap_instruction_ids) {
   HloProto proto;
   TF_RETURN_IF_ERROR(
       tsl::ReadBinaryProto(tsl::Env::Default(), std::string(filename), &proto));
+  if (remap_instruction_ids) {
+    TF_ASSIGN_OR_RETURN(HloModuleProto sanitized_proto,
+                        HloModule::RemapInstructionIds(proto.hlo_module()));
+    return CreateModuleFromProto(sanitized_proto, debug_options);
+  }
   return CreateModuleFromProto(proto.hlo_module(), debug_options);
 }
 

@@ -63,10 +63,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/sharding_op_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/stacktrace.h"
 #include "tsl/platform/statusor.h"
 
@@ -922,16 +922,18 @@ absl::Status XlaBuilder::BuildComputationProto(int64_t root_id,
           instruction_shapes_[index]->ToProto();
     }
   }
-
-  SetProtoIdAndName(&proto, name_, kNameSeparator, GetNextId());
+  int64_t computation_id = GetNextComputationId();
+  SetProtoIdAndName(&proto, name_, kNameSeparator, computation_id);
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape, GetProgramShape(root_id));
   *proto.mutable_program_shape() = program_shape.ToProto();
   proto.set_root_id(root_id);
 
   for (auto& instruction : instructions_) {
     // Ensures that the instruction names are unique among the whole graph.
-    instruction.set_name(
-        GetFullName(instruction.name(), kNameSeparator, instruction.id()));
+    instruction.set_name(UniquifyInstructionName(instruction.name()));
+    // Creates a unique ID for the instruction.
+    instruction.set_id(
+        HloInstruction::CalculateUniqueId(computation_id, instruction.id()));
     proto.add_instructions()->Swap(&instruction);
   }
 
@@ -1637,7 +1639,7 @@ XlaOp XlaBuilder::Parameter(
                              parameter_number);
     }
     instr.set_parameter_number(parameter_number);
-    instr.set_name(name);
+    instr.set_name(UniquifyInstructionName(name));
     *instr.mutable_shape() = shape.ToProto();
     if (!replicated_at_leaf_buffers.empty()) {
       auto replication = instr.mutable_parameter_replication();
@@ -4702,7 +4704,7 @@ absl::StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
   HloComputationProto entry;
   SetProtoIdAndName(&entry, StrCat(name_, "_compute_constant"), kNameSeparator,
-                    GetNextId());
+                    GetNextComputationId());
   ProgramShapeProto* program_shape = entry.mutable_program_shape();
   *program_shape->mutable_result() = root->shape();
 
@@ -4775,7 +4777,7 @@ absl::StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
       }
       *const_instr.mutable_opcode() =
           std::string(HloOpcodeString(HloOpcode::kConstant));
-      const_instr.set_id(handle);
+      const_instr.set_id(HloInstruction::CalculateUniqueId(entry.id(), handle));
       *const_instr.mutable_name() =
           GetFullName(const_instr.opcode(), kNameSeparator, const_instr.id());
       *entry.add_instructions() =
@@ -4812,7 +4814,7 @@ absl::StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
     root_id = it->second;
     it = substitutions.find(root_id);
   }
-  entry.set_root_id(root_id);
+  entry.set_root_id(HloInstruction::CalculateUniqueId(entry.id(), root_id));
 
   // Add related ops to the computation.
   for (int64_t id : related_ops) {
@@ -4947,8 +4949,7 @@ absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(
     HloInstructionProto&& instr, HloOpcode opcode,
     absl::Span<const XlaOp> operands) {
   TF_RETURN_IF_ERROR(first_error_);
-
-  const int64_t handle = GetNextId();
+  const int64_t handle = GetNextInstructionId();
   instr.set_id(handle);
   *instr.mutable_opcode() = std::string(HloOpcodeString(opcode));
   for (const auto& operand : operands) {
@@ -4979,10 +4980,10 @@ absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(
       absl::string_view name = (last_slash_pos == absl::string_view::npos)
                                    ? op_name
                                    : op_name.substr(last_slash_pos + 1);
-      instr.set_name(
-          xla::SanitizeOpName(std::string(name), kNameSeparator, "_"));
+      instr.set_name(UniquifyInstructionName(
+          xla::SanitizeOpName(std::string(name), kNameSeparator, "_")));
     } else {
-      instr.set_name(instr.opcode());
+      instr.set_name(UniquifyInstructionName(instr.opcode()));
     }
   }
 
@@ -5034,32 +5035,38 @@ XlaComputationId XlaBuilder::AddSubComputation(
   // old->new mappings in remapped_ids.
   for (const HloComputationProto& e : computation.proto().computations()) {
     HloComputationProto new_computation(e);
-    int64_t computation_id = GetNextId();
+    int64_t computation_id = GetNextComputationId();
     remapped_ids[new_computation.id()] = computation_id;
     SetProtoIdAndName(&new_computation,
                       GetBaseName(new_computation.name(), kNameSeparator),
                       kNameSeparator, computation_id);
+    // No ID remapping needed for instructions just adding the computation
+    // prefix.
     for (auto& instruction : *new_computation.mutable_instructions()) {
-      int64_t instruction_id = GetNextId();
-      remapped_ids[instruction.id()] = instruction_id;
-      SetProtoIdAndName(&instruction,
-                        GetBaseName(instruction.name(), kNameSeparator),
-                        kNameSeparator, instruction_id);
+      instruction.set_name(UniquifyInstructionName(instruction.name()));
+      instruction.set_id(
+          HloInstruction::CalculateUniqueId(computation_id, instruction.id()));
     }
-    new_computation.set_root_id(remapped_ids.at(new_computation.root_id()));
+    new_computation.set_root_id(HloInstruction::CalculateUniqueId(
+        computation_id, new_computation.root_id()));
 
     imported_computations.push_back(std::move(new_computation));
   }
   // Once we have imported all the computations, and captured all the ID
   // mappings, we go back and fixup the IDs in the imported computations.
   for (auto& imported_computation : imported_computations) {
+    // No ID remapping needed for instructions only for called_computation_ids.
+    // Operands and control_predecessors need to have the new computation ID
+    // prepended.
     for (auto& instruction : *imported_computation.mutable_instructions()) {
       for (auto& operand_id : *instruction.mutable_operand_ids()) {
-        operand_id = remapped_ids.at(operand_id);
+        operand_id = HloInstruction::CalculateUniqueId(
+            imported_computation.id(), operand_id);
       }
       for (auto& control_predecessor_id :
            *instruction.mutable_control_predecessor_ids()) {
-        control_predecessor_id = remapped_ids.at(control_predecessor_id);
+        control_predecessor_id = HloInstruction::CalculateUniqueId(
+            imported_computation.id(), control_predecessor_id);
       }
       for (auto& called_computation_id :
            *instruction.mutable_called_computation_ids()) {

@@ -729,8 +729,6 @@ absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
           builder.AddInstruction(HloInstruction::CreateParameter(
               parameter_id, operand->shape(), "p")));
 
-      parameter->UniquifyName(module);
-      parameter->UniquifyId(module);
       inst_mapping[operand] = parameters[operand] = parameter;
     }
   }
@@ -746,7 +744,6 @@ absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
     }
     inst_mapping[inst] = builder.AddInstruction(
         inst->CloneWithNewOperands(inst->shape(), mapped_operands(inst), &ctx));
-    inst_mapping[inst]->UniquifyId(module);
 
     // Clear the called computations of the old instruction, because it is
     // typically not legal for one computation to have more than one caller.
@@ -779,15 +776,10 @@ absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
 
   // If we return multiple results wrap them into tuple.
   if (returned.size() > 1) {
-    HloInstruction* inst =
-        builder.AddInstruction(HloInstruction::CreateTuple(returned));
-    inst->UniquifyName(module);
-    inst->UniquifyId(module);
+    builder.AddInstruction(HloInstruction::CreateTuple(returned));
   }
 
   std::unique_ptr<HloComputation> comp = builder.Build();
-  comp->UniquifyName(module);
-  comp->SetUniqueId(comp->root_instruction()->unique_id());
 
   return CommandBuffer{std::move(arguments), std::move(results),
                        std::move(comp), std::move(inst_mapping)};
@@ -822,8 +814,9 @@ absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
   }
 
   HloComputation* computation =
-      parent->parent()->AddComputation(std::move(command_buffer.computation),
-                                       /*is_entry=*/false);
+      parent->parent()->AddComputationAndUnifyNamesAndIds(
+          std::move(command_buffer.computation),
+          /*is_entry=*/false);
 
   HloInstruction* call = parent->AddInstruction(HloInstruction::CreateCall(
       cmd_buffer_result_shape, command_buffer.arguments, computation));
