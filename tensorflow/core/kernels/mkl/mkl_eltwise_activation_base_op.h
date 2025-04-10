@@ -49,9 +49,6 @@ namespace tensorflow {
 #define GET_MEMORY_DESC(md) md
 #endif  // !ENABLE_ONEDNN_V3
 
-// TODO(tf-onednn): Consolidate this class with `MklEltWiseFwdParams`
-// in `mkl_relu_op.cc`.
-//
 // The implementation of this class is very similar to it and it
 // should be consolidated to one class
 template <typename T>
