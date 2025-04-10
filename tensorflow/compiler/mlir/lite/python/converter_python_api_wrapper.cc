@@ -12,12 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <Python.h>
 
 #include <string>
 #include <vector>
 
+#include "mlir-c/Bindings/Python/Interop.h"  // from @llvm-project
+#include "mlir-c/IR.h"  // from @llvm-project
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/mlir/lite/python/converter_python_api.h"
+#include "tensorflow/compiler/mlir/lite/python/model_utils_core.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -125,4 +129,31 @@ PYBIND11_MODULE(_pywrap_converter_api, m) {
       R"pbdoc(
       Returns MLIR dump of the given TFLite model.
     )pbdoc");
+
+  m.def("MU_RegisterMlirPasses",
+        []() { tflite::model_utils::RegisterMlirPasses(); });
+  m.def("MU_RegisterDialects", [](MlirContext context) {
+    tflite::model_utils::RegisterDialects(context);
+  });
+  m.def("MU_CreateIRContext", []() {
+    return py::reinterpret_steal<py::object>(
+        mlirPythonContextToCapsule(tflite::model_utils::CreateIRContext()));
+  });
+  m.def("MU_FlatBufferToMlir", [](py::bytes buffer, MlirContext context) {
+    return tflite::model_utils::FlatBufferToMlir(buffer, context);
+  });
+  m.def("MU_MlirToFlatbuffer", [](MlirOperation op) {
+    return tflite::model_utils::MlirToFlatbuffer(op);
+  });
+  m.def("MU_GetOperationAttributeNames", [](MlirOperation op) {
+    return tflite::model_utils::GetOperationAttributeNames(op);
+  });
+  // m.def("MU_GetElementsAttrBuffer", [](MlirAttribute c_attr) -> py::object {
+  //   auto tensor_or = tflite::model_utils::GetElementsAttrTensor(c_attr);
+  //   if (!tensor_or.ok()) return py::cast<py::object>(py::none());
+  //   PyObject* np_array = Py_None;
+  //   auto status = tensorflow::TensorToNdarray(*tensor_or, &np_array);
+  //   if (!status.ok()) return py::cast<py::object>(py::none());
+  //   return py::reinterpret_steal<py::object>(np_array);
+  // });
 }
