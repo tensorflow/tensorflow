@@ -110,8 +110,7 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
     const absl::flat_hash_map<const HloInstruction*,
                               std::optional<HloReplication>*>&
         replica_group_dedup_map,
-    absl::flat_hash_map<std::pair<HloReplication, HloReplication>,
-                        HloReplication>& replication_merge_map) {
+    ReplicationMergeMap& replication_merge_map) {
   const auto merge_operand_replication =
       [&hlo_replication, &replication_merge_map](const HloInstruction* inst) {
         HloReplication replication = HloReplication::ReplicatedOnAllDevices();
