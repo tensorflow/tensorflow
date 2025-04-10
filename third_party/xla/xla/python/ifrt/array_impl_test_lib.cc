@@ -485,6 +485,112 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
   }
 }
 
+TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentDevices) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "This test is relevant only for clients with devices that "
+                    "have at least 2 devices";
+  }
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  Shape shard_shape = shape;
+  auto data = std::make_unique<std::vector<float>>(6);
+  std::iota(data->begin(), data->end(), 0);
+
+  std::shared_ptr<const Sharding> sharding0 = SingleDeviceSharding::Create(
+      client->addressable_devices()[0], MemoryKind());
+  std::shared_ptr<const Sharding> sharding1 = SingleDeviceSharding::Create(
+      client->addressable_devices()[1], MemoryKind());
+
+  std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
+  // Create two arrays with different shardings.
+  specs.push_back({
+      /*buffers=*/{
+          {{0},
+           {data->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/nullptr}}},
+      /*array_spec=*/{dtype, shape, sharding0, /*layout=*/nullptr},
+  });
+  specs.push_back({
+      /*buffers=*/{
+          {{0},
+           {data->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/nullptr}}},
+      /*array_spec=*/{dtype, shape, sharding1, /*layout=*/nullptr},
+  });
+
+  absl::Status status;
+  auto result = client->MakeArraysFromHostBufferShards(
+      absl::MakeSpan(specs),
+      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+      client->CreateUserContext());
+  if (result.ok()) {
+    // Implementations may poison outputs instead of immediately returning an
+    // error.
+    status = result->at(0)->GetReadyFuture().Await();
+  } else {
+    status = result.status();
+  }
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentMemoryKinds) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  if (client->addressable_devices().front()->Memories().size() < 2) {
+    GTEST_SKIP() << "This test is relevant only for clients with a device that "
+                    "have at least 2 memories";
+  }
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  Shape shard_shape = shape;
+  auto data = std::make_unique<std::vector<float>>(6);
+  std::iota(data->begin(), data->end(), 0);
+
+  std::vector<MemoryKind> memory_kinds;
+  for (const Memory* memory :
+       client->addressable_devices().front()->Memories()) {
+    memory_kinds.push_back(memory->Kind());
+  }
+
+  std::shared_ptr<const Sharding> sharding0 = SingleDeviceSharding::Create(
+      client->addressable_devices().front(), memory_kinds[0]);
+  std::shared_ptr<const Sharding> sharding1 = SingleDeviceSharding::Create(
+      client->addressable_devices().front(), memory_kinds[1]);
+
+  std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
+  // Create two arrays with different shardings.
+  specs.push_back({
+      /*buffers=*/{
+          {{0},
+           {data->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/nullptr}}},
+      /*array_spec=*/{dtype, shape, sharding0, /*layout=*/nullptr},
+  });
+  specs.push_back({
+      /*buffers=*/{
+          {{0},
+           {data->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/nullptr}}},
+      /*array_spec=*/{dtype, shape, sharding1, /*layout=*/nullptr},
+  });
+
+  absl::Status status;
+  auto result = client->MakeArraysFromHostBufferShards(
+      absl::MakeSpan(specs),
+      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+      client->CreateUserContext());
+  if (result.ok()) {
+    // Implementations may poison outputs instead of immediately returning an
+    // error.
+    status = result->at(0)->GetReadyFuture().Await();
+  } else {
+    status = result.status();
+  }
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 TEST(ArrayImplTest, MakeErrorArrays) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   xla::ifrt::DeviceListRef device_list =
