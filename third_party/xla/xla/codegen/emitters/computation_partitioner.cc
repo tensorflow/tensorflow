@@ -438,7 +438,7 @@ const PartitionedComputation::Subgraph& PartitionedComputations::FindSubgraph(
 CallTargetProvider PartitionedComputations::CreateCallTargetProvider(
     const absl::flat_hash_map<const PartitionedComputation::Subgraph*,
                               mlir::func::FuncOp>& subgraph_to_func) const {
-  return [&, this](const HloInstruction* instr) {
+  return [subgraph_to_func, this](const HloInstruction* instr) {
     const auto& subgraph = FindSubgraph(instr);
     CHECK(subgraph_to_func.contains(&subgraph))
         << "No function found for subgraph with instruction "

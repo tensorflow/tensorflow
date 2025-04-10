@@ -58,6 +58,17 @@ absl::StatusOr<mlir::func::FuncOp> EmitFusionKernelApi(
     const std::string& entry_function_name,
     const BufferAssignment& buffer_assignment);
 
+// Emit the call targets for the given fusion.
+absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
+    mlir::ModuleOp module, const HloFusionInstruction& fusion,
+    const emitters::PartitionedComputations& computations,
+    const std::vector<emitters::EpilogueSpecification>& epilogues);
+
+// Set the data layout attribute of the module based on the called instructions
+// of the fusion.
+void SetDataLayoutAttribute(mlir::ModuleOp module,
+                            const HloFusionInstruction& fusion);
+
 class CpuFusionEmitterBase {
  public:
   CpuFusionEmitterBase(mlir::MLIRContext* mlir_context,
@@ -117,14 +128,6 @@ class CpuFusionEmitterBase {
   llvm::LLVMContext* llvm_context_;
   const BufferAssignment& buffer_assignment_;
   const HloFusionInstruction* fusion_;
-
- private:
-  // Emits MLIR for the given fusion. The entry function has one tensor argument
-  // per fusion parameter and output and one tensor result per fusion output.
-  // The fuson outputs may only be used with `tensor.insert` ops.a
-  absl::Status EmitMlir(mlir::ModuleOp module,
-                        mlir::func::FuncOp entry_function,
-                        const HloFusionInstruction& fusion) const;
 };
 
 int64_t CeilDiv(int64_t a, int64_t b);

@@ -191,76 +191,24 @@ CpuFusionEmitterBase::CreateMLIRModule(
   mlir::OpBuilder builder(&context);
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
+  SetDataLayoutAttribute(module.get(), fusion);
 
   TF_ASSIGN_OR_RETURN(
       mlir::func::FuncOp entry_func,
       EmitFusionKernelApi(module.get(), fusion, entry_function_name,
                           buffer_assignment));
 
-  TF_RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion));
-  return module;
-}
-
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
-absl::Status CpuFusionEmitterBase::EmitMlir(
-    mlir::ModuleOp module, FuncOp entry_function,
-    const HloFusionInstruction& fusion) const {
   std::vector<emitters::EpilogueSpecification> epilogues =
-      GetEpilogues(fusion, module->getContext());
+      GetEpilogues(fusion, &context);
   emitters::PartitionedComputations computations(
-      fusion.fused_instructions_computation(), module->getContext(),
-      /*epilogues=*/epilogues);
-  auto subgraph_to_mlir_fn = computations.DeclareFunctions(module);
+      fusion.fused_instructions_computation(), &context, epilogues);
+  TF_ASSIGN_OR_RETURN(
+      emitters::CallTargetProvider call_targets,
+      EmitCallTargets(module.get(), fusion, computations, epilogues));
 
-  // Erase subgraphs for all heroes that aren't used anywhere else. This is
-  // necessary because the instructions may not have elemental implementations
-  // (scatter).
-  for (const auto& epilogue : epilogues) {
-    for (auto* custom : epilogue.heroes) {
-      if (custom->user_count() == 0) {
-        subgraph_to_mlir_fn.extract(&computations.FindSubgraph(custom))
-            .mapped()
-            .erase();
-      }
-    }
-  }
-
-  // The epilogue functions replace the root tuple.
-  auto* root = fusion.fused_instructions_computation()->root_instruction();
-  if (root->opcode() == HloOpcode::kTuple && !epilogues.empty()) {
-    subgraph_to_mlir_fn.extract(&computations.FindSubgraph(root))
-        .mapped()
-        .erase();
-  }
-
-  auto call_targets =
-      computations.CreateCallTargetProvider(subgraph_to_mlir_fn);
-  for (const auto& comp : computations.partitioned_computations()) {
-    for (const auto& subgraph : comp.subgraphs()) {
-      if (subgraph_to_mlir_fn.contains(&subgraph)) {
-        TF_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
-            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets));
-      }
-    }
-  }
-  for (const auto& epilogue : computations.epilogues()) {
-    if (epilogue.roots.empty()) continue;
-    TF_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
-        computations.FindPartitionedComputation(
-            fusion.fused_instructions_computation()),
-        epilogue, subgraph_to_mlir_fn[&epilogue], call_targets));
-  }
-
-  int index_bitwidth =
-      Needs64BitIndices(fusion.fused_instructions_computation()) ? 64 : 32;
-  mlir::OpBuilder b(module->getContext());
-  auto index_layout = mlir::DataLayoutEntryAttr::get(
-      b.getIndexType(), b.getI32IntegerAttr(index_bitwidth));
-  module->setAttr(
-      mlir::DLTIDialect::kDataLayoutAttrName,
-      mlir::DataLayoutSpecAttr::get(module->getContext(), {index_layout}));
-
-  return EmitEntryFunction(computations, call_targets, entry_function, fusion);
+  TF_RETURN_IF_ERROR(
+      EmitEntryFunction(computations, call_targets, entry_func, fusion));
+  return module;
 }
 
 using mlir::AffineExpr;
@@ -394,6 +342,67 @@ absl::StatusOr<mlir::func::FuncOp> EmitFusionKernelApi(
   builder.create<mlir::func::ReturnOp>(loc, error.getResult());
 
   return entry_func;
+}
+
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
+absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
+    mlir::ModuleOp module, const HloFusionInstruction& fusion,
+    const emitters::PartitionedComputations& computations,
+    const std::vector<emitters::EpilogueSpecification>& epilogues) {
+  auto subgraph_to_mlir_fn = computations.DeclareFunctions(module);
+
+  // Erase subgraphs for all heroes that aren't used anywhere else. This is
+  // necessary because the instructions may not have elemental implementations
+  // (scatter).
+  for (const auto& epilogue : epilogues) {
+    for (auto* custom : epilogue.heroes) {
+      if (custom->user_count() == 0) {
+        subgraph_to_mlir_fn.extract(&computations.FindSubgraph(custom))
+            .mapped()
+            .erase();
+      }
+    }
+  }
+
+  // The epilogue functions replace the root tuple.
+  auto* root = fusion.fused_instructions_computation()->root_instruction();
+  if (root->opcode() == HloOpcode::kTuple && !epilogues.empty()) {
+    subgraph_to_mlir_fn.extract(&computations.FindSubgraph(root))
+        .mapped()
+        .erase();
+  }
+
+  auto call_targets =
+      computations.CreateCallTargetProvider(subgraph_to_mlir_fn);
+  for (const auto& comp : computations.partitioned_computations()) {
+    for (const auto& subgraph : comp.subgraphs()) {
+      if (subgraph_to_mlir_fn.contains(&subgraph)) {
+        TF_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
+            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets));
+      }
+    }
+  }
+  for (const auto& epilogue : computations.epilogues()) {
+    if (epilogue.roots.empty()) continue;
+    TF_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
+        computations.FindPartitionedComputation(
+            fusion.fused_instructions_computation()),
+        epilogue, subgraph_to_mlir_fn[&epilogue], call_targets));
+  }
+
+  return call_targets;
+}
+
+void SetDataLayoutAttribute(mlir::ModuleOp module,
+                            const HloFusionInstruction& fusion) {
+  int index_bitwidth =
+      Needs64BitIndices(fusion.fused_instructions_computation()) ? 64 : 32;
+  mlir::OpBuilder b(module->getContext());
+  auto index_layout = mlir::DataLayoutEntryAttr::get(
+      b.getIndexType(), b.getI32IntegerAttr(index_bitwidth));
+  module->setAttr(
+      mlir::DLTIDialect::kDataLayoutAttrName,
+      mlir::DataLayoutSpecAttr::get(module->getContext(), {index_layout}));
 }
 
 int64_t CeilDiv(int64_t a, int64_t b) { return (a + b - 1) / b; }
