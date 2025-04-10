@@ -133,8 +133,7 @@ void setFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index,
 
 }  // namespace
 
-void setFrontendAttribute(Operation* op, StringRef name, Attribute value,
-                          bool) {
+void setFrontendAttribute(Operation* op, StringRef name, Attribute value) {
   SmallVector<NamedAttribute> existingAttributes =
       getExistingFrontendAttributes(getFrontendAttrs(op), "");
   setFrontendAttribute(existingAttributes, name, value);
