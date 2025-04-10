@@ -290,8 +290,6 @@ TEST_P(ConvolutionTest, Conv2DWithBinaryAddTest) {
   RunCompareAndMatchOptimizedHlo(outline, {"BINARY_ADD"});
 }
 
-// This test should match BIAS + RESIDUAL ADD when the residual add fusion is
-// re-enabled.
 TEST_P(ConvolutionTest, Conv2DWithBiasAndBinaryAddTest) {
   const absl::string_view outline = R"(
   HloModule convolution.add.test
@@ -308,7 +306,7 @@ TEST_P(ConvolutionTest, Conv2DWithBiasAndBinaryAddTest) {
     ROOT add.1 = $dtype[1,11,11,10] add(add.0, const.1)
   })";
 
-  RunCompareAndMatchOptimizedHlo(outline, {"BIAS"});
+  RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "BINARY_ADD"});
 }
 
 TEST_P(ConvolutionTest, ToeplitzConstrcutionTest) {
