@@ -26,12 +26,14 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -247,6 +249,10 @@ void convertManualComputationOp(
            llvm::zip_equal(op.getOperands(), op.getBody().getArgumentTypes(),
                            op.getInShardings().getShardings()))) {
     auto [globalOperand, localArgumentType, inSharding] = args;
+    if (!isa<mlir::ShapedType>(localArgumentType)) {
+      fullToShardResults.push_back(globalOperand);
+      continue;
+    }
     auto copy = rewriter.create<CopyOp>(loc, globalOperand);
     copy->setAttr(kXlaShardingAttr,
                   getStringAttr(convertToHloSharding(inSharding, getMeshAttr,
@@ -268,6 +274,10 @@ void convertManualComputationOp(
   for (auto [terminatorOperand, opResult, outSharding] :
        llvm::zip_equal(terminator->getOpOperands(), op.getResults(),
                        op.getOutShardings().getShardings())) {
+    if (!isa<mlir::ShapedType>(opResult.getType())) {
+      opResult.replaceAllUsesWith(terminatorOperand.get());
+      continue;
+    }
     auto copy = rewriter.create<CopyOp>(loc, terminatorOperand.get());
     copy->setAttr(kXlaShardingAttr,
                   fullyManual ? fullyManualSharding
