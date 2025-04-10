@@ -18,6 +18,7 @@ from tensorflow.core.framework import device_attributes_pb2
 # pylint: disable=invalid-import-order, g-bad-import-order, wildcard-import, unused-import, undefined-variable
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import _pywrap_device_lib
+from tensorflow.python.platform import tf_logging as logging
 
 
 def list_local_devices(session_config=None):
@@ -30,13 +31,24 @@ def list_local_devices(session_config=None):
     A list of `DeviceAttribute` protocol buffers.
   """
   def _convert(pb_str):
-    m = device_attributes_pb2.DeviceAttributes()
-    m.ParseFromString(pb_str)
-    return m
+    try:
+      m = device_attributes_pb2.DeviceAttributes()
+      m.ParseFromString(pb_str)
+      return m
+    except Exception as e:
+      logging.error("Failed to parse device %s",e)
+      return None
 
   serialized_config = None
   if session_config is not None:
     serialized_config = session_config.SerializeToString()
+
+  try:
+    devices = _pywrap_device_lib.list_devices(serialized_config)
+  except Exception as e:
+    logging.error("Failed to list devices %s",e)
+    return []
+  
   return [
-      _convert(s) for s in _pywrap_device_lib.list_devices(serialized_config)
+      _convert(s) for s in devices if s is not None
   ]
