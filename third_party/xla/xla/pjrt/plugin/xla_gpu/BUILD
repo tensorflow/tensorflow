@@ -46,6 +46,8 @@ xla_test(
     name = "xla_gpu_pjrt_client_test",
     srcs = ["xla_gpu_pjrt_client_test.cc"],
     backends = ["gpu_any"],
+    # Run each test in a separate process to test the global state setup.
+    shard_count = 2,
     tags = [
         "gpu",
         "no_oss",
