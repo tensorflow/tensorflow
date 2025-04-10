@@ -943,7 +943,7 @@ func.func @test_log(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 
 // CHECK-LABEL: test_log_qi8
 // CHECK-SAME: %[[VAL_0:.*]]: tensor<13x21x3x!quant.uniform<i8:f32, 0.011764706112444401:43>>
-// CHECK: %[[VAL_1:.*]] = "tosa.const"() <{value = dense<{{.+}}> : tensor<256xi8>}>
+// CHECK: %[[VAL_1:.*]] = "tosa.const"() <{values = dense<{{.+}}> : tensor<256xi8>}>
 // CHECK: %[[VAL_2:.*]] = tosa.table %[[VAL_0]], %[[VAL_1]]
 func.func @test_log_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.011764706112444401:43>>) -> (tensor<13x21x3x!quant.uniform<i8:f32, 0.0027182241901755333:128>>) {
   %0 = "tfl.log"(%arg0) : (tensor<13x21x3x!quant.uniform<i8:f32, 0.011764706112444401:43>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 0.0027182241901755333:128>>
@@ -954,7 +954,7 @@ func.func @test_log_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.011764706
 
 // CHECK-LABEL: test_log_qi16
 // CHECK-SAME: %[[VAL_0:.*]]: tensor<13x21x3x!quant.uniform<i16:f32, 6.1037018895149231E-5>>
-// CHECK: %[[VAL_1:.*]] = "tosa.const"() <{value = dense<{{.+}}> : tensor<513xi16>}>
+// CHECK: %[[VAL_1:.*]] = "tosa.const"() <{values = dense<{{.+}}> : tensor<513xi16>}>
 // CHECK: %[[VAL_2:.*]] = tosa.table %[[VAL_0]], %[[VAL_1]]
 func.func @test_log_qi16(%arg0: tensor<13x21x3x!quant.uniform<i16:f32, 6.1037018895149231E-5>>) -> (tensor<13x21x3x!quant.uniform<i16:f32, 2.1153819034225307E-5>>) {
   %0 = "tfl.log"(%arg0) : (tensor<13x21x3x!quant.uniform<i16:f32, 6.1037018895149231E-5>>) -> tensor<13x21x3x!quant.uniform<i16:f32, 2.1153819034225307E-5>>
