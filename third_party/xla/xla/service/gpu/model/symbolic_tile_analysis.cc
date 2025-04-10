@@ -403,6 +403,51 @@ void SortTiledHloInstructionsInPostOrder(
                });
 }
 
+// Returns `true` if `SymbolicTileAnalysis` should simplify point dimensions
+// away when deriving indexing maps.
+//
+// Simplifying point dimensions away is helpful as it allows symbolic tile
+// derivation to succeed in more cases. However, it can lead to generating
+// ill-typed programs when we need to propagate a larger (padded) tile through
+// the program. In that case, simplifying the point dimension away prevents
+// propagation, and leads to the downstream generation of an incorrect program.
+//
+// This is typically the case when trying to feed a vector-matrix or
+// matrix-vector dot product into NVIDIA GPU tensor cores---which expect their
+// inputs to have specific dimensions. In that case, we usually want to pretend
+// to tile the vector with a tile size appropriate for the tensor core, even
+// though one of its dimensions is 1.
+//
+// Adding this here is a slight abstraction leak, since it slightly specializes
+// symbolic tile analysis to NVIDIA GPUs. This is not totally unreasonable
+// though: given sufficient analytical capabilities for symbolic tile
+// derivation, preventing the simplification of point dimensions should not
+// cause us to fail to tile more programs, and would better track the
+// propagation of tiles throughout the program. As a result, a mode that does
+// not perform this simplification is actually "more correct"---but currently
+// leads to more fusions being untileable.
+bool ShouldDerivationSimplifyPointDimensions(const HloFusionAdaptor& fusion) {
+  for (const HloInstructionAdaptor& instruction_adaptor :
+       fusion.MakeInstructionPostOrder()) {
+    if (!fusion.ContainsInstruction(&instruction_adaptor.instruction())) {
+      continue;
+    }
+
+    if (instruction_adaptor.opcode() == HloOpcode::kDot) {
+      return false;
+    }
+
+    if (instruction_adaptor.opcode() == HloOpcode::kFusion) {
+      auto nested_fusion_adaptor = HloFusionAdaptor::ForComputation(
+          instruction_adaptor.instruction().fused_instructions_computation());
+      if (!ShouldDerivationSimplifyPointDimensions(*nested_fusion_adaptor)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 }  // anonymous namespace
 
 // Extracts HloInstructions from a span of HloInstructionAdaptors.
@@ -474,6 +519,12 @@ absl::StatusOr<int64_t> GetRealRootIndex(
   OrderedUniquePtrValueHashSet<SymbolicTiledHloInstruction>
       tiled_hlo_instructions_set;
 
+  IndexingMap::SimplifyPointDimensions simplification_mode =
+      IndexingMap::SimplifyPointDimensions::kPreserve;
+  if (ShouldDerivationSimplifyPointDimensions(fusion)) {
+    simplification_mode = IndexingMap::SimplifyPointDimensions::kReplace;
+  }
+
   // TODO(b/372454662): Once we get rid of the restriction of only one real
   // root, this needs to be adapted.
   auto [root_tiled_hlo, _] = tiled_hlo_instructions_set.Insert(
@@ -510,7 +561,7 @@ absl::StatusOr<int64_t> GetRealRootIndex(
                << tiled_hlo_instruction->hlo()->ToString() << " and operand "
                << operand.instruction().ToString();
       }
-      operand_indexing_map.Simplify();
+      operand_indexing_map.Simplify(simplification_mode);
       operand_indexing_map.RescaleSymbols();
       operand_indexing_map.RemoveUnusedSymbols();
 
