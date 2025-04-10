@@ -41,7 +41,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 68.
+// Next ID to use: 69.
 message ConverterFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -385,4 +385,10 @@ message ConverterFlags {
   // possible rather than quantizing any op that is possible to quantize.
   // WARNING: Experimental interface, subject to change.
   optional bool strict_qdq_mode = 67 [default = false];
+
+  // When set to true, allows fusion of dynamic shaped broadcast ops. It helps
+  // fusing implicit broadcasting ops when output shape has dynamic dimensions,
+  // but it may cause incorrect results when broadcasting ops are introduced by
+  // explicit broadcasting in the source model.
+  optional bool unsafe_fuse_dynamic_shaped_broadcast = 68 [default = false];
 }

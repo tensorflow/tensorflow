@@ -453,6 +453,7 @@ def build_conversion_flags(
     model_origin_framework=lite_constants.UNSET,
     canonicalizing_inf_as_min_max_float=True,
     serialize_debug_metadata=False,
+    unsafe_fuse_dynamic_shaped_broadcast=False,
     **_,
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -593,6 +594,11 @@ def build_conversion_flags(
       MIN/MAX float value and output of converter only contains finite values.
     serialize_debug_metadata: When set to true, serialize debug metadata in the
       flatbuffer.
+    unsafe_fuse_dynamic_shaped_broadcast: When set to true, allows fusion of
+      dynamic shaped broadcast ops. It helps fusing implicit broadcasting ops
+      when output shape has dynamic dimensions, but it may cause incorrect
+      results when broadcasting ops are introduced by explicit broadcasting in
+      the source model.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -727,6 +733,9 @@ def build_conversion_flags(
   )
 
   conversion_flags.serialize_debug_metadata = serialize_debug_metadata
+  conversion_flags.unsafe_fuse_dynamic_shaped_broadcast = (
+      unsafe_fuse_dynamic_shaped_broadcast
+  )
 
   return conversion_flags
 

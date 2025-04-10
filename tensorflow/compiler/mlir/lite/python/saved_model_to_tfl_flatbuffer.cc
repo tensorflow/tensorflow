@@ -217,6 +217,8 @@ absl::Status ConvertSavedModelToTFLiteFlatBuffer(
   pass_config.model_origin_framework = converter_flags.model_origin_framework();
   pass_config.canonicalizing_inf_as_min_max_float =
       converter_flags.canonicalizing_inf_as_min_max_float();
+  pass_config.unsafe_fuse_dynamic_shaped_broadcast =
+      converter_flags.unsafe_fuse_dynamic_shaped_broadcast();
 
   if (converter_flags.strict_qdq_mode()) {
     pass_config.quant_specs.qdq_conversion_mode =
