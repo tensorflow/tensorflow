@@ -503,7 +503,7 @@ class TfrtSession : public tensorflow::Session {
     compile_options.device_target = device_target_;
     compile_options.tpu_fuse_ops = tpu_use_tpu_runner_;
     compile_options.hoist_invariant_ops = true;
-    compile_options.sink_in_invariant_ops = false;
+    compile_options.sink_in_invariant_ops = true;
     compile_options.cost_threshold = 1024;
 
     if (use_gpu_) {
@@ -780,16 +780,20 @@ absl::Status TfrtSessionFactory::InitializeLocked(
     const TfrtSessionOptions& options) {
   mutex_.AssertHeld();
   if (options.use_tpu) {
-    DCHECK(!options.backend_compiler);
     DCHECK(!options.use_gpu);
     device_target_ = TfrtDeviceInfraTarget::kTpurt;
-    tpu_use_tpu_runner_ = true;
+    if (options.backend_compiler) {
+      backend_compiler_ = options.backend_compiler;
+    } else {
+      tpu_use_tpu_runner_ = true;
+    }
   } else if (options.use_gpu) {
-    DCHECK(!options.backend_compiler);
     device_target_ = TfrtDeviceInfraTarget::kGpu;
-    use_gpu_ = true;
-  } else if (options.backend_compiler) {
-    backend_compiler_ = options.backend_compiler;
+    if (options.backend_compiler) {
+      backend_compiler_ = options.backend_compiler;
+    } else {
+      use_gpu_ = true;
+    }
   }
   LOG(INFO) << "Start initializing TfrtSession";
   if (options.runtime != nullptr) {
