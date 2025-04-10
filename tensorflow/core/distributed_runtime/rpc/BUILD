@@ -335,6 +335,7 @@ cc_library(
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/rpc:profiler_service_impl",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service",
         "@local_xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
     ] + tf_protos_profiler_service() + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),
     alwayslink = 1,

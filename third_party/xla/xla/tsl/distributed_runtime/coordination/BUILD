@@ -57,7 +57,6 @@ cc_library(
         ":coordination_service_error_util",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
