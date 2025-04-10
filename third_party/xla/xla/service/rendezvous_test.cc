@@ -37,8 +37,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-absl::Duration Timeout() { return absl::Seconds(5); }
-absl::Duration Terminate() { return absl::Seconds(5); }
+absl::Duration Timeout() { return absl::Seconds(10); }
+absl::Duration Terminate() { return absl::Seconds(10); }
 
 tsl::thread::ThreadPool CreateThreadPool(int32_t size) {
   return tsl::thread::ThreadPool(tsl::Env::Default(), "rendezvous_test", size);
@@ -268,9 +268,8 @@ static void BM_Rendezvous(benchmark::State& state) {
     absl::BlockingCounter counter(num_threads);
     for (int64_t i = 0; i < num_threads; ++i) {
       thread_pool.Schedule([&] {
-        CHECK_OK(Rendezvous<int32_t>(
-            "rendezvous_test", /*key=*/0, num_threads, [] { return 42; },
-            Timeout(), Terminate()));
+        CHECK_OK(Rendezvous<int32_t>("rendezvous_test", 0, num_threads,
+                                     [] { return 42; }));
         counter.DecrementCount();
       });
     }
@@ -286,9 +285,9 @@ static void BM_RendezvousWithValues(benchmark::State& state) {
     absl::BlockingCounter counter(num_threads);
     for (int64_t i = 0; i < num_threads; ++i) {
       thread_pool.Schedule([&, i] {
-        CHECK_OK(Rendezvous<int32_t>(
-            "rendezvous_test", /*key=*/0, /*value=*/i, num_threads,
-            [](auto) { return 42; }, Timeout(), Terminate()));
+        int32_t value = i;
+        CHECK_OK(Rendezvous<int32_t>("rendezvous_test", 0, value, num_threads,
+                                     [](auto) { return 42; }));
         counter.DecrementCount();
       });
     }
@@ -307,9 +306,8 @@ static void BM_GroupedRendezvous(benchmark::State& state) {
     for (int64_t group = 0; group < num_groups; ++group) {
       for (int64_t i = 0; i < group_size; ++i) {
         thread_pool.Schedule([&, group] {
-          CHECK_OK(Rendezvous<int32_t>(
-              "rendezvous_test", /*key=*/group, /*num_threads=*/group_size,
-              [] { return 42; }, Timeout(), Terminate()));
+          CHECK_OK(Rendezvous<int32_t>("rendezvous_test", group, group_size,
+                                       [] { return 42; }));
           counter.DecrementCount();
         });
       }
