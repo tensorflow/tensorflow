@@ -19,7 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <vector>
 
+#include "absl/log/log.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "tensorflow/core/platform/context.h"
