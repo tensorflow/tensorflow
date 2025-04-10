@@ -788,6 +788,10 @@ message DebugOptions {
   bool xla_gpu_unsupported_enable_triton_multi_output_fusion = 382;
 
   // Internal testing flag to enable one-shot kernel for single-host
+  // all-reduce operations.
+  bool xla_gpu_unsupported_use_all_reduce_one_shot_kernel = 387;
+
+  // Internal testing flag to enable one-shot kernel for single-host
   // ragged-all-to-all operations.
   bool xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel = 375;
 
@@ -1200,7 +1204,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 387
+  // Next id: 388
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

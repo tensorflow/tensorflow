@@ -48,9 +48,9 @@ void* GetKernel(PrimitiveType element_type) {
 
 }  // namespace
 
-bool IsAllReduceKernelSupported(int64_t num_outputs,
+bool IsAllReduceKernelSupported(int64_t num_inputs,
                                 PrimitiveType element_type) {
-  return num_outputs <= kMaxNumAllReduceInputPtrs &&
+  return num_inputs <= kMaxNumAllReduceInputPtrs &&
          GetKernel(element_type) != nullptr;
 }
 
