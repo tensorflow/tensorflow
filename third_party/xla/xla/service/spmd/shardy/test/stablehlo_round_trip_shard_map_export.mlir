@@ -168,3 +168,32 @@ func.func @multiple_manual_computation_uses(%arg0: tensor<2x4x8xi32> {sdy.shardi
   } : (tensor<3x4x8xi32>, tensor<128x4x8xi32>) -> tensor<131x4x8xi32>
   return %3 : tensor<131x4x8xi32>
 }
+
+// CHECK-LABEL: func @remove_auto_axes_to_avoid_padding
+func.func @remove_auto_axes_to_avoid_padding(%arg0: tensor<2xf32>, %arg1: tensor<3xf32>, %arg2: tensor<4xf32>, %arg3: tensor<6xf32>, %arg4: tensor<8xf32>) -> (tensor<2xf32>, tensor<3xf32>, tensor<4xf32>, tensor<6xf32>, tensor<8xf32>) {
+  // CHECK-NEXT: %[[COPY_OPERAND_0:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{devices=[2,4]<=[4,2]T(1,0) last_tile_dim_replicate}"} : tensor<2xf32>
+  // CHECK-NEXT: %[[FULL_TO_SHARD_0:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_OPERAND_0]]) {mhlo.sharding = "{devices=[1,2,4]<=[4,2]T(1,0) last_tile_dims={manual, replicated}}"} : (tensor<2xf32>) -> tensor<1xf32>
+  // CHECK-NEXT: %[[COPY_OPERAND_1:.*]] = mhlo.copy %arg1 {mhlo.sharding = "{devices=[2,4]<=[4,2]T(1,0) last_tile_dim_replicate}"} : tensor<3xf32>
+  // CHECK-NEXT: %[[FULL_TO_SHARD_1:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_OPERAND_1]]) {mhlo.sharding = "{devices=[1,2,4]<=[4,2]T(1,0) last_tile_dims={manual, replicated}}"} : (tensor<3xf32>) -> tensor<2xf32>
+  // CHECK-NEXT: %[[COPY_OPERAND_2:.*]] = mhlo.copy %arg2 {mhlo.sharding = "{devices=[4,2]<=[4,2]T(1,0) last_tile_dim_replicate}"} : tensor<4xf32>
+  // CHECK-NEXT: %[[FULL_TO_SHARD_2:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_OPERAND_2]]) {mhlo.sharding = "{devices=[2,2,2]<=[2,2,2]T(0,2,1) last_tile_dims={manual, replicated}}"} : (tensor<4xf32>) -> tensor<2xf32>
+  // CHECK-NEXT: %[[COPY_OPERAND_3:.*]] = mhlo.copy %arg3 {mhlo.sharding = "{devices=[2,4]<=[4,2]T(1,0) last_tile_dim_replicate}"} : tensor<6xf32>
+  // CHECK-NEXT: %[[FULL_TO_SHARD_3:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_OPERAND_3]]) {mhlo.sharding = "{devices=[1,2,4]<=[4,2]T(1,0) last_tile_dims={manual, replicated}}"} : (tensor<6xf32>) -> tensor<3xf32>
+  // CHECK-NEXT: %[[COPY_OPERAND_4:.*]] = mhlo.copy %arg4 {mhlo.sharding = "{devices=[8]<=[4,2]T(1,0)}"} : tensor<8xf32>
+  // CHECK-NEXT: %[[FULL_TO_SHARD_4:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_OPERAND_4]]) {mhlo.sharding = "{devices=[4,2]<=[8] last_tile_dims={manual}}"} : (tensor<8xf32>) -> tensor<4xf32>
+  // CHECK-NEXT: %[[COPY_RESULT_0:.*]] = mhlo.copy %[[FULL_TO_SHARD_0]] {mhlo.sharding = "{devices=[1,2,4]<=[4,2]T(1,0) last_tile_dims={manual, replicated}}"} : tensor<1xf32>
+  // CHECK-NEXT: %[[SHARD_TO_FULL_0:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_RESULT_0]]) {mhlo.sharding = "{devices=[2,4]<=[4,2]T(1,0) last_tile_dim_replicate}"} : (tensor<1xf32>) -> tensor<2xf32>
+  // CHECK-NEXT: %[[COPY_RESULT_1:.*]] = mhlo.copy %[[FULL_TO_SHARD_1]] {mhlo.sharding = "{devices=[1,2,4]<=[4,2]T(1,0) last_tile_dims={manual, replicated}}"} : tensor<2xf32>
+  // CHECK-NEXT: %[[SHARD_TO_FULL_1:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_RESULT_1]]) {mhlo.sharding = "{devices=[2,4]<=[4,2]T(1,0) last_tile_dim_replicate}"} : (tensor<2xf32>) -> tensor<3xf32>
+  // CHECK-NEXT: %[[COPY_RESULT_2:.*]] = mhlo.copy %[[FULL_TO_SHARD_2]] {mhlo.sharding = "{devices=[2,2,2]<=[2,2,2]T(0,2,1) last_tile_dims={manual, replicated}}"} : tensor<2xf32>
+  // CHECK-NEXT: %[[SHARD_TO_FULL_2:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_RESULT_2]]) {mhlo.sharding = "{devices=[4,2]<=[4,2]T(1,0) last_tile_dim_replicate}"} : (tensor<2xf32>) -> tensor<4xf32>
+  // CHECK-NEXT: %[[COPY_RESULT_3:.*]] = mhlo.copy %[[FULL_TO_SHARD_3]] {mhlo.sharding = "{devices=[1,2,4]<=[4,2]T(1,0) last_tile_dims={manual, replicated}}"} : tensor<3xf32>
+  // CHECK-NEXT: %[[SHARD_TO_FULL_3:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_RESULT_3]]) {mhlo.sharding = "{devices=[2,4]<=[4,2]T(1,0) last_tile_dim_replicate}"} : (tensor<3xf32>) -> tensor<6xf32>
+  // CHECK-NEXT: %[[COPY_RESULT_4:.*]] = mhlo.copy %[[FULL_TO_SHARD_4]] {mhlo.sharding = "{devices=[4,2]<=[8] last_tile_dims={manual}}"} : tensor<4xf32>
+  // CHECK-NEXT: %[[SHARD_TO_FULL_4:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_RESULT_4]]) {mhlo.sharding = "{devices=[8]<=[4,2]T(1,0)}"} : (tensor<4xf32>) -> tensor<8xf32>
+  // CHECK-NEXT: return %[[SHARD_TO_FULL_0]], %[[SHARD_TO_FULL_1]], %[[SHARD_TO_FULL_2]], %[[SHARD_TO_FULL_3]], %[[SHARD_TO_FULL_4]] : tensor<2xf32>, tensor<3xf32>, tensor<4xf32>, tensor<6xf32>, tensor<8xf32>
+  %0:5 = sdy.manual_computation(%arg0, %arg1, %arg2, %arg3, %arg4) in_shardings=[<@mesh_0, [{"b", "a"}]>, <@mesh_0, [{"b", "a"}]>, <@mesh_0, [{"b", "a"}]>, <@mesh_0, [{"b", "a"}]>, <@mesh_0, [{"b", "a"}]>] out_shardings=[<@mesh_0, [{"b", "a"}]>, <@mesh_0, [{"b", "a"}]>, <@mesh_0, [{"b", "a"}]>, <@mesh_0, [{"b", "a"}]>, <@mesh_0, [{"b", "a"}]>] manual_axes={"b"} (%arg5: tensor<1xf32>, %arg6: tensor<2xf32>, %arg7: tensor<2xf32>, %arg8: tensor<3xf32>, %arg9: tensor<4xf32>) {
+    sdy.return %arg5, %arg6, %arg7, %arg8, %arg9 : tensor<1xf32>, tensor<2xf32>, tensor<2xf32>, tensor<3xf32>, tensor<4xf32>
+  } : (tensor<2xf32>, tensor<3xf32>, tensor<4xf32>, tensor<6xf32>, tensor<8xf32>) -> (tensor<2xf32>, tensor<3xf32>, tensor<4xf32>, tensor<6xf32>, tensor<8xf32>)
+  return %0#0, %0#1, %0#2, %0#3, %0#4 : tensor<2xf32>, tensor<3xf32>, tensor<4xf32>, tensor<6xf32>, tensor<8xf32>
+}
