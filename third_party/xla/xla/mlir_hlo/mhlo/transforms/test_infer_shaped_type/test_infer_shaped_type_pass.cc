@@ -103,7 +103,7 @@ struct TestInferShapedTypeMethodsPass
 
 }  // namespace
 
-std::unique_ptr<::mlir::Pass> createTestInferShapedTypeMethodsPass() {
+static std::unique_ptr<::mlir::Pass> createTestInferShapedTypeMethodsPass() {
   return std::make_unique<TestInferShapedTypeMethodsPass>();
 }
 
