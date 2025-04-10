@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
@@ -76,6 +77,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/types.h"
@@ -86,6 +88,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/mem.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
@@ -241,7 +244,7 @@ ENTRY main.5 {
 
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result[0].size(), 1);
-  EXPECT_OK(result[0][0]->GetReadyFuture().Await());
+  TF_EXPECT_OK(result[0][0]->GetReadyFuture().Await());
 }
 #endif
 
@@ -2188,12 +2191,12 @@ TEST(TpuLocalClientTest, RawBuffer) {
               *client->addressable_devices()[0]->default_memory_space(),
               /*device_layout=*/nullptr)
           .value();
-  ASSERT_OK(buffer->GetReadyFuture().Await());
-  ASSERT_OK_AND_ASSIGN(auto raw_buffer,
-                       PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
+  TF_ASSERT_OK(buffer->GetReadyFuture().Await());
+  TF_ASSERT_OK_AND_ASSIGN(auto raw_buffer,
+                          PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
   ASSERT_EQ(raw_buffer->memory_space(), buffer->memory_space());
-  ASSERT_OK_AND_ASSIGN(size_t on_device_size,
-                       raw_buffer->GetOnDeviceSizeInBytes());
+  TF_ASSERT_OK_AND_ASSIGN(size_t on_device_size,
+                          raw_buffer->GetOnDeviceSizeInBytes());
   ASSERT_EQ(on_device_size, 1024);
 
   std::vector<int32_t> data2(256);
@@ -2201,8 +2204,8 @@ TEST(TpuLocalClientTest, RawBuffer) {
   auto* dst1 = tsl::port::AlignedMalloc(1024, 1024);
   auto* dst2 = tsl::port::AlignedMalloc(1024, 1024);
   memcpy(dst1, data2.data(), sizeof(int32_t) * data2.size());
-  EXPECT_OK(raw_buffer->CopyRawHostToDevice(dst1, 0, 1024).Await());
-  EXPECT_OK(raw_buffer->CopyRawDeviceToHost(dst2, 0, 1024).Await());
+  TF_EXPECT_OK(raw_buffer->CopyRawHostToDevice(dst1, 0, 1024).Await());
+  TF_EXPECT_OK(raw_buffer->CopyRawDeviceToHost(dst2, 0, 1024).Await());
   EXPECT_EQ(absl::MakeSpan(reinterpret_cast<int32_t*>(dst2), 256), data2);
 
   tsl::port::AlignedFree(dst1);
@@ -2234,8 +2237,6 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
   std::string cache_dir;
   CHECK(tsl::Env::Default()->LocalTempFilename(&cache_dir));
 
-  tsl::setenv("TF_CPP_VMODULE", "gemm_fusion_autotuner=1", /*overwrite=*/true);
-
   // Compile twice to test both empty and non-empty disk cache.
   for (int iteration = 0; iteration < 2; ++iteration) {
     tsl::SubProcess child[kNumNodes];
@@ -2251,6 +2252,11 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
       argv.push_back(absl::StrFormat("--num_nodes_using_cache=%d",
                                      param.num_nodes_using_cache));
       argv.push_back(absl::StrFormat("--cache_dir=%s", cache_dir));
+      // Test relies on VLOG(1) messages. Enable VLOG(1) in Non-OSS.
+      if (!tsl::kIsOpenSource) {
+        argv.push_back("--vmodule=gemm_fusion_autotuner=1");
+        argv.push_back("--logtostderr");
+      }
       child[node_id].SetProgram("/proc/self/exe", argv);
       child[node_id].SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
       child[node_id].SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
@@ -2279,6 +2285,8 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
                         "Rank %d / %d: autotuning %d / 1 fusions", node_id,
                         param.num_active_nodes, num_fusions_to_autotune)));
       } else {
+        stderr_str = absl::StrReplaceAll(
+            stderr_str, {{"sharded_autotuning_test", "sharded_test"}});
         EXPECT_THAT(stderr_str, Not(HasSubstr("autotuning")));
       }
     }
@@ -2290,6 +2298,11 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
                                             const int num_nodes_using_cache,
                                             absl::string_view cache_dir,
                                             bool use_xla_computation) {
+  if (tsl::kIsOpenSource) {
+    // Test relies on VLOG(1) messages. Enable VLOG(1) in OSS.
+    tsl::setenv("TF_CPP_VMODULE", "gemm_fusion_autotuner=1",
+                /*overwrite=*/true);
+  }
   std::unique_ptr<xla::DistributedRuntimeService> service;
   if (node_id == 0) {
     TF_ASSIGN_OR_RETURN(
@@ -2384,6 +2397,7 @@ INSTANTIATE_TEST_SUITE_P(
                                                                {false, 2, 1},
                                                                {false, 2, 2}}),
     ShardedAutotuningTestInfo::Name);
+
 }  // namespace
 }  // namespace xla
 
