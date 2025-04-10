@@ -45,9 +45,9 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
-
 namespace {
-enum class ParallelizationMode { kInline, kParallelLoopRunner, kPThreadPool };
+
+enum class ParallelizationMode { kInline, kParallelLoopRunner };
 
 template <typename Sink>
 void AbslStringify(Sink& sink, ParallelizationMode m) {
@@ -57,9 +57,6 @@ void AbslStringify(Sink& sink, ParallelizationMode m) {
       break;
     case ParallelizationMode::kParallelLoopRunner:
       sink.Append("kParallelLoopRunner");
-      break;
-    case ParallelizationMode::kPThreadPool:
-      sink.Append("kPThreadPool");
       break;
   }
 }
@@ -171,19 +168,16 @@ void XnnFusionThunk::XnnRuntime::Destroy() {
   if (runtime != nullptr) XNN_LOG_IF_ERROR(xnn_delete_runtime(runtime));
   if (subgraph != nullptr) XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
   if (workspace != nullptr) XNN_LOG_IF_ERROR(xnn_release_workspace(workspace));
-
-  bool owned_threadpool = threadpool != nullptr && IsCustomPthreadpoolEnabled();
-  if (owned_threadpool) pthreadpool_destroy(threadpool);
+  if (threadpool) pthreadpool_destroy(threadpool);
 }
 
 absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
     const Eigen::ThreadPoolDevice* device, bool one_use,
     absl::FunctionRef<absl::StatusOr<xnn_subgraph_t>()> builder) {
   ParallelizationMode parallelization_mode =
-      options_.use_threadpool ? (device && IsCustomPthreadpoolEnabled()
-                                     ? ParallelizationMode::kParallelLoopRunner
-                                     : ParallelizationMode::kPThreadPool)
-                              : ParallelizationMode::kInline;
+      options_.use_threadpool && device
+          ? ParallelizationMode::kParallelLoopRunner
+          : ParallelizationMode::kInline;
 
   VLOG(3) << absl::StreamFormat(
       "Create %s XNN runtime for `%s` operation: num_created=%d, "
@@ -202,8 +196,6 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
   if (parallelization_mode == ParallelizationMode::kParallelLoopRunner) {
     runtime.runner = std::make_unique<ParallelLoopRunner>(device);
     runtime.threadpool = CreateCustomPthreadpool(runtime.runner.get());
-  } else if (parallelization_mode == ParallelizationMode::kPThreadPool) {
-    runtime.threadpool = DefaultPthreadpool();
   }
 
   XNN_RETURN_IF_ERROR(xnn_create_workspace(&runtime.workspace));

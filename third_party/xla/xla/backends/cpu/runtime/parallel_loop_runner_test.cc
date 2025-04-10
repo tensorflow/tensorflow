@@ -115,6 +115,38 @@ TEST(ParallelLoopRunnerTest, Parallelize2DTile1D) {
                              [](int32_t value) { return value == 5; }));
 }
 
+TEST(ParallelLoopRunnerTest, Parallelize2DTile2D) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+  ParallelLoopRunner runner(&device);
+
+  constexpr int32_t d0 = 4;
+  constexpr int32_t d1 = 39;
+
+  auto* data = new int32_t[d0][d1]();
+  auto cleanup = absl::Cleanup([&]() { delete[] data; });
+
+  auto increment = [&](size_t offset_i, size_t offset_j, size_t extent_i,
+                       size_t extent_j) {
+    for (size_t i = offset_i; i < offset_i + extent_i; ++i) {
+      for (size_t j = offset_j; j < offset_j + extent_j; ++j) {
+        data[i][j] += 1;
+      }
+    }
+  };
+
+  runner.Parallelize(d0, d1, 5, 1, increment);
+  runner.Parallelize(d0, d1, 4, 2, increment);
+  runner.Parallelize(d0, d1, 3, 3, increment);
+  runner.Parallelize(d0, d1, 2, 4, increment);
+  runner.Parallelize(d0, d1, 1, 5, increment);
+
+  tsl::BlockUntilReady(ParallelLoopRunner::TakeDoneEvent(std::move(runner)));
+  ASSERT_TRUE(absl::c_all_of(absl::MakeSpan(&data[0][0], d0 * d1),
+                             [](int32_t value) { return value == 5; }));
+}
+
 TEST(ParallelLoopRunnerTest, Parallelize3DTile2D) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),

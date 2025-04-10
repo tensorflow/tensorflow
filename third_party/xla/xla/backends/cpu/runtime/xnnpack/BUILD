@@ -31,14 +31,6 @@ cc_library(
     name = "xnn_threadpool",
     srcs = ["xnn_threadpool.cc"],
     hdrs = ["xnn_threadpool.h"],
-    # copybara:uncomment_begin(google-only)
-    # local_defines = select({
-    # "@pthreadpool:pthreadpool_header_only_explicit_true": [
-    # "XLA_CPU_USE_CUSTOM_PTHREADPOOL",
-    # ],
-    # "//conditions:default": [],
-    # }),
-    # copybara:uncomment_end
     deps = [
         "//xla/backends/cpu/runtime:parallel_loop_runner",
         "//xla/tsl/concurrency:async_value",
@@ -46,6 +38,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:platform_port",
         "@pthreadpool",
