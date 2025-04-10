@@ -118,7 +118,7 @@ TEST_F(DotSearchSpaceTest, SerializesSearchSpace) {
   EXPECT_EQ(search_space.Serialize(),
             "problem_size_BxMxNxKxE: 1x1024x1024x1024x16 "
             "tile_range_SxMxNxK: [1-64]x[16-256]x[16-512]x[16-?] "
-            "desired_total_warps: 2160 warps_per_cta: [4-?]");
+            "desired_total_warps: 2640 warps_per_cta: [4-?]");
 }
 
 TEST_F(DotSearchSpaceTest, ReturnsValidConfigList) {
@@ -220,6 +220,23 @@ TEST_F(DotSearchSpaceTest, HonorsMinimumOutputTileSizeForTinyProblem) {
   EXPECT_THAT(
       search_space.GenerateConfigs(),
       AllOf(Not(IsEmpty()), Each(BlockMIs(Ge(16))), Each(BlockNIs(Ge(16)))));
+}
+
+TEST_F(DotSearchSpaceTest, AssignsEnoughWarpsPerScheduler) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/512,
+                          /*contracting_dim=*/1024));
+  auto search_space = MakeSearchSpace(module.get());
+
+  // 1024x512 elements / 32x32 elements/block = 32x16 blocks = 512 blocks.
+  // 512 blocks * 4 warps/block = 2048 warps.
+  // 132 cores * 4 schedulers/core * 5 desired warps/scheduler = 2640 desired
+  // warps.
+  // ceil(2640 desired warps / 2048 warps) = ceil(1.3) = 2 desired split
+  EXPECT_THAT(search_space.GenerateConfigs(),
+              Contains(AllOf(BlockMIs(Eq(32)), BlockNIs(Eq(32)),
+                             NumWarpsIs(Eq(4)), SplitKIs(Eq(2)))));
 }
 
 }  // namespace

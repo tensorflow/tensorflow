@@ -92,10 +92,11 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
       rhs_parallel_size_(ShapeUtil::ElementsIn(dot->operand(1)->shape()) /
                          (contracting_size_ * batch_size_)),
       compute_bitwidth_(primitive_util::BitWidth(dot->shape().element_type())),
+      // Figure out some basic limitations on tiling based on the above.
+      desired_total_warps_(GetDesiredTotalWarps()),
+      max_out_tile_(GetMaxOutputTile()),
       // TODO: b/404470821 - Compute these from the problem properties instead
       // of hardcoding.
-      desired_total_warps_(2160),
-      max_out_tile_(GetMaxOutputTile()),
       min_out_tile_{16, 16},
       min_warps_per_cta_(4),
       min_contracting_tile_size_(16),
@@ -158,6 +159,13 @@ std::string TritonDotFusionSearchSpace::Serialize() {
       compute_bitwidth_, max_contracting_split_, min_out_tile_.lhs_dim,
       max_out_tile_.lhs_dim, min_out_tile_.rhs_dim, max_out_tile_.rhs_dim,
       min_contracting_tile_size_, desired_total_warps_, min_warps_per_cta_);
+}
+
+int TritonDotFusionSearchSpace::GetDesiredTotalWarps() const {
+  constexpr int kSchedulersPerCore = 4;
+  constexpr int kDesiredWarpsPerCore =
+      kMaxWarpsPerScheduler * kSchedulersPerCore;
+  return kDesiredWarpsPerCore * device_description_.core_count();
 }
 
 TritonDotFusionSearchSpace::OutputTile

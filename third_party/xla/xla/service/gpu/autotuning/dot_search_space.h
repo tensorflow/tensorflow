@@ -71,6 +71,12 @@ class TritonDotFusionSearchSpace {
     std::string ToString() const { return config.ToString(); }
   };
 
+  // Approximation on the maximum number of warps we would want to oversubscribe
+  // the SMs with to overlap different GPU pipes (memory, tensor core, ALU,
+  // special function unit, etc.)
+  // TODO: b/408114338 - Figure out a better model for this.
+  static constexpr int kMaxWarpsPerScheduler = 5;
+
   // Callback type for `ExtendConfigs`. The method should append zero or more
   // extensions of `config` to the `updated_configs` vector.
   using ExtendConfigCallback = void (TritonDotFusionSearchSpace::*)(
@@ -82,6 +88,14 @@ class TritonDotFusionSearchSpace {
   // the updated list of configs is non-empty.
   void ExtendConfigs(std::vector<ConfigWithNotes>& configs,
                      ExtendConfigCallback extend_config);
+
+  // Computes the maximum number of total warps we should have to sufficiently
+  // saturate the GPU.
+  //
+  // We're counting warps instead of blocks here, since we already need this
+  // value as a consideration to decide how large the blocks should be (which
+  // then impacts how many of them we should have).
+  int GetDesiredTotalWarps() const;
 
   // Computes the maximum sensible size of the output tile (block_m, block_n)
   // based on the dot shape and element type, and the available registers on
