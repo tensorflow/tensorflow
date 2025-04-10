@@ -109,7 +109,6 @@ tf_staging/tensorflow/lite/experimental/acceleration/configuration/configuration
 tf_staging/tensorflow/lite/experimental/acceleration/mini_benchmark/c/c_api.h:
 tf_staging/tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h:
 tf_staging/tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl:
-tf_staging/tensorflow/lite/experimental/litert/build_common/special_rule.bzl:
 tf_staging/tensorflow/lite/interpreter.h:
 tf_staging/tensorflow/lite/interpreter_builder.h:
 tf_staging/tensorflow/lite/ios/BUILD:
