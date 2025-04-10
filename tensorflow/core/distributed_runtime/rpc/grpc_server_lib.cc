@@ -279,9 +279,11 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
                                          opts.worker_service_options)
                         .release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
-  thread::ThreadPool* compute_pool = ComputePool(sess_opts);
-  coordination_service_ =
-      new GrpcCoordinationServiceImpl(compute_pool, &builder);
+  coordination_compute_pool_ = std::make_unique<tsl::thread::ThreadPool>(
+      env_, "CoordinationServiceRpcHandler",
+      /*num_threads=*/4);
+  coordination_service_ = new GrpcCoordinationServiceImpl(
+      coordination_compute_pool_.get(), &builder);
 
   profiler_service_ = tsl::profiler::CreateProfilerService();
   builder.RegisterService(profiler_service_.get());
@@ -331,7 +333,7 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
         return WorkerCacheFactory(options, worker_cache);
       },
       grpc_coordination_service->GetRpcHandler());
-  worker_env_.compute_pool = compute_pool;
+  worker_env_.compute_pool = ComputePool(sess_opts);
 
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
