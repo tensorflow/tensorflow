@@ -141,13 +141,13 @@ TEST(SafeReinterpretCast, CanCastRestrictPointerToRestrictPointer) {
 
 void Dummy() {}
 
-TEST(SafeReinterepretCast, CanCastFuncPointerToFromVoidPointer) {
+TEST(SafeReinterpretCast, CanCastFuncPointerToFromVoidPointer) {
   void* const void_p = safe_reinterpret_cast<void*>(&Dummy);
   void (*func_p)() = safe_reinterpret_cast<void (*)()>(void_p);
   EXPECT_EQ(func_p, &Dummy);
 }
 
-TEST(SafeReinterepretCast, CanCastDataPointerToFromVoidPointer) {
+TEST(SafeReinterpretCast, CanCastDataPointerToFromVoidPointer) {
   int x = 42;
   void* const void_p = safe_reinterpret_cast<void*>(&x);
   int* const int_p = safe_reinterpret_cast<int*>(void_p);
