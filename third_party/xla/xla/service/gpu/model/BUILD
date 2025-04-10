@@ -364,6 +364,45 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "gpu_gemm_fusion_cost_model",
+    srcs = ["gpu_gemm_fusion_cost_model.cc"],
+    hdrs = ["gpu_gemm_fusion_cost_model.h"],
+    deps = [
+        ":gpu_performance_model_base",
+        ":tiled_hlo_instruction_or_computation",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_gemm_fusion_cost_model_test",
+    srcs = ["gpu_gemm_fusion_cost_model_test.cc"],
+    deps = [
+        ":gpu_gemm_fusion_cost_model",
+        ":tiled_hlo_instruction_or_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "gpu_collective_performance_model",
     srcs = ["gpu_collective_performance_model.cc"],
     hdrs = ["gpu_collective_performance_model.h"],
