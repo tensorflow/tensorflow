@@ -71,7 +71,8 @@ TensorWrapper::TensorWrapper(
     const std::vector<std::uint32_t>& dimentions)
     : name_{std::to_string(id)},
       dimentions_{dimentions},
-      quantize_params_{quantize_params} {
+      quantize_params_{quantize_params},
+      ref_cnt_{0} {
   qnn_tensor_.v2.name = name_.c_str();
   qnn_tensor_.v2.type = tensor_type;
   qnn_tensor_.v2.dataFormat = QNN_TENSOR_DATA_FORMAT_FLAT_BUFFER;
@@ -100,7 +101,8 @@ TensorWrapper::TensorWrapper(const TensorWrapper& other)
       name_{other.name_},
       dimentions_{other.dimentions_},
       quantize_params_{other.quantize_params_},
-      owned_data_{other.owned_data_} {
+      owned_data_{other.owned_data_},
+      ref_cnt_{other.ref_cnt_} {
   qnn_tensor_.v2.name = name_.c_str();
   qnn_tensor_.v2.dimensions = dimentions_.data();
   qnn_tensor_.v2.clientBuf.data = owned_data_.data();
@@ -116,7 +118,8 @@ TensorWrapper::TensorWrapper(TensorWrapper&& other)
       name_{std::move(other.name_)},
       dimentions_{std::move(other.dimentions_)},
       quantize_params_{std::move(other.quantize_params_)},
-      owned_data_{std::move(other.owned_data_)} {
+      owned_data_{std::move(other.owned_data_)},
+      ref_cnt_{std::move(other.ref_cnt_)} {
   qnn_tensor_.v2.name = name_.c_str();
   qnn_tensor_.v2.dimensions = dimentions_.data();
   qnn_tensor_.v2.clientBuf.data = owned_data_.data();

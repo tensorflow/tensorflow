@@ -291,6 +291,10 @@ class TensorWrapper final {
 
   void ConvertQint16ToQuint16();
 
+  void AddRefCnt() const { ref_cnt_ += 1; }
+  void ResetRefCnt() const { ref_cnt_ = 0; }
+  bool HasRefs() const { return ref_cnt_ > 0; }
+
  private:
   Qnn_TensorType_t GetTensorType() const;
 
@@ -307,6 +311,7 @@ class TensorWrapper final {
   std::vector<std::uint32_t> dimentions_{};
   QuantizeParamsWrapperVariant quantize_params_{};
   std::vector<std::byte> owned_data_{};
+  mutable int ref_cnt_ = 0;
 };
 
 using TensorWrapperRef = std::reference_wrapper<TensorWrapper>;

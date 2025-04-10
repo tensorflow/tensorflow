@@ -29,14 +29,17 @@ OpWrapper::OpWrapper(OpWrapper&& other)
 OpWrapper::~OpWrapper() = default;
 
 void OpWrapper::AddInputTensor(const TensorWrapper& tensor) {
+  tensor.AddRefCnt();
   input_tensors_.emplace_back(tensor);
 }
 
 void OpWrapper::AddOutputTensor(const TensorWrapper& tensor) {
+  tensor.AddRefCnt();
   output_tensors_.emplace_back(tensor);
 }
 
 void OpWrapper::AddTensorParam(const char* name, const TensorWrapper& tensor) {
+  tensor.AddRefCnt();
   tensor_params_.emplace_back(name, tensor);
 }
 
