@@ -436,9 +436,10 @@ class TracedCommandBufferCmd : public CommandBufferCmd {
   // Creates a command buffer by calling a user-provided `trace` function and
   // adds it as a nested command to `command_buffer`. Traced command buffers
   // cached and reused in an instance of `TracedCommandBuffer` kept in `state`.
-  absl::StatusOr<const se::CommandBuffer::Command*> AddTracedCommandBuffer(
+  absl::StatusOr<RecordedCommands> RecordTracedCommand(
       const Thunk::ExecuteParams& execute_params,
-      const RecordParams& record_params, se::CommandBuffer* command_buffer,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer,
       absl::FunctionRef<absl::Status(se::Stream*)> trace);
 };
 
@@ -832,10 +833,13 @@ class CustomCallCmd : public CommandBufferCmd {
  private:
   absl::StatusOr<RecordedCommands> RecordLegacyCustomCall(
       const Thunk::ExecuteParams& execute_param,
-      const RecordParams& record_params, se::CommandBuffer* command_buffer);
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer);
+
   absl::StatusOr<RecordedCommands> RecordXlaFfiCall(
       const Thunk::ExecuteParams& execute_param,
-      const RecordParams& record_params, se::CommandBuffer* command_buffer);
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer);
 
   std::string target_name_;
 
@@ -874,9 +878,10 @@ class CollectiveCmd : public CommandBufferCmd {
 
   bool IsNestedCommandBuffer() const final { return true; }
 
-  absl::StatusOr<const se::CommandBuffer::Command*> AddTracedCommandBuffer(
+  absl::StatusOr<RecordedCommands> RecordTracedCommand(
       const Thunk::ExecuteParams& execute_params,
-      const RecordParams& record_params, se::CommandBuffer* command_buffer,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer,
       absl::FunctionRef<absl::Status(se::Stream*)> trace);
 
   virtual AsyncStreamKind GetAsyncStreamKind() = 0;

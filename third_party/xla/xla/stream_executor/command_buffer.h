@@ -87,6 +87,17 @@ class CommandBuffer {
   //
   enum class State { kCreate, kUpdate, kFinalized };
 
+  friend absl::string_view StateToString(State state) {
+    switch (state) {
+      case CommandBuffer::State::kCreate:
+        return "create";
+      case CommandBuffer::State::kUpdate:
+        return "update";
+      case CommandBuffer::State::kFinalized:
+        return "finalized";
+    }
+  }
+
   // Command buffers have two modes of execution:
   //
   //   (1) kPrimary: command buffer can be submitted for execution via
