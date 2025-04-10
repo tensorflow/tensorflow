@@ -75,6 +75,14 @@ PointerType GetTensorPtrType(::xla::EmitterLocOpBuilder& builder, Type type) {
                           mlir::NVVM::kGlobalMemorySpace);
 }
 
+PointerType GetTensorPtrTypeForTma(::xla::EmitterLocOpBuilder& builder) {
+  // Triton frontend is passing zero in the address space. This doesn't map to
+  // anything meaningful in NVVM dialect. Setting it to be consistent with
+  // Triton.
+  return PointerType::get(xgt::StorageType(builder, builder.getI8Type()),
+                          /*addrspace=*/0);
+}
+
 TensorDescType GetTensorDescPtrType(::xla::EmitterLocOpBuilder& builder,
                                     RankedTensorType type) {
   return TensorDescType::get(builder.getContext(), type);
@@ -275,13 +283,21 @@ struct RewriteFuncOp : mlir::OpRewritePattern<func::FuncOp> {
     for (auto&& [index, operand_type] : llvm::enumerate(new_operand_types)) {
       mlir::BlockArgument func_arg = op.getArgument(index);
 
-      // !tt.ptr<> -> tensor
-      auto cast_to_orig_type = builder.create<mlir::UnrealizedConversionCastOp>(
-          operand_type, func_arg);
+      mlir::UnrealizedConversionCastOp cast_to_orig_type;
+      if (op.getArgAttr(index, "tt.nv_tma_desc")) {
+        operand_type = GetTensorPtrTypeForTma(builder);
+        // !tt.ptr<i8, 0> -> tensor
+        cast_to_orig_type = builder.create<mlir::UnrealizedConversionCastOp>(
+            operand_type, func_arg);
+      } else {
+        // !tt.ptr<> -> tensor
+        cast_to_orig_type = builder.create<mlir::UnrealizedConversionCastOp>(
+            operand_type, func_arg);
+        operand_type = GetTensorPtrType(
+            builder, mlir::cast<TensorType>(operand_type).getElementType());
+      }
       func_arg.replaceAllUsesExcept(cast_to_orig_type.getResult(0),
                                     cast_to_orig_type);
-      operand_type = GetTensorPtrType(
-          builder, mlir::cast<TensorType>(operand_type).getElementType());
     }
 
     // Replace the function arguments with the new types.
@@ -310,6 +326,10 @@ struct RewriteFuncOp : mlir::OpRewritePattern<func::FuncOp> {
         op.getLoc(), op.getName(), new_function_type, attrs, arg_attrs);
 
     for (int i = 0; i < new_func.getNumArguments(); ++i) {
+      // TMA arguments don't require tt.divisibility.
+      if (op.getArgAttr(i, "tt.nv_tma_desc")) {
+        continue;
+      }
       new_func.setArgAttr(i, "tt.divisibility",
                           builder.getIntegerAttr(builder.getI32Type(), 16));
     }
@@ -342,9 +362,27 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
       TileOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
     auto tiled_tensor_type = op.getTiledTensor().getType();
+    bool can_use_tma = CanUseTMA(builder, tma_enabled, *device_description,
+                                 tiled_tensor_type, op.getTensor());
 
-    if (CanUseTMA(builder, tma_enabled, *device_description, tiled_tensor_type,
-                  op.getTensor())) {
+    // can_use_tma ? "tensor -> !tt.ptr<i8, 0>" otherwise "tensor -> !tt.ptr<>"
+    Type ptr_type =
+        can_use_tma ? GetTensorPtrTypeForTma(builder)
+                    : GetTensorPtrType(
+                          builder, op.getTensor().getType().getElementType());
+    auto cast_to_tensor_ptr_type =
+        builder.create<mlir::UnrealizedConversionCastOp>(ptr_type,
+                                                         op.getTensor());
+
+    auto linear_offset = ComputeLinearOffset(builder, tiled_tensor_type,
+                                             op.getOffsets(), op.getLayout());
+    auto ptr = builder
+                   .create<AddPtrOp>(
+                       cast_to_tensor_ptr_type.getResult(0).getType(),
+                       cast_to_tensor_ptr_type.getResult(0), linear_offset)
+                   .getResult();
+
+    if (can_use_tma) {
       // Add TMA attributes to the corresponding argument in the function.
       auto block_arg = mlir::dyn_cast<BlockArgument>(op.getTensor());
       auto func_op =
@@ -361,21 +399,12 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
               tiled_tensor_type.getTileShape(),
               tiled_tensor_type.getElementType().getIntOrFloatBitWidth() / 8));
 
-      // tensor -> !tt.ptr<>
-      auto cast_to_tensor_ptr_type =
-          builder
-              .create<mlir::UnrealizedConversionCastOp>(
-                  GetTensorPtrType(builder,
-                                   op.getTensor().getType().getElementType()),
-                  op.getTensor())
-              .getResult(0);
-
       auto reinterpret_tensor_desc =
           builder
               .create<mlir::triton::ReinterpretTensorDescOp>(
                   mlir::triton::TensorDescType::get(
                       builder.getContext(), tiled_tensor_type.getTileType()),
-                  cast_to_tensor_ptr_type)
+                  ptr)
               .getResult();
 
       // !tt.tensordesc<tensor> -> tiled_tensor
@@ -387,23 +416,6 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
       rewriter.replaceOp(op, cast_desc_ptr_to_tiled_tensor_ptr_type);
       return mlir::success();
     }
-
-    // tensor -> !tt.ptr<>
-    auto cast_to_tensor_ptr_type =
-        builder
-            .create<mlir::UnrealizedConversionCastOp>(
-                GetTensorPtrType(builder,
-                                 op.getTensor().getType().getElementType()),
-                op.getTensor())
-            .getResult(0);
-
-    auto linear_offset = ComputeLinearOffset(builder, tiled_tensor_type,
-                                             op.getOffsets(), op.getLayout());
-
-    auto ptr = builder
-                   .create<AddPtrOp>(cast_to_tensor_ptr_type.getType(),
-                                     cast_to_tensor_ptr_type, linear_offset)
-                   .getResult();
 
     // Only emit make_tensor_ptr if the input is not a scalar.
     auto tile_shape = tiled_tensor_type.getTileShape();
