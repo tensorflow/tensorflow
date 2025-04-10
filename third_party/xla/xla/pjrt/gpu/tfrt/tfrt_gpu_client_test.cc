@@ -1363,7 +1363,8 @@ TEST(TfrtGpuClientTest, AsyncCopyToDevice) {
 }
 
 TEST(TfrtGpuClientTest, OnDoneSafelyDestructTransferManagerAsync) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetTfrtGpuClient(GpuClientOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
   PjRtDevice* const device = client->addressable_devices()[0];
 
