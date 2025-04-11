@@ -134,8 +134,8 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
 
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddOutputTilings);
   EliminateLowOccupancyConfigs(configs);
-
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddCtaSizeParameter);
+  ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddContractingTiling);
 
   std::vector<TritonGemmConfig> result;
   result.reserve(configs.size());
@@ -143,7 +143,6 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
     // TODO: b/404470821 - Implement this properly rather than hardcoding the
     // config parameters.
     TritonGemmConfig& config = config_with_notes.config;
-    config.block_k = 64;
     config.num_stages = 3;
     config.num_ctas = 1;
     result.push_back(config);
@@ -258,6 +257,31 @@ int TritonDotFusionSearchSpace::GetMaxContractingSplit(
   return split;
 }
 
+int TritonDotFusionSearchSpace::GetContractingSizeLimitToFitSharedMemory(
+    OutputTile output_tile) const {
+  const int64_t shared_memory_budget =
+      device_description_.shared_memory_per_block_optin();
+  // Need to satisfy:
+  //   (lhs_dim  + rhs_dim) * contracting_dim * bitwidth <= budget_in_bits
+  return 8 * shared_memory_budget / compute_bitwidth_ /
+         (output_tile.lhs_dim + output_tile.rhs_dim);
+}
+
+int TritonDotFusionSearchSpace::GetMaxContractingTileSize(
+    OutputTile output_tile, int contracting_split) const {
+  const int64_t available_size = contracting_size_ / contracting_split;
+  const int64_t size_limit =
+      GetContractingSizeLimitToFitSharedMemory(output_tile);
+  const int64_t max_size =
+      std::min(NextPowerOfTwo(available_size), PreviousPowerOfTwo(size_limit));
+  VLOG(5) << "Computing max_contracting_tile_size for tiling BxMxN = "
+          << contracting_split << "x" << output_tile.lhs_dim << "x"
+          << output_tile.rhs_dim << ": limit based on problem is "
+          << available_size << ", limit based on available shared memory is "
+          << size_limit << ", max_contracting_tile_size = " << max_size;
+  return max_size;
+}
+
 std::vector<TritonDotFusionSearchSpace::ConfigWithNotes>
 TritonDotFusionSearchSpace::GenerateContractingSplitFactors() {
   CHECK_GE(max_contracting_split_, 1);
@@ -290,10 +314,8 @@ void TritonDotFusionSearchSpace::AddOutputTilings(
       << "Need config with contracting split already set.";
   const int split = config.config.split_k;
   ConfigWithNotes new_config = config;
-  int& m = new_config.config.block_m;
-  int& n = new_config.config.block_n;
-  for (m = min_out_tile_.lhs_dim; m <= max_out_tile_.lhs_dim; m *= 2) {
-    for (n = min_out_tile_.rhs_dim; n <= max_out_tile_.rhs_dim; n *= 2) {
+  for (int m = min_out_tile_.lhs_dim; m <= max_out_tile_.lhs_dim; m *= 2) {
+    for (int n = min_out_tile_.rhs_dim; n <= max_out_tile_.rhs_dim; n *= 2) {
       OutputTile tile = {m, n};
       // We could make the tile size limits depend on split_k, but then we
       // need to implement the "inverse" of `GetMaxContractingSplit`.
@@ -306,6 +328,8 @@ void TritonDotFusionSearchSpace::AddOutputTilings(
       }
       new_config.not_enough_tiles =
           GetNumResultTiles(tile) * split < device_description_.core_count();
+      new_config.config.block_m = m;
+      new_config.config.block_n = n;
       VLOG(10) << "Adding output tiling: config = " << new_config.ToString();
       updated_configs.push_back(new_config);
     }
@@ -316,17 +340,37 @@ void TritonDotFusionSearchSpace::AddCtaSizeParameter(
     const ConfigWithNotes& config,
     std::vector<ConfigWithNotes>& updated_configs) {
   ConfigWithNotes new_config = config;
-  int tile_rows = config.config.block_m;
-  int tile_cols = config.config.block_n;
-  int& warps = new_config.config.num_warps;
+  const int tile_rows = config.config.block_m;
+  const int tile_cols = config.config.block_n;
   CHECK_GT(tile_rows * tile_cols, 0)
       << "Need configs with output tilings determined.";
-  int max_warps = GetMaxWarpsPerCta({tile_rows, tile_cols});
+  const int max_warps = GetMaxWarpsPerCta({tile_rows, tile_cols});
   VLOG(5) << "Computing max_warps: For output_tile = " << tile_rows << "x"
           << tile_cols
           << " and (wg)mma instruction shape, max_warps = " << max_warps;
-  for (warps = min_warps_per_cta_; warps <= max_warps; warps *= 2) {
+  for (int warps = min_warps_per_cta_; warps <= max_warps; warps *= 2) {
+    new_config.config.num_warps = warps;
     VLOG(10) << "Adding CTA size parameter: config = " << new_config.ToString();
+    updated_configs.push_back(new_config);
+  }
+}
+
+void TritonDotFusionSearchSpace::AddContractingTiling(
+    const ConfigWithNotes& config,
+    std::vector<ConfigWithNotes>& updated_configs) {
+  const int tile_rows = config.config.block_m;
+  const int tile_cols = config.config.block_n;
+  const int split = config.config.split_k;
+  CHECK_GT(tile_rows * tile_cols, 0)
+      << "Need configs with output tilings determined.";
+  CHECK_GT(split, 0) << "Need config with contracting split determined.";
+  int max_tile_size =
+      std::max(GetMaxContractingTileSize({tile_rows, tile_cols}, split),
+               min_contracting_tile_size_);
+  ConfigWithNotes new_config = config;
+  for (int k = min_contracting_tile_size_; k <= max_tile_size; k *= 2) {
+    new_config.config.block_k = k;
+    VLOG(10) << "Adding contracting tiling: config = " << new_config.ToString();
     updated_configs.push_back(new_config);
   }
 }

@@ -116,6 +116,15 @@ class TritonDotFusionSearchSpace {
   // output tile.
   int GetMaxContractingSplit(OutputTile output_tile) const;
 
+  // Computes the size limit for contracting dimension, based on the shared
+  // memory budget.
+  int GetContractingSizeLimitToFitSharedMemory(OutputTile output_tile) const;
+
+  // Computes the maximum reasonable tile size for the contracting dimension for
+  // the given output tile and contracting split.
+  int GetMaxContractingTileSize(OutputTile output_tile,
+                                int contracting_split) const;
+
   // Finds all promising values for splitting the contracting dimension to
   // achieve sufficient occupancy (split_k).
   std::vector<ConfigWithNotes> GenerateContractingSplitFactors();
@@ -133,6 +142,13 @@ class TritonDotFusionSearchSpace {
   // input list might yield zero or more configs in the output.
   void AddCtaSizeParameter(const ConfigWithNotes& config,
                            std::vector<ConfigWithNotes>& updated_configs);
+
+  // Finds all promising values for the contracting dimension tile size
+  // (block_k), based on `config` with already determined contracting split and
+  // output tiling, and appends them to `updated_configs`. Each config in the
+  // input list might yield zero or more configs in the output.
+  void AddContractingTiling(const ConfigWithNotes& config,
+                            std::vector<ConfigWithNotes>& updated_configs);
 
   // Removes configs that are marked with `not_enough_tiles` from the list. If
   // this results in an empty list, adds a config that should be the most
