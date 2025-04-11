@@ -73,8 +73,9 @@ namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode);
 
 // This is exposed for testing purposes only. Do not use.
-bool IsResultTypeSupportedByAlgUnsetDot(
-    PrimitiveType result_type, const se::GpuComputeCapability& gpu_version);
+CodegenDecision AreTypesSupportedByAlgoUnsetDot(
+    PrimitiveType input_type, PrimitiveType result_type,
+    const se::GpuComputeCapability& gpu_version);
 
 }  // namespace internal
 

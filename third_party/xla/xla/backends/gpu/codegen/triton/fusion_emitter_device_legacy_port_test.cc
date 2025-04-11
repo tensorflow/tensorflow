@@ -3331,7 +3331,7 @@ CHECK:      inputPrecision = tf32
 // TODO(b/393299275): this test requires us to allow actual mixed type GEMMs
 // in the lowering. We need to expand support tests and the lowering to model
 // mixed types as needed. (f8e4m3fn x f8e4m3fn -> f32)
-TEST_F(TritonTest, DISABLED_Fp8LoweringIsSupportedPostHopper) {
+TEST_F(TritonTest, Fp8LoweringIsSupportedPostHopper) {
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
   }
@@ -3366,7 +3366,7 @@ ENTRY main {
 CHECK: tt.dot {{.*}}{maxNumImpreciseAcc = 2147483647 : i32} : tensor<128x64xf8E4M3FN> * tensor<64x32xf8E4M3FN> -> tensor<128x32xf32>
   )"));
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText,
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module_and_metadata.module),
                                        ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
 }
 
