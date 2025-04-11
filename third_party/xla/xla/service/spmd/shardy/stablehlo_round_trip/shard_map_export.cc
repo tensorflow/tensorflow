@@ -243,10 +243,9 @@ void convertManualComputationOp(
   // Add copy and custom_call @SPMDFullToShardShape for each operand. The
   // copy corresponds to custom_call @Sharding before sharding propagation.
   SmallVector<Value> fullToShardResults;
-  for (auto [operand_index, args] : llvm::enumerate(
-           llvm::zip_equal(op.getOperands(), op.getBody().getArgumentTypes(),
-                           op.getInShardings().getShardings()))) {
-    auto [globalOperand, localArgumentType, inSharding] = args;
+  for (auto [globalOperand, localArgumentType, inSharding] :
+       llvm::zip_equal(op.getOperands(), op.getBody().getArgumentTypes(),
+                       op.getInShardings().getShardings())) {
     auto copy = rewriter.create<CopyOp>(loc, globalOperand);
     copy->setAttr(kXlaShardingAttr,
                   getStringAttr(convertToHloSharding(inSharding, getMeshAttr,
@@ -255,7 +254,7 @@ void convertManualComputationOp(
         kXlaShardingAttr,
         fullyManual ? fullyManualSharding
                     : getStringAttr(convertToHloSharding(
-                          op.getInShardingWithoutManualAxes(operand_index),
+                          eraseManualAxes(inSharding, regionManualAxes),
                           getMeshAttr, regionManualAxes)));
     auto fullToShard = rewriter.create<CustomCallOp>(
         loc, localArgumentType, copy.getResult(), fullToShardAttributes);
@@ -270,11 +269,11 @@ void convertManualComputationOp(
                        op.getOutShardings().getShardings())) {
     auto copy = rewriter.create<CopyOp>(loc, terminatorOperand.get());
     copy->setAttr(kXlaShardingAttr,
-                  fullyManual ? fullyManualSharding
-                              : getStringAttr(convertToHloSharding(
-                                    op.getOutShardingWithoutManualAxes(
-                                        terminatorOperand.getOperandNumber()),
-                                    getMeshAttr, regionManualAxes)));
+                  fullyManual
+                      ? fullyManualSharding
+                      : getStringAttr(convertToHloSharding(
+                            eraseManualAxes(outSharding, regionManualAxes),
+                            getMeshAttr, regionManualAxes)));
     shardToFullAttributes.back() = rewriter.getNamedAttr(
         kXlaShardingAttr, getStringAttr(convertToHloSharding(
                               outSharding, getMeshAttr, parentManualAxes)));
