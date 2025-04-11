@@ -607,6 +607,30 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
      tblgen = "@llvm-project//mlir:mlir-tblgen",
      td_file = "stablehlo/dialect/VhloOps.td",
      deps = [
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
+@@ -45,7 +45,7 @@
+ 
+ // CHECK-LABEL: @divide
+ func.func @divide(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<10xi32> {
+-  // CHECK: tosa.int_div
++  // CHECK: tosa.intdiv
+   %0 = "stablehlo.divide"(%arg0, %arg1) : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+   return %0 : tensor<10xi32>
+ }
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
+@@ -156,7 +156,7 @@
+ Pattern =>
+   replace op<stablehlo.divide>(input0 : Value<_: Tosa_Int32Tensor>,
+                           input1 : Value<_: Tosa_Int32Tensor>)
+-     with op<tosa.int_div>(input0, input1);
++     with op<tosa.intdiv>(input0, input1);
+ Pattern =>
+   replace op<stablehlo.maximum>(input0 : Value<_: Tosa_Tensor>,
+                            input1 : Value<_: Tosa_Tensor>)
 diff --ruN a/stablehlo/stablehlo/tests/BUILD.bazel b/stablehlo/stablehlo/tests/BUILD.bazel
 --- stablehlo/stablehlo/tests/BUILD.bazel
 +++ stablehlo/stablehlo/tests/BUILD.bazel
