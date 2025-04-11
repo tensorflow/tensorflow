@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/dump.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <iostream>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/base/const_init.h"
 #include "absl/container/flat_hash_set.h"
@@ -753,12 +755,172 @@ std::vector<std::string> DumpHloModuleIfEnabled(const HloModule& module,
   return {};
 }
 
+std::string GetRepeatedValueAsString(
+    const tsl::protobuf::Reflection* reflection,
+    const DebugOptions& debug_options,
+    const tsl::protobuf::FieldDescriptor* field, int index) {
+  switch (field->type()) {
+    case tsl::protobuf::FieldDescriptor::TYPE_INT32:
+      return std::to_string(
+          reflection->GetRepeatedInt32(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_INT64:
+      return std::to_string(
+          reflection->GetRepeatedInt64(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_UINT32:
+      return std::to_string(
+          reflection->GetRepeatedUInt32(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_UINT64:
+      return std::to_string(
+          reflection->GetRepeatedUInt64(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_DOUBLE:
+      return std::to_string(
+          reflection->GetRepeatedDouble(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_FLOAT:
+      return std::to_string(
+          reflection->GetRepeatedFloat(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_BOOL:
+      return reflection->GetRepeatedBool(debug_options, field, index) ? "true"
+                                                                      : "false";
+    case tsl::protobuf::FieldDescriptor::TYPE_ENUM:
+      return std::string(
+          reflection->GetRepeatedEnum(debug_options, field, index)->name());
+    case tsl::protobuf::FieldDescriptor::TYPE_STRING:
+      return reflection->GetRepeatedString(debug_options, field, index);
+    case tsl::protobuf::FieldDescriptor::TYPE_MESSAGE: {
+      tsl::protobuf::TextFormat::Printer tsl_printer;
+      tsl_printer.SetInitialIndentLevel(1);
+      std::string result;
+      tsl_printer.PrintToString(
+          reflection->GetRepeatedMessage(debug_options, field, index), &result);
+      return "{\n" + result + "}";
+    }
+    default:
+      return "Unsupported field type";
+  }
+}
+
+std::string GetValueAsString(const tsl::protobuf::Reflection* reflection,
+                             const DebugOptions& debug_options,
+                             const tsl::protobuf::FieldDescriptor* field) {
+  // Based on the field type, get the value and convert it to a string
+  switch (field->type()) {
+    case tsl::protobuf::FieldDescriptor::TYPE_INT32:
+      return std::to_string(reflection->GetInt32(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_INT64:
+      return std::to_string(reflection->GetInt64(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_UINT32:
+      return std::to_string(reflection->GetUInt32(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_UINT64:
+      return std::to_string(reflection->GetUInt64(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_DOUBLE:
+      return std::to_string(reflection->GetDouble(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_FLOAT:
+      return std::to_string(reflection->GetFloat(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_BOOL:
+      return reflection->GetBool(debug_options, field) ? "true" : "false";
+    case tsl::protobuf::FieldDescriptor::TYPE_ENUM:
+      return std::string(reflection->GetEnum(debug_options, field)->name());
+    case tsl::protobuf::FieldDescriptor::TYPE_STRING:
+      return "\"" + reflection->GetString(debug_options, field) + "\"";
+    case tsl::protobuf::FieldDescriptor::TYPE_MESSAGE: {
+      tsl::protobuf::TextFormat::Printer tsl_printer;
+      tsl_printer.SetSingleLineMode(false);
+      std::string result;
+      tsl_printer.PrintToString(reflection->GetMessage(debug_options, field),
+                                &result);
+      return "{\n" + result + "}";
+    }
+    default:
+      return "Unsupported field type";
+  }
+}
+
+std::string GetNonDefaultDebugOptions(const DebugOptions& debug_options) {
+  // Create a default DebugOptions to compare against
+  DebugOptions default_options = DefaultDebugOptionsIgnoringFlags();
+  std::string non_default_options;
+
+  // Use protobuf reflection to compare fields
+  const tsl::protobuf::Descriptor* descriptor = debug_options.GetDescriptor();
+  const tsl::protobuf::Reflection* reflection = debug_options.GetReflection();
+
+  // Iterate through all fields
+  for (int i = 0; i < descriptor->field_count(); i++) {
+    const tsl::protobuf::FieldDescriptor* field = descriptor->field(i);
+
+    if (field->is_repeated()) {
+      // Handle repeated fields by comparing the values
+      int repeated_count = reflection->FieldSize(debug_options, field);
+      int default_count = reflection->FieldSize(default_options, field);
+
+      // Only process if the repeated field has values
+      if (repeated_count > 0) {
+        std::vector<std::string> debug_values(repeated_count);
+        std::vector<std::string> default_values(default_count);
+
+        // Collect all values from debug_options
+        for (int j = 0; j < repeated_count; j++) {
+          debug_values[j] =
+              GetRepeatedValueAsString(reflection, debug_options, field, j);
+        }
+
+        // Collect all values from default_options
+        for (int j = 0; j < default_count; j++) {
+          default_values[j] =
+              GetRepeatedValueAsString(reflection, default_options, field, j);
+        }
+
+        // Sort both vectors for comparison
+        std::sort(debug_values.begin(), debug_values.end());
+        std::sort(default_values.begin(), default_values.end());
+
+        // Compare the sorted vectors
+        if (debug_values != default_values) {
+          // Values differ, append all debug values to output
+          for (const auto& value : debug_values) {
+            absl::StrAppend(&non_default_options, field->name(), ": ", value,
+                            "\n");
+          }
+        }
+      }
+      continue;
+    }
+
+    // Check if this field differs from default
+    if (reflection->HasField(debug_options, field) &&
+        !reflection->HasField(default_options, field)) {
+      // Field exists in debug_options but not defaults
+      absl::StrAppend(&non_default_options, field->name(), ": ",
+                      GetValueAsString(reflection, debug_options, field), "\n");
+    } else if (reflection->HasField(debug_options, field)) {
+      // Field exists in both, compare values
+      if (GetValueAsString(reflection, debug_options, field) !=
+          GetValueAsString(reflection, default_options, field)) {
+        absl::StrAppend(&non_default_options, field->name(), ": ",
+                        GetValueAsString(reflection, debug_options, field),
+                        "\n");
+      }
+    }
+  }
+
+  return non_default_options;
+}
+
+void DumpNonDefaultDebugOptions(const HloModule& module,
+                                absl::string_view suffix) {
+  const DebugOptions& debug_options = module.config().debug_options();
+  auto filename = FilenameFor(module, "", suffix);
+  auto nonDefaultDebugOptions = GetNonDefaultDebugOptions(debug_options);
+  DumpToFileInDir(debug_options, filename, nonDefaultDebugOptions);
+}
+
 std::vector<std::string> DumpHloModuleIfEnabled(
     const HloModule& module, const BufferAssignment& buffer_assn,
     string_view name) {
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
     DumpHloModuleImpl(module, &buffer_assn, TimestampFor(module), name, opts);
+    DumpNonDefaultDebugOptions(module, kNonDefaultDebugOptionsDumpSuffix);
   }
   return {};
 }

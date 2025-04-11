@@ -529,7 +529,9 @@ xla_cc_test(
     deps = [
         ":dump",
         ":hlo_module_config",
+        "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",
         "//xla/tests:xla_internal_test_main",

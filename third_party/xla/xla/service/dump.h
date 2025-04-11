@@ -39,6 +39,7 @@ namespace xla {
 // performed on an HloModule.
 constexpr char kBeforeOptimizationsDumpName[] = "before_optimizations";
 constexpr char kAfterOptimizationsDumpName[] = "after_optimizations";
+constexpr char kNonDefaultDebugOptionsDumpSuffix[] = "debug_options";
 
 class BufferAssignment;
 class HloSnapshot;
@@ -198,6 +199,15 @@ absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
                                   std::string* full_path = nullptr);
 
 void DumpHloConfigIfEnabled(const HloModule& module);
+
+// Dumps the non-default debug options to a file in the xla_dump_to directory
+// specified by the module's DebugOptions.
+void DumpNonDefaultDebugOptions(const HloModule& module,
+                                absl::string_view suffix);
+
+// Returns the non-default debug options as a string. The default debug options
+// are received from DefaultDebugOptionsIgnoringFlags().
+std::string GetNonDefaultDebugOptions(const DebugOptions& debug_options);
 
 }  // namespace xla
 
