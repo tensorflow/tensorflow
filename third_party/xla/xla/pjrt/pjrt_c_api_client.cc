@@ -360,8 +360,7 @@ InitializeArgsAndCompile(PjRtCApiClient* api_client, const PJRT_Api* c_api,
   args.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
   PJRT_Profiler_Extension profiler_extension =
       pjrt::CreatePjrtProfilerExtension("PJRT_Client_Compile linkage");
-  args.extension_start =
-      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
+  args.extension_start = &profiler_extension.base;
   args.client = client;
   TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
                       options.ToProto());
@@ -1875,8 +1874,7 @@ PjRtCApiLoadedExecutable::Execute(
   PJRT_Profiler_Extension profiler_extension =
       pjrt::CreatePjrtProfilerExtension(
           "PJRT_LoadedExecutable_Execute linkage");
-  args.extension_start =
-      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
+  args.extension_start = &profiler_extension.base;
 
   RETURN_STATUS_IF_PJRT_ERROR(
       pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args), pjrt_c_api());
@@ -1947,8 +1945,7 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   PJRT_Profiler_Extension profiler_extension =
       pjrt::CreatePjrtProfilerExtension(
           "PJRT_LoadedExecutable_Execute linkage");
-  args.extension_start =
-      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
+  args.extension_start = &profiler_extension.base;
 
   RETURN_STATUS_IF_PJRT_ERROR(
       pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args), pjrt_c_api());

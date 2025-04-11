@@ -25,9 +25,11 @@ PJRT_Error* PJRT_Triton_Compile(PJRT_Triton_Compile_Args* args);
 
 inline PJRT_Triton_Extension CreateTritonExtension(PJRT_Extension_Base* next) {
   return {
-      /*struct_size=*/PJRT_Triton_Extension_STRUCT_SIZE,
-      /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Triton,
-      /*next=*/next,
+      PJRT_Extension_Base{
+          /*struct_size=*/PJRT_Triton_Extension_STRUCT_SIZE,
+          /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Triton,
+          /*next=*/next,
+      },
       /*compile=*/PJRT_Triton_Compile,
   };
 }
