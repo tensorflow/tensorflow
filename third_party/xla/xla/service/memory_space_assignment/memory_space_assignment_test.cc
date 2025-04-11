@@ -5369,6 +5369,278 @@ TEST_F(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   EXPECT_THAT(tanh4, op::ShapeWithLayout(shape_in_default_mem));
 }
 
+TEST_F(MemorySpaceAssignmentTest, ColorOutputInAlternateMemory) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[3,4]{1,0} parameter(0)
+  p1 = f32[3,4]{1,0} parameter(1)
+  tanh0 = f32[3,4]{1,0} tanh(p0)
+  negate0 = f32[3,4]{1,0} negate(p1)
+  tanh1 = f32[3,4]{1,0} tanh(negate0)
+  negate1 = f32[3,4]{1,0} add(negate0, p1)
+  tanh2 = f32[3,4]{1,0} tanh(tanh1)
+  negate2 = f32[3,4]{1,0} add(negate1, p1)
+  tanh3 = f32[3,4]{1,0} tanh(tanh2)
+  negate3 = f32[3,4]{1,0} add(negate2, p1)
+  tanh4 = f32[3,4]{1,0} tanh(tanh3)
+  negate4 = f32[3,4]{1,0} add(negate3, tanh0)
+  ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
+  HloPosition tanh0_position(tanh0, {});
+  memory_space_options.buffer_colorings = {
+      {tanh0_position, kAlternateMemorySpace, tanh0}};
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "tanh0" }
+      override_options { assign_last: true }
+    }
+  )pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  XLA_LOG_LINES(ERROR, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
+                                     std::nullopt, std::nullopt,
+                                     msa_sort_order_overrides);
+  XLA_LOG_LINES(ERROR, "After MSA: \n" + module->ToString());
+  EXPECT_EQ(
+      FindInstruction(module.get(), "tanh0")->shape().layout().memory_space(),
+      kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, ColorInputInAlternateMemory) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[3,4]{1,0} parameter(0)
+  p1 = f32[3,4]{1,0} parameter(1)
+  tanh0 = f32[3,4]{1,0} tanh(p0)
+  negate0 = f32[3,4]{1,0} negate(p1)
+  tanh1 = f32[3,4]{1,0} tanh(negate0)
+  negate1 = f32[3,4]{1,0} add(negate0, p1)
+  tanh2 = f32[3,4]{1,0} tanh(tanh1)
+  negate2 = f32[3,4]{1,0} add(negate1, p1)
+  tanh3 = f32[3,4]{1,0} tanh(tanh2)
+  negate3 = f32[3,4]{1,0} add(negate2, p1)
+  tanh4 = f32[3,4]{1,0} tanh(tanh3)
+  negate4 = f32[3,4]{1,0} add(negate3, tanh0)
+  ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
+  HloPosition tanh0_position(tanh0, {});
+  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
+  memory_space_options.buffer_colorings = {
+      {tanh0_position, kAlternateMemorySpace, negate4}};
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "tanh0" }
+      override_options { assign_last: true }
+    }
+  )pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  XLA_LOG_LINES(ERROR, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
+                                     std::nullopt, std::nullopt,
+                                     msa_sort_order_overrides);
+  XLA_LOG_LINES(ERROR, "After MSA: \n" + module->ToString());
+  EXPECT_EQ(FindInstruction(module.get(), "negate4")
+                ->operand(1)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       ColorOutputInDefaultMemoryUseInAlternateMemory) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[3,4]{1,0} parameter(0)
+  p1 = f32[3,4]{1,0} parameter(1)
+  tanh0 = f32[3,4]{1,0} tanh(p0)
+  negate0 = f32[3,4]{1,0} negate(p1)
+  tanh1 = f32[3,4]{1,0} tanh(negate0)
+  negate1 = f32[3,4]{1,0} add(negate0, p1)
+  tanh2 = f32[3,4]{1,0} tanh(tanh1)
+  negate2 = f32[3,4]{1,0} add(negate1, p1)
+  tanh3 = f32[3,4]{1,0} tanh(tanh2)
+  negate3 = f32[3,4]{1,0} add(negate2, p1)
+  tanh4 = f32[3,4]{1,0} tanh(tanh3)
+  negate4 = f32[3,4]{1,0} add(negate3, tanh0)
+  ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
+  HloPosition tanh0_position(tanh0, {});
+  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
+  memory_space_options.buffer_colorings = {
+      {tanh0_position, kDefaultMemorySpace, tanh0},
+      {tanh0_position, kAlternateMemorySpace, negate4}};
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "tanh0" }
+      override_options { assign_last: true }
+    }
+  )pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  XLA_LOG_LINES(ERROR, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
+                                     std::nullopt, std::nullopt,
+                                     msa_sort_order_overrides);
+  XLA_LOG_LINES(ERROR, "After MSA: \n" + module->ToString());
+  EXPECT_EQ(
+      FindInstruction(module.get(), "tanh0")->shape().layout().memory_space(),
+      kDefaultMemorySpace);
+  EXPECT_EQ(FindInstruction(module.get(), "negate4")
+                ->operand(1)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       ColorOutputInAlternateMemoryUseInDefaultMemory) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+p0 = f32[3,4]{1,0} parameter(0)
+p1 = f32[3,4]{1,0} parameter(1)
+tanh0 = f32[3,4]{1,0} tanh(p0)
+negate0 = f32[3,4]{1,0} negate(p1)
+tanh1 = f32[3,4]{1,0} tanh(negate0)
+negate1 = f32[3,4]{1,0} add(negate0, p1)
+tanh2 = f32[3,4]{1,0} tanh(tanh1)
+negate2 = f32[3,4]{1,0} add(negate1, p1)
+tanh3 = f32[3,4]{1,0} tanh(tanh2)
+negate3 = f32[3,4]{1,0} add(negate2, p1)
+tanh4 = f32[3,4]{1,0} tanh(tanh3)
+negate4 = f32[3,4]{1,0} add(negate3, tanh0)
+ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
+  HloPosition tanh0_position(tanh0, {});
+  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
+  memory_space_options.buffer_colorings = {
+      {tanh0_position, kAlternateMemorySpace, tanh0},
+      {tanh0_position, kDefaultMemorySpace, negate4}};
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "tanh0" }
+      override_options { assign_last: true }
+    }
+  )pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  XLA_LOG_LINES(ERROR, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
+                                     std::nullopt, std::nullopt,
+                                     msa_sort_order_overrides);
+  XLA_LOG_LINES(ERROR, "After MSA: \n" + module->ToString());
+  EXPECT_EQ(
+      FindInstruction(module.get(), "tanh0")->shape().layout().memory_space(),
+      kAlternateMemorySpace);
+  EXPECT_EQ(FindInstruction(module.get(), "negate4")
+                ->operand(1)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, ColorAlternateUsesInAlternateMemory) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+p0 = f32[3,4]{1,0} parameter(0)
+p1 = f32[3,4]{1,0} parameter(1)
+tanh0 = f32[3,4]{1,0} tanh(p0)
+negate0 = f32[3,4]{1,0} negate(p1)
+tanh1 = f32[3,4]{1,0} tanh(negate0)
+negate1 = f32[3,4]{1,0} add(negate0, p1)
+tanh2 = f32[3,4]{1,0} tanh(tanh1)
+negate2 = f32[3,4]{1,0} add(negate1, p1)
+tanh3 = f32[3,4]{1,0} tanh(tanh2)
+negate3 = f32[3,4]{1,0} add(negate2, p1)
+tanh4 = f32[3,4]{1,0} tanh(tanh3)
+negate4 = f32[3,4]{1,0} add(negate3, tanh0)
+ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
+  HloPosition negate0_position(negate0, {});
+  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
+  HloInstruction* tanh1 = FindInstruction(module.get(), "tanh1");
+  memory_space_options.buffer_colorings = {
+      {negate0_position, kAlternateMemorySpace, negate0},
+      {negate0_position, kDefaultMemorySpace, tanh1},
+      {negate0_position, kAlternateMemorySpace, negate1}};
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "tanh0" }
+      override_options { assign_first: true }
+    }
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "negate0" }
+      override_options { assign_last: true }
+    }
+  )pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  XLA_LOG_LINES(ERROR, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
+                                     std::nullopt, std::nullopt,
+                                     msa_sort_order_overrides);
+  XLA_LOG_LINES(ERROR, "After MSA: \n" + module->ToString());
+}
+
 TEST_F(MemorySpaceAssignmentTest,
        MemoryBoundednessOverrideSortOrderAssignFirst) {
   absl::string_view hlo_string = R"(
@@ -13088,6 +13360,7 @@ class MockRepacker : public MemorySpaceAssignmentRepacker {
 // - We make the repacker assign the first slice (in time) of p2 the larger
 //   offset. After MSA, we check to make sure the fist slice is using the
 //   larger slicing parameters
+// subhankarshah check this test
 TEST_F(SlicedPrefetchTest, Repack) {
   absl::string_view hlo_string = R"(
 HloModule Slice, is_scheduled=true

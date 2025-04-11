@@ -104,6 +104,17 @@ enum class WindowPrefetchMode {
   kWindowPrefetch,
 };
 
+// A struct to specify the memory space coloring of a buffer and the instruction
+// call, during which the buffer must be colored.
+struct BufferColoring {
+  HloPosition buffer;    // The buffer to color.
+  int64_t memory_space;  // How to color the buffer
+  HloInstruction*
+      call;  // Instruction call, during which the buffer must be
+             // colored. Set to `buffer.instruction` if the buffer should
+             // be output in the memory space given by `memory_space`.
+};
+
 // The different options to be passed to the Run() API.
 struct Options {
   // The backend-specific integer value that describes the default memory.
@@ -374,6 +385,8 @@ struct Options {
   WindowPrefetchMode window_prefetch_mode = WindowPrefetchMode::kWindowExposure;
 
   MsaSortOrderOverrides msa_sort_order_overrides;
+
+  std::vector<BufferColoring> buffer_colorings;
 };
 }  // namespace memory_space_assignment
 }  // namespace xla
