@@ -319,17 +319,18 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
           if (!CheckFp16Scale(context, tensor, t, quantization_params)) {
             return xnn_datatype_invalid;
           }
-          int num_scales =
+          int64_t num_scales =
               NumElements(&context->tensors[quantization_params->scale]);
-          int num_filter_elements = NumElements(&tensor);
+          int64_t num_filter_elements = NumElements(&tensor);
           if (num_filter_elements / num_scales !=
               quantization_params->blocksize) {
-            TF_LITE_KERNEL_LOG(context,
-                               "Unsupported combination of filter elements %d "
-                               "number of scales %d and blocksize %d "
-                               "%s tensor %d in XNNPACK delegate",
-                               num_filter_elements, num_scales,
-                               quantization_params->blocksize, t);
+            TF_LITE_KERNEL_LOG(
+                context,
+                "Unsupported combination of filter elements %" PRId64
+                " number of scales %" PRId64 " and blocksize %" PRId32
+                " for %s tensor %d in XNNPACK delegate",
+                num_filter_elements, num_scales, quantization_params->blocksize,
+                tensor.name, t);
             return xnn_datatype_invalid;
           }
           break;
@@ -351,9 +352,10 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
             case kTfLiteBlockwiseQuantization:
               return xnn_datatype_qbint4;
             default:
-              TF_LITE_KERNEL_LOG(
-                  context,
-                  "Unsupported quantization type %zu for INT4 tensor #%d", t);
+              TF_LITE_KERNEL_LOG(context,
+                                 "Unsupported quantization type %d for INT4 "
+                                 "tensor %d in XNNPACK delegate",
+                                 tensor.quantization.type, t);
               return xnn_datatype_invalid;
           }
         case kTfLiteInt8:
@@ -2331,8 +2333,8 @@ class Subgraph {
               if (quantization_params->blocksize % 32 != 0) {
                 TF_LITE_MAYBE_KERNEL_LOG(
                     context,
-                    "Blocksize %zu must be multiple of 32 in "
-                    "tensor #%d in node #%d",
+                    "Blocksize %" PRId32
+                    " must be multiple of 32 in tensor #%d in node #%d",
                     quantization_params->blocksize, tensor_index, node_index);
                 return kTfLiteError;
               }
@@ -4372,11 +4374,11 @@ class Subgraph {
         logging_context, axis_tensor, node->inputs->data[1],
         BuiltinOperator_EXPAND_DIMS, node_index));
 
-    const size_t num_new_axes = NumElements(&axis_tensor);
+    const int64_t num_new_axes = NumElements(&axis_tensor);
     if (num_new_axes != 1) {
       TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                               "unexpected number of axes (%d) in node #%d: "
-                               "TFLite only supports 1 new axes",
+                               "unexpected number of axes (%" PRId64
+                               ") in node #%d: TFLite only supports 1 new axes",
                                num_new_axes, node_index);
       return kTfLiteError;
     }
@@ -5772,13 +5774,14 @@ class Subgraph {
       // inside our kernels; check here and punt those to the default
       // delegate implementation for it to decide how to handle them.
       const int64_t extent = input_tensor.dims->data[i];
-      const size_t offset = begins[i] < 0 ? begins[i] + extent : begins[i];
-      const size_t size =
+      const int64_t offset = begins[i] < 0 ? begins[i] + extent : begins[i];
+      const int64_t size =
           ends[i] <= 0 ? ends[i] + extent - offset : ends[i] - offset;
       if (offset + size > extent) {
         TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "offset %zu + size %zu exceeds extent %zu in "
-                                 "STRIDED_SLICE node #%d for dimension %zu",
+                                 "offset %" PRId64 " + size %" PRId64
+                                 " exceeds extent %" PRId64
+                                 " in STRIDED_SLICE node #%d for dimension %zu",
                                  offset, size, extent, node_index, i);
         return kTfLiteError;
       }
