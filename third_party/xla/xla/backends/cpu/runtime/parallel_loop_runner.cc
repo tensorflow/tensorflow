@@ -125,6 +125,13 @@ struct Task2DTile1DIndex {
   size_t extent_j;
 };
 
+struct Task2DTile2DIndex {
+  size_t offset_i;
+  size_t extent_i;
+  size_t offset_j;
+  size_t extent_j;
+};
+
 struct Task3DTile2DIndex {
   size_t i;
   size_t offset_j;
@@ -163,6 +170,40 @@ static Task2DTile1DIndex Delinearize(size_t task_index, size_t range_i,
   size_t extent_j = std::min(range_j - offset_j, tile_j);
 
   return {task_i, offset_j, extent_j};
+}
+
+static size_t NumTasks(size_t range_i, size_t range_j, size_t tile_i,
+                       size_t tile_j) {
+  size_t num_tile_i_tasks = tsl::MathUtil::CeilOfRatio(range_i, tile_i);
+  size_t num_tile_j_tasks = tsl::MathUtil::CeilOfRatio(range_j, tile_j);
+  size_t num_tasks = num_tile_i_tasks * num_tile_j_tasks;
+  DCHECK_GT(num_tasks, 0) << "Expected at least one tile task";
+  return num_tasks;
+}
+
+static Task2DTile2DIndex Delinearize(size_t task_index, size_t range_i,
+                                     size_t range_j, size_t tile_i,
+                                     size_t tile_j) {
+  size_t num_tile_i_tasks = tsl::MathUtil::CeilOfRatio(range_i, tile_i);
+  size_t num_tile_j_tasks = tsl::MathUtil::CeilOfRatio(range_j, tile_j);
+  DCHECK_GT(num_tile_i_tasks, 0) << "Expected at least one tile i task";
+  DCHECK_GT(num_tile_j_tasks, 0) << "Expected at least one tile j task";
+
+  size_t num_tile_tasks = num_tile_i_tasks * num_tile_j_tasks;
+  DCHECK_LT(task_index, num_tile_tasks) << "Task index is out of bounds";
+
+  // Compute task indices along the `i`, `j` and `k` dimensions.
+  size_t task_i = task_index / num_tile_j_tasks;
+  size_t task_j = task_index % num_tile_j_tasks;
+
+  // Convert task index into the offset and extent along the `i` and `j`
+  // dimensions.
+  size_t offset_i = task_i * tile_i;
+  size_t offset_j = task_j * tile_j;
+  size_t extent_i = std::min(range_i - offset_i, tile_i);
+  size_t extent_j = std::min(range_j - offset_j, tile_j);
+
+  return {offset_i, extent_i, offset_j, extent_j};
 }
 
 static size_t NumTasks(size_t range_i, size_t range_j, size_t range_k,
@@ -331,6 +372,51 @@ void ParallelLoopRunner::ParallelizeDynamic(size_t range_i, size_t range_j,
                                             size_t tile_j,
                                             Task2DTile1DDynamic task) {
   Parallelize(range_i, range_j, AdjustTileSize(tile_j, 128), std::move(task));
+}
+
+struct ParallelLoopRunner::ParallelTask2DTile2D {
+  ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const {
+    auto x = Delinearize(task_index, range_i, range_j, tile_i, tile_j);
+    task(x.offset_i, x.offset_j, x.extent_i, x.extent_j);
+  }
+
+  size_t range_i;
+  size_t range_j;
+  size_t tile_i;
+  size_t tile_j;
+  Task2DTile2D task;
+};
+
+void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
+                                     size_t tile_i, size_t tile_j,
+                                     Task2DTile2D task) {
+  DCHECK(done_event_) << "Parallel loop runner is in moved-from state";
+  size_t num_tasks = NumTasks(range_i, range_j, tile_i, tile_j);
+
+  // Fast path for the degenerate parallel loop with single task.
+  if (ABSL_PREDICT_TRUE(num_tasks == 1)) {
+    // Execute task in the caller thread if done event is already available.
+    if (ABSL_PREDICT_TRUE(done_event_.IsConcrete())) {
+      task(0, 0, range_i, range_j);
+      return;
+    }
+
+    // Schedule task when done event becomes available.
+    ScheduleOne([range_j, range_i, task = std::move(task)] {
+      task(0, 0, range_i, range_j);
+    });
+    return;
+  }
+
+  ScheduleAll(num_tasks, ParallelTask2DTile2D{range_i, range_j, tile_i, tile_j,
+                                              std::move(task)});
+}
+
+void ParallelLoopRunner::ParallelizeDynamic(size_t range_i, size_t range_j,
+                                            size_t tile_i, size_t tile_j,
+                                            Task2DTile2DDynamic task) {
+  Parallelize(range_i, range_j, AdjustTileSize(tile_i, 128),
+              AdjustTileSize(tile_j, 128), std::move(task));
 }
 
 struct ParallelLoopRunner::ParallelTask3DTile2D {

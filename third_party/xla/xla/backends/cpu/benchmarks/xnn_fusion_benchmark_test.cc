@@ -58,7 +58,11 @@ static absl::Status RunFusionBenchmark(benchmark::State& state,
       ShapeUtil::MakeShape(F32, {d0, d0}), &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&p0, &p1};
 
-  if (is_xnn_fusion) options.disable_parallel_task_assigner = true;
+  if (is_xnn_fusion) {
+    options.disable_parallel_task_assigner = true;
+    options.aot_options = nullptr;
+  }
+
   return RunHloBenchmark(state, hlo, args,
                          {{"$d0", absl::StrCat(d0)},
                           {"$n", absl::StrCat(n)},

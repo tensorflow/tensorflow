@@ -75,6 +75,11 @@ class ParallelLoopRunner {
   using Task2DTile1DDynamic =
       std::function<void(size_t offset_i, size_t offset_j, size_t count_j)>;
 
+  using Task2DTile2D = std::function<void(size_t offset_i, size_t offset_j,
+                                          size_t extent_i, size_t extent_j)>;
+  using Task2DTile2DDynamic = std::function<void(
+      size_t offset_i, size_t offset_j, size_t count_i, size_t count_j)>;
+
   using Task3DTile2D =
       std::function<void(size_t offset_i, size_t offset_j, size_t offset_k,
                          size_t extent_j, size_t extent_k)>;
@@ -116,6 +121,18 @@ class ParallelLoopRunner {
 
   // This function implements a parallel version of a following loop:
   //
+  //   for (size_t i = 0; i < range_i; i += tile_i)
+  //     for (size_t j = 0; j < range_j; j += tile_j)
+  //       task(i, j, min(range_i - i, tile_i), min(range_j - j, tile_j));
+  void Parallelize(size_t range_i, size_t range_j, size_t tile_i, size_t tile_j,
+                   Task2DTile2D task);
+
+  // Implements a parallel version of 2D loop with dynamic task count.
+  void ParallelizeDynamic(size_t range_i, size_t range_j, size_t tile_i,
+                          size_t tile_j, Task2DTile2DDynamic task);
+
+  // This function implements a parallel version of a following loop:
+  //
   //   for (size_t i = 0; i < range_i; i++)
   //     for (size_t j = 0; j < range_j; j += tile_j)
   //       for (size_t k = 0; k < range_k; k += tile_k)
@@ -148,6 +165,7 @@ class ParallelLoopRunner {
   struct ParallelTask1D;
   struct ParallelTask1DTile1D;
   struct ParallelTask2DTile1D;
+  struct ParallelTask2DTile2D;
   struct ParallelTask3DTile2D;
 
   // Schedules `task` as the AndThen callback of the `done_event_`. Updates

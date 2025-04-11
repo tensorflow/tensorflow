@@ -21,23 +21,18 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/base/call_once.h"
 #include "absl/base/optimization.h"
+#include "absl/log/log.h"
 #include "pthreadpool.h"
 #include "xla/backends/cpu/runtime/parallel_loop_runner.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "tsl/platform/cpu_info.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
 
 // `pthreadpool` API implementation on top of ParallelLoopRunner.
-//
-// When building with `pthreadpool_header_only` config, `pthreadpool` becomes a
-// header-only library, and we implement the API on top of ParallelLoopRunner.
 //
 // At link time `pthreadpool` symbols resolved to our own implementation. This
 // is a temporary hack around the fact that it's impossible to customize
@@ -49,33 +44,6 @@ limitations under the License.
 // surface which is needed by XNNPACK uses inside XLA.
 
 namespace xla::cpu {
-
-bool IsCustomPthreadpoolEnabled() {
-#if defined(XLA_CPU_USE_CUSTOM_PTHREADPOOL)
-  return true;
-#else
-  return false;
-#endif  // XLA_CPU_USE_CUSTOM_PTHREADPOOL
-}
-
-// Default XLA:CPU pthreadpool initialized once per process.
-static absl::once_flag pthreadpool_init;
-static pthreadpool_t default_pthreadpool;
-
-pthreadpool_t DefaultPthreadpool() {
-  if (IsCustomPthreadpoolEnabled()) {
-    LOG(WARNING) << "Default pthreadpool is not supported when build with "
-                    "`--define pthreadpool_header_only=true`";
-    return nullptr;
-  }
-
-  absl::call_once(pthreadpool_init, []() {
-    default_pthreadpool = pthreadpool_create(tsl::port::MaxParallelism());
-  });
-
-  return default_pthreadpool;
-}
-
 namespace {
 
 class Pthreadpool {
@@ -114,21 +82,13 @@ class OwnedParallelLoopRunner : public Pthreadpool {
 }  // namespace
 
 pthreadpool_t CreateCustomPthreadpool(ParallelLoopRunner* runner) {
-  if (IsCustomPthreadpoolEnabled()) {
-    return reinterpret_cast<pthreadpool_t>(
-        std::make_unique<WrappedParallelLoopRunner>(runner).release());
-  }
-  LOG(FATAL) << "To use custom pthreadpool, build with "
-                "`--define pthreadpool_header_only=true`";
+  return reinterpret_cast<pthreadpool_t>(  // REINTERPRET_CAST_OK=perfectly safe
+      std::make_unique<WrappedParallelLoopRunner>(runner).release());
 }
 
-static pthreadpool_t CreateCustomPthreadpool(size_t threads_count) {  // NOLINT
-  if (IsCustomPthreadpoolEnabled()) {
-    return reinterpret_cast<pthreadpool_t>(
-        std::make_unique<OwnedParallelLoopRunner>(threads_count).release());
-  }
-  LOG(FATAL) << "To use custom pthreadpool, build with "
-                "`--define pthreadpool_header_only=true`";
+static pthreadpool_t CreateCustomPthreadpool(size_t threads_count) {
+  return reinterpret_cast<pthreadpool_t>(  // REINTERPRET_CAST_OK=perfectly safe
+      std::make_unique<OwnedParallelLoopRunner>(threads_count).release());
 }
 
 static Pthreadpool* Cast(pthreadpool_t threadpool) {
@@ -136,7 +96,7 @@ static Pthreadpool* Cast(pthreadpool_t threadpool) {
 }
 
 xla::cpu::ParallelLoopRunner* GetParallelLoopRunner(pthreadpool_t threadpool) {
-  return IsCustomPthreadpoolEnabled() ? Cast(threadpool)->runner() : nullptr;
+  return Cast(threadpool)->runner();
 }
 
 //===----------------------------------------------------------------------===//
@@ -250,6 +210,49 @@ static void Parallelize2DTile1DDynamic(  // NOLINT
       ->ParallelizeDynamic(range_i, range_j, tile_j, std::move(task));
 }
 
+static void Parallelize2DTile2D(pthreadpool_t threadpool,  // NOLINT
+                                pthreadpool_task_2d_tile_2d_t function,
+                                void* context, size_t range_i, size_t range_j,
+                                size_t tile_i, size_t tile_j, uint32_t flags) {
+  if (ABSL_PREDICT_FALSE(threadpool == nullptr)) {
+    for (size_t i = 0; i < range_i; i += tile_i) {
+      for (size_t j = 0; j < range_j; j += tile_j) {
+        function(context, i, j, std::min(range_i - i, tile_i),
+                 std::min(range_j - j, tile_j));
+      }
+    }
+    return;
+  }
+
+  ParallelLoopRunner::Task2DTile2D task =
+      [function, context](size_t offset_i, size_t offset_j, size_t extent_i,
+                          size_t extent_j) {
+        (*function)(context, offset_i, offset_j, extent_i, extent_j);
+      };
+  Cast(threadpool)
+      ->runner()
+      ->Parallelize(range_i, range_j, tile_i, tile_j, std::move(task));
+}
+
+static void Parallelize2DTile2DDynamic(  // NOLINT
+    pthreadpool_t threadpool, pthreadpool_task_2d_tile_2d_dynamic_t function,
+    void* context, size_t range_i, size_t range_j, size_t tile_i, size_t tile_j,
+    uint32_t flags) {
+  if (ABSL_PREDICT_FALSE(threadpool == nullptr)) {
+    function(context, 0, 0, range_i, range_j);
+    return;
+  }
+
+  ParallelLoopRunner::Task2DTile2DDynamic task =
+      [function, context](size_t offset_i, size_t offset_j, size_t extent_i,
+                          size_t extent_j) {
+        (*function)(context, offset_i, offset_j, extent_i, extent_j);
+      };
+  Cast(threadpool)
+      ->runner()
+      ->ParallelizeDynamic(range_i, range_j, tile_i, tile_j, std::move(task));
+}
+
 static void Parallelize3DTile2D(pthreadpool_t threadpool,  // NOLINT
                                 pthreadpool_task_3d_tile_2d_t function,
                                 void* context, size_t range_i, size_t range_j,
@@ -301,7 +304,9 @@ static void Parallelize3DTile2DDynamic(  // NOLINT
 
 }  // namespace xla::cpu
 
-#if defined(XLA_CPU_USE_CUSTOM_PTHREADPOOL)
+//===----------------------------------------------------------------------===//
+// pthreadpool C API implementation on top of the custom loop runner.
+//===----------------------------------------------------------------------===//
 
 extern "C" pthreadpool_t pthreadpool_create(size_t threads_count) {
   return xla::cpu::CreateCustomPthreadpool(threads_count);
@@ -397,14 +402,16 @@ extern "C" void pthreadpool_parallelize_2d_tile_2d(
     pthreadpool_t threadpool, pthreadpool_task_2d_tile_2d_t function,
     void* context, size_t range_i, size_t range_j, size_t tile_i, size_t tile_j,
     uint32_t flags) {
-  LOG(FATAL) << "Not implemented";
+  xla::cpu::Parallelize2DTile2D(threadpool, function, context, range_i, range_j,
+                                tile_i, tile_j, flags);
 }
 
 extern "C" void pthreadpool_parallelize_2d_tile_2d_dynamic(
     pthreadpool_t threadpool, pthreadpool_task_2d_tile_2d_dynamic_t function,
     void* context, size_t range_i, size_t range_j, size_t tile_i, size_t tile_j,
     uint32_t flags) {
-  LOG(FATAL) << "Not implemented";
+  xla::cpu::Parallelize2DTile2DDynamic(threadpool, function, context, range_i,
+                                       range_j, tile_i, tile_j, flags);
 }
 
 extern "C" void pthreadpool_parallelize_2d_tile_2d_with_uarch(
@@ -580,5 +587,3 @@ extern "C" void pthreadpool_parallelize_6d_tile_2d(
     size_t tile_n, uint32_t flags) {
   LOG(FATAL) << "Not implemented";
 }
-
-#endif  // XLA_CPU_USE_CUSTOM_PTHREADPOOL
