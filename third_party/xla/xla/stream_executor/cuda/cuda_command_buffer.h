@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -65,7 +66,7 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
         graph_(graph),
         is_owned_graph_(is_owned_graph) {
     VLOG(5) << "Created command buffer for graph " << graph_
-            << "; mode=" << ModeToString(mode)
+            << "; mode=" << absl::StrCat(mode)
             << "; is_owned_graph=" << is_owned_graph_;
   }
 

@@ -87,14 +87,18 @@ class CommandBuffer {
   //
   enum class State { kCreate, kUpdate, kFinalized };
 
-  friend absl::string_view StateToString(State state) {
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, State state) {
     switch (state) {
       case CommandBuffer::State::kCreate:
-        return "create";
+        sink.Append("create");
+        break;
       case CommandBuffer::State::kUpdate:
-        return "update";
+        sink.Append("update");
+        break;
       case CommandBuffer::State::kFinalized:
-        return "finalized";
+        sink.Append("finalized");
+        break;
     }
   }
 
@@ -107,12 +111,15 @@ class CommandBuffer {
   //
   enum class Mode { kPrimary, kNested };
 
-  friend absl::string_view ModeToString(Mode mode) {
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, Mode mode) {
     switch (mode) {
       case CommandBuffer::Mode::kPrimary:
-        return "primary";
+        sink.Append("primary");
+        break;
       case CommandBuffer::Mode::kNested:
-        return "nested";
+        sink.Append("nested");
+        break;
     }
   }
 
