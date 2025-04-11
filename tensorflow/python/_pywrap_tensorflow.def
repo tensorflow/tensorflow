@@ -45,7 +45,6 @@ EXPORTS
   ?ForEachPayload@Status@lts_20230802@absl@@QEBAXV?$FunctionRef@$$A6AXV?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBVCord@lts_20230802@absl@@@Z@23@@Z
   ??BCord@lts_20230802@absl@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
   ?ReadRecord@RecordReader@io@tsl@@QEAA?AVStatus@lts_20230802@absl@@PEA_KPEAVtstring@3@@Z
-  ?IsOutOfRange@errors@tsl@@YA_NAEBVStatus@lts_20230802@absl@@@Z
   ?FastUInt64ToBufferLeft@strings@tsl@@YA_K_KPEAD@Z
   ?StrCat@strings@tsl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@0@Z
   ??1RecordWriter@io@tsl@@QEAA@XZ
@@ -80,7 +79,6 @@ EXPORTS
   ?ReadFileToString@tsl@@YA?AVStatus@lts_20230802@absl@@PEAVEnv@1@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV67@@Z
   ?GetChildren@Env@tsl@@QEAA?AVStatus@lts_20230802@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@@Z
   ?CreateDir@Env@tsl@@QEAA?AVStatus@lts_20230802@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
-  ?IsAlreadyExists@errors@tsl@@YA_NAEBVStatus@lts_20230802@absl@@@Z
   ?RecursivelyCreateDir@Env@tsl@@QEAA?AVStatus@lts_20230802@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?CopyFile@Env@tsl@@QEAA?AVStatus@lts_20230802@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z
   ?StrCat@strings@tsl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@@Z
@@ -840,7 +838,6 @@ EXPORTS
   ?NameRangesForNode@tensorflow@@YA?AVStatus@lts_20230802@absl@@AEBVAttrSlice@1@AEBVOpDef@1@PEAV?$FlatMap@V?$basic_string_view@DU?$char_traits@D@std@@@std@@U?$pair@HH@2@U?$hash@V?$basic_string_view@DU?$char_traits@D@std@@@std@@X@tsl@@U?$equal_to@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@2@@gtl@tsl@@2@Z
   ?ParseTensorName@tensorflow@@YA?AUTensorId@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?Hash64@tsl@@YA_KPEBD_K1@Z
-  ?IsFailedPrecondition@errors@tsl@@YA_NAEBVStatus@lts_20230802@absl@@@Z
   ?HasAtomicMove@Env@tsl@@QEAA?AVStatus@lts_20230802@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEA_N@Z
   ?Stat@Env@tsl@@QEAA?AVStatus@lts_20230802@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAUFileStatistics@2@@Z
   ?NewAppendableFile@Env@tsl@@QEAA?AVStatus@lts_20230802@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$unique_ptr@VWritableFile@tsl@@U?$default_delete@VWritableFile@tsl@@@std@@@7@@Z
@@ -1245,3 +1242,13 @@ EXPORTS
   ?Signal@CondVar@lts_20230802@absl@@QEAAXXZ
   ?Unlock@Mutex@lts_20230802@absl@@QEAAXXZ
   ?Wait@CondVar@lts_20230802@absl@@QEAAXPEAVMutex@23@@Z
+  ?UnimplementedError@lts_20230802@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?NotFoundError@lts_20230802@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?InternalError@lts_20230802@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?InvalidArgumentError@lts_20230802@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?IsAlreadyExists@lts_20230802@absl@@YA_NAEBVStatus@12@@Z
+  ?AlreadyExistsError@lts_20230802@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?IsOutOfRange@lts_20230802@absl@@YA_NAEBVStatus@12@@Z
+  ?FailedPreconditionError@lts_20230802@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?PermissionDeniedError@lts_20230802@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?IsFailedPrecondition@lts_20230802@absl@@YA_NAEBVStatus@12@@Z
