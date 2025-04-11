@@ -295,9 +295,9 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:base",
-        "@stablehlo//:broadcast_utils",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_assembly_format",
+        "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_type_inference",
     ],
 )

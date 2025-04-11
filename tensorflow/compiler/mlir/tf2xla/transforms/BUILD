@@ -324,7 +324,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -352,6 +351,7 @@ cc_library(
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/platform:statusor",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -366,9 +366,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "//tensorflow/core:framework",
         "//tensorflow/core:ops",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
@@ -381,11 +379,11 @@ tf_cc_test(
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/tsl/lib/core:status_test_util",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/platform:statusor",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

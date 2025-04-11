@@ -50,6 +50,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tpu_embedding_ops_registry.h"
@@ -154,7 +155,7 @@ Tf2XlaRewriter::~Tf2XlaRewriter() {
   if (context_) context_->Unref();
 }
 
-absl::StatusOr<mhlo::TupleOp> Tf2XlaRewriter::ImportXlaComputation(
+absl::StatusOr<stablehlo::TupleOp> Tf2XlaRewriter::ImportXlaComputation(
     XlaComputation& computation) {
   xla::DebugOptions debug_options;
   TF_ASSIGN_OR_RETURN(auto hlo_module_config,
@@ -193,8 +194,8 @@ absl::StatusOr<mhlo::TupleOp> Tf2XlaRewriter::ImportXlaComputation(
       xla::HloFunctionImporter::ImportInstructions(
           *hlo_module->entry_computation(), arguments, symbol_table, &builder));
 
-  mhlo::TupleOp root_tuple =
-      mlir::dyn_cast_or_null<mhlo::TupleOp>(root_value.getDefiningOp());
+  stablehlo::TupleOp root_tuple =
+      mlir::dyn_cast_or_null<stablehlo::TupleOp>(root_value.getDefiningOp());
   if (!root_tuple) {
     return tsl::errors::InvalidArgument(
         "Imported XLA Root Value is not a tuple op");
@@ -410,23 +411,23 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
 
   if (failed(VerifyOpResults(op_context))) return failure();
 
-  absl::StatusOr<mhlo::TupleOp> tuple_result_or_status =
+  absl::StatusOr<stablehlo::TupleOp> tuple_result_or_status =
       CompileWithHloImporter(op_context);
   if (!tuple_result_or_status.ok()) {
     return op_->emitRemark() << tuple_result_or_status.status().ToString();
   }
-    mhlo::TupleOp tuple_result = tuple_result_or_status.value();
+  stablehlo::TupleOp tuple_result = tuple_result_or_status.value();
 
-    llvm::SmallVector<Value> output_values;
-    if (failed(GetKernelOutputs(op_context, tuple_result, output_values))) {
-      return failure();
-    }
+  llvm::SmallVector<Value> output_values;
+  if (failed(GetKernelOutputs(op_context, tuple_result, output_values))) {
+    return failure();
+  }
 
   rewriter_.replaceOp(op_, output_values);
   return success();
 }
 
-absl::StatusOr<mhlo::TupleOp> Tf2XlaRewriter::CompileWithHloImporter(
+absl::StatusOr<stablehlo::TupleOp> Tf2XlaRewriter::CompileWithHloImporter(
     tensorflow::OpKernelContext& op_context) {
   // XLA can only return a single value. Wrap all output op return values
   // in a Tuple op that gets unpacked later.
@@ -470,7 +471,7 @@ mlir::LogicalResult Tf2XlaRewriter::VerifyOpResults(
 // multiple values. We get around this by returning a tuple as an XLA op. We
 // then unpack it here to return the multiple values instead.
 mlir::LogicalResult Tf2XlaRewriter::UnpackTupleResults(
-    mhlo::TupleOp tuple_result, llvm::SmallVector<Value>& outputs) {
+    stablehlo::TupleOp tuple_result, llvm::SmallVector<Value>& outputs) {
   if (tuple_result->getNumOperands() != op_->getNumResults()) {
     return op_->emitRemark() << "Translated TF2XLA tuple has different "
                                 "number of results than original op";
@@ -485,7 +486,7 @@ mlir::LogicalResult Tf2XlaRewriter::UnpackTupleResults(
 }
 
 mlir::LogicalResult Tf2XlaRewriter::GetKernelOutputs(
-    tensorflow::OpKernelContext& op_context, mhlo::TupleOp tuple_results,
+    tensorflow::OpKernelContext& op_context, stablehlo::TupleOp tuple_results,
     llvm::SmallVector<Value>& outputs) {
   outputs.reserve(op_->getNumResults());
 

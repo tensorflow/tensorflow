@@ -1271,8 +1271,8 @@ def MHLO_AddDependencyOp : MHLO_Op<"add_dependency", [Pure,
     ```
   }];
 
-  let arguments = (ins MHLO_TensorOrToken:$operand, MHLO_Token:$token);
-  let results = (outs MHLO_TensorOrToken:$output);
+  let arguments = (ins MHLO_TensorOrAnyToken:$operand, MHLO_AnyToken:$token);
+  let results = (outs MHLO_TensorOrAnyToken:$output);
   let hasCustomHLOConverter = 1;
 
   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";

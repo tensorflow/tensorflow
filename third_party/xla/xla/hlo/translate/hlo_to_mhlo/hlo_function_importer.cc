@@ -1109,12 +1109,11 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(ConvertReplicaGroups(
           collective_broadcast->replica_groups(), builder_));
       if (collective_broadcast->channel_id().has_value())
-        attributes.push_back(ConvertChannelHandle(
+        attributes.push_back(stablehlo::ConvertChannelHandle(
             collective_broadcast->channel_id().value(), builder_));
-      // TODO(b/408024772) ToStablehlo: ConvertChannelHandle
       return func_builder
-          ->create<mlir::mhlo::CollectiveBroadcastOp>(loc, result_type,
-                                                      operands, attributes)
+          ->create<mlir::stablehlo::CollectiveBroadcastOp>(loc, result_type,
+                                                           operands, attributes)
           .getOperation();
     }
 
@@ -1123,12 +1122,11 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(ConvertSourceTargetPairs(
           collective_permute->source_target_pairs(), builder_));
       if (collective_permute->channel_id().has_value())
-        attributes.push_back(ConvertChannelHandle(
+        attributes.push_back(stablehlo::ConvertChannelHandle(
             collective_permute->channel_id().value(), builder_));
-      // TODO(b/408024772) ToStablehlo: ConvertChannelHandle
       return func_builder
-          ->create<mlir::mhlo::CollectivePermuteOp>(loc, result_type, operands,
-                                                    attributes)
+          ->create<mlir::stablehlo::CollectivePermuteOp>(loc, result_type,
+                                                         operands, attributes)
           .getOperation();
     }
     case HloOpcode::kCollectivePermuteStart: {
@@ -1181,11 +1179,6 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             builder_->getNamedAttr("result_layouts", result_layouts));
       }
 
-      attributes.push_back(
-          ConvertCustomCallSchedule(custom_call->custom_call_schedule()));
-      TF_ASSIGN_OR_RETURN(
-          auto mlir_api_version,
-          ConvertCustomCallApiVersion(custom_call->api_version()));
       attributes.push_back(builder_->getNamedAttr(
           "call_target_name",
           builder_->getStringAttr(custom_call->custom_call_target())));
@@ -1224,19 +1217,42 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             builder_->getNamedAttr("mhlo.literal", attr.value()));
       }
 
+      // StableHLO CustomCall doesn't have a schedule attribute
+      if (custom_call->custom_call_schedule() !=
+          CustomCallSchedule::SCHEDULE_NONE) {
+        attributes.push_back(
+            ConvertCustomCallSchedule(custom_call->custom_call_schedule()));
+        TF_ASSIGN_OR_RETURN(
+            auto mlir_api_version,
+            ConvertCustomCallApiVersion(custom_call->api_version()));
+        attributes.push_back(builder_->getNamedAttr(
+            "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
+                               builder_->getContext(), mlir_api_version)));
+        attributes.push_back(builder_->getNamedAttr(
+            "output_operand_aliases",
+            ConvertOutputOperandAliasing(instruction->output_operand_aliasing(),
+                                         builder_)));
+        // XLA Feature - MHLO Only
+        return func_builder
+            ->create<mlir::mhlo::CustomCallOp>(loc, result_type, operands,
+                                               attributes)
+            .getOperation();
+      }
+
+      // Valid StableHLO CustomCall
+      TF_ASSIGN_OR_RETURN(
+          auto mlir_api_version,
+          stablehlo::ConvertCustomCallApiVersion(custom_call->api_version()));
       attributes.push_back(builder_->getNamedAttr(
-          "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
+          "api_version", mlir::stablehlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));
       attributes.push_back(builder_->getNamedAttr(
           "output_operand_aliases",
-          ConvertOutputOperandAliasing(instruction->output_operand_aliasing(),
-                                       builder_)));
-
-      // TODO(b/408024772) ToStablehlo: Special handling needed for CC schedules
-      // that aren't NONE and convert CC attrs to StableHLO
+          stablehlo::ConvertOutputOperandAliasing(
+              instruction->output_operand_aliasing(), builder_)));
       return func_builder
-          ->create<mlir::mhlo::CustomCallOp>(loc, result_type, operands,
-                                             attributes)
+          ->create<mlir::stablehlo::CustomCallOp>(loc, result_type, operands,
+                                                  attributes)
           .getOperation();
     }
     case HloOpcode::kCompare: {
@@ -1319,8 +1335,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       llvm::SmallVector<Type> flattened_ret_types;
       FlattenTupleType(result_type, flattened_ret_types);
 
-      // TODO(b/408024772) ToStableHLO: result_type needs to be StableHLO Token
-      auto op = func_builder->create<mlir::mhlo::InfeedOp>(
+      auto op = func_builder->create<mlir::stablehlo::InfeedOp>(
           loc, flattened_ret_types, operands, attributes);
 
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
@@ -1339,8 +1354,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       FlattenTupleValue(func_builder, loc, operands[0], flattened_operands);
       flattened_operands.push_back(operands[1]);
 
-      // TODO(b/408024772) ToStableHLO: result_type needs to be StableHLO Token
-      auto op = func_builder->create<mlir::mhlo::OutfeedOp>(
+      auto op = func_builder->create<mlir::stablehlo::OutfeedOp>(
           loc, result_type, flattened_operands, attributes);
 
       return op.getOperation();
@@ -1578,12 +1592,11 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(
           ConvertReplicaGroups(all_gather->replica_groups(), builder_));
       if (all_gather->channel_id().has_value())
-        attributes.push_back(
-            ConvertChannelHandle(all_gather->channel_id().value(), builder_));
+        attributes.push_back(stablehlo::ConvertChannelHandle(
+            all_gather->channel_id().value(), builder_));
       if (all_gather->use_global_device_ids())
         attributes.push_back(ConvertUseGlobalDeviceIds(builder_));
-      // TODO(b/408024772) ToStablehlo: ConvertChannelHandleToStablehlo
-      auto all_gather_op = func_builder->create<mlir::mhlo::AllGatherOp>(
+      auto all_gather_op = func_builder->create<mlir::stablehlo::AllGatherOp>(
           loc, result_types, operands, attributes);
       if (result_tuple_ty) {
         return WrapInTuple(func_builder, all_gather_op);
@@ -1610,12 +1623,11 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(
           ConvertReplicaGroups(all_reduce->replica_groups(), builder_));
       if (all_reduce->channel_id().has_value())
-        attributes.push_back(
-            ConvertChannelHandle(all_reduce->channel_id().value(), builder_));
+        attributes.push_back(stablehlo::ConvertChannelHandle(
+            all_reduce->channel_id().value(), builder_));
       if (all_reduce->use_global_device_ids())
         attributes.push_back(ConvertUseGlobalDeviceIds(builder_));
-      // TODO(b/408024772) ToStablehlo: ConvertChannelHandleToStablehlo
-      auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
+      auto all_reduce_op = func_builder->create<mlir::stablehlo::AllReduceOp>(
           loc, result_types, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*all_reduce->to_apply(),
                                         &all_reduce_op.getComputation()));
@@ -1625,9 +1637,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return all_reduce_op.getOperation();
     }
     case HloOpcode::kAllReduceStart: {
-      // TODO(b/408024772) ToStablehlo: Special handling needed for
-      // AllReduceStart.
-      auto appendRegion = [&](mlir::mhlo::AllReduceOp all_reduce_sync) {
+      auto appendRegion = [&](mlir::stablehlo::AllReduceOp all_reduce_sync) {
         TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->to_apply(),
                                           &all_reduce_sync.getComputation()));
         return absl::OkStatus();
@@ -1638,62 +1648,64 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                   symbol_table_);
     }
     case HloOpcode::kAllReduceDone: {
-      // TODO(b/408024772) ToStablehlo: Special handling needed for
-      // AllReduceStart.
       return ImportAsyncOpDone(instruction, loc, operands, attributes,
                                result_type, func_builder);
     }
     case HloOpcode::kAllToAll: {
       auto all_to_all = Cast<HloAllToAllInstruction>(instruction);
-      auto result_tuple_ty = result_type.dyn_cast<mlir::TupleType>();
+
+      auto replica_groups_attr = llvm::cast<DenseIntElementsAttr>(
+          ConvertReplicaGroups(all_to_all->replica_groups(), builder_)
+              .getValue());
 
       // Check invariants of array all-to-all. This is a sanity check and is
       // verified by the HLO verifier.
+      auto result_tuple_ty = llvm::dyn_cast<mlir::TupleType>(result_type);
       if (result_tuple_ty) {
+        // Tuple all-to-all is MHLO only for now.
         if (all_to_all->split_dimension().has_value()) {
           return InvalidArgument(
               "Tuple all-to-all should not have a split dimension");
         }
-      } else {
-        if (!all_to_all->split_dimension().has_value() ||
-            operands.size() != 1 || all_to_all->replica_groups().empty()) {
-          return InvalidArgument(
-              "Array all-to-all should have a split dimension, one operand and "
-              "non-empty replica groups");
+        llvm::SmallVector<Type, 4> return_types =
+            llvm::to_vector<4>(result_tuple_ty.getTypes());
+        mlir::mhlo::ChannelHandleAttr channel_handle_attr{};
+        if (all_to_all->channel_id().has_value()) {
+          channel_handle_attr = llvm::cast<mlir::mhlo::ChannelHandleAttr>(
+              ConvertChannelHandle(all_to_all->channel_id().value(), builder_)
+                  .getValue());
         }
-      }
 
-      auto replica_groups_attr =
-          ConvertReplicaGroups(all_to_all->replica_groups(), builder_)
-              .getValue()
-              .cast<DenseIntElementsAttr>();
-
-      llvm::SmallVector<Type, 4> return_types = {result_type};
-      if (result_tuple_ty) {
-        return_types = llvm::to_vector<4>(result_tuple_ty.getTypes());
-      }
-
-      // TODO(b/408024772) ToStablehlo: mhlo AllToAll and StableHLO AllToAll are
-      // different currently for multiple arguments, we need to fix this.
-      // Additionally ConvertChannelHandle changes are needed.
-      auto result = func_builder->create<mlir::mhlo::AllToAllOp>(
-          loc, return_types, operands, nullptr, nullptr, nullptr,
-          replica_groups_attr);
-
-      if (all_to_all->channel_id().has_value()) {
-        auto handle =
-            ConvertChannelHandle(all_to_all->channel_id().value(), builder_);
-        result.setChannelHandleAttr(
-            handle.getValue().cast<mlir::mhlo::ChannelHandleAttr>());
-      }
-
-      if (result_tuple_ty) {
+        // TODO(b/408024772) Fix StableHLO AllToAll to support tuple types the
+        // way that XLA expects it. Currently it is mis-designed.
+        // XLA Feature -- MHLO Only
+        auto result = func_builder->create<mlir::mhlo::AllToAllOp>(
+            loc, return_types, operands, nullptr, nullptr, nullptr,
+            replica_groups_attr, channel_handle_attr);
         return WrapInTuple(func_builder, result);
       }
+      // Array AllToAll
+      if (!all_to_all->split_dimension().has_value() || operands.size() != 1 ||
+          all_to_all->replica_groups().empty()) {
+        return InvalidArgument(
+            "Array all-to-all should have a split dimension, one operand and "
+            "non-empty replica groups");
+      }
 
-      result.setSplitDimension(all_to_all->split_dimension().value());
-      result.setConcatDimension(all_to_all->split_dimension().value());
-      result.setSplitCount(all_to_all->replica_groups()[0].replica_ids_size());
+      mlir::stablehlo::ChannelHandleAttr channel_handle_attr{};
+      if (all_to_all->channel_id().has_value()) {
+        channel_handle_attr = llvm::cast<mlir::stablehlo::ChannelHandleAttr>(
+            stablehlo::ConvertChannelHandle(all_to_all->channel_id().value(),
+                                            builder_)
+                .getValue());
+      }
+
+      auto result = func_builder->create<mlir::stablehlo::AllToAllOp>(
+          loc, result_type, operands[0], all_to_all->split_dimension().value(),
+          all_to_all->split_dimension().value(),
+          all_to_all->replica_groups()[0].replica_ids_size(),
+          replica_groups_attr, channel_handle_attr);
+
       return result.getOperation();
     }
     case HloOpcode::kReduce: {
@@ -1879,13 +1891,12 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(
           ConvertReplicaGroups(reduce_scatter->replica_groups(), builder_));
       if (reduce_scatter->channel_id().has_value())
-        attributes.push_back(ConvertChannelHandle(
+        attributes.push_back(stablehlo::ConvertChannelHandle(
             reduce_scatter->channel_id().value(), builder_));
       if (reduce_scatter->use_global_device_ids())
         attributes.push_back(ConvertUseGlobalDeviceIds(builder_));
-      // TODO(b/408024772) ToStablehlo: ConvertChannelHandle
       auto reduce_scatter_op =
-          func_builder->create<mlir::mhlo::ReduceScatterOp>(
+          func_builder->create<mlir::stablehlo::ReduceScatterOp>(
               loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*reduce_scatter->to_apply(),
                                         &reduce_scatter_op.getComputation()));
@@ -2055,22 +2066,17 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
     }
     case HloOpcode::kAfterAll: {
-      // HLO AfterAll ops without any token input are used to just create a
-      // token. MHLO has a special op CreateToken for this case.
+      // HLO AfterAll ops without any token input are used to create a token.
+      // TODO(b/408024772): Remove CreateTokenOp, it is redundant.
       if (instruction->operands().empty()) {
-        // TODO(b/408024772) ToStablehlo: result_type needs to be a
-        // stablehlo::TokenType.
-        // Also, remove CreateTokenOp usage to AfterAllOp.
         return func_builder
-            ->create<mlir::mhlo::CreateTokenOp>(loc, result_type, operands,
-                                                attributes)
+            ->create<mlir::stablehlo::CreateTokenOp>(loc, result_type, operands,
+                                                     attributes)
             .getOperation();
       } else {
-        // TODO(b/408024772) ToStablehlo: result_type needs to be a
-        // stablehlo::TokenType.
         return func_builder
-            ->create<mlir::mhlo::AfterAllOp>(loc, result_type, operands,
-                                             attributes)
+            ->create<mlir::stablehlo::AfterAllOp>(loc, result_type, operands,
+                                                  attributes)
             .getOperation();
       }
     }
@@ -2197,6 +2203,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kShiftRightLogical, ShiftRightLogicalOp);
       NO_ATTRIBUTE_CASE(kSign, SignOp);
       NO_ATTRIBUTE_CASE(kSubtract, SubtractOp);
+      NO_ATTRIBUTE_CASE(kTuple, TupleOp);
       NO_ATTRIBUTE_CASE(kXor, XorOp);
 
 #undef NO_ATTRIBUTE_CASE
@@ -2211,9 +2218,6 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE_MHLO(kCopy, CopyOp);
       NO_ATTRIBUTE_CASE_MHLO(kErf, ErfOp);
       NO_ATTRIBUTE_CASE_MHLO(kStochasticConvert, StochasticConvertOp);
-      // TODO(b/408024772) ToStablehlo: Once all tokens are stablehlo.token move
-      // to NO_ATTRIBUTE_CASE.
-      NO_ATTRIBUTE_CASE_MHLO(kTuple, TupleOp);
 
 #undef NO_ATTRIBUTE_CASE_MHLO
 

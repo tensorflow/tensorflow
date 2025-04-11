@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -170,7 +171,7 @@ static absl::StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
     return builder.getTupleType(contents);
   }
   if (shape.IsToken()) {
-    return mlir::mhlo::TokenType::get(builder.getContext());
+    return mlir::stablehlo::TokenType::get(builder.getContext());
   }
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
