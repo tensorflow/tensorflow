@@ -47,10 +47,8 @@ xla_cc_test(
         "//xla/stream_executor:device_memory",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test_main",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
     ],
@@ -70,7 +68,6 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -110,7 +107,6 @@ xla_cc_test(
     deps = [
         ":execution_state",
         "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
@@ -174,7 +170,6 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -193,7 +188,6 @@ cc_library(
     hdrs = ["attribute_map.h"],
     deps = [
         ":call_frame",
-        "//xla:util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

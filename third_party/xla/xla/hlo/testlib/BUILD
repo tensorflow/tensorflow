@@ -119,7 +119,6 @@ cc_library(
     testonly = 1,
     hdrs = ["pattern_matcher_gmock.h"],
     deps = [
-        "test",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:pattern_matcher",
