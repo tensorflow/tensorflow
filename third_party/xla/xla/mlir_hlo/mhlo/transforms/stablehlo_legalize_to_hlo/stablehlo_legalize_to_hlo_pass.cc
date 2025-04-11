@@ -67,8 +67,22 @@ struct AddDependencyOpToMhoTokenConverter
 void legalDirectStablehloToHloConversionOps(ConversionTarget& target) {
   target.addLegalOp<
       // go/keep-sorted start
-      stablehlo::AddOp, stablehlo::ConstantOp, stablehlo::DynamicSliceOp,
-      stablehlo::SliceOp
+      stablehlo::AbsOp, stablehlo::CbrtOp, stablehlo::SqrtOp, stablehlo::TanOp,
+      stablehlo::AddOp, stablehlo::Atan2Op, stablehlo::AddOp,
+      stablehlo::BroadcastInDimOp, stablehlo::BroadcastOp, stablehlo::CeilOp,
+      stablehlo::ClzOp, stablehlo::ConvertOp, stablehlo::ComplexOp,
+      stablehlo::ConvolutionOp, stablehlo::CosineOp, stablehlo::DynamicSliceOp,
+      stablehlo::DivOp, stablehlo::MaxOp, stablehlo::ConstantOp,
+      stablehlo::Expm1Op, stablehlo::DynamicBroadcastInDimOp,
+      stablehlo::FloorOp, stablehlo::ImagOp, stablehlo::ExpOp,
+      stablehlo::IsFiniteOp, stablehlo::Log1pOp, stablehlo::LogOp,
+      stablehlo::LogisticOp, stablehlo::NegOp, stablehlo::NotOp,
+      stablehlo::MinOp, stablehlo::MulOp, stablehlo::PowOp, stablehlo::RemOp,
+      stablehlo::PopulationCountOp, stablehlo::RealOp,
+      stablehlo::RoundNearestEvenOp, stablehlo::RoundOp, stablehlo::RsqrtOp,
+      stablehlo::ShiftLeftOp, stablehlo::ShiftRightArithmeticOp,
+      stablehlo::ShiftRightLogicalOp, stablehlo::SubtractOp, stablehlo::SignOp,
+      stablehlo::SineOp, stablehlo::SliceOp, stablehlo::TanhOp
       // go/keep-sorted end
       >();
 }
