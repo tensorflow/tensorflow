@@ -282,7 +282,8 @@ class Compiler {
   // The Compiler class also serves as a point to register compiler objects
   // for the various platforms.
 
-  using CompilerFactory = std::function<std::unique_ptr<Compiler>()>;
+  using CompilerFactory =
+      std::function<absl::StatusOr<std::unique_ptr<Compiler>>()>;
 
   // Registers the compiler singleton for the platform. This is assumed to
   // be a singleton, so no ownership is transferred.
