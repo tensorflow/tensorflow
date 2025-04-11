@@ -53,6 +53,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/lower_quant_annotations_helper.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
@@ -700,11 +701,11 @@ void QuantizePass::runOnOperation() {
 
 // Creates an instance of the TensorFlow Lite dialect QuantizeTFL pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
-    const quant::QuantizationSpecs& quant_specs,
+    const QuantizationSpecs& quant_specs,
     const absl::flat_hash_set<std::string>& ops_blocklist,
     const absl::flat_hash_set<std::string>& nodes_blocklist) {
   quant::QuantizationSpecs updated_quant_specs;
-  updated_quant_specs = quant_specs;
+  updated_quant_specs = ConvertLiteToTfQuantizationSpecs(quant_specs);
   // If there's new blocklists given, update quant_specs to use the new one.
   if (!ops_blocklist.empty()) {
     updated_quant_specs.ops_blocklist = ops_blocklist;
