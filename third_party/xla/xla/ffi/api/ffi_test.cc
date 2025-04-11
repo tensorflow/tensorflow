@@ -147,6 +147,78 @@ TEST(FfiTest, DataTypeEnumValue) {
   EXPECT_EQ(encoded(PrimitiveType::F8E8M0FNU), encoded(DataType::F8E8M0FNU));
 }
 
+TEST(FfiTest, DataTypeBitWidth) {
+  EXPECT_EQ(0, BitWidth(DataType::TOKEN));
+  EXPECT_EQ(0, BitWidth(DataType::INVALID));
+
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::PRED),
+            BitWidth(DataType::PRED));
+
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::S1),
+            BitWidth(DataType::S1));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::S2),
+            BitWidth(DataType::S2));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::S4),
+            BitWidth(DataType::S4));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::S8),
+            BitWidth(DataType::S8));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::S16),
+            BitWidth(DataType::S16));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::S32),
+            BitWidth(DataType::S32));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::S64),
+            BitWidth(DataType::S64));
+
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::U1),
+            BitWidth(DataType::U1));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::U2),
+            BitWidth(DataType::U2));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::U4),
+            BitWidth(DataType::U4));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::U8),
+            BitWidth(DataType::U8));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::U16),
+            BitWidth(DataType::U16));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::U32),
+            BitWidth(DataType::U32));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::U64),
+            BitWidth(DataType::U64));
+
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::F16),
+            BitWidth(DataType::F16));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::F32),
+            BitWidth(DataType::F32));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::F64),
+            BitWidth(DataType::F64));
+
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::BF16),
+            BitWidth(DataType::BF16));
+
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::C64),
+            BitWidth(DataType::C64));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::C128),
+            BitWidth(DataType::C128));
+
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::F4E2M1FN),
+            BitWidth(DataType::F4E2M1FN));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::F8E5M2),
+            BitWidth(DataType::F8E5M2));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::F8E4M3),
+            BitWidth(DataType::F8E4M3));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::F8E4M3FN),
+            BitWidth(DataType::F8E4M3FN));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::F8E4M3B11FNUZ),
+            BitWidth(DataType::F8E4M3B11FNUZ));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::F8E5M2FNUZ),
+            BitWidth(DataType::F8E5M2FNUZ));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::F8E4M3FNUZ),
+            BitWidth(DataType::F8E4M3FNUZ));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::F8E3M4),
+            BitWidth(DataType::F8E3M4));
+  EXPECT_EQ(primitive_util::BitWidth(PrimitiveType::F8E8M0FNU),
+            BitWidth(DataType::F8E8M0FNU));
+}
+
 TEST(FfiTest, DataTypeByteWidth) {
   EXPECT_EQ(0, ByteWidth(DataType::TOKEN));
   EXPECT_EQ(0, ByteWidth(DataType::INVALID));
@@ -217,6 +289,14 @@ TEST(FfiTest, DataTypeByteWidth) {
             ByteWidth(DataType::F8E3M4));
   EXPECT_EQ(primitive_util::ByteWidth(PrimitiveType::F8E8M0FNU),
             ByteWidth(DataType::F8E8M0FNU));
+}
+
+TEST(FfiTest, CeilOfRatio) {
+  EXPECT_EQ(CeilOfRatio(0, 1), 0);
+  EXPECT_EQ(CeilOfRatio(4, 1), 4);
+  EXPECT_EQ(CeilOfRatio(4, 3), 2);
+  EXPECT_EQ(CeilOfRatio(4, 4), 2);
+  EXPECT_EQ(CeilOfRatio(4, 8), 1);
 }
 
 TEST(FfiTest, ErrorEnumValue) {
