@@ -188,9 +188,21 @@ func.func @FoldPerAxisReshape() -> tensor<1x2x2x!quant.uniform<i8:f32:2, {0.007,
   %0 = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x!quant.uniform<i8:f32:1, {0.007,0.004}>>, value = dense<[[-127, 127], [-85, -80]]> : tensor<2x2xi8>}> : () -> tensor<2x2x!quant.uniform<i8:f32:1, {0.007,0.004}>>
   %1 = "tfl.reshape"(%0, %cst) : (tensor<2x2x!quant.uniform<i8:f32:1, {0.007,0.004}>>, tensor<3xi32>) -> tensor<1x2x2x!quant.uniform<i8:f32:2, {0.007,0.004}>>
   return %1 : tensor<1x2x2x!quant.uniform<i8:f32:2, {0.007,0.004}>>
-  
+
 
 // CHECK{LITERAL}:  %0 = "tfl.pseudo_qconst"() <{qtype = tensor<1x2x2x!quant.uniform<i8:f32:2, {7.000000e-03,4.000000e-03}>>, value = dense<[[[-127, 127], [-85, -80]]]> : tensor<1x2x2xi8>}> : () -> tensor<1x2x2x!quant.uniform<i8:f32:2, {7.000000e-03,4.000000e-03}>>
 // CHECK-NOT: tfl.reshape
 // CHECK:  return %0 : tensor<1x2x2x!quant.uniform<i8:f32:2, {7.000000e-03,4.000000e-03}>>
+}
+
+// CHECK-LABEL: RemoveVolatileQConstOps
+func.func @RemoveVolatileQConstOps() -> tensor<640xf32> {
+  %1 = "tfl.pseudo_qconst"() <{qtype = tensor<640x!quant.uniform<i32:f32, 1.0000000949949049E-6>>, value = dense<0> : tensor<640xi32>}> {volatile} : () -> tensor<640x!quant.uniform<i32:f32, 1.0000000949949049E-6>>
+  %2 = "tfl.dequantize"(%1) : (tensor<640x!quant.uniform<i32:f32, 1.0000000949949049E-6>>) -> tensor<640xf32>
+  func.return %2 : tensor<640xf32>
+  // CHECK: %0 = "tfl.pseudo_qconst"() <{qtype = tensor<640x!quant.uniform<i32:f32, 1.0000000949949049E-6>>, value = dense<0> : tensor<640xi32>}> {volatile} : () -> tensor<640x!quant.uniform<i32:f32, 1.0000000949949049E-6>>
+  // CHECK: return %0 : tensor<640x!quant.uniform<i32:f32, 1.0000000949949049E-6>>
+
+  // QDQ-CHECK: %cst = arith.constant dense<0.000000e+00> : tensor<640xf32>
+  // QDQ-CHECK: return %cst : tensor<640xf32>
 }
