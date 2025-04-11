@@ -2048,6 +2048,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
     }
   }
 
+  int64_t post_allocation_transformations = 0;
   // Run post allocation transformation and fix the allocation sequence if
   // needed.
   if (options_.post_allocation_transformation_fn) {
@@ -2085,13 +2086,19 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
 
         TF_ASSIGN_OR_RETURN(PostAllocationTransformationUpdate changes,
                             options_.post_allocation_transformation_fn(instr));
-        VLOG(3) << "Post allocation transformation info: \n"
-                << changes.ToString();
-        FixAllocationSequenceAfterPostAllocationTransformation(allocations_,
-                                                               changes);
+        if (!changes.to_be_removed.empty()) {
+          VLOG(3) << "Post allocation transformation info: \n"
+                  << changes.ToString();
+          FixAllocationSequenceAfterPostAllocationTransformation(allocations_,
+                                                                 changes);
+          post_allocation_transformations++;
+        }
       }
     }
   }
+
+  std::cout << "Post allocation transformations: "
+            << post_allocation_transformations << std::endl;
 
   HeapSimulator::Result<HloValue> result;
   result.heap_size = result_.heap_size;
