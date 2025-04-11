@@ -26,6 +26,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:execution_engine",
+        "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/backends/cpu/codegen:jit_compiler",
         "//xla/backends/cpu/runtime:function_library",
@@ -34,6 +35,7 @@ cc_library(
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_ir_kernel_source",
+        "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/testlib:kernel_runner",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:cpu_options",
@@ -99,6 +101,28 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "mlir_kernel_emitter",
+    srcs = ["mlir_kernel_emitter.cc"],
+    hdrs = ["mlir_kernel_emitter.h"],
+    deps = [
+        "//xla/backends/cpu/codegen:fusion_compiler",
+        "//xla/codegen:kernel_definition",
+        "//xla/codegen:kernel_emitter",
+        "//xla/codegen:kernel_spec",
+        "//xla/codegen:mlir_kernel_source",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:launch_dim",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 tsl_pybind_extension(
     name = "_extension",
     testonly = 1,
@@ -107,13 +131,16 @@ tsl_pybind_extension(
     deps = [
         ":kernel_runner",
         ":llvm_ir_kernel_emitter",
+        ":mlir_kernel_emitter",
         # placeholder for index annotation deps  # buildcleaner: keep
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
         "@nanobind",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla/backends/cpu/codegen:computation_kernel_emitter",
+        "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/backends/cpu/codegen:jit_compiler",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen/dot:dot_kernel_emitter",
@@ -121,6 +148,8 @@ tsl_pybind_extension(
         "//xla/backends/cpu/codegen/elemental:elemental_kernel_emitter",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
+        "//xla/codegen:llvm_ir_kernel_source",
+        "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/testlib:kernel_runner",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",

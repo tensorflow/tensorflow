@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/service/hlo_module_config.h"
 
@@ -53,6 +54,9 @@ class KernelRunner final : public xla::KernelRunner {
   static absl::StatusOr<KernelRunner> Create(
       const KernelSpec& kernel_spec, LlvmIrKernelSource llvm_ir_kernel_source,
       JitCompiler compiler);
+  static absl::StatusOr<KernelRunner> Create(
+      const KernelSpec& kernel_spec, MlirKernelSource mlir_kernel_source,
+      JitCompiler compiler);
 
   KernelRunner(std::unique_ptr<FunctionLibrary> library, Kernel kernel,
                Kernel::ThreadDim thread_dim);
@@ -61,6 +65,9 @@ class KernelRunner final : public xla::KernelRunner {
   Kernel kernel_;
   Kernel::ThreadDim thread_dim_;
 };
+
+absl::StatusOr<LlvmIrKernelSource> LowerToLlvm(
+    MlirKernelSource& mlir_kernel_source);
 
 }  // namespace xla::cpu
 

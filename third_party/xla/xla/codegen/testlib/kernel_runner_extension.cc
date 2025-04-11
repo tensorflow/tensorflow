@@ -38,6 +38,8 @@ limitations under the License.
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_source.h"
 #include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
@@ -170,6 +172,22 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   nb::class_<KernelSource>(kernel_runner_module, "KernelSource")
       .def("__str__", &KernelSource::ToString);
+
+  nb::class_<LlvmIrKernelSource, KernelSource> llvm_kernel_source(
+      kernel_runner_module, "LlvmIrKernelSource");
+
+  nb::class_<MlirKernelSource, KernelSource>(kernel_runner_module,
+                                             "MlirKernelSource")
+      .def_static(
+          "parse_from_string",
+          [](absl::string_view ir, std::unique_ptr<mlir::MLIRContext> context) {
+            absl::StatusOr<MlirKernelSource> source =
+                MlirKernelSource::ParseFromString(ir, std::move(context));
+            if (!source.ok()) {
+              throw std::runtime_error(std::string(source.status().message()));
+            }
+            return std::move(source).value();
+          });
 
   nb::class_<KernelSpec> kernel_spec(kernel_runner_module, "KernelSpec");
 
