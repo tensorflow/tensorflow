@@ -480,7 +480,7 @@ class OptimizerV2(trackable.Trackable):
       grads_and_vars: List of (gradient, variable) pairs.
 
     Returns:
-      A list of (aggregrated_gradient, variable) pairs. By default, this calls
+      A list of (aggregated_gradient, variable) pairs. By default, this calls
       `self.gradient_aggregator`.
     """
     return self.gradient_aggregator(grads_and_vars)
@@ -619,7 +619,7 @@ class OptimizerV2(trackable.Trackable):
       name: Optional name for the returned operation. Default to the name passed
         to the `Optimizer` constructor.
       experimental_aggregate_gradients: Whether to sum gradients from different
-        replicas in the presense of `tf.distribute.Strategy`. If False, it's
+        replicas in the presence of `tf.distribute.Strategy`. If False, it's
         user responsibility to aggregate the gradients. Default to True.
 
     Returns:
@@ -1452,7 +1452,7 @@ class RestoredOptimizer(OptimizerV2):
   Holds slot variables and hyperparameters when an optimizer is restored from a
   SavedModel. These variables may be referenced in functions along with ops
   created by the original optimizer, but currently we do not support using the
-  optimizer object iself (e.g. through `apply_gradients`).
+  optimizer object itself (e.g. through `apply_gradients`).
   """
   # TODO(allenl): Make the restored optimizer functional by tracing its apply
   # methods.

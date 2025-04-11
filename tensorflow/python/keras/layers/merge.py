@@ -33,7 +33,7 @@ class _Merge(Layer):
   """
 
   def __init__(self, **kwargs):
-    """Intializes a Merge layer.
+    """Initializes a Merge layer.
 
     Args:
       **kwargs: standard layer keyword arguments.

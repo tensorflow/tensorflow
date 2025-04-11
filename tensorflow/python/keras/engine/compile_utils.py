@@ -571,7 +571,7 @@ def _create_pseudo_names(tensors, prefix):
   """Creates pseudo {input | output} names for subclassed Models.
 
   Warning: this function should only be used to define default
-  names for `Metics` and `SavedModel`. No other use cases should
+  names for `Metrics` and `SavedModel`. No other use cases should
   rely on a `Model`'s input or output names.
 
   Example with dict:

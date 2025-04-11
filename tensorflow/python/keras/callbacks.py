@@ -616,7 +616,7 @@ class Callback:
 
   1. You should pack all your callbacks into a single `callbacks.CallbackList`
      so they can all be called together.
-  2. You will need to manually call all the `on_*` methods at the apropriate
+  2. You will need to manually call all the `on_*` methods at the appropriate
      locations in your loop. Like this:
 
      ```
@@ -1627,7 +1627,7 @@ class BackupAndRestore(Callback):
   ...   pass
   >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5), epochs=10,
   ...             batch_size=1, callbacks=[callback], verbose=0)
-  >>> # Only 6 more epochs are run, since first trainning got interrupted at
+  >>> # Only 6 more epochs are run, since first training got interrupted at
   >>> # zero-indexed epoch 4, second training will continue from 4 to 9.
   >>> len(history.history['loss'])
   6

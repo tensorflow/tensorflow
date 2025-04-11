@@ -2045,12 +2045,12 @@ class AUC(Metric):
   Usage with `compile()` API:
 
   ```python
-  # Reports the AUC of a model outputing a probability.
+  # Reports the AUC of a model outputting a probability.
   model.compile(optimizer='sgd',
                 loss=tf.keras.losses.BinaryCrossentropy(),
                 metrics=[tf.keras.metrics.AUC()])
 
-  # Reports the AUC of a model outputing a logit.
+  # Reports the AUC of a model outputting a logit.
   model.compile(optimizer='sgd',
                 loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
                 metrics=[tf.keras.metrics.AUC(from_logits=True)])

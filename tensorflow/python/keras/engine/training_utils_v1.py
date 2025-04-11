@@ -1690,7 +1690,7 @@ def infer_steps_for_dataset(model,
       (dataset.options().experimental_distribute.auto_shard_policy !=
        options_lib.AutoShardPolicy.OFF)):
     # If the dataset would be auto-sharded, we should not infer a local
-    # steps_per_epoch due to the possible inbalanced sharding between workers.
+    # steps_per_epoch due to the possible imbalanced sharding between workers.
     return None
 
   size = backend.get_value(cardinality.cardinality(dataset))
