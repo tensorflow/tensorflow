@@ -793,8 +793,8 @@ PjRtStreamExecutorClient::BufferFromHostBufferInternal(
   // Allocating multigigabyte pinned buffers can be very slow. In that case,
   // using a staging buffer is probably worse than not using one.
   // TODO(phawkins): add chunking for transfers.
-  if (!IsDmaMapped(data, packed_size) &&
-      (must_use_staging_buffer || (should_stage_host_to_device_transfers() &&
+  if (must_use_staging_buffer || (!IsDmaMapped(data, packed_size) &&
+                                  (should_stage_host_to_device_transfers() &&
                                    packed_size < (int64_t{1} << 30)))) {
     void* ptr = host_memory_allocator()->AllocateRaw(
         tsl::Allocator::kAllocatorAlignment, transpose ? size : packed_size);
