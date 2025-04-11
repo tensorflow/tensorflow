@@ -20,13 +20,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 
-#include "tensorflow/lite/logger.h"
-
-#if defined(__ANDROID__)
-#include <android/hardware_buffer.h>
-#endif
-
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -40,28 +35,35 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/gpu/api.h"
+#include "tensorflow/lite/delegates/gpu/cl/api.h"
+#include "tensorflow/lite/delegates/gpu/cl/util.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_builder.h"
+#include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
+#include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/delegate_options.h"
+#include "tensorflow/lite/delegates/gpu/tflite_profile.h"
+#include "tensorflow/lite/delegates/serialization.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/logger.h"
+#include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
 
 #if defined(__ANDROID__)
+#include <android/hardware_buffer.h>
+
 #include "tensorflow/lite/async/backend_async_kernel_interface.h"
 #include "tensorflow/lite/core/async/c/task.h"
 #include "tensorflow/lite/core/async/interop/c/attribute_map.h"
 #include "tensorflow/lite/core/async/interop/c/constants.h"
 #include "tensorflow/lite/core/async/interop/c/types.h"
-#endif
-
-#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/android_hardware_buffer.h"
-#include "tensorflow/lite/delegates/gpu/api.h"
-#include "tensorflow/lite/delegates/gpu/cl/api.h"
-#include "tensorflow/lite/delegates/gpu/cl/util.h"
-#include "tensorflow/lite/delegates/gpu/common/model_builder.h"
-#include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
-#include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
-#include "tensorflow/lite/delegates/gpu/delegate_options.h"
-#include "tensorflow/lite/delegates/gpu/tflite_profile.h"
-#include "tensorflow/lite/delegates/serialization.h"
-
-#if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/async_buffers.h"
 #include "tensorflow/lite/delegates/gpu/gl/android_sync.h"
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
@@ -70,12 +72,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/utils/sync_fence.h"
 #include "tensorflow/lite/delegates/utils/utils.h"
 #endif
-
-#include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
-#include "tensorflow/lite/profiling/telemetry/telemetry.h"
-#include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
 
 #ifndef CL_DELEGATE_NO_GL
 #include "tensorflow/lite/delegates/gpu/gl/api2.h"
@@ -469,7 +465,7 @@ absl::Status DelegateKernelCore::Setup(
         InitializeOpenClApi(&graph, &builder, &graph_is_destroyed, context,
                             delegate_params, delegate_->serialization());
     if (!status.ok()) {
-      TF_LITE_KERNEL_LOG(context, std::string(status.message()).c_str());
+      TF_LITE_KERNEL_LOG(context, "%s", std::string(status.message()).c_str());
       TF_LITE_KERNEL_LOG(context, "Falling back to OpenGL");
 
       // Graph needs to be re-created because it is moved above.
