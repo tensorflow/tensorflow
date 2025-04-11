@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
@@ -414,6 +415,7 @@ absl::Status MakeDotComputationSplitKBatch(
 absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
                                 const TritonGemmConfig& config) {
   CHECK_EQ(dot_fusion->opcode(), HloOpcode::kFusion);
+  VLOG(10) << "Before: " << dot_fusion->parent()->parent()->ToString();
 
   if (dot_fusion->shape().IsTuple()) {
     return Unimplemented("Tuple output is not supported with split-K yet.");
@@ -436,6 +438,7 @@ absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
   HloInstruction* zero =
       dot_fusion->parent()->AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::Zero(root->shape().element_type())));
+  auto initial_dot_fusion_users = dot_fusion->users();
   // The batch dimension to reduce is the first one by construction.
   TF_ASSIGN_OR_RETURN(HloInstruction * reduce,
                       MakeReduceHlo(dot_fusion, zero, /*dimensions=*/{0},
@@ -452,9 +455,11 @@ absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
     dot_fusion->parent()->set_root_instruction(split_k_root,
                                                /*accept_different_shape=*/true);
   } else {
-    TF_RETURN_IF_ERROR(
-        dot_fusion->ReplaceAllUsesWithDifferentShape(split_k_root));
+    // Replace all users expect for split_k_root created above to avoid cycles.
+    TF_RETURN_IF_ERROR(dot_fusion->ReplaceAllUsesWithDifferentShape(
+        initial_dot_fusion_users, split_k_root));
   }
+  VLOG(10) << "After: " << dot_fusion->parent()->parent()->ToString();
 
   return absl::OkStatus();
 }

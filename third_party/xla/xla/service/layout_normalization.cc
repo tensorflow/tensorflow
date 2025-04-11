@@ -131,15 +131,19 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   // Bitcast to descending layout and then bitcast back to make sure that shapes
   // match.
   absl::Status DefaultAction(HloInstruction* hlo) override {
+    VLOG(10) << "DefaultAction: " << hlo->ToString() << " in "
+             << hlo->parent()->parent()->ToString();
     if (!hlo->user_count()) {
       // The local postcondition does not have to apply to the case when there
       // are no users.
+      VLOG(10) << "No users";
       return absl::OkStatus();
     }
     auto users = hlo->users();
     auto shape = hlo->shape();
     if (shape.IsTuple() || shape.IsToken()) {
       // GTEs will be transformed individually, tokens should be skipped.
+      VLOG(10) << "Skipping tuple or token";
       return absl::OkStatus();
     }
 
@@ -149,6 +153,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto bc_to_orig = MakeBitcastHlo(bc_to_normalized, shape);
     TF_RETURN_IF_ERROR(hlo->ReplaceUsesWith(users, bc_to_orig));
     MarkAsChanged();
+    VLOG(10) << "DefaultAction end: " << bc_to_orig->ToString();
     return absl::OkStatus();
   }
 
@@ -354,6 +359,8 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
       layout_equal.IgnoreElementSize();
     }
     TF_RET_CHECK(layout_equal(a->shape().layout(), s.layout()));
+    VLOG(10) << "HandleElementwiseBinary: " << hlo->ToString() << " in "
+             << hlo->parent()->parent()->ToString();
     TF_ASSIGN_OR_RETURN(auto a0, GetNormalizedInput(a));
     TF_ASSIGN_OR_RETURN(auto b0, GetNormalizedInput(b));
 
@@ -801,7 +808,9 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   // be HLO in descending layout piped through bitcast.
   absl::StatusOr<HloInstruction*> GetNormalizedInput(HloInstruction* hlo) {
     TF_RET_CHECK(hlo->opcode() == HloOpcode::kBitcast)
-        << "Unexpected HLO input: " << hlo->ToString();
+        << "Unexpected HLO input: " << hlo->ToString() << " in "
+        << hlo->parent()->parent()->ToString();
+    VLOG(10) << "GetNormalizedInput: " << hlo->parent()->parent()->ToString();
     auto input = hlo->mutable_operand(0);
     auto input_shape = input->shape();
     TF_RET_CHECK(Layout::Equal().IgnoreElementSize()(

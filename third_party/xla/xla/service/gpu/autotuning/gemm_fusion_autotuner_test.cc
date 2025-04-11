@@ -597,6 +597,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
 }
 
+// TODO(tjoerg): This test breaks with
+// --gpu_triton_gemm_disable_reduced_precision_reduction
 TEST_F(GemmFusionAutotunerTest, ApplySplitKWithoutAlteringTiling) {
   const std::string kHloText = R"(
 triton_dot {
