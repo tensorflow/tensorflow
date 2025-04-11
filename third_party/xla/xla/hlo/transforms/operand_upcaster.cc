@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <optional>
 
-#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
