@@ -79,6 +79,7 @@ absl::StatusOr<bool> TriangularSolveRewriter::Run(
       TF_ASSIGN_OR_RETURN(HloInstruction * gte,
                           MakeGetTupleElementHlo(custom_call, 0));
       TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
+      changed = true;
     }
   }
   return changed;

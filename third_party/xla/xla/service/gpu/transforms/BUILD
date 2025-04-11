@@ -3246,7 +3246,6 @@ xla_cc_test(
     ],
 )
 
-# TODO(b/358278858): Currently lacking test coverage.
 cc_library(
     name = "triangular_solve_rewriter",
     srcs = ["triangular_solve_rewriter.cc"],
@@ -3263,6 +3262,22 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "triangular_solve_rewriter_test",
+    srcs = [
+        "triangular_solve_rewriter_test.cc",
+    ],
+    deps = [
+        ":triangular_solve_rewriter",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/service:pattern_matcher",
+        "//xla/tsl/platform:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
