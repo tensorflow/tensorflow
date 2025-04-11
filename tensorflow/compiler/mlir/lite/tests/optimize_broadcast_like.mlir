@@ -1,4 +1,5 @@
-// RUN: tf-opt -tfl-optimize-broadcast-like -split-input-file %s | FileCheck %s
+// RUN: tf-opt -tfl-optimize-broadcast-like='unsafe-fuse-dynamic-shaped-broadcast=false' -split-input-file %s | FileCheck %s
+// RUN: tf-opt -tfl-optimize-broadcast-like='unsafe-fuse-dynamic-shaped-broadcast=true' -split-input-file %s | FileCheck --check-prefix=UNSAFE-DYNAMIC-CHECK %s
 
 // CHECK-LABEL: @broadcast_mul0
 func.func @broadcast_mul0(%arg0: tensor<5x7xf32>, %arg1: tensor<7xf32>) -> tensor<5x7xf32> {
@@ -1161,4 +1162,31 @@ func.func @broadcast_zeros_like(%arg0: tensor<1x2xf32>) -> (tensor<2x2xf32>) {
   // CHECK: %[[zeros:.*]] = "tfl.zeros_like"(%arg0) : (tensor<1x2xf32>) -> tensor<1x2xf32>
   // CHECK: %[[broadcasted:.*]] = "tfl.broadcast_to"(%[[zeros]], %[[constant]]) : (tensor<1x2xf32>, tensor<2xi32>) -> tensor<2x2xf32>
   // CHECK: return %[[broadcasted]]
+}
+
+// CHECK-LABEL: @broadcast_mul_dynamic_rhs
+func.func @broadcast_mul_dynamic_rhs(%arg0: tensor<?x7xf32>, %arg1: tensor<1x7xf32>) -> tensor<?x7xf32> {
+  %shape = "tfl.shape"(%arg0) : (tensor<?x7xf32>) -> tensor<2xi32>
+  %0 = "tfl.broadcast_to"(%arg1, %shape) : (tensor<1x7xf32>, tensor<2xi32>) -> tensor<?x7xf32>
+  %1 = "tfl.mul"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<?x7xf32>, tensor<?x7xf32>) -> tensor<?x7xf32>
+  func.return %1 : tensor<?x7xf32>
+  // UNSAFE-DYNAMIC-CHECK: %0 = tfl.mul(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<?x7xf32>, tensor<1x7xf32>) -> tensor<?x7xf32>
+}
+
+// CHECK-LABEL: @broadcast_mul_dynamic_rhs2
+func.func @broadcast_mul_dynamic_rhs2(%arg0: tensor<?x7xf32>, %arg1: tensor<7xf32>) -> tensor<?x7xf32> {
+  %shape = "tfl.shape"(%arg0) : (tensor<?x7xf32>) -> tensor<2xi32>
+  %0 = "tfl.broadcast_to"(%arg1, %shape) : (tensor<7xf32>, tensor<2xi32>) -> tensor<?x7xf32>
+  %1 = "tfl.mul"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<?x7xf32>, tensor<?x7xf32>) -> tensor<?x7xf32>
+  func.return %1 : tensor<?x7xf32>
+  // UNSAFE-DYNAMIC-CHECK: %0 = tfl.mul(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<?x7xf32>, tensor<7xf32>) -> tensor<?x7xf32>
+}
+
+// CHECK-LABEL: @broadcast_mul_dynamic_lhs
+func.func @broadcast_mul_dynamic_lhs(%arg0: tensor<1x7xf32>, %arg1: tensor<?x7xf32>) -> tensor<?x7xf32> {
+  %shape = "tfl.shape"(%arg1) : (tensor<?x7xf32>) -> tensor<2xi32>
+  %0 = "tfl.broadcast_to"(%arg0, %shape) : (tensor<1x7xf32>, tensor<2xi32>) -> tensor<?x7xf32>
+  %1 = "tfl.mul"(%0, %arg1) {fused_activation_function = "NONE"} : (tensor<?x7xf32>, tensor<?x7xf32>) -> tensor<?x7xf32>
+  func.return %1 : tensor<?x7xf32>
+  // UNSAFE-DYNAMIC-CHECK: %0 = tfl.mul(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1x7xf32>, tensor<?x7xf32>) -> tensor<?x7xf32>
 }
