@@ -17,31 +17,39 @@
 #ifndef XLA_HLO_TOOLS_HLO_DIFF_RENDER_HLO_GUMGRAPH_HTML_RENDERER_H_
 #define XLA_HLO_TOOLS_HLO_DIFF_RENDER_HLO_GUMGRAPH_HTML_RENDERER_H_
 
-#include <cstdint>
-#include <optional>
 #include <sstream>
 
-#include "absl/functional/function_ref.h"
-#include "absl/strings/string_view.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_summary.h"
 #include "xla/hlo/tools/hlo_diff/render/graph_url_generator.h"
+#include "xla/hlo/tools/hlo_diff/render/op_metric_getter.h"
 
 namespace xla {
 namespace hlo_diff {
 
-// A function that returns the op metric for the given op name.
-using GetOpMetricFn =
-    absl::FunctionRef<std::optional<uint64_t>(absl::string_view)>;
-
 // Renders the diff result in HTML format, and writes the result to the given
-// output stream.
-
-// url_generator can be specified which is used to link an url to each
-// generated diff result.
+// output stream. url_generator can be specified which is used to link an url to
+// each generated diff result.
 void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
-                GraphUrlGenerator* url_generator, GetOpMetricFn left_op_metrics,
-                GetOpMetricFn right_op_metrics, std::ostringstream& out);
+                GraphUrlGenerator* url_generator,
+                OpMetricGetter* left_op_metric_getter,
+                OpMetricGetter* right_op_metric_getter,
+                std::ostringstream& out);
+inline void RenderHtml(const DiffResult& diff_result,
+                       const DiffSummary& diff_summary,
+                       GraphUrlGenerator* url_generator,
+                       std::ostringstream& out) {
+  RenderHtml(diff_result, diff_summary, url_generator,
+             /*left_op_metric_getter=*/nullptr,
+             /*right_op_metric_getter=*/nullptr, out);
+}
+inline void RenderHtml(const DiffResult& diff_result,
+                       const DiffSummary& diff_summary,
+                       std::ostringstream& out) {
+  RenderHtml(diff_result, diff_summary, /*url_generator=*/nullptr,
+             /*left_op_metric_getter=*/nullptr,
+             /*right_op_metric_getter=*/nullptr, out);
+}
 
 }  // namespace hlo_diff
 }  // namespace xla
