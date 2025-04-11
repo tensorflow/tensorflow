@@ -260,8 +260,8 @@ bool IsBounded(Type ty) {
 
   if (ranked_ty.hasStaticShape()) return true;
 
-  auto encoding =
-      mlir::dyn_cast_or_null<TypeExtensionsAttr>(ranked_ty.getEncoding());
+  auto encoding = mlir::dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>(
+      ranked_ty.getEncoding());
   if (!encoding) return false;
 
   for (int i = 0; i < ranked_ty.getRank(); ++i) {

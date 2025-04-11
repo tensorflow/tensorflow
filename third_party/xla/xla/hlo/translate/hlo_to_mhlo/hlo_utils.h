@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir/utils/type_util.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -81,7 +80,7 @@ static absl::StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
       shape[dim] = dim_size;
     }
   }
-  using mlir::mhlo::TypeExtensionsAttr;
+  using mlir::stablehlo::TypeExtensionsAttr;
   mlir::Attribute encoding;
   if (is_bounded_dynamic) {
     encoding = TypeExtensionsAttr::get(builder.getContext(), bounds);
