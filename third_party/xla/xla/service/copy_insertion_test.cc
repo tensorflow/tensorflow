@@ -953,7 +953,8 @@ TEST_F(WhileCopyInsertionTest, DependentTupleElements) {
   InsertCopies(module_.get());
 
   EXPECT_EQ(CountCopies(*body), 1);
-  EXPECT_EQ(CountControlEdges(*body), 0);
+  // Expect control edge added by copy removal.
+  EXPECT_EQ(CountControlEdges(*body), 1);
 
   EXPECT_THAT(
       body->root_instruction(),
