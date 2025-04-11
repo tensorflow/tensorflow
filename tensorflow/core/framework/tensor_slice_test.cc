@@ -15,8 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_slice.h"
 
+#include <cstdint>
 #include <limits>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "third_party/protobuf/text_format.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/core/framework/tensor_slice.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
