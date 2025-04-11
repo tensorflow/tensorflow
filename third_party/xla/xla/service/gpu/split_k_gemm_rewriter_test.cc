@@ -755,8 +755,18 @@ ENTRY e {
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Convert(m::Reduce(m::Fusion(), m::Constant()))));
+  HloInstruction* dot_fusion;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Convert(m::Reduce(m::Fusion(&dot_fusion), m::Constant()))));
+  EXPECT_THAT(
+      dot_fusion->fused_instructions_computation()->root_instruction(),
+      GmockMatch(
+          m::MultiplyAnyOrder(
+              m::Broadcast().WithElementType(F32),
+              m::Convert(m::Dot().WithElementType(F32)).WithElementType(F32))
+              .WithElementType(F32)))
+      << module->ToString();
 }
 
 TEST_F(SplitKTest, MakeSplitKWithTransposeAfterDot) {
