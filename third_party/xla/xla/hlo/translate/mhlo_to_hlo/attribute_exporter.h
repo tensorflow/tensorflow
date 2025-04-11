@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
@@ -37,6 +38,10 @@ namespace xla {
 // Converts the conv dimensions attribute to XLA HLO.
 ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
     mlir::mhlo::ConvDimensionNumbersAttr input);
+
+// Converts the conv dimensions attribute to XLA HLO.
+ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
+    mlir::stablehlo::ConvDimensionNumbersAttr input);
 
 // Converts the dot algorithm attribute to XLA HLO.
 absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
