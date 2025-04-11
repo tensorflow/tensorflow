@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef XLA_STREAM_EXECUTOR_GPU_RAGGED_ALL_TO_ALL_KERNEL_LIB_CU_H_
+#define XLA_STREAM_EXECUTOR_GPU_RAGGED_ALL_TO_ALL_KERNEL_LIB_CU_H_
+
 #include <array>
 #include <cstdint>
 
-#include "xla/service/gpu/kernels/ragged_all_to_all_kernel_common.h"
+#include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 
-namespace xla::gpu {
-namespace {
+namespace stream_executor::gpu {
 
 // RaggedAllToAll instruction performs a collective AllToAll operation on ragged
 // tensors. For the semantics of each operand see the documentation of
@@ -49,7 +51,7 @@ namespace {
 //  - Block grid: (N*num_updates_per_rank, num_blocks_per_update, 1)
 //  - Thread grid: (num_threads_per_update, 1, 1)
 template <typename T>
-__global__ void __launch_bounds__(128) RaggedAllToAllKernel(
+__global__ void __launch_bounds__(128) RaggedAllToAllKernelImpl(
     const T* __restrict__ input_ptr,
     std::array<void* __restrict__, kMaxNumRaggedAllToAllOutputPtrs> output_ptrs,
     const int64_t* __restrict__ input_offsets_ptr,
@@ -59,7 +61,7 @@ __global__ void __launch_bounds__(128) RaggedAllToAllKernel(
   int64_t update_idx = blockIdx.x;
   int64_t output_idx = update_idx / num_updates_per_replica;
 
-  T* output_ptr = reinterpret_cast<T* __restrict__>(output_ptrs[output_idx]);
+  T* output_ptr = absl::bit_cast<T* __restrict__>(output_ptrs[output_idx]);
 
   int64_t input_offset = input_offsets_ptr[update_idx];
   int64_t send_size = send_sizes_ptr[update_idx];
@@ -75,17 +77,6 @@ __global__ void __launch_bounds__(128) RaggedAllToAllKernel(
     output_ptr[output_offset_start + i] = input_ptr[input_offset_start + i];
   }
 }
+}  // namespace stream_executor::gpu
 
-}  // namespace
-
-template <typename T>
-void* GetRaggedAllToAllKernel() {
-  return reinterpret_cast<void*>(&RaggedAllToAllKernel<T>);
-}
-
-template void* GetRaggedAllToAllKernel<uint8_t>();
-template void* GetRaggedAllToAllKernel<uint16_t>();
-template void* GetRaggedAllToAllKernel<uint32_t>();
-template void* GetRaggedAllToAllKernel<uint64_t>();
-
-}  // namespace xla::gpu
+#endif  // XLA_STREAM_EXECUTOR_GPU_RAGGED_ALL_TO_ALL_KERNEL_LIB_CU_H_

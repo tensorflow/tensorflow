@@ -828,6 +828,7 @@ cc_library(
         ":hipfft_plugin",
         ":make_batch_pointers_kernel_rocm",
         ":miopen_plugin",
+        ":ragged_all_to_all_kernel_rocm",
         ":rocblas_plugin",
         ":rocm_helpers",
         ":rocm_platform",
@@ -1117,6 +1118,27 @@ rocm_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+    alwayslink = 1,
+)
+
+rocm_library(
+    name = "ragged_all_to_all_kernel_rocm",
+    srcs = [
+        "ragged_all_to_all_kernel_rocm.cc",
+        "//xla/stream_executor/gpu:ragged_all_to_all_kernel_lib.cu.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":rocm_platform_id",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:ragged_all_to_all_kernel",
         "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,

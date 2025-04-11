@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_KERNELS_RAGGED_ALL_TO_ALL_KERNEL_H_
-#define XLA_SERVICE_GPU_KERNELS_RAGGED_ALL_TO_ALL_KERNEL_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_H_
+#define XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_H_
 
 #include <cstdint>
 
@@ -58,4 +58,4 @@ absl::Status RunRaggedAllToAllKernel(
     int64_t num_row_elements);
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_KERNELS_RAGGED_ALL_TO_ALL_KERNEL_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_H_
