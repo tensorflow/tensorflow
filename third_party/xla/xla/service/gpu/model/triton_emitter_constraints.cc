@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
@@ -171,9 +172,20 @@ TritonEmitterConstraints::GetBuilder(
                  instructions,
              const HloFusionAdaptor& fusion_adaptor) {
     llvm::DenseSet<AffineMap> unique_tile_size_maps;
+    llvm::SmallVector<mlir::AffineMap, 2> size_maps;
+    auto roots = fusion_adaptor.GetRoots();
     for (const auto& tiled_hlo_instruction : instructions) {
       unique_tile_size_maps.insert(
           tiled_hlo_instruction->symbolic_tile().size_map());
+      // TODO(b/365727080): We should also enforce this for single-output
+      // fusions.
+      if (roots.size() > 1 &&
+          absl::c_any_of(roots, [&tiled_hlo_instruction](
+                                    const HloInstructionAdaptor& instr) {
+            return &instr.instruction() == tiled_hlo_instruction->hlo();
+          })) {
+        size_maps.push_back(tiled_hlo_instruction->symbolic_tile().size_map());
+      }
     }
 
     std::vector<CustomConstraints> custom_constraints =
@@ -184,7 +196,8 @@ TritonEmitterConstraints::GetBuilder(
 
     return std::unique_ptr<TritonEmitterConstraints>(
         absl::WrapUnique(new TritonEmitterConstraints(
-            std::move(tile_size_maps), std::move(custom_constraints),
+            std::move(tile_size_maps), std::move(size_maps),
+            std::move(custom_constraints),
             /*root_shape=*/instructions.back()->hlo()->shape(),
             device_description)));
   };
@@ -230,6 +243,19 @@ absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
                           /*dim_values=*/tile_parameters);
     if (!custom_constraint.constraints.IsSatisfiedBy(
             GetPaddedTileSizes(transformed_tile_parameters))) {
+      return false;
+    }
+  }
+  for (const auto& size_map : size_maps_) {
+    llvm::SmallVector<int64_t> transformed_tile_parameters =
+        EvaluateAffineMap(size_map,
+                          /*dim_values=*/tile_parameters);
+    // For multi-output fusions, we require that the propagated tile sizes for
+    // potential root tiles are powers of 2.
+    // TODO(b/365727080): Technically we should also enforce this for fusions
+    // with just one root.
+    if (GetPaddedTileSizes(transformed_tile_parameters) !=
+        transformed_tile_parameters) {
       return false;
     }
   }

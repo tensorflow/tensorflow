@@ -388,6 +388,58 @@ ENTRY main {
       IsOkAndHolds(false));
 }
 
+TEST_F(TritonEmitterConstraintsTest, MultiOutputFusionHasPowerOfTwoTileSizes) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fused_computation {
+  param_0 = f32[36] parameter(0)
+  abs = f32[36] abs(param_0)
+  reshape = f32[3,12] reshape(abs)
+  zero = f32[] constant(0)
+  reduce = f32[3] reduce(reshape, zero), to_apply=add, dimensions={1}
+  ROOT tuple = (f32[3], f32[36]) tuple(reduce, abs)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[36] parameter(0)
+  ROOT fusion = (f32[3], f32[36]) fusion(param_0), kind=kCustom,
+    calls=fused_computation, backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})"));
+  std::optional<SymbolicTileAnalysis> analysis_without_triton_constraints =
+      TryAnalyzeModule(module.get(),
+                       /*with_triton_emitter_specific_constraints=*/false);
+  ASSERT_TRUE(analysis_without_triton_constraints.has_value());
+
+  // (1,) is a theoretically valid tiling for this multi-output fusion, so
+  // SymbolicTileAnalysis should allow it.
+  EXPECT_THAT(
+      analysis_without_triton_constraints->ParametersSatisfyConstraints({1}),
+      IsOkAndHolds(true));
+
+  std::optional<SymbolicTileAnalysis> analysis_with_triton_constraints =
+      TryAnalyzeModule(module.get(),
+                       /*with_triton_emitter_specific_constraints=*/true);
+
+  ASSERT_TRUE(analysis_with_triton_constraints.has_value());
+
+  // (1,) is a theoretically valid tiling for this multi-output fusion, but the
+  // propagated tile size of (1,12) for the extra output does not pass the
+  // condition that all tile sizes are powers of 2. This can result in different
+  // paddings for the different roots being used, which can cause problems if
+  // buffers are shared.
+  EXPECT_THAT(
+      analysis_with_triton_constraints->ParametersSatisfyConstraints({1}),
+      IsOkAndHolds(false));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

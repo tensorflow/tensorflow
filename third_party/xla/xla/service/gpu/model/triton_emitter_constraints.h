@@ -56,9 +56,11 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
 
   explicit TritonEmitterConstraints(
       llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps,
+      llvm::SmallVector<mlir::AffineMap, 2> size_maps,
       std::vector<CustomConstraints> custom_constraints,
       const Shape& root_shape, const se::DeviceDescription& device_info)
       : tile_size_maps_(std::move(tile_size_maps)),
+        size_maps_(std::move(size_maps)),
         custom_constraints_(std::move(custom_constraints)),
         root_shape_(root_shape),
         device_info_(device_info) {}
@@ -90,6 +92,10 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
   // Different TiledHloInstructions often have the same size map, so we keep a
   // collection of unique maps to improve compilation time.
   llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps_;
+
+  // Tile size maps that need to be checked whether they evaluate to powers of
+  // 2. We need this constraint for multi-output fusions.
+  llvm::SmallVector<mlir::AffineMap, 2> size_maps_;
 
   // Custom emitter-specific constraints to check in
   // `ParametersSatisfyConstraints`.
