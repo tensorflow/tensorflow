@@ -15,18 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 
+#include <algorithm>
 #include <cassert>
 #include <iostream>
-#include <vector>
 
 #include "xla/cpu_function_runtime.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
                                                AllocMode alloc_mode)
-    : raw_function_(static_data.raw_function_),
-      result_index_(static_data.result_index_),
+    : temp_allocation_index_(static_data.temp_allocation_index_),
+      raw_function_(static_data.raw_function_),
+      result_index_(*std::min_element(
+          static_data.result_index_table_,
+          static_data.result_index_table_ + static_data.num_results_)),
       buffer_table_(new void*[static_data.num_buffers_]),
       buffer_infos_(static_data.buffer_infos_),
       num_buffers_(static_data.num_buffers_),
