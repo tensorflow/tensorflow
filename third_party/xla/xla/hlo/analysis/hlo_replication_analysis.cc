@@ -170,7 +170,7 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
         // replica groups must contain every device, the size of the set is the
         // number of partitions or replicas.
         bool fully_replicated = true;
-        for (auto device_sets : device_sets_per_replica) {
+        for (const auto& device_sets : device_sets_per_replica) {
           fully_replicated &=
               device_sets.size() == 1 &&
               (*device_sets.begin()).size() ==
@@ -674,10 +674,12 @@ HloReplicationAnalysis::HloReplication::HloReplication(
     HloReplicationAnalysis::HloReplication::State state,
     absl::Span<const std::vector<int64_t>> device_set_root_per_replica)
     : state_(state),
-      device_set_root_per_replica_(device_set_root_per_replica.begin(),
-                                   device_set_root_per_replica.end()) {
+      device_set_root_per_replica_(
+          std::make_shared<std::vector<std::vector<int64_t>>>(
+              device_set_root_per_replica.begin(),
+              device_set_root_per_replica.end())) {
   CHECK(state == State::kPartiallyReplicated ||
-        device_set_root_per_replica_.empty());
+        device_set_root_per_replica_->empty());
 }
 
 HloReplicationAnalysis::HloReplication
@@ -736,13 +738,13 @@ HloReplicationAnalysis::HloReplication::Merge(
           bool unique_on_all_devices = true;
           std::vector<std::vector<std::vector<int64_t>>>
               device_sets_per_replica;
-          CHECK_EQ(device_set_root_per_replica_.size(),
-                   other.device_set_root_per_replica_.size());
-          for (int i = 0; i < device_set_root_per_replica_.size(); ++i) {
+          CHECK_EQ(device_set_root_per_replica_->size(),
+                   other.device_set_root_per_replica_->size());
+          for (int i = 0; i < device_set_root_per_replica_->size(); ++i) {
             const std::vector<int64_t>& my_device_set_root =
-                device_set_root_per_replica_[i];
+                device_set_root_per_replica_->at(i);
             const std::vector<int64_t>& other_device_set_root =
-                other.device_set_root_per_replica_[i];
+                other.device_set_root_per_replica_->at(i);
             absl::flat_hash_map<int64_t, std::vector<int64_t>>
                 value_to_device_set;
             size_t num_devices = my_device_set_root.size();
@@ -782,9 +784,9 @@ bool HloReplicationAnalysis::HloReplication::Equal(
   if (state_ != other.state_) {
     return false;
   }
-  for (int i = 0; i < device_set_root_per_replica_.size(); ++i) {
-    if (device_set_root_per_replica_[i] !=
-        other.device_set_root_per_replica_[i]) {
+  for (int i = 0; i < device_set_root_per_replica_->size(); ++i) {
+    if (device_set_root_per_replica_->at(i) !=
+        other.device_set_root_per_replica_->at(i)) {
       return false;
     }
   }
@@ -808,7 +810,8 @@ bool HloReplicationAnalysis::HloReplication::IsUniqueOnAllDevices() const {
 bool HloReplicationAnalysis::HloReplication::IsReplicatedWithinSubgroup(
     absl::Span<const int64_t> device_ids) const {
   if (device_ids.empty()) return true;
-  for (std::vector<int64_t> device_set_roots : device_set_root_per_replica_) {
+  for (const std::vector<int64_t>& device_set_roots :
+       *device_set_root_per_replica_) {
     if (!absl::c_all_of(device_ids,
                         [&device_ids, &device_set_roots](int device_id) {
                           return device_set_roots[device_id] ==
@@ -829,12 +832,12 @@ std::string HloReplicationAnalysis::HloReplication::ToString() const {
     case State::kPartiallyReplicated:
       std::ostringstream oss;
       oss << "PartiallyReplicated{";
-      for (int k = 0; k < device_set_root_per_replica_.size(); ++k) {
+      for (int k = 0; k < device_set_root_per_replica_->size(); ++k) {
         if (k > 0) {
           oss << ", ";
         }
         oss << absl::StrCat(
-            "{", absl::StrJoin(device_set_root_per_replica_[k], ","), "}");
+            "{", absl::StrJoin(device_set_root_per_replica_->at(k), ","), "}");
       }
       oss << "}";
       return oss.str();
