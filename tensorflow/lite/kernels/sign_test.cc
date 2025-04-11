@@ -23,20 +23,20 @@ namespace tflite {
 namespace {
 
 template <typename T>
-tflite::TensorType GetTTEnum();
+tflite::TensorType GetTypeEnum();
 
 template <>
-tflite::TensorType GetTTEnum<float>() {
+tflite::TensorType GetTypeEnum<float>() {
   return tflite::TensorType_FLOAT32;
 }
 
 template <>
-tflite::TensorType GetTTEnum<double>() {
+tflite::TensorType GetTypeEnum<double>() {
   return tflite::TensorType_FLOAT64;
 }
 
 template <>
-tflite::TensorType GetTTEnum<int32_t>() {
+tflite::TensorType GetTypeEnum<int32_t>() {
   return tflite::TensorType_INT32;
 }
 
@@ -73,8 +73,8 @@ TYPED_TEST_SUITE(SignTestFloat, TestTypes);
 
 TYPED_TEST(SignTestFloat, TestScalarFloat) {
   using Float = typename TestFixture::FloatType;
-  tflite::TensorData x = {GetTTEnum<Float>(), {}};
-  tflite::TensorData output = {GetTTEnum<Float>(), {}};
+  tflite::TensorData x = {GetTypeEnum<Float>(), {}};
+  tflite::TensorData output = {GetTypeEnum<Float>(), {}};
   SignModel m(x, output);
   auto got = m.GetOutput<Float>({0.0});
   ASSERT_EQ(got.size(), 1);
@@ -86,8 +86,8 @@ TYPED_TEST(SignTestFloat, TestScalarFloat) {
 
 TYPED_TEST(SignTestFloat, TestBatchFloat) {
   using Float = typename TestFixture::FloatType;
-  tflite::TensorData x = {GetTTEnum<Float>(), {4, 2, 1}};
-  tflite::TensorData output = {GetTTEnum<Float>(), {4, 2, 1}};
+  tflite::TensorData x = {GetTypeEnum<Float>(), {4, 2, 1}};
+  tflite::TensorData output = {GetTypeEnum<Float>(), {4, 2, 1}};
   SignModel m(x, output);
 
   std::vector<Float> x_data = {0.8, -0.7, 0.6, -0.5, 0.4, -0.3, 0.2, 0.0};
@@ -109,8 +109,8 @@ TYPED_TEST_SUITE(SignTestInt, TestTypesInt);
 
 TYPED_TEST(SignTestInt, TestScalarInt) {
   using Int = typename TestFixture::IntType;
-  tflite::TensorData x = {GetTTEnum<Int>(), {}};
-  tflite::TensorData output = {GetTTEnum<Int>(), {}};
+  tflite::TensorData x = {GetTypeEnum<Int>(), {}};
+  tflite::TensorData output = {GetTypeEnum<Int>(), {}};
   SignModel m(x, output);
   auto got = m.GetOutput<Int>({0});
   ASSERT_EQ(got.size(), 1);
@@ -122,8 +122,8 @@ TYPED_TEST(SignTestInt, TestScalarInt) {
 
 TYPED_TEST(SignTestInt, TestBatchInt) {
   using Int = typename TestFixture::IntType;
-  tflite::TensorData x = {GetTTEnum<Int>(), {4, 2, 1}};
-  tflite::TensorData output = {GetTTEnum<Int>(), {4, 2, 1}};
+  tflite::TensorData x = {GetTypeEnum<Int>(), {4, 2, 1}};
+  tflite::TensorData output = {GetTypeEnum<Int>(), {4, 2, 1}};
   SignModel m(x, output);
 
   EXPECT_EQ(m.GetOutput<Int>({0, -7, 6, -5, 4, -3, 2, 1}),
