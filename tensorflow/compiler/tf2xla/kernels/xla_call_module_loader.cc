@@ -267,8 +267,11 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
 
     // Get static MLIR Type from xla Shape.
     const xla::Shape &xla_shape = input_shapes[next_actual_input++];
-    std::vector<int64_t> xla_dimensions(xla_shape.dimensions().begin(),
-                                        xla_shape.dimensions().end());
+    std::vector<int64_t> xla_dimensions;
+    if (xla_shape.IsArray()) {
+      xla_dimensions = std::vector<int64_t>(xla_shape.dimensions().begin(),
+                                            xla_shape.dimensions().end());
+    }
     TF_ASSIGN_OR_RETURN(
         mlir::Type element_type,
         ConvertPrimitiveTypeToMlirType(xla_shape.element_type(), builder));

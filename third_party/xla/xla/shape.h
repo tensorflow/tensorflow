@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 #include <optional>
 #include <ostream>
+#include <source_location>
 #include <string>
 #include <utility>
 #include <variant>
@@ -237,9 +238,12 @@ class Shape {
   void set_element_type(PrimitiveType value);
 
   // Returns the number of dimensions in the shape.
-  // Precondition: this is an array shape.
+  // Precondition: this is an array shape.ß
   ABSL_DEPRECATE_AND_INLINE()
-  inline int dimensions_size() const { return dimensions().size(); }
+  inline int dimensions_size(
+      std::source_location loc = std::source_location::current()) const {
+    return dimensions(loc).size();
+  }
 
   // Returns the size of the given dimension if it's static, or the upper bound
   // of the dimension size if it's dynamic.
@@ -293,12 +297,9 @@ class Shape {
 
   // Returns a span to indicate the size of each dimension.
   // Precondition: this is an array shape.
-  absl::Span<const int64_t> dimensions() const {
-    if (const auto* const state = if_array_state()) {
-      return state->dimensions;
-    }
-    // TODO(b/404276923): ensure that this is never called on non-array shapes.
-    return {};
+  absl::Span<const int64_t> dimensions(
+      std::source_location loc = std::source_location::current()) const {
+    return array_state(loc).dimensions;
   }
   absl::Span<int64_t> mutable_dimensions() {
     return absl::MakeSpan(array_state().dimensions);
@@ -582,13 +583,21 @@ class Shape {
     CHECK(state) << "Expected an opaque shape. Got " << ToString();
     return *state;
   }
-  const ArrayState& array_state() const {
+  const ArrayState& array_state(
+      std::source_location loc = std::source_location::current()) const {
     const auto* const state = if_array_state();
+    if (!state) {
+      LOG(ERROR) << loc.file_name() << ":" << loc.line() << ": ZW called";
+    }
     CHECK(state) << "Expected an array shape. Got " << ToString();
     return *state;
   }
-  ArrayState& array_state() {
+  ArrayState& array_state(
+      std::source_location loc = std::source_location::current()) {
     auto* const state = if_array_state();
+    if (!state) {
+      LOG(ERROR) << loc.file_name() << ":" << loc.line() << ": ZW called";
+    }
     CHECK(state) << "Expected an array shape. Got " << ToString();
     return *state;
   }

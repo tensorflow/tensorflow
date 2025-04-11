@@ -2814,21 +2814,24 @@ absl::Status DynamicDimensionInference::ForwardDynamicSize(
 bool DynamicDimensionInference::HasDynamicDimension(
     HloInstruction* inst, ShapeIndexView index) const {
   bool has_dynamic_dim = false;
-  ShapeUtil::ForEachSubshape(inst->shape(), [&](const Shape& subshape,
-                                                const ShapeIndex& subindex) {
-    if (subshape.IsTuple()) {
-      return;
-    }
-    if (ShapeIndexView(subindex).subspan(0, index.size()) != index) {
-      return;
-    }
-    for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
-      HloInstruction* operand_dynamic_size = GetDynamicSize(inst, subindex, i);
-      if (operand_dynamic_size != nullptr) {
-        has_dynamic_dim = true;
-      }
-    }
-  });
+  ShapeUtil::ForEachSubshape(
+      inst->shape(), [&](const Shape& subshape, const ShapeIndex& subindex) {
+        if (subshape.IsTuple()) {
+          return;
+        }
+        if (ShapeIndexView(subindex).subspan(0, index.size()) != index) {
+          return;
+        }
+        if (subshape.IsArray()) {
+          for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
+            HloInstruction* operand_dynamic_size =
+                GetDynamicSize(inst, subindex, i);
+            if (operand_dynamic_size != nullptr) {
+              has_dynamic_dim = true;
+            }
+          }
+        }
+      });
   return has_dynamic_dim;
 }
 

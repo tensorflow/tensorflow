@@ -716,8 +716,10 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     printer->Append("[]");
     return;
   }
+  // Now we are in array shape with at least one dimension.
   printer->Append("[");
-  auto print_one = [&](int i) {
+  // Prints the i-th dimension of the array shape.
+  auto print_dimension = [&](int i) {
     if (shape.is_dynamic_dimension(i)) {
       if (shape.dimensions(i) != Shape::kUnboundedSize) {
         printer->Append(StrCat("<=", shape.dimensions(i)));
@@ -728,10 +730,10 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
       printer->Append(shape.dimensions(i));
     }
   };
-  print_one(0);
+  print_dimension(0);
   for (int i = 1, n = shape.dimensions().size(); i < n; ++i) {
     printer->Append(",");
-    print_one(i);
+    print_dimension(i);
   }
   printer->Append("]");
 }
@@ -849,9 +851,11 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 /* static */ DimensionVector ShapeUtil::CreateDimensionVectorFromShape(
     const Shape& shape) {
   DimensionVector dimensions;
-  dimensions.reserve(shape.dimensions().size());
-  for (int i = 0; i < shape.dimensions().size(); ++i) {
-    dimensions.push_back(shape.dimensions(i));
+  if (shape.IsArray()) {
+    dimensions.reserve(shape.dimensions().size());
+    for (int i = 0; i < shape.dimensions().size(); ++i) {
+      dimensions.push_back(shape.dimensions(i));
+    }
   }
   return dimensions;
 }

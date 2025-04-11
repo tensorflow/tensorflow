@@ -96,7 +96,7 @@ Range RecursivelyIdentifyRange(
   // Non scalar or non-integer HLO. Abort.
   if ((!instr->shape().AreAllLeavesIntegers() &&
        instr->shape().element_type() != PRED) ||
-      instr->shape().dimensions_size() != 0) {
+      (instr->shape().IsArray() && !instr->shape().dimensions().empty())) {
     return Range{};
   }
   VLOG(5) << "Computing Range for " << instr->ToString();
