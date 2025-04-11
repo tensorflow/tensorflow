@@ -351,11 +351,9 @@ absl::Duration GpuPerformanceModelBase::ComputeTime(
 
 /*static*/
 absl::Duration GpuPerformanceModelBase::CombineComputeAndMemoryAccessTime(
-    absl::Duration compute_time, absl::Duration memory_access_time,
-    const GpuPerformanceModelOptions& config) {
+    absl::Duration compute_time, absl::Duration memory_access_time) {
   return compute_time + memory_access_time -
-         std::min(compute_time, memory_access_time) *
-             config.memory_compute_parallelism;
+         std::min(compute_time, memory_access_time) * kMemoryComputeParallelism;
 }
 
 /*static*/
