@@ -154,7 +154,7 @@ AutoShardingSolverRequest ConvertToSolverRequest(
   AutoShardingSolverRequest request;
   request.set_request_name(problem.name);
   request.set_num_nodes(problem.nodes.size());
-  request.set_memory_budget(*problem.usage_limit);
+  request.set_memory_budget(problem.usage_limit.value_or(-1));
   for (iopddl::NodeIdx node_idx = 0; node_idx < problem.nodes.size();
        ++node_idx) {
     const iopddl::Node& node = problem.nodes[node_idx];

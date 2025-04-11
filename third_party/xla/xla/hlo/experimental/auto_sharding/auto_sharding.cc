@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_iopddl.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_memory.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
@@ -1997,7 +1998,14 @@ CreateAutoShardingSolverRequestAndCallSolver(
 
   PopulateTemporalValues(cost_graph, request);
 
-  return FormulateAndSolveMIPFromSolverRequest(request);
+  const auto converted_problem = ConvertToProblem(request);
+  const auto converted_request = ConvertToSolverRequest(converted_problem);
+  const std::optional<double> overbudget_coeff =
+      option.memory_overbudget_coeff >= 0.0
+          ? std::make_optional(option.memory_overbudget_coeff)
+          : std::nullopt;
+  return FormulateAndSolveMIPFromSolverRequest(converted_request,
+                                               overbudget_coeff);
 }
 
 void CheckHloSharding(

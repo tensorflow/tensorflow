@@ -33,6 +33,7 @@ cc_library(
     deps = [
         ":auto_sharding_cost_graph",
         ":auto_sharding_device_mesh",
+        ":auto_sharding_iopddl",
         ":auto_sharding_option",
         ":auto_sharding_solver",
         ":auto_sharding_strategy",

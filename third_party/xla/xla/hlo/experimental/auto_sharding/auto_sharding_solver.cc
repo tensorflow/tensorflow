@@ -268,7 +268,7 @@ absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
     const std::vector<std::vector<MPVariable*>>& s,
     const std::vector<std::vector<MPVariable*>>& e,
     const MPVariable* overbudget_var, const MPVariable* makespan_var,
-    MPSolver& solver) {
+    const std::optional<double> overbudget_coeff, MPSolver& solver) {
   auto status = solver.Solve();
   LOG(INFO) << "Solver absl::Status: " << status;
 
@@ -364,8 +364,7 @@ absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
     unsalted_objective += request.resharding_costs(edge_idx).costs(j);
   }
   if (overbudget_var) {
-    unsalted_objective += request.overbudget_coeff().coeff() *
-                          overbudget_var->solution_value() *
+    unsalted_objective += *overbudget_coeff * overbudget_var->solution_value() *
                           request.memory_budget();
   }
   if (makespan_var) {
@@ -578,7 +577,8 @@ void AddMemoryTerms(
 //    is guaranteed to never produce a negative overall cost for the graph,
 //    however.
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
-    const AutoShardingSolverRequest& unscaled_request) {
+    const AutoShardingSolverRequest& unscaled_request,
+    std::optional<double> overbudget_coeff) {
   const absl::Time start_time = absl::Now();
   const AutoShardingSolverRequest request = ScaleRequest(unscaled_request);
   const size_t num_edges = request.edges_size();
@@ -662,7 +662,7 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     edge_map.insert({followed_edge, edge_idx});
   }
 
-  if (request.memory_budget() > 0 && request.has_overbudget_coeff()) {
+  if (request.memory_budget() > 0 && overbudget_coeff.has_value()) {
     overbudget_var =
         solver->MakeNumVar(0.0, MPSolver::infinity(), "overbudget");
   }
@@ -808,8 +808,7 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     }
     if (overbudget_var && !request.minimize_departures()) {
       solver->MutableObjective()->SetCoefficient(
-          overbudget_var,
-          request.overbudget_coeff().coeff() * request.memory_budget());
+          overbudget_var, *overbudget_coeff * request.memory_budget());
     }
     LOG(INFO) << "Minimum memory budget estimate: "
               << MinimumMemoryBudgetRequired(request);
@@ -974,11 +973,11 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
   if (request.has_max_departures()) {
     VLOG(0) << "Max departures: " << request.max_departures().coeff();
   }
-  auto result = SolveAndExtractSolution(request, s, e, overbudget_var,
-                                        makespan_var, *solver);
+  auto result = SolveAndExtractSolution(
+      request, s, e, overbudget_var, makespan_var, overbudget_coeff, *solver);
   if (result.ok()) {
     const AutoShardingEvaluation evaluation =
-        Evaluate(unscaled_request, *result);
+        Evaluate(unscaled_request, *result, overbudget_coeff);
     LOG(INFO) << "*** Total costs for the (unscaled) solver request ***";
     LOG(INFO) << "Total Communication Cost: "
               << evaluation.total.communication_cost
@@ -1207,7 +1206,8 @@ bool AutoShardingEvaluation::operator==(
 }
 
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
-                                const AutoShardingSolverOutput& result) {
+                                const AutoShardingSolverOutput& result,
+                                std::optional<double> overbudget_coeff) {
   const auto& c = request.computation_costs();
   const auto& d = request.communication_costs();
   const auto& r = request.resharding_costs();
@@ -1376,11 +1376,10 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
         evaluation.violation_codes.insert(kMemoryViolationCode);
       }
     }
-    if (request.has_overbudget_coeff()) {
-      evaluation.total.overbudget_cost =
-          request.overbudget_coeff().coeff() * total_overbudget;
+    if (overbudget_coeff.has_value()) {
+      evaluation.total.overbudget_cost = *overbudget_coeff * total_overbudget;
       evaluation.lower_bound.overbudget_cost =
-          request.overbudget_coeff().coeff() * lower_bound_overbudget;
+          *overbudget_coeff * lower_bound_overbudget;
     }
   }
   // Compute metrics and lower bounds.
