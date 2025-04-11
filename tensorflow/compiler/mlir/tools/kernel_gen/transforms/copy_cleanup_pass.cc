@@ -16,13 +16,14 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallPtrSet.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
