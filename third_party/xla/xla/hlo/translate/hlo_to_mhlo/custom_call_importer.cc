@@ -31,8 +31,8 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -66,9 +66,9 @@ absl::StatusOr<mlir::Operation*> ImportDynamicBroadcastInDimOp(
   }
 
   return builder
-      ->create<mlir::mhlo::DynamicBroadcastInDimOp>(
+      ->create<mlir::stablehlo::DynamicBroadcastInDimOp>(
           loc, result_type, operands[0], operands[1],
-          builder->getI64TensorAttr(broadcast_dimensions))
+          builder->getDenseI64ArrayAttr(broadcast_dimensions))
       .getOperation();
 }
 
@@ -79,7 +79,7 @@ absl::StatusOr<mlir::Operation*> ImportDynamicReshapeOp(
     return Internal("backend_config attribute must be empty.");
   }
   return builder
-      ->create<mlir::mhlo::DynamicReshapeOp>(loc, result_type, operands)
+      ->create<mlir::stablehlo::DynamicReshapeOp>(loc, result_type, operands)
       .getOperation();
 }
 
@@ -90,7 +90,7 @@ absl::StatusOr<mlir::Operation*> ImportRealDynamicSliceOp(
     return Internal("backend_config attribute must be empty.");
   }
   return builder
-      ->create<mlir::mhlo::RealDynamicSliceOp>(loc, result_type, operands)
+      ->create<mlir::stablehlo::RealDynamicSliceOp>(loc, result_type, operands)
       .getOperation();
 }
 
@@ -187,7 +187,7 @@ absl::StatusOr<mlir::Operation*> ImportCustomCallAsOp(
 
   if (custom_call_target == "mhlo.uniform_quantize") {
     return builder
-        ->create<mlir::mhlo::UniformQuantizeOp>(
+        ->create<mlir::stablehlo::UniformQuantizeOp>(
             loc,
             mlir::RankedTensorType::get(
                 mlir::cast<mlir::RankedTensorType>(result_type).getShape(),
@@ -198,7 +198,8 @@ absl::StatusOr<mlir::Operation*> ImportCustomCallAsOp(
 
   if (custom_call_target == "mhlo.uniform_dequantize") {
     return builder
-        ->create<mlir::mhlo::UniformDequantizeOp>(loc, result_type, operands)
+        ->create<mlir::stablehlo::UniformDequantizeOp>(loc, result_type,
+                                                       operands)
         .getOperation();
   }
   return InvalidArgument("Unsupported MHLO op custom_call %s",

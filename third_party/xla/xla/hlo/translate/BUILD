@@ -95,7 +95,6 @@ cc_library(
         "//xla/hlo/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//xla/hlo/translate/mhlo_to_hlo:module_attributes_exporter",
         "//xla/mlir/utils:error_util",
-        "//xla/mlir_hlo",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/mlir_hlo:stablehlo_extension_passes",

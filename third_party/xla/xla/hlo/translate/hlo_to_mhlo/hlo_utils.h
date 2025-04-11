@@ -37,11 +37,11 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir/utils/type_util.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -80,7 +80,7 @@ static absl::StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
       shape[dim] = dim_size;
     }
   }
-  using mlir::mhlo::TypeExtensionsAttr;
+  using mlir::stablehlo::TypeExtensionsAttr;
   mlir::Attribute encoding;
   if (is_bounded_dynamic) {
     encoding = TypeExtensionsAttr::get(builder.getContext(), bounds);
@@ -170,7 +170,7 @@ static absl::StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
     return builder.getTupleType(contents);
   }
   if (shape.IsToken()) {
-    return mlir::mhlo::TokenType::get(builder.getContext());
+    return mlir::stablehlo::TokenType::get(builder.getContext());
   }
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
