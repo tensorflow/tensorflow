@@ -39,15 +39,10 @@ class InterpolatorBase {
   virtual ~InterpolatorBase() = default;
 
   // Adds point to the interpolation space.
-  void Add(std::array<int64_t, N>& point, R val) {
-    plane_.emplace_back(point, val);
-  };
+  virtual void Add(std::array<int64_t, N>& point, R val) = 0;
 
   // Returns interpolated value.
   virtual R Eval(std::array<int64_t, N>& point) const = 0;
-
- protected:
-  std::vector<std::pair<std::array<int64_t, N>, R>> plane_;
 };
 
 // `Interpolates` any point in euclidean space by just returning the nearest
@@ -59,13 +54,17 @@ class InterpolatorBase {
 template <typename R, size_t N>
 class EuclideanNNInterpolator : public InterpolatorBase<R, N> {
  public:
+  void Add(std::array<int64_t, N>& point, R val) override {
+    plane_.emplace_back(point, val);
+  };
+
   R Eval(std::array<int64_t, N>& point) const override {
-    CHECK_GT(this->plane_.size(), 0);
+    CHECK_GT(plane_.size(), 0);
 
     R result;
     uint64_t min_dist = std::numeric_limits<uint64_t>::max();
 
-    for (const auto& [plane_point, val] : this->plane_) {
+    for (const auto& [plane_point, val] : plane_) {
       int64_t dist = Norm2(plane_point, point);
       if (dist < min_dist) {
         result = val;
@@ -86,6 +85,8 @@ class EuclideanNNInterpolator : public InterpolatorBase<R, N> {
     }
     return dist;
   }
+
+  std::vector<std::pair<std::array<int64_t, N>, R>> plane_;
 };
 
 template <typename R, size_t N>
@@ -100,13 +101,12 @@ class EuclideanComplementInterpolator : public EuclideanNNInterpolator<R, N> {
         max_ctx_(max_context),
         min_ctx_(min_context) {}
 
-  void Add(std::array<int64_t, N>& point, R val) {
-    EuclideanNNInterpolator<R, N>::Add(point, val);
+  void Add(std::array<int64_t, N>& point, R val) override {
     retrieval_[point] = val;
   }
 
   R Eval(std::array<int64_t, N>& point) const override {
-    CHECK_GT(this->plane_.size(), 0);
+    CHECK_GT(retrieval_.size(), 0);
     std::array<int64_t, N> interpolation_point;
     for (int i = 0; i < point.size(); ++i) {
       std::optional<int64_t> next_potential_dim;

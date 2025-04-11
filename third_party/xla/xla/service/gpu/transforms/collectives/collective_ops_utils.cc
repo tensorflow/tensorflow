@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 
+#include <variant>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/collective_device_list.h"
@@ -41,10 +43,13 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
     const se::GpuComputeCapability& gpu_version) {
   auto iota = instr.device_list().iota_replica_group_list();
 
+  if (!std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
+    return absl::FailedPreconditionError("Only CUDA is supported.");
+  }
+
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(gpu_version);
-  if (!(cuda_compute_capability.IsAtLeastAmpere() &&
-        !cuda_compute_capability.IsAtLeastBlackwell())) {
+  if (!cuda_compute_capability.IsHopper()) {
     return absl::FailedPreconditionError(
         "Only Hopper is supported to get communication type");
   }

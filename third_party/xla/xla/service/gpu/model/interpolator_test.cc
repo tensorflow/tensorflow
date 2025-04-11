@@ -52,6 +52,11 @@ class InterpolatorFake : public InterpolatorBase<int, 2> {
 
   // Fake eval function which just returns the size of the consumed set.
   int Eval(std::array<int64_t, 2>& x) const override { return plane_.size(); }
+
+  void Add(std::array<int64_t, 2>& x, int val) override { plane_.push_back(x); }
+
+ private:
+  std::vector<std::array<int64_t, 2>> plane_;
 };
 
 TEST(Interpolator, PersistsEuclideanPoints) {
