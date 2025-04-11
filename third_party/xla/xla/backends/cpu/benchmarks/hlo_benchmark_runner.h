@@ -37,6 +37,7 @@ using StrToStrMapping =
 struct HloBenchmarkOptions {
   int32_t num_executions = 1;
   bool disable_parallel_task_assigner = false;
+  bool use_thunk_runtime = true;
   // If not null, AOT compilation will be used.
   std::unique_ptr<AotCompilationOptions> aot_options;
 };
