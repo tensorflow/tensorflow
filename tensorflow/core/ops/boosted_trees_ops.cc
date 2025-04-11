@@ -15,12 +15,12 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/framework/common_shape_fns.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
