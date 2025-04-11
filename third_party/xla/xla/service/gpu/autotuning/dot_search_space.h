@@ -47,7 +47,7 @@ class TritonDotFusionSearchSpace {
       std::optional<int64_t> force_contracting_split = std::nullopt);
 
   // Serializes the search space to a human-readable string.
-  std::string Serialize();
+  std::string ToString() const;
 
  private:
   // Groups together the tiling of the dot's output dimensions: the parallel
@@ -111,6 +111,10 @@ class TritonDotFusionSearchSpace {
   // instruction shape.
   int GetMaxWarpsPerCta(OutputTile output_tile) const;
 
+  // Computes the minimum reasonable tile size for the contracting dimension
+  // given the element types of the operands.
+  int GetMinContractingTileSize() const;
+
   // Computes the maximum sensible split in the contracting dimension
   // (split_k) to sufficiently occupy all available cores when using the given
   // output tile.
@@ -160,6 +164,7 @@ class TritonDotFusionSearchSpace {
   int64_t batch_size_;
   int64_t lhs_parallel_size_;
   int64_t rhs_parallel_size_;
+  int operand_bitwidth_;
   int compute_bitwidth_;
   int desired_total_warps_;
   OutputTile max_out_tile_;

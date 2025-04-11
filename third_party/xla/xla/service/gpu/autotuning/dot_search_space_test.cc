@@ -123,8 +123,8 @@ TEST_F(DotSearchSpaceTest, SerializesSearchSpace) {
                           /*contracting_dim=*/1024));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
-  EXPECT_EQ(search_space.Serialize(),
-            "problem_size_BxMxNxKxE: 1x1024x1024x1024x16 "
+  EXPECT_EQ(search_space.ToString(),
+            "problem_size_BxMxNxKxE: 1x1024x1024x1024x(16->16) "
             "tile_range_SxMxNxK: [1-64]x[16-256]x[16-512]x[16-?] "
             "desired_total_warps: 2640 warps_per_cta: [4-?]");
 }
@@ -166,7 +166,7 @@ TEST_F(DotSearchSpaceTest, LimitsContractingSplitForSmallerContractingSize) {
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(),
-              AllOf(Not(IsEmpty()), Each(SplitKIs(Le(2)))));
+              AllOf(Not(IsEmpty()), Each(SplitKIs(Le(4)))));
 }
 
 TEST_F(DotSearchSpaceTest, FindsGoodDataReuseOutputTiles) {

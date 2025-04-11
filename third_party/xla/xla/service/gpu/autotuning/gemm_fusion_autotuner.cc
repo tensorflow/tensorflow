@@ -897,7 +897,7 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
     TritonDotFusionSearchSpace search_space(config_.GetDeviceDescription(),
                                             &dot);
     VLOG(1) << "Generating configs from search space: "
-            << search_space.Serialize();
+            << search_space.ToString();
     // We don't need to consider small_dot here. The new search space will
     // already generate a unique config for small problems.
     return search_space.GenerateConfigs(

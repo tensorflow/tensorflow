@@ -91,6 +91,8 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
                          (contracting_size_ * batch_size_)),
       rhs_parallel_size_(ShapeUtil::ElementsIn(dot->operand(1)->shape()) /
                          (contracting_size_ * batch_size_)),
+      operand_bitwidth_(  // The bitwitdth of both operands is the same.
+          primitive_util::BitWidth(dot->operand(0)->shape().element_type())),
       compute_bitwidth_(primitive_util::BitWidth(dot->shape().element_type())),
       // Figure out some basic limitations on tiling based on the above.
       desired_total_warps_(GetDesiredTotalWarps()),
@@ -99,7 +101,7 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
       // of hardcoding.
       min_out_tile_{16, 16},
       min_warps_per_cta_(4),
-      min_contracting_tile_size_(16),
+      min_contracting_tile_size_(GetMinContractingTileSize()),
       max_contracting_split_(GetMaxContractingSplit(max_out_tile_)) {
   // Make sure that the range of output tile sizes is not empty
   // (min_output_tile_ is a hard limit, while max_output_tile_ is a soft one).
@@ -150,15 +152,16 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
   return result;
 }
 
-std::string TritonDotFusionSearchSpace::Serialize() {
+std::string TritonDotFusionSearchSpace::ToString() const {
   return absl::StrFormat(
-      "problem_size_BxMxNxKxE: %dx%dx%dx%dx%d "
+      "problem_size_BxMxNxKxE: %dx%dx%dx%dx(%d->%d) "
       "tile_range_SxMxNxK: [1-%d]x[%d-%d]x[%d-%d]x[%d-?] "
       "desired_total_warps: %d warps_per_cta: [%d-?]",
       batch_size_, lhs_parallel_size_, rhs_parallel_size_, contracting_size_,
-      compute_bitwidth_, max_contracting_split_, min_out_tile_.lhs_dim,
-      max_out_tile_.lhs_dim, min_out_tile_.rhs_dim, max_out_tile_.rhs_dim,
-      min_contracting_tile_size_, desired_total_warps_, min_warps_per_cta_);
+      operand_bitwidth_, compute_bitwidth_, max_contracting_split_,
+      min_out_tile_.lhs_dim, max_out_tile_.lhs_dim, min_out_tile_.rhs_dim,
+      max_out_tile_.rhs_dim, min_contracting_tile_size_, desired_total_warps_,
+      min_warps_per_cta_);
 }
 
 int TritonDotFusionSearchSpace::GetDesiredTotalWarps() const {
@@ -226,6 +229,22 @@ int TritonDotFusionSearchSpace::GetMaxWarpsPerCta(OutputTile tile) const {
   const int rhs_warps = CeilOfRatio(tile.rhs_dim, kMmaSubTile.rhs_dim);
   return std::max(min_warps_per_cta_,
                   std::min(max_warps, lhs_warps * rhs_warps));
+}
+
+int TritonDotFusionSearchSpace::GetMinContractingTileSize() const {
+  // The number of bits that both MMA and WGMMA instructions expect to have in
+  // the contracting dimension. See
+  // https://docs.nvidia.com/cuda/parallel-thread-execution/#asynchronous-warpgroup-level-matrix-shape
+  constexpr int kMmaContractingBitwidth = 128;
+  /// TODO: b/395572776 - Triton currently requires at least 16 elements, but we
+  // shouldbe able to relax this and remove this limit here.
+  constexpr int kTritonLowerLimit = 16;
+  const int min_contracting_tile_size =
+      std::max(kMmaContractingBitwidth / operand_bitwidth_, kTritonLowerLimit);
+  VLOG(5) << "Computing min_contracting_tile_size: Based on bitwidth of "
+          << operand_bitwidth_
+          << ", min_contracting_tile_size = " << min_contracting_tile_size;
+  return min_contracting_tile_size;
 }
 
 int TritonDotFusionSearchSpace::GetMaxContractingSplit(
