@@ -1,1 +1,49 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/aarch64/sqrt.h b/libc/src/__support/FPUtil/aarch64/sqrt.h
+--- a/libc/src/__support/FPUtil/aarch64/sqrt.h
++++ b/libc/src/__support/FPUtil/aarch64/sqrt.h
+@@ -18,6 +18,8 @@
+ #error "Invalid include"
+ #endif
+ 
++#include "src/__support/FPUtil/generic/sqrt.h"
++
+ namespace LIBC_NAMESPACE_DECL {
+ namespace fputil {
+ 
+diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/arm/sqrt.h b/libc/src/__support/FPUtil/arm/sqrt.h
+--- a/libc/src/__support/FPUtil/arm/sqrt.h
++++ b/libc/src/__support/FPUtil/arm/sqrt.h
+@@ -18,6 +18,8 @@
+ #error "Invalid include"
+ #endif
+ 
++#include "src/__support/FPUtil/generic/sqrt.h"
++
+ namespace LIBC_NAMESPACE_DECL {
+ namespace fputil {
+ 
+diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/riscv/sqrt.h b/libc/src/__support/FPUtil/riscv/sqrt.h
+--- a/libc/src/__support/FPUtil/riscv/sqrt.h
++++ b/libc/src/__support/FPUtil/riscv/sqrt.h
+@@ -18,6 +18,8 @@
+ #error "Invalid include"
+ #endif
+ 
++#include "src/__support/FPUtil/generic/sqrt.h"
++
+ namespace LIBC_NAMESPACE_DECL {
+ namespace fputil {
+ 
+diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/x86_64/sqrt.h b/libc/src/__support/FPUtil/x86_64/sqrt.h
+--- a/libc/src/__support/FPUtil/x86_64/sqrt.h
++++ b/libc/src/__support/FPUtil/x86_64/sqrt.h
+@@ -18,6 +18,8 @@
+ #error "sqrtss / sqrtsd need SSE2"
+ #endif
+ 
++#include "src/__support/FPUtil/generic/sqrt.h"
++
+ namespace LIBC_NAMESPACE_DECL {
+ namespace fputil {
+ 
