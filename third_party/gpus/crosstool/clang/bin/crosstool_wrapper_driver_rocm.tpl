@@ -187,7 +187,7 @@ def InvokeHipcc(argv, log=False):
   # of link time. This allows the default host compiler (gcc) be used as the
   # linker for TensorFlow on ROCm platform.
   hipccopts += ' -fno-gpu-rdc '
-  hipccopts += ' -fcuda-flush-denormals-to-zero '
+  hipccopts += ' -fcuda-flush-denormals-to-zero -munsafe-fp-atomics '
   hipccopts += undefines
   hipccopts += defines
   hipccopts += std_options
