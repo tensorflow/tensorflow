@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/profiling/proto/model_runtime_info.pb.h"
 
 namespace tflite {
 namespace profiling {
@@ -26,6 +27,11 @@ namespace profiling {
 // the given output file path.
 TfLiteStatus GenerateModelRuntimeInfo(const Interpreter &interpreter,
                                       absl::string_view output_file_path);
+
+// Generates a ModelRuntimeInfo proto for the given interpreter and writes it to
+// the given model_runtime_details proto.
+TfLiteStatus GenerateModelRuntimeInfo(
+    const Interpreter &interpreter, ModelRuntimeDetails &model_runtime_details);
 }  // namespace profiling
 }  // namespace tflite
 
