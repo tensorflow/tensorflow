@@ -58,7 +58,9 @@ mlir::LogicalResult StablehloToHloTextTranslateFunction(
   if (!module) return mlir::failure();
 
   mlir::PassManager pm(module->getContext());
-  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  mlir::mhlo::StablehloLegalizeToHloPassOptions shlo_pass_opts;
+  shlo_pass_opts.convert_xla_supported_stablehlo_ = false;
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass(shlo_pass_opts));
   if (failed(pm.run(module))) {
     module->dump();
     return mlir::failure();
@@ -66,7 +68,8 @@ mlir::LogicalResult StablehloToHloTextTranslateFunction(
 
   return xla::MlirHloToHloTextTranslateFunction(
       module, output, emit_return_tuple, emit_use_tuple_arg, print_layouts,
-      print_large_constants, print_sugar, via_builder, with_layouts);
+      print_large_constants, print_sugar, via_builder, with_layouts,
+      /*direct_stablehlo_to_hlo=*/true);
 }
 
 mlir::LogicalResult StablehloToHloTextMain(

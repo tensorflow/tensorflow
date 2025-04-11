@@ -400,18 +400,30 @@ static mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op) {
     return ConvertDenseIntAttr(attribute);                   \
   }
 
+#define I64_ARRAY_ATTR_TO_VECTOR(attribute)               \
+  static std::vector<int64_t> Convert_##attribute(        \
+      std::optional<llvm::ArrayRef<int64_t>> attribute) { \
+    if (!attribute.has_value()) return {};                \
+    return {attribute->begin(), attribute->end()};        \
+  }
+
 I64_ELEMENTS_ATTR_TO_VECTOR(broadcast_sizes);
 I64_ELEMENTS_ATTR_TO_VECTOR(permutation);
 I64_ELEMENTS_ATTR_TO_VECTOR(start_indices);
+I64_ARRAY_ATTR_TO_VECTOR(start_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(limit_indices);
+I64_ARRAY_ATTR_TO_VECTOR(limit_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(strides);
+I64_ARRAY_ATTR_TO_VECTOR(strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(slice_sizes);
+I64_ARRAY_ATTR_TO_VECTOR(slice_sizes);
 I64_ELEMENTS_ATTR_TO_VECTOR(fft_length);
 I64_ELEMENTS_ATTR_TO_VECTOR(dimensions);
 I64_ELEMENTS_ATTR_TO_VECTOR(window_strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(lhs_dilation);
 I64_ELEMENTS_ATTR_TO_VECTOR(rhs_dilation);
 
+#undef I64_ARRAY_ATTR_TO_VECTOR
 #undef I64_ELEMENTS_ATTR_TO_VECTOR
 
 #define BOOL_ELEMENTS_ATTR_TO_VECTOR(attribute)           \
@@ -4154,7 +4166,10 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   // temporarily support StableHLO to MHLO lowering here as well to ensure
   // a smooth migration.
   mlir::PassManager pm(module->getContext());
-  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  mhlo::StablehloLegalizeToHloPassOptions shlo_pass_opts;
+  shlo_pass_opts.convert_xla_supported_stablehlo_ =
+      !options.direct_stablehlo_to_hlo;
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass(shlo_pass_opts));
   if (failed(pm.run(module))) {
     return tsl::errors::Internal("Unable to convert StableHLO to MHLO");
   }
