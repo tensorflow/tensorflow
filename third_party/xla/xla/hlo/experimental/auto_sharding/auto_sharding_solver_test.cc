@@ -486,7 +486,7 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, HandlesIntervals) {
   EXPECT_EQ(result, expected_output);
 }
 
-TEST(FormulateAndSolveMIPFromSolverRequestTest,
+TEST(DISABLED_FormulateAndSolveMIPFromSolverRequestTest,
      HandlesReducedIntervalsAndGroups) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const std::vector<std::pair<int64_t, int64_t>> node_intervals =
@@ -521,7 +521,7 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest,
   EXPECT_EQ(result, expected_output);
 }
 
-TEST(FormulateAndSolveMIPFromSolverRequestTest,
+TEST(DISABLED_FormulateAndSolveMIPFromSolverRequestTest,
      HandlesReducedIntervalsAndGroupsNoMemoryEdgeCosts) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const std::vector<std::pair<int64_t, int64_t>> node_intervals =
@@ -543,7 +543,7 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest,
   EXPECT_EQ(result, expected_output);
 }
 
-TEST(FormulateAndSolveMIPFromSolverRequestTest,
+TEST(DISABLED_FormulateAndSolveMIPFromSolverRequestTest,
      HandlesGroupsWithTinyMemoryCosts) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const std::vector<std::pair<int64_t, int64_t>> node_intervals =
@@ -674,7 +674,7 @@ TEST(AutoShardingEvaluatorTest, EvaluatesOverbudgetWithIntervals) {
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 
-TEST(AutoShardingEvaluatorTest,
+TEST(DISABLED_AutoShardingEvaluatorTest,
      EvaluatesOverbudgetWithReducedIntervalsAndGroups) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const std::vector<std::pair<int64_t, int64_t>> node_intervals =
@@ -856,7 +856,7 @@ TEST(MinimumMemoryBudgetRequired, HandlesLiveMatrix) {
   EXPECT_EQ(MinimumMemoryBudgetRequired(request), 1000000.0);
 }
 
-TEST(MinimumMemoryBudgetRequired, HandlesReducedIntervalsAndGroups) {
+TEST(DISABLED_MinimumMemoryBudgetRequired, HandlesReducedIntervalsAndGroups) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const std::vector<std::pair<int64_t, int64_t>> node_intervals =
       {{5, -1}, {5, -1}, {2, 3}, {3, 4}, {100, -1}, {0, 4}};
