@@ -229,6 +229,9 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionWithFusionEmitters(
 
   // Match data layouts to avoid warning messages.
   llvm_module->setDataLayout(module_->getDataLayout());
+  // We need to clear the module flags so that they don't pollute the linked
+  // module (this will not be required when we migrate to the kernel API).
+  llvm_module->getModuleFlagsMetadata()->eraseFromParent();
   if (llvm::Linker::linkModules(*module_, std::move(llvm_module))) {
     return Internal("Cannot link additional LLVM module for fusion %s",
                     fusion->name());

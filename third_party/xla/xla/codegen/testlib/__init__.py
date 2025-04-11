@@ -30,6 +30,8 @@ KernelDefinition = _extension.KernelDefinition
 KernelEmmitter = _extension.KernelEmitter
 KernelRunner = _extension.KernelRunner
 KernelSpec = _extension.KernelSpec
+LlvmIrKernelSource = _extension.LlvmIrKernelSource
+MlirKernelSource = _extension.MlirKernelSource
 # go/keep-sorted end
 
 # Functions

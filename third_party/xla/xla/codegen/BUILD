@@ -117,3 +117,20 @@ cc_library(
         "//xla/tsl/platform:logging",
     ],
 )
+
+cc_library(
+    name = "mlir_kernel_source",
+    srcs = ["mlir_kernel_source.cc"],
+    hdrs = ["mlir_kernel_source.h"],
+    deps = [
+        ":kernel_source",
+        "//xla:util",
+        "//xla/mlir/utils:error_util",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
+    ],
+)
