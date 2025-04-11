@@ -35,4 +35,6 @@ bazel --bazelrc=/usertools/rocm.bazelrc test \
 	--action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
 	--test_output=errors \
 	--local_test_jobs=2 \
-	--run_under=//tools/ci_build/gpu_build:parallel_gpu_execute
+	--run_under=//tools/ci_build/gpu_build:parallel_gpu_execute \
+	--test_env="ASAN_OPTIONS=suppressions=$(realpath $(dirname $0))/asan_ignore_list.txt" \
+	--test_env="LSAN_OPTIONS=suppressions=$(realpath $(dirname $0))/lsan_ignore_list.txt"

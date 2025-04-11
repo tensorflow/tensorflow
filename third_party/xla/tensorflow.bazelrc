@@ -216,6 +216,14 @@ build:dbg --per_file_copt=+.*,-xla.*@-g0
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 build:dbg --copt -DDEBUG_BUILD
 
+build:asan --strip=never
+build:asan --copt -fsanitize=address
+build:asan --copt -DADDRESS_SANITIZER
+build:asan --copt -O1
+build:asan --copt -g
+build:asan --copt -fno-omit-frame-pointer
+build:asan --linkopt -fsanitize=address
+
 build:rocm_base --copt=-Wno-gnu-offsetof-extensions
 build:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm_base --define=using_rocm_hipcc=true
@@ -237,6 +245,8 @@ build:rocm_clang_official --linkopt="-fuse-ld=lld"
 build:rocm_clang_official --host_linkopt="-fuse-ld=lld"
 
 build:rocm_ci --config=rocm_clang_official
+
+build:rocm_ci_hermetic --config=asan
 build:rocm_ci_hermetic --config=rocm_clang_official
 build:rocm_ci_hermetic --repo_env="OS=ubuntu_22.04"
 build:rocm_ci_hermetic --repo_env="ROCM_VERSION=6.2.0"
