@@ -29,8 +29,8 @@ limitations under the License.
 //   When indices are out of bound, the ops will not succeed.
 //
 
-#include <stdint.h>
-
+#include <cinttypes>
+#include <cstdint>
 #include <cstring>
 
 #include "tensorflow/lite/c/c_api_types.h"
@@ -110,11 +110,11 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
   const char* value_raw = GetTensorData<char>(value);
   const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
   for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
-    int64_t idx = lookup_data[i];
+    int32_t idx = lookup_data[i];
     if (idx >= row_size || idx < 0) {
       TF_LITE_KERNEL_LOG(context,
                          "Embedding Lookup: index out of bounds. "
-                         "Got %d, and bounds are [0, %d]",
+                         "Got %" PRId32 ", and bounds are [0, %d]",
                          idx, row_size - 1);
       return kTfLiteError;
     } else {
@@ -142,11 +142,11 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
 
   for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
-    int idx = lookup_data[i];
+    int32_t idx = lookup_data[i];
     if (idx >= row_size || idx < 0) {
       TF_LITE_KERNEL_LOG(context,
                          "Embedding Lookup: index out of bounds. "
-                         "Got %d, and bounds are [0, %d]",
+                         "Got %" PRId32 ", and bounds are [0, %d]",
                          idx, row_size - 1);
       return kTfLiteError;
     } else {

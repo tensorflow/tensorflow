@@ -34,6 +34,7 @@ lit_test_suite(
     ],
     tools = [
         "//xla/hlo/tools:hlo-translate",
+        "//xla/hlo/translate:xla-translate",
         "//xla/mlir_hlo:mlir-hlo-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
