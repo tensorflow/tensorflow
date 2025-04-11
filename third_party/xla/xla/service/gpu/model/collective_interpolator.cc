@@ -302,7 +302,7 @@ CollectiveInterpolator::Create(const se::DeviceDescription& device_info) {
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
-CollectiveInterpolator::Create(HloInstructionProfileList profiles,
+CollectiveInterpolator::Create(const HloInstructionProfileList& profiles,
                                const se::DeviceDescription& device_info) {
   auto interpolators = std::make_unique<absl::flat_hash_map<
       InterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 2>>>>();

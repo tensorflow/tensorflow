@@ -55,7 +55,7 @@ class CollectiveInterpolator {
       InterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 2>>>>;
 
   static absl::StatusOr<std::unique_ptr<CollectiveInterpolator>> Create(
-      HloInstructionProfileList profiles,
+      const HloInstructionProfileList& profiles,
       const se::DeviceDescription& device_info);
 
   static absl::StatusOr<std::unique_ptr<CollectiveInterpolator>> Create(
