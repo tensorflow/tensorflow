@@ -17,7 +17,6 @@ limitations under the License.
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "pybind11/pybind11.h"  // from @pybind11
