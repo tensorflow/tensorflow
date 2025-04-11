@@ -1800,8 +1800,6 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
     mlir::MLIRContext& mlir_context, bool is_xla_fusion, bool emit_kernel) {
   const auto& cc = device_info.gpu_compute_capability();
-  std::string arch_name =
-      std::visit([](auto& cc) { return cc.ToString(); }, cc);
   if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
     auto ccCuda = std::get<se::CudaComputeCapability>(cc);
     if (!ccCuda.IsAtLeastAmpere()) {
@@ -1885,7 +1883,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   }
 
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
-  if (!CreateTritonPipeline(&pm, arch_name, num_warps, num_ctas, num_stages,
+  if (!CreateTritonPipeline(&pm, device_info, num_warps, num_ctas, num_stages,
                             cluster_info, is_xla_fusion)
            .ok()) {
     return Internal("Failed to create Triton pipeline.");
