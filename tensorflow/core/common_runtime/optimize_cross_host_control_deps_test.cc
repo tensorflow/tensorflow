@@ -16,10 +16,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/optimize_cross_host_control_deps.h"
 
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
