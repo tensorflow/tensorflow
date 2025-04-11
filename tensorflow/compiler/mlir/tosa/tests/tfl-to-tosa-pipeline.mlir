@@ -3882,3 +3882,14 @@ func.func @test_transpose_conv2d_bias_f32(%arg0: tensor<1x64x64x256xf32>) -> ten
   %2 = "tfl.transpose_conv"(%cst, %0, %arg0, %1)  {padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"}  : (tensor<4xi32>, tensor<128x2x2x256xf32>, tensor<1x64x64x256xf32>, tensor<128xf32>) -> tensor<1x128x128x128xf32>
   return %2 : tensor<1x128x128x128xf32>
 }
+
+// -----
+
+// CHECK-LABEL: test_concat_qconst
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{values = dense<42> : tensor<28x19xi8>}> : () -> tensor<28x19x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK-DAG: %[[VAR1:.*]] = tosa.concat %[[VAR0]], %arg0 {axis = 0 : i32} : (tensor<28x19x!quant.uniform<i8:f32, 1.000000e+00>>, tensor<1x19x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<29x19x!quant.uniform<i8:f32, 1.000000e+00>>
+func.func @test_concat_qconst(%arg0: tensor<1x19x!quant.uniform<i8:f32, 1.0>> ) -> tensor<29x19x!quant.uniform<i8:f32, 1.0>> {
+  %0 = "tfl.pseudo_qconst"() {qtype = tensor<28x19x!quant.uniform<i8:f32, 1.0>>, value = dense<42> : tensor<28x19xi8>} : () -> tensor<28x19x!quant.uniform<i8:f32, 1.0>>
+  %1 = "tfl.concatenation"(%0, %arg0) {axis = 0 : i32, fused_activation_function = "NONE"}: (tensor<28x19x!quant.uniform<i8:f32, 1.0>>, tensor<1x19x!quant.uniform<i8:f32, 1.0>>) -> tensor<29x19x!quant.uniform<i8:f32, 1.0>>
+  return %1 : tensor<29x19x!quant.uniform<i8:f32, 1.0>>
+}
