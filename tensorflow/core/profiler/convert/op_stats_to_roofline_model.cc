@@ -62,9 +62,10 @@ RooflineModelRecord ConvertOpMetricsToRooflineModelRecord(
     // For RecordType::AVERAGE_STEP, divide by num_steps to show per-step
     // numbers when appropriate.
     int num_steps = op_stats.step_db().step_sequence_size();
-    record.set_total_time_in_us(record.total_time_in_us() / num_steps);
-    record.set_total_self_time_in_us(record.total_self_time_in_us() /
-                                     num_steps);
+    record.set_total_time_in_us(
+        tsl::profiler::SafeDivide(record.total_time_in_us(), num_steps));
+    record.set_total_self_time_in_us(
+        tsl::profiler::SafeDivide(record.total_self_time_in_us(), num_steps));
   }
   record.set_total_time_per_core_in_us(tsl::profiler::SafeDivide(
       record.total_time_in_us(),
