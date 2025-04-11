@@ -30,12 +30,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/FPEnv.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
@@ -52,17 +53,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
+#include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/target_util.h"
-#include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -430,6 +432,69 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     return TransposeDescription{&hero, dimensions, permutation};
   }
   return std::nullopt;
+}
+
+TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose) {
+  auto inv_permutation = InversePermutation(transpose->dimensions());
+  auto& output_shape = transpose->shape();
+  llvm::SmallVector<int64_t, 3> canonical_output_shape =
+      llvm::to_vector<3>(output_shape.dimensions());
+  llvm::SmallVector<int64_t, 3> canonical_permutation =
+      llvm::to_vector<3>(transpose->dimensions());
+
+  // If the last dimension is transposed, add a size-1 B dimension.
+  if (canonical_permutation.back() != canonical_output_shape.size() - 1) {
+    canonical_permutation.push_back(output_shape.dimensions_size());
+    canonical_output_shape.push_back(1);
+  }
+  int64_t dim_t1 = -1;
+  int64_t dim_t2 = -1;
+  for (int64_t i = canonical_permutation.size() - 1; i >= 0; --i) {
+    if (canonical_permutation[i] != i) {
+      dim_t2 = canonical_permutation[i];
+      dim_t1 = i;
+      break;
+    }
+  }
+  // Insert size-1 A dimension if necessary.
+  auto rank = canonical_output_shape.size();
+  if (canonical_permutation[rank - 3] != rank - 3) {
+    canonical_output_shape.insert(canonical_output_shape.begin() + dim_t1, 1);
+    for (auto& p : canonical_permutation) {
+      if (p > rank - 3) p++;
+    }
+    canonical_permutation.insert(canonical_permutation.begin() + dim_t1,
+                                 dim_t1);
+  }
+  auto canonical_inv_permutation = InversePermutation(canonical_permutation);
+  auto canonical_input_shape =
+      Permute(canonical_output_shape, canonical_inv_permutation);
+  return TransposeSpec{
+      transpose,
+      llvm::to_vector<3>(transpose->dimensions()),
+      llvm::to_vector<3>(inv_permutation),
+      canonical_output_shape,
+      canonical_permutation,
+      llvm::to_vector<3>(canonical_inv_permutation),
+      llvm::to_vector<3>(canonical_input_shape),
+  };
+}
+
+std::string TransposeSpec::ToString() const {
+  return absl::Substitute(R"(
+transpose: $0
+canonical_input_shape: $1
+canonical_output_shape: $2
+canonical_permutation: $3
+canonical_inv_permutation: $4
+[T2, A, T1, B] = [$5, $6, $7, $8]
+)",
+                          transpose->ToString(),
+                          absl::StrJoin(canonical_input_shape, ","),
+                          absl::StrJoin(canonical_output_shape, ","),
+                          absl::StrJoin(canonical_permutation, ","),
+                          absl::StrJoin(canonical_inv_permutation, ","),
+                          dim_T2(), dim_A(), dim_T1(), dim_B());
 }
 
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {

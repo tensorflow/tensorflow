@@ -44,35 +44,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// TODO(pifon): Unify this with TransposeDescription.
-struct TransposeSpec {
-  const Shape& input_shape() const { return transpose->operand(0)->shape(); }
-  const Shape& output_shape() const { return transpose->shape(); }
-  PrimitiveType elem_type() const { return input_shape().element_type(); }
-
-  const HloTransposeInstruction* transpose;
-
-  llvm::SmallVector<int64_t, 3> permutation;
-  llvm::SmallVector<int64_t, 3> inv_permutation;
-
-  // Canonical transpose permutates the input shape
-  // <D_0 x ... x D_n x T2 x D_{n+1} x ... x D_m x A x T1 x B> into
-  // <D'_0 x ... x D'_n' x T1 x D'_{n'+1} x ... x D'_m x A x T2 x B>.
-  // Note that the `D` dimensions are batch dimensions. They can also be
-  // permuted, but they are tiled by 1.
-  //
-  // Examples:
-  // 1. <8x32> -> <32x8> will be canonicalized to <8x1x32x1> -> <32x1x8x1>.
-  // 2. <8x2x32> -> <32x2x8> will be canonicalized to <8x2x32x1> -> <32x2x8x1>.
-  // 3. <8x2x32x7x6> -> <6x32x2x7x8> becomes <8x2x32x7x6x1> -> <6x32x2x7x8x1>.
-
-  llvm::SmallVector<int64_t, 3> canonical_output_shape;
-  llvm::SmallVector<int64_t, 3> canonical_permutation;
-  llvm::SmallVector<int64_t, 3> canonical_inv_permutation;
-  llvm::SmallVector<int64_t, 3> canonical_input_shape;
-};
-TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose);
-
 // Lowers kTranspose fusion to LLVM via MLIR using GPU's shared memory.
 
 // Each thread block of `kWarpSize` x `kNumRows` threads

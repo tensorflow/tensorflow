@@ -20,18 +20,26 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/backend_config.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/hlo_runner.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -40,9 +48,22 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using ::testing::ElementsAre;
 using ::tsl::testing::IsOkAndHolds;
 
-using IrEmissionUtilsTest = HloTestBase;
+class IrEmissionUtilsTest : public HloRunnerAgnosticTestBase {
+ public:
+  IrEmissionUtilsTest()
+      : HloRunnerAgnosticTestBase(
+            std::make_unique<HloRunner>(*PlatformUtil::GetDefaultPlatform())) {}
+
+  TransposeSpec GetTransposeSpecFromRoot(absl::string_view hlo_text) {
+    auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+    auto* root = module->entry_computation()->root_instruction();
+    return GetTransposeSpec(Cast<HloTransposeInstruction>(root));
+  }
+};
+
 using InlinedVector = absl::InlinedVector<int64_t, 3>;
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTranspose) {
@@ -1269,6 +1290,42 @@ TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencySideEffect) {
       module->GetComputationWithName("identity2")->root_instruction());
 
   ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(IrEmissionUtilsTest, Transpose_10) {
+  auto spec = GetTransposeSpecFromRoot(R"(ENTRY entry {
+    p0 = f32[8, 32] parameter(0)
+    ROOT transpose_p0 = f32[32, 8] transpose(p0), dimensions={1, 0}
+  })");
+  EXPECT_THAT(spec.permutation, ElementsAre(1, 0));
+  EXPECT_THAT(spec.inv_permutation, ElementsAre(1, 0));
+  EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 1, 32, 1));
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(32, 1, 8, 1));
+  EXPECT_THAT(spec.canonical_permutation, ElementsAre(2, 1, 0, 3));
+  EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(2, 1, 0, 3));
+}
+
+TEST_F(IrEmissionUtilsTest, Transpose_210) {
+  auto spec = GetTransposeSpecFromRoot(R"(ENTRY entry {
+    p0 = f32[8, 2, 32] parameter(0)
+    ROOT transpose_p0 = f32[32, 2, 8] transpose(p0), dimensions={2, 1, 0}
+  })");
+  EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 2, 32, 1));
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(32, 2, 8, 1));
+  EXPECT_THAT(spec.canonical_permutation, ElementsAre(2, 1, 0, 3));
+  EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(2, 1, 0, 3));
+}
+
+TEST_F(IrEmissionUtilsTest, Transpose_102) {
+  auto spec = GetTransposeSpecFromRoot(R"(ENTRY entry {
+    p0 = f32[8, 2, 32, 7, 6] parameter(0)
+    ROOT transpose_p0 = f32[6, 32, 2, 7, 8] transpose(p0),
+      dimensions={4, 2, 1, 3, 0}
+  })");
+  EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 2, 32, 7, 6, 1));
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(6, 32, 2, 7, 8, 1));
+  EXPECT_THAT(spec.canonical_permutation, ElementsAre(4, 2, 1, 3, 0, 5));
+  EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(4, 2, 1, 3, 0, 5));
 }
 
 }  // namespace gpu
