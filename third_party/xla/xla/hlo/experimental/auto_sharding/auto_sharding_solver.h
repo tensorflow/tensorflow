@@ -39,10 +39,6 @@ struct AutoShardingSolverOutput {
   bool operator==(const AutoShardingSolverOutput& other) const;
 };
 
-// Scales down values to reduce the range of costs & coefficients in the solver.
-AutoShardingSolverRequest ScaleRequest(
-    const AutoShardingSolverRequest& request);
-
 // Determines the minimum memory budget required to avoid memory violations.
 double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request);
 

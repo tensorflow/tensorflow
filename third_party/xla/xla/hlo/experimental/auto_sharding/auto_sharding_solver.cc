@@ -83,55 +83,6 @@ bool AutoShardingSolverOutput::operator==(
          is_optimal == other.is_optimal && peak_times == other.peak_times;
 }
 
-namespace {
-
-double MaxCoeff(
-    const tsl::protobuf::RepeatedPtrField<AutoShardingSolverRequest_Costs>&
-        cost_mat) {
-  double max_coeff = 0.0;
-  for (auto& costs : cost_mat) {
-    for (auto& cost : costs.costs()) {
-      if (cost < kInfinityCost) {
-        max_coeff = std::max(max_coeff, cost);
-      }
-    }
-  }
-  return max_coeff;
-}
-
-void ScaleCoeffs(
-    double scaling_factor,
-    tsl::protobuf::RepeatedPtrField<AutoShardingSolverRequest_Costs>*
-        cost_mat) {
-  for (auto& costs : *cost_mat) {
-    for (auto& cost : *costs.mutable_costs()) {
-      if (cost < kInfinityCost) {
-        cost = floor(cost * scaling_factor);
-      }
-    }
-  }
-}
-
-}  // namespace
-
-AutoShardingSolverRequest ScaleRequest(
-    const AutoShardingSolverRequest& request) {
-  if (!request.has_coeff_limit()) return request;
-  VLOG(0) << "Scaling request by coefficient limit: "
-          << request.coeff_limit().coeff();
-  double max_coeff = 0.0;
-  max_coeff = std::max(max_coeff, MaxCoeff(request.communication_costs()));
-  max_coeff = std::max(max_coeff, MaxCoeff(request.computation_costs()));
-  max_coeff = std::max(max_coeff, MaxCoeff(request.resharding_costs()));
-  if (max_coeff <= request.coeff_limit().coeff()) return request;
-  const double scaling_factor = request.coeff_limit().coeff() / max_coeff;
-  AutoShardingSolverRequest scaled_request = request;
-  ScaleCoeffs(scaling_factor, scaled_request.mutable_communication_costs());
-  ScaleCoeffs(scaling_factor, scaled_request.mutable_computation_costs());
-  ScaleCoeffs(scaling_factor, scaled_request.mutable_resharding_costs());
-  return scaled_request;
-}
-
 double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
   std::vector<double> min_memory_required;
   if (request.node_intervals().empty()) {  // Handles live matrices.
@@ -577,10 +528,9 @@ void AddMemoryTerms(
 //    is guaranteed to never produce a negative overall cost for the graph,
 //    however.
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
-    const AutoShardingSolverRequest& unscaled_request,
+    const AutoShardingSolverRequest& request,
     std::optional<double> overbudget_coeff) {
   const absl::Time start_time = absl::Now();
-  const AutoShardingSolverRequest request = ScaleRequest(unscaled_request);
   const size_t num_edges = request.edges_size();
   const int num_workers = 32;
   // SAT or SCIP
@@ -922,17 +872,17 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
       LOG(ERROR) << write_status.message();
     }
   }
-  // Exports the *unscaled* solver request proto for debugging.
+  // Exports the solver request proto for debugging.
   bool dump_solver_request = false;
   if (dump_solver_request) {
     uint64_t solver_request_fprint =
-        tsl::Fingerprint64(unscaled_request.SerializeAsString());
+        tsl::Fingerprint64(request.SerializeAsString());
     std::string request_dump_path =
-        absl::StrCat("/tmp/solver_request_", unscaled_request.request_name(),
-                     "_", solver_request_fprint, ".textproto");
+        absl::StrCat("/tmp/solver_request_", request.request_name(), "_",
+                     solver_request_fprint, ".textproto");
     auto write_status = file::SetTextProto(
         // Modify this file path if needed.
-        request_dump_path, unscaled_request, file::Defaults());
+        request_dump_path, request, file::Defaults());
     LOG(INFO) << "Dumped solver request to " << request_dump_path;
     if (!write_status.ok()) {
       LOG(ERROR) << write_status.message();
@@ -941,7 +891,7 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
   // Invokes the solver request callback for any additional debugging.
   bool solver_request_callback = false;
   if (solver_request_callback) {
-    SolverRequestCallback(unscaled_request);
+    SolverRequestCallback(request);
   }
 #endif
   if (request.enable_output()) {
@@ -977,8 +927,8 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
       request, s, e, overbudget_var, makespan_var, overbudget_coeff, *solver);
   if (result.ok()) {
     const AutoShardingEvaluation evaluation =
-        Evaluate(unscaled_request, *result, overbudget_coeff);
-    LOG(INFO) << "*** Total costs for the (unscaled) solver request ***";
+        Evaluate(request, *result, overbudget_coeff);
+    LOG(INFO) << "*** Total costs for the solver request ***";
     LOG(INFO) << "Total Communication Cost: "
               << evaluation.total.communication_cost
               << " (lower bound: " << evaluation.lower_bound.communication_cost
@@ -1156,11 +1106,7 @@ AutoShardingSolverOutput SolveGreedy(const AutoShardingSolverRequest& request,
 }  // namespace
 
 absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
-    const AutoShardingSolverRequest& unscaled_request,
-    const std::string& algorithm) {
-  // Scale the coefficients in the request in the same way as the MIP solver.
-  AutoShardingSolverRequest request = ScaleRequest(unscaled_request);
-
+    const AutoShardingSolverRequest& request, const std::string& algorithm) {
   absl::Time start_time = absl::Now();
   AutoShardingSolverOutput output;
   if (algorithm == "trivial") {
@@ -1181,7 +1127,7 @@ absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
   LOG(INFO) << "Solver took " << absl::ToInt64Milliseconds(duration) << " ms";
   LOG(INFO) << "Objective value: " << output.cost;
   LOG(INFO) << "Total Cost: "
-            << ComputeShardingStrategyCost(unscaled_request, output.s_val);
+            << ComputeShardingStrategyCost(request, output.s_val);
   return output;
 }
 
