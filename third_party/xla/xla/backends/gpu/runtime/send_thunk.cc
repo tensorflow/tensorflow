@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -131,9 +132,14 @@ absl::Status SendThunk::RunCollective(const ExecuteParams& params,
     }
 
     if (should_run) {
-      TF_RETURN_IF_ERROR(comm_handle.comm->Send(
+      auto event = comm_handle.comm->Send(
           src_addr, buffer.element_type, buffer.element_count,
-          RankId(*target_id), GpuCollectives::On(stream)));
+          RankId(*target_id), GpuCollectives::On(stream));
+
+      tsl::BlockUntilReady(event);
+      if (event.IsError()) {
+        return event.GetError();
+      }
     } else {
       VLOG(3) << "Skipping Send";
     }

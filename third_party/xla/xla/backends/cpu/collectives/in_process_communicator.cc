@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/rendezvous.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -393,11 +394,12 @@ static absl::Status CollectivePermuteOp(
 InProcessCommunicator::InProcessCommunicator(size_t rank, size_t num_ranks)
     : rank_(rank), num_ranks_(num_ranks) {}
 
-absl::Status InProcessCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
-                                              se::DeviceMemoryBase recv_buffer,
-                                              PrimitiveType dtype, size_t count,
-                                              ReductionKind reduction_kind,
-                                              const Executor& executor) {
+tsl::AsyncValueRef<InProcessCommunicator::Event>
+InProcessCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
+                                 se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count,
+                                 ReductionKind reduction_kind,
+                                 const Executor& executor) {
   TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
   const RendezvousKey& key = cpu_executor->rendezvous_key();
 
@@ -409,13 +411,18 @@ absl::Status InProcessCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
                           name, key, partiticipant, key.num_local_participants,
                           CollectParticipants<AllReduceParticipant>));
 
-  return op->Invoke(AllReduceOp, rank_, dtype, count, reduction_kind);
+  TF_RETURN_IF_ERROR(
+      op->Invoke(AllReduceOp, rank_, dtype, count, reduction_kind));
+
+  return OkEvent();
 }
 
-absl::Status InProcessCommunicator::ReduceScatter(
-    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
-    PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
-    const Executor& executor) {
+tsl::AsyncValueRef<InProcessCommunicator::Event>
+InProcessCommunicator::ReduceScatter(se::DeviceMemoryBase send_buffer,
+                                     se::DeviceMemoryBase recv_buffer,
+                                     PrimitiveType dtype, size_t count,
+                                     ReductionKind reduction_kind,
+                                     const Executor& executor) {
   TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
   const RendezvousKey& key = cpu_executor->rendezvous_key();
 
@@ -427,13 +434,19 @@ absl::Status InProcessCommunicator::ReduceScatter(
                           name, key, partiticipant, key.num_local_participants,
                           CollectParticipants<ReduceScatterParticipant>));
 
-  return op->Invoke(ReduceScatterOp, rank_, dtype, count, reduction_kind);
+  TF_RETURN_IF_ERROR(
+      op->Invoke(ReduceScatterOp, rank_, dtype, count, reduction_kind));
+
+  return OkEvent();
 }
 
-absl::Status InProcessCommunicator::CollectivePermute(
-    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
-    PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
-    absl::Span<const RankId> target_ranks, const Executor& executor) {
+tsl::AsyncValueRef<InProcessCommunicator::Event>
+InProcessCommunicator::CollectivePermute(se::DeviceMemoryBase send_buffer,
+                                         se::DeviceMemoryBase recv_buffer,
+                                         PrimitiveType dtype, size_t count,
+                                         std::optional<RankId> source_rank,
+                                         absl::Span<const RankId> target_ranks,
+                                         const Executor& executor) {
   TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
   const RendezvousKey& key = cpu_executor->rendezvous_key();
 
@@ -447,10 +460,14 @@ absl::Status InProcessCommunicator::CollectivePermute(
                           CollectParticipants<CollectivePermuteParticipant>));
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
-  return op->Invoke(CollectivePermuteOp, rank_, num_bytes);
+
+  TF_RETURN_IF_ERROR(op->Invoke(CollectivePermuteOp, rank_, num_bytes));
+
+  return OkEvent();
 }
 
-absl::Status InProcessCommunicator::AllToAll(
+tsl::AsyncValueRef<InProcessCommunicator::Event>
+InProcessCommunicator::AllToAll(
     absl::Span<const se::DeviceMemoryBase> send_buffers,
     absl::Span<const se::DeviceMemoryBase> recv_buffers, PrimitiveType dtype,
     size_t count, const Executor& executor) {
@@ -468,13 +485,17 @@ absl::Status InProcessCommunicator::AllToAll(
                           CollectParticipants<AllToAllParticipant>));
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
-  return op->Invoke(AllToAllOp, rank_, num_bytes);
+
+  TF_RETURN_IF_ERROR(op->Invoke(AllToAllOp, rank_, num_bytes));
+
+  return OkEvent();
 }
 
-absl::Status InProcessCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
-                                              se::DeviceMemoryBase recv_buffer,
-                                              PrimitiveType dtype, size_t count,
-                                              const Executor& executor) {
+tsl::AsyncValueRef<InProcessCommunicator::Event>
+InProcessCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
+                                 se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count,
+                                 const Executor& executor) {
   TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
   const RendezvousKey& key = cpu_executor->rendezvous_key();
 
@@ -487,7 +508,10 @@ absl::Status InProcessCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
                           CollectParticipants<AllGatherParticipant>));
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
-  return op->Invoke(AllGatherOp, rank_, num_bytes);
+
+  TF_RETURN_IF_ERROR(op->Invoke(AllGatherOp, rank_, num_bytes));
+
+  return OkEvent();
 }
 
 }  // namespace xla::cpu
