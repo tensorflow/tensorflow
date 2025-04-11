@@ -407,6 +407,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

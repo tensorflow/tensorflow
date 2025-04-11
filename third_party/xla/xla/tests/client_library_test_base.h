@@ -58,20 +58,6 @@ static_assert(false,
 
 namespace xla {
 
-template <typename TestCase>
-std::vector<TestCase> ExpandTestType(
-    absl::Span<const PrimitiveType> test_type_params,
-    absl::Span<const TestCase> specs) {
-  std::vector<TestCase> expanded;
-  for (const PrimitiveType test_type : test_type_params) {
-    for (const auto& spec : specs) {
-      expanded.push_back(spec);
-      expanded.back().test_type = test_type;
-    }
-  }
-  return expanded;
-}
-
 // A client library test establishes an in-process XLA client connection.
 class ClientLibraryTestBase : public ::testing::Test {
  protected:

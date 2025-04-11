@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/tests/test_utils.h"
@@ -69,6 +70,19 @@ std::unique_ptr<Array2D<float>> CreatePatternedMatrix(int rows, int cols,
 std::unique_ptr<Array2D<float>> CreatePatternedMatrixWithZeroPadding(
     int rows, int cols, int rows_padded, int cols_padded);
 
+template <typename TestCase>
+std::vector<TestCase> ExpandTestType(
+    absl::Span<const PrimitiveType> test_type_params,
+    absl::Span<const TestCase> specs) {
+  std::vector<TestCase> expanded;
+  for (const PrimitiveType test_type : test_type_params) {
+    for (const auto& spec : specs) {
+      expanded.push_back(spec);
+      expanded.back().test_type = test_type;
+    }
+  }
+  return expanded;
+}
 }  // namespace xla
 
 #endif  // XLA_TESTS_CLIENT_LIBRARY_TEST_RUNNER_UTILS_H_
