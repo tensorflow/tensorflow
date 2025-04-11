@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/compiler_macros.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 #ifdef XLA_HAS_SSE2
 #include <immintrin.h>  // IWYU pragma: keep
@@ -30,6 +31,7 @@ limitations under the License.
 
 #ifdef XLA_HAS_ARM_NEON
 #include <arm_neon.h>
+
 #endif  // XLA_HAS_ARM_NEON
 
 #if defined(XLA_HAS_SSE2) || defined(XLA_HAS_ARM_NEON)
@@ -289,7 +291,7 @@ inline __m128i LoadElementIntoVec128</*bytes=*/sizeof(uint64_t)>(
 
 template <>
 inline __m128i LoadElementIntoVec128</*bytes=*/sizeof(__m128i)>(const void* p) {
-  return _mm_loadu_si128(reinterpret_cast<const __m128i*>(p));
+  return _mm_loadu_si128(tsl::safe_reinterpret_cast<const __m128i*>(p));
 }
 
 template <size_t bytes, int lane>
@@ -335,7 +337,7 @@ inline void StoreElementFromVec128(void* p, __m128i v) {
     memcpy(p, &scalar, bytes);
   } else if constexpr (bytes == sizeof(__m128i)) {
     static_assert(lane == 0);
-    _mm_storeu_si128(reinterpret_cast<__m128i*>(p), v);
+    _mm_storeu_si128(tsl::safe_reinterpret_cast<__m128i*>(p), v);
   } else {
     static_assert(bytes == 0);
   }
@@ -425,14 +427,15 @@ inline uint64x2_t LoadElementIntoVec128</*bytes=*/sizeof(uint64_t)>(
   // Ideally, we would use `vld1q_lane_u64` but it assumes that its input is
   // aligned to a 64-bit boundary. We can only promise 8-bit aligned. That said,
   // this sequence will compile to `ldr Dt, [Xn]` but without an alignment hint.
-  return vreinterpretq_u64_u8(
-      vcombine_u8(vld1_u8(reinterpret_cast<const uint8_t*>(p)), vdup_n_u8(0)));
+  return vreinterpretq_u64_u8(vcombine_u8(
+      vld1_u8(tsl::safe_reinterpret_cast<const uint8_t*>(p)), vdup_n_u8(0)));
 }
 
 template <>
 inline uint64x2_t LoadElementIntoVec128</*bytes=*/sizeof(uint64x2_t)>(
     const void* p) {
-  return vreinterpretq_u64_u8(vld1q_u8(reinterpret_cast<const uint8_t*>(p)));
+  return vreinterpretq_u64_u8(
+      vld1q_u8(tsl::safe_reinterpret_cast<const uint8_t*>(p)));
 }
 
 template <size_t bytes, int lane>
@@ -440,7 +443,7 @@ inline void StoreElementFromVec128(void* p, uint64x2_t v) {
   static_assert(bytes * (lane + 1) <= sizeof(uint64x2_t));
   if constexpr (bytes == sizeof(uint64x2_t)) {
     static_assert(lane == 0);
-    vst1q_u8(reinterpret_cast<uint8_t*>(p), vreinterpretq_u8_u64(v));
+    vst1q_u8(tsl::safe_reinterpret_cast<uint8_t*>(p), vreinterpretq_u8_u64(v));
   } else {
     if constexpr (bytes == sizeof(uint64_t)) {
       // Ideally, we would use `vst1q_lane_u64` but it assumes that its input is
@@ -582,9 +585,11 @@ struct AvxSquareTransposeMicroKernelImpl {
     std::array<__m256i, bs> last_transpose;
     XLA_UNROLL
     for (int i = 0; i < bs / 2; ++i) {
-      auto* row0_low = reinterpret_cast<const __m128i*>(a + lda * (i + 0));
+      auto* row0_low =
+          tsl::safe_reinterpret_cast<const __m128i*>(a + lda * (i + 0));
       auto* row0_high = row0_low + 1;
-      auto* row1_low = reinterpret_cast<const __m128i*>(a + lda * (i + bs / 2));
+      auto* row1_low =
+          tsl::safe_reinterpret_cast<const __m128i*>(a + lda * (i + bs / 2));
       auto* row1_high = row1_low + 1;
 
       last_transpose[i] = _mm256_set_m128i(_mm_loadu_si128(row1_low),
@@ -599,7 +604,7 @@ struct AvxSquareTransposeMicroKernelImpl {
 
     XLA_UNROLL
     for (int i = 0; i < bs; ++i) {
-      _mm256_storeu_si256(reinterpret_cast<__m256i*>(b + ldb * i),
+      _mm256_storeu_si256(tsl::safe_reinterpret_cast<__m256i*>(b + ldb * i),
                           last_transpose[i]);
     }
   }
@@ -619,8 +624,9 @@ struct AvxRectangularTransposeMicroKernelImpl {
     std::array<__m256i, bs / 2> last_transpose;
     XLA_UNROLL
     for (int i = 0; i < bs / 2; ++i) {
-      auto* lo = reinterpret_cast<const __m128i*>(a + lda * (i + 0));
-      auto* hi = reinterpret_cast<const __m128i*>(a + lda * (i + bs / 2));
+      auto* lo = tsl::safe_reinterpret_cast<const __m128i*>(a + lda * (i + 0));
+      auto* hi =
+          tsl::safe_reinterpret_cast<const __m128i*>(a + lda * (i + bs / 2));
       last_transpose[i] =
           _mm256_set_m128i(_mm_loadu_si128(hi), _mm_loadu_si128(lo));
     }
@@ -647,8 +653,8 @@ struct AvxRectangularTransposeMicroKernelImpl {
 
     XLA_UNROLL
     for (int i = 0; i < bs / 2; ++i) {
-      auto* lo = reinterpret_cast<__m128i*>(b + ldb * (i * 2 + 0));
-      auto* hi = reinterpret_cast<__m128i*>(b + ldb * (i * 2 + 1));
+      auto* lo = tsl::safe_reinterpret_cast<__m128i*>(b + ldb * (i * 2 + 0));
+      auto* hi = tsl::safe_reinterpret_cast<__m128i*>(b + ldb * (i * 2 + 1));
 
       _mm_storeu_si128(lo, _mm256_castsi256_si128(last_transpose[i]));
       _mm_storeu_si128(hi, _mm256_extractf128_si256(last_transpose[i], 1));
@@ -684,8 +690,8 @@ struct TransposeMicroKernel {
     }
     for (int i = 0; i < bs; ++i) {
       for (int j = 0; j < bs; ++j) {
-        *reinterpret_cast<T*>(b + i * ldb + j * sizeof(T)) =
-            *reinterpret_cast<T const*>(a + j * lda + i * sizeof(T));
+        *tsl::safe_reinterpret_cast<T*>(b + i * ldb + j * sizeof(T)) =
+            *tsl::safe_reinterpret_cast<T const*>(a + j * lda + i * sizeof(T));
       }
     }
   }

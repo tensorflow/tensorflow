@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/connected_traceme.h"
@@ -481,7 +482,7 @@ xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
       });
   event_onready_args.callback = [](PJRT_Error* error, void* arg) {
     std::function<void(PJRT_Error*)>* set_future =
-        reinterpret_cast<std::function<void(PJRT_Error*)>*>(arg);
+        tsl::safe_reinterpret_cast<std::function<void(PJRT_Error*)>*>(arg);
     (*set_future)(error);
     delete set_future;
   };
@@ -740,7 +741,8 @@ PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk) {
   c_chunk.size = static_cast<size_t>(chunk.size());
   c_chunk.deleter_arg = new std::function(chunk.deleter());
   c_chunk.deleter = [](void* data, void* deleter_arg) {
-    auto* deleter = reinterpret_cast<std::function<void(void*)>*>(deleter_arg);
+    auto* deleter =
+        tsl::safe_reinterpret_cast<std::function<void(void*)>*>(deleter_arg);
     (*deleter)(data);
     delete deleter;
   };
@@ -846,7 +848,7 @@ static PJRT_KeyValueGetCallback ToCKVGetCallback(
     PJRT_KeyValueGetCFunc* kv_get_c_func) {
   return [](PJRT_KeyValueGetCallback_Args* args) -> PJRT_Error* {
     PJRT_KeyValueGetCFunc* kv_get_c_func =
-        reinterpret_cast<PJRT_KeyValueGetCFunc*>(args->user_arg);
+        tsl::safe_reinterpret_cast<PJRT_KeyValueGetCFunc*>(args->user_arg);
     if (kv_get_c_func == nullptr) {
       absl::Status status = xla::InvalidArgument(
           "got nullptr for PJRT_KeyValueGet_Args.user_arg");
@@ -862,7 +864,7 @@ static PJRT_KeyValueTryGetCallback ToCKVTryGetCallback(
     PJRT_KeyValueTryGetCFunc* kv_try_get_c_func) {
   return [](PJRT_KeyValueTryGetCallback_Args* args) -> PJRT_Error* {
     PJRT_KeyValueTryGetCFunc* kv_try_get_c_func =
-        reinterpret_cast<PJRT_KeyValueTryGetCFunc*>(args->user_arg);
+        tsl::safe_reinterpret_cast<PJRT_KeyValueTryGetCFunc*>(args->user_arg);
     if (kv_try_get_c_func == nullptr) {
       absl::Status status = xla::InvalidArgument(
           "got nullptr for PJRT_KeyValueTryGet_Args.user_arg");
@@ -878,7 +880,7 @@ static PJRT_KeyValuePutCallback ToCKVPutCallback(
     PJRT_KeyValuePutCFunc* kv_put_c_func) {
   return [](PJRT_KeyValuePutCallback_Args* args) -> PJRT_Error* {
     PJRT_KeyValuePutCFunc* kv_put_c_func =
-        reinterpret_cast<PJRT_KeyValuePutCFunc*>(args->user_arg);
+        tsl::safe_reinterpret_cast<PJRT_KeyValuePutCFunc*>(args->user_arg);
     if (kv_put_c_func == nullptr) {
       absl::Status status = xla::InvalidArgument(
           "got nullptr for PJRT_KeyValuePut_Args.user_arg");
@@ -922,7 +924,7 @@ PJRT_SendCallbackInfo CppSendCallbackToCSendCallback(
         // `user_arg` captures `send_callback_function` which is
         // SendCallbackFunction*.
         PJRT_SendCallbackFunction* send_callback =
-            reinterpret_cast<PJRT_SendCallbackFunction*>(user_arg);
+            tsl::safe_reinterpret_cast<PJRT_SendCallbackFunction*>(user_arg);
         return (*send_callback)(chunk, callback_error, total_size_in_bytes,
                                 done);
       }};
@@ -942,9 +944,8 @@ PJRT_RecvCallbackInfo CppRecvCallbackToCRecvCallback(
         // `user_arg` and reinterprets in the lower-level runtime for execution.
         // `user_arg` captures `recv_callback_function` which is
         // RecvCallbackFunction*.
-        auto* recv_callback =
-            reinterpret_cast<std::function<void(PJRT_CopyToDeviceStream*)>*>(
-                user_arg);
+        auto* recv_callback = tsl::safe_reinterpret_cast<
+            std::function<void(PJRT_CopyToDeviceStream*)>*>(user_arg);
         (*recv_callback)(stream);
       }};
 }
@@ -1209,7 +1210,8 @@ PJRT_Error* InvokePjRtEventWhenReady(
         });
     event_args.callback = [](PJRT_Error* error, void* args) {
       auto* on_done_with_event =
-          reinterpret_cast<absl::AnyInvocable<void(PJRT_Error*)>*>(args);
+          tsl::safe_reinterpret_cast<absl::AnyInvocable<void(PJRT_Error*)>*>(
+              args);
       (*on_done_with_event)(error);
       delete on_done_with_event;
     };

@@ -115,6 +115,7 @@ cc_library(
         "//xla/tsl/framework:device_id_impl",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/util:env_var",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

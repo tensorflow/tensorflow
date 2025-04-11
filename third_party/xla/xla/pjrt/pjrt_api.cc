@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
@@ -91,8 +92,8 @@ absl::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
     return tsl::errors::Internal("Failed to open ", library_path, ": ",
                                  dlerror());
   }
-  PjrtApiInitFn init_fn;
-  *reinterpret_cast<void**>(&init_fn) = dlsym(library, "GetPjrtApi");
+  PjrtApiInitFn init_fn =
+      tsl::safe_reinterpret_cast<PjrtApiInitFn>(dlsym(library, "GetPjrtApi"));
   if (init_fn == nullptr) {
     return tsl::errors::NotFound("GetPjrtApi not found in ", library_path);
   }

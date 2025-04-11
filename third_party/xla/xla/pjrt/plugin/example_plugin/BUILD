@@ -45,6 +45,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_layouts_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
