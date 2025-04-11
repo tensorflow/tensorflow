@@ -232,6 +232,42 @@ ENTRY main {
   EXPECT_EQ(p0_from_subtract0, p0_from_subtract1);
 }
 
+TEST_F(SymbolicTileAnalysisTest,
+       ExpandingReshapeIsSupportedWithTileParamsOutsideBounds) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  param_0 = f32[20] parameter(0)
+  abs = f32[20] abs(param_0)
+  ROOT reshape = f32[4,5] reshape(abs)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[20] parameter(0)
+  ROOT fusion = f32[4, 5] fusion(param_0), kind=kCustom, calls=fusion
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              /*tile_parameters=*/{1, 8},
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* root = tiled_hlo_computation.GetRoots()[0];
+  auto parameter = root->operand(0)->operand(0);
+  EXPECT_THAT(*parameter, MatchTiledHloInstruction(
+                              /*tile_sizes=*/{8},
+                              /*tile_strides=*/{1},
+                              /*tile_offsets_indexing=*/R"(
+    (pid_0, pid_1) -> (pid_0 * 5),
+    domain:
+    pid_0 in [0, 3],
+    pid_1 in [0, 0]
+  )"));
+}
+
 TEST_F(SymbolicTileAnalysisTest, ProducerConsumerFusionIsSupported) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
