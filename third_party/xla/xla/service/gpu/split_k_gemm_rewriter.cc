@@ -425,21 +425,16 @@ absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
   // The output of the reduce has to have the layout of the original dot.
   *reduce->mutable_shape()->mutable_layout() = output_layout;
 
+  HloInstruction* split_k_root = disable_reduced_precision_reduction
+                                     ? MakeConvertToHlo(reduce, output_type)
+                                     : reduce;
+
   if (dot_fusion->IsRoot()) {
-    dot_fusion->parent()->set_root_instruction(reduce,
+    dot_fusion->parent()->set_root_instruction(split_k_root,
                                                /*accept_different_shape=*/true);
   } else {
-    TF_RETURN_IF_ERROR(dot_fusion->ReplaceAllUsesWithDifferentShape(reduce));
-  }
-
-  if (disable_reduced_precision_reduction) {
-    HloInstruction* convert = MakeConvertToHlo(reduce, output_type);
-    if (reduce->IsRoot()) {
-      reduce->parent()->set_root_instruction(convert,
-                                             /*accept_different_shape=*/true);
-    } else {
-      TF_RETURN_IF_ERROR(reduce->ReplaceAllUsesWithDifferentShape(convert));
-    }
+    TF_RETURN_IF_ERROR(
+        dot_fusion->ReplaceAllUsesWithDifferentShape(split_k_root));
   }
 
   return absl::OkStatus();
