@@ -3448,12 +3448,6 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_dataflow_analysis",
-    hdrs = ["hlo_dataflow_analysis.h"],
-    deps = ["//xla/hlo/analysis:hlo_dataflow_analysis"],
-)
-
-cc_library(
     name = "hlo_phi_graph",
     srcs = ["hlo_phi_graph.cc"],
     hdrs = ["hlo_phi_graph.h"],
@@ -3878,12 +3872,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
-)
-
-cc_library(
-    name = "hlo_constant_folding",
-    hdrs = ["hlo_constant_folding.h"],
-    deps = ["//xla/hlo/transforms/simplifiers:hlo_constant_folding"],
 )
 
 cc_library(
@@ -5141,12 +5129,6 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest",
     ],
-)
-
-cc_library(
-    name = "operand_upcaster",
-    hdrs = ["operand_upcaster.h"],
-    deps = ["//xla/hlo/transforms:operand_upcaster"],
 )
 
 cc_library(
