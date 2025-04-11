@@ -468,7 +468,6 @@ cc_library(
     hdrs = ["//tensorflow/core/public:session_options.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":lib",
         ":protos_all_cc",
     ],
 )
