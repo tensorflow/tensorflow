@@ -62,7 +62,7 @@ class InterpreterStream : public host::HostStream {
 
   absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
                       uint64_t size) override {
-    void *src_mem = const_cast<void *>(gpu_src.opaque());
+    void *src_mem = gpu_src.opaque();
     EnqueueTask(
         [host_dst, src_mem, size]() { memcpy(host_dst, src_mem, size); });
     return BlockUntilDone();
