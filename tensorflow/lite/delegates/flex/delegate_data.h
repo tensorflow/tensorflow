@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/public/session_options.h"
