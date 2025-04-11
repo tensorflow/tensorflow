@@ -219,9 +219,11 @@ absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
   }
 
   int64_t num_tiles = 1;
-  for (auto [dim_size, tile_size] :
-       llvm::zip(root_shape_.dimensions(), tile_parameters)) {
-    num_tiles *= (dim_size + tile_size - 1) / tile_size;
+  if (root_shape_.IsArray()) {
+    for (auto [dim_size, tile_size] :
+         llvm::zip(root_shape_.dimensions(), tile_parameters)) {
+      num_tiles *= (dim_size + tile_size - 1) / tile_size;
+    }
   }
 
   // Number of blocks will exceed the hardware limit. This limitation comes from

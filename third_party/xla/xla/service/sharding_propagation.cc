@@ -1776,7 +1776,8 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
               [&](const Shape& sub_shape, const ShapeIndex& index) {
                 if (ShapeUtil::IsLeafIndex(instruction.shape(), index)) {
                   shardings.push_back(hlo_sharding_util::ReplicateAllDataDims(
-                      user_sharding, sub_shape.dimensions_size()));
+                      user_sharding,
+                      sub_shape.IsArray() ? sub_shape.dimensions().size() : 0));
                 }
               });
           return HloSharding::Tuple(instruction.shape(), shardings);

@@ -100,9 +100,11 @@ bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding) {
   if (sharding.IsTileMaximal()) {
     return sharding.IsReplicated();
   }
-  for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
-    if (shape.dimensions(i) % sharding.tile_assignment().dim(i) != 0) {
-      return false;
+  if (shape.IsArray()) {
+    for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
+      if (shape.dimensions(i) % sharding.tile_assignment().dim(i) != 0) {
+        return false;
+      }
     }
   }
   return true;
