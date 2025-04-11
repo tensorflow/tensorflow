@@ -87,22 +87,29 @@ using sdy::TensorShardingPerValueAttr;
 using ManualComputationToParentManualAxes =
     llvm::SmallDenseMap<ManualComputationOp, SmallVector<StringAttr>>;
 
-// Populates `regionManualAxes` with the manual axes of `op`. If `op` is nested
-// in another manual computation, also returns the manual axes of the parent
-// computation.
-mlir::ArrayRef<StringAttr> populateRegionManualAxes(
-    SmallVector<StringAttr>& regionManualAxes, ManualComputationOp op,
+// Given an ManualComputationOp `op`, `op.getManualAxes()` is the local manual
+// axes. `parent` is the manual axes of its parent ManualComputationOp,
+// recursively. `region` is the concatenation of `op.getManualAxes()` and
+// `parent`.
+struct ManualAxesHierarchy {
+  mlir::ArrayRef<StringAttr> parent;
+  SmallVector<StringAttr> region;
+};
+
+ManualAxesHierarchy getManualAxesHierarchy(
+    ManualComputationOp op,
     const ManualComputationToParentManualAxes& parentManualCompAxes) {
-  regionManualAxes = SmallVector<StringAttr>(op.getManualAxes().begin(),
+  ManualAxesHierarchy hierarchy;
+  hierarchy.region = SmallVector<StringAttr>(op.getManualAxes().begin(),
                                              op.getManualAxes().end());
-  mlir::ArrayRef<StringAttr> parentManualAxesRef;
+
   if (auto parentManualAxes = parentManualCompAxes.find(op);
       parentManualAxes != parentManualCompAxes.end()) {
-    parentManualAxesRef = parentManualAxes->getSecond();
-    regionManualAxes.append(parentManualAxes->getSecond().begin(),
+    hierarchy.parent = parentManualAxes->getSecond();
+    hierarchy.region.append(parentManualAxes->getSecond().begin(),
                             parentManualAxes->getSecond().end());
   }
-  return parentManualAxesRef;
+  return hierarchy;
 }
 
 // Returns the first sharding of `op`. If there are no in/out shardings, returns
@@ -136,15 +143,15 @@ void convertShardingsToStablehloShardings(
   CHECK(mesh);
 
   // The axes that are manual inside `op`'s region.
-  SmallVector<StringAttr> regionManualAxes;
-  (void)populateRegionManualAxes(regionManualAxes, op, parentManualCompAxes);
+  ManualAxesHierarchy manualAxes =
+      getManualAxesHierarchy(op, parentManualCompAxes);
   MLIRContext* context = op.getContext();
   std::function<StringAttr(const HloSharding&)> getStringAttr =
       [&](const HloSharding& hloSharding) {
         return StringAttr::get(context, hloSharding.ToString());
       };
 
-  if (mesh.getAxes().size() == regionManualAxes.size()) {
+  if (mesh.getAxes().size() == manualAxes.region.size()) {
     // All operations in the body have fully manual sharding.
     StringAttr fullyManualSharding = getStringAttr(HloSharding::Manual());
     op.getBody().front().walk<mlir::WalkOrder::PreOrder>(
@@ -178,7 +185,7 @@ void convertShardingsToStablehloShardings(
           opInBody->setAttr(kXlaShardingAttr,
                             convertToHloShardingAttr(
                                 opInBody, shardingPerValue.getShardings(),
-                                getMeshAttr, getStringAttr, regionManualAxes));
+                                getMeshAttr, getStringAttr, manualAxes.region));
           opInBody->removeAttr(kShardingAttr);
           return mlir::WalkResult::advance();
         });
@@ -217,9 +224,8 @@ void convertManualComputationOp(
   CHECK(mesh);
 
   // The axes that are manual inside `op`'s region.
-  SmallVector<StringAttr> regionManualAxes;
-  mlir::ArrayRef<StringAttr> parentManualAxes =
-      populateRegionManualAxes(regionManualAxes, op, parentManualCompAxes);
+  ManualAxesHierarchy manualAxes =
+      getManualAxesHierarchy(op, parentManualCompAxes);
   std::function<StringAttr(const HloSharding&)> getStringAttr =
       [&](const HloSharding& hloSharding) {
         return rewriter.getStringAttr(hloSharding.ToString());
@@ -237,7 +243,7 @@ void convertManualComputationOp(
   SmallVector<NamedAttribute, 2> shardToFullAttributes =
       createAttributes(kSPMDShardToFullShapeCallTargetName);
 
-  bool fullyManual = mesh.getAxes().size() == regionManualAxes.size();
+  bool fullyManual = mesh.getAxes().size() == manualAxes.region.size();
   mlir::Location loc = op.getLoc();
   auto getMeshAttr = [&](TensorShardingAttr) { return mesh; };
   // Add copy and custom_call @SPMDFullToShardShape for each operand. The
@@ -249,13 +255,13 @@ void convertManualComputationOp(
     auto copy = rewriter.create<CopyOp>(loc, globalOperand);
     copy->setAttr(kXlaShardingAttr,
                   getStringAttr(convertToHloSharding(inSharding, getMeshAttr,
-                                                     parentManualAxes)));
+                                                     manualAxes.parent)));
     fullToShardAttributes.back() = rewriter.getNamedAttr(
         kXlaShardingAttr,
         fullyManual ? fullyManualSharding
                     : getStringAttr(convertToHloSharding(
-                          eraseManualAxes(inSharding, regionManualAxes),
-                          getMeshAttr, regionManualAxes)));
+                          eraseManualAxes(inSharding, manualAxes.region),
+                          getMeshAttr, manualAxes.region)));
     auto fullToShard = rewriter.create<CustomCallOp>(
         loc, localArgumentType, copy.getResult(), fullToShardAttributes);
     fullToShardResults.push_back(fullToShard.getResult(0));
@@ -272,11 +278,11 @@ void convertManualComputationOp(
                   fullyManual
                       ? fullyManualSharding
                       : getStringAttr(convertToHloSharding(
-                            eraseManualAxes(outSharding, regionManualAxes),
-                            getMeshAttr, regionManualAxes)));
+                            eraseManualAxes(outSharding, manualAxes.region),
+                            getMeshAttr, manualAxes.region)));
     shardToFullAttributes.back() = rewriter.getNamedAttr(
         kXlaShardingAttr, getStringAttr(convertToHloSharding(
-                              outSharding, getMeshAttr, parentManualAxes)));
+                              outSharding, getMeshAttr, manualAxes.parent)));
     auto shardToFull = rewriter.create<CustomCallOp>(
         loc, opResult.getType(), copy.getResult(), shardToFullAttributes);
     opResult.replaceAllUsesWith(shardToFull.getResult(0));
