@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <vector>
 
@@ -30,6 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -123,68 +123,70 @@ class GpuCommandBuffer : public CommandBuffer {
 
   GpuCommandBuffer(Mode mode, StreamExecutor* parent);
 
-  using CommandBuffer::Launch;
+  // Bring CreateLaunch and UpdateLaunch template functions into scope.
+  using CommandBuffer::CreateLaunch;
+  using CommandBuffer::UpdateLaunch;
 
-  absl::StatusOr<const Command*> Launch(
+  absl::StatusOr<const Command*> CreateLaunch(
       const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
       const KernelArgs& args,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status Launch(const Command* command, const ThreadDim& threads,
-                      const BlockDim& blocks, const Kernel& kernel,
-                      const KernelArgs& args) override;
+  absl::Status UpdateLaunch(const Command* command, const ThreadDim& threads,
+                            const BlockDim& blocks, const Kernel& kernel,
+                            const KernelArgs& args) override;
 
-  absl::StatusOr<const Command*> AddNestedCommandBuffer(
+  absl::StatusOr<const Command*> CreateNestedCommand(
       const CommandBuffer& nested,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status AddNestedCommandBuffer(const Command* command,
-                                      const CommandBuffer& nested) override;
+  absl::Status UpdateNestedCommand(const Command* command,
+                                   const CommandBuffer& nested) override;
 
-  absl::StatusOr<const Command*> MemcpyDeviceToDevice(
+  absl::StatusOr<const Command*> CreateMemcpyD2D(
       DeviceMemoryBase* dst, const DeviceMemoryBase& src, uint64_t size,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status MemcpyDeviceToDevice(const Command* command,
-                                    DeviceMemoryBase* dst,
-                                    const DeviceMemoryBase& src,
-                                    uint64_t size) override;
+  absl::Status UpdateMemcpyD2D(const Command* command, DeviceMemoryBase* dst,
+                               const DeviceMemoryBase& src,
+                               uint64_t size) override;
 
-  absl::StatusOr<const Command*> Memset(
+  absl::StatusOr<const Command*> CreateMemset(
       DeviceMemoryBase* dst, BitPattern bit_pattern, size_t num_elements,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status Memset(const Command* command, DeviceMemoryBase* dst,
-                      const BitPattern& bit_pattern,
-                      size_t num_elements) override;
+  absl::Status UpdateMemset(const Command* command, DeviceMemoryBase* dst,
+                            const BitPattern& bit_pattern,
+                            size_t num_elements) override;
 
-  absl::StatusOr<const Command*> Case(
-      DeviceMemory<int32_t> index, std::vector<Builder> branches,
-      absl::Span<const Command* const> dependencies) override;
-
-  absl::StatusOr<const Command*> DnnGraph(
+  absl::StatusOr<const Command*> CreateDnnGraphCommand(
       dnn::DnnGraph&, Stream&, absl::Span<DeviceMemoryBase> operands,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status DnnGraph(const Command*, dnn::DnnGraph&, Stream&,
-                        absl::Span<DeviceMemoryBase> operands) override;
+  absl::Status UpdateDnnGraphCommand(
+      const Command*, dnn::DnnGraph&, Stream&,
+      absl::Span<DeviceMemoryBase> operands) override;
 
-  absl::StatusOr<const Command*> Case(
+  absl::StatusOr<const Command*> CreateCase(
+      DeviceMemory<int32_t> index, std::vector<Builder> branches,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::StatusOr<const Command*> CreateCase(
       DeviceMemory<bool> index, std::vector<Builder> branches,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status Case(const Command* command, DeviceMemory<int32_t> index,
-                    std::vector<Builder> branches) override;
+  absl::Status UpdateCase(const Command* command, DeviceMemory<int32_t> index,
+                          std::vector<Builder> branches) override;
 
-  absl::Status Case(const Command* command, DeviceMemory<bool> index,
-                    std::vector<Builder> branches) override;
+  absl::Status UpdateCase(const Command* command, DeviceMemory<bool> index,
+                          std::vector<Builder> branches) override;
 
-  absl::StatusOr<const Command*> While(
+  absl::StatusOr<const Command*> CreateWhile(
       DeviceMemory<bool> pred, Builder cond_builder, Builder body_builder,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status While(const Command* command, DeviceMemory<bool> pred,
-                     Builder cond_builder, Builder body_builder) override;
+  absl::Status UpdateWhile(const Command* command, DeviceMemory<bool> pred,
+                           Builder cond_builder, Builder body_builder) override;
 
   absl::Status Finalize() override;
   absl::Status Update() override;
@@ -194,12 +196,6 @@ class GpuCommandBuffer : public CommandBuffer {
   State state() const override { return state_; }
 
   absl::Span<const std::unique_ptr<Command>> commands() const;
-
-  // Returns the list of dependencies for a given node. `node` must be a node
-  // added to the current command buffer. The returned node pointer's lifetimes
-  // are bound to the current command buffer.
-  virtual absl::StatusOr<std::vector<GraphNodeHandle>> GetNodeDependencies(
-      GraphNodeHandle node) = 0;
 
  protected:
   // We track the total number of allocated and alive executable graphs in the
@@ -260,13 +256,13 @@ class GpuCommandBuffer : public CommandBuffer {
   //===--------------------------------------------------------------------===//
 
   // Launches CUDA kernels with packed arguments.
-  absl::StatusOr<const Command*> LaunchWithPackedArgs(
+  absl::StatusOr<const Command*> CreateLaunchWithPackedArgs(
       const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
       const KernelArgsPackedArrayBase& packed_args,
       absl::Span<const Command* const> dependencies);
 
   // Updates a kernel launch command with packed arguments.
-  absl::Status LaunchWithPackedArgs(
+  absl::Status UpdateLaunchWithPackedArgs(
       const Command* command, const ThreadDim& threads, const BlockDim& blocks,
       const Kernel& kernel, const KernelArgsPackedArrayBase& packed_args);
 
@@ -283,20 +279,13 @@ class GpuCommandBuffer : public CommandBuffer {
   virtual absl::Status CheckCanBeUpdated() = 0;
 
  private:
-  absl::StatusOr<const Command*> Case(
+  absl::StatusOr<const Command*> CreateCase(
       DeviceMemory<uint8_t> index, bool index_is_bool,
       std::vector<Builder> branches,
       absl::Span<const Command* const> dependencies);
 
-  absl::Status Case(const Command* command, DeviceMemory<uint8_t> index,
-                    bool index_is_bool, std::vector<Builder> branches);
-
-  // Constructs a new command for the given graph node handle and appends it to
-  // the command buffer.
-  const Command* AppendCommand(GraphNodeHandle handle) {
-    commands_.push_back(std::make_unique<GpuCommand>(handle));
-    return commands_.back().get();
-  }
+  absl::Status UpdateCase(const Command* command, DeviceMemory<uint8_t> index,
+                          bool index_is_bool, std::vector<Builder> branches);
 
   // Appends a new command to the command buffer.
   template <typename T>
