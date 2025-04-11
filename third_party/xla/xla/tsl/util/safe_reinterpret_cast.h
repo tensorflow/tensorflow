@@ -106,6 +106,12 @@ struct IsSafeCast<From*, std::intptr_t> : std::true_type {};
 template <typename To>
 struct IsSafeCast<std::intptr_t, To*> : std::true_type {};
 
+// It's safe to cast the nullptr literal to std::uintptr_t or std::intptr_t.
+template <>
+struct IsSafeCast<std::nullptr_t, std::uintptr_t> : std::true_type {};
+template <>
+struct IsSafeCast<std::nullptr_t, std::intptr_t> : std::true_type {};
+
 }  // namespace internal
 
 // Like reinterpret_cast, but compiles only if it's safe.
