@@ -872,7 +872,7 @@ struct ScopedDescriptor {
   }
 
   ~ScopedDescriptor() {
-    if (handle_ != nullptr) return;
+    if (handle_ == nullptr) return;
 
     auto status = miDestroyObject(
         handle_);  // wrap::miopenDestroyTensorDescriptor(handle_);
