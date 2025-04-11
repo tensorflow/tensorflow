@@ -1346,6 +1346,8 @@ LogicalResult ConvertTFLMaxPool2DOp::matchAndRewrite(
   DenseI64ArrayAttr kernel_size;
   DenseI64ArrayAttr stride;
   DenseI64ArrayAttr pad;
+  // Pooling has no non-unit dilation
+  DenseI64ArrayAttr dilation = rewriter.getDenseI64ArrayAttr({1, 1});
   {
     int64_t kernel_h = tfl_maxpool_op.getFilterHeight();
     int64_t kernel_w = tfl_maxpool_op.getFilterWidth();
@@ -1364,9 +1366,6 @@ LogicalResult ConvertTFLMaxPool2DOp::matchAndRewrite(
     if (!GetPaddingFromString(tfl_maxpool_op.getPadding().str(), &tf_pad).ok())
       return failure();
 
-    // Pooling has no non-unit dilation
-    DenseI64ArrayAttr dilation = rewriter.getDenseI64ArrayAttr({1, 1});
-
     RankedTensorType filter_type =
         RankedTensorType::get(i64array, rewriter.getIntegerType(64));
 
@@ -1379,8 +1378,13 @@ LogicalResult ConvertTFLMaxPool2DOp::matchAndRewrite(
       return failure();
   }
 
+  // TFLite only supports NHWC format
+  const Value max_pool_input = getInputSlicedToItsUsedSize(
+    rewriter, op, tensorflow::FORMAT_NHWC, input_type,
+    tfl_maxpool_op.getInput(), kernel_size, pad, stride, dilation);
+
   CreateReplaceOpAndInfer<tosa::MaxPool2dOp>(rewriter, op, output_type,
-                                             tfl_maxpool_op.getInput(),
+                                             max_pool_input,
                                              kernel_size, stride, pad);
   return success();
 }

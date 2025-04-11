@@ -1208,6 +1208,18 @@ func.func @test_max_pool2d_dynamic(%arg0: tensor<?x32x32x8xf32>) -> tensor<*xf32
 
 // -----
 
+// CHECK-LABEL: test_max_pool2d_slicing
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape  {values = dense<[1, 31, 31, 8]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[VAL_2:.*]] = tosa.const_shape  {values = dense<0> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK: %[[VAL_3:.*]] = tosa.slice %[[VAL_0]], %[[VAL_2]], %[[VAL_1]] : (tensor<1x32x32x8xf32>, !tosa.shape<4>, !tosa.shape<4>) -> tensor<1x31x31x8xf32>
+// CHECK: %[[VAL_4:.*]] = tosa.max_pool2d %[[VAL_3]] {kernel = array<i64: 3, 3>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 2, 2>} : (tensor<1x31x31x8xf32>) -> tensor<1x15x15x8xf32>
+func.func @test_max_pool2d_slicing(%arg0: tensor<1x32x32x8xf32>) -> tensor<*xf32> {
+  %0 = "tfl.max_pool_2d"(%arg0)  {filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}  : (tensor<1x32x32x8xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_reshape
 // CHECK-DAG: %[[VAR10:.*]] = tosa.const_shape {values = dense<[1, 819]> : tensor<2xindex>}
 // CHECK: %[[VAR0:.*]] = tosa.reshape %arg0, %[[VAR10]]
