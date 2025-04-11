@@ -455,15 +455,14 @@ TracedCommandBufferCmd::RecordTracedCommand(
           execute_params.buffer_allocations, execute_params.stream->parent(),
           execute_params.command_buffer_trace_stream, trace));
 
-  VLOG(5) << "Add nested command buffer";
+  VLOG(5) << "Record traced command into command buffer: " << command_buffer;
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
-        return command_buffer->AddNestedCommandBuffer(*nested_cmd,
-                                                      dependencies);
+        return command_buffer->CreateNestedCommand(*nested_cmd, dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
-        return command_buffer->AddNestedCommandBuffer(command, *nested_cmd);
+        return command_buffer->UpdateNestedCommand(command, *nested_cmd);
       });
 }
 
@@ -507,12 +506,12 @@ absl::StatusOr<CommandBufferCmd::RecordedCommands> ComputationIdCmd::Record(
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
-        return command_buffer->Memset(&dst, value, /*num_elements=*/1,
-                                      dependencies);
+        return command_buffer->CreateMemset(&dst, value, /*num_elements=*/1,
+                                            dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
-        return command_buffer->Memset(command, &dst, value,
-                                      /*num_elements=*/1);
+        return command_buffer->UpdateMemset(command, &dst, value,
+                                            /*num_elements=*/1);
       });
 }
 
@@ -580,14 +579,14 @@ absl::StatusOr<CommandBufferCmd::RecordedCommands> LaunchCmd::Record(
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
-        return command_buffer->Launch(dims_.thread_counts_per_block(),
-                                      dims_.block_counts(), *kernel,
-                                      *kernel_args, dependencies);
+        return command_buffer->CreateLaunch(dims_.thread_counts_per_block(),
+                                            dims_.block_counts(), *kernel,
+                                            *kernel_args, dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
-        return command_buffer->Launch(command, dims_.thread_counts_per_block(),
-                                      dims_.block_counts(), *kernel,
-                                      *kernel_args);
+        return command_buffer->UpdateLaunch(
+            command, dims_.thread_counts_per_block(), dims_.block_counts(),
+            *kernel, *kernel_args);
       });
 }
 
@@ -661,14 +660,14 @@ CustomKernelLaunchCmd::Record(const Thunk::ExecuteParams& execute_params,
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
-        return command_buffer->Launch(custom_kernel_.thread_dims(),
-                                      custom_kernel_.block_dims(), *kernel,
-                                      kernel_args, dependencies);
+        return command_buffer->CreateLaunch(custom_kernel_.thread_dims(),
+                                            custom_kernel_.block_dims(),
+                                            *kernel, kernel_args, dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
-        return command_buffer->Launch(command, custom_kernel_.thread_dims(),
-                                      custom_kernel_.block_dims(), *kernel,
-                                      kernel_args);
+        return command_buffer->UpdateLaunch(
+            command, custom_kernel_.thread_dims(), custom_kernel_.block_dims(),
+            *kernel, kernel_args);
       });
 }
 
@@ -715,12 +714,11 @@ MemcpyDeviceToDeviceCmd::Record(const Thunk::ExecuteParams& execute_params,
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
-        return command_buffer->MemcpyDeviceToDevice(&dst, src, num_bytes_,
-                                                    dependencies);
+        return command_buffer->CreateMemcpyD2D(&dst, src, num_bytes_,
+                                               dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
-        return command_buffer->MemcpyDeviceToDevice(command, &dst, src,
-                                                    num_bytes_);
+        return command_buffer->UpdateMemcpyD2D(command, &dst, src, num_bytes_);
       });
 }
 
@@ -755,13 +753,13 @@ absl::StatusOr<CommandBufferCmd::RecordedCommands> MemzeroCmd::Record(
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
-        return command_buffer->Memset(&dst, uint8_t{0},
-                                      /*num_elements=*/dst_.size(),
-                                      dependencies);
+        return command_buffer->CreateMemset(&dst, uint8_t{0},
+                                            /*num_elements=*/dst_.size(),
+                                            dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
-        return command_buffer->Memset(command, &dst, uint8_t{0},
-                                      /*num_elements=*/dst_.size());
+        return command_buffer->UpdateMemset(command, &dst, uint8_t{0},
+                                            /*num_elements=*/dst_.size());
       });
 }
 
@@ -797,12 +795,12 @@ absl::StatusOr<CommandBufferCmd::RecordedCommands> Memset32Cmd::Record(
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
-        return command_buffer->Memset(
+        return command_buffer->CreateMemset(
             &dst, bit_pattern_,
             /*num_elements=*/dst_.size() / sizeof(uint32_t), dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
-        return command_buffer->Memset(
+        return command_buffer->UpdateMemset(
             command, &dst, bit_pattern_,
             /*num_elements=*/dst_.size() / sizeof(uint32_t));
       });
@@ -849,22 +847,22 @@ absl::StatusOr<CommandBufferCmd::RecordedCommands> CaseCmd::Record(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
         if (index_is_bool_) {
-          return command_buffer->Case(se::DeviceMemory<bool>(index),
-                                      std::move(branches), dependencies);
+          return command_buffer->CreateCase(se::DeviceMemory<bool>(index),
+                                            std::move(branches), dependencies);
 
         } else {
-          return command_buffer->Case(se::DeviceMemory<int32_t>(index),
-                                      std::move(branches), dependencies);
+          return command_buffer->CreateCase(se::DeviceMemory<int32_t>(index),
+                                            std::move(branches), dependencies);
         }
       },
       [&](const se::CommandBuffer::Command* command) {
         if (index_is_bool_) {
-          return command_buffer->Case(command, se::DeviceMemory<bool>(index),
-                                      std::move(branches));
+          return command_buffer->UpdateCase(
+              command, se::DeviceMemory<bool>(index), std::move(branches));
 
         } else {
-          return command_buffer->Case(command, se::DeviceMemory<int32_t>(index),
-                                      std::move(branches));
+          return command_buffer->UpdateCase(
+              command, se::DeviceMemory<int32_t>(index), std::move(branches));
         }
       });
 }
@@ -920,13 +918,14 @@ absl::StatusOr<CommandBufferCmd::RecordedCommands> WhileCmd::Record(
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
-        return command_buffer->While(se::DeviceMemory<bool>(pred),
-                                     std::move(cond), std::move(body),
-                                     dependencies);
+        return command_buffer->CreateWhile(se::DeviceMemory<bool>(pred),
+                                           std::move(cond), std::move(body),
+                                           dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
-        return command_buffer->While(command, se::DeviceMemory<bool>(pred),
-                                     std::move(cond), std::move(body));
+        return command_buffer->UpdateWhile(command,
+                                           se::DeviceMemory<bool>(pred),
+                                           std::move(cond), std::move(body));
       });
 }
 
@@ -1218,7 +1217,7 @@ absl::StatusOr<CommandBufferCmd::RecordedCommands> CuDnnCmd::Record(
       const bool supports_explicit,
       graph_->get()->SupportsExplicitCommandBufferConstruction());
   if (supports_explicit) {
-    return RecordedCommands::Create(command_buffer->DnnGraph(
+    return RecordedCommands::Create(command_buffer->CreateDnnGraphCommand(
         *graph_->get(), *execute_params.stream,
         absl::Span<se::DeviceMemoryBase>(operands), {}));
   }
@@ -1318,11 +1317,10 @@ CustomCallCmd::RecordLegacyCustomCall(
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
-        return command_buffer->AddNestedCommandBuffer(*nested_cmd,
-                                                      dependencies);
+        return command_buffer->CreateNestedCommand(*nested_cmd, dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
-        return command_buffer->AddNestedCommandBuffer(command, *nested_cmd);
+        return command_buffer->UpdateNestedCommand(command, *nested_cmd);
       });
 }
 
@@ -1400,11 +1398,10 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
-        return command_buffer->AddNestedCommandBuffer(*nested_cmd,
-                                                      dependencies);
+        return command_buffer->CreateNestedCommand(*nested_cmd, dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
-        return command_buffer->AddNestedCommandBuffer(command, *nested_cmd);
+        return command_buffer->UpdateNestedCommand(command, *nested_cmd);
       });
 }
 
@@ -1458,11 +1455,10 @@ CollectiveCmd::RecordTracedCommand(
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
-        return command_buffer->AddNestedCommandBuffer(*nested_cmd,
-                                                      dependencies);
+        return command_buffer->CreateNestedCommand(*nested_cmd, dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
-        return command_buffer->AddNestedCommandBuffer(command, *nested_cmd);
+        return command_buffer->UpdateNestedCommand(command, *nested_cmd);
       });
 }
 
@@ -2020,12 +2016,12 @@ DynamicSliceFusionCmd::Record(const Thunk::ExecuteParams& execute_params,
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
-        return command_buffer->AddNestedCommandBuffer(*nested_command_buffer,
-                                                      dependencies);
+        return command_buffer->CreateNestedCommand(*nested_command_buffer,
+                                                   dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
-        return command_buffer->AddNestedCommandBuffer(command,
-                                                      *nested_command_buffer);
+        return command_buffer->UpdateNestedCommand(command,
+                                                   *nested_command_buffer);
       });
 }
 

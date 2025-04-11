@@ -108,10 +108,10 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
   }
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
                           executor->CreateCommandBuffer(primary));
-  TF_ASSERT_OK(
-      cmd_buffer
-          ->DnnGraph(graph, *stream, absl::Span<DeviceMemoryBase>(operands), {})
-          .status());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* dnn_command,
+      cmd_buffer->CreateDnnGraphCommand(
+          graph, *stream, absl::Span<DeviceMemoryBase>(operands), {}));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   std::vector<int32_t> host_buffer(output0.ElementCount());
@@ -144,10 +144,8 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
 
   // Update the command buffer to write into the new output buffer.
   TF_ASSERT_OK(cmd_buffer->Update());
-  TF_ASSERT_OK(
-      cmd_buffer
-          ->DnnGraph(graph, *stream, absl::Span<DeviceMemoryBase>(operands), {})
-          .status());
+  TF_ASSERT_OK(cmd_buffer->UpdateDnnGraphCommand(
+      dnn_command, graph, *stream, absl::Span<DeviceMemoryBase>(operands)));
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   // Run the computation.

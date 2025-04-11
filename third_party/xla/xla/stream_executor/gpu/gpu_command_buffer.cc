@@ -131,7 +131,7 @@ absl::Status GpuCommandBuffer::CheckInState(State state) {
 }
 
 absl::StatusOr<const CommandBuffer::Command*>
-GpuCommandBuffer::LaunchWithPackedArgs(
+GpuCommandBuffer::CreateLaunchWithPackedArgs(
     const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
     const KernelArgsPackedArrayBase& packed_args,
     absl::Span<const Command* const> dependencies) {
@@ -148,10 +148,10 @@ GpuCommandBuffer::LaunchWithPackedArgs(
       GraphNodeHandle handle,
       CreateKernelNode(barrier, threads, blocks, kernel, packed_args));
 
-  return AppendCommand(handle);
+  return AppendCommand(GpuCommand{handle});
 }
 
-absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
+absl::Status GpuCommandBuffer::UpdateLaunchWithPackedArgs(
     const Command* command, const ThreadDim& threads, const BlockDim& blocks,
     const Kernel& kernel, const KernelArgsPackedArrayBase& packed_args) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
@@ -160,14 +160,15 @@ absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
                           packed_args);
 }
 
-absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Launch(
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateLaunch(
     const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
     const KernelArgs& args, absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
   // If arguments are already packed we can just launch the kernel.
   if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
-    return LaunchWithPackedArgs(threads, blocks, kernel, *packed, dependencies);
+    return CreateLaunchWithPackedArgs(threads, blocks, kernel, *packed,
+                                      dependencies);
   }
 
   // For device memory array we rely on a custom kernel arguments packing.
@@ -180,22 +181,24 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Launch(
     }
 
     TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
-    return LaunchWithPackedArgs(threads, blocks, kernel, *packed, dependencies);
+    return CreateLaunchWithPackedArgs(threads, blocks, kernel, *packed,
+                                      dependencies);
   }
 
   return absl::InternalError("Unsupported kernel arguments type");
 }
 
-absl::Status GpuCommandBuffer::Launch(const Command* command,
-                                      const ThreadDim& threads,
-                                      const BlockDim& blocks,
-                                      const Kernel& kernel,
-                                      const KernelArgs& args) {
+absl::Status GpuCommandBuffer::UpdateLaunch(const Command* command,
+                                            const ThreadDim& threads,
+                                            const BlockDim& blocks,
+                                            const Kernel& kernel,
+                                            const KernelArgs& args) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
 
   // If arguments are already packed we can just launch the kernel.
   if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
-    return LaunchWithPackedArgs(command, threads, blocks, kernel, *packed);
+    return UpdateLaunchWithPackedArgs(command, threads, blocks, kernel,
+                                      *packed);
   }
 
   // For device memory array we rely on a custom kernel arguments packing.
@@ -208,14 +211,15 @@ absl::Status GpuCommandBuffer::Launch(const Command* command,
     }
 
     TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
-    return LaunchWithPackedArgs(command, threads, blocks, kernel, *packed);
+    return UpdateLaunchWithPackedArgs(command, threads, blocks, kernel,
+                                      *packed);
   }
 
   return absl::InternalError("Unsupported kernel arguments type");
 }
 
 absl::StatusOr<const CommandBuffer::Command*>
-GpuCommandBuffer::AddNestedCommandBuffer(
+GpuCommandBuffer::CreateNestedCommand(
     const CommandBuffer& nested,
     absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
@@ -225,18 +229,17 @@ GpuCommandBuffer::AddNestedCommandBuffer(
                              : ToGraphNodeDependencies(dependencies);
   TF_ASSIGN_OR_RETURN(GraphNodeHandle handle, CreateChildNode(barrier, nested));
 
-  return AppendCommand(handle);
+  return AppendCommand(GpuCommand{handle});
 }
 
-absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
+absl::Status GpuCommandBuffer::UpdateNestedCommand(
     const Command* command, const CommandBuffer& nested) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
   return UpdateChildNode(gpu_command->handle, nested);
 }
 
-absl::StatusOr<const CommandBuffer::Command*>
-GpuCommandBuffer::MemcpyDeviceToDevice(
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemcpyD2D(
     DeviceMemoryBase* dst, const DeviceMemoryBase& src, uint64_t size,
     absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
@@ -247,19 +250,19 @@ GpuCommandBuffer::MemcpyDeviceToDevice(
   TF_ASSIGN_OR_RETURN(GraphNodeHandle handle,
                       CreateMemcpyD2DNode(barrier, *dst, src, size));
 
-  return AppendCommand(handle);
+  return AppendCommand(GpuCommand{handle});
 }
 
-absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(const Command* command,
-                                                    DeviceMemoryBase* dst,
-                                                    const DeviceMemoryBase& src,
-                                                    uint64_t size) {
+absl::Status GpuCommandBuffer::UpdateMemcpyD2D(const Command* command,
+                                               DeviceMemoryBase* dst,
+                                               const DeviceMemoryBase& src,
+                                               uint64_t size) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
   return UpdateMemcpyD2DNode(gpu_command->handle, *dst, src, size);
 }
 
-absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Memset(
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemset(
     DeviceMemoryBase* dst, BitPattern bit_pattern, size_t num_elements,
     absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
@@ -271,19 +274,24 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Memset(
       GraphNodeHandle handle,
       CreateMemsetNode(barrier, *dst, bit_pattern, num_elements));
 
-  return AppendCommand(handle);
+  return AppendCommand(GpuCommand{handle});
 }
 
-absl::Status GpuCommandBuffer::Memset(const Command* command,
-                                      DeviceMemoryBase* dst,
-                                      const BitPattern& bit_pattern,
-                                      size_t num_elements) {
+absl::Status GpuCommandBuffer::UpdateMemset(const Command* command,
+                                            DeviceMemoryBase* dst,
+                                            const BitPattern& bit_pattern,
+                                            size_t num_elements) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
   return UpdateMemsetNode(gpu_command->handle, *dst, bit_pattern, num_elements);
 }
 
-absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::DnnGraph(
+//----------------------------------------------------------------------------//
+// Command buffer DNN graph API
+//----------------------------------------------------------------------------//
+
+absl::StatusOr<const CommandBuffer::Command*>
+GpuCommandBuffer::CreateDnnGraphCommand(
     dnn::DnnGraph& dnn_graph, Stream& stream,
     absl::Span<DeviceMemoryBase> operands,
     absl::Span<const Command* const> dependencies) {
@@ -301,13 +309,12 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::DnnGraph(
   TF_ASSIGN_OR_RETURN(GraphNodeHandle handle,
                       CreateChildNode(barrier, *nested));
 
-  return AppendCommand(handle);
+  return AppendCommand(GpuCommand{handle});
 }
 
-absl::Status GpuCommandBuffer::DnnGraph(const Command* command,
-                                        dnn::DnnGraph& dnn_graph,
-                                        Stream& stream,
-                                        absl::Span<DeviceMemoryBase> operands) {
+absl::Status GpuCommandBuffer::UpdateDnnGraphCommand(
+    const Command* command, dnn::DnnGraph& dnn_graph, Stream& stream,
+    absl::Span<DeviceMemoryBase> operands) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
 
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
@@ -320,9 +327,9 @@ absl::Status GpuCommandBuffer::DnnGraph(const Command* command,
   return UpdateChildNode(gpu_command->handle, *nested);
 }
 
-//--------------------------------------------------------------------------//
+//----------------------------------------------------------------------------//
 // Command buffer condtitional commands API
-//--------------------------------------------------------------------------//
+//----------------------------------------------------------------------------//
 
 absl::StatusOr<std::vector<GraphConditionalHandle>>
 GpuCommandBuffer::CreateConditionalHandles(size_t num_handles) {
@@ -334,7 +341,7 @@ GpuCommandBuffer::CreateConditionalHandles(size_t num_handles) {
   return handles;
 }
 
-absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Case(
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateCase(
     DeviceMemory<uint8_t> index, bool index_is_bool,
     std::vector<Builder> branches,
     absl::Span<const Command* const> dependencies) {
@@ -403,10 +410,10 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Case(
   return AppendCommand(std::move(command));
 }
 
-absl::Status GpuCommandBuffer::Case(const Command* command,
-                                    DeviceMemory<uint8_t> index,
-                                    bool index_is_bool,
-                                    std::vector<Builder> branches) {
+absl::Status GpuCommandBuffer::UpdateCase(const Command* command,
+                                          DeviceMemory<uint8_t> index,
+                                          bool index_is_bool,
+                                          std::vector<Builder> branches) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
 
   constexpr size_t kBranchBatchSize = 8;
@@ -451,41 +458,41 @@ absl::Status GpuCommandBuffer::Case(const Command* command,
   return absl::OkStatus();
 }
 
-absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Case(
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateCase(
     DeviceMemory<int32_t> index, std::vector<Builder> branches,
     absl::Span<const Command* const> dependencies) {
-  return Case(
+  return CreateCase(
       DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
       /*index_is_bool=*/false, branches, dependencies);
 }
 
-absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::Case(
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateCase(
     DeviceMemory<bool> index, std::vector<Builder> branches,
     absl::Span<const Command* const> dependencies) {
-  return Case(
+  return CreateCase(
       DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
       /*index_is_bool=*/true, branches, dependencies);
 }
 
-absl::Status GpuCommandBuffer::Case(const Command* command,
-                                    DeviceMemory<int32_t> index,
-                                    std::vector<Builder> branches) {
-  return Case(
+absl::Status GpuCommandBuffer::UpdateCase(const Command* command,
+                                          DeviceMemory<int32_t> index,
+                                          std::vector<Builder> branches) {
+  return UpdateCase(
       command,
       DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
       /*index_is_bool=*/false, branches);
 }
 
-absl::Status GpuCommandBuffer::Case(const Command* command,
-                                    DeviceMemory<bool> index,
-                                    std::vector<Builder> branches) {
-  return Case(
+absl::Status GpuCommandBuffer::UpdateCase(const Command* command,
+                                          DeviceMemory<bool> index,
+                                          std::vector<Builder> branches) {
+  return UpdateCase(
       command,
       DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
       /*index_is_bool=*/true, branches);
 }
 
-absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::While(
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateWhile(
     DeviceMemory<bool> pred, Builder cond_builder, Builder body_builder,
     absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
@@ -522,10 +529,10 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::While(
   return AppendCommand(std::move(command));
 }
 
-absl::Status GpuCommandBuffer::While(const Command* command,
-                                     DeviceMemory<bool> pred,
-                                     Builder cond_builder,
-                                     Builder body_builder) {
+absl::Status GpuCommandBuffer::UpdateWhile(const Command* command,
+                                           DeviceMemory<bool> pred,
+                                           Builder cond_builder,
+                                           Builder body_builder) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
 
   auto* gpu_command = tsl::down_cast<const GpuWhileCommand*>(command);
@@ -619,9 +626,8 @@ absl::Status GpuCommandBuffer::Update() {
         "Command buffer has to be finalized first before it can be updated");
   }
 
-  VLOG(5) << "Begin update of "
-          << (mode_ == Mode::kPrimary ? "primary" : "nested")
-          << " command buffer " << this;
+  VLOG(5) << "Begin update of " << absl::StrCat(mode_) << " command buffer "
+          << this;
 
   state_ = State::kUpdate;
   return absl::OkStatus();

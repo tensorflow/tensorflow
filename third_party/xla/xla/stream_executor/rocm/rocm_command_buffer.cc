@@ -491,29 +491,4 @@ absl::Status RocmCommandBuffer::CheckCanBeUpdated() {
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<GraphNodeHandle>>
-RocmCommandBuffer::GetNodeDependencies(const GraphNodeHandle node) {
-  VLOG(2) << "Get HIP graph node " << node << " dependencies";
-
-  std::vector<hipGraphNode_t> dependencies;
-
-  size_t num_dependencies = 0;
-  TF_RETURN_IF_ERROR(
-      ToStatus(hipGraphNodeGetDependencies(ToHipGraphHandle(node), nullptr,
-                                           &num_dependencies),
-               "Failed to get HIP graph node depedencies size"));
-
-  dependencies.resize(num_dependencies, nullptr);
-  TF_RETURN_IF_ERROR(ToStatus(
-      hipGraphNodeGetDependencies(ToHipGraphHandle(node), dependencies.data(),
-                                  &num_dependencies),
-      "Failed to get HIP graph node depedencies"));
-
-  std::vector<GraphNodeHandle> result;
-  result.reserve(dependencies.size());
-  absl::c_transform(
-      dependencies, std::back_inserter(result),
-      static_cast<GraphNodeHandle (*)(hipGraphNode_t)>(&FromHipGraphHandle));
-  return result;
-}
 }  // namespace stream_executor::gpu
