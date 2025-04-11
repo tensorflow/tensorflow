@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/util/stats_calculator.h"
 
+#include <algorithm>
 #include <iomanip>
 #include <map>
 #include <queue>
@@ -104,7 +105,15 @@ std::string StatsCalculator::ColumnString(const Detail& detail,
 void StatsCalculator::OrderNodesByMetric(
     SortingMetric metric, std::vector<const Detail*>* details) const {
   std::priority_queue<std::pair<std::string, const Detail*>> sorted_list;
-  const int num_nodes = details_.size();
+  int max_run_order = details_.size();
+  for (const auto& det : details_) {
+    const Detail* detail = &(det.second);
+    if (detail->run_order > max_run_order) {
+      max_run_order = std::max<int>(max_run_order, detail->run_order);
+    }
+  }
+
+  const int num_nodes = max_run_order;
 
   for (const auto& det : details_) {
     const Detail* detail = &(det.second);
