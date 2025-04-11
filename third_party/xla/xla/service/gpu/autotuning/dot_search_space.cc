@@ -138,14 +138,13 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
   EliminateLowOccupancyConfigs(configs);
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddCtaSizeParameter);
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddContractingTiling);
+  ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddPipeliningParameter);
 
   std::vector<TritonGemmConfig> result;
   result.reserve(configs.size());
   for (ConfigWithNotes& config_with_notes : configs) {
-    // TODO: b/404470821 - Implement this properly rather than hardcoding the
-    // config parameters.
     TritonGemmConfig& config = config_with_notes.config;
-    config.num_stages = 3;
+    // TODO: b/408386169 - Implement CTA cluster support.
     config.num_ctas = 1;
     result.push_back(config);
   }
@@ -301,6 +300,27 @@ int TritonDotFusionSearchSpace::GetMaxContractingTileSize(
   return max_size;
 }
 
+int TritonDotFusionSearchSpace::GetMaxNumStages(OutputTile output_tile,
+                                                int contracting_tile_size,
+                                                int contracting_split) const {
+  const int64_t available_stages = CeilOfRatio<int64_t>(
+      contracting_size_, contracting_split * contracting_tile_size);
+  const int64_t stage_limit =
+      CeilOfRatio(GetContractingSizeLimitToFitSharedMemory(output_tile),
+                  contracting_tile_size);
+  // Number of stages is basically a replacement for oversubscription, so
+  // the maximum number we want is also limited by kMaxWarpsPerScheduler.
+  const int stages = std::min({available_stages, stage_limit,
+                               static_cast<int64_t>(kMaxWarpsPerScheduler)});
+  VLOG(5) << "Computing max_num_stages for tiling BxMxNxK = "
+          << contracting_split << "x" << output_tile.lhs_dim << "x"
+          << output_tile.rhs_dim << "x" << contracting_tile_size
+          << ": limit based on problem is " << available_stages
+          << ", limit based on available shared memory is " << stage_limit
+          << ", max_num_stages = " << stages;
+  return stages;
+}
+
 std::vector<TritonDotFusionSearchSpace::ConfigWithNotes>
 TritonDotFusionSearchSpace::GenerateContractingSplitFactors() {
   CHECK_GE(max_contracting_split_, 1);
@@ -390,6 +410,29 @@ void TritonDotFusionSearchSpace::AddContractingTiling(
   for (int k = min_contracting_tile_size_; k <= max_tile_size; k *= 2) {
     new_config.config.block_k = k;
     VLOG(10) << "Adding contracting tiling: config = " << new_config.ToString();
+    updated_configs.push_back(new_config);
+  }
+}
+
+void TritonDotFusionSearchSpace::AddPipeliningParameter(
+    const ConfigWithNotes& config,
+    std::vector<ConfigWithNotes>& updated_configs) {
+  const int tile_rows = config.config.block_m;
+  const int tile_cols = config.config.block_n;
+  const int tile_contracting = config.config.block_k;
+  const int split = config.config.split_k;
+  CHECK_GT(tile_rows * tile_cols, 0)
+      << "Need config with output tilings determined.";
+  CHECK_GT(tile_contracting, 0)
+      << "Need config with contracting tiling determined.";
+  CHECK_GT(split, 0) << "Need config with contracting split determined.";
+  int max_stages =
+      GetMaxNumStages({tile_rows, tile_cols}, tile_contracting, split);
+  ConfigWithNotes new_config = config;
+  for (int num_stages = 1; num_stages <= max_stages; ++num_stages) {
+    new_config.config.num_stages = num_stages;
+    VLOG(10) << "Adding pipelining parameter: config = "
+             << new_config.ToString();
     updated_configs.push_back(new_config);
   }
 }

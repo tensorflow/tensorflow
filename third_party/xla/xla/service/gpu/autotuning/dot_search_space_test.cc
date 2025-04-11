@@ -40,6 +40,15 @@ using ::testing::IsEmpty;
 using ::testing::Le;
 using ::testing::SizeIs;
 
+// Returns a matcher that verifies that each container element that matches
+// `filter` also matches `matcher`, and that there is at least one such element.
+template <typename FilterMatcher, typename Matcher>
+auto WhenFilteredBy(FilterMatcher filter, Matcher matcher) {
+  // We check the negation: there is no element that matches `filter` and does
+  // not match `matcher`.
+  return AllOf(Contains(filter), Not(Contains(AllOf(filter, Not(matcher)))));
+}
+
 template <typename MatcherType>
 auto BlockMIs(MatcherType matcher) {
   return Field("block_m", &TritonGemmConfig::block_m, matcher);
@@ -292,20 +301,16 @@ TEST_F(DotSearchSpaceTest, HonorsSharedMemoryLimit) {
       GetDefaultDotModule(/*lhs_parallel_dim=*/4096, /*rhs_parallel_dim=*/4096,
                           /*contracting_dim=*/4096));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-  // We pick a certain output tiling and contracting split of 1 (to not reduce
-  // the effective contracting size), and only verify that configs with these
+
+  // We pick the 128x128 output tiling and only verify that configs with these
   // properties honor the memory limit. This simplifies the test logic and makes
   // the calculation easier to verify by hand, while not reducing the coverage
   // of the test.
-  auto considered_configs =
-      AllOf(BlockMIs(Eq(128)), BlockNIs(Eq(128)), SplitKIs(Eq(1)));
-
   // 2B * (128 + 128) * block_k < 227 KB =>
   // block_k <= 227 KB / (2B * (128 + 128)) = 454
-  EXPECT_THAT(
-      search_space.GenerateConfigs(),
-      AllOf(Contains(considered_configs),
-            Not(Contains(AllOf(considered_configs, BlockKIs(Ge(512)))))));
+  EXPECT_THAT(search_space.GenerateConfigs(/*force_contracting_split=*/1),
+              WhenFilteredBy(AllOf(BlockMIs(Eq(128)), BlockNIs(Eq(128))),
+                             BlockKIs(Le(256))));
 }
 
 TEST_F(DotSearchSpaceTest, HonorsContractingSizeLimit) {
@@ -328,6 +333,33 @@ TEST_F(DotSearchSpaceTest, EnsuresContractingTileSizeFitsInstructonShape) {
 
   EXPECT_THAT(search_space.GenerateConfigs(),
               AllOf(Not(IsEmpty()), Each(BlockKIs(Ge(8)))));
+}
+
+TEST_F(DotSearchSpaceTest, FindReasonablePipeliningStageCount) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          GetDefaultDotModule());
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(search_space.GenerateConfigs(),
+              AllOf(Contains(NumStagesIs(Ge(2))).Times(Ge(2)),
+                    Contains(NumStagesIs(Eq(1))), Each(NumStagesIs(Le(5)))));
+}
+
+TEST_F(DotSearchSpaceTest, LimitsStagesToAvailableTileSize) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
+                          /*contracting_dim=*/128));
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  // We pick the 64x32x32 tiling and only verify that configs with these
+  // properties choose the right number of stages. This simplifies the test
+  // logic and makes the calculation easier to verify by hand, while not
+  // reducing the coverage of the test.
+  EXPECT_THAT(search_space.GenerateConfigs(/*force_contracting_split=*/2),
+              WhenFilteredBy(
+                  AllOf(BlockMIs(Eq(64)), BlockNIs(Eq(32)), BlockKIs(Eq(32))),
+                  NumStagesIs(Le(2))));
 }
 
 }  // namespace

@@ -129,6 +129,11 @@ class TritonDotFusionSearchSpace {
   int GetMaxContractingTileSize(OutputTile output_tile,
                                 int contracting_split) const;
 
+  // Computes the maximum reasonable number of stages for the given output and
+  // input tilings and contracting split.
+  int GetMaxNumStages(OutputTile output_tile, int contracting_tile_size,
+                      int contracting_split) const;
+
   // Finds all promising values for splitting the contracting dimension to
   // achieve sufficient occupancy (split_k).
   std::vector<ConfigWithNotes> GenerateContractingSplitFactors();
@@ -153,6 +158,13 @@ class TritonDotFusionSearchSpace {
   // input list might yield zero or more configs in the output.
   void AddContractingTiling(const ConfigWithNotes& config,
                             std::vector<ConfigWithNotes>& updated_configs);
+
+  // Finds all promising values for the pipelining parameter, based on
+  // `config` with already determined contracting split, output tiling, and
+  // contracting tile size, and appends them to `updated_configs`. Each config
+  // in the input list might yield zero or more configs in the output.
+  void AddPipeliningParameter(const ConfigWithNotes& config,
+                              std::vector<ConfigWithNotes>& updated_configs);
 
   // Removes configs that are marked with `not_enough_tiles` from the list. If
   // this results in an empty list, adds a config that should be the most
