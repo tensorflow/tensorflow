@@ -58,6 +58,19 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "elemental_hlo_to_mlir",
     srcs = ["elemental_hlo_to_mlir.cc"],
     hdrs = ["elemental_hlo_to_mlir.h"],

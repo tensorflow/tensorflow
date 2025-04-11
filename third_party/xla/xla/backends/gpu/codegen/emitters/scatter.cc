@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/type_util.h"
+#include "xla/codegen/emitters/utils.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -636,23 +637,6 @@ void ScatterWithDistributedIndices::ComputeIndexing(
   }
 }
 
-DenseElementsAttr GetShapedZeroConstantAttr(VectorType vector_type) {
-  auto elem_type = vector_type.getElementType();
-  if (auto float_type = mlir::dyn_cast<mlir::FloatType>(elem_type)) {
-    std::vector<llvm::APFloat> values(
-        vector_type.getNumElements(),
-        APFloat::getZero(float_type.getFloatSemantics()));
-    return DenseElementsAttr::get(vector_type, values);
-  }
-  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(elem_type)) {
-    std::vector<llvm::APInt> values(
-        vector_type.getNumElements(),
-        APInt::getZero(int_type.getIntOrFloatBitWidth()));
-    return DenseElementsAttr::get(vector_type, values);
-  }
-  llvm_unreachable("Unsupported vector element type");
-}
-
 Value ScatterWithDistributedIndices::InitializeAccumulator(
     ImplicitLocOpBuilder& b) const {
   auto elem_type = emitters::PrimitiveTypeToMlirType(description_.elem_type, b);
@@ -662,7 +646,7 @@ Value ScatterWithDistributedIndices::InitializeAccumulator(
   auto accumulator_type =
       VectorType::get({update_iterations_per_thread, vector_size_}, elem_type);
   return b.create<arith::ConstantOp>(
-      accumulator_type, GetShapedZeroConstantAttr(accumulator_type));
+      accumulator_type, emitters::GetZeroDenseElementsAttr(accumulator_type));
 }
 
 absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
