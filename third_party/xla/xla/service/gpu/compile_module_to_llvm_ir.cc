@@ -250,9 +250,12 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
   ScopedAnnotation annotation(Phase("XlaBufferAssignment", module));
 
   const DebugOptions& options = module->config().debug_options();
-  BufferAssigner::Colorer colorer = options.xla_gpu_enable_nccl_user_buffers()
-                                        ? CollectiveColorer()
-                                        : BufferAssigner::DefaultColorer();
+  BufferAssigner::Colorer colorer =
+      (options.xla_gpu_enable_nccl_user_buffers() ||
+       options.xla_gpu_experimental_enable_nvshmem())
+          ? CollectiveColorer(options.xla_gpu_enable_nccl_user_buffers(),
+                              options.xla_gpu_experimental_enable_nvshmem())
+          : BufferAssigner::DefaultColorer();
 
   std::optional<BufferValue::Color> color =
       options.xla_gpu_temp_buffer_use_separate_color()

@@ -46,10 +46,12 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/collectives.h"
+#include "xla/core/collectives/collectives_registry.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/cuda_collectives.h"
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
@@ -631,6 +633,33 @@ CudaExecutor::~CudaExecutor() {
   CHECK(gpu_binary_to_module_.empty()) << "CudaExecutor has loaded modules.";
 }
 
+absl::StatusOr<xla::gpu::GpuCollectives*> GetGpuCollectives(
+    StreamExecutor* executor) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+  TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
+                      xla::CollectivesRegistry::Default("gpu"));
+  return tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+}
+
+absl::StatusOr<void*> AllocateCollectiveMemory(StreamExecutor* executor,
+                                               uint64_t size) {
+  if (size == 0) {
+    return nullptr;
+  }
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+  TF_ASSIGN_OR_RETURN(xla::gpu::GpuCollectives * gpu_collectives,
+                      GetGpuCollectives(executor));
+  return gpu_collectives->Allocate(size);
+}
+
+absl::Status DeallocateCollectiveMemory(StreamExecutor* executor,
+                                        void* location) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+  TF_ASSIGN_OR_RETURN(xla::gpu::GpuCollectives * gpu_collectives,
+                      GetGpuCollectives(executor));
+  return gpu_collectives->Deallocate(location);
+}
+
 absl::StatusOr<std::unique_ptr<MemoryAllocator>>
 CudaExecutor::CreateMemoryAllocator(MemoryType type) {
   if (type == MemoryType::kUnified) {
@@ -664,14 +693,12 @@ CudaExecutor::CreateMemoryAllocator(MemoryType type) {
     return std::make_unique<GenericMemoryAllocator>(
         [this](uint64_t size)
             -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
-          TF_ASSIGN_OR_RETURN(
-              void* ptr, CudaCollectives::CollectiveMemoryAllocate(this, size));
+          TF_ASSIGN_OR_RETURN(void* ptr, AllocateCollectiveMemory(this, size));
           VLOG(2) << "allocated " << ptr << " for context " << cuda_context_
                   << " of " << size << " bytes of collective memory";
           return std::make_unique<GenericMemoryAllocation>(
               ptr, size, [this](void* location, uint64_t size) {
-                auto status =
-                    CudaCollectives::CollectiveMemoryDeallocate(this, location);
+                auto status = DeallocateCollectiveMemory(this, location);
                 if (!status.ok()) {
                   LOG(ERROR) << "failed to free collective memory at "
                              << location << "; result: " << status;
@@ -995,7 +1022,7 @@ CudaExecutor::CreateOrShareConstant(Stream* stream,
 
 DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
   if (memory_space == static_cast<int64_t>(MemoryType::kCollective)) {
-    auto result = CudaCollectives::CollectiveMemoryAllocate(this, size);
+    auto result = AllocateCollectiveMemory(this, size);
     if (!result.ok()) {
       LOG(ERROR) << result.status();
       return DeviceMemoryBase(nullptr, 0);
