@@ -949,8 +949,7 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallUntyped) {
   args.handler_initialize = nullptr;
   args.handler_execute = reinterpret_cast<void*>(&TestCustomCallV2);
   auto api = GetPjrtApi();
-  const PJRT_Extension_Base* next =
-      reinterpret_cast<const PJRT_Extension_Base*>(api->extension_start);
+  const PJRT_Extension_Base* next = api->extension_start;
   while (next != nullptr &&
          next->type !=
              PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call) {
@@ -982,8 +981,7 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallTyped) {
   args.handler_initialize = nullptr;
   args.handler_execute = reinterpret_cast<void*>(kNoop);
   auto api = GetPjrtApi();
-  const PJRT_Extension_Base* next =
-      reinterpret_cast<const PJRT_Extension_Base*>(api->extension_start);
+  const PJRT_Extension_Base* next = api->extension_start;
   while (next != nullptr &&
          next->type !=
              PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call) {

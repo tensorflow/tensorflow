@@ -51,9 +51,7 @@ typedef PJRT_Error* PJRT_Wait_Until_Buffer_Ready_On_Stream(
     PJRT_Wait_Until_Buffer_Ready_On_Stream_Args* args);
 
 typedef struct PJRT_Stream_Extension {
-  size_t struct_size;
-  PJRT_Extension_Type type;
-  PJRT_Extension_Base* next;
+  PJRT_Extension_Base base;
   PJRT_Get_Stream_For_External_Ready_Events* get_stream;
   PJRT_Wait_Until_Buffer_Ready_On_Stream* wait_stream;
 } PJRT_Stream_Extension;

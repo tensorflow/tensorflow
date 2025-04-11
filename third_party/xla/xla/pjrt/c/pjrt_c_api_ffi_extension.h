@@ -70,9 +70,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_FFI_UserData_Add_Args, user_data);
 typedef PJRT_Error* PJRT_FFI_UserData_Add(PJRT_FFI_UserData_Add_Args* args);
 
 typedef struct PJRT_FFI_Extension {
-  size_t struct_size;
-  PJRT_Extension_Type type;
-  PJRT_Extension_Base* next;
+  PJRT_Extension_Base base;
   PJRT_FFI_TypeID_Register* type_id_register;
   PJRT_FFI_UserData_Add* user_data_add;
 } PJRT_FFI;

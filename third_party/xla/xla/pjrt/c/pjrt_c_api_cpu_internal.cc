@@ -69,18 +69,16 @@ const PJRT_Api* GetCpuPjrtApi() {
       pjrt::CreateLayoutsExtension(nullptr);
 
   static PJRT_MemoryDescriptions_Extension memory_descriptions_extension =
-      pjrt::CreateMemoryDescriptionsExtension(
-          reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension));
+      pjrt::CreateMemoryDescriptionsExtension(&layouts_extension.base);
 
-  static PJRT_FFI_Extension ffi_extension = pjrt::CreateFfiExtension(
-      reinterpret_cast<PJRT_Extension_Base*>(&memory_descriptions_extension));
+  static PJRT_FFI_Extension ffi_extension =
+      pjrt::CreateFfiExtension(&memory_descriptions_extension.base);
 
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::cpu_plugin::PJRT_Client_Create,
       pjrt::cpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::cpu_plugin::PJRT_CpuDeviceTopology_Create,
-      pjrt::PJRT_Plugin_Initialize_NoOp,
-      reinterpret_cast<PJRT_Extension_Base*>(&ffi_extension),
+      pjrt::PJRT_Plugin_Initialize_NoOp, &ffi_extension.base,
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;

@@ -60,8 +60,7 @@ const PJRT_Api* GetPjrtApi() {
       myplugin_pjrt::PJRT_MypluginClient_Create,
       myplugin_pjrt::PJRT_MypluginExecuteContext_Create,
       myplugin_pjrt::PJRT_MypluginDeviceTopology_Create,
-      pjrt::PJRT_Plugin_Initialize_NoOp,
-      reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension),
+      pjrt::PJRT_Plugin_Initialize_NoOp, &layouts_extension.base,
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   printf("MyPlugin called GetPjrtApi\n");
