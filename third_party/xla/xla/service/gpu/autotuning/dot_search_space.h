@@ -71,6 +71,14 @@ class TritonDotFusionSearchSpace {
     std::string ToString() const { return config.ToString(); }
   };
 
+  // Newer NVIDIA GPUs can achieve good enough occupancy with as
+  // few as 2 warps per Cooperative Thread Array (CTA). See
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications-technical-specifications-per-compute-capability
+  static constexpr int kMinWarpsPerCtaForOccupancy = 2;
+  // To use Hopper's wgmma instructions, we need at least a single "warp
+  // group" (4 warps) within a CTA to cooperate on a single instruction.
+  /// https://docs.nvidia.com/cuda/parallel-thread-execution/#asynchronous-warpgroup-level-matrix-instructions
+  static constexpr int kMinWarpsPerCtaForWgmma = 4;
   // Approximation on the maximum number of warps we would want to oversubscribe
   // the SMs with to overlap different GPU pipes (memory, tensor core, ALU,
   // special function unit, etc.)
@@ -105,6 +113,17 @@ class TritonDotFusionSearchSpace {
   // Computes the number of result tiles we would have without
   // splitting the contracting dimension for a given output tile.
   int64_t GetNumResultTiles(OutputTile output_tile) const;
+
+  // Decides if the problem is small enough so it makes sense to trade off
+  // compute for occupancy efficiency.
+  bool ShouldOptimizeForOccupancy() const;
+
+  // Computes the minimum sensible size of the output tile (block_m, block_n).
+  OutputTile GetMinOutputTile() const;
+
+  // Computes the minimum number of warps we want to try using per Cooperative
+  // Thread Array (CTA).
+  int GetMinWarpsPerCta() const;
 
   // Computes how many warps per Cooperative Thread Array (aka. CTA, aka. CUDA
   // block) is reasonable for the given output tile and restrictions on
@@ -171,6 +190,8 @@ class TritonDotFusionSearchSpace {
   // optimal one even though it does not occupy all cores.
   void EliminateLowOccupancyConfigs(std::vector<ConfigWithNotes>& configs);
 
+  // The order of these fields is important: the values of those defined earlier
+  // are used to compute the values of later ones.
   se::DeviceDescription device_description_;
   int64_t contracting_size_;
   int64_t batch_size_;
@@ -180,6 +201,7 @@ class TritonDotFusionSearchSpace {
   int compute_bitwidth_;
   int desired_total_warps_;
   OutputTile max_out_tile_;
+  bool should_optimize_for_occupancy_;
   OutputTile min_out_tile_;
   int min_warps_per_cta_;
   int min_contracting_tile_size_;
