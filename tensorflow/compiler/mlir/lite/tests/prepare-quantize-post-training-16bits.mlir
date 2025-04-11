@@ -250,8 +250,8 @@ func.func @QuantizeFixedOutputRangeInterfaceOpLogistic(%arg0: tensor<1x1xf32>) -
 // CHECK: %[[q1:.*]] = "tfl.quantize"(%arg0) <{qtype = tensor<1x1x!quant.uniform<i16:f32, {{.*}}>>}> {volatile} : (tensor<1x1xf32>) -> tensor<1x1x!quant.uniform<i16:f32, {{.*}}>>
 // CHECK-NEXT: %[[dq1:.*]] = "tfl.dequantize"(%[[q1]]) : (tensor<1x1x!quant.uniform<i16:f32, {{.*}}>>) -> tensor<1x1xf32>
 // CHECK-NEXT: %[[lo:.*]] = "tfl.logistic"(%[[dq1]]) : (tensor<1x1xf32>) -> tensor<1x1xf32>
-// CHECK-NEXT: %[[q2:.*]] = "tfl.quantize"(%[[lo]]) <{qtype = tensor<1x1x!quant.uniform<i16:f32, 1.52587890625E-5:-32768>>}> {volatile} : (tensor<1x1xf32>) -> tensor<1x1x!quant.uniform<i16:f32, 1.52587890625E-5:-32768>>
-// CHECK-NEXT: %[[dq2:.*]] = "tfl.dequantize"(%[[q2]]) : (tensor<1x1x!quant.uniform<i16:f32, 1.52587890625E-5:-32768>>) -> tensor<1x1xf32>
+// CHECK-NEXT: %[[q2:.*]] = "tfl.quantize"(%[[lo]]) <{qtype = tensor<1x1x!quant.uniform<i16:f32, 3.0517578125E-5>>}> {volatile} : (tensor<1x1xf32>) -> tensor<1x1x!quant.uniform<i16:f32, 3.0517578125E-5>>
+// CHECK-NEXT: %[[dq2:.*]] = "tfl.dequantize"(%[[q2]]) : (tensor<1x1x!quant.uniform<i16:f32, 3.0517578125E-5>>) -> tensor<1x1xf32>
 }
 
 // CHECK-LABEL: QuantizeFixedOutputRangeInterfaceOpTanh
