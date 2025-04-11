@@ -6,8 +6,8 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 cc_library(
     name = "profile_data_lib",
-    srcs = ["profile_data.cc"],
-    hdrs = ["profile_data.h"],
+    srcs = ["profile_data_lib.cc"],
+    hdrs = ["profile_data_lib.h"],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -29,9 +29,29 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "build_profile_data_nb_module",
+    srcs = ["build_profile_data_nb_module.cc"],
+    hdrs = ["build_profile_data_nb_module.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = [
+        "//xla/python:__pkg__",
+    ],
+    deps = [
+        ":profile_data_lib",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@nanobind",
+    ],
+)
+
 tsl_pybind_extension(
     name = "profile_data",
-    srcs = ["py_profile_data.cc"],
+    srcs = ["nb_module_profile_data.cc"],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -39,9 +59,7 @@ tsl_pybind_extension(
     pytype_srcs = ["profile_data.pyi"],
     visibility = ["//visibility:public"],
     deps = [
-        ":profile_data_lib",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        ":build_profile_data_nb_module",
         "@nanobind",
     ],
 )
