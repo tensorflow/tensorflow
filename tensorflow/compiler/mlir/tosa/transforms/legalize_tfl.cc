@@ -2349,19 +2349,16 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
   // If we know the output rank, we need to ensure the output shape is correct.
   ShapedType fc_type = mlir::cast<ShapedType>(fc_output.getType());
 
-  DenseI64ArrayAttr output_shape_attr;
-  if (output_type.hasRank()) {
-    output_shape_attr = rewriter.getDenseI64ArrayAttr(output_type.getShape());
+  llvm::SmallVector<int64_t> output_shape;
+  if (tfl_fc_op.getKeepNumDims()) {
+    const llvm::ArrayRef<int64_t> orig_input_shape = tfl_fc_op.getInput().getType().getShape();
+    output_shape.append(orig_input_shape.begin(), orig_input_shape.end() - 1);
+    output_shape.push_back(OC);
   } else {
-    // set output_shape to {N, OC} to match previous results
-    // with tosa::FullyConnectedOp
-    output_shape_attr = rewriter.getDenseI64ArrayAttr({N, OC});
+    output_shape.append({N, OC});
   }
 
-  auto output_shape_value =
-      (output_type.hasRank())
-          ? getTosaConstShape(rewriter, op->getLoc(), output_type.getShape())
-          : getTosaConstShape(rewriter, op->getLoc(), {N, OC});
+  auto output_shape_value = getTosaConstShape(rewriter, op->getLoc(), output_shape);
   fc_output = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(), UnrankedTensorType::get(fc_type.getElementType()),
       fc_output, output_shape_value);
