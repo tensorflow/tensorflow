@@ -13,36 +13,44 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <Python.h>
+
 #include <string>
 #include <vector>
 
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "nanobind/nanobind.h"  // from @nanobind
 #include "tensorflow/compiler/mlir/lite/python/converter_python_api.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
-#include "tensorflow/python/lib/core/pybind11_lib.h"
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
-PYBIND11_MODULE(_pywrap_converter_api, m) {
+namespace {
+
+inline nb::object PyoOrThrow(PyObject* ptr) {
+  if (PyErr_Occurred() || ptr == nullptr) {
+    throw nb::python_error();
+  }
+  return nb::steal<nb::object>(ptr);
+}
+
+}  // namespace
+
+NB_MODULE(_pywrap_converter_api, m) {
   m.def(
       "Convert",
-      [](py::object model_flags_proto_txt_raw,
-         py::object converter_flags_proto_txt_raw,
-         py::object input_contents_txt_raw, bool extended_return,
-         py::object debug_info_txt_raw,
-         const tensorflow::quantization::PyFunctionLibrary*
-             quantization_py_function_library) {
-        return tensorflow::PyoOrThrow(tflite::Convert(
+      [](nb::object model_flags_proto_txt_raw,
+         nb::object converter_flags_proto_txt_raw,
+         nb::object input_contents_txt_raw, bool extended_return,
+         nb::object debug_info_txt_raw) {
+        return PyoOrThrow(tflite::Convert(
             model_flags_proto_txt_raw.ptr(),
             converter_flags_proto_txt_raw.ptr(), input_contents_txt_raw.ptr(),
-            extended_return, debug_info_txt_raw.ptr(),
-            quantization_py_function_library));
+            extended_return, debug_info_txt_raw.ptr()));
       },
-      py::arg("model_flags_proto_txt_raw"),
-      py::arg("converter_flags_proto_txt_raw"),
-      py::arg("input_contents_txt_raw"), py::arg("extended_return") = false,
-      py::arg("debug_info_txt_raw") = py::none(),
-      py::arg("quantization_py_function_library") = py::none(),
+      nb::arg("model_flags_proto_txt_raw"),
+      nb::arg("converter_flags_proto_txt_raw"),
+      nb::arg("input_contents_txt_raw") = nb::none(),
+      nb::arg("extended_return") = false,
+      nb::arg("debug_info_txt_raw") = nb::none(),
       R"pbdoc(
       Convert a model represented in `input_contents`. `model_flags_proto`
       describes model parameters. `flags_proto` describes conversion
@@ -54,14 +62,14 @@ PYBIND11_MODULE(_pywrap_converter_api, m) {
     )pbdoc");
   m.def(
       "ExperimentalMlirQuantizeModel",
-      [](py::object input_contents_txt_raw, bool disable_per_channel,
+      [](nb::object input_contents_txt_raw, bool disable_per_channel,
          bool fully_quantize, int inference_type, int input_data_type,
          int output_data_type, bool enable_numeric_verify,
-         bool enable_whole_model_verify, py::object op_blocklist,
-         py::object node_blocklist, bool enable_variable_quantization,
+         bool enable_whole_model_verify, nb::object op_blocklist,
+         nb::object node_blocklist, bool enable_variable_quantization,
          bool disable_per_channel_for_dense_layers,
-         py::object debug_options_proto_txt_raw) {
-        return tensorflow::PyoOrThrow(tflite::MlirQuantizeModel(
+         nb::object debug_options_proto_txt_raw) {
+        return PyoOrThrow(tflite::MlirQuantizeModel(
             input_contents_txt_raw.ptr(), disable_per_channel, fully_quantize,
             inference_type, input_data_type, output_data_type,
             enable_numeric_verify, enable_whole_model_verify,
@@ -69,36 +77,36 @@ PYBIND11_MODULE(_pywrap_converter_api, m) {
             enable_variable_quantization, disable_per_channel_for_dense_layers,
             debug_options_proto_txt_raw.ptr()));
       },
-      py::arg("input_contents_txt_raw"), py::arg("disable_per_channel") = false,
-      py::arg("fully_quantize") = true, py::arg("inference_type") = 9,
-      py::arg("input_data_type") = 0, py::arg("output_data_type") = 0,
-      py::arg("enable_numeric_verify") = false,
-      py::arg("enable_whole_model_verify") = false,
-      py::arg("op_blocklist") = py::none(),
-      py::arg("node_blocklist") = py::none(),
-      py::arg("enable_variable_quantization") = false,
-      py::arg("disable_per_channel_for_dense_layers") = false,
-      py::arg("debug_options_proto_txt_raw") = nullptr,
+      nb::arg("input_contents_txt_raw"), nb::arg("disable_per_channel") = false,
+      nb::arg("fully_quantize") = true, nb::arg("inference_type") = 9,
+      nb::arg("input_data_type") = 0, nb::arg("output_data_type") = 0,
+      nb::arg("enable_numeric_verify") = false,
+      nb::arg("enable_whole_model_verify") = false,
+      nb::arg("op_blocklist") = nb::none(),
+      nb::arg("node_blocklist") = nb::none(),
+      nb::arg("enable_variable_quantization") = false,
+      nb::arg("disable_per_channel_for_dense_layers") = false,
+      nb::arg("debug_options_proto_txt_raw") = nullptr,
       R"pbdoc(
       Returns a quantized model.
     )pbdoc");
   m.def(
       "ExperimentalMlirSparsifyModel",
-      [](py::object input_contents_txt_raw) {
-        return tensorflow::PyoOrThrow(
+      [](nb::object input_contents_txt_raw) {
+        return PyoOrThrow(
             tflite::MlirSparsifyModel(input_contents_txt_raw.ptr()));
       },
-      py::arg("input_contents_txt_raw"),
+      nb::arg("input_contents_txt_raw"),
       R"pbdoc(
       Returns a sparsified model.
     )pbdoc");
   m.def(
       "RegisterCustomOpdefs",
-      [](py::object custom_opdefs_txt_raw) {
-        return tensorflow::PyoOrThrow(
+      [](nb::object custom_opdefs_txt_raw) {
+        return PyoOrThrow(
             tflite::RegisterCustomOpdefs(custom_opdefs_txt_raw.ptr()));
       },
-      py::arg("custom_opdefs_txt_raw"),
+      nb::arg("custom_opdefs_txt_raw"),
       R"pbdoc(
       Registers the given custom opdefs to the TensorFlow global op registry.
     )pbdoc");
@@ -107,10 +115,11 @@ PYBIND11_MODULE(_pywrap_converter_api, m) {
       []() {
         std::vector<std::string> collected_errors =
             tflite::RetrieveCollectedErrors();
-        pybind11::list serialized_message_list(collected_errors.size());
+        nb::list serialized_message_list;
         int i = 0;
         for (const auto& error_data : collected_errors) {
-          serialized_message_list[i++] = pybind11::bytes(error_data);
+          serialized_message_list.append(
+              nb::bytes(error_data.data(), error_data.size()));
         }
         return serialized_message_list;
       },

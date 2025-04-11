@@ -45,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/sparsity/sparsify_model.h"
 #include "tensorflow/compiler/mlir/lite/types.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -60,9 +59,7 @@ namespace tflite {
 PyObject* Convert(PyObject* model_flags_proto_txt_raw,
                   PyObject* converter_flags_proto_txt_raw,
                   PyObject* input_contents_txt_raw, bool extended_return,
-                  PyObject* debug_info_txt_raw,
-                  const tensorflow::quantization::PyFunctionLibrary*
-                      quantization_py_function_library) {
+                  PyObject* debug_info_txt_raw) {
   // Use Python C API to validate and convert arguments. In py3 (bytes),
   // in py2 (str).
   auto ConvertArg = [&](PyObject* obj, bool* error) {
@@ -151,8 +148,7 @@ PyObject* Convert(PyObject* model_flags_proto_txt_raw,
         &output_file_contents_txt);
   } else if (!model_flags.saved_model_dir().empty()) {
     status = tensorflow::ConvertSavedModelToTFLiteFlatBuffer(
-        model_flags, converter_flags, &output_file_contents_txt,
-        quantization_py_function_library);
+        model_flags, converter_flags, &output_file_contents_txt, nullptr);
   } else {
     tensorflow::GraphDef graph_def;
     if (!graph_def.ParseFromString(input_contents_txt)) {
