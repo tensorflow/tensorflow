@@ -133,10 +133,6 @@ class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
 };
 
 TEST_F(TritonGemmTest, FP8DotSmallTileDoesNotCrash) {
-  GTEST_SKIP() << "TODO(b/337839570): Re-enable once the bug is fixed. "
-                  "Currently the test is not representative of the issue. "
-                  "While the test passes, the end-to-end model fails.";
-
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
   }

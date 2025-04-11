@@ -172,22 +172,18 @@ class TritonGemmTestWithSplitK : public TritonGemmTest {
   }
 };
 
+// TODO(b/393299275): requires enabling mixed-type dots for f8xf8->bf16.
 TEST_F(TritonGemmTest, DISABLED_FP8DotSmallTileDoesNotCrash) {
-  GTEST_SKIP() << "TODO(b/337839570): Re-enable once the bug is fixed. "
-                  "Currently the test is not representative of the issue. "
-                  "While the test passes, the end-to-end model fails.";
-
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
   }
 
   constexpr absl::string_view kHloText = R"(
-HloModule m
-
 triton_dot {
-  %parameter_0 = f8e4m3fn[32,32]{1,0} parameter(0)
-  %parameter_1 = f8e4m3fn[32,32]{1,0} parameter(1)
-  ROOT %dot.1643 = bf16[32,32]{1,0} dot(f8e4m3fn[32,32]{1,0} %parameter_0, f8e4m3fn[32,32]{0,1} %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p0 = f8e4m3fn[32,32]{1,0} parameter(0)
+  p1 = f8e4m3fn[32,32]{1,0} parameter(1)
+  ROOT dot = bf16[32,32]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY e {
@@ -199,7 +195,10 @@ ENTRY e {
                          "split_k":1,"num_stages":2,"num_warps":2,
                          "num_ctas":1}}}
 })";
-  EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(Run(std::move(module_and_metadata.module),
+                  /*run_hlo_passes=*/false));
 }
 
 TEST_F(TritonTest, TestGemmWithTrivialNonContractingDimension) {
