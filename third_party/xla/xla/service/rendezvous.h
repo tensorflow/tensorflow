@@ -340,6 +340,10 @@ absl::StatusOr<std::shared_ptr<R>> Rendezvous(
     internal::AwaitAndLogIfStuck(*state, id, name, warn_stuck_timeout,
                                  terminate_timeout);
   } else {
+    // Mark rendezvous as completed, so that we can immediately start a new
+    // rendezvous with the same key.
+    rendezvous.Complete(key);
+
     // Last thread to arrive executes the function and completes rendezvous by
     // making result available to all participants. All other participants will
     // be notified via `state->ready` flag when result is ready, and we rely on
@@ -362,10 +366,6 @@ absl::StatusOr<std::shared_ptr<R>> Rendezvous(
 
     // Notify awaiting participants that result is ready.
     state->cv.SignalAll();
-
-    // Mark rendezvous as completed, so that we can immediately start a new
-    // rendezvous with the same key.
-    rendezvous.Complete(key);
   }
 
   return state->result;
