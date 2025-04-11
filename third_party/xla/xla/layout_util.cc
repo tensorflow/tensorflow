@@ -119,10 +119,18 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
   return MakeLayout(layout);
 }
 
+/* static */ bool LayoutUtil::HasDescendingLayout(const Layout& layout) {
+  return absl::c_is_sorted(layout.minor_to_major(), std::greater<int64_t>());
+}
+
 /* static */ Layout LayoutUtil::MakeAscendingLayout(int64_t num_dims) {
   std::vector<int64_t> layout(num_dims);
   std::iota(layout.begin(), layout.end(), static_cast<int64_t>(0));
   return MakeLayout(layout);
+}
+
+/* static */ bool LayoutUtil::HasAscendingLayout(const Layout& layout) {
+  return absl::c_is_sorted(layout.minor_to_major(), std::less<int64_t>());
 }
 
 /* static */ Layout LayoutUtil::MakeLayoutFromMajorToMinor(

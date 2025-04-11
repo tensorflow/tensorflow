@@ -63,9 +63,15 @@ class LayoutUtil {
   // dimensions.
   static Layout MakeDescendingLayout(int64_t num_dims);
 
+  // Returns true if the layout is descending.
+  static bool HasDescendingLayout(const Layout& layout);
+
   // Returns a layout with ascending ((i.e. {0, 1, ... n-1}) minor-to-major
   // dimensions.
   static Layout MakeAscendingLayout(int64_t num_dims);
+
+  // Returns true if the layout is ascending.
+  static bool HasAscendingLayout(const Layout& layout);
 
   // Returns default layout for the given shape.
   static Layout GetDefaultLayoutForShape(const Shape& shape);
