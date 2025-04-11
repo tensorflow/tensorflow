@@ -31,6 +31,7 @@ cc_library(
         "//xla/service/gpu:__subpackages__",
     ],
     deps = [
+        ":emitter_helpers",
         ":fusion_emitter",
         ":fusion_emitter_legacy_matmul",
         "//xla:shape_util",

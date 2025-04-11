@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
@@ -257,11 +258,14 @@ std::optional<TritonFusion::LaunchConfig> TritonFusion::launch_config() const {
     // cannot codegen it.
     int64_t num_blocks =
         GetNumberOfBlocks(analysis_.fusion_root(0).shape().dimensions(),
-                          block_level_parameters.output_tile_sizes[0]);
+                          triton::GetPaddedTileSizes(
+                              block_level_parameters.output_tile_sizes[0]));
     for (int64_t i = 1; i < analysis_.fusion_root_count(); ++i) {
-      CHECK_EQ(GetNumberOfBlocks(analysis_.fusion_root(i).shape().dimensions(),
-                                 block_level_parameters.output_tile_sizes[i]),
-               num_blocks);
+      CHECK_EQ(
+          GetNumberOfBlocks(analysis_.fusion_root(i).shape().dimensions(),
+                            triton::GetPaddedTileSizes(
+                                block_level_parameters.output_tile_sizes[i])),
+          num_blocks);
     }
 
     LaunchConfig launch_config;

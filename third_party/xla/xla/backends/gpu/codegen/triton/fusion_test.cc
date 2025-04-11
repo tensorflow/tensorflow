@@ -73,8 +73,11 @@ ENTRY entry_computation {
   std::optional<TritonFusion::LaunchConfig> launch_config =
       triton_fusion->launch_config();
   ASSERT_NE(launch_config, std::nullopt);
+  // Note that the padded tile size (4) is used to compute the number of blocks.
+  // The triton emitter will pad to the next power of 2, so when computing
+  // launch dimensions we need to consider this.
   EXPECT_EQ(launch_config->launch_dimensions.num_blocks(),
-            /*ceil(125 / 3)=*/42);
+            /*ceil(125 / 4)=*/32);
   EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(),
             /*32 * num_warps=*/128);
   EXPECT_EQ(launch_config->block_level_parameters.output_tile_sizes.size(), 1);
