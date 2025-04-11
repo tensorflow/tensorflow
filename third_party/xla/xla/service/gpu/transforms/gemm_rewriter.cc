@@ -27,6 +27,7 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <tuple>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
