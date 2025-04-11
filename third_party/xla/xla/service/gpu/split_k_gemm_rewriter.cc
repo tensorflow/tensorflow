@@ -436,6 +436,7 @@ absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
   HloInstruction* zero =
       dot_fusion->parent()->AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::Zero(root->shape().element_type())));
+  auto initial_dot_fusion_users = dot_fusion->users();
   // The batch dimension to reduce is the first one by construction.
   TF_ASSIGN_OR_RETURN(HloInstruction * reduce,
                       MakeReduceHlo(dot_fusion, zero, /*dimensions=*/{0},
@@ -452,8 +453,9 @@ absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
     dot_fusion->parent()->set_root_instruction(split_k_root,
                                                /*accept_different_shape=*/true);
   } else {
-    TF_RETURN_IF_ERROR(
-        dot_fusion->ReplaceAllUsesWithDifferentShape(split_k_root));
+    // Replace all users expect for split_k_root created above to avoid cycles.
+    TF_RETURN_IF_ERROR(dot_fusion->ReplaceAllUsesWithDifferentShape(
+        initial_dot_fusion_users, split_k_root));
   }
 
   return absl::OkStatus();
