@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_HLO_ANALYSIS_HLO_REPLICATION_ANALYSIS_H_
 #define XLA_HLO_ANALYSIS_HLO_REPLICATION_ANALYSIS_H_
 
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -95,7 +97,8 @@ class HloReplicationAnalysis {
 
     template <typename H>
     friend H AbslHashValue(H h, const HloReplication& r) {
-      return H::combine(std::move(h), r.state_, r.device_set_root_per_replica_);
+      return H::combine(std::move(h), r.state_,
+                        *r.device_set_root_per_replica_);
     }
 
    private:
@@ -117,7 +120,8 @@ class HloReplicationAnalysis {
     // If cross_partition_spmd is false, groups_for_replicas_[k]'s size equals
     // the number of replicas, and within partition k, groups_for_replicas_[k]
     // maps each replica to the smallest replica ID in the set.
-    std::vector<std::vector<int64_t>> device_set_root_per_replica_;
+    std::shared_ptr<std::vector<std::vector<int64_t>>>
+        device_set_root_per_replica_;
   };
 
   static HloReplication DetermineHloInstructionIsReplicated(
