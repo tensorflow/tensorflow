@@ -22,10 +22,13 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/profiler/lib:profiler_session",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + if_not_android([
         ":profiler_session",
-        "//tensorflow/core/profiler/convert:xplane_to_step_stats",
+        "@org_xprof//xprof/convert:xplane_to_step_stats",
     ]),
 )
 
@@ -111,6 +114,8 @@ cc_library(
     hdrs = ["profiler_controller.h"],
     deps = [
         "@com_google_absl//absl/base:core_headers",
+        "@local_tsl//tsl/profiler/lib:profiler_controller",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 

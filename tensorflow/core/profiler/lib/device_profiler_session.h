@@ -15,15 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_DEVICE_PROFILER_SESSION_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_DEVICE_PROFILER_SESSION_H_
 
+#include <memory>
+
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/status.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/convert/xplane_to_step_stats.h"
-#include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "xprof/convert/xplane_to_step_stats.h"  // from @org_xprof
 #endif
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 
