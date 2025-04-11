@@ -343,11 +343,12 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
          ShapeUtil::ElementsIn(instr->operand(0)->shape()) < 1024)) {
       return true;
     }
+    // TODO(b/409716406): Reconsider cases where Pad can be supported.
     return HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
-                            HloOpcode::kPad, HloOpcode::kCollectivePermute,
-                            HloOpcode::kConvert, HloOpcode::kReshape,
-                            HloOpcode::kAllReduce, HloOpcode::kTranspose,
-                            HloOpcode::kBroadcast, HloOpcode::kAllGather>(i) ||
+                            HloOpcode::kCollectivePermute, HloOpcode::kConvert,
+                            HloOpcode::kReshape, HloOpcode::kAllReduce,
+                            HloOpcode::kTranspose, HloOpcode::kBroadcast,
+                            HloOpcode::kAllGather>(i) ||
            (multi_uses_pipelining && i->IsElementwise()) ||
            i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep) ||
            i->IsCustomCall(CollectivePipeliner::kSunkByPreviousStep);
