@@ -15,7 +15,10 @@
 #include "xla/hlo/tools/hlo_diff/matchers/hlo_gumgraph_matcher.h"
 
 #include <algorithm>
-#include <cstdint>
+#include <cstddef>
+#include <iomanip>
+#include <iostream>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -44,6 +47,18 @@ constexpr double kOperandsFingerprintsMatchScore = 0.5;
 constexpr double kMetadataOpNameMatchScore = 0.1;
 constexpr double kMetadataSourceFileMatchScore = 0.1;
 constexpr double kMetadataSourceLineMatchScore = 0.1;
+
+constexpr int kProgressBarWidth = 60;
+constexpr char kProgressBarBlock = '|';
+constexpr char kProgressBarEmpty = ' ';
+
+void PrintProgress(int percentage) {
+  int lpad = static_cast<int>(percentage / 100.0 * kProgressBarWidth);
+  int rpad = kProgressBarWidth - lpad;
+  std::cout << "\r" << std::setw(3) << percentage << "% ["
+            << std::string(lpad, kProgressBarBlock)
+            << std::string(rpad, kProgressBarEmpty) << "]" << std::flush;
+}
 
 struct NodePairSimilarity {
   const HloInstructionNode* left;
@@ -419,7 +434,15 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
   int current_mapping_count = mappings.left_to_right_instruction_map.size();
   std::vector<const HloInstructionNode*> left_postorder = GetAllNodesInDfsOrder(
       left_.GetRoot(), DfsTraversalOrder::kPostOrder, left_.GetNodeCount());
-  for (const HloInstructionNode* left_node : left_postorder) {
+  int progress = 0;
+  int total_steps = left_postorder.size();
+  for (size_t i = 0; i < total_steps; ++i) {
+    const auto* left_node = left_postorder[i];
+    int current_progress = static_cast<int>((i * 100.0) / total_steps);
+    if (current_progress > progress) {
+      PrintProgress(current_progress);
+      progress = current_progress;
+    }
     // Skip matched nodes or ones without children.
     if (mappings.InstructionMapContainsLeft(left_node) ||
         left_node->children.empty()) {
