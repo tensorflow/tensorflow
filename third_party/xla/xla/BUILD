@@ -208,15 +208,6 @@ cc_library(
 )
 
 cc_library(
-    name = "test",
-    testonly = 1,
-    hdrs = ["test.h"],
-    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/testlib:test instead.",
-    visibility = internal_visibility([":friends"]),
-    deps = ["//xla/hlo/testlib:test"],
-)
-
-cc_library(
     name = "types",
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_portable(),
@@ -940,15 +931,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:protobuf",
     ],
-)
-
-cc_library(
-    name = "test_helpers",
-    testonly = 1,
-    hdrs = ["test_helpers.h"],
-    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/testlib:test_helpers instead.",
-    visibility = internal_visibility([":friends"]),
-    deps = ["//xla/hlo/testlib:test_helpers"],
 )
 
 cc_library(
