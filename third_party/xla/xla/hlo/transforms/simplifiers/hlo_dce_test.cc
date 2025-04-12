@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -30,12 +31,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -799,6 +802,7 @@ TEST_F(HloDceTest, MultiOutputFusionRemoveUnusedTupleElementAdjustTuple) {
           m::Tuple(m::Negate(), m::Add()).WithShapeEqualTo(&expected_shape)));
   EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
 }
+
 TEST_F(HloDceTest,
        MultiOutputFusionRemoveUnusedTupleElementWithControlAdjustTupleAndDep) {
   constexpr char kHloString[] = R"(
@@ -831,6 +835,120 @@ TEST_F(HloDceTest,
                                 m::Fusion(&fusion))));
   EXPECT_EQ(add2->control_predecessors().size(), 1);
   EXPECT_EQ(add2->control_predecessors()[0], fusion);
+}
+
+TEST_F(HloDceTest, UnusedCalledParameter) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  arg.1 = s32[] parameter(1)
+  ROOT call.0 = (s32[]) call(arg.0, arg.1), to_apply={
+    arg.0 = s32[] parameter(0)
+    arg.1 = s32[] parameter(1)
+    ROOT tuple.0 = tuple(arg.0)
+  }
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloDCE dce(/*remove_cross_partition_collective_ops=*/false,
+             /*use_call_analysis=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloComputation* main = module->entry_computation();
+  EXPECT_EQ(main->parameter_instructions().size(), 2);
+
+  HloInstruction* call0 = main->root_instruction();
+  ASSERT_EQ(call0->opcode(), HloOpcode::kCall);
+  // arg.1 should have been removed.
+  EXPECT_EQ(call0->operand_count(), 1);
+  EXPECT_EQ(call0->operand(0), main->parameter_instruction(0));
+
+  HloComputation* called_computation = call0->to_apply();
+  EXPECT_EQ(called_computation->parameter_instructions().size(), 1);
+}
+
+TEST_F(HloDceTest, UnusedAsyncParameter) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  arg.1 = s32[] parameter(1)
+  call-start.0 = ((s32[], s32[]), (s32[]), s32[]) call-start(arg.0, arg.1), to_apply={
+    arg.0 = s32[] parameter(0)
+    arg.1 = s32[] parameter(1)
+    ROOT tuple.0 = tuple(arg.0)
+  }, async_execution_thread="thread"
+  ROOT call-done.0 = (s32[]) call-done(call-start.0)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloDCE dce(/*remove_cross_partition_collective_ops=*/false,
+             /*use_call_analysis=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloComputation* main = module->entry_computation();
+  EXPECT_EQ(main->parameter_instructions().size(), 2);
+
+  HloInstruction* call_done0 = main->root_instruction();
+  ASSERT_EQ(call_done0->opcode(), HloOpcode::kAsyncDone);
+  HloInstruction* call_start0 = call_done0->async_chain_start();
+  // arg.1 should have been removed.
+  EXPECT_EQ(call_start0->operand_count(), 1);
+  EXPECT_EQ(call_start0->operand(0), main->parameter_instruction(0));
+
+  HloComputation* async_wrapped_computation =
+      call_start0->async_wrapped_computation();
+  EXPECT_EQ(async_wrapped_computation->parameter_instructions().size(), 1);
+
+  HloComputation* async_computation =
+      call_start0->async_wrapped_instruction()->to_apply();
+  EXPECT_EQ(async_computation->parameter_instructions().size(), 1);
+}
+
+TEST_F(HloDceTest, IndirectComputationRemoval) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  call.0 = (s32[]) call(arg.0), to_apply={
+    arg.0 = s32[] parameter(0)
+    ROOT tuple.0 = tuple(arg.0)
+  }
+  gte.0 = get-tuple-element(call.0), index=0
+  ROOT call.1 = (s32[]) call(gte.0), to_apply={
+    arg.0 = s32[] parameter(0)
+    zero.0 = s32[] constant(0)
+    ROOT tuple.0 = tuple(zero.0)
+  }
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloDCE dce(/*remove_cross_partition_collective_ops=*/false,
+             /*use_call_analysis=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  // call.0 should be removed.
+  EXPECT_EQ(module->computation_count(), 2);
+
+  HloComputation* main = module->entry_computation();
+  EXPECT_EQ(main->parameter_instructions().size(), 1);
+
+  HloInstruction* call1 = module->entry_computation()->root_instruction();
+  ASSERT_EQ(call1->opcode(), HloOpcode::kCall);
+  EXPECT_EQ(call1->operand_count(), 0);
 }
 }  // namespace
 }  // namespace xla

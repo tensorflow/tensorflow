@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/call_graph.h"
 
 namespace xla {
 
@@ -33,20 +34,23 @@ namespace xla {
 // dead if it is not the entry computation of the module and it is not reachable
 // from the entry computation.
 //
-// This pass does not remove dead parameter instructions, as parameter
-// instructions cannot be deleted.
+// This pass does not remove dead parameter instructions, unless call analysis
+// is enabled. Using this will slow down compilation. This is only beneficial
+// to do so if the graph is not inlined.
 class HloDCE : public HloModulePass {
  public:
-  HloDCE() : remove_cross_partition_collective_ops_(false) {}
-  explicit HloDCE(bool remove_cross_partition_collective_ops)
+  explicit HloDCE(bool remove_cross_partition_collective_ops = false,
+                  bool use_call_analysis = false)
       : remove_cross_partition_collective_ops_(
-            remove_cross_partition_collective_ops) {}
+            remove_cross_partition_collective_ops),
+        use_call_analysis_(use_call_analysis) {}
   ~HloDCE() override {}
   absl::string_view name() const override { return "dce"; }
 
   // Run DCE on a computation.
   static absl::StatusOr<bool> RunOnComputation(
-      HloComputation* computation, bool remove_cross_partition_collective_ops);
+      HloComputation* computation, bool remove_cross_partition_collective_ops,
+      CallGraph* call_graph = nullptr);
 
   // Run the pass on the given module. Returns whether the module was changed
   // (instructions were removed).
@@ -57,6 +61,7 @@ class HloDCE : public HloModulePass {
 
  private:
   bool remove_cross_partition_collective_ops_;
+  bool use_call_analysis_;
 };
 
 }  // namespace xla
