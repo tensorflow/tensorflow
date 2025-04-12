@@ -57,7 +57,7 @@ bool IsSlowLoopTransposeFusion(const HloFusionInstruction* fusion) {
   // is neither the minormost nor the second minormost dimension in the output,
   // and the output minormost dimension is swapped with the new minormost
   // dimension.
-  int64_t rank = root->shape().dimensions_size();
+  int64_t rank = root->shape().dimensions().size();
 
   // The transpose dimension grouper has run, so it should be enough to check
   // that the minormost dimension's index within the result is smaller than
