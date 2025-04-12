@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
@@ -65,8 +64,21 @@ class CommandBuffer {
     Command& operator=(Command&&) = default;
   };
 
-  // Builder constructs nested command buffers owned by a parent command buffer.
-  using Builder = std::function<absl::Status(CommandBuffer*)>;
+  // A callback to construct a nested `command_buffer` by creating commands in
+  // it. Created commands must execute after `dependencies`, and the callback
+  // must return a vector of commands that will be used as external dependencies
+  // for the next callback recording into the same command buffer.
+  using CreateCommands =
+      absl::AnyInvocable<absl::StatusOr<std::vector<const Command*>>(
+          CommandBuffer* command_buffer,
+          absl::Span<const Command* const> dependencies)>;
+
+  // A callback to update a nested `command_buffer` owned by a conditional
+  // command. At command buffer update time we can't change the dependency
+  // structure of the previously create commands, and can only update the
+  // parameters of the commands (i.e. device memory pointers).
+  using UpdateCommands =
+      absl::AnyInvocable<absl::Status(CommandBuffer* command_buffer)>;
 
   CommandBuffer() = default;
   virtual ~CommandBuffer() = default;
@@ -212,21 +224,21 @@ class CommandBuffer {
   //
   // See: https://github.com/openxla/stablehlo/blob/main/docs/spec.md#case
   virtual absl::StatusOr<const Command*> CreateCase(
-      DeviceMemory<int32_t> index, std::vector<Builder> branches,
+      DeviceMemory<int32_t> index, std::vector<CreateCommands> create_branches,
       absl::Span<const Command* const> dependencies) = 0;
 
   virtual absl::StatusOr<const Command*> CreateCase(
-      DeviceMemory<bool> index, std::vector<Builder> branches,
+      DeviceMemory<bool> index, std::vector<CreateCommands> create_branches,
       absl::Span<const Command* const> dependencies) = 0;
 
   // Updates a Case command.
-  virtual absl::Status UpdateCase(const Command* command,
-                                  DeviceMemory<int32_t> index,
-                                  std::vector<Builder> branches) = 0;
+  virtual absl::Status UpdateCase(
+      const Command* command, DeviceMemory<int32_t> index,
+      std::vector<UpdateCommands> update_branches) = 0;
 
-  virtual absl::Status UpdateCase(const Command* command,
-                                  DeviceMemory<bool> index,
-                                  std::vector<Builder> branches) = 0;
+  virtual absl::Status UpdateCase(
+      const Command* command, DeviceMemory<bool> index,
+      std::vector<UpdateCommands> update_branches) = 0;
 
   // Creates a conditional operation that will execute a command buffer
   // constructed by the `cond_builder` that must update `pred` value, and then
@@ -242,14 +254,15 @@ class CommandBuffer {
   //     cond_builder()
   //
   virtual absl::StatusOr<const Command*> CreateWhile(
-      DeviceMemory<bool> pred, Builder cond_builder, Builder body_builder,
+      DeviceMemory<bool> pred, CreateCommands create_cond,
+      CreateCommands create_body,
       absl::Span<const Command* const> dependencies) = 0;
 
   // Updates a While command.
   virtual absl::Status UpdateWhile(const Command* command,
                                    DeviceMemory<bool> pred,
-                                   Builder cond_builder,
-                                   Builder body_builder) = 0;
+                                   UpdateCommands update_cond,
+                                   UpdateCommands update_body) = 0;
 
   // Submits the command buffer for execution.
   virtual absl::Status Submit(Stream* stream) {

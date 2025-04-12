@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/casts.h"
 
 namespace stream_executor::gpu {
 
@@ -87,22 +87,6 @@ class GpuCommandBuffer : public CommandBuffer {
 
     // A handle to the gpu graph node corresponding to a command.
     GraphNodeHandle handle = nullptr;
-  };
-
-  // A GPU command recorded for the If operation.
-  struct GpuIfCommand : public CommandBuffer::Command {
-    GraphConditionalHandle then_conditional;
-    GraphNodeHandle set_condition_node;
-    GraphConditionalNodeHandle then_conditional_node;
-  };
-
-  // A GPU command recorded for the IfElse operation.
-  struct GpuIfElseCommand : public CommandBuffer::Command {
-    GraphConditionalHandle then_conditional;
-    GraphConditionalHandle else_conditional;
-    GraphNodeHandle set_condition_node;
-    GraphConditionalNodeHandle then_conditional_node;
-    GraphConditionalNodeHandle else_conditional_node;
   };
 
   // A GPU command recorded for the Case operation.
@@ -168,25 +152,27 @@ class GpuCommandBuffer : public CommandBuffer {
       absl::Span<DeviceMemoryBase> operands) override;
 
   absl::StatusOr<const Command*> CreateCase(
-      DeviceMemory<int32_t> index, std::vector<Builder> branches,
+      DeviceMemory<int32_t> index, std::vector<CreateCommands> create_branches,
       absl::Span<const Command* const> dependencies) override;
 
   absl::StatusOr<const Command*> CreateCase(
-      DeviceMemory<bool> index, std::vector<Builder> branches,
+      DeviceMemory<bool> index, std::vector<CreateCommands> create_branches,
       absl::Span<const Command* const> dependencies) override;
 
   absl::Status UpdateCase(const Command* command, DeviceMemory<int32_t> index,
-                          std::vector<Builder> branches) override;
+                          std::vector<UpdateCommands> update_branches) override;
 
   absl::Status UpdateCase(const Command* command, DeviceMemory<bool> index,
-                          std::vector<Builder> branches) override;
+                          std::vector<UpdateCommands> update_branches) override;
 
   absl::StatusOr<const Command*> CreateWhile(
-      DeviceMemory<bool> pred, Builder cond_builder, Builder body_builder,
+      DeviceMemory<bool> pred, CreateCommands create_cond,
+      CreateCommands create_body,
       absl::Span<const Command* const> dependencies) override;
 
   absl::Status UpdateWhile(const Command* command, DeviceMemory<bool> pred,
-                           Builder cond_builder, Builder body_builder) override;
+                           UpdateCommands update_cond,
+                           UpdateCommands update_body) override;
 
   absl::Status Finalize() override;
   absl::Status Update() override;
@@ -219,8 +205,6 @@ class GpuCommandBuffer : public CommandBuffer {
 
   absl::StatusOr<std::vector<GraphConditionalHandle>> CreateConditionalHandles(
       size_t num_handles);
-
-  Dependencies GetAutoDependencies() const;
 
   //===--------------------------------------------------------------------===//
   // APIs for launching kernels to update conditional handles.
@@ -281,11 +265,12 @@ class GpuCommandBuffer : public CommandBuffer {
  private:
   absl::StatusOr<const Command*> CreateCase(
       DeviceMemory<uint8_t> index, bool index_is_bool,
-      std::vector<Builder> branches,
+      std::vector<CreateCommands> create_branches,
       absl::Span<const Command* const> dependencies);
 
   absl::Status UpdateCase(const Command* command, DeviceMemory<uint8_t> index,
-                          bool index_is_bool, std::vector<Builder> branches);
+                          bool index_is_bool,
+                          std::vector<UpdateCommands> update_branches);
 
   // Appends a new command to the command buffer.
   template <typename T>
@@ -295,15 +280,8 @@ class GpuCommandBuffer : public CommandBuffer {
   }
 
   // Converts a list of command dependencies to a list of graph node handles.
-  Dependencies ToGraphNodeDependencies(
-      absl::Span<const Command* const> dependencies) {
-    Dependencies handles;
-    for (const Command* dependency : dependencies) {
-      auto* gpu_command = tsl::down_cast<const GpuCommand*>(dependency);
-      handles.push_back(gpu_command->handle);
-    }
-    return handles;
-  }
+  std::vector<GraphNodeHandle> ToGraphNodeDependencies(
+      absl::Span<const Command* const> dependencies);
 
   //===--------------------------------------------------------------------===//
   // APIs for creating and updating underlying GPU graph nodes.
@@ -369,14 +347,6 @@ class GpuCommandBuffer : public CommandBuffer {
       const KernelArgsPackedArrayBase& args) = 0;
 
   //===--------------------------------------------------------------------===//
-
-  // Creates a new no-op node acting as a barrier and adds it to the graph.
-  virtual absl::StatusOr<GraphNodeHandle> CreateBarrierNode(
-      absl::Span<const GraphNodeHandle> dependencies) = 0;
-
-  // Enables or disables the execution of the given node in the graph.
-  virtual absl::Status SetNodeExecutionEnabled(GraphNodeHandle node_handle,
-                                               bool enabled) = 0;
 
   // Launches an instantiated graph. Only supported on primary command buffers.
   virtual absl::Status LaunchGraph(Stream* stream) = 0;
