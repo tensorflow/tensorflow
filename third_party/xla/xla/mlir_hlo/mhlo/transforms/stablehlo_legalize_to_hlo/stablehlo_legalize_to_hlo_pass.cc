@@ -67,8 +67,30 @@ struct AddDependencyOpToMhoTokenConverter
 void legalDirectStablehloToHloConversionOps(ConversionTarget& target) {
   target.addLegalOp<
       // go/keep-sorted start
-      stablehlo::AddOp, stablehlo::ConstantOp, stablehlo::DynamicSliceOp,
-      stablehlo::SliceOp
+      stablehlo::AbsOp, stablehlo::CbrtOp, stablehlo::SqrtOp, stablehlo::TanOp,
+      stablehlo::AddOp, stablehlo::AddOp, stablehlo::AllGatherOp,
+      stablehlo::AfterAllOp, stablehlo::AndOp, stablehlo::BatchNormInferenceOp,
+      stablehlo::Atan2Op, stablehlo::BroadcastInDimOp, stablehlo::BroadcastOp,
+      stablehlo::CeilOp, stablehlo::ClzOp, stablehlo::ConvertOp,
+      stablehlo::CholeskyOp, stablehlo::CollectivePermuteOp,
+      stablehlo::ComplexOp, stablehlo::ConvolutionOp, stablehlo::CosineOp,
+      stablehlo::ConcatenateOp, stablehlo::CreateTokenOp, stablehlo::ConstantOp,
+      stablehlo::DivOp, stablehlo::MaxOp, stablehlo::EinsumOp, stablehlo::FftOp,
+      stablehlo::DynamicUpdateSliceOp, stablehlo::DynamicBroadcastInDimOp,
+      stablehlo::ExpOp, stablehlo::IsFiniteOp, stablehlo::GetTupleElementOp,
+      stablehlo::Expm1Op, stablehlo::CrossReplicaSumOp, stablehlo::FloorOp,
+      stablehlo::GetDimensionSizeOp, stablehlo::NegOp, stablehlo::NotOp,
+      stablehlo::ImagOp, stablehlo::DynamicSliceOp, stablehlo::GatherOp,
+      stablehlo::LogOp, stablehlo::LogisticOp, stablehlo::Log1pOp,
+      stablehlo::MinOp, stablehlo::MulOp, stablehlo::PowOp, stablehlo::OrOp,
+      stablehlo::PopulationCountOp, stablehlo::RsqrtOp, stablehlo::SelectOp,
+      stablehlo::ReplicaIdOp, stablehlo::RealOp, stablehlo::RoundNearestEvenOp,
+      stablehlo::RoundOp, stablehlo::ReverseOp, stablehlo::RemOp,
+      stablehlo::ShiftRightArithmeticOp, stablehlo::ShiftRightLogicalOp,
+      stablehlo::SliceOp, stablehlo::TanhOp, stablehlo::TransposeOp,
+      stablehlo::SubtractOp, stablehlo::SignOp, stablehlo::SineOp,
+      stablehlo::TorchIndexSelectOp, stablehlo::ShiftLeftOp,
+      stablehlo::TriangularSolveOp, stablehlo::TupleOp, stablehlo::XorOp
       // go/keep-sorted end
       >();
 }
