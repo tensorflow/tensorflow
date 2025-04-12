@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <limits.h>
 
+#include <memory>
+
 #include "xla/tsl/lib/hash/crc32c.h"
 #include "xla/tsl/lib/io/buffered_inputstream.h"
 #include "xla/tsl/lib/io/compression.h"
@@ -60,8 +62,8 @@ RecordReader::RecordReader(RandomAccessFile* file,
       input_stream_(new RandomAccessInputStream(file)),
       last_read_failed_(false) {
   if (options.buffer_size > 0) {
-    input_stream_.reset(new BufferedInputStream(input_stream_.release(),
-                                                options.buffer_size, true));
+    input_stream_ = std::make_unique<BufferedInputStream>(
+        input_stream_.release(), options.buffer_size, true);
   }
 #if defined(IS_SLIM_BUILD)
   if (options.compression_type != RecordReaderOptions::NONE) {
@@ -69,14 +71,14 @@ RecordReader::RecordReader(RandomAccessFile* file,
   }
 #else
   if (options.compression_type == RecordReaderOptions::ZLIB_COMPRESSION) {
-    input_stream_.reset(new ZlibInputStream(
+    input_stream_ = std::make_unique<ZlibInputStream>(
         input_stream_.release(), options.zlib_options.input_buffer_size,
-        options.zlib_options.output_buffer_size, options.zlib_options, true));
+        options.zlib_options.output_buffer_size, options.zlib_options, true);
   } else if (options.compression_type ==
              RecordReaderOptions::SNAPPY_COMPRESSION) {
-    input_stream_.reset(
-        new SnappyInputStream(input_stream_.release(),
-                              options.snappy_options.output_buffer_size, true));
+    input_stream_ = std::make_unique<SnappyInputStream>(
+        input_stream_.release(), options.snappy_options.output_buffer_size,
+        true);
   } else if (options.compression_type == RecordReaderOptions::NONE) {
     // Nothing to do.
   } else {
@@ -171,7 +173,7 @@ absl::Status RecordReader::GetMetadata(Metadata* md) {
       ++entries;
     }
 
-    cached_metadata_.reset(new Metadata());
+    cached_metadata_ = std::make_unique<Metadata>();
     cached_metadata_->stats.entries = entries;
     cached_metadata_->stats.data_size = data_size;
     cached_metadata_->stats.file_size =
