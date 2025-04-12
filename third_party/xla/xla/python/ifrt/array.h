@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/macros.h"
 #include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
