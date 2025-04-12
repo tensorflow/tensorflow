@@ -149,13 +149,6 @@ static se::CommandBuffer::Builder CreateExecutionScopeBuilder(
   };
 }
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands>
-CommandBufferCmd::RecordedCommands::Create(
-    absl::StatusOr<const se::CommandBuffer::Command*> command) {
-  if (!command.ok()) return command.status();
-  return RecordedCommands{{*command}};
-}
-
 //===----------------------------------------------------------------------===//
 // CommandBufferCmd::RecordAction helpers.
 //===----------------------------------------------------------------------===//
@@ -168,18 +161,16 @@ using UpdateCommand =
     absl::FunctionRef<absl::Status(const se::CommandBuffer::Command* command)>;
 
 // Handles a record action by calling one of the user-provided functions.
-static absl::StatusOr<CommandBufferCmd::RecordedCommands> Handle(
+static absl::StatusOr<const se::CommandBuffer::Command*> Handle(
     CommandBufferCmd::RecordAction action, CreateCommand create_command,
     UpdateCommand update_command) {
   if (auto* create = std::get_if<CommandBufferCmd::RecordCreate>(&action)) {
-    return CommandBufferCmd::RecordedCommands::Create(
-        create_command(create->dependencies));
+    return create_command(create->dependencies);
   }
 
   if (auto* update = std::get_if<CommandBufferCmd::RecordUpdate>(&action)) {
-    auto* command = update->recorded_commands.commands[0];
-    TF_RETURN_IF_ERROR(update_command(command));
-    return std::move(update->recorded_commands);
+    TF_RETURN_IF_ERROR(update_command(update->command));
+    return update->command;
   }
 
   return Internal("Invalid record action");
@@ -261,23 +252,12 @@ absl::Status CommandBufferCmdSequence::Initialize(
   return absl::OkStatus();
 }
 
-static absl::string_view RecordModeString(
-    CommandBufferCmdSequence::RecordMode mode) {
-  switch (mode) {
-    case CommandBufferCmdSequence::RecordMode::kExclusive:
-      return "exclusive";
-    case CommandBufferCmdSequence::RecordMode::kConditional:
-      return "conditional";
-  }
-}
-
 absl::Status CommandBufferCmdSequence::Record(
     const Thunk::ExecuteParams& execute_params,
     const CommandBufferCmd::RecordParams& record_params,
     se::CommandBuffer* command_buffer, RecordMode mode) {
-  VLOG(3) << "Record " << commands_.size() << " commands into command buffer"
-          << "; mode=" << RecordModeString(mode);
-  uint64_t start_micros = tsl::Env::Default()->NowMicros();
+  VLOG(3) << "Record " << commands_.size()
+          << " commands into command buffer; mode=" << absl::StrCat(mode);
 
   if (mode == RecordMode::kExclusive) {
     if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
@@ -285,62 +265,136 @@ absl::Status CommandBufferCmdSequence::Record(
     }
   }
 
-  // Keep a state associated with commands in the sequence in the state manager.
-  CommandBufferCmd::StateManager& state = record_params.state;
-
-  // If the command buffer is in update state, it means that we already recorded
-  // all commands into the underlying command buffer and we need to update them.
-  bool is_update = command_buffer->state() == se::CommandBuffer::State::kUpdate;
-
-  for (std::unique_ptr<CommandBufferCmd>& command : commands_) {
-    if (execute_params.mock_collectives &&
-        dynamic_cast<CollectiveCmd*>(command.get())) {
-      continue;
-    }
-
-    std::optional<tsl::profiler::ScopedAnnotation> annotation =
-        GetKernelAnnotation(command->profile_annotation());
-
-    if (is_update) {
-      // Update existing commands in the command buffer.
-      auto* record_state =
-          state.GetOrNull<RecordState>(command.get(), command_buffer);
-      DCHECK(record_state) << "Record state must be not null for "
-                           << command->ToString();
-
-      auto record_action = CommandBufferCmd::RecordUpdate{
-          std::move(record_state->recorded_commands)};
-      TF_ASSIGN_OR_RETURN(
-          record_state->recorded_commands,
-          command->Record(execute_params, record_params,
-                          std::move(record_action), command_buffer));
-
-    } else {
-      // Create new commands by recording them into the command buffer.
-      DCHECK(!state.GetOrNull<RecordState>(command.get(), command_buffer))
-          << "Record state must be null for " << command->ToString();
-      auto* record_state =
-          state.GetOrCreate<RecordState>(command.get(), command_buffer);
-
-      // TODO(b/406370928): Fetch command dependencies computed from the command
-      // sequence, today we rely on implicit synchronization of all commands.
-      auto record_action = CommandBufferCmd::RecordCreate{};
-      TF_ASSIGN_OR_RETURN(
-          record_state->recorded_commands,
-          command->Record(execute_params, record_params,
-                          std::move(record_action), command_buffer));
-    }
+  if (command_buffer->state() == se::CommandBuffer::State::kUpdate) {
+    TF_RETURN_IF_ERROR(
+        RecordUpdate(execute_params, record_params, command_buffer));
+  } else {
+    TF_RETURN_IF_ERROR(
+        RecordCreate(execute_params, record_params, command_buffer, {})
+            .status());
   }
 
   if (mode == RecordMode::kExclusive) {
     TF_RETURN_IF_ERROR(command_buffer->Finalize());
   }
 
-  uint64_t end_micros = tsl::Env::Default()->NowMicros();
-  VLOG(3) << "Recorded " << commands_.size()
-          << " commands into command buffer in " << (end_micros - start_micros)
-          << " μs; mode=" << RecordModeString(mode);
+  return absl::OkStatus();
+}
 
+absl::StatusOr<std::vector<const se::CommandBuffer::Command*>>
+CommandBufferCmdSequence::RecordCreate(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, se::CommandBuffer* command_buffer,
+    absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+  // Command buffer must be in create state.
+  TF_RETURN_IF_ERROR(CheckCommandBufferState(
+      command_buffer, se::CommandBuffer::State::kCreate));
+
+  VLOG(3) << "Create " << commands_.size() << " commands";
+  uint64_t start_micros = tsl::Env::Default()->NowMicros();
+
+  // Short-circuit if there are no commands to record.
+  if (commands_.empty()) {
+    return std::vector<const se::CommandBuffer::Command*>{};
+  }
+
+  // Keep a state associated with commands in the sequence in the state manager.
+  CommandBufferCmd::StateManager& state = record_params.state;
+
+  for (std::unique_ptr<CommandBufferCmd>& command : commands_) {
+    std::optional<tsl::profiler::ScopedAnnotation> annotation =
+        GetKernelAnnotation(command->profile_annotation());
+
+    // Skip recording collective commands if mock collectives are enabled.
+    if (execute_params.mock_collectives &&
+        dynamic_cast<CollectiveCmd*>(command.get())) {
+      continue;
+    }
+
+    // Create new commands by recording them into the command buffer.
+    DCHECK(!state.GetOrNull<RecordState>(command.get(), command_buffer))
+        << "Record state must be null for " << command->ToString();
+    auto* record_state =
+        state.GetOrCreate<RecordState>(command.get(), command_buffer);
+
+    // TODO(b/406370928): Fetch command dependencies computed from the command
+    // sequence, today we rely on implicit synchronization of all commands.
+    auto record_action = CommandBufferCmd::RecordCreate{};
+
+    TF_ASSIGN_OR_RETURN(
+        record_state->command,
+        command->Record(execute_params, record_params, std::move(record_action),
+                        command_buffer));
+  }
+
+  uint64_t end_micros = tsl::Env::Default()->NowMicros();
+  VLOG(3) << "Created " << commands_.size() << " commands in "
+          << (end_micros - start_micros) << " μs";
+
+  // TODO(b/406370928): Depending on synchronization mode we must collect
+  // commands created for all sink nodes in the execution graph.
+  auto* last_recorded =
+      state.GetOrNull<RecordState>(commands_.back().get(), command_buffer);
+  DCHECK(last_recorded) << "Last recorded command state must be not null";
+  return std::vector<const se::CommandBuffer::Command*>{last_recorded->command};
+}
+
+absl::Status CommandBufferCmdSequence::RecordUpdate(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, se::CommandBuffer* command_buffer) {
+  // Command buffer must be already prepared for recording updates.
+  TF_RETURN_IF_ERROR(CheckCommandBufferState(
+      command_buffer, se::CommandBuffer::State::kUpdate));
+
+  VLOG(3) << "Update " << commands_.size() << " commands";
+  uint64_t start_micros = tsl::Env::Default()->NowMicros();
+
+  // Short-circuit if there are no commands to update.
+  if (commands_.empty()) {
+    return absl::OkStatus();
+  }
+
+  // Keep a state associated with commands in the sequence in the state manager.
+  CommandBufferCmd::StateManager& state = record_params.state;
+
+  for (std::unique_ptr<CommandBufferCmd>& command : commands_) {
+    std::optional<tsl::profiler::ScopedAnnotation> annotation =
+        GetKernelAnnotation(command->profile_annotation());
+
+    // Skip updating collective commands if mock collectives are enabled.
+    if (execute_params.mock_collectives &&
+        dynamic_cast<CollectiveCmd*>(command.get())) {
+      continue;
+    }
+
+    // Update existing commands in the command buffer.
+    auto* record_state =
+        state.GetOrNull<RecordState>(command.get(), command_buffer);
+    DCHECK(record_state) << "Record state must be not null for "
+                         << command->ToString();
+
+    auto record_action = CommandBufferCmd::RecordUpdate{record_state->command};
+
+    TF_ASSIGN_OR_RETURN(
+        record_state->command,
+        command->Record(execute_params, record_params, std::move(record_action),
+                        command_buffer));
+  }
+
+  uint64_t end_micros = tsl::Env::Default()->NowMicros();
+  VLOG(3) << "Updated " << commands_.size() << " commands in "
+          << (end_micros - start_micros) << " μs";
+
+  return absl::OkStatus();
+}
+
+absl::Status CommandBufferCmdSequence::CheckCommandBufferState(
+    se::CommandBuffer* command_buffer,
+    se::CommandBuffer::State expected_state) {
+  if (command_buffer->state() != expected_state) {
+    return Internal("Command buffer must be in %v state, got %v",
+                    expected_state, command_buffer->state());
+  }
   return absl::OkStatus();
 }
 
@@ -436,7 +490,7 @@ TracedCommandBufferCmd::TracedCommandBufferCmd(
     CommandBufferCmdType cmd_type, ExecutionStreamId execution_stream_id)
     : CommandBufferCmd(cmd_type, execution_stream_id) {}
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands>
+absl::StatusOr<const se::CommandBuffer::Command*>
 TracedCommandBufferCmd::RecordTracedCommand(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
@@ -481,7 +535,7 @@ CommandBufferCmd::BufferUseVector ComputationIdCmd::buffers() {
   return {{dest_, MemoryAccess::kWrite}};
 }
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> ComputationIdCmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> ComputationIdCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -548,7 +602,7 @@ absl::Status LaunchCmd::Initialize(const Thunk::InitializeParams& params,
   return absl::OkStatus();
 }
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> LaunchCmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> LaunchCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -628,11 +682,10 @@ absl::Status CustomKernelLaunchCmd::Initialize(
   return absl::OkStatus();
 }
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands>
-CustomKernelLaunchCmd::Record(const Thunk::ExecuteParams& execute_params,
-                              const RecordParams& record_params,
-                              RecordAction record_action,
-                              se::CommandBuffer* command_buffer) {
+absl::StatusOr<const se::CommandBuffer::Command*> CustomKernelLaunchCmd::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, RecordAction record_action,
+    se::CommandBuffer* command_buffer) {
   VLOG(5) << "CustomKernelLaunchCmd: custom_kernel=" << custom_kernel_.name();
 
   se::Kernel* kernel = [&] {
@@ -692,7 +745,7 @@ MemcpyDeviceToDeviceCmd::MemcpyDeviceToDeviceCmd(
       src_(src),
       num_bytes_(num_bytes) {}
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands>
+absl::StatusOr<const se::CommandBuffer::Command*>
 MemcpyDeviceToDeviceCmd::Record(const Thunk::ExecuteParams& execute_params,
                                 const RecordParams& record_params,
                                 RecordAction record_action,
@@ -708,7 +761,7 @@ MemcpyDeviceToDeviceCmd::Record(const Thunk::ExecuteParams& execute_params,
 
   if (num_bytes_ == 0) {
     VLOG(5) << "Skip recording MemcpyDeviceToDeviceCmd command of 0 bytes";
-    return RecordedCommands{};
+    return nullptr;
   }
 
   return Handle(
@@ -735,7 +788,7 @@ MemzeroCmd::MemzeroCmd(ExecutionStreamId execution_stream_id,
     : CommandBufferCmd(CommandBufferCmdType::kMemzeroCmd, execution_stream_id),
       dst_(dst) {}
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> MemzeroCmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> MemzeroCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -747,7 +800,7 @@ absl::StatusOr<CommandBufferCmd::RecordedCommands> MemzeroCmd::Record(
 
   if (dst_.size() == 0) {
     VLOG(5) << "Skip recording MemzeroCmd command of 0 bytes";
-    return RecordedCommands{};
+    return nullptr;
   }
 
   return Handle(
@@ -777,7 +830,7 @@ Memset32Cmd::Memset32Cmd(ExecutionStreamId execution_stream_id,
       dst_(dst),
       bit_pattern_(bit_pattern) {}
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> Memset32Cmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> Memset32Cmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -789,7 +842,7 @@ absl::StatusOr<CommandBufferCmd::RecordedCommands> Memset32Cmd::Record(
 
   if (dst_.size() == 0) {
     VLOG(5) << "Skip recording Memset32Cmd command of 0 bytes";
-    return RecordedCommands{};
+    return nullptr;
   }
 
   return Handle(
@@ -830,7 +883,7 @@ absl::Status CaseCmd::Initialize(const Thunk::InitializeParams& params,
   return absl::OkStatus();
 }
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> CaseCmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> CaseCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -900,7 +953,7 @@ absl::Status WhileCmd::Initialize(const Thunk::InitializeParams& params,
   return body_commands_.Initialize(params, state);
 }
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> WhileCmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -969,7 +1022,7 @@ absl::Status GemmCmd::Initialize(const Thunk::InitializeParams& params,
   return absl::OkStatus();
 }
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> GemmCmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> GemmCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -1086,7 +1139,7 @@ absl::Status CublasLtCmd::Initialize(const Thunk::InitializeParams& params,
   return absl::OkStatus();
 }
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> CublasLtCmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> CublasLtCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -1200,7 +1253,7 @@ absl::Status CuDnnCmd::Initialize(const Thunk::InitializeParams& params,
   return absl::OkStatus();
 }
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> CuDnnCmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> CuDnnCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -1217,9 +1270,9 @@ absl::StatusOr<CommandBufferCmd::RecordedCommands> CuDnnCmd::Record(
       const bool supports_explicit,
       graph_->get()->SupportsExplicitCommandBufferConstruction());
   if (supports_explicit) {
-    return RecordedCommands::Create(command_buffer->CreateDnnGraphCommand(
+    return command_buffer->CreateDnnGraphCommand(
         *graph_->get(), *execute_params.stream,
-        absl::Span<se::DeviceMemoryBase>(operands), {}));
+        absl::Span<se::DeviceMemoryBase>(operands), {});
   }
   return RecordTracedCommand(
       execute_params, record_params, std::move(record_action), command_buffer,
@@ -1244,7 +1297,7 @@ CommandBufferCmd::BufferUseVector CuDnnCmd::buffers() {
 // CustomCallCmd
 //===----------------------------------------------------------------------===//
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> CustomCallCmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> CustomCallCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -1284,7 +1337,7 @@ absl::Status GetBuffers(
 }
 }  // namespace
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands>
+absl::StatusOr<const se::CommandBuffer::Command*>
 CustomCallCmd::RecordLegacyCustomCall(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
@@ -1324,7 +1377,7 @@ CustomCallCmd::RecordLegacyCustomCall(
       });
 }
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands>
+absl::StatusOr<const se::CommandBuffer::Command*>
 CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
                                 const RecordParams& record_params,
                                 RecordAction record_action,
@@ -1441,7 +1494,7 @@ absl::Status CollectiveCmd::Prepare(
   return resource_requests.AddClique(clique_key);
 }
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands>
+absl::StatusOr<const se::CommandBuffer::Command*>
 CollectiveCmd::RecordTracedCommand(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
@@ -1476,7 +1529,7 @@ AllReduceCmd::AllReduceCmd(ExecutionStreamId execution_stream_id,
       reduction_kind_(reduction_kind),
       buffers_(buffers.begin(), buffers.end()) {}
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> AllReduceCmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> AllReduceCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -1539,7 +1592,7 @@ ReduceScatterCmd::ReduceScatterCmd(
       reduction_kind_(reduction_kind),
       buffers_(buffers.begin(), buffers.end()) {}
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> ReduceScatterCmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> ReduceScatterCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -1602,7 +1655,7 @@ AllToAllCmd::AllToAllCmd(ExecutionStreamId execution_stream_id,
       has_split_dimension_(has_split_dimension),
       buffers_(buffers.begin(), buffers.end()) {}
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> AllToAllCmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> AllToAllCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -1662,7 +1715,7 @@ AllGatherCmd::AllGatherCmd(ExecutionStreamId execution_stream_id,
                     async_from_stream_id, std::move(config)),
       buffers_(buffers.begin(), buffers.end()) {}
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands> AllGatherCmd::Record(
+absl::StatusOr<const se::CommandBuffer::Command*> AllGatherCmd::Record(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
@@ -1724,7 +1777,7 @@ CollectiveBroadcastCmd::CollectiveBroadcastCmd(
                     std::move(config)),
       buffers_(buffers.begin(), buffers.end()) {}
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands>
+absl::StatusOr<const se::CommandBuffer::Command*>
 CollectiveBroadcastCmd::Record(const Thunk::ExecuteParams& execute_params,
                                const RecordParams& record_params,
                                RecordAction record_action,
@@ -1871,11 +1924,10 @@ absl::Status DynamicSliceFusionCmd::Prepare(
   return absl::OkStatus();
 }
 
-absl::StatusOr<CommandBufferCmd::RecordedCommands>
-DynamicSliceFusionCmd::Record(const Thunk::ExecuteParams& execute_params,
-                              const RecordParams& record_params,
-                              RecordAction record_action,
-                              se::CommandBuffer* command_buffer) {
+absl::StatusOr<const se::CommandBuffer::Command*> DynamicSliceFusionCmd::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, RecordAction record_action,
+    se::CommandBuffer* command_buffer) {
   se::Stream& stream = *execute_params.stream;
 
   const BufferAllocations& orig_allocations =

@@ -76,10 +76,10 @@ struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
                          execution_stream_id),
         buffer_usage(buffer_usage) {}
 
-  absl::StatusOr<RecordedCommands> Record(const Thunk::ExecuteParams&,
-                                          const RecordParams&, RecordAction,
-                                          se::CommandBuffer*) override {
-    return RecordedCommands{};
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams&, const RecordParams&, RecordAction,
+      se::CommandBuffer*) override {
+    return nullptr;
   }
 
   BufferUseVector buffers() override { return buffer_usage; }
@@ -93,10 +93,10 @@ class FakeCmd : public CommandBufferCmd {
       : CommandBufferCmd(CommandBufferCmdType::kTracedCommandBufferCmd,
                          execution_stream_id) {}
 
-  absl::StatusOr<RecordedCommands> Record(const Thunk::ExecuteParams&,
-                                          const RecordParams&, RecordAction,
-                                          se::CommandBuffer*) override {
-    return RecordedCommands{};
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams&, const RecordParams&, RecordAction,
+      se::CommandBuffer*) override {
+    return nullptr;
   }
   BufferUseVector buffers() override { return BufferUseVector{}; }
 };
