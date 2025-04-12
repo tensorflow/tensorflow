@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/dcn_slack_analysis.pb.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

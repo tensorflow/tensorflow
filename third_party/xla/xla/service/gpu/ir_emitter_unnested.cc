@@ -567,19 +567,19 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
   // Maybe serialize all commands in a sequence by forcing barriers between all
   // recorded commands. This guarantees that we execute all device operations
   // in the exact same order as a thunk sequence.
-  CommandBufferCmdSequence::SynchronizationMode synchronization_mode =
+  CommandBufferCmdExecutor::SynchronizationMode synchronization_mode =
       ir_emitter_context_->debug_options()
               .xla_gpu_graph_enable_concurrent_region()
-          ? CommandBufferCmdSequence::SynchronizationMode::kAutomatic
-          : CommandBufferCmdSequence::SynchronizationMode::kSerialize;
+          ? CommandBufferCmdExecutor::SynchronizationMode::kAutomatic
+          : CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
 
   TF_ASSIGN_OR_RETURN(
-      CommandBufferCmdSequence cmd_sequence,
+      CommandBufferCmdExecutor cmd_executor,
       ConvertToCommands(thunk_sequence->thunks(),
                         ConvertToCommandsOptions{synchronization_mode}));
 
   AddThunkToThunkSequence(std::make_unique<CommandBufferThunk>(
-      std::move(cmd_sequence), Thunk::ThunkInfo::WithProfileAnnotation(instr),
+      std::move(cmd_executor), Thunk::ThunkInfo::WithProfileAnnotation(instr),
       std::move(thunk_sequence),
       ir_emitter_context_->debug_options()
           .xla_enable_command_buffers_during_profiling()));

@@ -24,12 +24,12 @@ namespace xla::gpu {
 
 // Options for converting from thunks to command buffer commands.
 struct ConvertToCommandsOptions {
-  CommandBufferCmdSequence::SynchronizationMode synchronization_mode =
-      CommandBufferCmdSequence::SynchronizationMode::kSerialize;
+  CommandBufferCmdExecutor::SynchronizationMode synchronization_mode =
+      CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
 };
 
 // Converts thunk sequence to a command buffer cmd sequence.
-absl::StatusOr<CommandBufferCmdSequence> ConvertToCommands(
+absl::StatusOr<CommandBufferCmdExecutor> ConvertToCommands(
     const ThunkSequence& sequence, const ConvertToCommandsOptions& options);
 
 }  // namespace xla::gpu

@@ -119,7 +119,7 @@ static absl::string_view ReductionKindString(ReductionKind kind) {
 
 // Create a callback to create a command buffer from a command sequence.
 static se::CommandBuffer::CreateCommands CreateCommands(
-    const CommandBufferCmdSequence* commands,
+    const CommandBufferCmdExecutor* commands,
     const Thunk::ExecuteParams* execute_params,
     const CommandBufferCmd::RecordParams* record_params) {
   return [=](se::CommandBuffer* command_buffer,
@@ -131,11 +131,11 @@ static se::CommandBuffer::CreateCommands CreateCommands(
 
 // Create callbacks to create a command buffer from command sequences.
 static std::vector<se::CommandBuffer::CreateCommands> CreateCommands(
-    absl::Span<const CommandBufferCmdSequence> commands,
+    absl::Span<const CommandBufferCmdExecutor> commands,
     const Thunk::ExecuteParams* execute_params,
     const CommandBufferCmd::RecordParams* record_params) {
   std::vector<se::CommandBuffer::CreateCommands> create_commands;
-  for (const CommandBufferCmdSequence& cmd : commands) {
+  for (const CommandBufferCmdExecutor& cmd : commands) {
     create_commands.push_back(
         CreateCommands(&cmd, execute_params, record_params));
   }
@@ -144,7 +144,7 @@ static std::vector<se::CommandBuffer::CreateCommands> CreateCommands(
 
 // Create a callback to update a command buffer with command sequence.
 static se::CommandBuffer::UpdateCommands UpdateCommands(
-    const CommandBufferCmdSequence* commands,
+    const CommandBufferCmdExecutor* commands,
     const Thunk::ExecuteParams* execute_params,
     const CommandBufferCmd::RecordParams* record_params) {
   return [=](se::CommandBuffer* command_buffer) {
@@ -155,11 +155,11 @@ static se::CommandBuffer::UpdateCommands UpdateCommands(
 
 // Create callbacks to update a command buffer with command sequence.
 static std::vector<se::CommandBuffer::UpdateCommands> UpdateCommands(
-    absl::Span<const CommandBufferCmdSequence> commands,
+    absl::Span<const CommandBufferCmdExecutor> commands,
     const Thunk::ExecuteParams* execute_params,
     const CommandBufferCmd::RecordParams* record_params) {
   std::vector<se::CommandBuffer::UpdateCommands> update_commands;
-  for (const CommandBufferCmdSequence& cmd : commands) {
+  for (const CommandBufferCmdExecutor& cmd : commands) {
     update_commands.push_back(
         UpdateCommands(&cmd, execute_params, record_params));
   }
@@ -228,7 +228,6 @@ CommandBufferCmd::State* CommandBufferCmd::StateManager::GetOrCreate(
 //===----------------------------------------------------------------------===//
 
 namespace {
-
 // An adaptor from CommandBufferCmd to ExecutionGraph::Operation for building an
 // execution graph from a command sequence.
 class CommandOperation : public ExecutionGraph::Operation {
@@ -242,17 +241,11 @@ class CommandOperation : public ExecutionGraph::Operation {
  private:
   CommandBufferCmd::BufferUseVector buffers_;
 };
-
 }  // namespace
 
-void CommandBufferCmdSequence::Builder::Append(
-    std::unique_ptr<CommandBufferCmd> cmd) {
-  commands_.push_back({std::move(cmd)});
-}
-
-absl::StatusOr<CommandBufferCmdSequence>
-CommandBufferCmdSequence::Builder::Build(
-    SynchronizationMode synchronization_mode) && {
+absl::StatusOr<CommandBufferCmdExecutor> CommandBufferCmdExecutor::Create(
+    CommandBufferCmdSequence commands,
+    SynchronizationMode synchronization_mode) {
   std::optional<ExecutionGraph> execution_graph = std::nullopt;
 
   // In automatic synchronization mode construct an execution graph for the
@@ -260,21 +253,20 @@ CommandBufferCmdSequence::Builder::Build(
   // from the buffer use conflicts.
   if (synchronization_mode == SynchronizationMode::kAutomatic) {
     std::vector<CommandOperation> operations;
-    operations.reserve(commands_.size());
-    for (const std::unique_ptr<CommandBufferCmd>& cmd : commands_) {
+    operations.reserve(commands.size());
+    for (const std::unique_ptr<CommandBufferCmd>& cmd : commands) {
       operations.emplace_back(cmd->buffers());
     }
     TF_ASSIGN_OR_RETURN(execution_graph,
                         ExecutionGraph::Create<CommandOperation>(operations));
   }
 
-  return CommandBufferCmdSequence(synchronization_mode, std::move(commands_),
+  return CommandBufferCmdExecutor(synchronization_mode, std::move(commands),
                                   std::move(execution_graph));
 }
 
-CommandBufferCmdSequence::CommandBufferCmdSequence(
-    SynchronizationMode synchronization_mode,
-    std::vector<std::unique_ptr<CommandBufferCmd>> commands,
+CommandBufferCmdExecutor::CommandBufferCmdExecutor(
+    SynchronizationMode synchronization_mode, CommandBufferCmdSequence commands,
     std::optional<ExecutionGraph> execution_graph)
     : synchronization_mode_(synchronization_mode),
       commands_(std::move(commands)),
@@ -288,7 +280,7 @@ CommandBufferCmdSequence::CommandBufferCmdSequence(
   }
 }
 
-absl::Status CommandBufferCmdSequence::Prepare(
+absl::Status CommandBufferCmdExecutor::Prepare(
     const Thunk::PrepareParams& params,
     Thunk::ResourceRequestsInterface& resource_requests) {
   for (auto& command : commands_) {
@@ -297,7 +289,7 @@ absl::Status CommandBufferCmdSequence::Prepare(
   return absl::OkStatus();
 }
 
-absl::Status CommandBufferCmdSequence::Initialize(
+absl::Status CommandBufferCmdExecutor::Initialize(
     const Thunk::InitializeParams& params,
     CommandBufferCmd::StateManager& state) {
   for (auto& command : commands_) {
@@ -306,7 +298,7 @@ absl::Status CommandBufferCmdSequence::Initialize(
   return absl::OkStatus();
 }
 
-absl::Status CommandBufferCmdSequence::Record(
+absl::Status CommandBufferCmdExecutor::Record(
     const Thunk::ExecuteParams& execute_params,
     const CommandBufferCmd::RecordParams& record_params,
     se::CommandBuffer* command_buffer) {
@@ -329,7 +321,7 @@ absl::Status CommandBufferCmdSequence::Record(
 }
 
 absl::StatusOr<std::vector<const se::CommandBuffer::Command*>>
-CommandBufferCmdSequence::RecordCreate(
+CommandBufferCmdExecutor::RecordCreate(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, se::CommandBuffer* command_buffer,
     absl::Span<const se::CommandBuffer::Command* const> dependencies) const {
@@ -399,7 +391,7 @@ CommandBufferCmdSequence::RecordCreate(
   return sink_commands;
 }
 
-absl::Status CommandBufferCmdSequence::RecordUpdate(
+absl::Status CommandBufferCmdExecutor::RecordUpdate(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params,
     se::CommandBuffer* command_buffer) const {
@@ -449,7 +441,7 @@ absl::Status CommandBufferCmdSequence::RecordUpdate(
   return absl::OkStatus();
 }
 
-absl::Status CommandBufferCmdSequence::CheckCommandBufferState(
+absl::Status CommandBufferCmdExecutor::CheckCommandBufferState(
     se::CommandBuffer* command_buffer,
     se::CommandBuffer::State expected_state) const {
   if (command_buffer->state() != expected_state) {
@@ -459,17 +451,17 @@ absl::Status CommandBufferCmdSequence::CheckCommandBufferState(
   return absl::OkStatus();
 }
 
-bool CommandBufferCmdSequence::IsSource(CommandId id) const {
+bool CommandBufferCmdExecutor::IsSource(CommandId id) const {
   return execution_graph_ ? execution_graph_->is_source(id) : id == 0;
 }
 
-bool CommandBufferCmdSequence::IsSink(CommandId id) const {
+bool CommandBufferCmdExecutor::IsSink(CommandId id) const {
   return execution_graph_ ? execution_graph_->is_sink(id)
                           : id + 1 == commands_.size();
 }
 
 std::vector<const se::CommandBuffer::Command*>
-CommandBufferCmdSequence::Dependencies(const RecordParams& record_params,
+CommandBufferCmdExecutor::Dependencies(const RecordParams& record_params,
                                        se::CommandBuffer* command_buffer,
                                        CommandId id) const {
   // Source commands have no dependencies.
@@ -510,13 +502,13 @@ CommandBufferCmdSequence::Dependencies(const RecordParams& record_params,
   return dependencies;
 }
 
-const absl::flat_hash_set<BufferUse>& CommandBufferCmdSequence::buffers()
+const absl::flat_hash_set<BufferUse>& CommandBufferCmdExecutor::buffers()
     const {
   return buffers_;
 }
 
 const absl::flat_hash_set<BufferAllocation::Index>&
-CommandBufferCmdSequence::allocs_indices() const {
+CommandBufferCmdExecutor::allocs_indices() const {
   return allocs_indices_;
 }
 
@@ -981,7 +973,7 @@ CommandBufferCmd::BufferUseVector Memset32Cmd::buffers() {
 
 CaseCmd::CaseCmd(ExecutionStreamId execution_stream_id,
                  BufferAllocation::Slice index, bool index_is_bool,
-                 std::vector<CommandBufferCmdSequence> branches)
+                 std::vector<CommandBufferCmdExecutor> branches)
     : CommandBufferCmd(CommandBufferCmdType::kCaseCmd, execution_stream_id),
       index_(index),
       index_is_bool_(index_is_bool),
@@ -1055,8 +1047,8 @@ CommandBufferCmd::BufferUseVector CaseCmd::buffers() {
 
 WhileCmd::WhileCmd(ExecutionStreamId execution_stream_id,
                    BufferAllocation::Slice pred,
-                   CommandBufferCmdSequence cond_commands,
-                   CommandBufferCmdSequence body_commands)
+                   CommandBufferCmdExecutor cond_commands,
+                   CommandBufferCmdExecutor body_commands)
     : CommandBufferCmd(CommandBufferCmdType::kWhileCmd, execution_stream_id),
       pred_(pred),
       cond_commands_(std::move(cond_commands)),
@@ -1947,7 +1939,7 @@ CommandBufferCmd::BufferUseVector CollectiveBroadcastCmd::buffers() {
 
 DynamicSliceFusionCmd::DynamicSliceFusionCmd(
     ExecutionStreamId execution_stream_id,
-    CommandBufferCmdSequence embedded_commands,
+    CommandBufferCmdExecutor embedded_commands,
     std::vector<std::optional<BufferAllocation::Slice>> arguments,
     std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
     std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets,

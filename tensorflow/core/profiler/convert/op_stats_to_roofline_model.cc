@@ -29,6 +29,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/roofline_model.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tsl/platform/protobuf.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/hardware_types.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/op_metrics.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/roofline_model.pb.h"  // from @org_xprof
 #include "xprof/utils/diagnostics.h"  // from @org_xprof
 
 namespace tensorflow {

@@ -67,7 +67,7 @@ static absl::StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
   if (!element_type_or.ok()) return element_type_or.status();
 
   bool is_bounded_dynamic = false;
-  int64_t rank = xla_ty.dimensions_size();
+  int64_t rank = xla_ty.dimensions().size();
   llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamic);
   llvm::SmallVector<int64_t, 4> bounds(rank, mlir::ShapedType::kDynamic);
   for (int64_t dim = 0; dim < rank; ++dim) {

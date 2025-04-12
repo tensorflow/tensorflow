@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/op_metrics.pb.h"  // from @org_xprof
 #include "xprof/utils/op_utils.h"  // from @org_xprof
 
 namespace tensorflow {

@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/preprocess_xplane.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 #include "xprof/utils/derived_timeline.h"  // from @org_xprof
 
 namespace tensorflow {

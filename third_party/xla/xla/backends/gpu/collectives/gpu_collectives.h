@@ -103,6 +103,11 @@ class GpuCollectives : public Collectives {
   // Tries to cast a Collectives::Config to a GpuCollectives::Config.
   static absl::StatusOr<const Config*> TryCast(
       const Collectives::Config* config);
+
+  // TODO(b/410686553): Use smart wrapper instead of void*.
+  virtual absl::StatusOr<void*> Allocate(uint64_t bytes) = 0;
+
+  virtual absl::Status Deallocate(void* buffer) = 0;
 };
 
 }  // namespace xla::gpu

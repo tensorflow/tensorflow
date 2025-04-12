@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/op_metrics.pb.h"  // from @org_xprof
 #include "xprof/utils/cost_utils.h"  // from @org_xprof
 #include "xprof/utils/gpu_event_stats.h"  // from @org_xprof
 #include "xprof/utils/hlo_module_map.h"  // from @org_xprof

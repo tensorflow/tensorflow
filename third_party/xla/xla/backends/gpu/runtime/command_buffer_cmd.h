@@ -277,18 +277,27 @@ class CommandBufferCmd {
   ExecutionStreamId execution_stream_id_;
 };
 
+// A sequence of commands (corresponds to a ThunkSequence from the Thunk API).
+class CommandBufferCmdSequence
+    : public std::vector<std::unique_ptr<CommandBufferCmd>> {
+ public:
+  template <typename Command, typename... Args>
+  void Emplace(Args&&... args) {
+    this->emplace_back(std::make_unique<Command>(std::forward<Args>(args)...));
+  }
+};
+
 //===----------------------------------------------------------------------===//
-// CommandBufferCmdSequence
+// CommandBufferCmdExecutor
 //===----------------------------------------------------------------------===//
 
-// A sequence of command buffer commands that create or update a command buffer.
-// You can think of CommandBufferCmdSequence as a mini interpreter whose sole
-// purpose is to manipulate command buffers at run time.
-class CommandBufferCmdSequence {
+// Command executor is responsible for recording commands sequence into the
+// underlying command buffer and setting up dependencies between commands.
+class CommandBufferCmdExecutor {
  public:
-  CommandBufferCmdSequence() = default;
-  CommandBufferCmdSequence(CommandBufferCmdSequence&&) = default;
-  CommandBufferCmdSequence& operator=(CommandBufferCmdSequence&&) = default;
+  CommandBufferCmdExecutor() = default;
+  CommandBufferCmdExecutor(CommandBufferCmdExecutor&&) = default;
+  CommandBufferCmdExecutor& operator=(CommandBufferCmdExecutor&&) = default;
 
   using RecordParams = CommandBufferCmd::RecordParams;
 
@@ -316,23 +325,11 @@ class CommandBufferCmdSequence {
     }
   }
 
-  // A command buffer cmd sequence builder for lazy command sequence
-  // construction.
-  class Builder {
-   public:
-    void Append(std::unique_ptr<CommandBufferCmd> cmd);
-
-    template <typename T, typename... Args>
-    void Emplace(Args... args) {
-      Append(std::make_unique<T>(std::forward<Args>(args)...));
-    }
-
-    absl::StatusOr<CommandBufferCmdSequence> Build(
-        SynchronizationMode synchronization_mode) &&;
-
-   private:
-    std::vector<std::unique_ptr<CommandBufferCmd>> commands_;
-  };
+  // Creates a command executor from a sequence of commands using given
+  // synchronization mode.
+  static absl::StatusOr<CommandBufferCmdExecutor> Create(
+      CommandBufferCmdSequence commands,
+      SynchronizationMode synchronization_mode);
 
   // Prepares all commands added to a sequence.
   absl::Status Prepare(const Thunk::PrepareParams& params,
@@ -390,10 +387,9 @@ class CommandBufferCmdSequence {
     const se::CommandBuffer::Command* command;
   };
 
-  CommandBufferCmdSequence(
-      SynchronizationMode synchronization_mode,
-      std::vector<std::unique_ptr<CommandBufferCmd>> commands,
-      std::optional<ExecutionGraph> execution_graph);
+  CommandBufferCmdExecutor(SynchronizationMode synchronization_mode,
+                           CommandBufferCmdSequence commands,
+                           std::optional<ExecutionGraph> execution_graph);
 
   absl::Status CheckCommandBufferState(
       se::CommandBuffer* command_buffer,
@@ -411,7 +407,7 @@ class CommandBufferCmdSequence {
       CommandId id) const;
 
   SynchronizationMode synchronization_mode_;
-  std::vector<std::unique_ptr<CommandBufferCmd>> commands_;
+  CommandBufferCmdSequence commands_;
 
   // In automatic synchronization mode we build an execution graph for the
   // sequence of commands and use it to set up dependencies between commands.
@@ -638,7 +634,7 @@ class Memset32Cmd : public CommandBufferCmd {
 class CaseCmd : public CommandBufferCmd {
  public:
   CaseCmd(ExecutionStreamId execution_stream_id, BufferAllocation::Slice index,
-          bool index_is_bool, std::vector<CommandBufferCmdSequence> branches);
+          bool index_is_bool, std::vector<CommandBufferCmdExecutor> branches);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -655,7 +651,7 @@ class CaseCmd : public CommandBufferCmd {
  private:
   BufferAllocation::Slice index_;
   bool index_is_bool_;
-  std::vector<CommandBufferCmdSequence> branches_;
+  std::vector<CommandBufferCmdExecutor> branches_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -665,8 +661,8 @@ class CaseCmd : public CommandBufferCmd {
 class WhileCmd : public CommandBufferCmd {
  public:
   WhileCmd(ExecutionStreamId execution_stream_id, BufferAllocation::Slice pred,
-           CommandBufferCmdSequence cond_commands,
-           CommandBufferCmdSequence body_commands);
+           CommandBufferCmdExecutor cond_commands,
+           CommandBufferCmdExecutor body_commands);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -682,8 +678,8 @@ class WhileCmd : public CommandBufferCmd {
 
  private:
   BufferAllocation::Slice pred_;
-  CommandBufferCmdSequence cond_commands_;
-  CommandBufferCmdSequence body_commands_;
+  CommandBufferCmdExecutor cond_commands_;
+  CommandBufferCmdExecutor body_commands_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -1074,7 +1070,7 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
  public:
   DynamicSliceFusionCmd(
       ExecutionStreamId execution_stream_id,
-      CommandBufferCmdSequence embedded_commands,
+      CommandBufferCmdExecutor embedded_commands,
       std::vector<std::optional<BufferAllocation::Slice>> arguments,
       std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_,
       std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>>
@@ -1102,7 +1098,7 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
   bool IsNestedCommandBuffer() const final { return true; }
 
  private:
-  CommandBufferCmdSequence embedded_commands_;
+  CommandBufferCmdExecutor embedded_commands_;
   std::vector<DynamicSliceThunk::SliceDef> slices_;
   std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_;
 
