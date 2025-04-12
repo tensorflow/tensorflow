@@ -490,18 +490,14 @@ absl::Status XlaCallModuleLoader::ValidateStaticShapes() {
 absl::Status XlaCallModuleLoader::PrepareStablehloForLowering() {
   mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
 
-  // TODO (b/393390051): Migrate required passes to StableHLO.
+  // TODO (b/410057228): Replace MHLO canonicalization with StableHLO.
+  // This code requires MHLO CaseOp canonicalization to remove unreachable
+  // branches, else `tf.call_tf_function` inlining can fail.
   mlir::PassManager pm(module_->getContext());
-  applyTensorflowAndCLOptions(pm);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createChloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  // In order to export to XLA, we must sink constants to control flow
-  // regions, since XLA uses functional control flow.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createSinkConstantsToControlFlowPass());
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+
   if (failed(pm.run(*module_))) {
     return absl::InternalError(
         absl::StrCat("MHLO->HLO lowering passes failed: ",
@@ -509,7 +505,7 @@ absl::Status XlaCallModuleLoader::PrepareStablehloForLowering() {
   }
 
   if (VLOG_IS_ON(5)) {
-    DumpMlirOpToFile("xla_call_module.after_mhlo_lowering", *module_);
+    DumpMlirOpToFile("xla_call_module.after_canonicalization", *module_);
   }
 
   return absl::OkStatus();
