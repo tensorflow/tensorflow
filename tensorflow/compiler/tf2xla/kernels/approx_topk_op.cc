@@ -73,7 +73,7 @@ class ApproxTopKOpBase : public XlaOpKernel {
     int64_t reduction_dim = reduction_dim_;
     if (reduction_dim < 0) {
       // Reverse index.
-      reduction_dim += op_shape.dimensions_size();
+      reduction_dim += op_shape.dimensions().size();
     }
     auto cmp_builder = ctx->builder()->CreateSubBuilder(
         absl::StrFormat("top_k_%s_comparator", is_max_k_ ? "gt" : "lt"));
