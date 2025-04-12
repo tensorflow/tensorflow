@@ -1,4 +1,5 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -425,6 +426,28 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "onednn_matmul_benchmark_test",
+    srcs = ["onednn_matmul_benchmark_test.cc"],
+    copts = tsl_copts(),
+    fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
+    deps = [
+        ":hlo_benchmark_runner",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/service/cpu:onednn_util",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 

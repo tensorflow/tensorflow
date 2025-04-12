@@ -411,6 +411,25 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "onednn_memory_util_test",
+    srcs = ["onednn_memory_util_test.cc"],
+    copts = tsl_copts(),
+    fail_if_no_test_linked = False,  # NOLINT=There are only tests for Intel MKL.
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/service:cpu_plugin",
+        "//xla/service/cpu:onednn_memory_util",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_cc_test(
     name = "onednn_layer_norm_test",
     srcs = ["onednn_layer_norm_test.cc"],
     copts = tsl_copts(),
