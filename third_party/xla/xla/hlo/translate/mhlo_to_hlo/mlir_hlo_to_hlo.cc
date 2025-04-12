@@ -414,8 +414,11 @@ I64_ARRAY_ATTR_TO_VECTOR(slice_sizes);
 I64_ELEMENTS_ATTR_TO_VECTOR(fft_length);
 I64_ELEMENTS_ATTR_TO_VECTOR(dimensions);
 I64_ELEMENTS_ATTR_TO_VECTOR(window_strides);
+I64_ARRAY_ATTR_TO_VECTOR(window_strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(lhs_dilation);
+I64_ARRAY_ATTR_TO_VECTOR(lhs_dilation);
 I64_ELEMENTS_ATTR_TO_VECTOR(rhs_dilation);
+I64_ARRAY_ATTR_TO_VECTOR(rhs_dilation);
 
 #undef I64_ARRAY_ATTR_TO_VECTOR
 #undef I64_ELEMENTS_ATTR_TO_VECTOR
@@ -1124,6 +1127,32 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
   // This op has no expression in the legacy export format.
   return failure();
+}
+
+LogicalResult ExportXlaOp(mlir::stablehlo::ConvolutionOp op,
+                          OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.getLhs(), value_map, &lhs, op))) {
+    return mlir::failure();
+  }
+  if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op))) {
+    return mlir::failure();
+  }
+  xla::PrimitiveType preferred_element_type =
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+  xla::XlaOp xla_result = xla::ConvGeneralDilated(
+      lhs, rhs, Convert_window_strides(op.getWindowStrides()),
+      Convert_padding(op.getPadding()),
+      Convert_lhs_dilation(op.getLhsDilation()),
+      Convert_rhs_dilation(op.getRhsDilation()),
+      xla::ConvertConvDimensionNumbers(op.getDimensionNumbers()),
+      Convertuint64_t(op.getFeatureGroupCount()),
+      Convertuint64_t(op.getBatchGroupCount()),
+      Unwrap(Convert_precision_config(op.getPrecisionConfig())),
+      preferred_element_type, op.getWindowReversal());
+  value_map[op] = xla_result;
+  return mlir::success();
 }
 
 }  // namespace
