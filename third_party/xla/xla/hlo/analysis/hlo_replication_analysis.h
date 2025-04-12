@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_ANALYSIS_HLO_REPLICATION_ANALYSIS_H_
 #define XLA_HLO_ANALYSIS_HLO_REPLICATION_ANALYSIS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -33,6 +34,23 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+// A wrapper around absl::Span<const ReplicaGroup> that allows us to hash it
+class HashableReplicaGroupSpan : absl::Span<const ReplicaGroup> {
+ public:
+  explicit HashableReplicaGroupSpan(const absl::Span<const ReplicaGroup> groups)
+      : absl::Span<const ReplicaGroup>(groups) {}
+
+  template <typename H>
+  friend H AbslHashValue(H h, const HashableReplicaGroupSpan& a) {
+    for (const auto& group : a) {
+      for (int64_t id : group.replica_ids()) {
+        h = H::combine(std::move(h), id);
+      }
+    }
+    return H::combine(std::move(h), a.size());
+  }
+};
 
 // An HLO pass that determines whether each instruction in the module outputs
 // the same value across replicas or across partitions (depending on the value
@@ -81,11 +99,6 @@ class HloReplicationAnalysis {
     HloReplication();
     HloReplication(const HloReplication& other) = default;
     HloReplication(HloReplication&& other) = default;
-    // Create a new HloReplication that is the merge of two other HloReplication
-    // objects using the Merge() method, useful for lazy construction with
-    // try_emplace.
-    explicit HloReplication(
-        const std::pair<HloReplication, HloReplication>& merge_pair);
     HloReplication& operator=(HloReplication&& other) = default;
     HloReplication Merge(const HloReplication& other) const;
     bool Equal(const HloReplication& other) const;
@@ -111,6 +124,25 @@ class HloReplicationAnalysis {
         State state,
         absl::Span<const std::vector<int64_t>> device_set_root_per_replica);
     State state_;
+    // Helper class that subclasses T, and computes the hash once on
+    // construction, and intercepts the hash function to use the precomputed
+    // hash.
+    template <typename T>
+    class HashOnConstruction : public T {
+     public:
+      template <typename V>
+      explicit HashOnConstruction(V& device_set_root_per_replica)
+          : T(device_set_root_per_replica.begin(),
+              device_set_root_per_replica.end()),
+            hash_(absl::HashOf(device_set_root_per_replica)) {}
+
+      const size_t hash_;
+
+      template <typename H>
+      friend H AbslHashValue(H h, const HashOnConstruction& r) {
+        return H::combine(std::move(h), r.hash_);
+      }
+    };
     // Empty if state_ is kReplicatedOnAllDevices or kUniqueOnAllDevices.
 
     // If cross_partition_spmd is true, groups_for_replicas_[k]'s size equals
@@ -120,33 +152,28 @@ class HloReplicationAnalysis {
     // If cross_partition_spmd is false, groups_for_replicas_[k]'s size equals
     // the number of replicas, and within partition k, groups_for_replicas_[k]
     // maps each replica to the smallest replica ID in the set.
-    std::shared_ptr<std::vector<std::vector<int64_t>>>
+    std::shared_ptr<const HashOnConstruction<std::vector<std::vector<int64_t>>>>
         device_set_root_per_replica_;
   };
 
-  static HloReplication DetermineHloInstructionIsReplicated(
-      const HloInstruction* hlo, const ShapeIndex& index,
-      bool cross_partition_spmd,
-      const absl::flat_hash_map<const HloInstruction*,
-                                ShapeTree<HloReplication>>& hlo_replication,
-      bool support_partial_replication,
-      const absl::flat_hash_map<const HloInstruction*,
-                                std::optional<HloReplication>*>&
-          replica_group_dedup_map,
-      absl::flat_hash_map<std::pair<HloReplication, HloReplication>,
-                          HloReplication>& replication_merge_map);
+  std::vector<std::vector<std::vector<int64_t>>> GroupsForReplicas(
+      absl::Span<const ReplicaGroup> groups);
 
-  static HloReplication MergeReplications(
-      const HloReplication& replication_a, const HloReplication& replication_b,
-      absl::flat_hash_map<std::pair<HloReplication, HloReplication>,
-                          HloReplication>& replication_merge_map) {
+  HloReplication DetermineHloInstructionIsReplicated(const HloInstruction* hlo,
+                                                     const ShapeIndex& index);
+
+  HloReplication MergeReplications(const HloReplication& replication_a,
+                                   const HloReplication& replication_b) {
     std::pair<HloReplication, HloReplication> key = {replication_a,
                                                      replication_b};
 
     // Look replication pair up in map: if not found we pass the pair to an
     // overloaded constructor of HloReplication which constructs and returns
     // a merged HloReplication.
-    auto [iter, inserted] = replication_merge_map.try_emplace(key, key);
+    auto [iter, inserted] = replication_merge_map_.try_emplace(key);
+    if (inserted) {
+      iter->second = replication_a.Merge(replication_b);
+    }
     return iter->second;
   }
 
@@ -157,7 +184,9 @@ class HloReplicationAnalysis {
       : module_(module),
         cross_partition_spmd_(cross_partition_spmd),
         loops_known_with_same_iterations_(*loops_known_with_same_iterations),
-        support_partial_replication_(support_partial_replication) {}
+        support_partial_replication_(support_partial_replication),
+        num_partitions_(module_->config().num_partitions()),
+        replica_count_(module_->config().replica_count()) {}
 
   // Computes hlo_replication_.
   absl::Status ComputeHloReplication();
@@ -183,7 +212,7 @@ class HloReplicationAnalysis {
   // are identical across partitions.
   //
   // If false, HloReplicationAnalysis runs across replicas.
-  bool cross_partition_spmd_;
+  const bool cross_partition_spmd_;
 
   // A set of while loops that are known to have the same iteration counts
   // across replicas or partitions. This is provided by the caller as additional
@@ -192,6 +221,9 @@ class HloReplicationAnalysis {
       loops_known_with_same_iterations_;
 
   const bool support_partial_replication_;
+
+  // Capture the number of partitions / replicas for the module.
+  const int64_t num_partitions_, replica_count_;
 
   // A map from each analyzed HLO instruction to a shape tree that represents
   // whether the instruction outputs the same value across replicas or
@@ -207,6 +239,8 @@ class HloReplicationAnalysis {
   absl::flat_hash_map<std::pair<HloReplication, HloReplication>, HloReplication>
       replication_merge_map_;
   std::vector<std::optional<HloReplication>> unique_replications_;
+  absl::flat_hash_map<size_t, std::vector<std::vector<std::vector<int64_t>>>>
+      device_sets_per_replica_map_;
 };
 
 }  // namespace xla
