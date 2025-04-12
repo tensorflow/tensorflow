@@ -17,6 +17,9 @@
 # module.
 
 # pylint: disable=g-bad-import-order
+import os
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
@@ -28,6 +31,4 @@ app.flags = flags
 # must come from this module. So python adds these symbols for the
 # resolution to succeed.
 # pylint: disable=undefined-variable
-del python
-del core
 # pylint: enable=undefined-variable
