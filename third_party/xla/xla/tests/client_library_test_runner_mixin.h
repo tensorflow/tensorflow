@@ -315,6 +315,16 @@ class ClientLibraryTestRunnerMixin : public T {
     return literal;
   }
 
+  template <typename NativeT>
+  Literal CreateR4Parameter(const Array4D<NativeT>& array_4d,
+                            int64_t parameter_number, const std::string& name,
+                            XlaBuilder* builder, XlaOp* data_handle) {
+    Literal literal = LiteralUtil::CreateR4FromArray4D(array_4d);
+    literal = MaybeConvertLiteralToTestType(literal);
+    *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
+    return literal;
+  }
+
   Literal MaybeConvertLiteralToTestType(const Literal& literal) const {
     switch (test_type_) {
       case BF16:
