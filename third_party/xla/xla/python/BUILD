@@ -153,6 +153,7 @@ cc_library(
     deps = [
         "//xla:debug_options_flags",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
