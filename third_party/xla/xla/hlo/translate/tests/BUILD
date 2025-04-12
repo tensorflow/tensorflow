@@ -20,6 +20,7 @@ lit_test_suite(
             "simple.mlir",
             "stablehlo.mlir",
             "stablehlo_invalid.mlir",
+            "stablehlo_unary_elementwise.mlir",
             "vhlo_input.mlir",
             # go/keep-sorted end
         ],

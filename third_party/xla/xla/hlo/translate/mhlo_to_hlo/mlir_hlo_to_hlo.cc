@@ -38,6 +38,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -106,6 +107,8 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/xla_data.pb.h"
+
+#define DEBUG_TYPE "xla-translate"
 
 using ::int64_t;
 using ::tsl::int16;
@@ -651,6 +654,8 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
 }
 
 // Converts ResultAccuracyAttr to XLA ResultAccuracy proto.
+// This function name is non-standard to match the codegen
+// function name, similar to other attribute converters.
 static xla::ResultAccuracy Convert_result_accuracy(
     std::optional<mlir::mhlo::ResultAccuracyAttr>
         optional_result_accuracy_attr) {
@@ -665,21 +670,58 @@ static xla::ResultAccuracy Convert_result_accuracy(
         optional_result_accuracy_attr.value().getRtol().convertToDouble());
     result_accuracy.mutable_tolerance()->set_ulps(
         optional_result_accuracy_attr.value().getUlps());
-  } else {
-    xla::ResultAccuracy::Mode mode;
-    auto result_accuracy_mode =
-        ::mlir::mhlo::stringifyResultAccuracyMode(
-            optional_result_accuracy_attr.value().getMode().getValue())
-            .str();
-    if (xla::ResultAccuracy::Mode_Parse(result_accuracy_mode, &mode)) {
-      result_accuracy.set_mode(mode);
-    } else {
-      auto* context = optional_result_accuracy_attr.value().getContext();
-      mlir::emitError(mlir::UnknownLoc::get(context))
-          << "unexpected result accuracy mode " << result_accuracy_mode;
-      return xla::ResultAccuracy();
-    }
+    return result_accuracy;
   }
+
+  xla::ResultAccuracy::Mode mode;
+  auto result_accuracy_mode =
+      ::mlir::mhlo::stringifyResultAccuracyMode(
+          optional_result_accuracy_attr.value().getMode().getValue())
+          .str();
+  if (!xla::ResultAccuracy::Mode_Parse(result_accuracy_mode, &mode)) {
+    auto* context = optional_result_accuracy_attr.value().getContext();
+    mlir::emitError(mlir::UnknownLoc::get(context))
+        << "unexpected result accuracy mode " << result_accuracy_mode;
+    return xla::ResultAccuracy();
+  }
+
+  result_accuracy.set_mode(mode);
+  return result_accuracy;
+}
+
+// Converts ResultAccuracyAttr to XLA ResultAccuracy proto.
+// This function name is non-standard to match the codegen
+// function name, similar to other attribute converters.
+static xla::ResultAccuracy Convert_result_accuracy(
+    std::optional<mlir::stablehlo::ResultAccuracyAttr>
+        optional_result_accuracy_attr) {
+  if (!optional_result_accuracy_attr.has_value()) return xla::ResultAccuracy();
+
+  auto result_accuracy = xla::ResultAccuracy();
+  if (optional_result_accuracy_attr.value().getMode().getValue() ==
+      mlir::stablehlo::ResultAccuracyMode::TOLERANCE) {
+    result_accuracy.mutable_tolerance()->set_atol(
+        optional_result_accuracy_attr.value().getAtol().convertToDouble());
+    result_accuracy.mutable_tolerance()->set_rtol(
+        optional_result_accuracy_attr.value().getRtol().convertToDouble());
+    result_accuracy.mutable_tolerance()->set_ulps(
+        optional_result_accuracy_attr.value().getUlps());
+    return result_accuracy;
+  }
+
+  xla::ResultAccuracy::Mode mode;
+  auto result_accuracy_mode =
+      ::mlir::stablehlo::stringifyResultAccuracyMode(
+          optional_result_accuracy_attr.value().getMode().getValue())
+          .str();
+  if (!xla::ResultAccuracy::Mode_Parse(result_accuracy_mode, &mode)) {
+    auto* context = optional_result_accuracy_attr.value().getContext();
+    mlir::emitError(mlir::UnknownLoc::get(context))
+        << "unexpected result accuracy mode " << result_accuracy_mode;
+    return xla::ResultAccuracy();
+  }
+
+  result_accuracy.set_mode(mode);
   return result_accuracy;
 }
 
@@ -1152,6 +1194,57 @@ LogicalResult ExportXlaOp(mlir::stablehlo::ConvolutionOp op,
       Unwrap(Convert_precision_config(op.getPrecisionConfig())),
       preferred_element_type, op.getWindowReversal());
   value_map[op] = xla_result;
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+
+  value_map[op] = xla::ConvertElementType(
+      operand,
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+  return success();
+}
+
+LogicalResult ExportXlaOp(CosineOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  xla::ResultAccuracy result_accuracy =
+      Convert_result_accuracy(op.getResultAccuracy());
+  auto xla_result = xla::Cos(Unwrap(arg), result_accuracy);
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(SineOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  xla::ResultAccuracy result_accuracy =
+      Convert_result_accuracy(op.getResultAccuracy());
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  auto xla_result = xla::Sin(Unwrap(arg), result_accuracy);
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(TanOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  xla::ResultAccuracy result_accuracy =
+      Convert_result_accuracy(op.getResultAccuracy());
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  auto xla_result = xla::Tan(Unwrap(arg), result_accuracy);
+  value_map[result] = xla_result;
   return mlir::success();
 }
 
@@ -4132,11 +4225,14 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   }
 
   xla::XlaOp return_value;
-  for (auto& inst : *block)
+  for (auto& inst : *block) {
+    if (isa<stablehlo::StablehloDialect>(inst.getDialect()))
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Lowering: " << inst.getName().getStringRef() << "\n");
     if (failed(Lower(&inst, is_entry_function, ret_shardings, implicit_results,
                      builder, &lowering, &return_value)))
       return failure();
-
+  }
   // Build the XlaComputation and check for failures.
   auto computation_or =
       return_value.valid() ? builder->Build(return_value) : builder->Build();
@@ -4145,6 +4241,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     return failure();
   }
   *result = std::move(computation_or.value());
+  LLVM_DEBUG(llvm::dbgs() << "Created: " << result->name() << "\n");
   return success();
 }
 
