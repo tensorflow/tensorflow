@@ -3253,10 +3253,7 @@ while_body {
   dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
   mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
   ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
-  slice = bf16[1,8,120] slice(ar.1), slice={[0:1], [0:8], [0:120]}
-  constant.2563 = bf16[] constant(5.0)
-  pad = bf16[1,8,128] pad(slice, constant.2563), padding=0_0x0_0x0_8
-  b.1 = bf16[1,8,128,32] broadcast(pad), dimensions={0,1,2}
+  b.1 = bf16[1,8,128,32] broadcast(ar.1), dimensions={0,1,2}
   constant = bf16[] constant(0)
   reduce = bf16[1,8,128] reduce(b.1, constant), dimensions={3}, to_apply=add.1
   dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, reduce, select.1348, constant.2561, constant.2561)
