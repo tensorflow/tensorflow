@@ -621,7 +621,6 @@ xla_cc_test(
         "//xla/client:local_client",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",
-        "//xla/pjrt/profiling:device_time_measurement",
         "//xla/service:cpu_plugin",
         "//xla/service:platform_util",
         "//xla/stream_executor:platform",
@@ -632,7 +631,6 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -924,8 +922,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
         "@stablehlo//:version",
     ],
 )
