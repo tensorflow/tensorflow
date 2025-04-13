@@ -21,6 +21,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
