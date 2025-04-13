@@ -53,8 +53,6 @@ cc_library(
     srcs = ["gpu_clique_key.cc"],
     hdrs = ["gpu_clique_key.h"],
     deps = [
-        "//xla/core/collectives",
-        "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
         "//xla/service:global_device_id",
         "//xla/tsl/lib/gtl:int_type",
@@ -76,11 +74,9 @@ xla_cc_test(
         ":gpu_clique_key",
         "//xla/core/collectives:clique_id",
         "//xla/service:global_device_id",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/container:btree",
-        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -143,7 +139,6 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
