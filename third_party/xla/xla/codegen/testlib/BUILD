@@ -89,7 +89,7 @@ py_strict_test(
         "no_oss",
     ],
     deps = [
-        ":_extension",
+        ":_extension",  # buildcleaner: keep
         ":testlib",
         "//third_party/py/numpy",
         "//xla/python:xla_extension",
