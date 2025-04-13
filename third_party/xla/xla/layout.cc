@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/layout.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <ostream>

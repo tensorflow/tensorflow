@@ -15,16 +15,20 @@ limitations under the License.
 
 #include "xla/literal_util.h"
 
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/random/uniform_int_distribution.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
