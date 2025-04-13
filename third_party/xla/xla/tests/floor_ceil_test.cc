@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <limits>
-#include <string>
 
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/error_spec.h"
