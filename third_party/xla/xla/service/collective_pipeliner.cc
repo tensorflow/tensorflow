@@ -211,7 +211,7 @@ CollectDynamicSliceIndicesIfConstant(HloInstruction* instr) {
   for (int64_t i = dyn_slice->first_index_operand_number();
        i < instr->operand_count(); ++i) {
     HloInstruction* operand = dyn_slice->mutable_operand(i);
-    CHECK_EQ(operand->shape().dimensions_size(), 0);
+    CHECK(operand->shape().dimensions().empty());
     std::vector<std::pair<HloInstruction*, int>> stack(
         1, std::make_pair(operand, 0));
     absl::flat_hash_set<HloInstruction*> visited;
@@ -343,12 +343,11 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
          ShapeUtil::ElementsIn(instr->operand(0)->shape()) < 1024)) {
       return true;
     }
-    // TODO(b/409716406): Reconsider cases where Pad can be supported.
     return HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
-                            HloOpcode::kCollectivePermute, HloOpcode::kConvert,
-                            HloOpcode::kReshape, HloOpcode::kAllReduce,
-                            HloOpcode::kTranspose, HloOpcode::kBroadcast,
-                            HloOpcode::kAllGather>(i) ||
+                            HloOpcode::kPad, HloOpcode::kCollectivePermute,
+                            HloOpcode::kConvert, HloOpcode::kReshape,
+                            HloOpcode::kAllReduce, HloOpcode::kTranspose,
+                            HloOpcode::kBroadcast, HloOpcode::kAllGather>(i) ||
            (multi_uses_pipelining && i->IsElementwise()) ||
            i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep) ||
            i->IsCustomCall(CollectivePipeliner::kSunkByPreviousStep);
@@ -1529,7 +1528,7 @@ Shape ComputeFullOutputShape(const WhileMoveInfo& move_info,
 // Create zero of base type ptype and broadcast it to shape.
 HloInstruction* CreateZero(HloComputation* comp, const Shape& shape,
                            PrimitiveType ptype) {
-  if (shape.dimensions_size() == 0) {
+  if (shape.dimensions().empty()) {
     return comp->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::Zero(ptype)));
   }
@@ -2009,8 +2008,8 @@ absl::Status TransformLoopForward(
     if (slice_target_shape != data_to_slice->shape()) {
       // Slice matrix.
       absl::InlinedVector<int64_t, 4> dynamic_slice_sizes;
-      dynamic_slice_sizes.reserve(slice_target_shape.dimensions_size());
-      for (int i = 0; i < slice_target_shape.dimensions_size(); ++i) {
+      dynamic_slice_sizes.reserve(slice_target_shape.dimensions().size());
+      for (int i = 0; i < slice_target_shape.dimensions().size(); ++i) {
         dynamic_slice_sizes.push_back(slice_target_shape.dimensions(i));
       }
       sliced_data =
@@ -2268,7 +2267,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
       Shape index_shape =
           move_info.dynamic_update_slices.front()->index_shapes()[0];
       std::vector<HloInstruction*> indices(
-          expanded_shape.dimensions_size(),
+          expanded_shape.dimensions().size(),
           CreateZero(body_computation, index_shape,
                      index_shape.element_type()));
       indices[0] = move_info.dynamic_update_slices.front()->index_operands()[0];
@@ -2313,7 +2312,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
       HloDynamicUpdateSliceInstruction* dyn_update =
           to_move.dynamic_update_slices[0];
       std::vector<HloInstruction*> indices(
-          expanded_shape.dimensions_size(),
+          expanded_shape.dimensions().size(),
           CreateZero(body_computation, dyn_update->index_shapes()[0],
                      dyn_update->index_shapes()[0].element_type()));
       indices[0] = dyn_update->index_operands()[0];
@@ -2434,7 +2433,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
       if (is_loop_invariant) {
         Shape full_shape = ComputeFullOutputShape(to_move, pipelined->shape());
         absl::InlinedVector<int64_t, 4> operand_dims;
-        operand_dims.resize(pipelined->shape().dimensions_size());
+        operand_dims.resize(pipelined->shape().dimensions().size());
         absl::c_iota(operand_dims, 1);
         HloInstruction* broadcasted =
             loop_computation->AddInstruction(HloInstruction::CreateBroadcast(
@@ -2460,21 +2459,30 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
       std::vector<HloInstruction*> operands;
       for (auto* operand : instr->mutable_operands()) {
         if (operand->opcode() == HloOpcode::kConstant) {
-          HloInstruction* cloned_constant = loop_computation->AddInstruction(
-              operand->CloneWithNewOperands(operand->shape(), {}));
-          if (!to_add_batch_set.contains(instr)) {
-            operands.push_back(cloned_constant);
+          if (!operand->shape().dimensions().empty()) {
+            // Broadcast constant into full shape.
+            HloInstruction* cloned_constant = loop_computation->AddInstruction(
+                operand->CloneWithNewOperands(operand->shape(), {}));
+            if (!to_add_batch_set.contains(instr)) {
+              operands.push_back(cloned_constant);
+              continue;
+            }
+            Shape full_shape =
+                ComputeFullOutputShape(to_move, cloned_constant->shape());
+            absl::InlinedVector<int64_t, 4> operand_dims;
+            operand_dims.resize(cloned_constant->shape().dimensions().size());
+            absl::c_iota(operand_dims, 1);
+            HloInstruction* broadcasted = loop_computation->AddInstruction(
+                HloInstruction::CreateBroadcast(full_shape, cloned_constant,
+                                                operand_dims));
+            operands.push_back(broadcasted);
             continue;
           }
-          Shape full_shape =
-              ComputeFullOutputShape(to_move, cloned_constant->shape());
-          absl::InlinedVector<int64_t, 4> operand_dims;
-          operand_dims.resize(cloned_constant->shape().dimensions_size());
-          absl::c_iota(operand_dims, 1);
-          HloInstruction* broadcasted =
-              loop_computation->AddInstruction(HloInstruction::CreateBroadcast(
-                  full_shape, cloned_constant, operand_dims));
-          operands.push_back(broadcasted);
+          // The constant may be for something like a padding value. And a
+          // scalar shape can't be for slice shape that's to be concatenated.
+          // No need to broadcast.
+          operands.push_back(loop_computation->AddInstruction(
+              operand->CloneWithNewOperands(operand->shape(), {})));
           continue;
         }
         auto it = pipelined_map.find(operand);
@@ -2546,7 +2554,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
         }
         // Constant scalars don't get expanded ahead of time and are kept
         // scalar.
-        if (operands[0]->shape().dimensions_size() == 0) {
+        if (operands[0]->shape().dimensions().empty()) {
           dimensions.clear();
         }
         HloInstruction* expanded_broadcast =
