@@ -15,8 +15,12 @@ limitations under the License.
 
 // This transformation pass applies some clean up steps after quantization.
 
+#include <cassert>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project

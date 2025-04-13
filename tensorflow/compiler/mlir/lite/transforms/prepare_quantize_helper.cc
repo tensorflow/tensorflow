@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <cmath>
 
-#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
