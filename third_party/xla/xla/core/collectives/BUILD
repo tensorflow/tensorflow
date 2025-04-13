@@ -19,7 +19,6 @@ cc_library(
     srcs = ["clique.cc"],
     hdrs = ["clique.h"],
     deps = [
-        ":clique_id",
         ":communicator",
         ":rank_id",
         "//xla:util",
