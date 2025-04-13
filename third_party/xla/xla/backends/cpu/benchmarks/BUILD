@@ -35,8 +35,6 @@ xla_cc_test(
         "//xla/service:compiler",
         "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/service/cpu:test_header_helper",
-        "//xla/tsl/platform:status_matchers",
-        "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -470,7 +468,6 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
