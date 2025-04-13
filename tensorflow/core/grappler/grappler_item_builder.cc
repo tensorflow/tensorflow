@@ -14,11 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <memory>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -45,7 +52,9 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/queue_runner.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
