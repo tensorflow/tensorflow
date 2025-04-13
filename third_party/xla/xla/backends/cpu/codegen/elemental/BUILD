@@ -92,7 +92,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -104,7 +103,6 @@ xla_cc_test(
         ":elemental_kernel_emitter",
         "//xla:xla_data_proto_cc",
         "//xla/codegen:kernel_definition",
-        "//xla/codegen:kernel_spec",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
