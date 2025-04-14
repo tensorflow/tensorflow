@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/kernels/ragged_all_to_all_kernel.h"
-
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -22,15 +20,15 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/kernels/ragged_all_to_all_kernel_common.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -39,27 +37,37 @@ namespace xla::gpu {
 
 namespace {
 
-void* GetKernel(PrimitiveType element_type) {
-  switch (primitive_util::BitWidth(element_type)) {
-    case 8:
-      return GetRaggedAllToAllKernel<uint8_t>();
-    case 16:
-      return GetRaggedAllToAllKernel<uint16_t>();
-    case 32:
-      return GetRaggedAllToAllKernel<uint32_t>();
-    case 64:
-      return GetRaggedAllToAllKernel<uint64_t>();
-    default:
-      return nullptr;
-  }
+template <typename T>
+absl::Status LaunchTypedKernel(
+    se::Stream* stream, se::StreamExecutor* executor,
+    const se::ThreadDim& thread_dims, const se::BlockDim& block_dims,
+    se::DeviceMemoryBase input_buffer,
+    const std::array<void*,
+                     stream_executor::gpu::kMaxNumRaggedAllToAllOutputPtrs>&
+        output_ptrs,
+    se::DeviceMemoryBase input_offsets_buffer,
+    se::DeviceMemoryBase send_sizes_buffer,
+    se::DeviceMemoryBase output_offsets_buffer, int64_t num_updates_per_output,
+    int64_t num_row_elements) {
+  TF_ASSIGN_OR_RETURN(
+      auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+                       .LoadKernel<se::gpu::RaggedAllToAllKernel<T>>(executor));
+
+  return kernel.Launch(thread_dims, block_dims, stream, input_buffer,
+                       output_ptrs, input_offsets_buffer, send_sizes_buffer,
+                       output_offsets_buffer, num_updates_per_output,
+                       num_row_elements);
 }
 
 }  // namespace
 
 bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
                                      PrimitiveType element_type) {
-  return num_outputs <= kMaxNumRaggedAllToAllOutputPtrs &&
-         GetKernel(element_type) != nullptr;
+  int bit_width = primitive_util::BitWidth(element_type);
+
+  return num_outputs <= stream_executor::gpu::kMaxNumRaggedAllToAllOutputPtrs &&
+         (bit_width == 8 || bit_width == 16 || bit_width == 32 ||
+          bit_width == 64);
 }
 
 absl::Status RunRaggedAllToAllKernel(
@@ -71,7 +79,8 @@ absl::Status RunRaggedAllToAllKernel(
     se::DeviceMemoryBase output_offsets_buffer, int64_t num_outputs,
     int64_t num_updates_per_output, int64_t num_input_rows,
     int64_t num_row_elements) {
-  if (output_buffers.size() > kMaxNumRaggedAllToAllOutputPtrs) {
+  if (output_buffers.size() >
+      stream_executor::gpu::kMaxNumRaggedAllToAllOutputPtrs) {
     return absl::InvalidArgumentError(
         "Number of output pointers exceeds the maximum supported number of "
         "output pointers.");
@@ -93,25 +102,38 @@ absl::Status RunRaggedAllToAllKernel(
       std::min(CeilOfRatio<size_t>(num_input_rows * num_row_elements, kThreads),
                kMaxBlocksPerUpdate);
 
-  TF_ASSIGN_OR_RETURN(
-      auto kernel,
-      (se::TypedKernelFactory<
-          se::DeviceMemoryBase,
-          std::array<void*, kMaxNumRaggedAllToAllOutputPtrs>,
-          se::DeviceMemoryBase, se::DeviceMemoryBase, se::DeviceMemoryBase,
-          int64_t, int64_t>::Create(executor, "ragged_all_to_all",
-                                    GetKernel(element_type))));
+  se::ThreadDim thread_dims(kThreads, 1, 1);
+  se::BlockDim block_dims(num_blocks_x, num_blocks_y, 1);
 
-  std::array<void*, kMaxNumRaggedAllToAllOutputPtrs> output_ptrs;
+  std::array<void*, stream_executor::gpu::kMaxNumRaggedAllToAllOutputPtrs>
+      output_ptrs;
   for (int64_t i = 0; i < output_buffers.size(); ++i) {
     output_ptrs[i] = output_buffers[i].opaque();
   }
 
-  return kernel.Launch(se::ThreadDim(kThreads, 1, 1),
-                       se::BlockDim(num_blocks_x, num_blocks_y, 1), stream,
-                       input_buffer, output_ptrs, input_offsets_buffer,
-                       send_sizes_buffer, output_offsets_buffer,
-                       num_updates_per_output, num_row_elements);
-}
+  auto launch_kernel = [&](auto type) -> absl::Status {
+    using T = decltype(type);
+    return LaunchTypedKernel<T>(stream, executor, thread_dims, block_dims,
+                                input_buffer, output_ptrs, input_offsets_buffer,
+                                send_sizes_buffer, output_offsets_buffer,
+                                num_updates_per_output, num_row_elements);
+  };
 
+  switch (xla::primitive_util::BitWidth(element_type)) {
+    case 8:
+      return launch_kernel(uint8_t{});
+    case 16:
+      return launch_kernel(uint16_t{});
+    case 32:
+      return launch_kernel(uint32_t{});
+    case 64:
+      return launch_kernel(uint64_t{});
+    default:
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported element type: ",
+          primitive_util::LowercasePrimitiveTypeName(element_type),
+          " (bit width ", xla::primitive_util::BitWidth(element_type),
+          ") for RaggedAllToAll kernel."));
+  }
+}
 }  // namespace xla::gpu

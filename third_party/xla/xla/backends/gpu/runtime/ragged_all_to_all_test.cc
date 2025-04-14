@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/kernels/ragged_all_to_all_kernel.h"
+#include "xla/backends/gpu/runtime/ragged_all_to_all.h"
 
 #include <cstdint>
 #include <numeric>
