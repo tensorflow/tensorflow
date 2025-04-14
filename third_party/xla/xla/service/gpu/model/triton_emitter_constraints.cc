@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -172,19 +173,18 @@ TritonEmitterConstraints::GetBuilder(
                  instructions,
              const HloFusionAdaptor& fusion_adaptor) {
     llvm::DenseSet<AffineMap> unique_tile_size_maps;
-    llvm::SmallVector<mlir::AffineMap, 2> size_maps;
+    llvm::SmallVector<RootTileInfo, 2> root_infos;
     auto roots = fusion_adaptor.GetRoots();
     for (const auto& tiled_hlo_instruction : instructions) {
       unique_tile_size_maps.insert(
           tiled_hlo_instruction->symbolic_tile().size_map());
-      // TODO(b/365727080): We should also enforce this for single-output
-      // fusions.
-      if (roots.size() > 1 &&
-          absl::c_any_of(roots, [&tiled_hlo_instruction](
+      if (absl::c_any_of(roots, [&tiled_hlo_instruction](
                                     const HloInstructionAdaptor& instr) {
             return &instr.instruction() == tiled_hlo_instruction->hlo();
           })) {
-        size_maps.push_back(tiled_hlo_instruction->symbolic_tile().size_map());
+        root_infos.push_back(RootTileInfo{
+            tiled_hlo_instruction->symbolic_tile().size_map(),
+            SpanToVector(tiled_hlo_instruction->hlo()->shape().dimensions())});
       }
     }
 
@@ -196,7 +196,7 @@ TritonEmitterConstraints::GetBuilder(
 
     return std::unique_ptr<TritonEmitterConstraints>(
         absl::WrapUnique(new TritonEmitterConstraints(
-            std::move(tile_size_maps), std::move(size_maps),
+            std::move(tile_size_maps), std::move(root_infos),
             std::move(custom_constraints),
             /*root_shape=*/instructions.back()->hlo()->shape(),
             device_description)));
@@ -248,17 +248,24 @@ absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
       return false;
     }
   }
-  for (const auto& size_map : size_maps_) {
+  for (const auto& root : roots_) {
     llvm::SmallVector<int64_t> transformed_tile_parameters =
-        EvaluateAffineMap(size_map,
+        EvaluateAffineMap(root.size_map,
                           /*dim_values=*/tile_parameters);
-    // For multi-output fusions, we require that the propagated tile sizes for
-    // potential root tiles are powers of 2.
-    // TODO(b/365727080): Technically we should also enforce this for fusions
-    // with just one root.
-    if (GetPaddedTileSizes(transformed_tile_parameters) !=
-        transformed_tile_parameters) {
-      return false;
+    // We require that the propagated tile sizes for potential root tiles are
+    // either powers of 2 or are equal to the dimension size.
+    // TODO(b/365727080): Technically the tile size should always be a power of
+    // 2, but currently if we capture a dimension fully, we use the dimension
+    // size as tile size.
+    for (auto [tile_size, dim_size] :
+         llvm::zip(transformed_tile_parameters, root.dim_sizes)) {
+      CHECK_GT(tile_size, 0);
+      // If the tile size is neither a power of 2, nor equal to dim size, it is
+      // invalid. Otherwise we would for example compute the launch config
+      // incorrectly.
+      if ((tile_size & (tile_size - 1)) && tile_size != dim_size) {
+        return false;
+      }
     }
   }
 

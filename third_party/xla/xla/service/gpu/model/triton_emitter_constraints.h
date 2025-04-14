@@ -54,13 +54,21 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
     ConstraintExpression constraints;
   };
 
+  // Holds the info needed to validate whether the tiling parameters satisfy the
+  // constraint that they are either powers of 2, or equal to the dimension
+  // size.
+  struct RootTileInfo {
+    mlir::AffineMap size_map;
+    std::vector<int64_t> dim_sizes;
+  };
+
   explicit TritonEmitterConstraints(
       llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps,
-      llvm::SmallVector<mlir::AffineMap, 2> size_maps,
+      llvm::SmallVector<RootTileInfo, 2> roots,
       std::vector<CustomConstraints> custom_constraints,
       const Shape& root_shape, const se::DeviceDescription& device_info)
       : tile_size_maps_(std::move(tile_size_maps)),
-        size_maps_(std::move(size_maps)),
+        roots_(std::move(roots)),
         custom_constraints_(std::move(custom_constraints)),
         root_shape_(root_shape),
         device_info_(device_info) {}
@@ -93,9 +101,9 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
   // collection of unique maps to improve compilation time.
   llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps_;
 
-  // Tile size maps that need to be checked whether they evaluate to powers of
-  // 2. We need this constraint for multi-output fusions.
-  llvm::SmallVector<mlir::AffineMap, 2> size_maps_;
+  // Holds the info for all fusion roots necessary to check whether the tile
+  // sizes evaluate to powers of 2 or have the same size as the dimension.
+  llvm::SmallVector<RootTileInfo, 2> roots_;
 
   // Custom emitter-specific constraints to check in
   // `ParametersSatisfyConstraints`.

@@ -763,6 +763,7 @@ cc_library(
         ":symbolic_tile_analysis",
         ":symbolic_tiled_hlo_instruction",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",

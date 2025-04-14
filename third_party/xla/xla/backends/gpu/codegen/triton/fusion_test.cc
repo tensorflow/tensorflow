@@ -56,7 +56,7 @@ ENTRY entry_computation {
     calls=triton_computation,
     backend_config={"fusion_backend_config":{
       "kind":"__triton",
-      "block_level_fusion_config":{"output_tiles":[{"sizes":["3","127"]}],
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["4","127"]}],
                                    "num_warps":"4"}}}
 })"));
 
@@ -74,12 +74,12 @@ ENTRY entry_computation {
       triton_fusion->launch_config();
   ASSERT_NE(launch_config, std::nullopt);
   EXPECT_EQ(launch_config->launch_dimensions.num_blocks(),
-            /*ceil(125 / 3)=*/42);
+            /*ceil(125 / 4)=*/32);
   EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(),
             /*32 * num_warps=*/128);
   EXPECT_EQ(launch_config->block_level_parameters.output_tile_sizes.size(), 1);
   EXPECT_THAT(launch_config->block_level_parameters.output_tile_sizes[0],
-              ElementsAre(3, 127));
+              ElementsAre(4, 127));
 }
 
 TEST_F(TritonFusionTest,

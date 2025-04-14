@@ -388,6 +388,63 @@ ENTRY main {
       IsOkAndHolds(false));
 }
 
+TEST_F(TritonEmitterConstraintsTest, FusionHasValidTileSizes) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  param_0 = f32[36] parameter(0)
+  abs = f32[36] abs(param_0)
+  ROOT reshape = f32[6,6] reshape(abs)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[36] parameter(0)
+  ROOT fusion = f32[6,6] fusion(param_0), kind=kCustom,
+    calls=fused_computation, backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})"));
+  std::optional<SymbolicTileAnalysis> analysis_without_triton_constraints =
+      TryAnalyzeModule(module.get(),
+                       /*with_triton_emitter_specific_constraints=*/false);
+  ASSERT_TRUE(analysis_without_triton_constraints.has_value());
+
+  // (1,3) is a theoretically valid tiling for this fusion, so
+  // SymbolicTileAnalysis should allow it.
+  EXPECT_THAT(
+      analysis_without_triton_constraints->ParametersSatisfyConstraints({1, 3}),
+      IsOkAndHolds(true));
+
+  std::optional<SymbolicTileAnalysis> analysis_with_triton_constraints =
+      TryAnalyzeModule(module.get(),
+                       /*with_triton_emitter_specific_constraints=*/true);
+
+  ASSERT_TRUE(analysis_with_triton_constraints.has_value());
+
+  // (1,3) is a theoretically valid tiling for this fusion, but it does not pass
+  // the triton specific condition that all tile sizes are either powers of 2,
+  // or equal to the dimension size.
+  EXPECT_THAT(
+      analysis_with_triton_constraints->ParametersSatisfyConstraints({1, 3}),
+      IsOkAndHolds(false));
+
+  // However if we capture the last dimension fully, it should be valid.
+  EXPECT_THAT(
+      analysis_with_triton_constraints->ParametersSatisfyConstraints({1, 6}),
+      IsOkAndHolds(true));
+
+  // Also powers of 2 are valid.
+  EXPECT_THAT(
+      analysis_with_triton_constraints->ParametersSatisfyConstraints({2, 1}),
+      IsOkAndHolds(true));
+  EXPECT_THAT(
+      analysis_with_triton_constraints->ParametersSatisfyConstraints({1, 8}),
+      IsOkAndHolds(true));
+  EXPECT_THAT(
+      analysis_with_triton_constraints->ParametersSatisfyConstraints({1, 4}),
+      IsOkAndHolds(true));
+}
+
 TEST_F(TritonEmitterConstraintsTest, MultiOutputFusionHasPowerOfTwoTileSizes) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(

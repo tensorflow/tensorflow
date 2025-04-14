@@ -1056,7 +1056,7 @@ ENTRY main {
       "fusion_backend_config":{
       "kind":"__triton",
       "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["2","5","16"]}],
+        "output_tiles":[{"sizes":["2","8","16"]}],
         "num_warps":"4",
         "num_ctas":"1",
         "num_stages":"1"}}}
