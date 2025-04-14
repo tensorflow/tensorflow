@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/sort_rewriter.h"
 
+#include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
@@ -26,13 +28,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -46,13 +49,14 @@ class SortRewriterTest
  public:
   void SetUp() override {
     HloTestBase::SetUp();
-    SortRewriter::SetSortSizeThresholdForTestingOnly(
-        0);  // Always use CUB sort.
+    SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   }
 
   bool RunModuleAndPass(HloModule* module) {
     auto cloned = module->Clone();
-    bool changed = SortRewriter().Run(module).value();
+    bool changed = SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo())
+                       .Run(module)
+                       .value();
     if (changed) {
       // Here we run an end to end test to make sure that SortRewriter does
       // not introduce an incorrect rewrite. To do this, we need to clone the
@@ -315,7 +319,7 @@ ENTRY %main {
 
 // Small shapes do not see improvement from CUB sort.
 TEST_F(SortRewriterTest, NoRewriteSmallSize) {
-  SortRewriter::SetSortSizeThresholdForTestingOnly(16385);
+  SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAuto);
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -332,6 +336,44 @@ ENTRY %main {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
+}
+
+TEST_F(SortRewriterTest, H100Heuristic) {
+  SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAuto);
+  constexpr char kHloTmpl[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %lt = pred[] compare(%lhs, %rhs), direction=LT
+}
+
+ENTRY %main {
+  %input = f32[$0,100000] parameter(0)
+  ROOT %sort = f32[$0,100000] sort(%input), dimensions={1}, to_apply=%compare
+})";
+
+  auto pass = SortRewriter(TestGpuDeviceInfo::RTXH100SXMDeviceInfo());
+
+  // Batch 1
+  std::string hlo = absl::Substitute(kHloTmpl, "1");
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  // Batch 3
+  hlo = absl::Substitute(kHloTmpl, "3");
+  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  EXPECT_FALSE(changed);
+
+  // Batch 70
+  hlo = absl::Substitute(kHloTmpl, "70");
+  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
 }
 
 // Basic sort: with batch dimension.
@@ -404,7 +446,9 @@ ENTRY %main {
   constexpr char kExpectedPattern[] = R"(
     // CHECK: %[[CC:.*]] = (u16[1000]{0}, u8[1]{0}) custom-call({{.*}}), custom_call_target="__cub$DeviceRadixSort", metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}, backend_config={"descending":true}
   )";
-  RunAndFilecheckHloRewrite(kHlo, SortRewriter(), kExpectedPattern);
+  RunAndFilecheckHloRewrite(
+      kHlo, SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo()),
+      kExpectedPattern);
 }
 
 TEST_P(SortRewriterTest, SortNumpyOrder) {
@@ -455,7 +499,7 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 TEST_F(SortRewriterTest, AlwaysUsesCubSort) {
-  EXPECT_EQ(SortRewriter::SortSizeThreshold(), 0);
+  EXPECT_EQ(SortRewriter::SortMode(), SortRewriter::Mode::kAlways);
 }
 
 }  // namespace

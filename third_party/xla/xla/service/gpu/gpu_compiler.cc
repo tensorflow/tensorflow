@@ -708,7 +708,7 @@ absl::Status RunOptimizationPasses(
   // which isn't feasible if we don't have a device.
   if (hlo_module->config().debug_options().xla_gpu_enable_cub_radix_sort()) {
     if (stream_exec != nullptr) {
-      pipeline.AddPass<SortRewriter>();
+      pipeline.AddPass<SortRewriter>(gpu_target_config.device_description);
     } else {
       LOG(WARNING) << "Using fallback sort algorithm rather than SortRewriter, "
                       "which will be slower at runtime. To avoid this, "

@@ -280,6 +280,7 @@ cc_library(
     deps = [
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
     ],
 )
 
