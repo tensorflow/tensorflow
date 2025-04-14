@@ -15,12 +15,25 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/tests/device_compiler_test_helper.h"
 
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
 #include "xla/service/hlo.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
