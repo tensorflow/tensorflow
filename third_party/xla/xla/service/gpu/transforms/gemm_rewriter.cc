@@ -2441,15 +2441,18 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    auto *cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version_);
-
     // Pass a user-managed workspace to legacy cuBLAS operations, as
     // otherwise cuBLAS will use its own internal pool which will be competing
     // with XLA allocator for device memory.
-    int64_t workspace = cuda_cc == nullptr ? GemmConfig::kDefaultWorkspace
-                        : cuda_cc->IsAtLeastHopper()
-                            ? GemmConfig::kHopperWorkspace
-                            : GemmConfig::kDefaultWorkspace;
+    int64_t workspace = GemmConfig::kDefaultWorkspace;
+    auto *cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version_);
+    if (cuda_cc != nullptr && cuda_cc->IsAtLeastHopper()) {
+      workspace = GemmConfig::kHopperWorkspace;
+    }
+    auto *rocm_cc = std::get_if<se::RocmComputeCapability>(&gpu_version_);
+    if (rocm_cc != nullptr && rocm_cc->gfx_version() == "gfx950") {
+      workspace = GemmConfig::kGFX950Workspace;
+    }
 
     // We do not know the workspace size required by cuBLAS, but we can guess
     // that in a worst case cuBLAS will transpose all operands into tiled
