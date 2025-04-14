@@ -126,9 +126,9 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
   return absl::UnimplementedError("Unsupported type in getPrimitiveType.\n");
 }
 
-Type StorageType(EmitterLocOpBuilder& b, Type t) {
-  if (t.isInteger(1)) {
-    return b.getI8Type();
+Type StorageType(Type t) {
+  if (auto i = mlir::dyn_cast<mlir::IntegerType>(t); i && i.getWidth() == 1) {
+    return i.get(i.getContext(), 8, i.getSignedness());
   }
   return t;
 }

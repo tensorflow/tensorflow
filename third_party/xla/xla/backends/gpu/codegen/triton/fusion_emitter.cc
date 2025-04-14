@@ -207,7 +207,7 @@ ScalarOrTensor EmitParameterExtract(EmitterLocOpBuilder& b,
   return ScalarOrTensor(b.create<mtx::ExtractOp>(
       mlir::RankedTensorType::get(
           tiled_tensor_type.getTileShape(),
-          StorageType(b, tiled_tensor_type.getElementType())),
+          StorageType(tiled_tensor_type.getElementType())),
       tile_op.getResult(), offsets));
 }
 
@@ -1120,7 +1120,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     if (expected_element_type != loaded_element_type) {
       // Ensure that we didn't mess up somewhere else by checking that we
       // indeed loaded the expected storage type for the expected element type.
-      if (loaded_element_type != StorageType(b, expected_element_type)) {
+      if (loaded_element_type != StorageType(expected_element_type)) {
         return absl::InternalError(absl::StrCat(
             "Parameters were loaded with an unexpected element type "
             "while lowering ",
@@ -1363,7 +1363,7 @@ absl::StatusOr<mlir::triton::xla::TileOp> CreateTileOp(
   const Shape& shape = tiled_hlo.hlo()->shape();
   TF_ASSIGN_OR_RETURN(Type expected_element_type,
                       TritonType(b, shape.element_type()));
-  Type storage_type = StorageType(b, expected_element_type);
+  Type storage_type = StorageType(expected_element_type);
   auto result_type = mtx::TiledTensorType::get(
       b.getContext(), padded_tile_sizes,
       llvm::ArrayRef<int64_t>(shape.dimensions().data(),
@@ -1441,7 +1441,7 @@ absl::StatusOr<SmallVector<Value>> EmitGeneric(
     // as i8. It's important to check converted types before storing if the type
     // of the result does not match the type of the output pointer.
     Type result_element_type = getElementTypeOrSelf(result.getType());
-    Type result_storage_type = StorageType(b, result_element_type);
+    Type result_storage_type = StorageType(result_element_type);
 
     if (result_element_type != result_storage_type) {
       result =
@@ -1539,29 +1539,29 @@ absl::Status CreateInternalError(absl::string_view message,
 
 // Legacy emitter works with tt.func. New emitter works with func.func.
 // TODO(393299275): Remove legacy optionality once migration is complete.
-void AppendFuncArgType(EmitterLocOpBuilder& b, absl::Span<const int64_t> dims,
+void AppendFuncArgType(absl::Span<const int64_t> dims,
                        absl::string_view fusion_kind, Type ir_type,
                        SmallVector<Type>& fn_arg_types) {
   if (fusion_kind == kTritonGemmFusionKind) {
     fn_arg_types.push_back(ttir::PointerType::get(
-        StorageType(b, ir_type), mlir::NVVM::kGlobalMemorySpace));
+        StorageType(ir_type), mlir::NVVM::kGlobalMemorySpace));
   } else {
     fn_arg_types.push_back(mlir::RankedTensorType::get(
         llvm::ArrayRef<int64_t>(dims.data(), dims.size()),
-        StorageType(b, ir_type)));
+        StorageType(ir_type)));
   }
 }
 
 // Only needed for the new emitter since we are using func.func instead of
 // tt.func.
 // TODO(393299275): Remove legacy optionality once migration is complete.
-void AppendFuncResultType(EmitterLocOpBuilder& b, absl::string_view fusion_kind,
+void AppendFuncResultType(absl::string_view fusion_kind,
                           absl::Span<const int64_t> dims, Type ir_type,
                           SmallVector<Type>& fn_result_types) {
   if (fusion_kind != kTritonGemmFusionKind) {
     fn_result_types.push_back(mlir::RankedTensorType::get(
         llvm::ArrayRef<int64_t>(dims.data(), dims.size()),
-        StorageType(b, ir_type)));
+        StorageType(ir_type)));
   }
 }
 
@@ -1662,7 +1662,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
       TF_ASSIGN_OR_RETURN(ir_type, TritonType(b, type));
     }
 
-    AppendFuncArgType(b, p->shape().dimensions(), fusion_kind, ir_type,
+    AppendFuncArgType(p->shape().dimensions(), fusion_kind, ir_type,
                       fn_arg_types);
   }
 
@@ -1671,9 +1671,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   for (const ShapeUtil::IndexedShape& s :
        ShapeUtil::GetLeafShapes(fusion->shape())) {
     TF_ASSIGN_OR_RETURN(Type triton_ty, TritonType(b, s.shape.element_type()));
-    AppendFuncArgType(b, s.shape.dimensions(), fusion_kind, triton_ty,
+    AppendFuncArgType(s.shape.dimensions(), fusion_kind, triton_ty,
                       fn_arg_types);
-    AppendFuncResultType(b, fusion_kind, s.shape.dimensions(), triton_ty,
+    AppendFuncResultType(fusion_kind, s.shape.dimensions(), triton_ty,
                          fn_result_types);
   }
 

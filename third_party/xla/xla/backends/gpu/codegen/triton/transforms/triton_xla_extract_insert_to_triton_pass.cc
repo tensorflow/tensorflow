@@ -70,8 +70,8 @@ namespace {
 #define GEN_PASS_DEF_TRITONXLAEXTRACTINSERTTOTRITONPASS
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
-PointerType GetTensorPtrType(::xla::EmitterLocOpBuilder& builder, Type type) {
-  return PointerType::get(xgt::StorageType(builder, type),
+PointerType GetTensorPtrType(Type type) {
+  return PointerType::get(xgt::StorageType(type),
                           mlir::NVVM::kGlobalMemorySpace);
 }
 
@@ -79,7 +79,7 @@ PointerType GetTensorPtrTypeForTma(::xla::EmitterLocOpBuilder& builder) {
   // Triton frontend is passing zero in the address space. This doesn't map to
   // anything meaningful in NVVM dialect. Setting it to be consistent with
   // Triton.
-  return PointerType::get(xgt::StorageType(builder, builder.getI8Type()),
+  return PointerType::get(xgt::StorageType(builder.getI8Type()),
                           /*addrspace=*/0);
 }
 
@@ -88,10 +88,9 @@ TensorDescType GetTensorDescPtrType(::xla::EmitterLocOpBuilder& builder,
   return TensorDescType::get(builder.getContext(), type);
 }
 
-RankedTensorType GetRankedTensorType(::xla::EmitterLocOpBuilder& builder,
-                                     TiledTensorType type) {
-  return RankedTensorType::get(
-      type.getTileShape(), xgt::StorageType(builder, type.getElementType()));
+RankedTensorType GetRankedTensorType(TiledTensorType type) {
+  return RankedTensorType::get(type.getTileShape(),
+                               xgt::StorageType(type.getElementType()));
 }
 
 bool AreRankedTensors(ArrayRef<Type> types) {
@@ -294,7 +293,7 @@ struct RewriteFuncOp : mlir::OpRewritePattern<func::FuncOp> {
         cast_to_orig_type = builder.create<mlir::UnrealizedConversionCastOp>(
             operand_type, func_arg);
         operand_type = GetTensorPtrType(
-            builder, mlir::cast<TensorType>(operand_type).getElementType());
+            mlir::cast<TensorType>(operand_type).getElementType());
       }
       func_arg.replaceAllUsesExcept(cast_to_orig_type.getResult(0),
                                     cast_to_orig_type);
@@ -367,9 +366,9 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
 
     // can_use_tma ? "tensor -> !tt.ptr<i8, 0>" otherwise "tensor -> !tt.ptr<>"
     Type ptr_type =
-        can_use_tma ? GetTensorPtrTypeForTma(builder)
-                    : GetTensorPtrType(
-                          builder, op.getTensor().getType().getElementType());
+        can_use_tma
+            ? GetTensorPtrTypeForTma(builder)
+            : GetTensorPtrType(op.getTensor().getType().getElementType());
     auto cast_to_tensor_ptr_type =
         builder.create<mlir::UnrealizedConversionCastOp>(ptr_type,
                                                          op.getTensor());
@@ -410,8 +409,7 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
       // !tt.tensordesc<tensor> -> tiled_tensor
       auto cast_desc_ptr_to_tiled_tensor_ptr_type =
           builder.create<mlir::UnrealizedConversionCastOp>(
-              xgt::StorageType(builder, tiled_tensor_type),
-              reinterpret_tensor_desc);
+              xgt::StorageType(tiled_tensor_type), reinterpret_tensor_desc);
 
       rewriter.replaceOp(op, cast_desc_ptr_to_tiled_tensor_ptr_type);
       return mlir::success();
@@ -448,7 +446,7 @@ struct RewriteTile : mlir::OpRewritePattern<TileOp> {
     // !tt.ptr<tensor> -> tiled_tensor
     auto cast_to_tiled_tensor_type =
         builder.create<mlir::UnrealizedConversionCastOp>(
-            xgt::StorageType(builder, tiled_tensor_type), ptr);
+            xgt::StorageType(tiled_tensor_type), ptr);
 
     rewriter.replaceOp(op, cast_to_tiled_tensor_type);
     return mlir::success();
@@ -473,8 +471,7 @@ struct RewriteExtract : mlir::OpRewritePattern<ExtractOp> {
           builder
               .create<mlir::UnrealizedConversionCastOp>(
                   GetTensorDescPtrType(
-                      builder,
-                      GetRankedTensorType(builder, op.getSrc().getType())),
+                      builder, GetRankedTensorType(op.getSrc().getType())),
                   op.getSrc())
               .getResult(0);
 
@@ -492,8 +489,7 @@ struct RewriteExtract : mlir::OpRewritePattern<ExtractOp> {
     auto cast_to_tensor_ptr_type =
         builder
             .create<mlir::UnrealizedConversionCastOp>(
-                GetTensorPtrType(builder, GetRankedTensorType(
-                                              builder, op.getSrc().getType())),
+                GetTensorPtrType(GetRankedTensorType(op.getSrc().getType())),
                 op.getSrc())
             .getResult(0);
 
@@ -532,8 +528,7 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
           builder
               .create<mlir::UnrealizedConversionCastOp>(
                   GetTensorDescPtrType(
-                      builder,
-                      GetRankedTensorType(builder, op.getDst().getType())),
+                      builder, GetRankedTensorType(op.getDst().getType())),
                   op.getDst())
               .getResult(0);
 
@@ -545,9 +540,7 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
       auto cast_dst_to_tensor_ptr_type =
           builder
               .create<mlir::UnrealizedConversionCastOp>(
-                  GetTensorPtrType(
-                      builder,
-                      GetRankedTensorType(builder, op.getDst().getType())),
+                  GetTensorPtrType(GetRankedTensorType(op.getDst().getType())),
                   op.getDst())
               .getResult(0);
 
@@ -582,7 +575,7 @@ struct RewriteScalarInsert : mlir::OpRewritePattern<tensor::InsertOp> {
       return rewriter.notifyMatchFailure(op, "Expected dest to be scalar.");
     }
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
-    auto ptr_type = GetTensorPtrType(builder, op.getScalar().getType());
+    auto ptr_type = GetTensorPtrType(op.getScalar().getType());
     auto cast_dst_to_tensor_ptr_type =
         builder.create<mlir::UnrealizedConversionCastOp>(ptr_type, op.getDest())
             .getResult(0);
@@ -604,7 +597,7 @@ struct RewriteScalarExtract : mlir::OpRewritePattern<tensor::ExtractOp> {
       return rewriter.notifyMatchFailure(op, "Expected src to be scalar.");
     }
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
-    auto ptr_type = GetTensorPtrType(builder, op.getType());
+    auto ptr_type = GetTensorPtrType(op.getType());
     auto cast_src_to_tensor_ptr_type =
         builder
             .create<mlir::UnrealizedConversionCastOp>(ptr_type, op.getTensor())
