@@ -89,8 +89,8 @@ using ManualComputationToParentManualAxes =
 
 // Given an ManualComputationOp `op`, `op.getManualAxes()` is the local manual
 // axes. `parent` is the manual axes of its parent ManualComputationOp,
-// recursively. `region` is the concatenation of `op.getManualAxes()` and
-// `parent`.
+// recursively. `region` is the concatenation of `parent` and
+// `op.getManualAxes()`.
 struct ManualAxesHierarchy {
   mlir::ArrayRef<StringAttr> parent;
   SmallVector<StringAttr> region;
@@ -100,15 +100,15 @@ ManualAxesHierarchy getManualAxesHierarchy(
     ManualComputationOp op,
     const ManualComputationToParentManualAxes& parentManualCompAxes) {
   ManualAxesHierarchy hierarchy;
-  hierarchy.region = SmallVector<StringAttr>(op.getManualAxes().begin(),
-                                             op.getManualAxes().end());
 
   if (auto parentManualAxes = parentManualCompAxes.find(op);
       parentManualAxes != parentManualCompAxes.end()) {
     hierarchy.parent = parentManualAxes->getSecond();
-    hierarchy.region.append(parentManualAxes->getSecond().begin(),
-                            parentManualAxes->getSecond().end());
   }
+
+  hierarchy.region =
+      SmallVector<StringAttr>(hierarchy.parent.begin(), hierarchy.parent.end());
+  hierarchy.region.append(op.getManualAxes().begin(), op.getManualAxes().end());
   return hierarchy;
 }
 
