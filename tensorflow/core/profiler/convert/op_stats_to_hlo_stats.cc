@@ -141,31 +141,31 @@ std::unique_ptr<tensorflow::profiler::DataTable> CreateHloStatsDataTable(
   }
   for (const HloStatsRecord& record : hlo_stats_db.hlo_stats_record()) {
     TableRow* row = data_table->AddRow();
-    row->AddCell(record.rank());
-    row->AddCell(absl::StrCat(record.program_id()));
-    row->AddCell(record.hlo_category());
-    row->AddCell(GetHloOpNameFromExpression(record.hlo_expression()));
-    row->AddCell(record.hlo_expression());
-    row->AddCell(record.tf_op_name());
-    row->AddCell(record.occurrences());
-    row->AddCell(record.total_time_in_us());
-    row->AddCell(record.avg_time_in_us());
-    row->AddCell(record.total_self_time_in_us());
-    row->AddCell(record.avg_self_time_in_us());
-    row->AddCell(record.total_self_time_as_fraction());
-    row->AddCell(record.cumulative_total_self_time_as_fraction());
-    row->AddCell(record.dma_stall_fraction());
-    row->AddCell(record.model_flop_rate());
-    row->AddCell(record.measured_flop_rate());
-    row->AddCell(record.measured_memory_bw());
-    row->AddCell(record.hbm_bw());
-    row->AddCell(record.cmem_read_bw());
-    row->AddCell(record.cmem_write_bw());
-    row->AddCell(record.operational_intensity());
-    row->AddCell(absl::StrCat(record.bound_by()));
-    row->AddCell(record.rematerialization() ? "Yes" : "No");
-    row->AddCell(record.outside_compilation() ? "Yes" : "No");
-    row->AddCell(record.autotuned() ? "Yes" : "No");
+    row->AddNumberCell(record.rank());
+    row->AddTextCell(absl::StrCat(record.program_id()));
+    row->AddTextCell(record.hlo_category());
+    row->AddTextCell(GetHloOpNameFromExpression(record.hlo_expression()));
+    row->AddTextCell(record.hlo_expression());
+    row->AddTextCell(record.tf_op_name());
+    row->AddNumberCell(record.occurrences());
+    row->AddNumberCell(record.total_time_in_us());
+    row->AddNumberCell(record.avg_time_in_us());
+    row->AddNumberCell(record.total_self_time_in_us());
+    row->AddNumberCell(record.avg_self_time_in_us());
+    row->AddNumberCell(record.total_self_time_as_fraction());
+    row->AddNumberCell(record.cumulative_total_self_time_as_fraction());
+    row->AddNumberCell(record.dma_stall_fraction());
+    row->AddNumberCell(record.model_flop_rate());
+    row->AddNumberCell(record.measured_flop_rate());
+    row->AddNumberCell(record.measured_memory_bw());
+    row->AddNumberCell(record.hbm_bw());
+    row->AddNumberCell(record.cmem_read_bw());
+    row->AddNumberCell(record.cmem_write_bw());
+    row->AddNumberCell(record.operational_intensity());
+    row->AddTextCell(record.bound_by());
+    row->AddTextCell(record.rematerialization() ? "Yes" : "No");
+    row->AddTextCell(record.outside_compilation() ? "Yes" : "No");
+    row->AddTextCell(record.autotuned() ? "Yes" : "No");
   }
   return data_table;
 }
