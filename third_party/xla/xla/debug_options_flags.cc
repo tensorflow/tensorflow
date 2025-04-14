@@ -1779,9 +1779,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_unsupported_enable_triton_multi_output_fusion",
       bool_setter_for(
           &DebugOptions::
-              set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms),
-      debug_options
-          ->xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(),
+              set_xla_gpu_unsupported_enable_triton_multi_output_fusion),
+      debug_options->xla_gpu_unsupported_enable_triton_multi_output_fusion(),
       "Enable Triton multi-output fusions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_verify_triton_fusion_numerics",
