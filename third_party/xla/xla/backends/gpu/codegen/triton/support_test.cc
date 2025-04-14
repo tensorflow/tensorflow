@@ -1737,18 +1737,35 @@ INSTANTIATE_TEST_SUITE_P(ReverseSuite, ReverseTest,
 
 using DotTest = TritonSupportTest;
 
-class DotTypesTest : public DotTest,
-                     public ::testing::WithParamInterface<
-                         std::tuple<PrimitiveType, se::GpuComputeCapability>> {
+class DotTypesTest
+    : public DotTest,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, PrimitiveType, se::GpuComputeCapability>> {
+ public:
+  static std::string ParamToString(
+      const ::testing::TestParamInfo<DotTypesTest::ParamType>& data) {
+    auto [result_type, input_type, cc] = data.param;
+    return absl::StrCat(primitive_util::LowercasePrimitiveTypeName(result_type),
+                        "_",
+                        primitive_util::LowercasePrimitiveTypeName(input_type),
+                        "_", ComputeCapabilityToString(cc));
+  };
 };
 
 TEST_P(DotTypesTest, Dot) {
-  // Testing A[] = dot(A[], A[]).
-  // TODO(b/393299275): Add tests for cases where LHS, RHS, and result have
-  // different types. Using infra of parameterized test will not work as the
-  // number of combinations is too large.
-  auto [type, cc] = GetParam();
-  const std::string hlo_text = R"(
+  // Testing B[] = dot(A[], A[]).
+  auto [result_type, input_type, cc] = GetParam();
+
+  ExpectedFailMode fail_mode = ExpectedFailMode::kFail;
+  if (input_type == F8E4M3FN || result_type == F8E4M3FN) {
+    if (auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&cc);
+        cuda_cc && !cuda_cc->IsAtLeastHopper()) {
+      // Hits llvm::report_fatal_error during Triton compilation.
+      fail_mode = ExpectedFailMode::kFailOrCrash;
+    }
+  }
+
+  std::string hlo_text = R"(
 flhs {
   ROOT result = $0[128,256] parameter(0)
 }
@@ -1774,20 +1791,18 @@ ENTRY triton_computation {
       }
     }
   }
-  ROOT result = $0[128,512]{1,0} dot(lhs, rhs),
+  ROOT result = $1[128,512]{1,0} dot(lhs, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
+  hlo_text = absl::Substitute(
+      hlo_text, primitive_util::LowercasePrimitiveTypeName(input_type),
+      primitive_util::LowercasePrimitiveTypeName(result_type));
 
-  ExpectedFailMode fail_mode = ExpectedFailMode::kFail;
-  if (absl::c_linear_search(std::vector{F8E5M2, F8E4M3FN, S8}, type)) {
-    fail_mode = ExpectedFailMode::kFailOrCrash;
-  }
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti,
-      ParseTemplateAndGetInstruction(hlo_text, type, HloOpcode::kDot,
-                                     /* use_nested_gemm_fusions=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                          ParseTemplateAndGetInstruction(
+                              hlo_text, PRIMITIVE_TYPE_INVALID, HloOpcode::kDot,
+                              /*use_nested_gemm_fusions=*/true));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32}, cc, fail_mode);
 }
 
@@ -1795,8 +1810,9 @@ INSTANTIATE_TEST_SUITE_P(
     DotTestSuite, DotTypesTest,
     ::testing::Combine(
         ::testing::ValuesIn(AllOpSupportedTypes(HloOpcode::kDot)),
+        ::testing::ValuesIn(AllOpSupportedTypes(HloOpcode::kDot)),
         ::testing::ValuesIn(AllDevicesToTest())),
-    TritonSupportTestTypeAndDeviceToString);
+    DotTypesTest::ParamToString);
 
 TEST_F(DotTest, NonFusionRhs) {
   const std::string kHloTestTemplate = R"(

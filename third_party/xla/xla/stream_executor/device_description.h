@@ -284,7 +284,7 @@ class DeviceDescription {
 
   // Returns the CUDA compute capability if we're running on the CUDA platform.
   // If a CUDA compute capability is not available, the major version will be
-  // zero.
+  // negative.
   CudaComputeCapability cuda_compute_capability() const;
 
   // Returns the ROCm compute capability if we're running on the ROCm platform.

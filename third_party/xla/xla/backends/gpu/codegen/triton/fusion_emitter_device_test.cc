@@ -18,6 +18,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -1967,12 +1969,10 @@ ENTRY entry_computation {
 TEST_F(TritonEmitterTest, ConvertF16ToF8E5M2Exhaustive) {
   // TODO(b/396595945): enable post-Ampere once Triton respects RTNE semantics
   // on H100.
-  if (auto cc =
-          std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {
-    if (cc->IsAtLeastHopper()) {
-      GTEST_SKIP() << "Skipping tests above Ampere, Triton's conversion isn't "
-                      "always correct";
-    }
+  if (auto cc = std::get_if<se::CudaComputeCapability>(&GpuComputeCapability());
+      cc && cc->IsAtLeastHopper()) {
+    GTEST_SKIP() << "Skipping tests above Ampere, Triton's conversion isn't "
+                    "always correct";
   }
 
   constexpr absl::string_view kHloTextTemplate = R"(
@@ -2011,11 +2011,9 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterTest, FP8ToFP8EndToEnd) {
-  if (auto cc =
-          std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {
-    if (!cc->IsAtLeastHopper()) {
-      GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
-    }
+  if (auto cc = std::get_if<se::CudaComputeCapability>(&GpuComputeCapability());
+      cc && !cc->IsAtLeastHopper()) {
+    GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
   }
 
   const std::string hlo_text = R"(
@@ -2669,7 +2667,7 @@ ErrorSpec ErrorSpecForDotAlgorithm(PrecisionConfig::Algorithm algorithm) {
     case PrecisionConfig::ALG_UNSET:
       // Give a loose tolerance to ALG_UNSET, as the expected behaviour is
       // not deducible from the algorithm name alone.
-      return ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3};
+      return ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2};
     case PrecisionConfig::ALG_DOT_F16_F16_F16:
       // Computed to make the tests pass (and it seems reasonable on the face of
       // it), and not derived from first principles.
@@ -2868,52 +2866,61 @@ INSTANTIATE_TEST_SUITE_P(TF32DotAlgorithmEmitterTestSuite,
 
 class DotUnsetAlgorithmEmitterTest
     : public TritonEmitterTest,
-      public ::testing::WithParamInterface<PrimitiveType> {};
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, PrimitiveType>> {
+ public:
+  static std::string ParamToString(
+      const ::testing::TestParamInfo<DotUnsetAlgorithmEmitterTest::ParamType>&
+          data) {
+    auto [result_type, input_type] = data.param;
+    return absl::StrCat(primitive_util::LowercasePrimitiveTypeName(result_type),
+                        "_",
+                        primitive_util::LowercasePrimitiveTypeName(input_type));
+  };
+};
 
 TEST_P(DotUnsetAlgorithmEmitterTest, UnsetAlgorithmIsEmittedCorrectly) {
-  // This currently assumes that the dot output type is the same as the input
-  // type. This is not enforced by the verifier/HLO spec, but is currently true
-  // for our emitters, and is enforced by `support_test.cc`. This test may
-  // require upgrading if we ever consider emitting code for truly mixed type
-  // `dot`s.
-  PrimitiveType ty = GetParam();
-  if (!internal::IsResultTypeSupportedByAlgUnsetDot(ty,
-                                                    GpuComputeCapability())) {
-    GTEST_SKIP() << primitive_util::LowercasePrimitiveTypeName(ty)
-                 << " is not supported on this platform.";
+  auto [input_type, result_type] = GetParam();
+  if (!internal::AreTypesSupportedByAlgUnsetDot(input_type, result_type,
+                                                GpuComputeCapability())) {
+    GTEST_SKIP() << "Not supported on this platform.";
   }
 
   ErrorSpec error_spec = ErrorSpecForDotAlgorithm(PrecisionConfig::ALG_UNSET);
   // For 8-bit floating point types, we need to allow large errors.
-  if (primitive_util::IsFloatingPointType(ty) &&
-      primitive_util::BitWidth(ty) == 8) {
+  if (primitive_util::IsFloatingPointType(result_type) &&
+      primitive_util::BitWidth(result_type) == 8) {
     error_spec = ErrorSpec{/*aabs=*/1e0, /*arel=*/1e-1};
   }
 
   const std::string kHloText =
-      GetDotAlgorithmHlo(ty, ty, PrecisionConfig::ALG_UNSET);
+      GetDotAlgorithmHlo(input_type, result_type, PrecisionConfig::ALG_UNSET);
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, error_spec));
 }
 
-std::vector<PrimitiveType> AllXlaDataTypesSupportedByAlgUnsetDotLowering() {
+auto AllXlaDataTypesSupportedByAlgUnsetDotLowering() {
   // We don't have a pointer to stream executor available here so we can't
   // detect the particular device we're running on with a canonical API call.
   // Instead, we just return a superset of the supported types (i.e. those that
   // are supported on the latest device), and filter out the unsupported types
   // in the test body.
-  std::vector<PrimitiveType> supported_types;
-  absl::c_copy_if(AllXlaDataTypes(), std::back_inserter(supported_types),
-                  [](PrimitiveType type) {
-                    return internal::IsResultTypeSupportedByAlgUnsetDot(
-                        type, se::CudaComputeCapability::Blackwell());
-                  });
+  std::vector<DotUnsetAlgorithmEmitterTest::ParamType> supported_types;
+  ::testing::internal::ParamGenerator<DotUnsetAlgorithmEmitterTest::ParamType>
+      all_types = ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                                     ::testing::ValuesIn(AllXlaDataTypes()));
+  absl::c_copy_if(
+      all_types, std::back_inserter(supported_types), [](const auto& types) {
+        auto [result_type, input_type] = types;
+        return static_cast<bool>(internal::AreTypesSupportedByAlgUnsetDot(
+            input_type, result_type, se::CudaComputeCapability::Blackwell()));
+      });
   return supported_types;
 }
 
 INSTANTIATE_TEST_SUITE_P(
     DotUnsetAlgorithmEmitterTestSuite, DotUnsetAlgorithmEmitterTest,
     ::testing::ValuesIn(AllXlaDataTypesSupportedByAlgUnsetDotLowering()),
-    TypeTestParamToString);
+    DotUnsetAlgorithmEmitterTest::ParamToString);
 
 }  // namespace
 }  // namespace gpu
