@@ -27,13 +27,16 @@ limitations under the License.
 namespace xla {
 
 bool UseTfrtGpuClient() {
-  bool xla_pjrt_gpu_host_memory_preallocate;
-  if (!tsl::ReadBoolFromEnvVar("USE_TFRT_GPU_CLIENT", false,
-                               &xla_pjrt_gpu_host_memory_preallocate)
-           .ok()) {
-    return false;
-  }
-  return xla_pjrt_gpu_host_memory_preallocate;
+  static bool use_tfrt_gpu_client = []() {
+    bool use_tfrt_gpu_client;
+    if (!tsl::ReadBoolFromEnvVar("USE_TFRT_GPU_CLIENT", false,
+                                 &use_tfrt_gpu_client)
+             .ok()) {
+      return false;
+    }
+    return use_tfrt_gpu_client;
+  }();
+  return use_tfrt_gpu_client;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetXlaPjrtGpuClient(
