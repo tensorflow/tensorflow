@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tools/hlo_bisect/hlo_bisect_state.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -23,6 +25,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
