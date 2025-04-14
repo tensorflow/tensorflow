@@ -106,6 +106,7 @@ Requirements_lock label: "{requirements_lock_label}"
         """
 TF_PYTHON_VERSION = "{version}"
 HERMETIC_PYTHON_VERSION = "{version}"
+HERMETIC_PYTHON_VERSION_KIND = "{py_kind}"
 WHEEL_NAME = "{wheel_name}"
 WHEEL_COLLAB = "{wheel_collab}"
 REQUIREMENTS = "{requirements}"
@@ -117,6 +118,7 @@ HERMETIC_PYTHON_SHA256 = "{hermetic_sha256}"
 HERMETIC_PYTHON_PREFIX = "{hermetic_prefix}"
 """.format(
             version = version,
+            py_kind = py_kind,
             wheel_name = wheel_name,
             wheel_collab = wheel_collab,
             requirements = str(requirements),
