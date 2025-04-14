@@ -309,6 +309,48 @@ bool IsSupportedDotAlgorithm(PrecisionConfig::Algorithm algorithm) {
   return false;
 }
 
+CodegenDecision AreTypesSupportedByAlgUnsetDot(
+    PrimitiveType input_type, PrimitiveType result_type,
+    const se::GpuComputeCapability& gpu_version) {
+  if (input_type == F64 && result_type != F64) {
+    return CodegenDecision::Forbid(
+        "Dot operation only supports F64 result type for F64 input type.");
+  }
+
+  if (input_type == F8E4M3FN || result_type == F8E4M3FN) {
+    if (auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
+        cuda_cc && !cuda_cc->IsAtLeastHopper()) {
+      return CodegenDecision::Forbid(
+          "Dot operation for F8E4M3FN is not supported before Hopper.");
+    }
+  }
+
+  auto supported_float_types = {BF16, F16, F32, F64, F8E5M2, F8E4M3FN};
+  if (absl::c_linear_search(supported_float_types, input_type)) {
+    return CodegenDecision::Allow();
+  }
+
+  if (input_type == S8 && result_type == S32) {
+    return CodegenDecision::Allow();
+  }
+
+  auto partially_supported_signed_types = {S8, S16, S32, S64};
+  if (absl::c_linear_search(partially_supported_signed_types, input_type)) {
+    if (absl::c_linear_search(partially_supported_signed_types, result_type)) {
+      return CodegenDecision::Forbid(
+          "Dot operation does not support these signed integer types.");
+    }
+    if (primitive_util::IsFloatingPointType(result_type)) {
+      return CodegenDecision::Forbid(
+          "Dot operation does not support floating point input and signed "
+          "integer result types.");
+    }
+    return CodegenDecision::Allow();
+  }
+
+  return CodegenDecision::Forbid("Unsupported types.");
+}
+
 // Checks whether the conversions generated during the lowering of the relevant
 // dot algorithm for the relevant input and output types are supported by
 // Triton.
@@ -409,8 +451,8 @@ CodegenDecision IsTritonSupportedDot(
   }
 
   if (algorithm == PrecisionConfig::ALG_UNSET) {
-    if (CodegenDecision decision = internal::AreTypesSupportedByAlgUnsetDot(
-            lhs_type, result_type, gpu_version);
+    if (CodegenDecision decision =
+            AreTypesSupportedByAlgUnsetDot(lhs_type, result_type, gpu_version);
         !decision) {
       return decision;
     }
@@ -617,48 +659,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     default:
       return false;
   }
-}
-
-CodegenDecision AreTypesSupportedByAlgUnsetDot(
-    PrimitiveType input_type, PrimitiveType result_type,
-    const se::GpuComputeCapability& gpu_version) {
-  if (input_type == F64 && result_type != F64) {
-    return CodegenDecision::Forbid(
-        "Dot operation only supports F64 result type for F64 input type.");
-  }
-
-  if (input_type == F8E4M3FN || result_type == F8E4M3FN) {
-    if (auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
-        cuda_cc && !cuda_cc->IsAtLeastHopper()) {
-      return CodegenDecision::Forbid(
-          "Dot operation for F8E4M3FN is not supported before Hopper.");
-    }
-  }
-
-  auto supported_float_types = {BF16, F16, F32, F64, F8E5M2, F8E4M3FN};
-  if (absl::c_linear_search(supported_float_types, input_type)) {
-    return CodegenDecision::Allow();
-  }
-
-  if (input_type == S8 && result_type == S32) {
-    return CodegenDecision::Allow();
-  }
-
-  auto partially_supported_signed_types = {S8, S16, S32, S64};
-  if (absl::c_linear_search(partially_supported_signed_types, input_type)) {
-    if (absl::c_linear_search(partially_supported_signed_types, result_type)) {
-      return CodegenDecision::Forbid(
-          "Dot operation does not support these signed integer types.");
-    }
-    if (primitive_util::IsFloatingPointType(result_type)) {
-      return CodegenDecision::Forbid(
-          "Dot operation does not support floating point input and signed "
-          "integer result types.");
-    }
-    return CodegenDecision::Allow();
-  }
-
-  return CodegenDecision::Forbid("Unsupported types.");
 }
 
 }  // namespace internal
