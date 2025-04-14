@@ -126,6 +126,8 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
       "#sink_nodes=%d, is_sequential=%v, small_buffers=%v",
       num_thunks_, execution_graph_.source().size(),
       execution_graph_.sink().size(), is_sequential_, small_buffers);
+
+  VLOG(6) << "ThunkExecutor execution graph:\n" << ToString();
 }
 
 absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
@@ -561,12 +563,13 @@ std::string ThunkExecutor::ToString() const {
     const Thunk& thunk = *thunk_sequence_[i];
     bool is_source = absl::c_find(source, i) != source.end();
     bool is_sink = absl::c_find(sink, i) != sink.end();
-    absl::StrAppendFormat(&str,
-                          "\n thunk #%05d: op_name=%s, dependencies=[%s], "
-                          "source=%v, sink=%v, priority=%d",
-                          i, thunk.info().op_name,
-                          absl::StrJoin(in_edges[i], ", "), is_source, is_sink,
-                          execution_graph_.priority(i));
+    absl::StrAppendFormat(
+        &str,
+        "\n thunk #%05d: op_name=%s, kind=%s, dependencies=[%s], "
+        "source=%v, sink=%v, priority=%d",
+        i, thunk.info().op_name, Thunk::KindToString(thunk.kind()),
+        absl::StrJoin(in_edges[i], ", "), is_source, is_sink,
+        execution_graph_.priority(i));
   }
 
   return str;
