@@ -132,12 +132,12 @@ HloInstruction* GetRowSlice(HloInstruction* hlo, int64_t row_index) {
   Shape row_shape = hlo->shape();
   row_shape.set_dimensions(0, 1);
 
-  std::vector<int64_t> slice_start_indices(row_shape.dimensions_size(), 0);
+  std::vector<int64_t> slice_start_indices(row_shape.dimensions().size(), 0);
   slice_start_indices[0] = row_index;
   std::vector<int64_t> slice_limit_indices{row_shape.dimensions().begin(),
                                            row_shape.dimensions().end()};
   slice_limit_indices[0] = row_index + 1;
-  std::vector<int64_t> slice_strides(row_shape.dimensions_size(), 1);
+  std::vector<int64_t> slice_strides(row_shape.dimensions().size(), 1);
 
   HloInstruction* row_slice =
       computation->AddInstruction(HloInstruction::CreateSlice(
@@ -201,7 +201,7 @@ HloInstruction* PadOutermostDimension(HloComputation* computation,
   Shape padded_shape = hlo->shape();
 
   PaddingConfig padding_config =
-      MakeNoPaddingConfig(padded_shape.dimensions_size());
+      MakeNoPaddingConfig(padded_shape.dimensions().size());
   padding_config.mutable_dimensions(0)->set_edge_padding_high(padding_size);
 
   padded_shape.set_dimensions(0, padded_shape.dimensions(0) + padding_size);
@@ -233,7 +233,7 @@ std::vector<HloInstruction*> RaggedToDense(HloComputation* computation,
     for (int64_t j = 0; j < num_updates_per_replica; ++j) {
       auto offset_multi_index = GetOffsetMultiIndex(
           computation, offsets, i * num_updates_per_replica + j,
-          ragged_input->shape().dimensions_size());
+          ragged_input->shape().dimensions().size());
 
       HloInstruction* padded_input =
           PadOutermostDimension(computation, ragged_input, max_update_size);
@@ -266,7 +266,7 @@ HloInstruction* DenseToRagged(HloComputation* computation,
                               int64_t num_updates_per_replica,
                               int64_t max_update_size) {
   int64_t num_rows = offsets->shape().dimensions(0);
-  int64_t rank = ragged_output->shape().dimensions_size();
+  int64_t rank = ragged_output->shape().dimensions().size();
 
   Shape original_shape = ragged_output->shape();
 
@@ -280,9 +280,9 @@ HloInstruction* DenseToRagged(HloComputation* computation,
   for (int64_t i = 0; i < num_rows / num_updates_per_replica; ++i) {
     for (int64_t j = 0; j < num_updates_per_replica; ++j) {
       int idx = i * num_updates_per_replica + j;
-      auto offset_multi_index =
-          GetOffsetMultiIndex(computation, offsets, idx,
-                              padded_ragged_output->shape().dimensions_size());
+      auto offset_multi_index = GetOffsetMultiIndex(
+          computation, offsets, idx,
+          padded_ragged_output->shape().dimensions().size());
 
       // `dense_inputs` is a tuple of updates for each replica. The number of
       // elements in the tuple is equal to the number of replicas.

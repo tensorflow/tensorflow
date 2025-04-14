@@ -139,10 +139,10 @@ bool GpuAlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
   DotDimensionNumbers dnums = dot->dot_dimension_numbers();
   bool lhs_is_vector = (dnums.lhs_batch_dimensions_size() +
                             dnums.lhs_contracting_dimensions_size() ==
-                        lhs->shape().dimensions_size());
+                        lhs->shape().dimensions().size());
   bool rhs_is_vector = (dnums.rhs_batch_dimensions_size() +
                             dnums.rhs_contracting_dimensions_size() ==
-                        rhs->shape().dimensions_size());
+                        rhs->shape().dimensions().size());
   // Strength-reduce vector-vector dots since they are not supported by
   // GemmFusion.
   if (lhs_is_vector && rhs_is_vector) {

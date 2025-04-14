@@ -64,8 +64,8 @@ static absl::StatusOr<bool> PadForGemm(HloDotInstruction* dot,
     // Since the dot instruction is canonicalized, the last two dimensions for
     // each operand represent non-batch dimensions, and the others are the same
     // for both operands and correspond to batch dimensions.
-    pad_dim(s, s.dimensions_size() - 2);
-    pad_dim(s, s.dimensions_size() - 1);
+    pad_dim(s, s.dimensions().size() - 2);
+    pad_dim(s, s.dimensions().size() - 1);
     return s;
   };
 
@@ -83,7 +83,7 @@ static absl::StatusOr<bool> PadForGemm(HloDotInstruction* dot,
 
   auto create_padding_config = [](Shape& shape, Shape& new_shape) {
     PaddingConfig padding_config;
-    for (int i = 0; i < shape.dimensions_size(); ++i) {
+    for (int i = 0; i < shape.dimensions().size(); ++i) {
       auto dimension = padding_config.add_dimensions();
       dimension->set_edge_padding_high(new_shape.dimensions()[i] -
                                        shape.dimensions()[i]);
@@ -113,8 +113,8 @@ static absl::StatusOr<bool> PadForGemm(HloDotInstruction* dot,
   HloInstruction* new_dot = parent->AddInstruction(
       dot->CloneWithNewOperands(new_result_shape, {lpad, rpad}));
 
-  std::vector<int64_t> start_indices(result_shape.dimensions_size(), 0);
-  std::vector<int64_t> strides(result_shape.dimensions_size(), 1);
+  std::vector<int64_t> start_indices(result_shape.dimensions().size(), 0);
+  std::vector<int64_t> strides(result_shape.dimensions().size(), 1);
   HloInstruction* slice = parent->AddInstruction(
       HloInstruction::CreateSlice(result_shape, new_dot, start_indices,
                                   result_shape.dimensions(), strides));
@@ -139,9 +139,9 @@ bool CheckCanonical(HloDotInstruction* dot) {
   const auto& dimension_numbers = dot->dot_dimension_numbers();
 
   if (dimension_numbers.lhs_batch_dimensions_size() + 2 !=
-          dot->operand(0)->shape().dimensions_size() ||
+          dot->operand(0)->shape().dimensions().size() ||
       dimension_numbers.rhs_batch_dimensions_size() + 2 !=
-          dot->operand(1)->shape().dimensions_size()) {
+          dot->operand(1)->shape().dimensions().size()) {
     VLOG(2)
         << dot->ToString()
         << " is not canonical: Expected all dimensions but 2 to be "
