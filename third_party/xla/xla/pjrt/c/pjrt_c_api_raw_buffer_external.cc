@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
 
 #define PJRT_RETURN_FUTURE_IF_ERROR(expr, c_api)                         \
   do {                                                                   \
@@ -172,8 +173,9 @@ PjRtCApiBuffer_CreateRawAliasOfBuffer_Factory(PjRtBuffer* buffer) {
                         pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
                             c_api, extension, c_api_buffer->c_buffer()));
     return tsl::MakeRef<PjRtCApiRawBuffer>(
-        raw_buffer, reinterpret_cast<PjRtCApiClient*>(c_api_buffer->client()),
-        c_api, extension);
+        raw_buffer,
+        tensorflow::down_cast<PjRtCApiClient*>(c_api_buffer->client()), c_api,
+        extension);
   }
   return std::nullopt;
 }

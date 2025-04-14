@@ -166,6 +166,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:casts",
     ],
 )
 

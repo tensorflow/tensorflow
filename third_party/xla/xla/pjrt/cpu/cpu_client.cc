@@ -282,18 +282,6 @@ class CpuAsyncHostToDeviceTransferManager
   TfrtCpuDevice* device_;
 };
 
-// Converts a const span of unique_ptr<TfrtCpuDevice> to a const span of
-// unique_ptr<PjRtDevice>. This is a safe operation because the resulting span
-// only permits access to elements via pointer dereference, and unique_ptr
-// values remain immutable.
-absl::Span<const std::unique_ptr<PjRtDevice>> GetPjRtDeviceSpan(
-    absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices) {
-  static_assert(std::is_base_of_v<PjRtDevice, TfrtCpuDevice>);
-  return absl::Span<const std::unique_ptr<PjRtDevice>>(
-      reinterpret_cast<const std::unique_ptr<PjRtDevice>*>(devices.data()),
-      devices.size());
-}
-
 }  // namespace
 
 static int CpuDeviceCount() {
@@ -338,6 +326,19 @@ static tsl::ThreadOptions GetThreadOptions() {
   return thread_options;
 }
 
+// Returns the CPU devices from the given TfrtCpuDevices.
+// Precondition: `devices` doesn't contain nullptr.
+static std::vector<CpuTopology::CpuDevice> GetCpuDevices(
+    absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices) {
+  std::vector<CpuTopology::CpuDevice> cpu_devices;
+  cpu_devices.reserve(devices.size());
+  for (const auto& device : devices) {
+    cpu_devices.push_back(CpuTopology::CpuDevice{
+        device->process_index(), device->local_hardware_id().value()});
+  }
+  return cpu_devices;
+}
+
 TfrtCpuClient::TfrtCpuClient(
     int process_index, std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
     std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
@@ -361,9 +362,8 @@ TfrtCpuClient::TfrtCpuClient(
           tsl::MakeAvailableAsyncValueRef<CpuEvent>()),
       transpose_cache_(1024),
       collectives_(std::move(collectives)),
-      topology_(CpuTopologyDescription::Create(
-          platform_id(), platform_name(), platform_version(),
-          GetPjRtDeviceSpan(owned_devices_), cpu::DetectMachineAttributes())),
+      topology_(platform_id(), platform_name(), platform_version(),
+                GetCpuDevices(owned_devices_), cpu::DetectMachineAttributes()),
       asynchronous_(asynchronous),
       customize_hlo_module_config_(std::move(customize_hlo_module_config)) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
