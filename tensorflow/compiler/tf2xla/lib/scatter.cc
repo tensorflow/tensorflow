@@ -51,7 +51,7 @@ absl::StatusOr<xla::XlaOp> XlaScatter(
   if (indices_are_vectors) {
     TF_RET_CHECK(!indices_dims.empty());
     num_index_dims = indices_dims.back();
-    if (num_index_dims > buffer_shape.dimensions_size()) {
+    if (num_index_dims > buffer_shape.dimensions().size()) {
       return errors::InvalidArgument(
           "The size of the minor dimension of the indices (shape: ",
           xla::ShapeUtil::HumanString(indices_shape),
@@ -140,11 +140,11 @@ absl::StatusOr<xla::XlaOp> XlaScatter(
 
   xla::ScatterDimensionNumbers dim_numbers;
   dim_numbers.set_index_vector_dim(indices_are_vectors
-                                       ? indices_shape.dimensions_size() - 1
-                                       : indices_shape.dimensions_size());
+                                       ? indices_shape.dimensions().size() - 1
+                                       : indices_shape.dimensions().size());
 
-  int64_t updates_rank = updates_shape.dimensions_size();
-  int64_t buffer_rank = buffer_shape.dimensions_size();
+  int64_t updates_rank = updates_shape.dimensions().size();
+  int64_t buffer_rank = buffer_shape.dimensions().size();
   int64_t num_window_dims_in_updates = buffer_rank - num_index_dims;
 
   // If the rank of `updates` is 0 and does not match the expected rank of
@@ -159,7 +159,7 @@ absl::StatusOr<xla::XlaOp> XlaScatter(
   if (updates_rank == 0 && expected_updates_rank != 0) {
     new_updates = xla::Broadcast(updates, expected_updates_dims);
     TF_ASSIGN_OR_RETURN(updates_shape, builder->GetShape(new_updates));
-    updates_rank = updates_shape.dimensions_size();
+    updates_rank = updates_shape.dimensions().size();
   }
 
   if (updates_rank > 0) {
