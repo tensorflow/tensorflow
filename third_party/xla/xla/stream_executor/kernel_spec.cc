@@ -23,6 +23,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tsl/platform/logging.h"
