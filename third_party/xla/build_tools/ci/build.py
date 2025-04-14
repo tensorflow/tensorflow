@@ -137,8 +137,8 @@ class Build:
   _builds: ClassVar[Dict[BuildType, "Build"]] = {}
 
   type_: BuildType
-  subcommand: str = "test"
   repo: str
+  subcommand: str = "test"
   target_patterns: Tuple[str, ...]
   configs: Tuple[str, ...] = ()
   build_tag_filters: Tuple[str, ...] = ()
