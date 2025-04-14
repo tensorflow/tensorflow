@@ -134,13 +134,13 @@ ComputeSliceShardingAndCommunicationCostFromOperand(
   CHECK(old_shape.IsArray());
 
   std::vector<int64_t> tensor_to_mesh_dim = GetTensorDimToMeshDim(
-      new_shape.dimensions_size(), input_spec, device_mesh,
+      new_shape.dimensions().size(), input_spec, device_mesh,
       /* consider_reverse_device_meshes */ true);
 
   std::vector<int64_t> mesh_dims_for_communication;
   std::vector<int64_t> tensor_dims;
   std::vector<int64_t> mesh_dims;
-  for (size_t i = 0; i < new_shape.dimensions_size(); ++i) {
+  for (size_t i = 0; i < new_shape.dimensions().size(); ++i) {
     if (tensor_to_mesh_dim[i] == -1) {
       continue;
     }
