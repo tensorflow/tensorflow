@@ -2237,6 +2237,12 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
   std::string cache_dir;
   CHECK(tsl::Env::Default()->LocalTempFilename(&cache_dir));
 
+  if (tsl::kIsOpenSource) {
+    // Test relies on VLOG(1) messages. Enable VLOG(1) in OSS.
+    tsl::setenv("TF_CPP_VMODULE", "gemm_fusion_autotuner=1",
+                /*overwrite=*/true);
+  }
+
   // Compile twice to test both empty and non-empty disk cache.
   for (int iteration = 0; iteration < 2; ++iteration) {
     tsl::SubProcess child[kNumNodes];
@@ -2298,11 +2304,6 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
                                             const int num_nodes_using_cache,
                                             absl::string_view cache_dir,
                                             bool use_xla_computation) {
-  if (tsl::kIsOpenSource) {
-    // Test relies on VLOG(1) messages. Enable VLOG(1) in OSS.
-    tsl::setenv("TF_CPP_VMODULE", "gemm_fusion_autotuner=1",
-                /*overwrite=*/true);
-  }
   std::unique_ptr<xla::DistributedRuntimeService> service;
   if (node_id == 0) {
     TF_ASSIGN_OR_RETURN(
