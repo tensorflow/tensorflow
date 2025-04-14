@@ -271,8 +271,8 @@ class AbstractAsyncHostToHostMemoryTransferManager
   void SetBufferError(int buffer_index, absl::Status error) override;
 
   void AddTransferMetadata(const TransferMetadata& meta) override {
-    LOG(WARNING) << "AddTransferMetadata not implemented for "
-                    "AbstractAsyncHostToHostMemoryTransferManager";
+    LOG_FIRST_N(WARNING, 1) << "AddTransferMetadata not implemented for "
+                               "AbstractAsyncHostToHostMemoryTransferManager";
   }
 
  protected:
