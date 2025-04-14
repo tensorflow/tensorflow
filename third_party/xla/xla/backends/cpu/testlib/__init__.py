@@ -16,6 +16,7 @@
 
 from xla.backends.cpu.testlib import _extension
 
+# Classes.
 # go/keep-sorted start
 ComputationKernelEmitter = _extension.ComputationKernelEmitter
 ConcatenateKernelEmitter = _extension.ConcatenateKernelEmitter
@@ -25,5 +26,12 @@ HloCompiler = _extension.HloCompiler
 JitCompiler = _extension.JitCompiler
 KernelRunner = _extension.KernelRunner
 LlvmIrKernelEmitter = _extension.LlvmIrKernelEmitter
+MLIRContext = _extension.MLIRContext
+MlirKernelEmitter = _extension.MlirKernelEmitter
 TargetMachineFeatures = _extension.TargetMachineFeatures
+# go/keep-sorted end
+
+# Free functions.
+# go/keep-sorted start
+lower_to_llvm = _extension.lower_to_llvm
 # go/keep-sorted end

@@ -57,6 +57,8 @@ tsl_pybind_extension(
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_source",
         "//xla/codegen:kernel_spec",
+        "//xla/codegen:llvm_ir_kernel_source",
+        "//xla/codegen:mlir_kernel_source",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/python:nb_absl_inlined_vector",
