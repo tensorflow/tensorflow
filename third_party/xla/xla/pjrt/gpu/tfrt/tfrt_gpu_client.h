@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
 #include "xla/pjrt/gpu/tfrt/stream_pool.h"
 #include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
+#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -123,6 +124,7 @@ class TfrtGpuDevice final : public PjRtDevice {
     int32_t process_index;
     PjRtLocalDeviceId local_device_id;
     PjRtLocalHardwareId local_hardware_id;
+    std::unique_ptr<LocalDeviceState> local_device_state;
     se::StreamExecutor* executor;
     std::unique_ptr<tsl::Allocator> allocator;
     int stream_capacity;
@@ -196,6 +198,8 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   void SetLastCollectiveLaunchEvent(tsl::AsyncValueRef<GpuEvent> event);
 
+  absl::StatusOr<LocalDeviceState*> GetLocalDeviceState() const;
+
  private:
   friend class TfrtGpuClient;
   friend class TfrtGpuExecutable;
@@ -203,8 +207,9 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   int id_;
   PjRtClient* client_ = nullptr;
-  PjRtLocalDeviceId local_device_id_;
-  PjRtLocalHardwareId local_hardware_id_;
+  const PjRtLocalDeviceId local_device_id_;
+  const PjRtLocalHardwareId local_hardware_id_;
+  const std::unique_ptr<LocalDeviceState> local_device_state_;
   se::StreamExecutor* executor_;
   BoundedStreamPool stream_pool_;
   // TODO(b/400541410): Support H2D transfers on compute streams.
@@ -355,6 +360,14 @@ class TfrtGpuClient final : public PjRtClient {
       std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtMemorySpace* memory_space) override;
 
+  // Caller is responsible to ensure that `data` has allocated enough memory
+  // for `buffer_size` to do DMA mapping.
+  absl::Status DmaMap(void* data, size_t buffer_size) override;
+
+  absl::Status DmaUnmap(void* data) override;
+
+  bool IsDmaMapped(const void* data_start, int64_t transfer_size);
+
  private:
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
   // `options` in-place.
@@ -410,6 +423,10 @@ class TfrtGpuClient final : public PjRtClient {
 
   const std::string platform_name_;
   StreamExecutorGpuTopologyDescription topology_;
+
+  absl::Mutex dma_maps_mutex_;
+  // Maps dma mapped start pointers to their sizes.
+  absl::flat_hash_map<void*, size_t> dma_maps_ ABSL_GUARDED_BY(dma_maps_mutex_);
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
