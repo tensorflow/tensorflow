@@ -126,7 +126,6 @@ TEST(DumpCrashReproducerTest, RoundtripDumpAndReadValid) {
                                 registry,
                                 mlir::MlirOptMainConfig{}
                                     .splitInputFile("")
-                                    .verifyDiagnostics(false)
                                     .verifyPasses(false)
                                     .allowUnregisteredDialects(false)
                                     .setPassPipelineParser(passPipeline))

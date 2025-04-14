@@ -79,7 +79,7 @@ struct RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
     if (value.getType() == b.getF16Type()) {
       // Fast path for truncating F16 type.
       Value vec =
-          b.create<ml::UndefOp>(ml::getFixedVectorType(value.getType(), 2));
+          b.create<ml::UndefOp>(mlir::VectorType::get(2, value.getType()));
       vec = b.create<ml::InsertElementOp>(vec, value,
                                           b.create<ma::ConstantIntOp>(0, 8));
       auto cvtIntr = llvm::isa<mlir::Float8E4M3FNType>(to_ty)
@@ -215,9 +215,9 @@ struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
                        ? "llvm.nvvm.e4m3x2.to.f16x2.rn"
                        : "llvm.nvvm.e5m2x2.to.f16x2.rn";
     mlir::FloatType f16_ty = b.getF16Type();
-    auto cvtOp = b.create<ml::CallIntrinsicOp>(
-        ml::getFixedVectorType(f16_ty, 2), b.getStringAttr(cvtIntr),
-        mlir::ValueRange{input});
+    auto cvtOp = b.create<ml::CallIntrinsicOp>(mlir::VectorType::get(2, f16_ty),
+                                               b.getStringAttr(cvtIntr),
+                                               mlir::ValueRange{input});
     Value res = b.create<ml::ExtractElementOp>(
         cvtOp.getResults(), b.create<ma::ConstantIntOp>(0, 8));
     if (to_ty.getWidth() > f16_ty.getWidth()) {
