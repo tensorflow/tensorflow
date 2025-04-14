@@ -289,9 +289,8 @@ absl::Status SessionMgr::CreateSession(
 
     // Initialize coordination service if it is the leader.
     if (IsMultiClientLeader(server_def, coordination_config)) {
-      coordination_service_ =
-          tsl::CoordinationServiceInterface::EnableCoordinationService(
-              worker_env_->env, coordination_config, std::move(client_cache));
+      coordination_service_ = tsl::CoordinationService::Create(
+          worker_env_->env, coordination_config, std::move(client_cache));
       if (coordination_handler_ != nullptr) {
         coordination_handler_->SetServiceInstance(coordination_service_.get());
       }
