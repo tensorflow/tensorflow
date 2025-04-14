@@ -202,7 +202,7 @@ class CommandBufferCmd {
 
   // Create new commands in the command buffer using the given dependencies.
   struct RecordCreate {
-    absl::Span<const se::CommandBuffer::Command*> dependencies;
+    absl::Span<const se::CommandBuffer::Command* const> dependencies;
   };
 
   // Update previously recorded commands in the command buffer.
@@ -369,7 +369,7 @@ class CommandBufferCmdSequence {
 
   // Records commands into the command buffer. This method automatically
   // switches between `RecordCreate` or `RecordUpdate` depending on the command
-  // buffer state. This method assumes that no other command buffer sequences is
+  // buffer state. This method assumes that no other command buffer sequence is
   // recorded into the same command buffer, and doesn't set up initial
   // dependencies for recorded commands.
   //
@@ -411,6 +411,9 @@ class CommandBufferCmdSequence {
   }
 
  private:
+  // We use index into the `commands_` vector as a command id.
+  using CommandId = int64_t;
+
   // A state associated with commands in the sequence. We rely on this state to
   // efficiently update command recorded into the command buffer.
   struct RecordState : public CommandBufferCmd::State {
@@ -423,6 +426,17 @@ class CommandBufferCmdSequence {
 
   absl::Status CheckCommandBufferState(se::CommandBuffer* command_buffer,
                                        se::CommandBuffer::State expected_state);
+
+  // Returns true if command has no dependencies.
+  bool IsSource(CommandId id) const;
+
+  // Returns true if command is not a dependency of any other commands.
+  bool IsSink(CommandId id) const;
+
+  // Returns dependencies of the command with the given id.
+  std::vector<const se::CommandBuffer::Command*> Dependencies(
+      const RecordParams& record_params, se::CommandBuffer* command_buffer,
+      CommandId id) const;
 
   SynchronizationMode synchronization_mode_;
   std::vector<std::unique_ptr<CommandBufferCmd>> commands_;

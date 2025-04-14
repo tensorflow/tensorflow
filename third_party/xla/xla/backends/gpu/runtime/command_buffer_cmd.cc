@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -155,7 +156,7 @@ static se::CommandBuffer::Builder CreateExecutionScopeBuilder(
 
 using CreateCommand =
     absl::FunctionRef<absl::StatusOr<const se::CommandBuffer::Command*>(
-        absl::Span<const se::CommandBuffer::Command*> dependencies)>;
+        absl::Span<const se::CommandBuffer::Command* const> dependencies)>;
 
 using UpdateCommand =
     absl::FunctionRef<absl::Status(const se::CommandBuffer::Command* command)>;
@@ -301,42 +302,55 @@ CommandBufferCmdSequence::RecordCreate(
   // Keep a state associated with commands in the sequence in the state manager.
   CommandBufferCmd::StateManager& state = record_params.state;
 
-  for (std::unique_ptr<CommandBufferCmd>& command : commands_) {
+  // Collect sink commands while recording the command sequence.
+  std::vector<const se::CommandBuffer::Command*> sink_commands;
+
+  for (CommandId id = 0; id < commands_.size(); ++id) {
+    CommandBufferCmd* command = commands_[id].get();
+
     std::optional<tsl::profiler::ScopedAnnotation> annotation =
         GetKernelAnnotation(command->profile_annotation());
 
     // Skip recording collective commands if mock collectives are enabled.
     if (execute_params.mock_collectives &&
-        dynamic_cast<CollectiveCmd*>(command.get())) {
+        dynamic_cast<CollectiveCmd*>(command)) {
       continue;
     }
 
     // Create new commands by recording them into the command buffer.
-    DCHECK(!state.GetOrNull<RecordState>(command.get(), command_buffer))
+    DCHECK(!state.GetOrNull<RecordState>(command, command_buffer))
         << "Record state must be null for " << command->ToString();
     auto* record_state =
-        state.GetOrCreate<RecordState>(command.get(), command_buffer);
+        state.GetOrCreate<RecordState>(command, command_buffer);
 
-    // TODO(b/406370928): Fetch command dependencies computed from the command
-    // sequence, today we rely on implicit synchronization of all commands.
-    auto record_action = CommandBufferCmd::RecordCreate{};
+    std::vector<const se::CommandBuffer::Command*> command_dependencies =
+        Dependencies(record_params, command_buffer, id);
+
+    // Source command must depend on external dependencies passed by the caller,
+    // internal commands dependencies are defined by the command sequence
+    // structure (buffer and resource dependencies).
+    auto record_action =
+        IsSource(id) ? CommandBufferCmd::RecordCreate{dependencies}
+                     : CommandBufferCmd::RecordCreate{command_dependencies};
 
     TF_ASSIGN_OR_RETURN(
         record_state->command,
         command->Record(execute_params, record_params, std::move(record_action),
                         command_buffer));
+
+    // Collect sink commands as external dependencies for the next command
+    // sequence recorded into the same command buffer.
+    if (IsSink(id)) {
+      sink_commands.push_back(record_state->command);
+    }
   }
 
   uint64_t end_micros = tsl::Env::Default()->NowMicros();
-  VLOG(3) << "Created " << commands_.size() << " commands in "
-          << (end_micros - start_micros) << " μs";
+  VLOG(3) << absl::StrFormat(
+      "Created %d commands in %d μs (num sink commands: %d)", commands_.size(),
+      end_micros - start_micros, sink_commands.size());
 
-  // TODO(b/406370928): Depending on synchronization mode we must collect
-  // commands created for all sink nodes in the execution graph.
-  auto* last_recorded =
-      state.GetOrNull<RecordState>(commands_.back().get(), command_buffer);
-  DCHECK(last_recorded) << "Last recorded command state must be not null";
-  return std::vector<const se::CommandBuffer::Command*>{last_recorded->command};
+  return sink_commands;
 }
 
 absl::Status CommandBufferCmdSequence::RecordUpdate(
@@ -357,24 +371,24 @@ absl::Status CommandBufferCmdSequence::RecordUpdate(
   // Keep a state associated with commands in the sequence in the state manager.
   CommandBufferCmd::StateManager& state = record_params.state;
 
-  for (std::unique_ptr<CommandBufferCmd>& command : commands_) {
+  for (CommandId id = 0; id < commands_.size(); ++id) {
+    CommandBufferCmd* command = commands_[id].get();
+
     std::optional<tsl::profiler::ScopedAnnotation> annotation =
         GetKernelAnnotation(command->profile_annotation());
 
     // Skip updating collective commands if mock collectives are enabled.
     if (execute_params.mock_collectives &&
-        dynamic_cast<CollectiveCmd*>(command.get())) {
+        dynamic_cast<CollectiveCmd*>(command)) {
       continue;
     }
 
     // Update existing commands in the command buffer.
-    auto* record_state =
-        state.GetOrNull<RecordState>(command.get(), command_buffer);
+    auto* record_state = state.GetOrNull<RecordState>(command, command_buffer);
     DCHECK(record_state) << "Record state must be not null for "
                          << command->ToString();
 
     auto record_action = CommandBufferCmd::RecordUpdate{record_state->command};
-
     TF_ASSIGN_OR_RETURN(
         record_state->command,
         command->Record(execute_params, record_params, std::move(record_action),
@@ -396,6 +410,41 @@ absl::Status CommandBufferCmdSequence::CheckCommandBufferState(
                     expected_state, command_buffer->state());
   }
   return absl::OkStatus();
+}
+
+// TODO(b/406370928): Currently we assume sequential execution order of all
+// recorded commands, so we use a very simple rule for identifying source and
+// sink nodes and computing dependencies. Long term we should get that from the
+// ExecutionGraph helper, when using automatic synchronization mode.
+
+bool CommandBufferCmdSequence::IsSource(CommandId id) const { return id == 0; }
+
+bool CommandBufferCmdSequence::IsSink(CommandId id) const {
+  return id + 1 == commands_.size();
+}
+
+std::vector<const se::CommandBuffer::Command*>
+CommandBufferCmdSequence::Dependencies(const RecordParams& record_params,
+                                       se::CommandBuffer* command_buffer,
+                                       CommandId id) const {
+  // Source commands have no dependencies.
+  if (IsSource(id)) {
+    return {};
+  }
+
+  // Find recorded command state for the previous command in the sequence.
+  auto* record_state = record_params.state.GetOrNull<RecordState>(
+      commands_[id - 1].get(), command_buffer);
+  DCHECK(record_state) << "Record state must be not null for "
+                       << commands_[id - 1]->ToString();
+
+  // Some commands might end up not recording anything into the command buffer,
+  // e.g. memcpy commands where source and destination are the same.
+  if (record_state->command == nullptr) {
+    return {};
+  }
+
+  return {record_state->command};
 }
 
 const absl::flat_hash_set<BufferUse>& CommandBufferCmdSequence::buffers()
@@ -512,7 +561,7 @@ TracedCommandBufferCmd::RecordTracedCommand(
   VLOG(5) << "Record traced command into command buffer: " << command_buffer;
   return Handle(
       std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateNestedCommand(*nested_cmd, dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
@@ -559,7 +608,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> ComputationIdCmd::Record(
 
   return Handle(
       std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateMemset(&dst, value, /*num_elements=*/1,
                                             dependencies);
       },
@@ -632,7 +681,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> LaunchCmd::Record(
 
   return Handle(
       std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateLaunch(dims_.thread_counts_per_block(),
                                             dims_.block_counts(), *kernel,
                                             *kernel_args, dependencies);
@@ -712,7 +761,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CustomKernelLaunchCmd::Record(
 
   return Handle(
       std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateLaunch(custom_kernel_.thread_dims(),
                                             custom_kernel_.block_dims(),
                                             *kernel, kernel_args, dependencies);
@@ -766,7 +815,7 @@ MemcpyDeviceToDeviceCmd::Record(const Thunk::ExecuteParams& execute_params,
 
   return Handle(
       std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateMemcpyD2D(&dst, src, num_bytes_,
                                                dependencies);
       },
@@ -805,7 +854,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> MemzeroCmd::Record(
 
   return Handle(
       std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateMemset(&dst, uint8_t{0},
                                             /*num_elements=*/dst_.size(),
                                             dependencies);
@@ -847,7 +896,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> Memset32Cmd::Record(
 
   return Handle(
       std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateMemset(
             &dst, bit_pattern_,
             /*num_elements=*/dst_.size() / sizeof(uint32_t), dependencies);
@@ -898,7 +947,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CaseCmd::Record(
 
   return Handle(
       std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         if (index_is_bool_) {
           return command_buffer->CreateCase(se::DeviceMemory<bool>(index),
                                             std::move(branches), dependencies);
@@ -970,7 +1019,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
 
   return Handle(
       std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateWhile(se::DeviceMemory<bool>(pred),
                                            std::move(cond), std::move(body),
                                            dependencies);
@@ -1369,7 +1418,7 @@ CustomCallCmd::RecordLegacyCustomCall(
 
   return Handle(
       std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateNestedCommand(*nested_cmd, dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
@@ -1450,7 +1499,7 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
 
   return Handle(
       std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateNestedCommand(*nested_cmd, dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
@@ -1507,7 +1556,7 @@ CollectiveCmd::RecordTracedCommand(
 
   return Handle(
       std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command*> dependencies) {
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateNestedCommand(*nested_cmd, dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
