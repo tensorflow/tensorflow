@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_UTILS_H_
 
 #include <cstdint>
 
@@ -60,4 +60,4 @@ DenseIntElementsAttr GetI64ElementsAttr(llvm::ArrayRef<int64_t> values,
 }  // namespace odml
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_UTILS_H_
