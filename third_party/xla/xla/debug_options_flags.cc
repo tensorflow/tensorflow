@@ -51,15 +51,11 @@ limitations under the License.
 namespace xla {
 
 inline std::string DefaultMaxIsa() {
-#ifdef PLATFORM_GOOGLE
-  return "";
-#else
   // There are many missing SVE lowerings in LLVM. Limit features to NEON for
   // now. There shouldn't be significant performance impact as most AAarch64
   // CPUs still use 128-bit registers.
   // TODO(penporn): Remove this once SVE is fully supported.
   return tsl::port::IsAarch64CPU() ? "NEON" : "";
-#endif  // PLATFORM_GOOGLE
 }
 
 DebugOptions DefaultDebugOptionsIgnoringFlags() {

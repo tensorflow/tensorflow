@@ -195,7 +195,7 @@ bool HasMhloTokenType(mlir::TypeRange types) {
 mlir::Value CreateTupleValue(mlir::OpBuilder* func_builder, mlir::Location loc,
                              mlir::ValueRange& flatten_values,
                              mlir::Type type) {
-  auto tuple_type = type.dyn_cast<mlir::TupleType>();
+  auto tuple_type = llvm::dyn_cast<mlir::TupleType>(type);
   if (!tuple_type) {
     assert(!flatten_values.empty());
     auto retval = flatten_values.front();
@@ -220,7 +220,7 @@ mlir::Operation* CreateTupleFromOpResults(mlir::OpBuilder* func_builder,
                                           mlir::Location loc,
                                           mlir::Operation* op,
                                           mlir::Type type) {
-  if (!type.isa<mlir::TupleType>()) return op;
+  if (!llvm::isa<mlir::TupleType>(type)) return op;
 
   mlir::ValueRange flattened_results_ref(op->getResults());
   auto result =

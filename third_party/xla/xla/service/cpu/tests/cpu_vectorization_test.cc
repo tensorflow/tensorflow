@@ -241,11 +241,7 @@ TEST_F(DefaultMaxIsaTest, NeonForOssAArch64) {
     GTEST_SKIP() << "This test is for AArch64 CPUs.";
   }
   DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-#ifdef PLATFORM_GOOGLE
-  EXPECT_EQ(debug_options.xla_cpu_max_isa(), "");
-#else
   EXPECT_EQ(debug_options.xla_cpu_max_isa(), "NEON");
-#endif  // PLATFORM_GOOGLE
 }
 
 struct JitVectorizationTestSpec {
