@@ -35,6 +35,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tsl/platform/protobuf.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/op_metrics.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/op_profile.pb.h"  // from @org_xprof
 #include "xprof/utils/op_metrics_db_utils.h"  // from @org_xprof
 
 namespace tensorflow {

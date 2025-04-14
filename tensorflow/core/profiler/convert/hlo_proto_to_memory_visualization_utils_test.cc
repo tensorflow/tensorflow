@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/memory_viewer_preprocess.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/memory_viewer_preprocess.pb.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

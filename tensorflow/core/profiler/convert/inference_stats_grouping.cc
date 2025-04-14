@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
 #include "tsl/platform/protobuf.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/inference_stats.pb.h"  // from @org_xprof
 
 namespace tensorflow::profiler {
 

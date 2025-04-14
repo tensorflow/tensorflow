@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
