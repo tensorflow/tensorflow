@@ -21,6 +21,13 @@ set -x
 CONFIG=$1
 DISK_CACHE_PATH=$2
 
+ASAN_ARGS=()
+if [[ $CONFIG == "rocm_ci_hermetic" ]]; then
+	ASAN_ARGS+=("--test_env=ASAN_OPTIONS=suppressions=$(realpath $(dirname $0))/asan_ignore_list.txt")
+	ASAN_ARGS+=("--test_env=LSAN_OPTIONS=suppressions=$(realpath $(dirname $0))/lsan_ignore_list.txt")
+	ASAN_ARGS+=("--config=asan")
+fi
+
 bazel --bazelrc=/usertools/rocm.bazelrc test \
 	--config=${CONFIG} \
 	--config=xla_cpp \
@@ -36,5 +43,4 @@ bazel --bazelrc=/usertools/rocm.bazelrc test \
 	--test_output=errors \
 	--local_test_jobs=2 \
 	--run_under=//tools/ci_build/gpu_build:parallel_gpu_execute \
-	--test_env="ASAN_OPTIONS=suppressions=$(realpath $(dirname $0))/asan_ignore_list.txt" \
-	--test_env="LSAN_OPTIONS=suppressions=$(realpath $(dirname $0))/lsan_ignore_list.txt"
+	"${ASAN_ARGS[@]}"

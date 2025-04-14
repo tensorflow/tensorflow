@@ -246,7 +246,6 @@ build:rocm_clang_official --host_linkopt="-fuse-ld=lld"
 
 build:rocm_ci --config=rocm_clang_official
 
-build:rocm_ci_hermetic --config=asan
 build:rocm_ci_hermetic --config=rocm_clang_official
 build:rocm_ci_hermetic --repo_env="OS=ubuntu_22.04"
 build:rocm_ci_hermetic --repo_env="ROCM_VERSION=6.2.0"
