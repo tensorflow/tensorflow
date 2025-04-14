@@ -225,19 +225,19 @@ using TestTypes =
 
 TYPED_TEST_CASE(MathTypedTest, TestTypes);
 
-XLA_TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
-XLA_TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
-XLA_TYPED_TEST(MathTypedTest, IsInfOrNan) { this->TestIsInfOrNan(); }
-XLA_TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
+TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
+TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
+TYPED_TEST(MathTypedTest, IsInfOrNan) { this->TestIsInfOrNan(); }
+TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
 // Disabling on TPU since pow(-inf, 0.5) returns nan instead of +inf.
-XLA_TYPED_TEST(MathTypedTest, DISABLED_ON_TPU(SqrtPowInequivalence)) {
+TYPED_TEST(MathTypedTest, DISABLED_ON_TPU(SqrtPowInequivalence)) {
   this->TestSqrtPowInequivalence();
 }
-XLA_TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfInvEdgeCases(); }
-XLA_TYPED_TEST(MathTypedTest, ErfEdgeCases) { this->TestErfEdgeCases(); }
+TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfInvEdgeCases(); }
+TYPED_TEST(MathTypedTest, ErfEdgeCases) { this->TestErfEdgeCases(); }
 
 // Check that certain ops only support real, floating-point inputs.
-XLA_TEST_F(MathTest, RealFpOnlyOps) {
+TEST_F(MathTest, RealFpOnlyOps) {
   for (int64_t i = PrimitiveType_MIN; i <= PrimitiveType_MAX; ++i) {
     auto ty = static_cast<PrimitiveType>(i);
     SCOPED_TRACE(PrimitiveType_Name(ty));
@@ -284,7 +284,7 @@ XLA_TEST_F(MathTest, RealFpOnlyOps) {
   }
 }
 
-XLA_TEST_F(MathTest, SqrtF32) {
+TEST_F(MathTest, SqrtF32) {
   XlaBuilder builder(TestName());
   Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F32);
 
@@ -297,7 +297,7 @@ XLA_TEST_F(MathTest, SqrtF32) {
   ComputeAndCompareR0<float>(&builder, 0.0f, {zero_data.get()}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, SqrtF64) {
+TEST_F(MathTest, SqrtF64) {
   XlaBuilder builder(TestName());
   Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F64);
 
@@ -311,7 +311,7 @@ XLA_TEST_F(MathTest, SqrtF64) {
 }
 
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
-XLA_TEST_F(MathTest, ErfInvF64) {
+TEST_F(MathTest, ErfInvF64) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<double>(
       &builder, {-0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1,
@@ -332,7 +332,7 @@ XLA_TEST_F(MathTest, ErfInvF64) {
 }
 #endif
 
-XLA_TEST_F(MathTest, SquareTenValues) {
+TEST_F(MathTest, SquareTenValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(
       &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
@@ -343,7 +343,7 @@ XLA_TEST_F(MathTest, SquareTenValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, ReciprocalTenValues) {
+TEST_F(MathTest, ReciprocalTenValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(
       &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
@@ -355,7 +355,7 @@ XLA_TEST_F(MathTest, ReciprocalTenValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, SqrtZeroes) {
+TEST_F(MathTest, SqrtZeroes) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {0.0, -0.0});
   Sqrt(x);
@@ -363,7 +363,7 @@ XLA_TEST_F(MathTest, SqrtZeroes) {
   ComputeAndCompareR1<float>(&builder, {0, 0}, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, SqrtSixValues) {
+TEST_F(MathTest, SqrtSixValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {16.0, 1.0, 1024.0, 0.16, 0.2, 12345});
   Sqrt(x);
@@ -372,7 +372,7 @@ XLA_TEST_F(MathTest, SqrtSixValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, CbrtSixF32Values) {
+TEST_F(MathTest, CbrtSixF32Values) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {8.0, 1.0, 4096.0, -64.0, 1.728, 1331});
   Cbrt(x);
@@ -381,7 +381,7 @@ XLA_TEST_F(MathTest, CbrtSixF32Values) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.001));
 }
 
-XLA_TEST_F(MathTest, CbrtSixF64Values) {
+TEST_F(MathTest, CbrtSixF64Values) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<double>(&builder, {8.0, 1.0, 4096.0, -64.0, 1.728, 1331});
   Cbrt(x);
@@ -390,7 +390,7 @@ XLA_TEST_F(MathTest, CbrtSixF64Values) {
   ComputeAndCompareR1<double>(&builder, expected, {}, ErrorSpec(0.001));
 }
 
-XLA_TEST_F(MathTest, SinhSmallValues) {
+TEST_F(MathTest, SinhSmallValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1e-3, 1e-5, 1e-7, 1e-9, 1e-11});
   Sinh(x);
@@ -398,7 +398,7 @@ XLA_TEST_F(MathTest, SinhSmallValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, AsinhSmallValues) {
+TEST_F(MathTest, AsinhSmallValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1e-3, 1e-5, 1e-7, 1e-9, 1e-11});
   Asinh(x);
@@ -406,7 +406,7 @@ XLA_TEST_F(MathTest, AsinhSmallValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, AtanhSmallValues) {
+TEST_F(MathTest, AtanhSmallValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1e-8, 1e-9, 1e-10, 1e-11});
   Atanh(x);
@@ -414,7 +414,7 @@ XLA_TEST_F(MathTest, AtanhSmallValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, Lgamma) {
+TEST_F(MathTest, Lgamma) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.5,
                                         2.5, -1.5, -3.5, -5.5});
@@ -438,7 +438,7 @@ XLA_TEST_F(MathTest, Lgamma) {
 }
 
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
-XLA_TEST_F(MathTest, LgammaF16) {
+TEST_F(MathTest, LgammaF16) {
   SetFastMathDisabled(true);
 
   XlaBuilder b(TestName());
@@ -460,7 +460,7 @@ XLA_TEST_F(MathTest, LgammaF16) {
 }
 #endif
 
-XLA_TEST_F(MathTest, Digamma) {
+TEST_F(MathTest, Digamma) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1.0, 0.5, 1 / 3.0, 0.25, 1 / 6.0, 0.125,
                                         2.0, 3.0, 4.0, 6.0, 8.0, 9.0});
@@ -490,7 +490,7 @@ XLA_TEST_F(MathTest, Digamma) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, Igamma) {
+TEST_F(MathTest, Igamma) {
   XlaBuilder builder(TestName());
   auto a = ConstantR3FromArray3D<float>(
       &builder,
@@ -512,7 +512,7 @@ XLA_TEST_F(MathTest, Igamma) {
   ComputeAndCompareR3<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, IgammaSpecialValues) {
+TEST_F(MathTest, IgammaSpecialValues) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
   const float nan = std::numeric_limits<float>::quiet_NaN();
@@ -528,7 +528,7 @@ XLA_TEST_F(MathTest, IgammaSpecialValues) {
 }
 
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
-XLA_TEST_F(MathTest, IgammaF16) {
+TEST_F(MathTest, IgammaF16) {
   SetFastMathDisabled(true);
 
   XlaBuilder builder(TestName());
@@ -550,7 +550,7 @@ XLA_TEST_F(MathTest, IgammaF16) {
 }
 #endif
 
-XLA_TEST_F(MathTest, Igammac) {
+TEST_F(MathTest, Igammac) {
   XlaBuilder builder(TestName());
   auto a = ConstantR3FromArray3D<float>(
       &builder,
@@ -575,7 +575,7 @@ XLA_TEST_F(MathTest, Igammac) {
 }
 
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
-XLA_TEST_F(MathTest, IgammacF16) {
+TEST_F(MathTest, IgammacF16) {
   SetFastMathDisabled(true);
 
   XlaBuilder builder(TestName());
@@ -598,7 +598,7 @@ XLA_TEST_F(MathTest, IgammacF16) {
 }
 #endif
 
-XLA_TEST_F(MathTest, RoundToEven) {
+TEST_F(MathTest, RoundToEven) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(
       &builder, {-1.4, -1.5, -2.5, -0.5, 0, 0.5, 1.5, 2.5, 3.5, 4.5});
@@ -610,42 +610,42 @@ XLA_TEST_F(MathTest, RoundToEven) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, ErfRejectsComplexInputs) {
+TEST_F(MathTest, ErfRejectsComplexInputs) {
   XlaBuilder b(TestName());
   auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
   Erf(x);
   EXPECT_FALSE(b.Build().status().ok());
 }
 
-XLA_TEST_F(MathTest, ErfcRejectsComplexInputs) {
+TEST_F(MathTest, ErfcRejectsComplexInputs) {
   XlaBuilder b(TestName());
   auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
   Erfc(x);
   EXPECT_FALSE(b.Build().status().ok());
 }
 
-XLA_TEST_F(MathTest, LgammaRejectsComplexInputs) {
+TEST_F(MathTest, LgammaRejectsComplexInputs) {
   XlaBuilder b(TestName());
   auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
   Lgamma(x);
   EXPECT_FALSE(b.Build().status().ok());
 }
 
-XLA_TEST_F(MathTest, DigammaRejectsComplexInputs) {
+TEST_F(MathTest, DigammaRejectsComplexInputs) {
   XlaBuilder b(TestName());
   auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
   Digamma(x);
   EXPECT_FALSE(b.Build().status().ok());
 }
 
-XLA_TEST_F(MathTest, RoundToEvenRejectsComplexInputs) {
+TEST_F(MathTest, RoundToEvenRejectsComplexInputs) {
   XlaBuilder b(TestName());
   auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
   RoundToEven(x);
   EXPECT_FALSE(b.Build().status().ok());
 }
 
-XLA_TEST_F(MathTest, BesselI0eFloat) {
+TEST_F(MathTest, BesselI0eFloat) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(
       &builder,
@@ -678,7 +678,7 @@ XLA_TEST_F(MathTest, BesselI0eFloat) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, DISABLED_ON_TPU(BesselI0eDouble)) {
+TEST_F(MathTest, DISABLED_ON_TPU(BesselI0eDouble)) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<double>(
       &builder,
@@ -711,7 +711,7 @@ XLA_TEST_F(MathTest, DISABLED_ON_TPU(BesselI0eDouble)) {
   ComputeAndCompareR1<double>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, BesselI1eFloat) {
+TEST_F(MathTest, BesselI1eFloat) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(
       &builder,
@@ -744,7 +744,7 @@ XLA_TEST_F(MathTest, BesselI1eFloat) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, DISABLED_ON_TPU(BesselI1eDouble)) {
+TEST_F(MathTest, DISABLED_ON_TPU(BesselI1eDouble)) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<double>(
       &builder,
@@ -777,7 +777,7 @@ XLA_TEST_F(MathTest, DISABLED_ON_TPU(BesselI1eDouble)) {
   ComputeAndCompareR1<double>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, AcosComplexValues) {
+TEST_F(MathTest, AcosComplexValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<std::complex<float>>(
       &builder, {{0, 0}, {0, 1}, {1, 1}, {0.8, 0.2}});
@@ -791,7 +791,7 @@ XLA_TEST_F(MathTest, AcosComplexValues) {
   ComputeAndCompareR1<std::complex<float>>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, ZetaF64) {
+TEST_F(MathTest, ZetaF64) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<double>(&builder, {2.0});
   auto q = ConstantR1<double>(&builder, {1.0});

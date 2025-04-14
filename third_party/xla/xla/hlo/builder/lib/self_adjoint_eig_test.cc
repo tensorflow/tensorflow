@@ -138,7 +138,7 @@ XlaOp ComputeMatmulVWVt(SelfAdjointEigResult result, XlaBuilder* builder) {
                   PrecisionConfig::HIGHEST);
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_2x4x4) {
+TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_2x4x4) {
   for (bool sort_eigenvalues : {false, true}) {
     XlaBuilder builder(TestName());
 
@@ -153,7 +153,7 @@ XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_2x4x4) {
   }
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_3x3_Complex) {
+TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_3x3_Complex) {
   XlaBuilder builder(TestName());
   Array<complex64> input = {
       {1, complex64{2, -7}, complex64{4, -8}},
@@ -169,7 +169,7 @@ XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_3x3_Complex) {
                                ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Lower_2x4x4) {
+TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Lower_2x4x4) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -182,7 +182,7 @@ XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Lower_2x4x4) {
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Upper_2x4x4) {
+TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Upper_2x4x4) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -195,7 +195,7 @@ XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Upper_2x4x4) {
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_Orthogonality_2x4x4) {
+TEST_F(SelfAdjointEigTest, Test_Orthogonality_2x4x4) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -207,7 +207,7 @@ XLA_TEST_F(SelfAdjointEigTest, Test_Orthogonality_2x4x4) {
                              {a_data.get()}, ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_VtWV_EQ_A_Rank_Deficient_4x4) {
+TEST_F(SelfAdjointEigTest, Test_VtWV_EQ_A_Rank_Deficient_4x4) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -219,7 +219,7 @@ XLA_TEST_F(SelfAdjointEigTest, Test_VtWV_EQ_A_Rank_Deficient_4x4) {
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_Eigen_8x8) {
+TEST_F(SelfAdjointEigTest, Test_Eigen_8x8) {
   XlaBuilder builder(TestName());
 
   // This is computed by numpy.linalg.eigh with float32.
@@ -235,7 +235,7 @@ XLA_TEST_F(SelfAdjointEigTest, Test_Eigen_8x8) {
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_Orthogonality_8x8) {
+TEST_F(SelfAdjointEigTest, Test_Orthogonality_8x8) {
   XlaBuilder builder(TestName());
 
   float expected_vals = 1e-3;
@@ -252,7 +252,7 @@ XLA_TEST_F(SelfAdjointEigTest, Test_Orthogonality_8x8) {
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Wrong_Type_Int) {
+TEST_F(SelfAdjointEigTest, Wrong_Type_Int) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -279,7 +279,7 @@ using EighTestCase = int64_t;
 class RandomEighTest : public ClientLibraryTestBase,
                        public ::testing::WithParamInterface<EighTestCase> {};
 
-XLA_TEST_P(RandomEighTest, Random) {
+TEST_P(RandomEighTest, Random) {
   XlaBuilder builder(TestName());
   int64_t size = GetParam();
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);

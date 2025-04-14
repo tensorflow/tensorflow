@@ -116,7 +116,7 @@ INSTANTIATE_TEST_CASE_P(FloatReverseInstance, FloatReverseTest,
 class ReverseTest : public ClientLibraryTestBase {};
 
 // Tests the reverse operation on a 4D U8 array on dimension 0 and 3.
-XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
+TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
   XlaBuilder b(TestName());
   // Input shape is U8[1x2x3x4].
   // clang-format off

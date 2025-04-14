@@ -251,8 +251,7 @@ TEST_F(ConstantsTest, FullLikeScalar) {
 class ConstantsHloTest : public HloTestBase {};
 
 // TODO(b/121147351): Fails on GPU. Not clear if this is expected behavior.
-XLA_TEST_F(ConstantsHloTest,
-           DISABLED_ON_TPU(DISABLED_ON_GPU(BitcastOfConstant))) {
+TEST_F(ConstantsHloTest, DISABLED_ON_TPU(DISABLED_ON_GPU(BitcastOfConstant))) {
   const char* testcase = R"(
     HloModule module, is_scheduled=true
 

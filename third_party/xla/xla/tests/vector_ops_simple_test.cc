@@ -47,7 +47,7 @@ class VecOpsSimpleTest : public ClientLibraryTestBase {
   ErrorSpec error_spec_{0.0001};
 };
 
-XLA_TEST_F(VecOpsSimpleTest, ExpTenValues) {
+TEST_F(VecOpsSimpleTest, ExpTenValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(
       &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
@@ -60,7 +60,7 @@ XLA_TEST_F(VecOpsSimpleTest, ExpTenValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(VecOpsSimpleTest, ExpManyValues) {
+TEST_F(VecOpsSimpleTest, ExpManyValues) {
   for (int count : {63, 64, 65, 127, 128, 129, 17 * 4096}) {
     XlaBuilder builder(TestName());
     std::vector<float> exponents;
@@ -82,7 +82,7 @@ XLA_TEST_F(VecOpsSimpleTest, ExpManyValues) {
   }
 }
 
-XLA_TEST_F(VecOpsSimpleTest, ExpIn4D) {
+TEST_F(VecOpsSimpleTest, ExpIn4D) {
   XlaBuilder builder(TestName());
   Array4D<float> exponents(2, 2, 2, 2);
 
@@ -107,7 +107,7 @@ XLA_TEST_F(VecOpsSimpleTest, ExpIn4D) {
                              ErrorSpec(/*aabs=*/1e-2, /*arel=*/1e-3));
 }
 
-XLA_TEST_F(VecOpsSimpleTest, NegateTenFloatValues) {
+TEST_F(VecOpsSimpleTest, NegateTenFloatValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(
       &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
@@ -118,7 +118,7 @@ XLA_TEST_F(VecOpsSimpleTest, NegateTenFloatValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(VecOpsSimpleTest, NegateTenInt32Values) {
+TEST_F(VecOpsSimpleTest, NegateTenInt32Values) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<int32_t>(&builder, {2, -2, 12, -4, 5, 20, -15, 0, -2, 1});
   Neg(x);
@@ -127,7 +127,7 @@ XLA_TEST_F(VecOpsSimpleTest, NegateTenInt32Values) {
   ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, NegateUint32Values) {
+TEST_F(VecOpsSimpleTest, NegateUint32Values) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<uint32_t>(&builder, {0, 1, 42, static_cast<uint32_t>(-1),
                                            static_cast<uint32_t>(-12)});
@@ -137,7 +137,7 @@ XLA_TEST_F(VecOpsSimpleTest, NegateUint32Values) {
   ComputeAndCompareR1<uint32_t>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, InvSqrtSevenValues) {
+TEST_F(VecOpsSimpleTest, InvSqrtSevenValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder,
                              {16.0, 1.0, 1024.0, 0.16, 0.2, 12345, 1.2345});
@@ -149,7 +149,7 @@ XLA_TEST_F(VecOpsSimpleTest, InvSqrtSevenValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(VecOpsSimpleTest, AddTenValuesViaMap) {
+TEST_F(VecOpsSimpleTest, AddTenValuesViaMap) {
   XlaBuilder builder(TestName());
   auto add = CreateScalarAddComputation(F32, &builder);
 
@@ -164,7 +164,7 @@ XLA_TEST_F(VecOpsSimpleTest, AddTenValuesViaMap) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(VecOpsSimpleTest, MaxTenValues) {
+TEST_F(VecOpsSimpleTest, MaxTenValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(
       &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
@@ -177,7 +177,7 @@ XLA_TEST_F(VecOpsSimpleTest, MaxTenValues) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, MaxTenValuesFromParams) {
+TEST_F(VecOpsSimpleTest, MaxTenValuesFromParams) {
   // Similar to MaxTenValues, except that the inputs come from params rather
   // than constants.
   XlaBuilder builder(TestName());
@@ -195,7 +195,7 @@ XLA_TEST_F(VecOpsSimpleTest, MaxTenValuesFromParams) {
                              error_spec_);
 }
 
-XLA_TEST_F(VecOpsSimpleTest, Max15000ValuesFromParams) {
+TEST_F(VecOpsSimpleTest, Max15000ValuesFromParams) {
   // Similar to MaxTenValuesFromParams, except that the data size passed in and
   // out is large.
   XlaBuilder builder(TestName());
@@ -238,7 +238,7 @@ XLA_TEST_F(VecOpsSimpleTest, Max15000ValuesFromParams) {
                              error_spec_);
 }
 
-XLA_TEST_F(VecOpsSimpleTest, MaxTenValuesWithScalar) {
+TEST_F(VecOpsSimpleTest, MaxTenValuesWithScalar) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(
       &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
@@ -250,7 +250,7 @@ XLA_TEST_F(VecOpsSimpleTest, MaxTenValuesWithScalar) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, MinTenValues) {
+TEST_F(VecOpsSimpleTest, MinTenValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(
       &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
@@ -263,7 +263,7 @@ XLA_TEST_F(VecOpsSimpleTest, MinTenValues) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, MinMaxTenValues) {
+TEST_F(VecOpsSimpleTest, MinMaxTenValues) {
   XlaBuilder builder(TestName());
   auto zero = ConstantR0<float>(&builder, 0);
   auto one = ConstantR0<float>(&builder, 1);
@@ -276,7 +276,7 @@ XLA_TEST_F(VecOpsSimpleTest, MinMaxTenValues) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, ClampTenValuesConstant) {
+TEST_F(VecOpsSimpleTest, ClampTenValuesConstant) {
   XlaBuilder builder(TestName());
   auto zero = ConstantR0<float>(&builder, 0);
   auto one = ConstantR0<float>(&builder, 1);
@@ -289,7 +289,7 @@ XLA_TEST_F(VecOpsSimpleTest, ClampTenValuesConstant) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, ClampTwoValuesConstant) {
+TEST_F(VecOpsSimpleTest, ClampTwoValuesConstant) {
   XlaBuilder builder(TestName());
   auto zero = ConstantR1<float>(&builder, {0.0f, 0.0f});
   auto one = ConstantR1<float>(&builder, {1.0f, 1.0f});
@@ -300,7 +300,7 @@ XLA_TEST_F(VecOpsSimpleTest, ClampTwoValuesConstant) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, ClampTenValuesConstantNonzeroLower) {
+TEST_F(VecOpsSimpleTest, ClampTenValuesConstantNonzeroLower) {
   XlaBuilder builder(TestName());
   auto one = ConstantR0<float>(&builder, 1);
   auto two = ConstantR0<float>(&builder, 2);
@@ -313,7 +313,7 @@ XLA_TEST_F(VecOpsSimpleTest, ClampTenValuesConstantNonzeroLower) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, ClampFloatEdgeCases) {
+TEST_F(VecOpsSimpleTest, ClampFloatEdgeCases) {
   XlaBuilder builder(TestName());
   SetFastMathDisabled(true);
   auto low = ConstantR1<float>(&builder, {NAN, 1, 1});
@@ -324,7 +324,7 @@ XLA_TEST_F(VecOpsSimpleTest, ClampFloatEdgeCases) {
   ComputeAndCompareR1<bool>(&builder, {false, false, false}, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, ClampValuesConstantS64) {
+TEST_F(VecOpsSimpleTest, ClampValuesConstantS64) {
   XlaBuilder builder(TestName());
   auto zero = ConstantR0<int64_t>(&builder, 0);
   auto one = ConstantR0<int64_t>(&builder, 10);
@@ -335,7 +335,7 @@ XLA_TEST_F(VecOpsSimpleTest, ClampValuesConstantS64) {
   ComputeAndCompareR1<int64_t>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
+TEST_F(VecOpsSimpleTest, MapTenValues) {
   XlaComputation add_half;
   {
     // add_half(x) = x + 0.5
@@ -391,7 +391,7 @@ XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, RemainderTenValuesS32) {
+TEST_F(VecOpsSimpleTest, RemainderTenValuesS32) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<int32_t>(&builder, {-5, -4, -3, -2, -1, 0, 1, 2, 3, 4});
   auto y = ConstantR0<int32_t>(&builder, 3);
@@ -401,7 +401,7 @@ XLA_TEST_F(VecOpsSimpleTest, RemainderTenValuesS32) {
   ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, VectorPredicateEqual) {
+TEST_F(VecOpsSimpleTest, VectorPredicateEqual) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<bool>(&builder, {false, true});
   auto y = ConstantR1<bool>(&builder, {true, false});
@@ -411,7 +411,7 @@ XLA_TEST_F(VecOpsSimpleTest, VectorPredicateEqual) {
   ComputeAndCompareR1<bool>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, VectorPredicateNotEqual) {
+TEST_F(VecOpsSimpleTest, VectorPredicateNotEqual) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<bool>(&builder, {false, true});
   auto y = ConstantR1<bool>(&builder, {true, false});
@@ -421,7 +421,7 @@ XLA_TEST_F(VecOpsSimpleTest, VectorPredicateNotEqual) {
   ComputeAndCompareR1<bool>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, CbrtSevenValues) {
+TEST_F(VecOpsSimpleTest, CbrtSevenValues) {
   XlaBuilder builder(TestName());
   float inf = std::numeric_limits<float>::infinity();
   float qnan = std::numeric_limits<float>::quiet_NaN();

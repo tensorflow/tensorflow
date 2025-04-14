@@ -66,7 +66,7 @@ class MatrixTest : public ClientLibraryTestBase {
   }
 };
 
-XLA_TEST_F(MatrixTest, Triangle) {
+TEST_F(MatrixTest, Triangle) {
   XlaBuilder builder(TestName());
   Array3D<int32_t> input(2, 3, 4);
   input.FillIota(0);
@@ -80,7 +80,7 @@ XLA_TEST_F(MatrixTest, Triangle) {
   ComputeAndCompareR3<int32_t>(&builder, expected, {a_data.get()});
 }
 
-XLA_TEST_F(MatrixTest, Symmetrize) {
+TEST_F(MatrixTest, Symmetrize) {
   for (bool lower : {false, true}) {
     XlaBuilder builder(TestName());
     float nan = std::numeric_limits<float>::quiet_NaN();
@@ -104,7 +104,7 @@ XLA_TEST_F(MatrixTest, Symmetrize) {
   }
 }
 
-XLA_TEST_F(MatrixTest, SymmetrizeComplex) {
+TEST_F(MatrixTest, SymmetrizeComplex) {
   for (bool lower : {false, true}) {
     XlaBuilder builder(TestName());
     float nan = std::numeric_limits<float>::quiet_NaN();
@@ -162,21 +162,15 @@ void MatrixTest::TestSetMatrixDiagonal() {
   }
 }
 
-XLA_TEST_F(MatrixTest, SetMatrixDiagonal_S32) {
-  TestSetMatrixDiagonal<int32_t>();
-}
-XLA_TEST_F(MatrixTest, SetMatrixDiagonal_S64) {
-  TestSetMatrixDiagonal<int64_t>();
-}
-XLA_TEST_F(MatrixTest, SetMatrixDiagonal_F32) {
-  TestSetMatrixDiagonal<float>();
-}
+TEST_F(MatrixTest, SetMatrixDiagonal_S32) { TestSetMatrixDiagonal<int32_t>(); }
+TEST_F(MatrixTest, SetMatrixDiagonal_S64) { TestSetMatrixDiagonal<int64_t>(); }
+TEST_F(MatrixTest, SetMatrixDiagonal_F32) { TestSetMatrixDiagonal<float>(); }
 
-XLA_TEST_F(MatrixTest, GetMatrixDiagonal_S32) { TestMatrixDiagonal<int32_t>(); }
+TEST_F(MatrixTest, GetMatrixDiagonal_S32) { TestMatrixDiagonal<int32_t>(); }
 
-XLA_TEST_F(MatrixTest, GetMatrixDiagonal_S64) { TestMatrixDiagonal<int64_t>(); }
+TEST_F(MatrixTest, GetMatrixDiagonal_S64) { TestMatrixDiagonal<int64_t>(); }
 
-XLA_TEST_F(MatrixTest, GetMatrixDiagonal_F32) { TestMatrixDiagonal<float>(); }
+TEST_F(MatrixTest, GetMatrixDiagonal_F32) { TestMatrixDiagonal<float>(); }
 
 template <typename T>
 void MatrixTest::TestMatrixDiagonal4D() {
@@ -203,17 +197,11 @@ void MatrixTest::TestMatrixDiagonal4D() {
   }
 }
 
-XLA_TEST_F(MatrixTest, GetMatrixDiagonal4D_S32) {
-  TestMatrixDiagonal4D<int32_t>();
-}
+TEST_F(MatrixTest, GetMatrixDiagonal4D_S32) { TestMatrixDiagonal4D<int32_t>(); }
 
-XLA_TEST_F(MatrixTest, GetMatrixDiagonal4D_S64) {
-  TestMatrixDiagonal4D<int64_t>();
-}
+TEST_F(MatrixTest, GetMatrixDiagonal4D_S64) { TestMatrixDiagonal4D<int64_t>(); }
 
-XLA_TEST_F(MatrixTest, GetMatrixDiagonal4D_F32) {
-  TestMatrixDiagonal4D<float>();
-}
+TEST_F(MatrixTest, GetMatrixDiagonal4D_F32) { TestMatrixDiagonal4D<float>(); }
 
 Array3D<float> BatchedAValsFull() {
   return {{
@@ -230,7 +218,7 @@ Array3D<float> BatchedAValsFull() {
           }};
 }
 
-XLA_TEST_F(MatrixTest, RowBatchDot) {
+TEST_F(MatrixTest, RowBatchDot) {
   XlaBuilder builder(TestName());
   int n = 4;
 
@@ -250,7 +238,7 @@ XLA_TEST_F(MatrixTest, RowBatchDot) {
                              {a_data.get(), row_data.get(), index_data.get()});
 }
 
-XLA_TEST_F(MatrixTest, Einsum) {
+TEST_F(MatrixTest, Einsum) {
   XlaBuilder builder(TestName());
 
   int n = 4;
@@ -271,7 +259,7 @@ XLA_TEST_F(MatrixTest, Einsum) {
                              {a_data.get(), row_data.get(), index_data.get()});
 }
 
-XLA_TEST_F(MatrixTest, ParseEinsumString) {
+TEST_F(MatrixTest, ParseEinsumString) {
   auto to_vec = [](absl::string_view s) {
     std::vector<int64_t> v;
     v.reserve(s.size());
@@ -326,7 +314,7 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   }
 }
 
-XLA_TEST_F(MatrixTest, NormalizeEinsumString) {
+TEST_F(MatrixTest, NormalizeEinsumString) {
   EXPECT_EQ(NormalizeEinsumString("a,b->ab"), "");
   EXPECT_EQ(NormalizeEinsumString("ba"), "ba->ab");
   EXPECT_EQ(NormalizeEinsumString("ab,dc"), "ab,dc->abcd");

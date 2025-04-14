@@ -47,7 +47,7 @@ class Bfloat16Test : public ClientLibraryTestBase {
   const ErrorSpec error_spec_{0.001, 0.001};
 };
 
-XLA_TEST_F(Bfloat16Test, ScalarOperation) {
+TEST_F(Bfloat16Test, ScalarOperation) {
   XlaBuilder builder(TestName());
   auto x = ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(2.0f));
   auto y = ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(1.0f));
@@ -57,7 +57,7 @@ XLA_TEST_F(Bfloat16Test, ScalarOperation) {
                                 error_spec_);
 }
 
-XLA_TEST_F(Bfloat16Test, LogOperation) {
+TEST_F(Bfloat16Test, LogOperation) {
   XlaBuilder builder(TestName());
   auto x = ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(4.0f));
   Log(x);
@@ -66,7 +66,7 @@ XLA_TEST_F(Bfloat16Test, LogOperation) {
                                 ErrorSpec(0.01, 0.01));
 }
 
-XLA_TEST_F(Bfloat16Test, NegateScalarF16) {
+TEST_F(Bfloat16Test, NegateScalarF16) {
   XlaBuilder builder(TestName());
   Neg(ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(2.1f)));
 
@@ -76,7 +76,7 @@ XLA_TEST_F(Bfloat16Test, NegateScalarF16) {
 
 // Disabled on interpreter since BatchNormExpander is not run by default on the
 // interpreter backend.
-XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
+TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
   const int kFeatureIndex = 2;
   XlaBuilder builder(TestName());
 
@@ -112,7 +112,7 @@ XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
 
 // Disabled on interpreter since BatchNormExpander is not run by default on the
 // interpreter backend.
-XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormGrad)) {
+TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormGrad)) {
   const int kFeatureIndex = 2;
   XlaBuilder builder(TestName());
 

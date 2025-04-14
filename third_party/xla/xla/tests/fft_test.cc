@@ -24,7 +24,7 @@ namespace {
 
 class FftTextTest : public HloTestBase {};
 
-XLA_TEST_F(FftTextTest, Fft) {
+TEST_F(FftTextTest, Fft) {
   absl::string_view hlo_string = R"(
   HloModule Fft_module
 

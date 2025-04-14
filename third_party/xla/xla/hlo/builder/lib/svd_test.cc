@@ -112,7 +112,7 @@ class SVDTest : public ClientLibraryTestBase {
   Array3D<float> batch_3d_4x5_;
 };
 
-XLA_TEST_F(SVDTest, Simple2D) {
+TEST_F(SVDTest, Simple2D) {
   XlaBuilder builder(TestName());
 
   Array2D<float> simple_2d_4x4_ = Array2D<float>{
@@ -130,7 +130,7 @@ XLA_TEST_F(SVDTest, Simple2D) {
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, Test_VWVt_EQ_A_2x4x5) {
+TEST_F(SVDTest, Test_VWVt_EQ_A_2x4x5) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -142,7 +142,7 @@ XLA_TEST_F(SVDTest, Test_VWVt_EQ_A_2x4x5) {
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, Test_Orthogonality_U) {
+TEST_F(SVDTest, Test_Orthogonality_U) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -155,7 +155,7 @@ XLA_TEST_F(SVDTest, Test_Orthogonality_U) {
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(SVDTest, Test_Orthogonality_V) {
+TEST_F(SVDTest, Test_Orthogonality_V) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -167,7 +167,7 @@ XLA_TEST_F(SVDTest, Test_Orthogonality_V) {
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, TestSingleValuesMatchNumpy) {
+TEST_F(SVDTest, TestSingleValuesMatchNumpy) {
   XlaBuilder builder(TestName());
 
   auto singular_values = Array2D<float>{
@@ -185,8 +185,7 @@ XLA_TEST_F(SVDTest, TestSingleValuesMatchNumpy) {
 }
 
 // Too slow on the interpreter backend.
-XLA_TEST_F(SVDTest,
-           DISABLED_ON_INTERPRETER(Various_Size_Random_Matrix_512x128)) {
+TEST_F(SVDTest, DISABLED_ON_INTERPRETER(Various_Size_Random_Matrix_512x128)) {
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(512, 128);
   XlaOp a;
@@ -198,7 +197,7 @@ XLA_TEST_F(SVDTest,
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_128x256) {
+TEST_F(SVDTest, Various_Size_Random_Matrix_128x256) {
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(128, 256);
   XlaOp a;
@@ -210,7 +209,7 @@ XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_128x256) {
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_256x128) {
+TEST_F(SVDTest, Various_Size_Random_Matrix_256x128) {
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(256, 128);
   XlaOp a;
@@ -223,8 +222,7 @@ XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_256x128) {
 }
 
 // Too slow on the interpreter backend.
-XLA_TEST_F(SVDTest,
-           DISABLED_ON_INTERPRETER(Various_Size_Random_Matrix_128x512)) {
+TEST_F(SVDTest, DISABLED_ON_INTERPRETER(Various_Size_Random_Matrix_128x512)) {
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(128, 512);
   XlaOp a;
@@ -237,8 +235,8 @@ XLA_TEST_F(SVDTest,
 }
 
 // Too slow on the interpreter and CPU backends.
-XLA_TEST_F(SVDTest, DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
-                        Various_Size_Random_Matrix_512x256))) {
+TEST_F(SVDTest, DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
+                    Various_Size_Random_Matrix_512x256))) {
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(512, 256);
   XlaOp a;
@@ -251,8 +249,8 @@ XLA_TEST_F(SVDTest, DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
 }
 
 // Too slow on the CPU, GPU and interpreter backends.
-XLA_TEST_F(SVDTest, DISABLED_ON_GPU(DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
-                        Various_Size_Random_Matrix_512x512)))) {
+TEST_F(SVDTest, DISABLED_ON_GPU(DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
+                    Various_Size_Random_Matrix_512x512)))) {
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(512, 512);
   XlaOp a;

@@ -40,7 +40,7 @@ TEST_F(AxpySimpleTest, AxTenValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(AxpySimpleTest, AxpyZeroValues) {
+TEST_F(AxpySimpleTest, AxpyZeroValues) {
   XlaBuilder builder("axpy_10");
   auto alpha = ConstantR0<float>(&builder, 3.1415926535);
   auto x = ConstantR1<float>(&builder, {});

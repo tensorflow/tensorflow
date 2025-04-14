@@ -39,7 +39,7 @@ namespace {
 
 class ParamsTest : public ClientLibraryTestBase {};
 
-XLA_TEST_F(ParamsTest, ConstantR0F32Param) {
+TEST_F(ParamsTest, ConstantR0F32Param) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR0<float>(3.14159f);
   std::unique_ptr<GlobalData> param0_data =
@@ -51,7 +51,7 @@ XLA_TEST_F(ParamsTest, ConstantR0F32Param) {
                              ErrorSpec(0.0001f));
 }
 
-XLA_TEST_F(ParamsTest, ConstantR1S0F32Param) {
+TEST_F(ParamsTest, ConstantR1S0F32Param) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR1<float>({});
   std::unique_ptr<GlobalData> param0_data =
@@ -63,7 +63,7 @@ XLA_TEST_F(ParamsTest, ConstantR1S0F32Param) {
                              ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(ParamsTest, ConstantR1S2F32Param) {
+TEST_F(ParamsTest, ConstantR1S2F32Param) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR1<float>({3.14f, -100.25f});
   std::unique_ptr<GlobalData> param0_data =
@@ -75,7 +75,7 @@ XLA_TEST_F(ParamsTest, ConstantR1S2F32Param) {
                              ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(ParamsTest, ConstantR1U8Param) {
+TEST_F(ParamsTest, ConstantR1U8Param) {
   XlaBuilder builder(TestName());
   std::string str("hello world");
   Literal param0_literal = LiteralUtil::CreateR1U8(str);
@@ -89,7 +89,7 @@ XLA_TEST_F(ParamsTest, ConstantR1U8Param) {
   ComputeAndCompareR1U8(&builder, str, {param0_data.get()});
 }
 
-XLA_TEST_F(ParamsTest, ConstantR2_3x0_F32Param) {
+TEST_F(ParamsTest, ConstantR2_3x0_F32Param) {
   XlaBuilder builder(TestName());
   Literal param0_literal =
       LiteralUtil::CreateR2FromArray2D<float>(Array2D<float>(3, 0));
@@ -102,7 +102,7 @@ XLA_TEST_F(ParamsTest, ConstantR2_3x0_F32Param) {
                              {param0_data.get()}, ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(ParamsTest, ConstantR2F32Param) {
+TEST_F(ParamsTest, ConstantR2F32Param) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR2<float>(
       {{3.14f, -100.25f}, {7e8f, 7e-9f}, {30.3f, -100.0f}});
@@ -117,7 +117,7 @@ XLA_TEST_F(ParamsTest, ConstantR2F32Param) {
                              ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(ParamsTest, TwoParameters) {
+TEST_F(ParamsTest, TwoParameters) {
   XlaBuilder builder(TestName());
 
   Literal literal0 = LiteralUtil::CreateR1<float>({1, 2});
@@ -148,7 +148,7 @@ XLA_TEST_F(ParamsTest, TwoParameters) {
                              ErrorSpec(0.0001f));
 }
 
-XLA_TEST_F(ParamsTest, MissingParameter) {
+TEST_F(ParamsTest, MissingParameter) {
   // Test that an error is returned when a computation with an incomplete set of
   // parameters (parameter numbers not contiguous from 0) is executed.
   Literal literal = LiteralUtil::CreateR0<float>(3.14159f);
@@ -161,7 +161,7 @@ XLA_TEST_F(ParamsTest, MissingParameter) {
   ASSERT_NE(computation_status.status(), absl::OkStatus());
 }
 
-XLA_TEST_F(ParamsTest, UnusedParameter) {
+TEST_F(ParamsTest, UnusedParameter) {
   XlaBuilder builder(TestName());
 
   Literal literal0 = LiteralUtil::CreateR1<float>({1, 2});
@@ -179,7 +179,7 @@ XLA_TEST_F(ParamsTest, UnusedParameter) {
                              ErrorSpec(0.0001f));
 }
 
-XLA_TEST_F(ParamsTest, UnusedParametersInUnusedExpression) {
+TEST_F(ParamsTest, UnusedParametersInUnusedExpression) {
   // Build a computation with a couple unused parameters which are used in an
   // unused expression.
   XlaBuilder builder(TestName());
@@ -207,7 +207,7 @@ XLA_TEST_F(ParamsTest, UnusedParametersInUnusedExpression) {
       ErrorSpec(0.0001f));
 }
 
-XLA_TEST_F(ParamsTest, HundredLargeR1Parameters) {
+TEST_F(ParamsTest, HundredLargeR1Parameters) {
   XlaBuilder builder(TestName());
   constexpr int size = 8 * 128 * 2;
 
@@ -249,7 +249,7 @@ XLA_TEST_F(ParamsTest, HundredLargeR1Parameters) {
 
 // TODO(b/65526061) Failed on CPU on 2017-09-10 due to timeout in LLVM
 // compilation.
-XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(ThreeThousandParameters)) {
+TEST_F(ParamsTest, DISABLED_ON_CPU(ThreeThousandParameters)) {
   XlaBuilder builder(TestName());
 
   std::vector<std::unique_ptr<GlobalData>> param_data_owner;
@@ -276,8 +276,7 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(ThreeThousandParameters)) {
 
 // TODO(b/65526061) Failed on CPU on 2017-09-10 due to timeout in LLVM
 // compilation.
-XLA_TEST_F(ParamsTest,
-           DISABLED_ON_CPU(ThreeThousandParametersAndOutputElements)) {
+TEST_F(ParamsTest, DISABLED_ON_CPU(ThreeThousandParametersAndOutputElements)) {
   XlaBuilder builder(TestName());
 
   std::vector<std::unique_ptr<GlobalData>> param_data_owner;
@@ -336,7 +335,7 @@ XLA_TEST_F(ParamsTest,
 //   pN += (1, 1)
 // }
 // result = {p0, p1, ..., pN}
-XLA_TEST_F(ParamsTest, ManyParametersIntoWhileLoop) {
+TEST_F(ParamsTest, ManyParametersIntoWhileLoop) {
   XlaBuilder builder(TestName());
 
   std::vector<std::unique_ptr<GlobalData>> param_data_owner;
@@ -425,7 +424,7 @@ XLA_TEST_F(ParamsTest, ManyParametersIntoWhileLoop) {
 
 #endif
 
-XLA_TEST_F(ParamsTest, TupleOfR1ParametersAddedTogether) {
+TEST_F(ParamsTest, TupleOfR1ParametersAddedTogether) {
   XlaBuilder builder(TestName());
 
   Shape r1f32_3 = ShapeUtil::MakeShape(F32, {3});
@@ -450,7 +449,7 @@ XLA_TEST_F(ParamsTest, TupleOfR1ParametersAddedTogether) {
 
 // Verifies that passing a 2x2 with {0, 1} layout returns the same value back
 // when (transferred to the server and) passed through a parameter.
-XLA_TEST_F(ParamsTest, R2_2x2_Layout_01) {
+TEST_F(ParamsTest, R2_2x2_Layout_01) {
   Literal literal = LiteralUtil::CreateR2WithLayout<float>(
       {{1, 2}, {3, 4}}, LayoutUtil::MakeLayout({0, 1}));
   XlaBuilder builder(TestName());
@@ -461,7 +460,7 @@ XLA_TEST_F(ParamsTest, R2_2x2_Layout_01) {
 }
 
 // As above, but for {1, 0} layout.
-XLA_TEST_F(ParamsTest, R2_2x2_Layout_10) {
+TEST_F(ParamsTest, R2_2x2_Layout_10) {
   Literal literal = LiteralUtil::CreateR2WithLayout<float>(
       {{1, 3}, {2, 4}}, LayoutUtil::MakeLayout({1, 0}));
   XlaBuilder builder(TestName());
@@ -471,7 +470,7 @@ XLA_TEST_F(ParamsTest, R2_2x2_Layout_10) {
   ComputeAndCompareLiteral(&builder, literal, {data.get()}, ErrorSpec(1e-3));
 }
 
-XLA_TEST_F(ParamsTest, R2_2x2_TryToPassReverseLayoutToParameter) {
+TEST_F(ParamsTest, R2_2x2_TryToPassReverseLayoutToParameter) {
   Literal literal = LiteralUtil::CreateR2<float>({
       {1, 3},
       {2, 4},

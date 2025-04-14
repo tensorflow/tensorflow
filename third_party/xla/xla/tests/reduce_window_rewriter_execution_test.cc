@@ -27,7 +27,7 @@ namespace {
 
 class ReduceWindowRewriterExecutionTest : public HloTestBase {};
 
-XLA_TEST_F(ReduceWindowRewriterExecutionTest, RewriterTest) {
+TEST_F(ReduceWindowRewriterExecutionTest, RewriterTest) {
   absl::string_view hlo_string = R"(
 HloModule module
 

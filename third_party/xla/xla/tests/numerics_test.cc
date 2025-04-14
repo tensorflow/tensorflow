@@ -32,7 +32,7 @@ namespace {
 
 using NumericsTest = HloTestBase;
 
-XLA_TEST_F(NumericsTest, AbsOfLargeComplexNumber) {
+TEST_F(NumericsTest, AbsOfLargeComplexNumber) {
   const char* hlo = R"(
 HloModule module
 
@@ -54,7 +54,7 @@ ENTRY entry {
   EXPECT_TRUE(abs_of_complex_x(1e30));
 }
 
-XLA_TEST_F(NumericsTest, PowerOfLargeComplexNumber) {
+TEST_F(NumericsTest, PowerOfLargeComplexNumber) {
   const char* hlo = R"(
 HloModule module
 
@@ -91,8 +91,8 @@ ENTRY entry {
 // CPU thunks backend (due to incorrect LLVM IR generated).
 // This is an HLO module optimized for CPU backend, it may be invalid for other
 // backends.
-XLA_TEST_F(NumericsTest,
-           DISABLED_ON_GPU(DISABLED_ON_TPU(MultiplySubtractConcatTest))) {
+TEST_F(NumericsTest,
+       DISABLED_ON_GPU(DISABLED_ON_TPU(MultiplySubtractConcatTest))) {
   const char* test_hlo = R"(
     HloModule jit_step, is_scheduled=true
 

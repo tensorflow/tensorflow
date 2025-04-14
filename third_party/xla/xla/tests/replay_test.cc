@@ -67,7 +67,7 @@ TEST_F(ReplayTest, TwoPlusTwoReplay) {
   LiteralTestUtil::ExpectR0Equal<int32_t>(4, literal);
 }
 
-XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
+TEST_F(ReplayTest, XPlusYReplayWithParameters) {
   // Make computation.
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(S32, {}), "x");

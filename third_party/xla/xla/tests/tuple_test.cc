@@ -42,7 +42,7 @@ class TupleTest : public ClientLibraryTestBase {
 };
 
 // Tests a tuple-shaped constant.
-XLA_TEST_F(TupleTest, TupleConstant) {
+TEST_F(TupleTest, TupleConstant) {
   XlaBuilder builder(TestName());
 
   const float constant_scalar = 7.3f;
@@ -61,7 +61,7 @@ XLA_TEST_F(TupleTest, TupleConstant) {
 }
 
 // Tests a tuple made of scalar constants.
-XLA_TEST_F(TupleTest, TupleScalarConstant) {
+TEST_F(TupleTest, TupleScalarConstant) {
   XlaBuilder builder(TestName());
 
   const float constant_scalar1 = 7.3f;
@@ -75,7 +75,7 @@ XLA_TEST_F(TupleTest, TupleScalarConstant) {
 }
 
 // Tests the creation of tuple data.
-XLA_TEST_F(TupleTest, TupleCreate) {
+TEST_F(TupleTest, TupleCreate) {
   XlaBuilder builder(TestName());
 
   const float constant_scalar = 7.3f;
@@ -96,7 +96,7 @@ XLA_TEST_F(TupleTest, TupleCreate) {
 }
 
 // Tests the creation of tuple data.
-XLA_TEST_F(TupleTest, TupleCreateWithZeroElementEntry) {
+TEST_F(TupleTest, TupleCreateWithZeroElementEntry) {
   XlaBuilder builder(TestName());
 
   Tuple(&builder,
@@ -108,7 +108,7 @@ XLA_TEST_F(TupleTest, TupleCreateWithZeroElementEntry) {
 }
 
 // Tests the creation of an empty tuple.
-XLA_TEST_F(TupleTest, EmptyTupleCreate) {
+TEST_F(TupleTest, EmptyTupleCreate) {
   XlaBuilder builder(TestName());
   Tuple(&builder, {});
   auto expected = LiteralUtil::MakeTuple({});
@@ -116,7 +116,7 @@ XLA_TEST_F(TupleTest, EmptyTupleCreate) {
 }
 
 // Trivial test for extracting a tuple element with GetTupleElement.
-XLA_TEST_F(TupleTest, GetTupleElement) {
+TEST_F(TupleTest, GetTupleElement) {
   XlaBuilder builder(TestName());
   std::initializer_list<float> constant_vector = {1.f, 2.f, 3.f};
   std::initializer_list<std::initializer_list<float>> constant_matrix = {
@@ -132,7 +132,7 @@ XLA_TEST_F(TupleTest, GetTupleElement) {
 }
 
 // Trivial test for extracting a tuple element with GetTupleElement.
-XLA_TEST_F(TupleTest, GetTupleElementWithZeroElements) {
+TEST_F(TupleTest, GetTupleElementWithZeroElements) {
   XlaBuilder builder(TestName());
   auto tuple_data =
       Tuple(&builder,
@@ -142,7 +142,7 @@ XLA_TEST_F(TupleTest, GetTupleElementWithZeroElements) {
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 101), {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest, GetTupleElementOfNonTupleFailsGracefully) {
+TEST_F(TupleTest, GetTupleElementOfNonTupleFailsGracefully) {
   XlaBuilder builder(TestName());
   auto value = ConstantR1<float>(&builder, {4.5f});
   GetTupleElement(value, 1);
@@ -155,7 +155,7 @@ XLA_TEST_F(TupleTest, GetTupleElementOfNonTupleFailsGracefully) {
 
 // Extracts both elements from a tuple with GetTupleElement and then adds them
 // together.
-XLA_TEST_F(TupleTest, AddTupleElements) {
+TEST_F(TupleTest, AddTupleElements) {
   XlaBuilder builder(TestName());
   std::initializer_list<float> constant_vector = {1.f, 2.f, 3.f};
   std::initializer_list<std::initializer_list<float>> constant_matrix = {
@@ -184,7 +184,7 @@ XLA_TEST_F(TupleTest, AddTupleElements) {
 
 // Extracts both elements from a tuple and then puts them into a new tuple in
 // the opposite order.
-XLA_TEST_F(TupleTest, TupleGTEToTuple) {
+TEST_F(TupleTest, TupleGTEToTuple) {
   XlaBuilder builder(TestName());
   std::initializer_list<float> constant_vector = {1.f, 2.f, 3.f};
   std::initializer_list<std::initializer_list<float>> constant_matrix = {
@@ -202,10 +202,9 @@ XLA_TEST_F(TupleTest, TupleGTEToTuple) {
   ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
 }
 
-
 // Builds two new tuples from an existing tuple (by means of GetTupleElement),
 // then adds up the components of the new tuples.
-XLA_TEST_F(TupleTest, TupleGTEToTupleToGTEAdd) {
+TEST_F(TupleTest, TupleGTEToTupleToGTEAdd) {
   //
   // v------           --(GTE 0)--             --(GTE 0)----------
   //        \         /           \           /                   \
@@ -251,7 +250,7 @@ XLA_TEST_F(TupleTest, TupleGTEToTupleToGTEAdd) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest, NestedTuples) {
+TEST_F(TupleTest, NestedTuples) {
   XlaBuilder builder(TestName());
   auto inner_tuple = Tuple(&builder, {ConstantR1<float>(&builder, {1.0, 2.0}),
                                       ConstantR0<float>(&builder, 42.0)});
@@ -267,7 +266,7 @@ XLA_TEST_F(TupleTest, NestedTuples) {
   ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(TupleTest, GetTupleElementOfNestedTuple) {
+TEST_F(TupleTest, GetTupleElementOfNestedTuple) {
   XlaBuilder builder(TestName());
 
   Shape data_shape = ShapeUtil::MakeShape(F32, {3});
@@ -296,7 +295,7 @@ XLA_TEST_F(TupleTest, GetTupleElementOfNestedTuple) {
   ComputeAndCompareR1<float>(&builder, expected, arguments, ErrorSpec(1e-5));
 }
 
-XLA_TEST_F(TupleTest, ComplexTuples) {
+TEST_F(TupleTest, ComplexTuples) {
   XlaBuilder builder(TestName());
   {
     Shape c64r0 = ShapeUtil::MakeShape(C64, {});
@@ -354,7 +353,7 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
 
 class TupleHloTest : public HloTestBase {};
 
-XLA_TEST_F(TupleHloTest, BadTupleShapeFailsGracefully) {
+TEST_F(TupleHloTest, BadTupleShapeFailsGracefully) {
   const char* testcase = R"(
     HloModule m, is_scheduled=true
 
@@ -374,7 +373,7 @@ XLA_TEST_F(TupleHloTest, BadTupleShapeFailsGracefully) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("actual shape is"));
 }
 
-XLA_TEST_F(TupleHloTest, BitcastAfterGTE) {
+TEST_F(TupleHloTest, BitcastAfterGTE) {
   const char* testcase = R"(
     HloModule m, is_scheduled=true
 

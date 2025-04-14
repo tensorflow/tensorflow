@@ -81,7 +81,7 @@ class PrngTest : public ClientLibraryTestBase {
   }
 };
 
-XLA_TEST_F(PrngTest, RandomBitsToUniformFloatingPointInvalidArguments) {
+TEST_F(PrngTest, RandomBitsToUniformFloatingPointInvalidArguments) {
   // Existing prng test targets do not test invalid arguments cases, where
   // the number of bits are smaller than the value type's mantissa bits.
   TestConvertRandomBitsToUniformFloatingPoint<PrimitiveType::F32,

@@ -63,22 +63,22 @@ class ArithmeticTest : public ClientLibraryTestBase {
       std::function<void(XlaOp, PrimitiveType)> MinMaxImpl) {}
 };
 
-XLA_TEST_F(ArithmeticTest, ArgMinR2Axis0) {
+TEST_F(ArithmeticTest, ArgMinR2Axis0) {
   TestArgMin<int32_t>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {0, 1, 2},
                       /*axis=*/0);
 }
 
-XLA_TEST_F(ArithmeticTest, ArgMinR2Axis1) {
+TEST_F(ArithmeticTest, ArgMinR2Axis1) {
   TestArgMin<int32_t>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {0, 1, 1},
                       /*axis=*/1);
 }
 
-XLA_TEST_F(ArithmeticTest, ArgMaxR2Axis0) {
+TEST_F(ArithmeticTest, ArgMaxR2Axis0) {
   TestArgMax<int32_t>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {2, 0, 1},
                       /*axis=*/0);
 }
 
-XLA_TEST_F(ArithmeticTest, ArgMaxR2Axis1) {
+TEST_F(ArithmeticTest, ArgMaxR2Axis1) {
   TestArgMax<int32_t>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {1, 0, 0},
                       /*axis=*/1);
 }

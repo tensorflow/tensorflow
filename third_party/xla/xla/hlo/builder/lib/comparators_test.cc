@@ -96,56 +96,56 @@ void BuildComparatorAndComparisons(ComparatorsTest* test,
   }
 }
 
-XLA_TEST_F(ComparatorsTest, CompareLtBF16) {
+TEST_F(ComparatorsTest, CompareLtBF16) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<BF16>(this, /*compare_less_than=*/true,
                                       &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareGtBF16) {
+TEST_F(ComparatorsTest, CompareGtBF16) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<BF16>(this, /*compare_less_than=*/false,
                                       &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareLtF16) {
+TEST_F(ComparatorsTest, CompareLtF16) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F16>(this, /*compare_less_than=*/true,
                                      &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareGtF16) {
+TEST_F(ComparatorsTest, CompareGtF16) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F16>(this, /*compare_less_than=*/false,
                                      &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareLtF32) {
+TEST_F(ComparatorsTest, CompareLtF32) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F32>(this, /*compare_less_than=*/true,
                                      &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareGtF32) {
+TEST_F(ComparatorsTest, CompareGtF32) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F32>(this, /*compare_less_than=*/false,
                                      &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareLtF64) {
+TEST_F(ComparatorsTest, CompareLtF64) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F64>(this, /*compare_less_than=*/true,
                                      &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareGtF64) {
+TEST_F(ComparatorsTest, CompareGtF64) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F64>(this, /*compare_less_than=*/false,
                                      &expected);

@@ -192,7 +192,7 @@ class CaseOpTest : public ConditionalOpTest,
                    public ::testing::WithParamInterface<int> {};
 
 // Test true and false computations that do not take any parameters.
-XLA_TEST_F(ConditionalOpTest, Parameters0) {
+TEST_F(ConditionalOpTest, Parameters0) {
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(true, 0, "pred", &builder, &pred);
@@ -205,7 +205,7 @@ XLA_TEST_F(ConditionalOpTest, Parameters0) {
 }
 
 // Test branch computations that do not take any parameters.
-XLA_TEST_P(CaseOpTest, Parameters0) {
+TEST_P(CaseOpTest, Parameters0) {
   int num_branches = GetParam();
   for (int bi = -1; bi <= num_branches; ++bi) {
     SCOPED_TRACE(bi);
@@ -235,7 +235,7 @@ XLA_TEST_P(CaseOpTest, Parameters0) {
 }
 
 // Test true and false computations that take in 1 parameter.
-XLA_TEST_F(ConditionalOpTest, Parameters1) {
+TEST_F(ConditionalOpTest, Parameters1) {
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(false, 0, "pred", &builder, &pred);
@@ -248,7 +248,7 @@ XLA_TEST_F(ConditionalOpTest, Parameters1) {
 }
 
 // Test branch computations that take in 1 parameter.
-XLA_TEST_P(CaseOpTest, Parameters1) {
+TEST_P(CaseOpTest, Parameters1) {
   int num_branches = GetParam();
   for (int bi = -1; bi <= num_branches; ++bi) {
     SCOPED_TRACE(bi);
@@ -288,7 +288,7 @@ XLA_TEST_P(CaseOpTest, Parameters1) {
 
 // Test conditional with two different computations in the true and false cases
 // that take in different arguments.
-XLA_TEST_F(ConditionalOpTest, DiffComputationsDiffArgs) {
+TEST_F(ConditionalOpTest, DiffComputationsDiffArgs) {
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(false, 0, "pred", &builder, &pred);
@@ -302,7 +302,7 @@ XLA_TEST_F(ConditionalOpTest, DiffComputationsDiffArgs) {
 
 // Test conditional with two different computations in the true and false cases
 // that take in the same arguments.
-XLA_TEST_F(ConditionalOpTest, DiffComputationsSameArg) {
+TEST_F(ConditionalOpTest, DiffComputationsSameArg) {
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(false, 0, "pred", &builder, &pred);
@@ -315,7 +315,7 @@ XLA_TEST_F(ConditionalOpTest, DiffComputationsSameArg) {
 
 // Test conditional with the same computation in the true and false cases but
 // take in different arguments.
-XLA_TEST_F(ConditionalOpTest, SameComputationDiffArgs) {
+TEST_F(ConditionalOpTest, SameComputationDiffArgs) {
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(false, 0, "pred", &builder, &pred);
@@ -329,7 +329,7 @@ XLA_TEST_F(ConditionalOpTest, SameComputationDiffArgs) {
 
 // Test conditional with the same computation in the true and false cases that
 // take in the same arguments.
-XLA_TEST_F(ConditionalOpTest, SameComputationSameArg) {
+TEST_F(ConditionalOpTest, SameComputationSameArg) {
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(false, 0, "pred", &builder, &pred);
@@ -342,7 +342,7 @@ XLA_TEST_F(ConditionalOpTest, SameComputationSameArg) {
 
 // Test conditional with different instances of the same computation in the true
 // and false cases.
-XLA_TEST_F(ConditionalOpTest, SameComputationDiffInstances) {
+TEST_F(ConditionalOpTest, SameComputationDiffInstances) {
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(false, 0, "pred", &builder, &pred);
@@ -355,7 +355,7 @@ XLA_TEST_F(ConditionalOpTest, SameComputationDiffInstances) {
 }
 
 // Test the case when a call invokes a computation that contains a conditional.
-XLA_TEST_F(ConditionalOpTest, ConditionalWithCall) {
+TEST_F(ConditionalOpTest, ConditionalWithCall) {
   Shape r0bool = ShapeUtil::MakeShape(PRED, {});
   XlaBuilder inner_builder(TestName() + ".inner_conditional");
   auto pred_cond = Parameter(&inner_builder, 0, r0bool, "param0");
@@ -377,7 +377,7 @@ XLA_TEST_F(ConditionalOpTest, ConditionalWithCall) {
 
 // Test true and false computations that take in 2 parameters and predicate is
 // true.
-XLA_TEST_F(ConditionalOpTest, Parameters2TrueBranch) {
+TEST_F(ConditionalOpTest, Parameters2TrueBranch) {
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(true, 0, "pred", &builder, &pred);
@@ -392,7 +392,7 @@ XLA_TEST_F(ConditionalOpTest, Parameters2TrueBranch) {
 
 // Test true and false computations that take in 2 parameters and predicate is
 // false.
-XLA_TEST_F(ConditionalOpTest, Parameters2FalseBranch) {
+TEST_F(ConditionalOpTest, Parameters2FalseBranch) {
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(false, 0, "pred", &builder, &pred);
@@ -407,7 +407,7 @@ XLA_TEST_F(ConditionalOpTest, Parameters2FalseBranch) {
 
 // Test true and false computations that take in 2 array parameters and
 // predicate is true.
-XLA_TEST_F(ConditionalOpTest, Parameters2ArrayTrueBranch) {
+TEST_F(ConditionalOpTest, Parameters2ArrayTrueBranch) {
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(true, 0, "pred", &builder, &pred);
@@ -422,7 +422,7 @@ XLA_TEST_F(ConditionalOpTest, Parameters2ArrayTrueBranch) {
 }
 
 // Test branch computations that take in 2 array parameters.
-XLA_TEST_P(CaseOpTest, Parameters2Array) {
+TEST_P(CaseOpTest, Parameters2Array) {
   int num_branches = GetParam();
   for (int bi = -1; bi <= num_branches; ++bi) {
     SCOPED_TRACE(bi);
@@ -463,7 +463,7 @@ INSTANTIATE_TEST_SUITE_P(CaseOpTest_Instantiation, CaseOpTest,
 
 // Test true and false computations that take in 2 array parameters and
 // predicate is false.
-XLA_TEST_F(ConditionalOpTest, Parameters2ArrayFalseBranch) {
+TEST_F(ConditionalOpTest, Parameters2ArrayFalseBranch) {
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(false, 0, "pred", &builder, &pred);
@@ -478,7 +478,7 @@ XLA_TEST_F(ConditionalOpTest, Parameters2ArrayFalseBranch) {
 }
 
 // Test true and false computations that return a tuple of scalars.
-XLA_TEST_F(ConditionalOpTest, ReturnTupleOfScalars) {
+TEST_F(ConditionalOpTest, ReturnTupleOfScalars) {
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(false, 0, "pred", &builder, &pred);
@@ -495,7 +495,7 @@ XLA_TEST_F(ConditionalOpTest, ReturnTupleOfScalars) {
 }
 
 // Test true and false computations that return a tuple of arrays.
-XLA_TEST_F(ConditionalOpTest, ReturnTupleOfArrays) {
+TEST_F(ConditionalOpTest, ReturnTupleOfArrays) {
   XlaBuilder builder(TestName());
   XlaOp pred;
   auto pred_arg = CreateR0Parameter<bool>(true, 0, "pred", &builder, &pred);
@@ -514,7 +514,7 @@ XLA_TEST_F(ConditionalOpTest, ReturnTupleOfArrays) {
 
 // Test true and false computations that return a tuple of a predicate, a
 // scalar, and an array.
-XLA_TEST_F(ConditionalOpTest, ReturnTupleofPredicateScalarArray) {
+TEST_F(ConditionalOpTest, ReturnTupleofPredicateScalarArray) {
   XlaBuilder true_builder(TestName() + ".true");
   {
     Parameter(&true_builder, 0, empty_tuple_, "tuple");
@@ -553,7 +553,7 @@ XLA_TEST_F(ConditionalOpTest, ReturnTupleofPredicateScalarArray) {
 }
 
 // Test true and false computations that return a nested tuple.
-XLA_TEST_F(ConditionalOpTest, ReturnNestedTuple) {
+TEST_F(ConditionalOpTest, ReturnNestedTuple) {
   XlaBuilder true_builder(TestName() + ".true");
   {
     Parameter(&true_builder, 0, empty_tuple_, "tuple");
@@ -603,7 +603,7 @@ XLA_TEST_F(ConditionalOpTest, ReturnNestedTuple) {
 
 // Test conditional that takes in scalar operands in the form of external
 // params.
-XLA_TEST_F(ConditionalOpTest, ScalarOperandsFromExternalParams) {
+TEST_F(ConditionalOpTest, ScalarOperandsFromExternalParams) {
   Shape r0bool = ShapeUtil::MakeShape(PRED, {});
   XlaBuilder builder(TestName());
 
@@ -623,7 +623,7 @@ XLA_TEST_F(ConditionalOpTest, ScalarOperandsFromExternalParams) {
 }
 
 // Test conditional that takes in array operands in the form of external params.
-XLA_TEST_F(ConditionalOpTest, ArrayOperandsFromExternalParams) {
+TEST_F(ConditionalOpTest, ArrayOperandsFromExternalParams) {
   Shape r0bool = ShapeUtil::MakeShape(PRED, {});
   XlaBuilder builder(TestName());
 
@@ -643,7 +643,7 @@ XLA_TEST_F(ConditionalOpTest, ArrayOperandsFromExternalParams) {
 }
 
 // Test the case where one conditional is nested within another.
-XLA_TEST_F(ConditionalOpTest, NestedConditionals) {
+TEST_F(ConditionalOpTest, NestedConditionals) {
   XlaBuilder inner_builder(TestName() + ".inner_conditional");
   {
     Shape r0bool = ShapeUtil::MakeShape(PRED, {});
@@ -673,7 +673,7 @@ XLA_TEST_F(ConditionalOpTest, NestedConditionals) {
                              {pred1_arg.get(), pred2_arg.get()}, error_spec_);
 }
 
-XLA_TEST_F(ConditionalOpTest, ConditionalInNestedComputation) {
+TEST_F(ConditionalOpTest, ConditionalInNestedComputation) {
   XlaBuilder inner_builder(TestName() + ".inner_conditional");
   {
     Shape r0bool = ShapeUtil::MakeShape(PRED, {});
@@ -700,7 +700,7 @@ XLA_TEST_F(ConditionalOpTest, ConditionalInNestedComputation) {
 }
 
 // Test a mismatch in the shape of the true operand and true computation.
-XLA_TEST_F(ConditionalOpTest, ShapeMismatch) {
+TEST_F(ConditionalOpTest, ShapeMismatch) {
   XlaBuilder builder(TestName());
   auto pred = ConstantR0<bool>(&builder, true);
   auto operand1 = ConstantR0<float>(&builder, 56.0f);
@@ -716,7 +716,7 @@ XLA_TEST_F(ConditionalOpTest, ShapeMismatch) {
                                    "only parameter of branch computation 0"));
 }
 
-XLA_TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
+TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
   Shape tuple_shape = ShapeUtil::MakeTupleShape({r0f32_, r0f32_});
   XlaComputation swapper;
   {
@@ -768,7 +768,7 @@ XLA_TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
 
 // Test conditional that duplicates tuple elements in the then and else
 // computations. This is a regression test for b/112550242.
-XLA_TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
+TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
   const Shape scalar = ShapeUtil::MakeShape(S32, {});
   const Shape tuple2 = ShapeUtil::MakeTupleShape({scalar, scalar});
   XlaComputation then_comp;
@@ -818,7 +818,7 @@ XLA_TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
   }
 }
 
-XLA_TEST_F(HloTestBase, ParallelExecution) {
+TEST_F(HloTestBase, ParallelExecution) {
   // Test conditional works when an executable is executed in parallel.
   const char* const hlo_string = R"(
   HloModule m

@@ -261,7 +261,7 @@ std::string GetAsyncMemcpyTestSuiteName(
                       GetMemcpyTestName(std::get<1>(info.param)));
 }
 
-XLA_TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
+TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
   const absl::string_view kModuleStr = R"(
       HloModule test
 
@@ -306,7 +306,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
   }
 }
 
-XLA_TEST_P(AsyncCollectiveOps, AsyncAllGather) {
+TEST_P(AsyncCollectiveOps, AsyncAllGather) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -347,7 +347,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGather) {
   }
 }
 
-XLA_TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
+TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -395,7 +395,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
   }
 }
 
-XLA_TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
+TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -432,7 +432,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[1]);
 }
 
-XLA_TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
+TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -470,7 +470,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 10}, results[1]);
 }
 
-XLA_TEST_P(AsyncCollectiveOps, CombinedCollectivePermute) {
+TEST_P(AsyncCollectiveOps, CombinedCollectivePermute) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -507,7 +507,7 @@ XLA_TEST_P(AsyncCollectiveOps, CombinedCollectivePermute) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 10, 10}, results[1]);
 }
 
-XLA_TEST_P(AsyncCollectiveOps, CollectivePermuteCombiner) {
+TEST_P(AsyncCollectiveOps, CollectivePermuteCombiner) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -566,7 +566,7 @@ XLA_TEST_P(AsyncCollectiveOps, CollectivePermuteCombiner) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({2, 2, 4, 4, 12, 12}, results[3]);
 }
 
-XLA_TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
+TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   add {
@@ -615,7 +615,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({19, 21, 23, 25}, results[1]);
 }
 
-XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
+TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
   const absl::string_view kModuleStr = R"(
   HloModule test
 
@@ -694,7 +694,7 @@ TEST_F(CollectiveOpsTestE2E, AsyncAllToAllMemCpy) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 25, 21, 26}, results[1]);
 }
 
-XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
+TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   const absl::string_view kModuleStr = R"(
   HloModule test
 
@@ -742,8 +742,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({40, 60, 44, 64}, results[1]);
 }
 
-XLA_TEST_P(AsyncCollectiveOps,
-           AsyncAllToAllNumberOfElementsLargerThanInt32Max) {
+TEST_P(AsyncCollectiveOps, AsyncAllToAllNumberOfElementsLargerThanInt32Max) {
   const absl::string_view kModuleStr = R"(
   HloModule test
 
@@ -788,7 +787,7 @@ XLA_TEST_P(AsyncCollectiveOps,
   EXPECT_EQ(results[1].Get<uint8_t>({1, 0, 0}), 1);
 }
 
-XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
+TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
   const absl::string_view kModuleStr = R"(
   HloModule test
 
@@ -824,7 +823,7 @@ XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 23}, results[3]);
 }
 
-XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerateWithSplitDim) {
+TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerateWithSplitDim) {
   const absl::string_view kModuleStr = R"(
   HloModule test
 
@@ -858,7 +857,7 @@ XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerateWithSplitDim) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 21}, results[1]);
 }
 
-XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerateWithoutSplitDim) {
+TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerateWithoutSplitDim) {
   const absl::string_view kModuleStr = R"(
   HloModule test
 
@@ -893,7 +892,7 @@ XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerateWithoutSplitDim) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 21}, results[1]);
 }
 
-XLA_TEST_P(MemcpyCollectiveOps, AllToAll8Gpus) {
+TEST_P(MemcpyCollectiveOps, AllToAll8Gpus) {
   // Module computes the a2a of (10*replica-id + iota).
   const absl::string_view kModuleStr = R"(
   HloModule test
@@ -2350,7 +2349,7 @@ class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
   Literal output_init_;
 };
 
-XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
 
@@ -2394,8 +2393,7 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
-XLA_TEST_P(RaggedAllToAllTest,
-           RaggedAllToAll_2GPUs_InputBufferLargerThanOutput) {
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_InputBufferLargerThanOutput) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
 
@@ -2439,8 +2437,7 @@ XLA_TEST_P(RaggedAllToAllTest,
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
-XLA_TEST_P(RaggedAllToAllTest,
-           RaggedAllToAll_2GPUs_OutputBufferLargerThanInput) {
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_OutputBufferLargerThanInput) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
 
@@ -2484,7 +2481,7 @@ XLA_TEST_P(RaggedAllToAllTest,
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
-XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultipleUpdates) {
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultipleUpdates) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
 
@@ -2528,7 +2525,7 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultipleUpdates) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
-XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultiDimData) {
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultiDimData) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
 
@@ -2574,7 +2571,7 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultiDimData) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
-XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_Degenerate) {
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_Degenerate) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module
 
@@ -2618,7 +2615,7 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_Degenerate) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
-XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_NonDefaultLayout) {
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_NonDefaultLayout) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module
 
@@ -2668,8 +2665,8 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_NonDefaultLayout) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
-XLA_TEST_P(RaggedAllToAllTest,
-           RaggedAllToAll_2GPUs_DevicesInReplicaGroupInReverseOrder) {
+TEST_P(RaggedAllToAllTest,
+       RaggedAllToAll_2GPUs_DevicesInReplicaGroupInReverseOrder) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
 
@@ -2713,7 +2710,7 @@ XLA_TEST_P(RaggedAllToAllTest,
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
-XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
 
@@ -2763,7 +2760,7 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
   }
 }
 
-XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_2ReplicasPerGroups) {
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_2ReplicasPerGroups) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
 
@@ -2814,7 +2811,7 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_2ReplicasPerGroups) {
   }
 }
 
-XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_4ReplicasPerGroups) {
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_4ReplicasPerGroups) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
 

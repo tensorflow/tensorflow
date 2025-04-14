@@ -71,7 +71,7 @@ class PoolingTest : public ClientLibraryTestBase {
   ErrorSpec error_spec_{0.0001};
 };
 
-XLA_TEST_F(PoolingTest, MaxPool2D) {
+TEST_F(PoolingTest, MaxPool2D) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -84,7 +84,7 @@ XLA_TEST_F(PoolingTest, MaxPool2D) {
   ComputeAndCompareR4<float>(&builder, {{{{5, 4}}}}, {}, error_spec_);
 }
 
-XLA_TEST_F(PoolingTest, MaxPool2DWithPadding) {
+TEST_F(PoolingTest, MaxPool2DWithPadding) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -97,7 +97,7 @@ XLA_TEST_F(PoolingTest, MaxPool2DWithPadding) {
   ComputeAndCompareR4<float>(&builder, {{{{5, 4, 5}}}}, {}, error_spec_);
 }
 
-XLA_TEST_F(PoolingTest, MaxPool2DWithPaddingAndStride) {
+TEST_F(PoolingTest, MaxPool2DWithPaddingAndStride) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -111,7 +111,7 @@ XLA_TEST_F(PoolingTest, MaxPool2DWithPaddingAndStride) {
                              {}, error_spec_);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2D) {
+TEST_F(PoolingTest, AvgPool2D) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -127,7 +127,7 @@ XLA_TEST_F(PoolingTest, AvgPool2D) {
   ComputeAndCompareR4<float>(&builder, {{{{3, 3}}}}, {}, error_spec_);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DWithPadding) {
+TEST_F(PoolingTest, AvgPool2DWithPadding) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -143,7 +143,7 @@ XLA_TEST_F(PoolingTest, AvgPool2DWithPadding) {
   ComputeAndCompareR4<float>(&builder, {{{{3, 3, 3}}}}, {}, error_spec_);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DWithPaddingAndStride) {
+TEST_F(PoolingTest, AvgPool2DWithPaddingAndStride) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -161,7 +161,7 @@ XLA_TEST_F(PoolingTest, AvgPool2DWithPaddingAndStride) {
                              error_spec_);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DWithGeneralPaddingCountNotIncludePadding) {
+TEST_F(PoolingTest, AvgPool2DWithGeneralPaddingCountNotIncludePadding) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -175,8 +175,8 @@ XLA_TEST_F(PoolingTest, AvgPool2DWithGeneralPaddingCountNotIncludePadding) {
   ComputeAndCompareR4<float>(&builder, {{{{3, 3}}}}, {}, error_spec_);
 }
 
-XLA_TEST_F(PoolingTest,
-           AvgPool2DWithGeneralPaddingCountNotIncludePaddingAndStride) {
+TEST_F(PoolingTest,
+       AvgPool2DWithGeneralPaddingCountNotIncludePaddingAndStride) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -191,7 +191,7 @@ XLA_TEST_F(PoolingTest,
                              error_spec_);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DGradNoPadding) {
+TEST_F(PoolingTest, AvgPool2DGradNoPadding) {
   XlaBuilder builder(TestName());
   for (bool counts_include_padding : {false, true}) {
     XlaOp out_backprop = ConstantR4FromArray4D<float>(&builder, {{{{1.}}}});
@@ -208,7 +208,7 @@ XLA_TEST_F(PoolingTest, AvgPool2DGradNoPadding) {
   }
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DGradNoPaddingWithStride) {
+TEST_F(PoolingTest, AvgPool2DGradNoPaddingWithStride) {
   XlaBuilder builder(TestName());
   for (bool counts_include_padding : {false, true}) {
     XlaOp out_backprop =
@@ -226,7 +226,7 @@ XLA_TEST_F(PoolingTest, AvgPool2DGradNoPaddingWithStride) {
   }
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DGradWithPadding) {
+TEST_F(PoolingTest, AvgPool2DGradWithPadding) {
   XlaBuilder builder(TestName());
 
   XlaOp out_backprop =
@@ -243,7 +243,7 @@ XLA_TEST_F(PoolingTest, AvgPool2DGradWithPadding) {
       error_spec_);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountNotIncludePadding) {
+TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountNotIncludePadding) {
   XlaBuilder builder(TestName());
 
   XlaOp out_backprop =
@@ -258,7 +258,7 @@ XLA_TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountNotIncludePadding) {
       error_spec_);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountWithStride) {
+TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountWithStride) {
   XlaBuilder builder(TestName());
 
   XlaOp out_backprop =
@@ -276,8 +276,7 @@ XLA_TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountWithStride) {
                              error_spec_);
 }
 
-XLA_TEST_F(PoolingTest,
-           AvgPool2DGradWithPaddingCountWithStrideNotIncludePadding) {
+TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountWithStrideNotIncludePadding) {
   XlaBuilder builder(TestName());
 
   XlaOp out_backprop =

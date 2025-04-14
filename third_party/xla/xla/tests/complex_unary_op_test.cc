@@ -95,26 +95,26 @@ class ComplexUnaryOpTest : public ClientLibraryTestBase {
   }
 };
 
-XLA_TEST_F(ComplexUnaryOpTest, Log1pTest) {
+TEST_F(ComplexUnaryOpTest, Log1pTest) {
   UnaryTestHelper<complex_unary_op_samples::Log1p<float>>(
       [](XlaOp x) { return Log1p(x); });
   UnaryTestHelper<complex_unary_op_samples::Log1p<double>>(
       [](XlaOp x) { return Log1p(x); });
 }
 
-XLA_TEST_F(ComplexUnaryOpTest, TanTest) {
+TEST_F(ComplexUnaryOpTest, TanTest) {
   UnaryTestHelper<complex_unary_op_samples::Tan<float>>(
       [](XlaOp x) { return Tan(x); });
   UnaryTestHelper<complex_unary_op_samples::Tan<double>>(
       [](XlaOp x) { return Tan(x); });
 }
 
-XLA_TEST_F(ComplexUnaryOpTest, AsinTest) {
+TEST_F(ComplexUnaryOpTest, AsinTest) {
   UnaryTestHelper<complex_unary_op_samples::Asin<float>>(Asin);
   UnaryTestHelper<complex_unary_op_samples::Asin<double>>(Asin);
 }
 
-XLA_TEST_F(ComplexUnaryOpTest, AsinhTest) {
+TEST_F(ComplexUnaryOpTest, AsinhTest) {
   UnaryTestHelper<complex_unary_op_samples::Asinh<float>>(Asinh);
   UnaryTestHelper<complex_unary_op_samples::Asinh<double>>(Asinh);
 }

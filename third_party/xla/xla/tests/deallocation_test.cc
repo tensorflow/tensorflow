@@ -88,7 +88,7 @@ TEST_F(DeallocationTest, DeallocateEmptyVector) {
               HasSubstr("was previously deallocated"));
 }
 
-XLA_TEST_F(DeallocationTest, DeallocateTuple) {
+TEST_F(DeallocationTest, DeallocateTuple) {
   XlaBuilder builder(TestName());
   Tuple(&builder, {ConstantR0<float>(&builder, 42.0),
                    ConstantR1<float>(&builder, {1.0, 2.0, 3.0})});
@@ -102,7 +102,7 @@ XLA_TEST_F(DeallocationTest, DeallocateTuple) {
               HasSubstr("was previously deallocated"));
 }
 
-XLA_TEST_F(DeallocationTest, DeallocateTupleWithRepeatedElements) {
+TEST_F(DeallocationTest, DeallocateTupleWithRepeatedElements) {
   XlaBuilder builder(TestName());
   auto element = ConstantR0<float>(&builder, 42.0);
   auto inner_tuple =
@@ -118,7 +118,7 @@ XLA_TEST_F(DeallocationTest, DeallocateTupleWithRepeatedElements) {
               HasSubstr("was previously deallocated"));
 }
 
-XLA_TEST_F(DeallocationTest, DeallocateNestedTuple) {
+TEST_F(DeallocationTest, DeallocateNestedTuple) {
   XlaBuilder builder(TestName());
   auto inner_tuple =
       Tuple(&builder, {ConstantR0<float>(&builder, 42.0),

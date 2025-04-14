@@ -33,7 +33,7 @@ namespace {
 
 using BroadcastTest = HloPjRtTestBase;
 
-XLA_TEST_F(BroadcastTest, BroadcastScalarToScalar) {
+TEST_F(BroadcastTest, BroadcastScalarToScalar) {
   // Test degenerate case of broadcasting a scalar into a scalar.
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(
@@ -50,7 +50,7 @@ XLA_TEST_F(BroadcastTest, BroadcastScalarToScalar) {
                                     kDefaultErrorSpec));
 }
 
-XLA_TEST_F(BroadcastTest, BroadcastScalarTo2D) {
+TEST_F(BroadcastTest, BroadcastScalarTo2D) {
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
@@ -67,7 +67,7 @@ XLA_TEST_F(BroadcastTest, BroadcastScalarTo2D) {
       kDefaultErrorSpec));
 }
 
-XLA_TEST_F(BroadcastTest, BroadcastVectorTo2D) {
+TEST_F(BroadcastTest, BroadcastVectorTo2D) {
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0})));
@@ -94,7 +94,7 @@ XLA_TEST_F(BroadcastTest, BroadcastVectorTo2D) {
       LiteralSlice(result, {1}), kDefaultErrorSpec));
 }
 
-XLA_TEST_F(BroadcastTest, Broadcast2DTo2D) {
+TEST_F(BroadcastTest, Broadcast2DTo2D) {
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
@@ -111,7 +111,7 @@ XLA_TEST_F(BroadcastTest, Broadcast2DTo2D) {
       kDefaultErrorSpec));
 }
 
-XLA_TEST_F(BroadcastTest, Broadcast2DTo2DTranspose) {
+TEST_F(BroadcastTest, Broadcast2DTo2DTranspose) {
   // Degenerately broadcasting a shape into a shape of the same rank reorders
   // the dimensions, ie transpose.
   auto builder = HloComputation::Builder(TestName());
@@ -130,7 +130,7 @@ XLA_TEST_F(BroadcastTest, Broadcast2DTo2DTranspose) {
       kDefaultErrorSpec));
 }
 
-XLA_TEST_F(BroadcastTest, Broadcast2DTo3D) {
+TEST_F(BroadcastTest, Broadcast2DTo3D) {
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
@@ -202,7 +202,7 @@ TEST_F(BroadcastTest, Broadcast_R1_1025_To_R4_3x3x3x1025) {
                             result, kDefaultErrorSpec));
 }
 
-XLA_TEST_F(BroadcastTest, Broadcast_R1_64_To_R4_32x64x7x7) {
+TEST_F(BroadcastTest, Broadcast_R1_64_To_R4_32x64x7x7) {
   auto builder = HloComputation::Builder(TestName());
   Array4D<float> r4_array(32, 64, 7, 7);
   r4_array.Fill(42.0);

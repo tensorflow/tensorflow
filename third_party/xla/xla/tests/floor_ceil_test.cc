@@ -74,7 +74,7 @@ class FloorCeilTest : public ClientLibraryTestBase {
 // * passing x86-based CPU's qnan to the GPU makes a different nan
 //   "7fc00000=nan=nan vs 7fffffff=nan=nan"
 
-XLA_TEST_F(FloorCeilTest, R1S0Floor) { TestR1F32({}, {}, kFloor); }
+TEST_F(FloorCeilTest, R1S0Floor) { TestR1F32({}, {}, kFloor); }
 
 TEST_F(FloorCeilTest, R1Floor) {
   TestR1F32({0.0, -0.0, infinity_, minus_infinity_, 1.1, -0.1},

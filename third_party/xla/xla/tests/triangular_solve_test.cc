@@ -101,7 +101,7 @@ Array2D<complex64> BValsLeftComplex() {
   return {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}};
 }
 
-XLA_TEST_F(TriangularSolveTest, EmptyArrays) {
+TEST_F(TriangularSolveTest, EmptyArrays) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -118,7 +118,7 @@ XLA_TEST_F(TriangularSolveTest, EmptyArrays) {
                              {a_data.get(), b_data.get()});
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTranspose) {
+TEST_F(TriangularSolveTest, SimpleRightLowerTranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -139,7 +139,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTranspose) {
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleRightLowerNotranspose) {
+TEST_F(TriangularSolveTest, SimpleRightLowerNotranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -160,7 +160,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerNotranspose) {
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleRightUpperTranspose) {
+TEST_F(TriangularSolveTest, SimpleRightUpperTranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -181,7 +181,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightUpperTranspose) {
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleRightUpperNotranspose) {
+TEST_F(TriangularSolveTest, SimpleRightUpperNotranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -202,7 +202,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightUpperNotranspose) {
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerTranspose) {
+TEST_F(TriangularSolveTest, SimpleLeftLowerTranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -224,7 +224,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerTranspose) {
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotranspose) {
+TEST_F(TriangularSolveTest, SimpleLeftLowerNotranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -246,7 +246,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotranspose) {
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNoTransposeUnitDiagonal) {
+TEST_F(TriangularSolveTest, SimpleLeftLowerNoTransposeUnitDiagonal) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -265,7 +265,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNoTransposeUnitDiagonal) {
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotransposeIrregularblock) {
+TEST_F(TriangularSolveTest, SimpleLeftLowerNotransposeIrregularblock) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -287,7 +287,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotransposeIrregularblock) {
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTranspose) {
+TEST_F(TriangularSolveTest, SimpleLeftUpperTranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -309,7 +309,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTranspose) {
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotranspose) {
+TEST_F(TriangularSolveTest, SimpleLeftUpperNotranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -331,7 +331,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotranspose) {
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotransposeUnitDiagonal) {
+TEST_F(TriangularSolveTest, SimpleLeftUpperNotransposeUnitDiagonal) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -352,7 +352,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotransposeUnitDiagonal) {
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
+TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -378,7 +378,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
       &builder, expected, {a_data.get(), b_data.get()}, ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
+TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -406,7 +406,7 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
       &builder, expected, {a_data.get(), b_data.get()}, ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, BatchedLeftUpper) {
+TEST_F(TriangularSolveTest, BatchedLeftUpper) {
   XlaBuilder builder(TestName());
 
   Array3D<float> bvals(7, 5, 5);
@@ -445,7 +445,7 @@ class TriangularSolveParametricTest
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<TriangularSolveTestSpec> {};
 
-XLA_TEST_P(TriangularSolveParametricTest, Random) {
+TEST_P(TriangularSolveParametricTest, Random) {
   TriangularSolveTestSpec spec = GetParam();
 
   if (client_->backend()

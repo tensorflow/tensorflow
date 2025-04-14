@@ -37,7 +37,7 @@ namespace {
 
 class TupleTest : public ClientLibraryTestBase {};
 
-XLA_TEST_F(TupleTest, DisassembleAssemble) {
+TEST_F(TupleTest, DisassembleAssemble) {
   XlaBuilder builder(TestName());
 
   Shape shape = ShapeUtil::MakeTupleShape({

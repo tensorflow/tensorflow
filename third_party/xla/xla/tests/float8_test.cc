@@ -35,7 +35,7 @@ using DataTypes = ::testing::Types<tsl::float8_e5m2, tsl::float8_e4m3,
                                    tsl::float8_e4m3fn, tsl::float8_e3m4>;
 TYPED_TEST_SUITE(Float8Test, DataTypes);
 
-XLA_TYPED_TEST(Float8Test, ScalarOperation) {
+TYPED_TEST(Float8Test, ScalarOperation) {
   XlaBuilder builder(this->TestName());
   auto x = ConstantR0<TypeParam>(&builder, static_cast<TypeParam>(2.0f));
   auto y = ConstantR0<TypeParam>(&builder, static_cast<TypeParam>(1.0f));
@@ -45,7 +45,7 @@ XLA_TYPED_TEST(Float8Test, ScalarOperation) {
       &builder, static_cast<TypeParam>(3.0f), {});
 }
 
-XLA_TYPED_TEST(Float8Test, LogOperation) {
+TYPED_TEST(Float8Test, LogOperation) {
   XlaBuilder builder(this->TestName());
   auto x = ConstantR0<TypeParam>(&builder, static_cast<TypeParam>(4.0f));
   Log(x);
@@ -54,7 +54,7 @@ XLA_TYPED_TEST(Float8Test, LogOperation) {
       &builder, static_cast<TypeParam>(1.387f), {});
 }
 
-XLA_TYPED_TEST(Float8Test, CompareOperation) {
+TYPED_TEST(Float8Test, CompareOperation) {
   XlaBuilder builder(this->TestName());
   auto x = ConstantR1<TypeParam>(&builder, {TypeParam{1.0}, TypeParam{2.0}});
   auto y = ConstantR1<TypeParam>(&builder, {TypeParam{1.0}, TypeParam{3.0}});
@@ -62,7 +62,7 @@ XLA_TYPED_TEST(Float8Test, CompareOperation) {
   this->template ComputeAndCompareR1<bool>(&builder, {true, false}, {});
 }
 
-XLA_TYPED_TEST(Float8Test, DotOperation) {
+TYPED_TEST(Float8Test, DotOperation) {
   XlaBuilder builder(this->TestName());
   auto x = ConstantR2<TypeParam>(&builder, {{TypeParam{0.0}, TypeParam{1.0}},
                                             {TypeParam{2.0}, TypeParam{3.0}}});
@@ -74,7 +74,7 @@ XLA_TYPED_TEST(Float8Test, DotOperation) {
       {{TypeParam{1.0}, TypeParam{0.0}}, {TypeParam{9.0}, TypeParam{4.0}}}, {});
 }
 
-XLA_TYPED_TEST(Float8Test, NegateScalar) {
+TYPED_TEST(Float8Test, NegateScalar) {
   XlaBuilder builder(this->TestName());
   Neg(ConstantR0<TypeParam>(&builder, static_cast<TypeParam>(2.0f)));
 

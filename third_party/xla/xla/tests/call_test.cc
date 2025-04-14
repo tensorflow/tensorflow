@@ -74,7 +74,7 @@ class CallOpTest : public ClientLibraryTestBase {
   Shape r1s2f32_ = ShapeUtil::MakeShape(F32, {2});
 };
 
-XLA_TEST_F(CallOpTest, CallR0F32IdentityScalar) {
+TEST_F(CallOpTest, CallR0F32IdentityScalar) {
   XlaBuilder builder(TestName());
   XlaComputation callee = CreateR0F32IdentityComputation();
   auto constant = ConstantLiteral(&builder, LiteralUtil::CreateR0<float>(42.0));
@@ -83,7 +83,7 @@ XLA_TEST_F(CallOpTest, CallR0F32IdentityScalar) {
   ComputeAndCompareR0<float>(&builder, 42.0, {}, ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(CallOpTest, CallR1S0F32AddArray) {
+TEST_F(CallOpTest, CallR1S0F32AddArray) {
   XlaBuilder builder(TestName());
   XlaComputation callee = CreateR1S0F32AdditionComputation();
   auto x = ConstantLiteral(&builder, LiteralUtil::CreateR1<float>({}));
@@ -93,7 +93,7 @@ XLA_TEST_F(CallOpTest, CallR1S0F32AddArray) {
   ComputeAndCompareR1<float>(&builder, {}, {}, ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(CallOpTest, CallR1S2F32AddArray) {
+TEST_F(CallOpTest, CallR1S2F32AddArray) {
   XlaBuilder builder(TestName());
   XlaComputation callee = CreateR1S2F32AdditionComputation();
   auto x =
@@ -105,7 +105,7 @@ XLA_TEST_F(CallOpTest, CallR1S2F32AddArray) {
   ComputeAndCompareR1<float>(&builder, {3.0f, 5.0f}, {}, ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(CallOpTest, CallTreeTwoDeepBranchFactorThree) {
+TEST_F(CallOpTest, CallTreeTwoDeepBranchFactorThree) {
   XlaBuilder builder("inner");
   {
     auto x = Parameter(&builder, 0, r0f32_, "x");
@@ -136,7 +136,7 @@ XLA_TEST_F(CallOpTest, CallTreeTwoDeepBranchFactorThree) {
   ComputeAndCompareR0<float>(&builder3, 10.0f, {start.get()}, ErrorSpec(0.0f));
 }
 
-XLA_TEST_F(CallOpTest, CallR0F32Tuple) {
+TEST_F(CallOpTest, CallR0F32Tuple) {
   XlaBuilder builder(TestName());
   XlaComputation callee = CreateR0F32TupleComputation();
   auto elem = LiteralUtil::CreateR0<float>(42.0);
