@@ -200,7 +200,7 @@ absl::Status RunAllToAll(GpuCollectives* collectives, bool has_split_dimension,
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
   PrimitiveType element_type = buffers[0].element_type;
-  int32_t element_count = buffers[0].element_count;
+  int64_t element_count = buffers[0].element_count;
 
   // All buffers must have the same element type and count.
   bool all_buffers_match = absl::c_all_of(buffers, [&](const auto& buffer) {

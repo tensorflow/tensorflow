@@ -742,6 +742,52 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({40, 60, 44, 64}, results[1]);
 }
 
+XLA_TEST_P(AsyncCollectiveOps,
+           AsyncAllToAllNumberOfElementsLargerThanInt32Max) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id_u8 = u8[] convert(id)
+    a0 = u8[2,32768,32768] broadcast(id_u8), dimensions={}
+    ROOT a2a = u8[2,32768,32768] all-to-all(u8[2,32768,32768] a0),
+      replica_groups={{0,1}}, dimensions={0}
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+  const bool enable_async_all_to_all = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(kModuleStr, kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+
+  HloInstruction* a2a_start =
+      FindInstruction(hlo_module, HloOpcode::kAsyncStart);
+  HloInstruction* a2a_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
+  ASSERT_THAT(a2a_start, NotNull());
+  ASSERT_THAT(a2a_done, NotNull());
+  HloAsyncInstruction* a2a_start_async = Cast<HloAsyncInstruction>(a2a_start);
+  EXPECT_EQ(a2a_start_async->async_wrapped_opcode(), HloOpcode::kAllToAll);
+  EXPECT_EQ(IsAsync(a2a_start_async), enable_async_all_to_all);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+  ASSERT_EQ(results.size(), kNumReplicas);
+
+  // Sanity check only a few elements in each result, because checking all 2GB
+  // would take too long.
+  EXPECT_EQ(results[0].Get<uint8_t>({0, 0, 0}), 0);
+  EXPECT_EQ(results[0].Get<uint8_t>({1, 0, 0}), 1);
+
+  EXPECT_EQ(results[1].Get<uint8_t>({0, 0, 0}), 0);
+  EXPECT_EQ(results[1].Get<uint8_t>({1, 0, 0}), 1);
+}
+
 XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
   const absl::string_view kModuleStr = R"(
   HloModule test
