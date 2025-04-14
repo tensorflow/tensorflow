@@ -189,6 +189,19 @@ cc_test(
 )
 
 cc_library(
+    name = "memory_latency_logger",
+    srcs = ["memory_latency_logger.cc"],
+    hdrs = ["memory_latency_logger.h"],
+    deps = [
+        ":memory_usage_monitor",
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
     name = "profile_summary_formatter",
     srcs = ["profile_summary_formatter.cc"],
     hdrs = ["profile_summary_formatter.h"],
