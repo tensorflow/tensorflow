@@ -232,15 +232,16 @@ class TritonSupportTest : public TritonSupportTestBase {
     // If that is not the case, codegen could fail for that reason---which
     // wouldn't give any valuable signal here. The check is only done for array
     // and tuple shapes (only one layer of nesting is supported for tuples).
-    if (ti.Instruction().shape().IsArray()) {
+    const auto& root_instruction = ti.TritonComputation().root_instruction();
+    if (root_instruction->shape().IsArray()) {
       ASSERT_EQ(output_tile_sizes.size(), 1);
       ASSERT_EQ(output_tile_sizes[0].size(),
-                ti.Instruction().shape().dimensions().size());
-    } else if (ti.Instruction().shape().IsTuple()) {
+                root_instruction->shape().dimensions().size());
+    } else if (root_instruction->shape().IsTuple()) {
       ASSERT_EQ(output_tile_sizes.size(),
-                ti.Instruction().shape().tuple_shapes_size());
+                root_instruction->shape().tuple_shapes_size());
       for (int64_t i = 0; i < output_tile_sizes.size(); ++i) {
-        const auto& shape = ti.Instruction().shape().tuple_shapes(i);
+        const auto& shape = root_instruction->shape().tuple_shapes(i);
         if (shape.IsTuple()) {
           continue;  // No validation for nested tuples, as there is no way to
                      // specify output tile sizes for them.
@@ -1159,8 +1160,7 @@ ENTRY triton_computation {
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
                                      HloOpcode::kCollectivePermuteDone));
 
-  RunSupportTestMultipleOutputTiles(std::move(ti_start),
-                                    /*output_tile_sizes=*/{{2, 2}, {2, 2}}, cc);
+  RunSupportTest(std::move(ti_start), /*output_tile_sizes=*/{2, 2}, cc);
   RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
@@ -1215,10 +1215,8 @@ ENTRY triton_computation {
       TestedInstruction ti_done,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
                                      HloOpcode::kAsyncDone));
-  RunSupportTestMultipleOutputTiles(std::move(ti_start),
-                                    /*output_tile_sizes=*/{{1}, {1}}, cc);
-  RunSupportTestMultipleOutputTiles(std::move(ti_update),
-                                    /*output_tile_sizes=*/{{1}, {1}}, cc);
+  RunSupportTest(std::move(ti_start), /*output_tile_sizes=*/{1}, cc);
+  RunSupportTest(std::move(ti_update), /*output_tile_sizes=*/{1}, cc);
   RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{1}, cc);
 }
 
