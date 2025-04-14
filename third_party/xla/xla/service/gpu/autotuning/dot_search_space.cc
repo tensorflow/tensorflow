@@ -122,6 +122,7 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
     // discarding all configs, and use the smallest possible tile size further
     // down, which is likely not what the user had in mind.
     config.keep_large_split = GetMaxContractingSplit(max_out_tile_) < split;
+    VLOG(5) << "Forcing split_k, config = " << config.ToString();
     if (config.keep_large_split) {
       LOG(WARNING)
           << "split_k is larger than what we would have found automatically. "

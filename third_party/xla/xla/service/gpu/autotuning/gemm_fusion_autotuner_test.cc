@@ -1789,6 +1789,25 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
 }
 
+TEST_F(DynamicSearchSpaceAutotunerTest, UsesSplitKForSmallOuterDimensions) {
+  const std::string hlo = R"(
+HloModule module
+ENTRY e {
+  x = s8[32,16384] parameter(0)
+  c = f16[32,16384] convert(x)
+  y = f16[16384,32] parameter(1)
+  ROOT out = f16[32,32] dot(c, y),
+                lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  CheckTritonAutotuning(hlo, R"(
+// CHECK: ENTRY
+// CHECK: __triton_gemm
+// CHECK-NOT: "split_k":"1"
+// CHECK: ROOT
+)");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
