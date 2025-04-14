@@ -735,9 +735,9 @@ ma::ConstantOp Cst64(EmitterLocOpBuilder b, int64_t v) {
   //   split-K, batch, non-contracting LHS, non-contracting RHS,
   // where split-K and batch are optional.
   matmul_dims.out_rhs_noncontracting_dim_idx =
-      dot.shape().dimensions_size() - 1;
+      dot.shape().dimensions().size() - 1;
   matmul_dims.out_lhs_noncontracting_dim_idx =
-      dot.shape().dimensions_size() - 2;
+      dot.shape().dimensions().size() - 2;
 
   auto* root = dot.parent()->root_instruction();
   auto iter_spec =
@@ -852,7 +852,7 @@ absl::Status ValidateMatMulConfig(const TritonGemmConfig& config,
   TF_RET_CHECK(dims.lhs_contracting_dimensions_size() == 1);
   TF_RET_CHECK(dims.rhs_contracting_dimensions_size() == 1);
 
-  TF_RET_CHECK(dot.operand(0)->shape().dimensions_size() ==
+  TF_RET_CHECK(dot.operand(0)->shape().dimensions().size() ==
                2 + (config.split_k > 1 ? 1 : 0) + num_batch_dims);
   return absl::OkStatus();
 }
