@@ -56,7 +56,7 @@ cc_library(
         ":no_op_device_time_measurement",
         # copybara:comment_end
         # copybara:uncomment_begin(google-only)
-        # "//learning/brain/google/runtime:device_runtime_profiling",
+        # "//learning/brain/google/runtime:device_runtime_profiling",  # buildcleaner: keep
         # copybara:uncomment_end
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
