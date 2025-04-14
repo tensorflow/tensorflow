@@ -17,11 +17,13 @@ limitations under the License.
 #define XLA_PJRT_PJRT_LAYOUT_H_
 
 #include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout.h"
@@ -64,9 +66,18 @@ class PjRtLayout {
     return H::combine(std::move(state), layout.xla_layout_);
   }
 
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const PjRtLayout& layout) {
+    absl::Format(&sink, "%s", layout.ToString());
+  }
+
  private:
   Layout xla_layout_;
 };
+
+inline std::ostream& operator<<(std::ostream& out, const PjRtLayout& layout) {
+  return out << layout.ToString();
+}
 
 }  // namespace xla
 
