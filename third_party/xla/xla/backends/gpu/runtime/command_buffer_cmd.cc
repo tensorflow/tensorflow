@@ -681,7 +681,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> LaunchCmd::Record(
         "Kernel not loaded on a command buffer executor: ", kernel_name_));
   }
 
-  absl::InlinedVector<se::DeviceMemoryBase, 4> buffers;
+  absl::InlinedVector<se::KernelArgument, 4> buffers;
   for (const BufferAllocation::Slice& arg : args_) {
     se::DeviceMemoryBase buf =
         execute_params.buffer_allocations->GetDeviceAddress(arg);

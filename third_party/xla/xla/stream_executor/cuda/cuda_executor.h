@@ -133,10 +133,10 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<const CudaKernel*> GetCudaKernel(const Kernel* kernel);
 
   // Creates, allocates, and copies a CUtensorMap object for the given TMA
-  // descriptor.  Returns a DeviceMemoryBase pointing to the allocated
-  // CUtensorMap object to be used as an argument to a kernel.
-  absl::StatusOr<DeviceMemoryBase> CreateTensorMap(
-      TmaDescriptor tma_desc, void* global_address) override;
+  // descriptor. Returns a TensorMap, which is 128 bytes of storage, to be
+  // passed by value to the kernel.
+  absl::StatusOr<TensorMap> CreateTensorMap(TmaDescriptor tma_desc,
+                                            void* global_address) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
       MemoryType type) override;
 

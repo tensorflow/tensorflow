@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
@@ -108,8 +109,13 @@ KernelArgsPacking CreateDefaultArgsPacking() {
   return [=](const se::Kernel& kernel, const se::KernelArgs& args) -> Packed {
     auto* mem_args = se::Cast<se::KernelArgsDeviceMemoryArray>(&args);
 
-    return se::PackKernelArgs(mem_args->device_memory_args(),
-                              args.number_of_shared_bytes());
+    absl::InlinedVector<se::KernelArgument, 4> kernel_args;
+    kernel_args.reserve(mem_args->device_memory_args().size());
+    for (const auto& arg : mem_args->device_memory_args()) {
+      kernel_args.push_back(arg);
+    }
+
+    return se::PackKernelArgs(kernel_args, args.number_of_shared_bytes());
   };
 }
 

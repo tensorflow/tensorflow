@@ -267,6 +267,7 @@ cc_library(
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],

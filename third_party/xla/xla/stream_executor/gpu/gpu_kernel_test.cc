@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -36,8 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -106,5 +108,91 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromSymbol) {
   RunAddI32Kernel(GetAddI32KernelSpec());
 }
 
+TEST_F(GpuKernelTest, ArrayArgByValue) {
+  constexpr absl::string_view copy_kernel = R"(
+    .version 8.0
+    .target sm_60
+    .address_size 64
+
+    .visible .entry copy_kernel(
+        .param .u64 foo_param_0,
+        .param .align 1 .b8 foo_param_1[16]
+)
+{
+        .reg .b16       %rs<17>;
+        .reg .b64       %rd<3>;
+        .loc    1 5 0
+
+        ld.param.u64    %rd1, [foo_param_0];
+        cvta.to.global.u64      %rd2, %rd1;
+        ld.param.u8     %rs1, [foo_param_1+15];
+        ld.param.u8     %rs2, [foo_param_1+14];
+        ld.param.u8     %rs3, [foo_param_1+13];
+        ld.param.u8     %rs4, [foo_param_1+12];
+        ld.param.u8     %rs5, [foo_param_1+11];
+        ld.param.u8     %rs6, [foo_param_1+10];
+        ld.param.u8     %rs7, [foo_param_1+9];
+        ld.param.u8     %rs8, [foo_param_1+8];
+        ld.param.u8     %rs9, [foo_param_1+7];
+        ld.param.u8     %rs10, [foo_param_1+6];
+        ld.param.u8     %rs11, [foo_param_1+5];
+        ld.param.u8     %rs12, [foo_param_1+4];
+        ld.param.u8     %rs13, [foo_param_1+3];
+        ld.param.u8     %rs14, [foo_param_1+2];
+        ld.param.u8     %rs15, [foo_param_1+1];
+        ld.param.u8     %rs16, [foo_param_1];
+        .loc    1 6 5
+        st.global.u8    [%rd2], %rs16;
+        st.global.u8    [%rd2+1], %rs15;
+        st.global.u8    [%rd2+2], %rs14;
+        st.global.u8    [%rd2+3], %rs13;
+        st.global.u8    [%rd2+4], %rs12;
+        st.global.u8    [%rd2+5], %rs11;
+        st.global.u8    [%rd2+6], %rs10;
+        st.global.u8    [%rd2+7], %rs9;
+        st.global.u8    [%rd2+8], %rs8;
+        st.global.u8    [%rd2+9], %rs7;
+        st.global.u8    [%rd2+10], %rs6;
+        st.global.u8    [%rd2+11], %rs5;
+        st.global.u8    [%rd2+12], %rs4;
+        st.global.u8    [%rd2+13], %rs3;
+        st.global.u8    [%rd2+14], %rs2;
+        st.global.u8    [%rd2+15], %rs1;
+        .loc    1 7 1
+        ret;
+    }
+    )";
+
+  MultiKernelLoaderSpec spec(/*arity=*/2);
+  spec.AddCudaPtxInMemory(copy_kernel, "copy_kernel");
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
+  TF_ASSERT_OK_AND_ASSIGN(auto kernel, executor_->LoadKernel(spec));
+
+  constexpr int64_t kLength = 16;
+
+  DeviceMemory<char> dst = executor_->AllocateArray<char>(kLength, 0);
+  TF_ASSERT_OK(stream->MemZero(&dst, kLength));
+
+  struct ByValArg {
+    std::byte storage[16];
+  };
+  ByValArg arg;
+  int i = 0;
+  for (auto& element : arg.storage) {
+    element = static_cast<std::byte>(i++);
+  }
+
+  // Launch kernel.
+  auto args = stream_executor::PackKernelArgs(/*shmem_bytes=*/0, dst, arg);
+  TF_ASSERT_OK(kernel->Launch(ThreadDim(), BlockDim(), stream.get(), *args));
+
+  // Copy data back to host.
+  std::byte dst_host[16] = {};
+  TF_ASSERT_OK(stream->Memcpy(dst_host, dst, kLength));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  EXPECT_THAT(dst_host, ::testing::ElementsAreArray(arg.storage));
+}
 }  // namespace
 }  // namespace stream_executor::gpu

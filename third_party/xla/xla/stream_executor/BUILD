@@ -525,6 +525,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:logging",
     ],
 )
@@ -776,6 +777,9 @@ xla_cc_test(
         ":typed_kernel_factory",
         "//xla/stream_executor/host:host_platform",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
+        "@com_google_benchmark//:benchmark",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
     ],

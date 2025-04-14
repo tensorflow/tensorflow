@@ -21,6 +21,9 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
+#include "benchmark/benchmark.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
@@ -74,8 +77,9 @@ static StreamExecutor* NewStreamExecutor() {
 TEST(KernelTest, PackDeviceMemoryArguments) {
   DeviceMemoryBase a(reinterpret_cast<void*>(0x12345678));
   DeviceMemoryBase b(reinterpret_cast<void*>(0x87654321));
+  absl::InlinedVector<KernelArgument, 2> kernel_args = {a, b};
 
-  auto args = PackKernelArgs({a, b}, 0).value();
+  auto args = PackKernelArgs(kernel_args, 0).value();
   ASSERT_EQ(args->number_of_arguments(), 2);
 
   auto packed = args->argument_addresses();
@@ -131,7 +135,7 @@ TEST(KernelTest, FailToCreateTypedKernelFromEmptySpec) {
 //===----------------------------------------------------------------------===//
 
 static void BM_PackDeviceMemoryArgs(benchmark::State& state) {
-  std::vector<DeviceMemoryBase> args(state.range(0));
+  std::vector<KernelArgument> args(state.range(0));
   for (int i = 0; i < state.range(0); ++i) {
     args[i] = DeviceMemoryBase(reinterpret_cast<void*>(0x12345678), 42);
   }

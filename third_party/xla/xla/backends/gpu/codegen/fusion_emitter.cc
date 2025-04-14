@@ -33,23 +33,22 @@ limitations under the License.
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
+#include "llvm/IR/Type.h"
 #include "llvm/TargetParser/Triple.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
-#include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -59,8 +58,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -180,13 +177,14 @@ std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
 absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
                           std::vector<llvm_ir::IrArray>>>
 BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
+                     const std::string& impl_fn_name,
                      const std::string& suggested_name,
                      absl::Span<const KernelArgument> arguments,
                      size_t num_inputs,
                      const LaunchDimensions& launch_dimensions,
                      llvm::IRBuilderBase* builder) {
   return BuildKernelPrototypeFromUniqueName(
-      ir_emitter_context,
+      ir_emitter_context, impl_fn_name,
       GetSanitizedUniqueName(ir_emitter_context, suggested_name), arguments,
       num_inputs, launch_dimensions, builder);
 }
@@ -194,6 +192,7 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
                           std::vector<llvm_ir::IrArray>>>
 BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
+                                   const std::string& impl_fn_name,
                                    const std::string& unique_kernel_name,
                                    absl::Span<const KernelArgument> arguments,
                                    size_t num_inputs,
@@ -248,16 +247,25 @@ BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
        ++llvm_arg_no) {
     const KernelArgument& kernel_argument = arguments[to_arg_no[llvm_arg_no]];
     llvm::Argument& llvm_arg = *kernel->getArg(llvm_arg_no);
-
     llvm_arg.setName(absl::StrCat("arg", llvm_arg_no));
 
-    kernel->addDereferenceableParamAttr(llvm_arg_no,
-                                        kernel_argument.slice().size());
+    if (auto func = llvm_module->getFunction(impl_fn_name)) {
+      auto func_arg = func->getArg(llvm_arg_no);
+      if (func_arg && func_arg->hasByValAttr()) {
+        kernel->addParamAttr(llvm_arg_no,
+                             func_arg->getAttribute(llvm::Attribute::ByVal));
+        kernel->addParamAttr(
+            llvm_arg_no, func_arg->getAttribute(llvm::Attribute::Alignment));
+      }
+    } else {
+      kernel->addDereferenceableParamAttr(llvm_arg_no,
+                                          kernel_argument.slice().size());
 
-    kernel->addParamAttr(
-        llvm_arg_no,
-        llvm::Attribute::get(llvm_arg.getContext(), llvm::Attribute::Alignment,
-                             kernel_argument.alignment()));
+      kernel->addParamAttr(llvm_arg_no,
+                           llvm::Attribute::get(llvm_arg.getContext(),
+                                                llvm::Attribute::Alignment,
+                                                kernel_argument.alignment()));
+    }
 
     if (!kernel_argument.aliased()) {
       kernel->addParamAttr(llvm_arg_no,

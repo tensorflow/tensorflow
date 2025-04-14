@@ -581,12 +581,14 @@ cc_library(
     ],
     deps = [
         ":custom_kernel",
+        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
-        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
