@@ -16,10 +16,14 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 
 #include <memory>
+#include <string>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
@@ -39,15 +43,19 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/emitters/ir/xla_attrs.h.inc"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
@@ -174,6 +182,19 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
 
   std::unique_ptr<llvm::Module> llvm_module =
       mlir::translateModuleToLLVMIR(mlir_module, llvm_context);
+
+  if (mlir::Attribute options =
+          mlir_module->getAttr(xla::ExtraBackendOptionsAttr::name)) {
+    const auto formater = [](std::string* out, const mlir::StringAttr& attr) {
+      absl::StrAppend(out, attr.str());
+    };
+    std::string options_csv = absl::StrJoin(
+        mlir::cast<xla::ExtraBackendOptionsAttr>(options), ",", formater);
+    llvm::MDString* options_mdstring =
+        llvm::MDString::get(llvm_context, options_csv);
+    llvm_module->addModuleFlag(llvm::Module::Error, "xla_backend_extra_options",
+                               options_mdstring);
+  }
 
   TF_RET_CHECK(llvm_module != nullptr)
       << "Failed to translate module to LLVM IR.";

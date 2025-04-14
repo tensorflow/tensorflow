@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
+#include "xla/codegen/emitters/ir/xla_attrs.h.inc"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -249,6 +251,13 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CpuScatterFusion::Emit()
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion_->name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
   SetDataLayoutAttribute(module.get(), *fusion_);
+
+  mlir::StringAttr disable_loop_unrolling_attr =
+      builder.getStringAttr("xla_cpu_disable_loop_unrolling");
+  module->getOperation()->setAttr(
+      xla::ExtraBackendOptionsAttr::name,
+      builder.getAttr<xla::ExtraBackendOptionsAttr>(
+          llvm::ArrayRef{disable_loop_unrolling_attr}));
 
   TF_ASSIGN_OR_RETURN(
       mlir::func::FuncOp entry_func,
