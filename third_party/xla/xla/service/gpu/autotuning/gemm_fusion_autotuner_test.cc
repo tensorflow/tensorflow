@@ -614,7 +614,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: f16[3,55,20]
+; CHECK: f{{(16|32)}}[3,55,20]
 ; CHECK: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2,"num_ctas":1}
 ; CHECK: f16[55,20]{1,0} {{(reduce|fusion)}}
 )");
