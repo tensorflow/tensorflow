@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_DEVICE_INFO_FOR_TESTS_H_
 #define XLA_SERVICE_GPU_GPU_DEVICE_INFO_FOR_TESTS_H_
 
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -26,6 +27,9 @@ class TestGpuDeviceInfo {
   static stream_executor::DeviceDescription RTXA6000DeviceInfo(
       stream_executor::GpuComputeCapability cc =
           stream_executor::CudaComputeCapability(8, 9));
+  static stream_executor::DeviceDescription RTXH100SXMDeviceInfo(
+      stream_executor::GpuComputeCapability cc =
+          stream_executor::CudaComputeCapability(9, 0));
   static stream_executor::DeviceDescription AMDMI210DeviceInfo();
   // Returns deafult RTXA6000 or AMDMI210 device info
   static stream_executor::DeviceDescription CudaOrRocmDeviceInfo();

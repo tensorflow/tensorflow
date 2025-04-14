@@ -440,7 +440,8 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, HandlesExtremelyHighMaxCost) {
   EXPECT_EQ(result, expected_output);
 }
 
-TEST(FormulateAndSolveMIPFromSolverRequestTest, HandlesMemoryEdgeCosts) {
+TEST(DISABLED_FormulateAndSolveMIPFromSolverRequestTest,
+     HandlesMemoryEdgeCosts) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const EdgeMatrix live_edges = {{}, {0}, {0, 1}, {1}, {}};
   const CostMatrix memory_edge_costs = {{1000000, 1100, 1200, 1300,
@@ -464,7 +465,8 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, HandlesMemoryEdgeCosts) {
   EXPECT_EQ(result, expected_output);
 }
 
-TEST(FormulateAndSolveMIPFromSolverRequestTest, HandlesIntervals) {
+TEST(DISABLED_FormulateAndSolveMIPFromSolverRequestTest,
+     HandlesIntervals) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const CostMatrix memory_edge_costs = {{1000000, 1100, 1200, 1300,
                                          2000, 2100, 2200, 2300,

@@ -2880,9 +2880,12 @@ class DotUnsetAlgorithmEmitterTest
 };
 
 TEST_P(DotUnsetAlgorithmEmitterTest, UnsetAlgorithmIsEmittedCorrectly) {
-  auto [input_type, result_type] = GetParam();
-  if (!internal::AreTypesSupportedByAlgUnsetDot(input_type, result_type,
-                                                GpuComputeCapability())) {
+  auto [result_type, input_type] = GetParam();
+  const std::string kHloText =
+      GetDotAlgorithmHlo(input_type, result_type, PrecisionConfig::ALG_UNSET);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  if (!IsTritonSupportedComputation(*module->entry_computation(),
+                                    GpuComputeCapability())) {
     GTEST_SKIP() << "Not supported on this platform.";
   }
 
@@ -2892,34 +2895,13 @@ TEST_P(DotUnsetAlgorithmEmitterTest, UnsetAlgorithmIsEmittedCorrectly) {
       primitive_util::BitWidth(result_type) == 8) {
     error_spec = ErrorSpec{/*aabs=*/1e0, /*arel=*/1e-1};
   }
-
-  const std::string kHloText =
-      GetDotAlgorithmHlo(input_type, result_type, PrecisionConfig::ALG_UNSET);
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, error_spec));
-}
-
-auto AllXlaDataTypesSupportedByAlgUnsetDotLowering() {
-  // We don't have a pointer to stream executor available here so we can't
-  // detect the particular device we're running on with a canonical API call.
-  // Instead, we just return a superset of the supported types (i.e. those that
-  // are supported on the latest device), and filter out the unsupported types
-  // in the test body.
-  std::vector<DotUnsetAlgorithmEmitterTest::ParamType> supported_types;
-  ::testing::internal::ParamGenerator<DotUnsetAlgorithmEmitterTest::ParamType>
-      all_types = ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
-                                     ::testing::ValuesIn(AllXlaDataTypes()));
-  absl::c_copy_if(
-      all_types, std::back_inserter(supported_types), [](const auto& types) {
-        auto [result_type, input_type] = types;
-        return static_cast<bool>(internal::AreTypesSupportedByAlgUnsetDot(
-            input_type, result_type, se::CudaComputeCapability::Blackwell()));
-      });
-  return supported_types;
 }
 
 INSTANTIATE_TEST_SUITE_P(
     DotUnsetAlgorithmEmitterTestSuite, DotUnsetAlgorithmEmitterTest,
-    ::testing::ValuesIn(AllXlaDataTypesSupportedByAlgUnsetDotLowering()),
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllXlaDataTypes())),
     DotUnsetAlgorithmEmitterTest::ParamToString);
 
 }  // namespace
