@@ -127,18 +127,6 @@ class GpuPerformanceModelCache {
 };
 
 struct GpuPerformanceModelOptions {
-  // Factor for how much parallelism between compute and memory accesses should
-  // be assumed. If 1.0, assume perfect parallelism (the run time is the maximum
-  // of both times). If 0.0, assume no parallelism (the run time is the sum of
-  // both times).
-  //
-  // This constant was chosen empirically in early 2024, based on runtime
-  // performance on a set of benchmarks internal to Google. Intuitively, we
-  // expect it to be close to 1, but not quite 1 (i.e., sometimes, compute
-  // or memory accesses will be stalled waiting for the other, but usually
-  // they won't).
-  double memory_compute_parallelism = 0.95;
-
   // If present, use this to retrieve fusion analyses.
   HloFusionAnalysisCache* fusion_analysis_cache = nullptr;
 
@@ -167,6 +155,17 @@ class GpuPerformanceModelBase {
       absl::Microseconds(5);
   static constexpr float kL2CacheSpeedup = 2.5;
   static constexpr float kL1CacheSpeedup = 8;
+  // Factor for how much parallelism between compute and memory accesses should
+  // be assumed. If 1.0, assume perfect parallelism (the run time is the maximum
+  // of both times). If 0.0, assume no parallelism (the run time is the sum of
+  // both times).
+  //
+  // This constant was chosen empirically in early 2024, based on runtime
+  // performance on a set of benchmarks internal to Google. Intuitively, we
+  // expect it to be close to 1, but not quite 1 (i.e., sometimes, compute
+  // or memory accesses will be stalled waiting for the other, but usually
+  // they won't).
+  static constexpr double kMemoryComputeParallelism = 0.95;
 
   // Uses HloFusionAnalysis for computing the actual number of threads and
   // blocks that the IR emitter will use.
@@ -225,8 +224,7 @@ class GpuPerformanceModelBase {
       int64_t num_blocks, int64_t num_threads_per_block);
 
   static absl::Duration CombineComputeAndMemoryAccessTime(
-      absl::Duration compute_time, absl::Duration memory_access_time,
-      const GpuPerformanceModelOptions& config);
+      absl::Duration compute_time, absl::Duration memory_access_time);
 
   // Logs estimates for the operand read if VLOG is enabled.
   static void VLogOperandRead(const HloInstruction* operand,

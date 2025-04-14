@@ -335,8 +335,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
                   launch_dimensions.num_threads_per_block());
   absl::Duration write_time = WriteTime(*device_info_, bytes_written);
   absl::Duration memory_access_time = read_time + write_time;
-  absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
-      compute_time, memory_access_time, GpuPerformanceModelOptions::Default());
+  absl::Duration exec_time =
+      CombineComputeAndMemoryAccessTime(compute_time, memory_access_time);
 
   EstimateRunTimeData runtime_data = {flops,     bytes_read, bytes_written,
                                       read_time, write_time, compute_time,
@@ -516,8 +516,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
                   launch_dimensions.num_threads_per_block());
 
   absl::Duration memory_access_time = read_time + write_time;
-  absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
-      compute_time, memory_access_time, GpuPerformanceModelOptions::Default());
+  absl::Duration exec_time =
+      CombineComputeAndMemoryAccessTime(compute_time, memory_access_time);
 
   return EstimateRunTimeData{/*flops=*/flops,
                              /*bytes_read=*/bytes_read,
