@@ -2978,7 +2978,7 @@ struct FullyConnectedSwapOperandsWhenLHSIsConst
 
     if (!input_type || !filter_type || !output_type) return failure();
 
-    if (input_type.getRank() != 2 && filter_type.getRank() != 2)
+    if (input_type.getRank() != 2 || filter_type.getRank() != 2)
       return failure();
 
     // Dimensions: B=Batch, I=InputDepth, O=OutputDepth

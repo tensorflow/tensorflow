@@ -4756,3 +4756,12 @@ func.func @FullyConnectedSwapOperandsWhenLHSIsConstFusedActivationFunction(%arg0
   // CHECK-NOT:  %0 = "tfl.fully_connected"(%arg0, [[cst]], %arg1)
 }
 
+// CHECK-LABEL: @FullyConnectedSwapOperandsWhenLHSIsConstLHSRank3
+func.func @FullyConnectedSwapOperandsWhenLHSIsConstLHSRank3(%arg0: tensor<512x512xf32>, %arg1: none) -> tensor<1x1x512xf32> {
+  %cst = arith.constant dense<1.0> : tensor<1x1x512xf32>
+  %0 = "tfl.fully_connected"(%cst, %arg0, %arg1) {asymmetric_quantize_inputs = true, fused_activation_function = "RELU", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x1x512xf32>, tensor<512x512xf32>, none) -> tensor<1x1x512xf32>
+  func.return %0 : tensor<1x1x512xf32>
+
+  // CHECK:  %0 = "tfl.fully_connected"(%cst, %arg0, %arg1)
+}
+
