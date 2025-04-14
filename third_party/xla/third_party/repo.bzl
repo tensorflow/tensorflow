@@ -70,12 +70,18 @@ def _tf_http_archive_impl(ctx):
             build_file = ctx.attr.system_build_file,
         ))
     else:
+        download_time_before = ctx.execute(["date", "+%s"]).stdout.replace("\n", "")
         ctx.download_and_extract(
             url = ctx.attr.urls,
             sha256 = ctx.attr.sha256,
             type = ctx.attr.type,
             stripPrefix = ctx.attr.strip_prefix,
         )
+        download_time_after = ctx.execute(["date", "+%s"]).stdout.replace("\n", "")
+        print("Downloading and extracting {}: download and extract time {}s".format(
+            ctx.attr.urls[0],
+            int(download_time_after) - int(download_time_before),
+        ))  # buildifier: disable=print
         if patch_files:
             for patch_file in patch_files:
                 patch_file = ctx.path(Label(patch_file)) if patch_file else None
