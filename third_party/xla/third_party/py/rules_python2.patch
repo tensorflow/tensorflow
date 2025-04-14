@@ -1,7 +1,16 @@
 diff --git a/python/versions.bzl b/python/versions.bzl
-index 91e59f9b..223c90d4 100644
+index 91e59f9b..d32195f4 100644
 --- a/python/versions.bzl
 +++ b/python/versions.bzl
+@@ -21,7 +21,7 @@ LINUX_NAME = "linux"
+ WINDOWS_NAME = "windows"
+ FREETHREADED = "freethreaded"
+ 
+-DEFAULT_RELEASE_BASE_URL = "https://github.com/indygreg/python-build-standalone/releases/download"
++DEFAULT_RELEASE_BASE_URL = "https://github.com/astral-sh/python-build-standalone/releases/download"
+ 
+ # When updating the versions and releases, run the following command to get
+ # the hashes:
 @@ -575,25 +575,42 @@ TOOL_VERSIONS = {
          },
          "strip_prefix": "python",
@@ -62,7 +71,7 @@ index 91e59f9b..223c90d4 100644
 -        "strip_prefix": "python",
      },
  }
-
+ 
 @@ -604,7 +621,7 @@ MINOR_MAPPING = {
      "3.10": "3.10.15",
      "3.11": "3.11.10",
@@ -70,5 +79,15 @@ index 91e59f9b..223c90d4 100644
 -    "3.13": "3.13.0",
 +    "3.13": "3.13.2",
  }
-
+ 
  def _generate_platforms():
+@@ -793,9 +810,6 @@ def get_release_info(platform, python_version, base_url = DEFAULT_RELEASE_BASE_U
+         else:
+             build = "install_only"
+ 
+-        if WINDOWS_NAME in platform:
+-            build = "shared-" + build
+-
+         release_filename = u.format(
+             platform = p,
+             python_version = python_version,
