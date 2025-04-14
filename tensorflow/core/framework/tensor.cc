@@ -1268,6 +1268,10 @@ inline float PrintOneElement(float8_e4m3fn f, bool print_v2) {
   return static_cast<float>(f);
 }
 
+inline float PrintOneElement(float8_e4m3b11fnuz f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
 inline int16_t PrintOneElement(int4 a, bool print_v2) {
   return static_cast<int16_t>(a);
 }
@@ -1454,6 +1458,9 @@ string Tensor::SummarizeValue(int64_t max_entries, bool print_v2) const {
     case DT_FLOAT8_E4M3FN:
       return SummarizeArray<float8_e4m3fn>(limit, num_elts, shape_, data,
                                            print_v2);
+    case DT_FLOAT8_E4M3B11FNUZ:
+      return SummarizeArray<float8_e4m3b11fnuz>(limit, num_elts, shape_, data,
+                                                print_v2);
     case DT_FLOAT:
       return SummarizeArray<float>(limit, num_elts, shape_, data, print_v2);
       break;
