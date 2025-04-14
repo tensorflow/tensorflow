@@ -80,7 +80,8 @@ class CopyInsertion : public HloModulePass {
   // in all the existing aliased buffers.
   absl::Status RemoveUnnecessaryCopies(
       HloModule* module, bool check_live_range_ordering = false,
-      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {},
+      bool insert_post_scheduling_control_dependencies = false);
 
   // Add copies to address special constraints on the roots of computations not
   // related to live range interference:

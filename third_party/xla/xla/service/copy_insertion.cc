@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
@@ -63,9 +64,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -615,33 +613,39 @@ class LiveRangeRegions {
   absl::InlinedVector<const HloComputation*, 5> computation_vector_;
 };
 
+#define RUNTIME_ORDER_LIST(V)                                                  \
+  /* Indicates that there is no overlap whatsoever between the two regions. */ \
+  V(kNoOverlap, 0)                                                             \
+  /* Indicates that the first region includes the same set of instructions     \
+     as the second region. */                                                  \
+  V(kSameInstr, 1)                                                             \
+  /* Indicates that the first region is entirely before the second region      \
+     starts. */                                                                \
+  V(kBeforeStart, 2)                                                           \
+  /* Indicates that the first region is before the second region ends. */      \
+  V(kBeforeStartOrSameInstr, kBeforeStart | kSameInstr)                        \
+  /* Indicates that the first region is entirely after the second region       \
+     ends. */                                                                  \
+  V(kAfterEnd, 4)                                                              \
+  /* Indicates that the first region is after the second region                \
+     starts, with some instructions before the second region ends. */          \
+  V(kAfterEndOrSameInstr, kAfterEnd | kSameInstr)                              \
+  /* Indicates that the first region overlaps with the second one, but share   \
+     no common instructions. */                                                \
+  V(kBeforeStartOrAfterEnd, kBeforeStart | kAfterEnd)                          \
+  /* Indicates that the first region overlaps with the second one, and have    \
+     some common instructions. */                                              \
+  V(kBeforeOrAfterOrOverlap, kBeforeStart | kAfterEnd | kSameInstr)
+
 namespace {
 // Represent relations between the locations of two regions of instructions,
 // each region can include 0-n instructions.
 class Relation {
  public:
   enum RuntimeOrder {
-    // Indicate that there is no overlap whatsoever between the two regions.
-    kNoOverlap = 0,
-    // Indicate that the first region includes the same set of instructions as
-    // the second region.
-    kSameInstr = 1,
-    // Indicate that the first region is entirely before the second region
-    // starts.
-    kBeforeStart = 2,
-    // Indicate that the first region is before the second region ends.
-    kBeforeStartOrSameInstr = kBeforeStart | kSameInstr,
-    // Indicate that the first region is entirely after the second region ends.
-    kAfterEnd = 4,
-    // Indicate that the first region is after the second region
-    // starts, with some instructions before the second region ends.
-    kAfterEndOrSameInstr = kAfterEnd | kSameInstr,
-    // Indicate that the first region overlaps with the second one, but share no
-    // common instructions.
-    kBeforeStartOrAfterEnd = kBeforeStart | kAfterEnd,
-    // Indicate that the first region overlaps with the second one, and have
-    // some common instructions.
-    kBeforeOrAfterOrOverlap = kBeforeStart | kAfterEnd | kSameInstr,
+#define DECLARE_ENUM(enum_name, enum_value) enum_name = enum_value,
+    RUNTIME_ORDER_LIST(DECLARE_ENUM)
+#undef DECLARE_ENUM
   };
   Relation() : intercept_def_use_(false) {}
   explicit Relation(RuntimeOrder order, bool intercept_def_use = false)
@@ -699,8 +703,18 @@ class Relation {
     return orders_.size() == 1 && orders_[0] == kAfterEnd;
   }
   std::string ToString() const {
-    return absl::StrCat("Interception = ", intercept_def_use_, ";",
-                        absl::StrJoin(orders_, ","));
+    auto format_order = [](std::string* out, RuntimeOrder order) {
+      switch (order) {
+#define DECLARE_CASE(enum_name, enum_value) \
+  case enum_name:                           \
+    absl::StrAppend(out, #enum_name);       \
+    break;
+        RUNTIME_ORDER_LIST(DECLARE_CASE)
+#undef DECLARE_CASE
+      }
+    };
+    return absl::StrCat("Interception = ", intercept_def_use_, " Orders = ",
+                        absl::StrJoin(orders_, ", ", format_order), ",");
   }
 
   static bool DefinitionImpliesInterception(RuntimeOrder definition) {
@@ -1523,8 +1537,8 @@ class CopyRemover {
   // live range interference is introduced by the copy's elimination. If
   // elision is possible, then the internal state (value lists) are updated,
   // and true is returned. Returns false otherwise.
-  bool TryElideCopy(const HloInstruction* copy,
-                    int64_t* region_analysis_limit) {
+  bool TryElideCopy(const HloInstruction* copy, int64_t* region_analysis_limit,
+                    bool insert_post_scheduling_control_dependencies) {
     VLOG(2) << "Trying to remove " << copy->name();
     CHECK_NE(region_analysis_limit, nullptr);
     if (copy->shape().has_layout() && copy->operand(0)->shape().has_layout()) {
@@ -1603,6 +1617,29 @@ class CopyRemover {
       VLOG(2) << "Region-based interference is false.";
       return false;
     };
+    auto AddControlDependenciesBetween = [&](ValueNode* src, ValueNode* dst) {
+      if (src == nullptr || dst == nullptr) {
+        return;
+      }
+      for (auto use : src->uses) {
+        if (use->instruction->parent() != dst->value->instruction()->parent() ||
+            use->instruction == dst->value->instruction()) {
+          // Don't add control dependencies if the use is in a different
+          // computation or if the use is the same as the destination.
+          continue;
+        }
+
+        VLOG(2) << "Adding control dependency:";
+        VLOG(2) << "  From: " << use->instruction->ToString();
+        VLOG(2) << "    Use: " << use->ToString();
+
+        VLOG(2) << "  To: " << dst->value->instruction()->ToShortString();
+        VLOG(2) << "    Value: " << dst->value->ToString();
+
+        CHECK_OK(use->instruction->AddControlDependencyTo(
+            dst->value->instruction()));
+      }
+    };
 
     // A kCopy instruction copies an HLO value from a source buffer and
     // defines an HLO value in a destination buffer. Most generally, the
@@ -1680,9 +1717,24 @@ class CopyRemover {
           // Live range of 'last_dest' (d_m) must be before 'next_src' s_{x+1}.
           CheckLiveRangeBefore(copy_node.dest->prev, Next(*copy_node.src));
       VLOG(2) << "LiveRangeBefore result: " << live_range_before;
-      if (!live_range_before &&
-          CheckLiveRangeInterference(copy_node.src, copy_node.dest,
-                                     kMergeFirstDestInSource)) {
+      // If the live range is before, we can add control dependencies to ensure
+      // the ordering. Otherwise, we check for interference (which will
+      // also add control dependencies if needed)
+      if (live_range_before) {
+        if (insert_post_scheduling_control_dependencies) {
+          // Ensure that the last uses of the copy source (e.g. s_x) are
+          // ordered before the next definition of the copy destination buffer
+          // (d_1).
+          AddControlDependenciesBetween(copy_node.src, Next(*copy_node.dest));
+
+          // Also ensure that the last uses of the copy destination (e.g. d_m)
+          // are ordered before the next definition of the copy source buffer
+          // (s_{x+1}).
+          AddControlDependenciesBetween(copy_node.dest->prev,
+                                        Next(*copy_node.src));
+        }
+      } else if (CheckLiveRangeInterference(copy_node.src, copy_node.dest,
+                                            kMergeFirstDestInSource)) {
         return false;
       }
       VLOG(2) << "Splice dest after source.";
@@ -1712,9 +1764,23 @@ class CopyRemover {
           // Live range of 'last_src' must be before next_dest d_{y+1}.
           CheckLiveRangeBefore(copy_node.src, Next(*copy_node.dest));
       VLOG(2) << "LiveRangeBefore result: " << live_range_before;
-      if (!live_range_before &&
-          CheckLiveRangeInterference(copy_node.src, copy_node.dest,
-                                     kMergeLastSourceInDest)) {
+      // If the live range is before, we can add control dependencies to ensure
+      // the ordering. Otherwise, we check for interference (which will
+      // also add control dependencies if needed)
+      if (live_range_before) {
+        if (insert_post_scheduling_control_dependencies) {
+          // Ensure that the last uses of the copy source (e.g. s_n) are
+          // ordered before the next definition of the copy destination buffer
+          // (d_{y+1}).
+          AddControlDependenciesBetween(Prev(*copy_node.dest),
+                                        copy_node.src->next);
+          // Also ensure that the last uses of the copy source (e.g. s_n) are
+          // ordered before next definition of the copy destination (e.g.
+          // d_{y+1}).
+          AddControlDependenciesBetween(copy_node.src, Next(*copy_node.dest));
+        }
+      } else if (CheckLiveRangeInterference(copy_node.src, copy_node.dest,
+                                            kMergeLastSourceInDest)) {
         VLOG(2) << "Region-based analysis concludes interference.";
         return false;
       }
@@ -2453,7 +2519,8 @@ static int64_t GetNumExistingCopies(
 
 absl::Status CopyInsertion::RemoveUnnecessaryCopies(
     HloModule* module, bool check_live_range_ordering,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    bool insert_post_scheduling_control_dependencies) {
   XLA_VLOG_LINES(
       4, module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(false)));
 
@@ -2504,7 +2571,9 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
                 ? 0
                 : std::min(allowance.analysis_allowance(),
                            use_region_based_live_range_analysis_);
-        if (copy_remover.TryElideCopy(instruction, &region_analysis_cost_now)) {
+        if (copy_remover.TryElideCopy(
+                instruction, &region_analysis_cost_now,
+                insert_post_scheduling_control_dependencies)) {
           changed = true;
           TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
           TF_RETURN_IF_ERROR(
