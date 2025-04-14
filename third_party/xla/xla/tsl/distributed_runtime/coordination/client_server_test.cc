@@ -117,8 +117,8 @@ class ClientServerTest : public ::testing::Test {
         config.mutable_coordinated_job_list()->Add();
     job->set_name("agent");
     job->set_num_tasks(num_nodes);
-    auto service = tsl::CoordinationServiceInterface::EnableCoordinationService(
-        Env::Default(), config, /*cache=*/nullptr);
+    auto service = tsl::CoordinationService::Create(Env::Default(), config,
+                                                    /*cache=*/nullptr);
     return config;
   }
 
@@ -162,9 +162,8 @@ class ClientServerTest : public ::testing::Test {
                              grpc::InsecureServerCredentials());
     // Set up the actual coordination service (where all the real logic
     // lives).
-    coord_service_ =
-        tsl::CoordinationServiceInterface::EnableCoordinationService(
-            Env::Default(), config, /*cache=*/nullptr);
+    coord_service_ = tsl::CoordinationService::Create(Env::Default(), config,
+                                                      /*cache=*/nullptr);
     // Set up threads and RPC service.
     coord_compute_pool_ = std::make_unique<tsl::thread::ThreadPool>(
         Env::Default(), "CoordinationServiceRpcHandler",
@@ -211,7 +210,7 @@ class ClientServerTest : public ::testing::Test {
  private:
   std::string service_address_;
   std::unique_ptr<grpc::Server> server_;
-  std::unique_ptr<tsl::CoordinationServiceInterface> coord_service_;
+  std::unique_ptr<tsl::CoordinationService> coord_service_;
   std::unique_ptr<tsl::thread::ThreadPool> coord_compute_pool_;
   std::unique_ptr<tsl::AsyncServiceInterface> coord_rpc_service_;
   std::unique_ptr<tsl::Thread> coord_rpc_thread_;
