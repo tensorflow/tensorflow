@@ -115,27 +115,29 @@ static absl::string_view ReductionKindString(ReductionKind kind) {
   }
 }
 
-// Creates command buffer builder from a cmd sequence.
-static se::CommandBuffer::Builder CreateBuilder(
-    CommandBufferCmdSequence* commands,
+// Create a callback to create a command buffer from a command sequence.
+static se::CommandBuffer::CreateCommands CreateCommands(
+    const CommandBufferCmdSequence* commands,
     const Thunk::ExecuteParams* execute_params,
     const CommandBufferCmd::RecordParams* record_params) {
-  return [=](se::CommandBuffer* command_buffer) {
-    return commands->Record(*execute_params, *record_params, command_buffer,
-                            CommandBufferCmdSequence::RecordMode::kConditional);
+  return [=](se::CommandBuffer* command_buffer,
+             absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+    return commands->RecordCreate(*execute_params, *record_params,
+                                  command_buffer, dependencies);
   };
 }
 
-// Creates command buffer builders from a span of cmd sequences.
-static std::vector<se::CommandBuffer::Builder> CreateBuilders(
-    absl::Span<CommandBufferCmdSequence> commands,
+// Create callbacks to create a command buffer from command sequences.
+static std::vector<se::CommandBuffer::CreateCommands> CreateCommands(
+    absl::Span<const CommandBufferCmdSequence> commands,
     const Thunk::ExecuteParams* execute_params,
     const CommandBufferCmd::RecordParams* record_params) {
-  std::vector<se::CommandBuffer::Builder> builders;
-  for (CommandBufferCmdSequence& cmd : commands) {
-    builders.push_back(CreateBuilder(&cmd, execute_params, record_params));
+  std::vector<se::CommandBuffer::CreateCommands> create_commands;
+  for (const CommandBufferCmdSequence& cmd : commands) {
+    create_commands.push_back(
+        CreateCommands(&cmd, execute_params, record_params));
   }
-  return builders;
+  return create_commands;
 }
 
 // Create a callback to update a command buffer with command sequence.
@@ -268,14 +270,11 @@ absl::Status CommandBufferCmdSequence::Initialize(
 absl::Status CommandBufferCmdSequence::Record(
     const Thunk::ExecuteParams& execute_params,
     const CommandBufferCmd::RecordParams& record_params,
-    se::CommandBuffer* command_buffer, RecordMode mode) {
-  VLOG(3) << "Record " << commands_.size()
-          << " commands into command buffer; mode=" << absl::StrCat(mode);
+    se::CommandBuffer* command_buffer) {
+  VLOG(3) << "Record " << commands_.size() << " commands into command buffer";
 
-  if (mode == RecordMode::kExclusive) {
-    if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
-      TF_RETURN_IF_ERROR(command_buffer->Update());
-    }
+  if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
+    TF_RETURN_IF_ERROR(command_buffer->Update());
   }
 
   if (command_buffer->state() == se::CommandBuffer::State::kUpdate) {
@@ -287,18 +286,14 @@ absl::Status CommandBufferCmdSequence::Record(
             .status());
   }
 
-  if (mode == RecordMode::kExclusive) {
-    TF_RETURN_IF_ERROR(command_buffer->Finalize());
-  }
-
-  return absl::OkStatus();
+  return command_buffer->Finalize();
 }
 
 absl::StatusOr<std::vector<const se::CommandBuffer::Command*>>
 CommandBufferCmdSequence::RecordCreate(
     const Thunk::ExecuteParams& execute_params,
     const RecordParams& record_params, se::CommandBuffer* command_buffer,
-    absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+    absl::Span<const se::CommandBuffer::Command* const> dependencies) const {
   // Command buffer must be in create state.
   TF_RETURN_IF_ERROR(CheckCommandBufferState(
       command_buffer, se::CommandBuffer::State::kCreate));
@@ -958,15 +953,17 @@ absl::StatusOr<const se::CommandBuffer::Command*> CaseCmd::Record(
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
-        auto branches = CreateBuilders(absl::MakeSpan(branches_),
-                                       &execute_params, &record_params);
         if (index_is_bool_) {
-          return command_buffer->CreateCase(se::DeviceMemory<bool>(index),
-                                            std::move(branches), dependencies);
+          return command_buffer->CreateCase(
+              se::DeviceMemory<bool>(index),
+              CreateCommands(branches_, &execute_params, &record_params),
+              dependencies);
 
         } else {
-          return command_buffer->CreateCase(se::DeviceMemory<int32_t>(index),
-                                            std::move(branches), dependencies);
+          return command_buffer->CreateCase(
+              se::DeviceMemory<int32_t>(index),
+              CreateCommands(branches_, &execute_params, &record_params),
+              dependencies);
         }
       },
       [&](const se::CommandBuffer::Command* command) {
@@ -1032,8 +1029,8 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
       [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateWhile(
             se::DeviceMemory<bool>(pred),
-            CreateBuilder(&cond_commands_, &execute_params, &record_params),
-            CreateBuilder(&body_commands_, &execute_params, &record_params),
+            CreateCommands(&cond_commands_, &execute_params, &record_params),
+            CreateCommands(&body_commands_, &execute_params, &record_params),
             dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {

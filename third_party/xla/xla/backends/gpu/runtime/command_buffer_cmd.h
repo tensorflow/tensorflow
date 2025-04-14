@@ -291,33 +291,6 @@ class CommandBufferCmdSequence {
 
   using RecordParams = CommandBufferCmd::RecordParams;
 
-  enum class RecordMode {
-    // In exclusive mode no one else is recording commands into the command
-    // buffer argument, and cmd sequence is responsible for updating command
-    // buffer state: finalizing after all commands recorded, and
-    // switching to update state before recording updates.
-    kExclusive,
-
-    // In conditional mode multiple cmd sequences can be recorded into the
-    // command buffer argument, and with command buffer state managed externally
-    // cmd sequence should not finalize or update it. This mode is used when
-    // command buffer cmd sequence is recorded into conditional command buffers
-    // owned by the parent command buffer.
-    kConditional
-  };
-
-  template <typename Sink>
-  friend void AbslStringify(Sink& sink, RecordMode mode) {
-    switch (mode) {
-      case RecordMode::kExclusive:
-        sink.Append("exclusive");
-        break;
-      case RecordMode::kConditional:
-        sink.Append("conditional");
-        break;
-    }
-  }
-
   // Synchronization mode defines how much concurrency is allowed between
   // commands in the sequence.
   enum class SynchronizationMode {
@@ -372,14 +345,9 @@ class CommandBufferCmdSequence {
   // buffer state. This method assumes that no other command buffer sequence is
   // recorded into the same command buffer, and doesn't set up initial
   // dependencies for recorded commands.
-  //
-  // TODO(b/406370928): This API must be removed, and instead users should
-  // explicitly call `RecordCreate` or `RecordUpdate` depending on what they
-  // want to do.
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer,
-                      RecordMode mode = RecordMode::kExclusive);
+                      se::CommandBuffer* command_buffer);
 
   // Records command creation into the command buffer. Command buffer must be
   // in create state. The next command sequence recorded into the same command
@@ -388,7 +356,7 @@ class CommandBufferCmdSequence {
   absl::StatusOr<std::vector<const se::CommandBuffer::Command*>> RecordCreate(
       const Thunk::ExecuteParams& execute_params,
       const RecordParams& record_params, se::CommandBuffer* command_buffer,
-      absl::Span<const se::CommandBuffer::Command* const> dependencies);
+      absl::Span<const se::CommandBuffer::Command* const> dependencies) const;
 
   // Records command updates into the command buffer. Command buffer must be
   // in update state.
