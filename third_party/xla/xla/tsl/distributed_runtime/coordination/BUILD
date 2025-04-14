@@ -81,10 +81,6 @@ cc_library(
     ],
 )
 
-# TODO(mwhittaker): Remove this once tensorflow only relies on the
-# coordination_service BUILD rule.
-cc_library(name = "coordination_service_impl")
-
 tf_proto_library(
     name = "test_device_proto",
     testonly = 1,
