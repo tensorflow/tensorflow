@@ -2395,6 +2395,13 @@ void ResetThreadLocalFuel() {
   }
 }
 
+bool PassFuelIsSet(absl::string_view pass) {
+  absl::call_once(flags_init, &AllocateFlags, nullptr);
+  auto* fuel_pool = thread_fuel ? thread_fuel.get() : global_fuel;
+  auto it = fuel_pool->find(pass);
+  return it != fuel_pool->end();
+}
+
 bool ConsumeFuel(absl::string_view pass, bool* just_ran_out) {
   absl::call_once(flags_init, &AllocateFlags, nullptr);
   if (just_ran_out != nullptr) {
