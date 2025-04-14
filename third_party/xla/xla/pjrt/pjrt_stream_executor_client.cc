@@ -743,7 +743,8 @@ PjRtStreamExecutorClient::BufferFromHostBufferInternal(
         device_shape,
         transfer_manager->ChooseCompactLayoutForShape(device_shape));
   }
-  absl::InlinedVector<int64_t, 4> shape_strides(device_shape.dimensions_size());
+  absl::InlinedVector<int64_t, 4> shape_strides(
+      device_shape.dimensions().size());
   TF_RETURN_IF_ERROR(
       ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
@@ -1687,7 +1688,7 @@ PjRtStreamExecutorBuffer::CopyToDeviceMemorySpace(
     // Avoid use-after-free on `literal` due to unsequenced move and use.
     Literal* literal_pointer = literal.get();
     absl::InlinedVector<int64_t, 4> byte_strides(
-        literal->shape().dimensions_size());
+        literal->shape().dimensions().size());
     TF_RETURN_IF_ERROR(
         ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
     return dst_device->client()->BufferFromHostBuffer(
@@ -1865,7 +1866,7 @@ absl::Status CheckCompatibleShapes(bool strict_shape_checking,
   // shape `pred[0]`.
   if (execution_shape.IsToken() &&
       buffer_on_device_shape.element_type() == PrimitiveType::PRED &&
-      buffer_on_device_shape.dimensions_size() == 1 &&
+      buffer_on_device_shape.dimensions().size() == 1 &&
       buffer_on_device_shape.dimensions(0) == 0) {
     return absl::OkStatus();
   }
