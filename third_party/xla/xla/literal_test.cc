@@ -551,6 +551,27 @@ TEST_F(LiteralUtilTest, DifferentLayoutInEquality) {
   EXPECT_FALSE(colmajor.Equal(rowmajor, true));
 }
 
+TEST_F(LiteralUtilTest, CreateWithoutLayout) {
+  Shape default_layout_shape = ShapeUtil::MakeShape(F32, {2, 1});
+  Shape no_layout_shape = default_layout_shape;
+  no_layout_shape.clear_layout();
+  auto literal =
+      LiteralBase::CreateFromShapeWithUndeterminedLeafArrays(no_layout_shape);
+  // The default Layout should have been added back.
+  EXPECT_EQ(literal.shape(), default_layout_shape);
+}
+
+TEST_F(LiteralUtilTest, CreateWithoutLayout_Tuple) {
+  Shape default_layout_shape = ShapeUtil::MakeShape(F32, {2, 1});
+  Shape no_layout_shape = default_layout_shape;
+  no_layout_shape.clear_layout();
+  Shape literal_shape = ShapeUtil::MakeTupleShape({no_layout_shape});
+  auto literal =
+      LiteralBase::CreateFromShapeWithUndeterminedLeafArrays(literal_shape);
+  // The default Layout should have been added back.
+  EXPECT_EQ(literal.shape().tuple_shapes(0), default_layout_shape);
+}
+
 TEST_F(LiteralUtilTest, TupleEquality) {
   // Test equality with tuples.
   auto scalar = LiteralUtil::CreateR0<float>(1.0);
