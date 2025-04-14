@@ -47,47 +47,21 @@ SlotVarCreationFnType = Callable[
 ClipValueType = Union[Tuple[float, float], float]
 
 
-class _Optimizer(metaclass=abc.ABCMeta):
-  """Base class for all optimizers, with common parameters."""
+class _WithSlotVariables(metaclass=abc.ABCMeta):
+  """Base class that allows slot variables to be created."""
 
   def __init__(
       self,
-      learning_rate: Union[float, Callable[[], float]],
-      use_gradient_accumulation: bool,
-      clip_weight_min: Optional[float],
-      clip_weight_max: Optional[float],
-      weight_decay_factor: Optional[float],
-      multiply_weight_decay_factor_by_learning_rate: bool,
-      clipvalue: Optional[ClipValueType] = None,
       slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
-      low_dimensional_packing_status: bool = False,
   ):
-    self.learning_rate = learning_rate
-    self.use_gradient_accumulation = use_gradient_accumulation
-    self.clip_weight_min = clip_weight_min
-    self.clip_weight_max = clip_weight_max
-    if not use_gradient_accumulation and clipvalue is not None:
+    if slot_variable_creation_fn is not None and not callable(
+        slot_variable_creation_fn
+    ):
       raise ValueError(
-          f"When `use_gradient_accumulation` is False, gradient clipping "
-          f"cannot be used and `clipvalue` should be left as None. "
-          f"Received value {clipvalue} for argument `clipvalue`.")
-    if clipvalue is None:
-      clipvalue = (None, None)
-    elif not isinstance(clipvalue, tuple):
-      clipvalue = (-1. * clipvalue, clipvalue)
-    self.clip_gradient_min, self.clip_gradient_max = clipvalue
-
-    self.weight_decay_factor = weight_decay_factor
-    self.multiply_weight_decay_factor_by_learning_rate = (
-        multiply_weight_decay_factor_by_learning_rate)
-
-    if (slot_variable_creation_fn is not None and
-        not callable(slot_variable_creation_fn)):
-      raise ValueError(
-          f"Argument `slot_variable_creation_fn` must be either None or a "
-          f"callable. Received: {slot_variable_creation_fn}")
+          "Argument `slot_variable_creation_fn` must be either None or a "
+          f"callable. Received: {slot_variable_creation_fn}"
+      )
     self.slot_variable_creation_fn = slot_variable_creation_fn
-    self.low_dimensional_packing_status = low_dimensional_packing_status
 
   @abc.abstractmethod
   def _slot_names(self) -> List[Text]:
@@ -105,47 +79,6 @@ class _Optimizer(metaclass=abc.ABCMeta):
 
     This returns a parallel list to self._slot_names().
     """
-    raise NotImplementedError
-
-  def _set_optimization_parameters(
-      self, parameters: optimization_parameters_pb2.OptimizationParameters):
-    """Sets the optimizer fields in the OptimizationParameters."""
-    if self.use_gradient_accumulation:
-      parameters.gradient_accumulation_status = (
-          optimization_parameters_pb2.GradientAccumulationStatus.ENABLED)
-    else:
-      parameters.gradient_accumulation_status = (
-          optimization_parameters_pb2.GradientAccumulationStatus.DISABLED)
-
-    if self.clip_weight_min is not None:
-      parameters.clipping_limits.lower.value = self.clip_weight_min
-
-    if self.clip_weight_max is not None:
-      parameters.clipping_limits.upper.value = self.clip_weight_max
-
-    if self.clip_gradient_min is not None:
-      parameters.gradient_clipping_limits.lower.value = self.clip_gradient_min
-
-    if self.clip_gradient_max is not None:
-      parameters.gradient_clipping_limits.upper.value = self.clip_gradient_max
-
-    if self.weight_decay_factor:
-      parameters.weight_decay_factor = self.weight_decay_factor
-      if self.multiply_weight_decay_factor_by_learning_rate:
-        parameters.multiply_weight_decay_factor_by_learning_rate = True
-
-    parameters.low_dimensional_packing_status = (
-        self.low_dimensional_packing_status
-    )
-
-  @abc.abstractmethod
-  def _load(self) -> Callable[..., ops.Operation]:
-    """Returns the load function for the optimizer."""
-    raise NotImplementedError
-
-  @abc.abstractmethod
-  def _retrieve(self) -> Callable[..., core.Tensor]:
-    """Returns the retrieve function for the optimizer."""
     raise NotImplementedError
 
   def _create_slots(
@@ -197,6 +130,90 @@ class _Optimizer(metaclass=abc.ABCMeta):
 
   def __hash__(self) -> int:
     return hash(tuple(self.__dict__.items()))
+
+
+class _Optimizer(_WithSlotVariables):
+  """Base class for all optimizers, with common parameters."""
+
+  def __init__(
+      self,
+      learning_rate: Union[float, Callable[[], float]],
+      use_gradient_accumulation: bool,
+      clip_weight_min: Optional[float],
+      clip_weight_max: Optional[float],
+      weight_decay_factor: Optional[float],
+      multiply_weight_decay_factor_by_learning_rate: bool,
+      clipvalue: Optional[ClipValueType] = None,
+      slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
+      low_dimensional_packing_status: bool = False,
+  ):
+    super().__init__(slot_variable_creation_fn=slot_variable_creation_fn)
+    self.learning_rate = learning_rate
+    self.use_gradient_accumulation = use_gradient_accumulation
+    self.clip_weight_min = clip_weight_min
+    self.clip_weight_max = clip_weight_max
+    if not use_gradient_accumulation and clipvalue is not None:
+      raise ValueError(
+          "When `use_gradient_accumulation` is False, gradient clipping "
+          "cannot be used and `clipvalue` should be left as None. "
+          f"Received value {clipvalue} for argument `clipvalue`."
+      )
+    if clipvalue is None:
+      clipvalue = (None, None)
+    elif not isinstance(clipvalue, tuple):
+      clipvalue = (-1.0 * clipvalue, clipvalue)
+    self.clip_gradient_min, self.clip_gradient_max = clipvalue
+
+    self.weight_decay_factor = weight_decay_factor
+    self.multiply_weight_decay_factor_by_learning_rate = (
+        multiply_weight_decay_factor_by_learning_rate
+    )
+
+    self.low_dimensional_packing_status = low_dimensional_packing_status
+
+  def _set_optimization_parameters(
+      self, parameters: optimization_parameters_pb2.OptimizationParameters
+  ):
+    """Sets the optimizer fields in the OptimizationParameters."""
+    if self.use_gradient_accumulation:
+      parameters.gradient_accumulation_status = (
+          optimization_parameters_pb2.GradientAccumulationStatus.ENABLED
+      )
+    else:
+      parameters.gradient_accumulation_status = (
+          optimization_parameters_pb2.GradientAccumulationStatus.DISABLED
+      )
+
+    if self.clip_weight_min is not None:
+      parameters.clipping_limits.lower.value = self.clip_weight_min
+
+    if self.clip_weight_max is not None:
+      parameters.clipping_limits.upper.value = self.clip_weight_max
+
+    if self.clip_gradient_min is not None:
+      parameters.gradient_clipping_limits.lower.value = self.clip_gradient_min
+
+    if self.clip_gradient_max is not None:
+      parameters.gradient_clipping_limits.upper.value = self.clip_gradient_max
+
+    if self.weight_decay_factor:
+      parameters.weight_decay_factor = self.weight_decay_factor
+      if self.multiply_weight_decay_factor_by_learning_rate:
+        parameters.multiply_weight_decay_factor_by_learning_rate = True
+
+    parameters.low_dimensional_packing_status = (
+        self.low_dimensional_packing_status
+    )
+
+  @abc.abstractmethod
+  def _load(self) -> Callable[..., ops.Operation]:
+    """Returns the load function for the optimizer."""
+    raise NotImplementedError
+
+  @abc.abstractmethod
+  def _retrieve(self) -> Callable[..., core.Tensor]:
+    """Returns the retrieve function for the optimizer."""
+    raise NotImplementedError
 
 
 @tf_export("tpu.experimental.embedding.CustomOptimizer")
@@ -1094,6 +1111,123 @@ class Adam(_Optimizer):
     return tpu_ops.retrieve_tpu_embedding_adam_parameters
 
 
+@tf_export("tpu.experimental.embedding.CustomCombiner")
+class CustomCombiner(_WithSlotVariables):
+  """Custom combiner for TPU embeddings.
+
+  This class gives the user the ability to define a custom combiner for running
+  embedding lookups on TPU with SparseCores.
+
+  The custom computation should be a function which takes the following
+  arguments:
+    (1) valency: an integer scalar that indicates the actual number of valent
+                 IDs in the current sample.
+    (2) vectors: a 2D tensor of shape [max_valency, embedding_dim] that
+                 represents the embedding lookup results to be combined. The
+                 vectors are guaranteed to be in the same order as the embedding
+                 IDs appear in the input sample.
+    (3) weights: this argument is only present if `num_weights` of this class
+                 is greater than 0. It is a 1D tensor of shape [num_weights]
+                 that will be back-propagated to during the backward pass.
+                 Currently only SGD optimizer is supported on these weights,
+                 with the learning rate being the
+                 `combiner_weights_learning_rate` argument of the constructor
+                 of this class.
+
+  The custom computation should return a 1D tensor of shape [embedding_dim] that
+  represents the combined embedding vector. An example combiner computation is
+  as follows (it simply sums over the valent embedding vectors and is
+  semantically equivalent to the `sum` combiner):
+
+  ```python
+  @tf.function
+  def sum_combiner(valency, vectors):
+    max_valency = vectors.shape[0]
+    valid_mask = tf.range(max_valency) < valency
+    vectors_masked = tf.where(
+        tf.expand_dims(valid_mask, axis=-1),
+        vectors,
+        tf.zeros_like(vectors),
+    )
+    return tf.reduce_sum(vectors_masked, axis=0)
+  ```
+
+  The custom computation is defined as a per-sample combiner function and it
+  will be vectorized to the given batch size. This means certain constructs
+  (such as control flow ops) may not be supported in the custom computation.
+
+  NOTE: This combiner can only be used with the `TPUEmbeddingV2` class.
+
+  This class can be used in a `tf.tpu.experimental.embedding.TableConfig` as the
+  combiner parameter to set a table specific combiner.
+
+  ```python
+  custom_combiner = tpu_embedding_v2_utils.CustomCombiner(
+      sum_combiner,
+      max_valency=16,
+  )
+
+  table_one = tf.tpu.experimental.embedding.TableConfig(
+      vocabulary_size=...,
+      dim=...,
+      combiner=custom_combiner)
+  table_two = tf.tpu.experimental.embedding.TableConfig(
+      vocabulary_size=...,
+      dim=...)
+
+  feature_config = (
+      tf.tpu.experimental.embedding.FeatureConfig(
+          table=table_one),
+      tf.tpu.experimental.embedding.FeatureConfig(
+          table=table_two))
+
+  embedding = tf.tpu.experimental.embedding.TPUEmbedding(
+      feature_config=feature_config,
+      batch_size=...)
+  ```
+  In this example, the combiner of the first table will be the `sum_combiner`.
+  The second table will use the default `mean` combiner.
+  """
+
+  def __init__(
+      self,
+      combiner_computation: core.PolymorphicFunction,
+      max_valency: int,
+      num_weights: int = 0,
+      initializer: Optional[init_ops_v2.Initializer] = None,
+      combiner_weights_learning_rate: Union[float, Callable[[], float]] = 0.01,
+  ) -> Any:
+    super().__init__()
+    self.combiner = "custom_combiner_" + str(hash(combiner_computation))
+    self.combiner_computation = combiner_computation
+    self.max_valency = max_valency
+    self.num_weights = num_weights
+    self.combiner_weights_learning_rate = combiner_weights_learning_rate
+
+    if num_weights > 0 and initializer is None:
+      raise ValueError(
+          "When `num_weights` is greater than 0, `initializer` must be set."
+      )
+
+    self._slot_names_attr = tuple(["custom_combiner_variables"])
+    self._slot_initializers_attr = tuple(
+        [initializer] if initializer is not None else ()
+    )
+
+  def _slot_names(self) -> List[Text]:
+    if self.num_weights > 0:
+      return list(self._slot_names_attr)
+    return []
+
+  def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
+    if self.num_weights > 0:
+      return list(self._slot_initializers_attr)
+    return []
+
+  def __str__(self) -> str:
+    return self.combiner
+
+
 @tf_export("tpu.experimental.embedding.QuantizationConfig")
 class QuantizationConfig:
   """Settings for simulated quantization of the tpu embedding table.
@@ -1201,7 +1335,7 @@ class TableConfig:
       dim: int,
       initializer: Optional[Callable[[Any], None]] = None,
       optimizer: Optional[_Optimizer] = None,
-      combiner: Text = "mean",
+      combiner: Union[Text, CustomCombiner] = "mean",
       name: Optional[Text] = None,
       quantization_config: QuantizationConfig = None,
       # TODO(b/295372790): Change the type to SparseCoreTableLayout after it is
@@ -1223,10 +1357,11 @@ class TableConfig:
         `tf.tpu.experimental.embedding.Adagrad` or
         `tf.tpu.experimental.embedding.Adam`. If set will override the global
         optimizer passed to `tf.tpu.experimental.embedding.TPUEmbedding`.
-      combiner: A string specifying how to reduce if there are multiple entries
-        in a single row. Currently 'mean', 'sqrtn', 'sum' are supported, with
-        'mean' the default. 'sqrtn' often achieves good accuracy, in particular
-        with bag-of-words columns. For more information, see
+      combiner: A string or instance of a combiner class specifying how to
+        reduce if there are multiple entries in a single row. Currently 'mean',
+        'sqrtn', 'sum', and custom combiners are supported, with 'mean' the
+        default. 'sqrtn' often achieves good accuracy, in particular with
+        bag-of-words columns. For more information, see
         `tf.nn.embedding_lookup_sparse`.
       name: An optional string used to name the table. Must be defined if
         running on SparseCore.
@@ -1263,11 +1398,19 @@ class TableConfig:
     if initializer is None:
       initializer = init_ops_v2.TruncatedNormal(mean=0.0,
                                                 stddev=1/math.sqrt(dim))
-    accepted_combiners = ("mean", "sum", "sqrtn")
-    if combiner not in accepted_combiners:
+
+    accepted_str_combiners = ("mean", "sum", "sqrtn")
+    if isinstance(combiner, str):
+      if combiner not in accepted_str_combiners:
+        raise ValueError(
+            f"String argument `combiner` must be in {accepted_str_combiners}. "
+            f"Received: {combiner}")
+
+    elif not isinstance(combiner, CustomCombiner):
       raise ValueError(
-          f"Argument `combiner` must be one of {accepted_combiners}. "
-          f"Received: {combiner}")
+          f"Argument `combiner` should either be a str or a CustomCombiner. "
+          f"Received: {type(combiner)}"
+      )
 
     if name is None:
       logging.warning(
