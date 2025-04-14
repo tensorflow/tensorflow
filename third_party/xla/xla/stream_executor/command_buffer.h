@@ -68,6 +68,13 @@ class CommandBuffer {
   // Builder constructs nested command buffers owned by a parent command buffer.
   using Builder = std::function<absl::Status(CommandBuffer*)>;
 
+  // A callback to update a nested `command_buffer` owned by a conditional
+  // command. At command buffer update time we can't change the dependency
+  // structure of the previously created commands, and can only update the
+  // parameters of the commands (i.e. device memory pointers).
+  using UpdateCommands =
+      absl::AnyInvocable<absl::Status(CommandBuffer* command_buffer)>;
+
   CommandBuffer() = default;
   virtual ~CommandBuffer() = default;
 
@@ -220,13 +227,13 @@ class CommandBuffer {
       absl::Span<const Command* const> dependencies) = 0;
 
   // Updates a Case command.
-  virtual absl::Status UpdateCase(const Command* command,
-                                  DeviceMemory<int32_t> index,
-                                  std::vector<Builder> branches) = 0;
+  virtual absl::Status UpdateCase(
+      const Command* command, DeviceMemory<int32_t> index,
+      std::vector<UpdateCommands> update_branches) = 0;
 
-  virtual absl::Status UpdateCase(const Command* command,
-                                  DeviceMemory<bool> index,
-                                  std::vector<Builder> branches) = 0;
+  virtual absl::Status UpdateCase(
+      const Command* command, DeviceMemory<bool> index,
+      std::vector<UpdateCommands> update_branches) = 0;
 
   // Creates a conditional operation that will execute a command buffer
   // constructed by the `cond_builder` that must update `pred` value, and then
@@ -248,8 +255,8 @@ class CommandBuffer {
   // Updates a While command.
   virtual absl::Status UpdateWhile(const Command* command,
                                    DeviceMemory<bool> pred,
-                                   Builder cond_builder,
-                                   Builder body_builder) = 0;
+                                   UpdateCommands update_cond,
+                                   UpdateCommands update_body) = 0;
 
   // Submits the command buffer for execution.
   virtual absl::Status Submit(Stream* stream) {

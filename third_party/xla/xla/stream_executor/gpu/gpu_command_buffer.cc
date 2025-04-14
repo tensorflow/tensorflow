@@ -410,10 +410,9 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateCase(
   return AppendCommand(std::move(command));
 }
 
-absl::Status GpuCommandBuffer::UpdateCase(const Command* command,
-                                          DeviceMemory<uint8_t> index,
-                                          bool index_is_bool,
-                                          std::vector<Builder> branches) {
+absl::Status GpuCommandBuffer::UpdateCase(
+    const Command* command, DeviceMemory<uint8_t> index, bool index_is_bool,
+    std::vector<UpdateCommands> update_branches) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
 
   constexpr size_t kBranchBatchSize = 8;
@@ -423,8 +422,8 @@ absl::Status GpuCommandBuffer::UpdateCase(const Command* command,
   // Update branch conditionals.
   size_t batch_index = 0;
   int32_t batch_offset = 0;
-  while (batch_offset < branches.size()) {
-    int32_t remaining_branches = branches.size() - batch_offset;
+  while (batch_offset < update_branches.size()) {
+    int32_t remaining_branches = update_branches.size() - batch_offset;
     int32_t batch_size;
     bool enable_conditional_default;
     if (remaining_branches <= kBranchBatchSize) {
@@ -451,7 +450,7 @@ absl::Status GpuCommandBuffer::UpdateCase(const Command* command,
         gpu_command->conditional_nodes[i].command_buffer.get();
     auto scoped_update_mode = ActivateUpdateMode(case_command_buffer);
     TF_RETURN_IF_ERROR(case_command_buffer->Update());
-    TF_RETURN_IF_ERROR(branches[i](case_command_buffer));
+    TF_RETURN_IF_ERROR(update_branches[i](case_command_buffer));
     TF_RETURN_IF_ERROR(case_command_buffer->Finalize());
   }
 
@@ -474,22 +473,22 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateCase(
       /*index_is_bool=*/true, branches, dependencies);
 }
 
-absl::Status GpuCommandBuffer::UpdateCase(const Command* command,
-                                          DeviceMemory<int32_t> index,
-                                          std::vector<Builder> branches) {
+absl::Status GpuCommandBuffer::UpdateCase(
+    const Command* command, DeviceMemory<int32_t> index,
+    std::vector<UpdateCommands> update_branches) {
   return UpdateCase(
       command,
       DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
-      /*index_is_bool=*/false, branches);
+      /*index_is_bool=*/false, std::move(update_branches));
 }
 
-absl::Status GpuCommandBuffer::UpdateCase(const Command* command,
-                                          DeviceMemory<bool> index,
-                                          std::vector<Builder> branches) {
+absl::Status GpuCommandBuffer::UpdateCase(
+    const Command* command, DeviceMemory<bool> index,
+    std::vector<UpdateCommands> update_branches) {
   return UpdateCase(
       command,
       DeviceMemory<uint8_t>::MakeFromByteSize(index.opaque(), index.size()),
-      /*index_is_bool=*/true, branches);
+      /*index_is_bool=*/true, std::move(update_branches));
 }
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateWhile(
@@ -531,13 +530,13 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateWhile(
 
 absl::Status GpuCommandBuffer::UpdateWhile(const Command* command,
                                            DeviceMemory<bool> pred,
-                                           Builder cond_builder,
-                                           Builder body_builder) {
+                                           UpdateCommands update_cond,
+                                           UpdateCommands update_body) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
 
   auto* gpu_command = tsl::down_cast<const GpuWhileCommand*>(command);
 
-  TF_RETURN_IF_ERROR(cond_builder(this));
+  TF_RETURN_IF_ERROR(update_cond(this));
 
   TF_RETURN_IF_ERROR(UpdateSetWhileConditionNode(
       gpu_command->set_init_condition_node, gpu_command->conditional, pred));
@@ -547,8 +546,8 @@ absl::Status GpuCommandBuffer::UpdateWhile(const Command* command,
 
   // Update command buffer using user-provided builder callback.
   TF_RETURN_IF_ERROR(body->Update());
-  TF_RETURN_IF_ERROR(body_builder(body));
-  TF_RETURN_IF_ERROR(cond_builder(body));
+  TF_RETURN_IF_ERROR(update_body(body));
+  TF_RETURN_IF_ERROR(update_cond(body));
   TF_RETURN_IF_ERROR(body->UpdateSetWhileConditionNode(
       gpu_command->set_body_condition_node, gpu_command->conditional, pred));
   TF_RETURN_IF_ERROR(body->Finalize());

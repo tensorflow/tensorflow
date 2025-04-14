@@ -176,17 +176,18 @@ class GpuCommandBuffer : public CommandBuffer {
       absl::Span<const Command* const> dependencies) override;
 
   absl::Status UpdateCase(const Command* command, DeviceMemory<int32_t> index,
-                          std::vector<Builder> branches) override;
+                          std::vector<UpdateCommands> update_branches) override;
 
   absl::Status UpdateCase(const Command* command, DeviceMemory<bool> index,
-                          std::vector<Builder> branches) override;
+                          std::vector<UpdateCommands> update_branches) override;
 
   absl::StatusOr<const Command*> CreateWhile(
       DeviceMemory<bool> pred, Builder cond_builder, Builder body_builder,
       absl::Span<const Command* const> dependencies) override;
 
   absl::Status UpdateWhile(const Command* command, DeviceMemory<bool> pred,
-                           Builder cond_builder, Builder body_builder) override;
+                           UpdateCommands update_cond,
+                           UpdateCommands update_body) override;
 
   absl::Status Finalize() override;
   absl::Status Update() override;
@@ -285,7 +286,8 @@ class GpuCommandBuffer : public CommandBuffer {
       absl::Span<const Command* const> dependencies);
 
   absl::Status UpdateCase(const Command* command, DeviceMemory<uint8_t> index,
-                          bool index_is_bool, std::vector<Builder> branches);
+                          bool index_is_bool,
+                          std::vector<UpdateCommands> update_branches);
 
   // Appends a new command to the command buffer.
   template <typename T>

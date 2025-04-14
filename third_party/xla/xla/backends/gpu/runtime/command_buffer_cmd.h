@@ -394,7 +394,7 @@ class CommandBufferCmdSequence {
   // in update state.
   absl::Status RecordUpdate(const Thunk::ExecuteParams& execute_params,
                             const RecordParams& record_params,
-                            se::CommandBuffer* command_buffer);
+                            se::CommandBuffer* command_buffer) const;
 
   // Returns buffers referenced by commands in this sequence.
   const absl::flat_hash_set<BufferUse>& buffers() const;
@@ -424,8 +424,9 @@ class CommandBufferCmdSequence {
       SynchronizationMode synchronization_mode,
       std::vector<std::unique_ptr<CommandBufferCmd>> commands);
 
-  absl::Status CheckCommandBufferState(se::CommandBuffer* command_buffer,
-                                       se::CommandBuffer::State expected_state);
+  absl::Status CheckCommandBufferState(
+      se::CommandBuffer* command_buffer,
+      se::CommandBuffer::State expected_state) const;
 
   // Returns true if command has no dependencies.
   bool IsSource(CommandId id) const;
@@ -662,8 +663,7 @@ class Memset32Cmd : public CommandBufferCmd {
 class CaseCmd : public CommandBufferCmd {
  public:
   CaseCmd(ExecutionStreamId execution_stream_id, BufferAllocation::Slice index,
-          bool index_is_bool,
-          std::vector<CommandBufferCmdSequence> branches_commands);
+          bool index_is_bool, std::vector<CommandBufferCmdSequence> branches);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -680,7 +680,7 @@ class CaseCmd : public CommandBufferCmd {
  private:
   BufferAllocation::Slice index_;
   bool index_is_bool_;
-  std::vector<CommandBufferCmdSequence> branches_commands_;
+  std::vector<CommandBufferCmdSequence> branches_;
 };
 
 //===----------------------------------------------------------------------===//
