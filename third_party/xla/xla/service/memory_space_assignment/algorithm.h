@@ -350,6 +350,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   const HloAliasAnalysis& alias_analysis() { return alias_analysis_; }
   const HloLiveRange& hlo_live_range() { return hlo_live_range_; }
 
+  // Runs a feature that attempts to expand the size of scoped alternate memory
+  // allocations to the largest contiguous open space available.
+  void ExtendScopedAlternateMemoryAllocations();
+
  private:
   // We inherit AllocationBlock struct to attach the Allocation information to
   // make importing repacked offsets easier.

@@ -11705,6 +11705,137 @@ ENTRY main {
   EXPECT_EQ(f_index, p1_copy_end + 1);
 }
 
+TEST_F(MemorySpaceAssignmentTest, ExpandScopedAlternateMemory) {
+  absl::string_view hlo_string = R"(
+  HloModule TestModule, is_scheduled=true
+    ENTRY Main {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      p2 = f32[8,8] parameter(2)
+      p3 = f32[8,8] parameter(3)
+
+      v0 = add(p0, p1)
+      v1 = add(v0, p1)
+      v2 = add(v1, p1)
+
+      v3 = multiply(v2, p2)
+      v4 = multiply(v3, p3)
+
+      ROOT t = tuple(v3, v4)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          // An arbitrary value that is greater than that used for 'prefetch'.
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "p2") {
+            priority = 1;
+          } else if (x.buffer->instruction()->name() == "p3") {
+            priority = 2;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+
+        return lookup(lhs) < lookup(rhs);
+      };
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 1000);
+
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 600;
+  options.reserved_scoped_memory_fn =
+      [](const HloInstruction* instruction,
+         const absl::flat_hash_set<
+             std::pair<int, ShapeIndex>>& /*operands_in_alternate_memory*/,
+         const absl::flat_hash_set<
+             ShapeIndex>& /*outputs_in_alternate_memory*/) { return 10; };
+  options.expanded_scoped_alternate_memory_mode =
+      ExpandedScopedAlternateMemoryMode::ENABLED;
+  options.alignment_in_bytes = 10;
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), options, buffer_interval_compare,
+                        &prefetch_interval_picker);
+
+  VLOG(1) << "Post-MSA module:\n" << module->ToString();
+
+  // We expect MSA to do the following:
+  // A. Initially allocate [0, 10) for scoped alternate memory, for each
+  //    instruction.
+  // B. Since, p2 comes first in the buffer sorting, we expect it to be
+  //    allocated [10, 266) for a prefetch
+  // C. Since, p3 comes next in the buffer sorting, we expect it to be allocated
+  //    [270, 526) for a prefetch
+  // D. Finally, MSA will try to expand the scoped alternate memory allocations
+  //    to the largest available buffers, keeping in mind the prefetches.
+
+  // Check B and C.
+  for (const auto& [position, chunk] : preset_assignments->chunks()) {
+    if (position.instruction->opcode() == HloOpcode::kCopyDone) {
+      ASSERT_EQ(position.instruction->operand_count(), 1);
+      const HloInstruction* copy_start = position.instruction->operand(0);
+      ASSERT_EQ(copy_start->operand_count(), 1);
+      const HloInstruction* copy_operand = copy_start->operand(0);
+      if (copy_operand->name() == "p2") {
+        EXPECT_EQ(chunk.offset, 10);
+        EXPECT_EQ(chunk.size, 256);
+      } else if (copy_operand->name() == "p3") {
+        EXPECT_EQ(chunk.offset, 270);
+        EXPECT_EQ(chunk.size, 256);
+      }
+    }
+  }
+
+  // Check D.
+  for (const auto& [instruction, chunk] :
+       preset_assignments->scoped_allocation_chunks()) {
+    if (instruction->name() == "p0") {
+      // Extended scoped allocation.
+      EXPECT_EQ(chunk.offset, 0);
+      EXPECT_EQ(chunk.size, 600);
+    } else if (instruction->name() == "p1") {
+      // Extended scoped allocation.
+      EXPECT_EQ(chunk.offset, 0);
+      EXPECT_EQ(chunk.size, 600);
+    } else if (instruction->name() == "p2") {
+      // Extended scoped allocation.
+      EXPECT_EQ(chunk.offset, 0);
+      EXPECT_EQ(chunk.size, 600);
+    } else if (instruction->name() == "p3") {
+      // Moved scoped allocation.
+      EXPECT_EQ(chunk.offset, 270);
+      EXPECT_EQ(chunk.size, 330);
+    } else if (instruction->name() == "v0") {
+      // Moved scoped allocation.
+      EXPECT_EQ(chunk.offset, 530);
+      EXPECT_EQ(chunk.size, 70);
+    } else if (instruction->name() == "v1") {
+      // Moved scoped allocation.
+      EXPECT_EQ(chunk.offset, 530);
+      EXPECT_EQ(chunk.size, 70);
+    } else if (instruction->name() == "v2") {
+      // Moved scoped allocation.
+      EXPECT_EQ(chunk.offset, 530);
+      EXPECT_EQ(chunk.size, 70);
+    } else if (instruction->name() == "v3") {
+      // Moved scoped allocation.
+      EXPECT_EQ(chunk.offset, 530);
+      EXPECT_EQ(chunk.size, 70);
+    } else if (instruction->name() == "v4") {
+      // Extended scoped allocation.
+      EXPECT_EQ(chunk.offset, 0);
+      EXPECT_EQ(chunk.size, 270);
+    } else if (instruction->name() == "t") {
+      // Extended scoped allocation.
+      EXPECT_EQ(chunk.offset, 0);
+      EXPECT_EQ(chunk.size, 600);
+    }
+  }
+}
+
 class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
  protected:
   // Used by CheckSchedule() to classify instructions in the schedule.

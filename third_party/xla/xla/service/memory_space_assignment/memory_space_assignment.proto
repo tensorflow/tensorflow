@@ -193,3 +193,14 @@ message MsaSortOrderOverride {
 message MsaSortOrderOverrides {
   repeated MsaSortOrderOverride overrides = 1;
 }
+
+// Expanded scoped alternate memory is a feature used at the end of MSA, in
+// in which we attempt to expand the size of allocated scoped alternate memory
+// buffers to the largest contiguous open space available.
+message ExpandedScopedAlternateMemoryMode {
+  enum Value {
+    UNDEFINED = 0;
+    DISABLED = 1;
+    ENABLED = 2;
+  }
+}
