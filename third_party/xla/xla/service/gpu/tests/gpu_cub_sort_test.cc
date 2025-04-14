@@ -306,7 +306,7 @@ ENTRY m {
 
 INSTANTIATE_TEST_SUITE_P(
     CubSort, CubSortPairsTest,
-    ::testing::Combine(::testing::Values(U8, U16, U32, U64),
+    ::testing::Combine(::testing::Values(U8, U16, U32, U64, F32),
                        ::testing::Values(F16, F32, F64), ::testing::Bool(),
                        ::testing::Values(1, 10)),
     [](const ::testing::TestParamInfo<CubSortPairsTest::ParamType>& info) {
