@@ -25,6 +25,8 @@ namespace {
 
 using CopyFusionTest = HloHardwareIndependentTestBase;
 
+using ::testing::IsEmpty;
+
 const HloFusionInstruction& GetFusion(HloModule* module) {
   const HloInstruction* fusion =
       module->GetComputationWithName("dynamic_slice")->FusionInstruction();
@@ -90,6 +92,56 @@ TEST_F(CopyFusionTest, ValidCandidateClamped) {
                     .value();
 
   EXPECT_TRUE(DynamicMemcpyFusion::IsCandidateFusion(GetFusion(module.get())));
+}
+
+TEST_F(CopyFusionTest, ClampedConstantPositive) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    dynamic_slice {
+      p0 = f32[200] parameter(0)
+      c195 = s32[] constant(195)
+      ROOT slice = f32[100] dynamic-slice(p0, c195), dynamic_slice_sizes={100}
+    }
+
+    ENTRY main {
+      p0 = f32[200] parameter(0)
+      ROOT fusion = f32[100] fusion(p0), kind=kLoop, calls=dynamic_slice
+    }
+  )")
+                    .value();
+
+  auto descriptor = DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
+      GetFusion(module.get()));
+
+  ASSERT_TRUE(descriptor.has_value());
+  EXPECT_THAT(descriptor->src_dynamic_offsets, IsEmpty());
+  EXPECT_THAT(descriptor->dst_dynamic_offsets, IsEmpty());
+  EXPECT_EQ(descriptor->src_byte_static_offset, sizeof(float) * 100);
+  EXPECT_EQ(descriptor->dst_byte_static_offset, 0);
+}
+
+TEST_F(CopyFusionTest, ClampedConstantNegative) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    dynamic_slice {
+      p0 = f32[200] parameter(0)
+      cn1 = s32[] constant(-1)
+      ROOT slice = f32[100] dynamic-slice(p0, cn1), dynamic_slice_sizes={100}
+    }
+
+    ENTRY main {
+      p0 = f32[200] parameter(0)
+      ROOT fusion = f32[100] fusion(p0), kind=kLoop, calls=dynamic_slice
+    }
+  )")
+                    .value();
+
+  auto descriptor = DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
+      GetFusion(module.get()));
+
+  ASSERT_TRUE(descriptor.has_value());
+  EXPECT_THAT(descriptor->src_dynamic_offsets, IsEmpty());
+  EXPECT_THAT(descriptor->dst_dynamic_offsets, IsEmpty());
+  EXPECT_EQ(descriptor->src_byte_static_offset, 0);
+  EXPECT_EQ(descriptor->dst_byte_static_offset, 0);
 }
 
 constexpr char kSliceMemcpyModule[] = R"(
