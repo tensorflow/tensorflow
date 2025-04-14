@@ -133,7 +133,6 @@ cc_library(
         ":tpu_executor_api",
         ":tpu_executor_c_api_hdrs",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -145,7 +144,6 @@ cc_library(
         "//xla/tsl/c:tsl_status",
         "//xla/tsl/c:tsl_status_helper",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
