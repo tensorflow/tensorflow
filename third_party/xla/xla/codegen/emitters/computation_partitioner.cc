@@ -157,7 +157,7 @@ bool IsEvaluatedMoreThanOnce(const HloInstruction* instr) {
   return absl::c_any_of(instr->users(), [&](const HloInstruction* user) {
     if (user->opcode() == HloOpcode::kGather &&
         absl::c_linear_search(user->OperandIndices(instr), 1) &&
-        instr->shape().dimensions_size() >= 2 &&
+        instr->shape().dimensions().size() >= 2 &&
         instr->shape().dimensions(1) > 1) {
       return true;
     }
