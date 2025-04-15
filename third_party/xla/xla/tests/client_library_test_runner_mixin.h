@@ -376,6 +376,9 @@ class ClientLibraryTestRunnerMixin : public T {
     opts->set_xla_gpu_enable_fast_min_max(!disabled);
   }
 
+  void SetSeed(const uint64_t seed) { execution_options_.set_seed(seed); }
+  void ClearSeed() { execution_options_.clear_seed(); }
+
   // Provides mutable access to the execution DebugOptions field; this lets
   // tests tweak the options that will be used to compile/run the graph.
   DebugOptions* mutable_debug_options() {
