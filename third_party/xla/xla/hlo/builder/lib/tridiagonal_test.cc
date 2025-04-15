@@ -21,24 +21,25 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "xla/array.h"
 #include "xla/array3d.h"
 #include "xla/hlo/builder/lib/slicing.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace tridiagonal {
 namespace {
 
 class TridiagonalTest
-    : public ClientLibraryTestBase,
+    : public ClientLibraryTestRunnerMixin<HloTestBase>,
       public ::testing::WithParamInterface<std::tuple<int, int, int>> {};
 
 XLA_TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {
@@ -75,10 +76,10 @@ XLA_TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {
   std::vector<float> expected_values{191, 246, 301, 356, 435, 502,
                                      569, 636, 707, 830, 953, 1076};
   TF_ASSERT_OK_AND_ASSIGN(
-      auto result,
-      ComputeAndTransfer(x.builder(),
-                         {upper_diagonal_data.get(), main_diagonal_data.get(),
-                          lower_diagonal_data.get(), rhs_data.get()}));
+      const Literal result,
+      ExecuteAndTransfer(x.builder(),
+                         {&upper_diagonal_data, &main_diagonal_data,
+                          &lower_diagonal_data, &rhs_data}));
   EXPECT_EQ(result.shape().dimensions(), expected_shape);
   EXPECT_EQ(result.data<float>({}), expected_values);
 }
@@ -86,23 +87,14 @@ XLA_TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {
 XLA_TEST_P(TridiagonalTest, TridiagonalMatMulWrongShape) {
   xla::XlaBuilder builder(TestName());
 
-  Array<float> upper_diagonal = Array<float>({5, 3, 7}, 1);
-  Array<float> main_diagonal = Array<float>({5, 3, 7}, 1);
-  Array<float> lower_diagonal = Array<float>({5, 3, 7}, 1);
-  Array<float> rhs = Array<float>({5, 3, 7, 6}, 1);
-
-  XlaOp upper_diagonal_xla;
-  XlaOp main_diagonal_xla;
-  XlaOp lower_diagonal_xla;
-  XlaOp rhs_xla;
-
-  auto upper_diagonal_data = CreateParameter<float>(
-      upper_diagonal, 0, "upper_diagonal", &builder, &upper_diagonal_xla);
-  auto main_diagonal_data = CreateParameter<float>(
-      main_diagonal, 1, "main_diagonal", &builder, &main_diagonal_xla);
-  auto lower_diagonal_data = CreateParameter<float>(
-      lower_diagonal, 2, "lower_diagonal", &builder, &lower_diagonal_xla);
-  auto rhs_data = CreateParameter<float>(rhs, 3, "rhs", &builder, &rhs_xla);
+  XlaOp upper_diagonal_xla = Parameter(
+      &builder, 0, ShapeUtil::MakeShape(F32, {5, 3, 7}), "upper_diagonal");
+  XlaOp main_diagonal_xla = Parameter(
+      &builder, 1, ShapeUtil::MakeShape(F32, {5, 3, 7}), "main_diagonal");
+  XlaOp lower_diagonal_xla = Parameter(
+      &builder, 2, ShapeUtil::MakeShape(F32, {5, 3, 7}), "lower_diagonal");
+  XlaOp rhs_xla =
+      Parameter(&builder, 3, ShapeUtil::MakeShape(F32, {5, 3, 7, 6}), "rhs");
 
   auto result = TridiagonalMatMul(upper_diagonal_xla, main_diagonal_xla,
                                   lower_diagonal_xla, rhs_xla);
@@ -177,13 +169,11 @@ XLA_TEST_P(TridiagonalTest, Solves) {
   Abs(ConcatInDim(&builder, relative_errors, 2));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto result,
-      ComputeAndTransfer(&builder,
-                         {lower_diagonal_data.get(), main_diagonal_data.get(),
-                          upper_diagonal_data.get(), rhs_data.get()}));
+      const Literal result,
+      ExecuteAndTransfer(&builder, {&lower_diagonal_data, &main_diagonal_data,
+                                    &upper_diagonal_data, &rhs_data}));
 
-  auto result_data = result.data<float>({});
-  for (auto result_component : result_data) {
+  for (const float result_component : result.data<float>({})) {
     EXPECT_TRUE(result_component < 5e-3);
   }
 }
