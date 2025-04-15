@@ -922,7 +922,7 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
                               std::numeric_limits<int>::max()),
       last_collective_launch_event_(
           tsl::MakeAvailableAsyncValueRef<GpuEvent>()),
-      description_(options.id, options.platform_version),
+      description_(options.id, options.process_index, options.platform_version),
       max_inflight_computations_semaphore_(
           /*capacity=*/options.max_inflight_computations) {
   description_.SetDebugString(absl::StrCat("TFRT_GPU_", id_));
@@ -1768,6 +1768,8 @@ GetTfrtGpuDevices(LocalClient* xla_client) {
 
     TfrtGpuDevice::Options options;
     options.id = i;
+    // TODO: b/382117736 - Support multi-host
+    options.process_index = 0;
     options.local_device_id = PjRtLocalDeviceId(i);
     options.local_hardware_id = PjRtLocalHardwareId(i);
     options.executor = executor;

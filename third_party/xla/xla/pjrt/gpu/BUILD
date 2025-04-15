@@ -194,6 +194,7 @@ xla_test(
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_stream_executor_client",

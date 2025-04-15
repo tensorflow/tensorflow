@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
@@ -1195,6 +1196,29 @@ TEST(StreamExecutorGpuClientTest, GpuDeviceDescriptionTest) {
             ->description()
             .coords();
     EXPECT_EQ(coords[0], device_index);
+  }
+}
+
+TEST(StreamExecutorGpuClientTest, GetTopologyDescriptionWithGlobalDevicesTest) {
+  const int num_nodes = 4;
+  GpuClientOptions options;
+  options.num_nodes = num_nodes;
+  options.enable_mock_nccl = true;
+  options.mock_gpu_topology = "2x2x2";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  int devices_per_host = client->addressable_device_count();
+
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          client->GetTopologyDescription());
+
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+      device_descriptions = topology->DeviceDescriptions();
+  EXPECT_EQ(client->device_count(), device_descriptions.size());
+
+  for (const auto& device_description : device_descriptions) {
+    EXPECT_EQ(device_description->process_index(),
+              device_description->id() / devices_per_host);
   }
 }
 

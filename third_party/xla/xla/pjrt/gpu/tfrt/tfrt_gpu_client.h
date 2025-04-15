@@ -120,6 +120,7 @@ class TfrtGpuDevice final : public PjRtDevice {
  public:
   struct Options {
     int id;
+    int32_t process_index;
     PjRtLocalDeviceId local_device_id;
     PjRtLocalHardwareId local_hardware_id;
     se::StreamExecutor* executor;

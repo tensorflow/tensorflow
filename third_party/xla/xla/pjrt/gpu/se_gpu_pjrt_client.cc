@@ -1249,7 +1249,8 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
     std::string compute_capability, int core_count, int node_id,
     int slice_index)
     : PjRtStreamExecutorDevice(id, std::move(local_device_state),
-                               std::move(device_kind), node_id),
+                               /*process_index=*/node_id,
+                               std::move(device_kind)),
       device_vendor_(std::move(device_vendor)),
       slice_index_(slice_index) {
   std::array<int, 1> coords = {local_device_id().value()};

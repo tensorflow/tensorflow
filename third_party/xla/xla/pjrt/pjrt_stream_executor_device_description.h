@@ -25,8 +25,8 @@ namespace xla {
 
 class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
  public:
-  explicit PjRtStreamExecutorDeviceDescription(int id, std::string device_kind,
-                                               int process_index = 0)
+  PjRtStreamExecutorDeviceDescription(int id, int process_index,
+                                      std::string device_kind)
       : id_(id),
         process_index_(process_index),
         device_kind_(std::move(device_kind)) {}

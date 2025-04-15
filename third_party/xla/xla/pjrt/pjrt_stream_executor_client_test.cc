@@ -62,7 +62,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
       /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
-      0, std::move(device_state), "cpu"));
+      0, std::move(device_state), /*process_index=*/0, "cpu"));
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
   memory_spaces.emplace_back(std::make_unique<PjRtStreamExecutorMemorySpace>(
       0, devices.back().get(), "cpu", 0));

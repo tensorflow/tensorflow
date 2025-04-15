@@ -96,10 +96,10 @@ struct PjRtStreamExecutorExecutionOutput {
 
 class PjRtStreamExecutorDevice : public PjRtDevice {
  public:
-  explicit PjRtStreamExecutorDevice(
-      int id, std::unique_ptr<LocalDeviceState> local_device_state,
-      std::string device_kind, int process_index = 0)
-      : description_(id, std::move(device_kind), process_index),
+  PjRtStreamExecutorDevice(int id,
+                           std::unique_ptr<LocalDeviceState> local_device_state,
+                           int process_index, std::string device_kind)
+      : description_(id, process_index, std::move(device_kind)),
         local_device_id_(local_device_state
                              ? local_device_state->local_device_id()
                              : PjRtLocalDeviceId(-1)),
