@@ -315,7 +315,8 @@ void AggregateHloFunc(HLOTracker& current, DeviceOpMetricsDbBuilder& metricDb) {
       ConvertPerformanceInfo(
           performance_info_wrapper->memory_accessed_breakdown(), 1),
       performance_info_wrapper->ModelFlops(),
-      current.hlo_instruction->Expression());
+      current.hlo_instruction->Expression(),
+      current.hlo_instruction->SourceInfo());
   current.Reset();
 }
 

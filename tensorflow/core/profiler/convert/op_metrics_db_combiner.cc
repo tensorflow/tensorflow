@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/protobuf/source_info.pb.h"
 #include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
@@ -61,6 +62,9 @@ void CopyOpMetricsMetadata(const OpMetrics& src, OpMetrics* dst) {
   }
   if (!dst->has_children() && src.has_children()) {
     *dst->mutable_children() = src.children();
+  }
+  if (!dst->has_source_info() && src.has_source_info()) {
+    *dst->mutable_source_info() = src.source_info();
   }
 }
 

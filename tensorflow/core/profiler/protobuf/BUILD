@@ -87,6 +87,20 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "source_info_proto",
+    srcs = ["source_info.proto"],
+    protodeps = [
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:source_info_proto",
+    ],
+    visibility = [
+        ":friends",
+    ],
+    exports = [
+        "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:source_info_proto",
+    ],
+)
+
+tf_proto_library(
     name = "op_metrics_proto",
     srcs = ["op_metrics.proto"],
     protodeps = [
