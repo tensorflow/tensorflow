@@ -22,14 +22,15 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/primitive_util.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-class ArithmeticTest : public ClientLibraryTestBase {
+class ArithmeticTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
  public:
   template <typename NativeT>
   void TestArgMin(std::initializer_list<std::initializer_list<NativeT>> input,
@@ -63,22 +64,22 @@ class ArithmeticTest : public ClientLibraryTestBase {
       std::function<void(XlaOp, PrimitiveType)> MinMaxImpl) {}
 };
 
-XLA_TEST_F(ArithmeticTest, ArgMinR2Axis0) {
+TEST_F(ArithmeticTest, ArgMinR2Axis0) {
   TestArgMin<int32_t>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {0, 1, 2},
                       /*axis=*/0);
 }
 
-XLA_TEST_F(ArithmeticTest, ArgMinR2Axis1) {
+TEST_F(ArithmeticTest, ArgMinR2Axis1) {
   TestArgMin<int32_t>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {0, 1, 1},
                       /*axis=*/1);
 }
 
-XLA_TEST_F(ArithmeticTest, ArgMaxR2Axis0) {
+TEST_F(ArithmeticTest, ArgMaxR2Axis0) {
   TestArgMax<int32_t>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {2, 0, 1},
                       /*axis=*/0);
 }
 
-XLA_TEST_F(ArithmeticTest, ArgMaxR2Axis1) {
+TEST_F(ArithmeticTest, ArgMaxR2Axis1) {
   TestArgMax<int32_t>({{1, 7, 4}, {6, 3, 5}, {8, 3, 3}}, {1, 0, 0},
                       /*axis=*/1);
 }
