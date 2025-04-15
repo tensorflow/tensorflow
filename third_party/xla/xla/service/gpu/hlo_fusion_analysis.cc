@@ -246,21 +246,11 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kCuDnn;
   }
 
-  if (input_output_info_.smallest_input_dtype_bits < 8 ||
-      input_output_info_.smallest_output_dtype_bits < 8) {
-    // Only loop and input slice fusions currently can handle packed
-    // inputs/outputs, due to the special handling with IrArray needed to deal
-    // with multiple values occupying a single byte.
-    if (fusion_roots_.size() > 1 &&
-        IsInputFusibleNonStridedSlices(fusion_roots_) &&
-        AllSliceInputsAreCompatible(fusion_roots_)) {
-      return EmitterFusionKind::kInputSlices;
-    }
-    if (fusion_roots_[0].opcode() == HloOpcode::kScatter) {
-      return EmitterFusionKind::kScatter;
-    }
-    return EmitterFusionKind::kLoop;
-  }
+  // TODO(b/406763726): Only some emitters currently can handle packed
+  // inputs/outputs, due to the special handling with IrArray needed to deal
+  // with multiple values occupying a single byte.
+  bool has_subtype_type = input_output_info_.smallest_input_dtype_bits < 8 ||
+                          input_output_info_.smallest_output_dtype_bits < 8;
 
   std::optional<HloInstructionAdaptor> first_reduce_hero;
   for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
@@ -292,13 +282,13 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
         break;
       }
     }
-    if (valid_shapes) {
+    if (valid_shapes && !has_subtype_type) {
       return EmitterFusionKind::kReduction;
     }
   }
 
   // We expect that the last dimension is swapped with a different dimension.
-  if (HasConsistentTransposeHeros()) {
+  if (HasConsistentTransposeHeros() && !has_subtype_type) {
     return EmitterFusionKind::kTranspose;
   }
 
@@ -314,7 +304,8 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kScatter;
   }
 
-  if (UseConcatenateFusion(fusion_roots_, fusion_heroes_)) {
+  if (UseConcatenateFusion(fusion_roots_, fusion_heroes_) &&
+      !has_subtype_type) {
     return EmitterFusionKind::kConcatenate;
   }
 
