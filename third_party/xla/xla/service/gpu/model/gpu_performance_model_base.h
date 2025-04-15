@@ -219,6 +219,10 @@ class GpuPerformanceModelBase {
   static absl::Duration WriteTime(const se::DeviceDescription& gpu_device_info,
                                   int64_t bytes_written);
 
+  static int64_t CalculateEffectiveFlopsPerNs(
+      const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
+      int64_t num_threads_per_block);
+
   static absl::Duration ComputeTime(
       const se::DeviceDescription& gpu_device_info, int64_t flops,
       int64_t num_blocks, int64_t num_threads_per_block);
