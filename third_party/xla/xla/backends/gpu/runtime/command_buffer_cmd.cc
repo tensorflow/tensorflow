@@ -57,6 +57,8 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/execution_graph.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
@@ -225,21 +227,58 @@ CommandBufferCmd::State* CommandBufferCmd::StateManager::GetOrCreate(
 // CommandBufferCmdSequence
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+// An adaptor from CommandBufferCmd to ExecutionGraph::Operation for building an
+// execution graph from a command sequence.
+class CommandOperation : public ExecutionGraph::Operation {
+ public:
+  explicit CommandOperation(CommandBufferCmd::BufferUseVector buffers)
+      : buffers_(std::move(buffers)) {}
+
+  absl::Span<const BufferUse> BufferUses() const final { return buffers_; }
+  absl::Span<const ResourceUse> ResourceUses() const final { return {}; }
+
+ private:
+  CommandBufferCmd::BufferUseVector buffers_;
+};
+
+}  // namespace
+
 void CommandBufferCmdSequence::Builder::Append(
     std::unique_ptr<CommandBufferCmd> cmd) {
   commands_.push_back({std::move(cmd)});
 }
 
-CommandBufferCmdSequence CommandBufferCmdSequence::Builder::Build(
+absl::StatusOr<CommandBufferCmdSequence>
+CommandBufferCmdSequence::Builder::Build(
     SynchronizationMode synchronization_mode) && {
-  return CommandBufferCmdSequence(synchronization_mode, std::move(commands_));
+  std::optional<ExecutionGraph> execution_graph = std::nullopt;
+
+  // In automatic synchronization mode construct an execution graph for the
+  // sequence of commands and derive the structure of command dependencies
+  // from the buffer use conflicts.
+  if (synchronization_mode == SynchronizationMode::kAutomatic) {
+    std::vector<CommandOperation> operations;
+    operations.reserve(commands_.size());
+    for (const std::unique_ptr<CommandBufferCmd>& cmd : commands_) {
+      operations.emplace_back(cmd->buffers());
+    }
+    TF_ASSIGN_OR_RETURN(execution_graph,
+                        ExecutionGraph::Create<CommandOperation>(operations));
+  }
+
+  return CommandBufferCmdSequence(synchronization_mode, std::move(commands_),
+                                  std::move(execution_graph));
 }
 
 CommandBufferCmdSequence::CommandBufferCmdSequence(
     SynchronizationMode synchronization_mode,
-    std::vector<std::unique_ptr<CommandBufferCmd>> commands)
+    std::vector<std::unique_ptr<CommandBufferCmd>> commands,
+    std::optional<ExecutionGraph> execution_graph)
     : synchronization_mode_(synchronization_mode),
-      commands_(std::move(commands)) {
+      commands_(std::move(commands)),
+      execution_graph_(std::move(execution_graph)) {
   // Record all buffers used by commands in the sequence.
   for (const std::unique_ptr<CommandBufferCmd>& cmd : commands_) {
     for (const BufferUse& buffer : cmd->buffers()) {
@@ -420,15 +459,13 @@ absl::Status CommandBufferCmdSequence::CheckCommandBufferState(
   return absl::OkStatus();
 }
 
-// TODO(b/406370928): Currently we assume sequential execution order of all
-// recorded commands, so we use a very simple rule for identifying source and
-// sink nodes and computing dependencies. Long term we should get that from the
-// ExecutionGraph helper, when using automatic synchronization mode.
-
-bool CommandBufferCmdSequence::IsSource(CommandId id) const { return id == 0; }
+bool CommandBufferCmdSequence::IsSource(CommandId id) const {
+  return execution_graph_ ? execution_graph_->is_source(id) : id == 0;
+}
 
 bool CommandBufferCmdSequence::IsSink(CommandId id) const {
-  return id + 1 == commands_.size();
+  return execution_graph_ ? execution_graph_->is_sink(id)
+                          : id + 1 == commands_.size();
 }
 
 std::vector<const se::CommandBuffer::Command*>
@@ -440,19 +477,37 @@ CommandBufferCmdSequence::Dependencies(const RecordParams& record_params,
     return {};
   }
 
-  // Find recorded command state for the previous command in the sequence.
-  auto* record_state = record_params.state.GetOrNull<RecordState>(
-      commands_[id - 1].get(), command_buffer);
-  DCHECK(record_state) << "Record state must be not null for "
-                       << commands_[id - 1]->ToString();
-
-  // Some commands might end up not recording anything into the command buffer,
-  // e.g. memcpy commands where source and destination are the same.
-  if (record_state->command == nullptr) {
-    return {};
+  // Collect commands that are dependencies of the command `id`.
+  absl::InlinedVector<CommandId, 4> dependencies_ids;
+  if (execution_graph_) {
+    dependencies_ids.assign(execution_graph_->in_edges(id).begin(),
+                            execution_graph_->in_edges(id).end());
+  } else {
+    dependencies_ids.push_back(id - 1);
   }
 
-  return {record_state->command};
+  // Collect dependencies from the recorded command state.
+  std::vector<const se::CommandBuffer::Command*> dependencies;
+  for (CommandId dependency_id : dependencies_ids) {
+    auto* record_state = record_params.state.GetOrNull<RecordState>(
+        commands_[dependency_id].get(), command_buffer);
+    DCHECK(record_state) << "Record state must be not null for "
+                         << commands_[dependency_id]->ToString();
+
+    if (record_state->command == nullptr) {
+      // Some commands might end up not recording anything into the command
+      // buffer, e.g. memcpy commands where source and destination are the same.
+      // We have to follow dependencies of such commands to find the real
+      // dependencies, so we don't record a command that is immediately ready to
+      // execute, as it will create data races.
+      auto deps = Dependencies(record_params, command_buffer, dependency_id);
+      dependencies.insert(dependencies.end(), deps.begin(), deps.end());
+    } else {
+      dependencies.push_back(record_state->command);
+    }
+  }
+
+  return dependencies;
 }
 
 const absl::flat_hash_set<BufferUse>& CommandBufferCmdSequence::buffers()

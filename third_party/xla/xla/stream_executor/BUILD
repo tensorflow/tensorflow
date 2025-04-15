@@ -113,10 +113,10 @@ cc_library(
     name = "gpu_solver_context",
     hdrs = ["gpu_solver_context.h"],
     deps = [
+        ":blas",
+        ":device_memory",
+        ":stream",
         "//xla:xla_data_proto_cc",
-        "//xla/stream_executor:blas",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:stream",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],
@@ -158,7 +158,6 @@ cc_library(
         ":device_memory",
         ":event",
         ":event_based_timer",
-        ":kernel",
         ":launch_dim",
         ":platform",
         ":stream",
@@ -216,18 +215,11 @@ cc_library(
     deps = [
         ":device_memory",
         ":platform",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -539,7 +531,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -610,7 +601,6 @@ cc_library(
         ":dnn",
         ":kernel",
         ":launch_dim",
-        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -660,7 +650,6 @@ cc_library(
     srcs = ["stream_common.cc"],
     hdrs = ["stream_common.h"],
     deps = [
-        ":blas",
         ":device_description",
         ":fft",
         ":platform",
@@ -671,7 +660,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
@@ -724,7 +712,6 @@ xla_cc_test(
     srcs = ["generic_memory_allocation_test.cc"],
     deps = [
         ":generic_memory_allocation",
-        "//xla/tsl/platform:macros",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -737,7 +724,6 @@ xla_cc_test(
         ":generic_memory_allocation",
         ":generic_memory_allocator",
         ":memory_allocation",
-        "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
@@ -828,11 +814,9 @@ xla_cc_test(
     name = "scoped_module_handle_test",
     srcs = ["scoped_module_handle_test.cc"],
     deps = [
-        ":device_description",
         ":mock_stream_executor",
         ":module_spec",
         ":scoped_module_handle",
-        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
     ],
@@ -857,7 +841,6 @@ xla_cc_test(
         ":device_description",
         ":semantic_version",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
