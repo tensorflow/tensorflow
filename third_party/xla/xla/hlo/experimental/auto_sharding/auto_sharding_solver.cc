@@ -118,6 +118,25 @@ double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
   return min_memory_budget_required_estimate;
 }
 
+AutoShardingSolverParams GetParams(const AutoShardingSolverRequest& request) {
+  AutoShardingSolverParams params;
+  for (const auto& departure_cost : request.departure_costs()) {
+    std::vector<double> departure_cost_vector(departure_cost.costs().begin(),
+                                              departure_cost.costs().end());
+    params.departure_costs.push_back(departure_cost_vector);
+  }
+  params.max_departures =
+      request.has_max_departures()
+          ? std::make_optional(request.max_departures().coeff())
+          : std::nullopt;
+  params.minimize_departures = request.minimize_departures();
+  params.overbudget_coeff =
+      request.has_overbudget_coeff()
+          ? std::make_optional(request.overbudget_coeff().coeff())
+          : std::nullopt;
+  return params;
+}
+
 namespace {
 
 std::vector<NodeStrategyIdx> GetChosenNodeStrategy(
@@ -199,10 +218,11 @@ void PrintLargestInstructions(
 
 absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
     const AutoShardingSolverRequest& request,
+    const AutoShardingSolverParams& params,
     const std::vector<std::vector<MPVariable*>>& s,
     const std::vector<std::vector<MPVariable*>>& e,
     const MPVariable* overbudget_var, const MPVariable* makespan_var,
-    const std::optional<double> overbudget_coeff, MPSolver& solver) {
+    MPSolver& solver) {
   auto status = solver.Solve();
   LOG(INFO) << "Solver absl::Status: " << status;
 
@@ -238,14 +258,17 @@ absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
 #endif
     return absl::InternalError(
         "MPSolver could not find any feasible solution.");
-  } else if (status == operations_research::MPSolver::MODEL_INVALID) {
+  }
+  if (status == operations_research::MPSolver::MODEL_INVALID) {
     LOG(FATAL) << "The MIP fed to the solver is invalid. This is most likely a "
                   "bug and should be reported.";
     return absl::InternalError("Invalid MIP.");
-  } else if (status == operations_research::MPSolver::NOT_SOLVED) {
+  }
+  if (status == operations_research::MPSolver::NOT_SOLVED) {
     LOG(WARNING) << "Solver timeout; no solution was produced";
     return absl::InternalError("Solver timed out.");
-  } else if (status != operations_research::MPSolver::OPTIMAL) {
+  }
+  if (status != operations_research::MPSolver::OPTIMAL) {
     LOG(WARNING) << "Solver timeout; moving forward with a suboptimal solution";
   } else {
     is_optimal = true;
@@ -298,7 +321,8 @@ absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
     unsalted_objective += request.resharding_costs(edge_idx).costs(j);
   }
   if (overbudget_var) {
-    unsalted_objective += *overbudget_coeff * overbudget_var->solution_value() *
+    unsalted_objective += *params.overbudget_coeff *
+                          overbudget_var->solution_value() *
                           request.memory_budget();
   }
   if (makespan_var) {
@@ -498,7 +522,7 @@ void AddMemoryTerms(
 //    however.
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& request,
-    std::optional<double> overbudget_coeff) {
+    const AutoShardingSolverParams& params) {
   const absl::Time start_time = absl::Now();
   const size_t num_edges = request.edges_size();
   const int num_workers = 32;
@@ -581,7 +605,7 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     edge_map.insert({followed_edge, edge_idx});
   }
 
-  if (request.memory_budget() > 0 && overbudget_coeff.has_value()) {
+  if (request.memory_budget() > 0 && params.overbudget_coeff.has_value()) {
     overbudget_var =
         solver->MakeNumVar(0.0, MPSolver::infinity(), "overbudget");
   }
@@ -601,7 +625,9 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
         infinity_vars.insert(s[node_idx][j]);
         continue;
       }
-      if (request.minimize_departures()) continue;
+      if (params.minimize_departures) {
+        continue;
+      }
       double accumulated_coefficient =
           solver->MutableObjective()->GetCoefficient(s[node_idx][j]);
       solver->MutableObjective()->SetCoefficient(
@@ -616,7 +642,9 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
         infinity_vars.insert(e[edge_idx][j]);
         continue;
       }
-      if (request.minimize_departures()) continue;
+      if (params.minimize_departures) {
+        continue;
+      }
       double accumulated_coefficient =
           solver->MutableObjective()->GetCoefficient(e[edge_idx][j]);
       solver->MutableObjective()->SetCoefficient(
@@ -702,9 +730,9 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
                    reduced_intervals_nodes, request.memory_costs(),
                    overbudget_var, reduced_times, s, group_node_vars,
                    constraints);
-    if (overbudget_var && !request.minimize_departures()) {
+    if (overbudget_var && !params.minimize_departures) {
       solver->MutableObjective()->SetCoefficient(
-          overbudget_var, *overbudget_coeff * request.memory_budget());
+          overbudget_var, *params.overbudget_coeff * request.memory_budget());
     }
     LOG(INFO) << "Minimum memory budget estimate: "
               << MinimumMemoryBudgetRequired(request);
@@ -715,7 +743,9 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
   // d. specified via "BoolVarArray"
   // e.
   for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
-    if (e_follow[edge_idx] >= 0) continue;
+    if (e_follow[edge_idx] >= 0) {
+      continue;
+    }
     const auto& edge = request.edges(edge_idx);
     for (NodeStrategyIdx p = 0; p < s[edge.first()].size(); ++p) {
       for (NodeStrategyIdx q = 0; q < s[edge.second()].size(); ++q) {
@@ -739,7 +769,9 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const auto& raw_alias = request.aliases(alias_idx);
     const std::pair<NodeIdx, NodeIdx> alias(raw_alias.first(),
                                             raw_alias.second());
-    if (alias_set.contains(alias)) continue;
+    if (alias_set.contains(alias)) {
+      continue;
+    }
     alias_set.insert(alias);
     const auto& value_costs = request.value_costs(alias_idx).costs();
     for (NodeStrategyIdx p = 0; p < s[alias.first].size(); ++p) {
@@ -756,10 +788,10 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
       }
     }
   }
-  if (request.has_max_departures()) {
+  if (params.max_departures.has_value()) {
     MPConstraint* constraint = solver->MakeRowConstraint(
-        0, request.max_departures().coeff(),
-        absl::StrCat("departures <= ", request.max_departures().coeff()));
+        0, *params.max_departures,
+        absl::StrCat("departures <= ", *params.max_departures));
     for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
       for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
         double accumulated_coefficient =
@@ -770,7 +802,7 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
       }
     }
   }
-  if (request.minimize_departures()) {
+  if (params.minimize_departures) {
     for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
       for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
         double accumulated_coefficient =
@@ -795,7 +827,9 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
       (!request.has_max_cost() || request.max_cost().coeff() < kMaxCostValue)) {
     std::vector<std::pair<const MPVariable*, double>> hint;
     for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
-      if (request.s_follow(node_idx) >= 0) continue;
+      if (request.s_follow(node_idx) >= 0) {
+        continue;
+      }
       for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
         double hint_val = (request.s_hint(node_idx) == j) ? 1.0 : 0.0;
         hint.push_back({s[node_idx][j], hint_val});
@@ -861,19 +895,19 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
           << "Number variables for ILP: " << solver->NumVariables() << "\n"
           << "Number of ILP constraints: " << solver->NumConstraints() << "\n"
           << "Deterministic mode: " << request.deterministic_mode() << "\n"
-          << "Minimize departures: " << request.minimize_departures() << "\n"
+          << "Minimize departures: " << params.minimize_departures << "\n"
           << "Module name: " << request.module_name();
   if (request.has_max_cost()) {
     VLOG(0) << "Max cost: " << request.max_cost().coeff();
   }
-  if (request.has_max_departures()) {
-    VLOG(0) << "Max departures: " << request.max_departures().coeff();
+  if (params.max_departures.has_value()) {
+    VLOG(0) << "Max departures: " << *params.max_departures;
   }
-  auto result = SolveAndExtractSolution(
-      request, s, e, overbudget_var, makespan_var, overbudget_coeff, *solver);
+  auto result = SolveAndExtractSolution(request, params, s, e, overbudget_var,
+                                        makespan_var, *solver);
   if (result.ok()) {
     const AutoShardingEvaluation evaluation =
-        Evaluate(request, *result, overbudget_coeff);
+        Evaluate(request, *result, params);
     LOG(INFO) << "*** Total costs for the solver request ***";
     LOG(INFO) << "Total Communication Cost: "
               << evaluation.total.communication_cost
@@ -979,7 +1013,8 @@ AutoShardingSolverOutput SolveRandom(const AutoShardingSolverRequest& request,
     bool candidate_is_feasible = (cost >= 0.0);
     if (have_feasible_solution && !candidate_is_feasible) {
       continue;
-    } else if (have_feasible_solution && candidate_is_feasible) {
+    }
+    if (have_feasible_solution && candidate_is_feasible) {
       if (cost < best_cost) {
         best_node_strategies = node_strategies;
         best_cost = cost;
@@ -1089,12 +1124,12 @@ bool AutoShardingEvaluation::operator==(
 
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
                                 const AutoShardingSolverOutput& result,
-                                std::optional<double> overbudget_coeff) {
+                                const AutoShardingSolverParams& params) {
   const auto& c = request.computation_costs();
   const auto& d = request.communication_costs();
   const auto& r = request.resharding_costs();
   const auto& v = request.value_costs();
-  const auto& p = request.departure_costs();
+  const auto& p = params.departure_costs;
   const std::vector<NodeStrategyIdx>& s_val = result.s_val;
   const auto e_val = [&](EdgeIdx edge_idx) {
     const auto& edge = request.edges(edge_idx);
@@ -1130,10 +1165,13 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
     }
   }
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
-    if (p.empty()) continue;
-    evaluation.total_departures += p.at(node_idx).costs(s_val[node_idx]);
-    if (request.has_max_departures() &&
-        evaluation.total_departures > request.max_departures().coeff()) {
+    if (p.empty()) {
+      continue;
+    }
+    evaluation.total_departures += p[node_idx][s_val[node_idx]];
+
+    if (params.max_departures.has_value() &&
+        evaluation.total_departures > *params.max_departures) {
       evaluation.violation_codes.insert(kMaxDeparturesViolationCode);
     }
   }
@@ -1180,10 +1218,11 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
         evaluation.violation_codes.insert(kMemoryViolationCode);
       }
     }
-    if (overbudget_coeff.has_value()) {
-      evaluation.total.overbudget_cost = *overbudget_coeff * total_overbudget;
+    if (params.overbudget_coeff.has_value()) {
+      evaluation.total.overbudget_cost =
+          *params.overbudget_coeff * total_overbudget;
       evaluation.lower_bound.overbudget_cost =
-          *overbudget_coeff * lower_bound_overbudget;
+          *params.overbudget_coeff * lower_bound_overbudget;
     }
   }
   // Compute metrics and lower bounds.

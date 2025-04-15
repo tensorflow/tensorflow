@@ -42,9 +42,18 @@ struct AutoShardingSolverOutput {
 // Determines the minimum memory budget required to avoid memory violations.
 double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request);
 
+struct AutoShardingSolverParams {
+  std::vector<std::vector<double>> departure_costs;
+  std::optional<double> max_departures;
+  bool minimize_departures = false;
+  std::optional<double> overbudget_coeff;
+};
+
+AutoShardingSolverParams GetParams(const AutoShardingSolverRequest& request);
+
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& request,
-    std::optional<double> overbudget_coeff);
+    const AutoShardingSolverParams& params);
 
 // TODO(fahrbach): Create AutoShardingHeuristicOptions proto with a oneof field.
 // Runs a heuristic specified by one of the following values of `algorithm`:
@@ -100,7 +109,7 @@ struct AutoShardingEvaluation {
 // solution quality metrics and validating the consistency of hard constraints.
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
                                 const AutoShardingSolverOutput& result,
-                                std::optional<double> overbudget_coeff);
+                                const AutoShardingSolverParams& params);
 
 // Computes the objective value of the sharding strategy. If the objective value
 // is infinite or the sharding is infeasible (e.g., violates the peak-memory
