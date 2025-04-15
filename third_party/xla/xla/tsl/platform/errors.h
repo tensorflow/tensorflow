@@ -23,6 +23,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/macros.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
@@ -199,6 +201,7 @@ void AppendToMessage(absl::Status* status, Args... args) {
 
 // CANCELLED
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::CancelledError() instead.")
 absl::Status Cancelled(Args... args) {
   return absl::CancelledError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -212,6 +215,7 @@ absl::Status CancelledWithPayloads(
 
 // InvalidArgument
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
 absl::Status InvalidArgument(Args... args) {
   return absl::InvalidArgumentError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -219,6 +223,7 @@ absl::Status InvalidArgument(Args... args) {
 // Specialized overloads to capture source location for up to four arguments.
 #if defined(PLATFORM_GOOGLE)
 template <typename Arg1, typename Arg2, typename Arg3, typename Arg4>
+ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
 absl::Status InvalidArgument(
     Arg1 arg1, Arg2 arg2, Arg3 arg3, Arg4 arg4,
     absl::SourceLocation loc = absl::SourceLocation::current()) {
@@ -230,6 +235,7 @@ absl::Status InvalidArgument(
       loc);
 }
 template <typename Arg1, typename Arg2, typename Arg3>
+ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
 absl::Status InvalidArgument(
     Arg1 arg1, Arg2 arg2, Arg3 arg3,
     absl::SourceLocation loc = absl::SourceLocation::current()) {
@@ -240,6 +246,7 @@ absl::Status InvalidArgument(
       loc);
 }
 template <typename Arg1, typename Arg2>
+ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
 absl::Status InvalidArgument(
     Arg1 arg1, Arg2 arg2,
     absl::SourceLocation loc = absl::SourceLocation::current()) {
@@ -249,6 +256,7 @@ absl::Status InvalidArgument(
       loc);
 }
 template <typename Arg1>
+ABSL_DEPRECATED("Use absl::InvalidArgumentError() instead.")
 absl::Status InvalidArgument(
     Arg1 arg1, absl::SourceLocation loc = absl::SourceLocation::current()) {
   return absl::InvalidArgumentError(
@@ -272,6 +280,7 @@ inline absl::Status InvalidArgumentWithPayloads(
 
 // NotFound
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::NotFoundError() instead.")
 absl::Status NotFound(Args... args) {
   return absl::NotFoundError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -279,9 +288,10 @@ absl::Status NotFound(Args... args) {
 // Specialized overloads to capture source location for up to three arguments.
 #if defined(PLATFORM_GOOGLE)
 template <typename Arg1, typename Arg2, typename Arg3>
-absl::Status NotFound(
-    Arg1 arg1, Arg2 arg2, Arg3 arg3,
-    absl::SourceLocation loc = absl::SourceLocation::current()) {
+ABSL_DEPRECATED("Use absl::NotFoundError() instead.")
+absl::Status
+    NotFound(Arg1 arg1, Arg2 arg2, Arg3 arg3,
+             absl::SourceLocation loc = absl::SourceLocation::current()) {
   return absl::NotFoundError(
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
                              ::tsl::errors::internal::PrepareForStrCat(arg2),
@@ -289,17 +299,20 @@ absl::Status NotFound(
       loc);
 }
 template <typename Arg1, typename Arg2>
-absl::Status NotFound(
-    Arg1 arg1, Arg2 arg2,
-    absl::SourceLocation loc = absl::SourceLocation::current()) {
+ABSL_DEPRECATED("Use absl::NotFoundError() instead.")
+absl::Status
+    NotFound(Arg1 arg1, Arg2 arg2,
+             absl::SourceLocation loc = absl::SourceLocation::current()) {
   return absl::NotFoundError(
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
                              ::tsl::errors::internal::PrepareForStrCat(arg2)),
       loc);
 }
 template <typename Arg1>
-absl::Status NotFound(
-    Arg1 arg1, absl::SourceLocation loc = absl::SourceLocation::current()) {
+ABSL_DEPRECATED("Use absl::NotFoundError() instead.")
+absl::Status
+    NotFound(Arg1 arg1,
+             absl::SourceLocation loc = absl::SourceLocation::current()) {
   return absl::NotFoundError(
       ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1)),
       loc);
@@ -320,6 +333,7 @@ inline absl::Status NotFoundWithPayloads(
 
 // AlreadyExists
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::AlreadyExistsError() instead.")
 absl::Status AlreadyExists(Args... args) {
   return absl::AlreadyExistsError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -332,6 +346,7 @@ inline absl::Status AlreadyExistsWithPayloads(
 
 // ResourceExhausted
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::ResourceExhaustedError() instead.")
 absl::Status ResourceExhausted(Args... args) {
   return absl::ResourceExhaustedError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -345,6 +360,7 @@ inline absl::Status ResourceExhaustedWithPayloads(
 
 // Unavailable
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::UnavailableError() instead.")
 absl::Status Unavailable(Args... args) {
   return absl::UnavailableError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -357,6 +373,7 @@ inline absl::Status UnavailableWithPayloads(
 
 // FailedPrecondition
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::FailedPreconditionError() instead.")
 absl::Status FailedPrecondition(Args... args) {
   return absl::FailedPreconditionError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -370,6 +387,7 @@ inline absl::Status FailedPreconditionWithPayloads(
 
 // OutOfRange
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::OutOfRangeError() instead.")
 absl::Status OutOfRange(Args... args) {
   return absl::OutOfRangeError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -382,6 +400,7 @@ inline absl::Status OutOfRangeWithPayloads(
 
 // Unimplemented
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::UnimplementedError() instead.")
 absl::Status Unimplemented(Args... args) {
   return absl::UnimplementedError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -394,6 +413,7 @@ inline absl::Status UnimplementedWithPayloads(
 
 // Internal
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::InternalError() instead.")
 absl::Status Internal(Args... args) {
   return absl::InternalError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -406,6 +426,7 @@ inline absl::Status InternalWithPayloads(
 
 // Aborted
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::AbortedError() instead.")
 absl::Status Aborted(Args... args) {
   return absl::AbortedError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -418,6 +439,7 @@ inline absl::Status AbortedWithPayloads(
 
 // DeadlineExceeded
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::DeadlineExceededError() instead.")
 absl::Status DeadlineExceeded(Args... args) {
   return absl::DeadlineExceededError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -430,6 +452,7 @@ inline absl::Status DeadlineExceededWithPayloads(
 
 // DataLoss
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::DataLossError() instead.")
 absl::Status DataLoss(Args... args) {
   return absl::DataLossError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -442,6 +465,7 @@ inline absl::Status DataLossWithPayloads(
 
 // Unknown
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::UnknownError() instead.")
 absl::Status Unknown(Args... args) {
   return absl::UnknownError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -453,6 +477,7 @@ inline absl::Status UnknownPayloads(
 }
 // PermissionDenied
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::PermissionDeniedError() instead.")
 absl::Status PermissionDenied(Args... args) {
   return absl::PermissionDeniedError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -465,6 +490,7 @@ inline absl::Status PermissionDeniedWithPayloads(
 
 // Unauthenticated
 template <typename... Args>
+ABSL_DEPRECATED("Use absl::UnauthenticatedError() instead.")
 absl::Status Unauthenticated(Args... args) {
   return absl::UnauthenticatedError(::tsl::strings::StrCat(
       ::tsl::errors::internal::PrepareForStrCat(args)...));
@@ -475,51 +501,67 @@ inline absl::Status UnauthenticatedWithPayloads(
   return errors::Create(absl::StatusCode::kUnauthenticated, message, payloads);
 }
 
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsAborted(const absl::Status& status) {
   return absl::IsAborted(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsAlreadyExists(const absl::Status& status) {
   return absl::IsAlreadyExists(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsCancelled(const absl::Status& status) {
   return absl::IsCancelled(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsDataLoss(const absl::Status& status) {
   return absl::IsDataLoss(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsDeadlineExceeded(const absl::Status& status) {
   return absl::IsDeadlineExceeded(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsFailedPrecondition(const absl::Status& status) {
   return absl::IsFailedPrecondition(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsInternal(const absl::Status& status) {
   return absl::IsInternal(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsInvalidArgument(const absl::Status& status) {
   return absl::IsInvalidArgument(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsNotFound(const absl::Status& status) {
   return absl::IsNotFound(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsOutOfRange(const absl::Status& status) {
   return absl::IsOutOfRange(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsPermissionDenied(const absl::Status& status) {
   return absl::IsPermissionDenied(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsResourceExhausted(const absl::Status& status) {
   return absl::IsResourceExhausted(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsUnauthenticated(const absl::Status& status) {
   return absl::IsUnauthenticated(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsUnavailable(const absl::Status& status) {
   return absl::IsUnavailable(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsUnimplemented(const absl::Status& status) {
   return absl::IsUnimplemented(status);
 }
+ABSL_DEPRECATE_AND_INLINE()
 inline bool IsUnknown(const absl::Status& status) {
   return absl::IsUnknown(status);
 }
