@@ -18,22 +18,13 @@ package_group(
     ],
 )
 
-config_setting(
-    name = "arm_build",
-    values = {"cpu": "arm"},
-)
-
 # Build target that registers all available GPU collectives implementations with the collectives
 # registry at link time.
 cc_library(
     name = "gpu_collectives_plugin",
     deps = [
         ":gpu_collectives_stub",
-    ] + if_nccl([":nccl_collectives"]) + select({
-        # TODO(b/409709288): Fix nvshmem ARM issues and remove this condition.
-        ":arm_build": [],
-        "//conditions:default": [":nvshmem_collectives"],
-    }),
+    ] + if_nccl([":nccl_collectives"]),
 )
 
 cc_library(
@@ -231,7 +222,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:numbers",
     ] + if_cuda_is_configured([
         "@local_config_nccl//:nccl",
     ]) + if_rocm_is_configured([
@@ -281,11 +271,14 @@ cc_library(
 
 cc_library(
     name = "nvshmem_collectives",
-    srcs = if_cuda_is_configured(["nvshmem_collectives.cc"]),
-    hdrs = if_cuda_is_configured(["nvshmem_collectives.h"]),
+    srcs = ["nvshmem_collectives.cc"],
+    hdrs = ["nvshmem_collectives.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = ["//visibility:private"],
     deps = [
-        ":gpu_collectives",
         "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
@@ -306,8 +299,9 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:numbers",
-    ] + if_cuda_is_configured(["@nvshmem//:nvshmem_lib"]),
-    alwayslink = True,
+        "@nvshmem//:nvshmem_lib",
+    ],
+    alwayslink = True,  # registers collectives implementation
 )
 
 xla_cc_test(

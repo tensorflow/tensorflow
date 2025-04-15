@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
@@ -36,7 +35,7 @@ limitations under the License.
 namespace xla::gpu {
 
 // NVIDIA NVSHMEM library
-class NvshmemCollectives : public GpuCollectives {
+class NvshmemCollectives : public Collectives {
  public:
   ~NvshmemCollectives() override;
 
@@ -46,27 +45,11 @@ class NvshmemCollectives : public GpuCollectives {
                   size_t device_count_per_process,
                   std::weak_ptr<KeyValueStoreInterface> kv_store);
 
-  absl::StatusOr<void*> Allocate(uint64_t bytes) final;
+  absl::StatusOr<void*> Allocate(uint64_t bytes);
 
-  absl::Status Deallocate(void* buffer) final;
+  absl::Status Deallocate(void* buffer);
 
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final {
-    return absl::UnimplementedError("Not implemented.");
-  }
-
-  absl::Status GroupStart() final {
-    return absl::UnimplementedError("Not implemented.");
-  }
-  absl::Status GroupEnd() final {
-    return absl::UnimplementedError("Not implemented.");
-  }
-
-  bool IsImplemented() const final { return true; }
-
-  bool IsGlobalConfig() const final { return false; }
-
-  absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
-      const CliqueIdCallback* clique_id_callback, bool is_local) final {
     return absl::UnimplementedError("Not implemented.");
   }
 
@@ -74,17 +57,15 @@ class NvshmemCollectives : public GpuCollectives {
   CreateCommunicators(const CliqueKey& clique_key,
                       const std::optional<CliqueIds>& clique_ids,
                       absl::Span<const DeviceRank> ranks,
-                      const Collectives::Config& config) {
+                      const Config& config) final {
     return absl::UnimplementedError("Not implemented.");
   }
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
       absl::Span<const Communicator* const> comms, int32_t color,
-      absl::Span<const RankId> keys, const Collectives::Config& config) final {
+      absl::Span<const RankId> keys, const Config& config) final {
     return absl::UnimplementedError("Not implemented.");
   }
-
-  absl::Status InitializeTopology(Topology topology) final;
 
  private:
   absl::Status InitializeOnce();
