@@ -160,9 +160,9 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
                   "sdy.");
               return mlir::WalkResult::advance();
             }
-            xla::sdy::setFrontendAttribute(
-                callee_module, xla::sdy::kMeshesRoundTripAttr,
-                sdy_meshes_round_trip_attr, /*escapeAttr=*/false);
+            xla::sdy::setFrontendAttribute(callee_module,
+                                           xla::sdy::kMeshesRoundTripAttr,
+                                           sdy_meshes_round_trip_attr);
           }
 
           absl::StatusOr<CompileFuture> compile_future =
