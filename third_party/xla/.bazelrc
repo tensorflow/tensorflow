@@ -9,3 +9,9 @@ import %workspace%/tensorflow.bazelrc
 import %workspace%/warnings.bazelrc
 
 try-import %workspace%/xla_configure.bazelrc
+
+# /*absl_nonnull*/, /*absl_nullable*/, and /*absl_nullability_unknown*/ are not yet present
+# in the version of absl we are using.
+# This can be removed when the absl version used is bumped to commit 48f0f91 or
+# newer, likely after July 2025.
+common --copt=-D/*absl_nonnull*/='' --copt=-D/*absl_nullable*/='' --copt=-D/*absl_nullability_unknown*/=''
