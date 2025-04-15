@@ -731,8 +731,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> LaunchCmd::Record(
     buffers.push_back(buf);
   }
 
-  TF_ASSIGN_OR_RETURN(auto kernel_args,
-                      se::PackKernelArgs(buffers, shmem_bytes_));
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_args,
+      se::PackKernelArgs<se::DeviceMemoryBase>(buffers, shmem_bytes_));
 
   return Handle(
       std::move(record_action),

@@ -517,6 +517,7 @@ cc_library(
     ],
     deps = [
         ":custom_kernel",
+        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",

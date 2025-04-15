@@ -762,6 +762,8 @@ xla_cc_test(
         ":typed_kernel_factory",
         "//xla/stream_executor/host:host_platform",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/types:span",
+        "@com_google_benchmark//:benchmark",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
     ],

@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1422,8 +1423,8 @@ absl::StatusOr<const CudaKernel*> CudaExecutor::GetCudaKernel(
   return static_cast<const CudaKernel*>(*it);
 }
 
-absl::StatusOr<DeviceMemoryBase> CudaExecutor::CreateTensorMap(
-    TmaDescriptor tma_desc, void* global_address) {
+absl::StatusOr<TensorMap> CudaExecutor::CreateTensorMap(TmaDescriptor tma_desc,
+                                                        void* global_address) {
   TF_ASSIGN_OR_RETURN(CUtensorMapDataType data_type,
                       GetTensorMapDataType(tma_desc.element_size()));
   CUtensorMapSwizzle swizzle = GetTensorMapSwizzle(tma_desc.swizzle());
@@ -1447,10 +1448,7 @@ absl::StatusOr<DeviceMemoryBase> CudaExecutor::CreateTensorMap(
         "Failed to create tensormap with cuTensorMapEncodeTiled: %s",
         error_message));
   }
-  DeviceMemoryBase device_tensor_map = Allocate(sizeof(tensor_map), 0);
-  TF_RETURN_IF_ERROR(
-      SynchronousMemcpy(&device_tensor_map, &tensor_map, sizeof(tensor_map)));
-  return device_tensor_map;
+  return absl::bit_cast<TensorMap>(tensor_map);
 }
 
 }  // namespace gpu
