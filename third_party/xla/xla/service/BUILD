@@ -5657,6 +5657,7 @@ xla_cc_test(
         ":gpu_plugin_impl",
         ":platform_util",
         ":shaped_buffer",
+        "//xla/backends/gpu/runtime:thunk_runtime_dependencies",
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

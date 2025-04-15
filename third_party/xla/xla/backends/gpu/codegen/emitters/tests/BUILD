@@ -17,6 +17,7 @@ lit_test_suite(
     default_tags = tf_cuda_tests_tags(),
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
     hermetic_cuda_data_dir = "%S/../../../../../../../cuda_nvcc",
+    tags = ["gpu"],
     tools = [
         "//xla/backends/gpu/codegen/tools:fusion_to_mlir",
         "//xla/backends/gpu/codegen/tools:test_correctness",

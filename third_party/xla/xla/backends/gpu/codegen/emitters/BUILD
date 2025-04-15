@@ -125,6 +125,7 @@ cc_library(
 xla_cc_test(
     name = "emitter_base_test",
     srcs = ["emitter_base_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":emitter_base",
         "//xla/codegen/emitters:computation_partitioner",
@@ -330,6 +331,7 @@ cc_library(
 xla_cc_test(
     name = "reduction_base_test",
     srcs = ["reduction_base_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":reduction_base",
         "//xla/service/gpu:gpu_device_info_for_tests",

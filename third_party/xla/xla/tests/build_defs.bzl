@@ -313,6 +313,7 @@ def xla_test(
         elif backend in NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS:
             backend_deps += [
                 "//xla/service:gpu_plugin",
+                "//xla/backends/gpu/runtime:thunk_runtime_dependencies",
                 "//xla/tests:test_macros_%s" % backend,
             ]
             if backend in NVIDIA_GPU_BACKENDS:
