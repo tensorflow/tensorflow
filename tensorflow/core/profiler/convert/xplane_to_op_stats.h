@@ -16,52 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_OP_STATS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_OP_STATS_H_
 
-#include <vector>
-
-#include "tensorflow/core/profiler/convert/duty_cycle_tracker.h"
-#include "tensorflow/core/profiler/convert/repository.h"
-#include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
-#include "tensorflow/core/profiler/utils/hlo_proto_map.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/protobuf/xplane.pb.h"
-#include "plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"  // from @org_xprof
-
-namespace tensorflow {
-namespace profiler {
-
-struct OpStatsOptions {
-  bool maybe_drop_incomplete_steps = false;
-  bool generate_op_metrics_db = false;
-  bool generate_step_db = false;
-  bool generate_kernel_stats_db = false;
-};
-
-// NOTE: call GroupTfEvents before if OpStats.step_db needs to be generated.
-OpStats ConvertXSpaceToOpStats(const XSpace& space,
-                               const OpStatsOptions& options);
-
-// Populates the program_id_to_name map in OpStats.
-void SetProgramIdToNameMap(const HloProtoMap& hlo_proto_map,
-                           tensorflow::profiler::OpStats& op_stats);
-
-// Populates the given RunEnvironment with data from XSpace.
-void SetRunEnvironment(const XSpace& space, RunEnvironment* env);
-
-// Propagate and dedup the diagnostics in XSpace and add to OpStats.
-void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
-                                         OpStats* op_stats);
-
-// Populates PerfEnv.
-PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
-                    std::vector<double> peak_bws);
-
-// Extracts PerfEnv from XPlane stats.
-PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane);
-
-// Constructs a DutyCycleTracker from the given XPlaneVisitor.
-DutyCycleTracker ConstructDutyCycleTracker(XPlaneVisitor& visitor);
-
-}  // namespace profiler
-}  // namespace tensorflow
+#include "xprof/convert/xplane_to_op_stats.h"  // from @org_xprof  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_OP_STATS_H_

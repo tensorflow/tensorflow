@@ -111,6 +111,8 @@ cc_library(
     hdrs = ["profiler_controller.h"],
     deps = [
         "@com_google_absl//absl/base:core_headers",
+        "@local_tsl//tsl/profiler/lib:profiler_controller",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
