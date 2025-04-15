@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/shim/shape.h"
 
+#include <vector>
+
 #include <gtest/gtest.h>
 
 namespace tflite {
