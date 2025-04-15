@@ -23,6 +23,7 @@ limitations under the License.
 #include <queue>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -39,27 +40,6 @@ limitations under the License.
 
 namespace xla::cpu {
 
-namespace internal {
-// Clang does not allow defining a nested struct with member initializer, as
-// a workaround we define a struct in internal namespace and create an alias.
-struct ThunkExecutorOptions {
-  enum class ReadyQueueType { kFifo, kLifo, kPriority };
-
-  // If all thunks in a sequence use buffers of size less than or equal to the
-  // given threshold, we mark execution as sequential, as concurrency overheads
-  // will likely dominate the overall execution time.
-  size_t execute_sequential_buffer_threshold = 512;
-
-  // If thunk sequence length is less than or equal to the given threshold, we
-  // mark execution as sequential, as concurrency overheads will likely dominate
-  // the overall execution time.
-  size_t execute_sequential_num_thunks_threshold = 8;
-
-  // The type of a queue for ready thunks.
-  ReadyQueueType ready_queue_type = ReadyQueueType::kFifo;
-};
-}  // namespace internal
-
 // A dataflow-style (run when ready) executor for a ThunkSequence that depends
 // on buffer uses to build a DAG defining execution order. At run time executes
 // thunks concurrently in a given thread pool.
@@ -68,13 +48,33 @@ class ThunkExecutor {
   using BufferUses = Thunk::BufferUses;
   using ResourceUses = Thunk::ResourceUses;
   using ExecuteEvent = Thunk::ExecuteEvent;
-  using Options = internal::ThunkExecutorOptions;
 
   ThunkExecutor(ThunkExecutor&&) = default;
   ThunkExecutor& operator=(ThunkExecutor&&) = default;
 
-  static absl::StatusOr<ThunkExecutor> Create(
-      ThunkSequence thunk_sequence, const Options& options = Options());
+  struct Options {
+    enum class ReadyQueueType { kFifo, kLifo, kPriority };
+
+    // If all thunks in a sequence use buffers of size less than or equal to the
+    // given threshold, we mark execution as sequential, as concurrency
+    // overheads will likely dominate the overall execution time.
+    size_t execute_sequential_buffer_threshold = 512;
+
+    // If thunk sequence length is less than or equal to the given threshold, we
+    // mark execution as sequential, as concurrency overheads will likely
+    // dominate the overall execution time.
+    size_t execute_sequential_num_thunks_threshold = 8;
+
+    // The type of a queue for ready thunks.
+    ReadyQueueType ready_queue_type = ReadyQueueType::kFifo;
+  };
+
+  static absl::StatusOr<ThunkExecutor> Create(ThunkSequence thunk_sequence,
+                                              const Options& options);
+
+  static absl::StatusOr<ThunkExecutor> Create(ThunkSequence thunk_sequence) {
+    return Create(std::move(thunk_sequence), Options());
+  }
 
   // Executes the thunk sequence using the prepared dataflow graph. Executor
   // uses runner to execute ready tasks concurrently. If runner is not provided,
