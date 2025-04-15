@@ -69,7 +69,7 @@ static const xla::ifrt::MemoryKind kPinnedHostMemoryKind(
 // Validates the sharding and PjRtBuffers have consistent device and memory
 // kind.
 absl::Status ValidateArrayCreationInput(
-    std::shared_ptr<const Sharding> sharding,
+    PjRtCompatibleClient* client, std::shared_ptr<const Sharding> sharding,
     const PjRtArray::PjRtBuffers& pjrt_buffers) {
   absl::Span<Device* const> sharding_devices =
       sharding->devices()->AddressableDeviceList()->devices();
@@ -89,6 +89,11 @@ absl::Status ValidateArrayCreationInput(
         llvm::dyn_cast<PjRtCompatibleDevice>(sharding_devices[i]);
     if (!device) {
       return InvalidArgument("Sharding device %d is not a PjRtDevice", i);
+    }
+    if (device->client() != client) {
+      return InvalidArgument(
+          "sharding client mismatches array client: %s vs %s",
+          sharding_devices[i]->DebugString(), client->platform_version());
     }
     if (pjrt_buffers[i]->device() != device->pjrt_device()) {
       return InvalidArgument(
@@ -148,7 +153,8 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, Shape shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers,
     std::shared_ptr<const PjRtLayout> layout) {
-  TF_RETURN_IF_ERROR(ValidateArrayCreationInput(sharding, pjrt_buffers));
+  TF_RETURN_IF_ERROR(
+      ValidateArrayCreationInput(client, sharding, pjrt_buffers));
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
                                  std::move(sharding), std::move(pjrt_buffers),
                                  std::move(layout));
@@ -158,7 +164,8 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, DynamicShape dynamic_shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers,
     std::shared_ptr<const PjRtLayout> layout) {
-  TF_RETURN_IF_ERROR(ValidateArrayCreationInput(sharding, pjrt_buffers));
+  TF_RETURN_IF_ERROR(
+      ValidateArrayCreationInput(client, sharding, pjrt_buffers));
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(dynamic_shape),
                                  std::move(sharding), std::move(pjrt_buffers),
                                  std::move(layout));
@@ -437,6 +444,7 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
       canonicalized_sharding_memory_kind.memory_kind().has_value();
   const absl::Span<Device* const> new_sharding_devices =
       new_sharding->devices()->devices();
+  PjRtCompatibleClient* new_client = nullptr;
   for (int i = 0; i < pjrt_buffers_.size(); ++i) {
     TF_ASSIGN_OR_RETURN(Device * buffer_device,
                         client_->LookupPjRtDevice(pjrt_buffers_[i]->device()));
@@ -473,6 +481,7 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
     } else {
       PjRtCompatibleDevice* pjrt_device =
           llvm::dyn_cast<PjRtCompatibleDevice>(new_sharding_devices[i]);
+      new_client = llvm::dyn_cast<PjRtCompatibleClient>(pjrt_device->client());
       if (!pjrt_device) {
         return InvalidArgument(
             "The destination device is owned by a non-PjRt-compatible client. "
@@ -510,9 +519,12 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
       buffers.push_back(std::move(copied_buffer));
     }
   }
+  if (new_client == nullptr) {
+    new_client = client_;
+  }
   return std::visit(
-      [this, &new_sharding, &buffers](const auto& shape) {
-        return PjRtArray::Create(client_, dtype_, shape,
+      [this, new_client, &new_sharding, &buffers](const auto& shape) {
+        return PjRtArray::Create(new_client, dtype_, shape,
                                  std::move(new_sharding), std::move(buffers),
                                  layout_);
       },
