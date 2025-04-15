@@ -42,6 +42,9 @@ def get_cub_sort_kernel_types(name = ""):
         "u8_b16",
         "u8_b32",
         "u8_b64",
+        "f32_b16",
+        "f32_b32",
+        "f32_b64",
     ]
 
 def build_cub_sort_kernels(name, types, local_defines = [], **kwargs):
