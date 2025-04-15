@@ -22,7 +22,7 @@ defvar HloConversionAllowedOps = [
   StableHLO_AbsOp,
   StableHLO_AddOp,
   // StableHLO_AfterAllOp,
-  // StableHLO_AllGatherOp,
+  StableHLO_AllGatherOp,
   // StableHLO_AllReduceOp,
   // StableHLO_AllToAllOp,
   // StableHLO_AndOp,
@@ -140,7 +140,7 @@ defvar HloConversionAllowedOps = [
 defvar CustomHloConverterOps = [
   // StableHLO ops
   // go/keep-sorted start
-  // StableHLO_AllGatherOp,
+  StableHLO_AllGatherOp,
   // StableHLO_AllReduceOp,
   // StableHLO_AllToAllOp,
   // StableHLO_BatchNormGradOp,

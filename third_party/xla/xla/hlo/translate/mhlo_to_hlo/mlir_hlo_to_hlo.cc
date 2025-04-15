@@ -575,6 +575,17 @@ std::optional<xla::ChannelHandle> Convert_channel_handle(
   return Convert_channel_handle(attr.value());
 }
 
+std::optional<xla::ChannelHandle> Convert_channel_handle(
+    const std::optional<mlir::stablehlo::ChannelHandleAttr> attr) {
+  if (!attr.has_value()) return std::nullopt;
+
+  xla::ChannelHandle channel_handle;
+  channel_handle.set_handle(attr->getHandle());
+  channel_handle.set_type(
+      static_cast<xla::ChannelHandle::ChannelType>(attr->getType()));
+  return channel_handle;
+}
+
 // Converts the comparison_direction string attribute into the XLA enum. The
 // string is assumed to correspond to exactly one of the allowed strings
 // representing the enum. This should have been checked in the op verify method.
@@ -1262,6 +1273,58 @@ LogicalResult ExportXlaOp(SubtractOp op, OpLoweringContext ctx) {
   auto xla_result = xla::Sub(Unwrap(lhs), Unwrap(rhs));
   value_map[result] = xla_result;
   return mlir::success();
+}
+
+LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+
+  SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands)))
+    return op.emitOpError("failed to get tuple");
+
+  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  if (failed(shape_or)) return op.emitOpError("failed to extract XLA shape");
+
+  auto all_gather_dim = op.getAllGatherDim();
+  int64_t shard_count = 0;
+
+  for (const auto& indexed_pair :
+       llvm::enumerate(llvm::zip(op.getOperandTypes(), op.getResultTypes()))) {
+    auto [operand_type, result_type] = indexed_pair.value();
+    TensorType operand_ttype = mlir::cast<TensorType>(operand_type);
+    TensorType result_ttype = mlir::cast<TensorType>(result_type);
+    if (!operand_ttype || !result_ttype)
+      return op.emitOpError("operands/results must be TensorTypes");
+
+    if (!operand_ttype.hasStaticShape() || !result_ttype.hasStaticShape())
+      return op.emitOpError("operands/results must have static shapes");
+
+    if (indexed_pair.index() == 0) {
+      shard_count = result_ttype.getDimSize(all_gather_dim) /
+                    operand_ttype.getDimSize(all_gather_dim);
+    }
+  }
+
+  if (shape_or->IsTuple()) {
+    std::optional<xla::Layout> layout = std::nullopt;
+    if (shape_or->has_layout()) layout = shape_or->layout();
+
+    auto tuple = xla::AllGatherTuple(
+        operands, all_gather_dim, shard_count,
+        Convert_replica_groups(op.getReplicaGroups()),
+        Convert_channel_handle(op.getChannelHandle()), layout,
+        Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+    BuildGetTupleElementsForTupleResults(op, tuple, ctx);
+    return success();
+  }
+
+  value_map[op->getResults()[0]] = xla::AllGather(
+      operands[0], all_gather_dim, shard_count,
+      Convert_replica_groups(op.getReplicaGroups()),
+      Convert_channel_handle(op.getChannelHandle()), std::nullopt,
+      Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+
+  return success();
 }
 
 }  // namespace
