@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -102,6 +103,8 @@ GpuCommandBuffer::ToGraphNodeDependencies(
   std::vector<GraphNodeHandle> handles;
 
   for (const Command* dep : dependencies) {
+    DCHECK(dep) << "Dependency command must be not null";
+
     if (auto* gpu_command = dynamic_cast<const GpuCommand*>(dep)) {
       handles.push_back(gpu_command->handle);
 
