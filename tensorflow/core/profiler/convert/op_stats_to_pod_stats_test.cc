@@ -21,6 +21,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/pod_stats.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/steps_db.pb.h"  // from @org_xprof
 #include "xprof/utils/diagnostics.h"  // from @org_xprof
 #include "xprof/utils/event_span.h"  // from @org_xprof
 

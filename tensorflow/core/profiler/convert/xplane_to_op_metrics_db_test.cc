@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/op_metrics.pb.h"  // from @org_xprof
 #include "xprof/utils/hlo_cost_analysis_wrapper.h"  // from @org_xprof
 #include "xprof/utils/hlo_module_map.h"  // from @org_xprof
 #include "xprof/utils/op_metrics_db_utils.h"  // from @org_xprof

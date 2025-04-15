@@ -49,6 +49,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/dcn_collective_info.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/dcn_slack_analysis.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/topology.pb.h"  // from @org_xprof
 #include "xprof/utils/hlo_proto_to_module.h"  // from @org_xprof
 
 namespace tensorflow {

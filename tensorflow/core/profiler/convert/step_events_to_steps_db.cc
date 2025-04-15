@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/steps_db.pb.h"  // from @org_xprof
 #include "xprof/utils/event_span.h"  // from @org_xprof
 #include "xprof/utils/op_metrics_db_utils.h"  // from @org_xprof
 

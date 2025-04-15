@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TRACE_CONTAINER_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_TRACE_CONTAINER_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "xprof/convert/trace_viewer/trace_events.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/trace_events_raw.pb.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {

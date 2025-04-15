@@ -72,6 +72,14 @@ limitations under the License.
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "xprof/convert/trace_viewer/trace_events_to_json.h"  // from @org_xprof
 #include "xprof/convert/trace_viewer/trace_viewer_visibility.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/dcn_slack_analysis.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/hlo_stats.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/inference_stats.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/op_profile.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/overview_page.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/tf_data_stats.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/trace_events_raw.pb.h"  // from @org_xprof
 #include "xprof/utils/hardware_type_utils.h"  // from @org_xprof
 
 namespace tensorflow {
