@@ -634,7 +634,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:
-    case HloOpcode::kGetTupleElement:
     case HloOpcode::kInfeed:
     case HloOpcode::kMap:
     case HloOpcode::kOutfeed:
@@ -652,7 +651,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kStochasticConvert:
     case HloOpcode::kTopK:
     case HloOpcode::kTriangularSolve:
-    case HloOpcode::kTuple:
       return true;
     default:
       return false;
