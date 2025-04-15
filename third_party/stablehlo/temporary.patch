@@ -607,6 +607,18 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
      tblgen = "@llvm-project//mlir:mlir-tblgen",
      td_file = "stablehlo/dialect/VhloOps.td",
      deps = [
+diff --ruN a/stablehlo/docs/generated/stablehlo_passes.md b/stablehlo/docs/generated/stablehlo_passes.md
+--- stablehlo/docs/generated/stablehlo_passes.md
++++ stablehlo/docs/generated/stablehlo_passes.md
+@@ -455,7 +455,7 @@
+   [](mlir::Operation* op) -> std::optional<mlir::NamedAttrList> {
+   // Custom logic to determine if and how to wrap the operation.
+   // Example: Only wrap if it's on a specific type.
+-  if (op->getOperand(0).getType().isa<mlir::Float32Type>()) {
++  if (llvm::isa<mlir::Float32Type>(op->getOperand(0).getType())) {
+     return mlir::NamedAttrList(op->getAttrs());
+   }
+   return std::nullopt; // Do not wrap.
 diff --ruN a/stablehlo/stablehlo/tests/BUILD.bazel b/stablehlo/stablehlo/tests/BUILD.bazel
 --- stablehlo/stablehlo/tests/BUILD.bazel
 +++ stablehlo/stablehlo/tests/BUILD.bazel
@@ -651,4 +663,16 @@ diff --ruN a/stablehlo/stablehlo/tests/BUILD.bazel b/stablehlo/stablehlo/tests/B
      tblgen = "@llvm-project//mlir:mlir-tblgen",
      td_file = "TestUtils.td",
      deps = [
+diff --ruN a/stablehlo/stablehlo/transforms/Passes.td b/stablehlo/stablehlo/transforms/Passes.td
+--- stablehlo/stablehlo/transforms/Passes.td
++++ stablehlo/stablehlo/transforms/Passes.td
+@@ -541,7 +541,7 @@
+       [](mlir::Operation* op) -> std::optional<mlir::NamedAttrList> {
+       // Custom logic to determine if and how to wrap the operation.
+       // Example: Only wrap if it's on a specific type.
+-      if (op->getOperand(0).getType().isa<mlir::Float32Type>()) {
++      if (llvm::isa<mlir::Float32Type>(op->getOperand(0).getType())) {
+         return mlir::NamedAttrList(op->getAttrs());
+       }
+       return std::nullopt; // Do not wrap.
 

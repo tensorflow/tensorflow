@@ -91,7 +91,7 @@ static void BuildOperator(const Operator& op, raw_ostream& os) {
     auto arg = op.getArg(index);
 
     // Emit an argument for an operand.
-    if (auto* operand_cst = arg.dyn_cast<NamedTypeConstraint*>()) {
+    if (auto* operand_cst = llvm::dyn_cast<NamedTypeConstraint*>(arg)) {
       std::string xla_arg = "xla_arg_" + std::to_string(index);
       // Handle a non-variadic operand.
       if (!operand_cst->isVariableLength()) {
