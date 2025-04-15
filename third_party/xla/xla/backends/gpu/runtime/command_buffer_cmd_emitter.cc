@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -50,15 +49,15 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Appends command(s) converted from `thunk` to `cmd_sequence_builder`.
-static absl::Status AppendCommands(
-    CommandBufferCmdSequence::Builder& cmd_sequence_builder, const Thunk& thunk,
-    const ConvertToCommandsOptions& options);
+// Appends command(s) converted from `thunk` to `cmd_sequence`.
+static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+                                   const Thunk& thunk,
+                                   const ConvertToCommandsOptions& options);
 
-// Appends command(s) converted from `sequence` to `cmd_sequence_builder`.
-static absl::Status AppendCommands(
-    CommandBufferCmdSequence::Builder& cmd_sequence_builder,
-    const ThunkSequence& sequence, const ConvertToCommandsOptions& options);
+// Appends command(s) converted from `sequence` to `cmd_sequence`.
+static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+                                   const ThunkSequence& sequence,
+                                   const ConvertToCommandsOptions& options);
 
 //===----------------------------------------------------------------------===//
 // Conversions from Thunk to Command
@@ -108,10 +107,10 @@ static absl::StatusOr<Command> Convert(const Memset32BitValueThunk& thunk) {
 static absl::StatusOr<Command> Convert(
     const WhileThunk& thunk, const ConvertToCommandsOptions& options) {
   TF_ASSIGN_OR_RETURN(
-      CommandBufferCmdSequence cond_cmds,
+      CommandBufferCmdExecutor cond_cmds,
       ConvertToCommands(thunk.condition_thunk_sequence()->thunks(), options));
   TF_ASSIGN_OR_RETURN(
-      CommandBufferCmdSequence body_cmds,
+      CommandBufferCmdExecutor body_cmds,
       ConvertToCommands(thunk.body_thunk_sequence()->thunks(), options));
 
   return std::make_unique<WhileCmd>(thunk.execution_stream_id(),
@@ -146,7 +145,7 @@ static absl::StatusOr<Command> Convert(const CublasLtMatmulThunk& thunk) {
 
 static absl::StatusOr<Command> Convert(
     const ConditionalThunk& thunk, const ConvertToCommandsOptions& options) {
-  std::vector<CommandBufferCmdSequence> branch_cmds;
+  std::vector<CommandBufferCmdExecutor> branch_cmds;
   branch_cmds.reserve(thunk.branch_thunks().size());
   if (thunk.branch_index_is_bool()) {
     // For boolean predicates, we need to convert the branches in reverse order
@@ -160,7 +159,7 @@ static absl::StatusOr<Command> Convert(
         ConvertToCommands(thunk.branch_thunks()[0]->thunks(), options));
   } else {
     for (auto& branch_thunk : thunk.branch_thunks()) {
-      TF_ASSIGN_OR_RETURN(CommandBufferCmdSequence cmds,
+      TF_ASSIGN_OR_RETURN(CommandBufferCmdExecutor cmds,
                           ConvertToCommands(branch_thunk->thunks(), options));
       branch_cmds.emplace_back(std::move(cmds));
     }
@@ -197,7 +196,7 @@ static absl::StatusOr<Command> Convert(const AllGatherStartThunk& thunk) {
 static absl::StatusOr<Command> Convert(
     const DynamicSliceThunk& thunk, const ConvertToCommandsOptions& options) {
   TF_ASSIGN_OR_RETURN(
-      CommandBufferCmdSequence embedded_cmds,
+      CommandBufferCmdExecutor embedded_cmds,
       ConvertToCommands(thunk.get_embedded_thunk()->thunks(), options));
 
   auto& thunk_fake_allocations = thunk.get_fake_allocations();
@@ -260,12 +259,12 @@ static absl::StatusOr<Command> Convert(const Thunk& thunk, Args&&... args) {
                       thunk);
 }
 
-static absl::Status AppendCommands(
-    CommandBufferCmdSequence::Builder& cmd_sequence_builder, const Thunk& thunk,
-    const ConvertToCommandsOptions& options) {
+static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+                                   const Thunk& thunk,
+                                   const ConvertToCommandsOptions& options) {
   auto append = [&](absl::StatusOr<Command> command) -> absl::Status {
     if (command.ok()) {
-      cmd_sequence_builder.Append(std::move(*command));
+      cmd_sequence.push_back(std::move(*command));
       return absl::OkStatus();
     }
     return command.status();
@@ -312,7 +311,7 @@ static absl::Status AppendCommands(
     // Sequential thunk does not have any special semantics and we simply inline
     // all nested thunks into command buffer.
     case Thunk::Kind::kSequential:
-      return AppendCommands(cmd_sequence_builder,
+      return AppendCommands(cmd_sequence,
                             static_cast<const SequentialThunk&>(thunk).thunks(),
                             options);
 
@@ -338,19 +337,20 @@ static absl::Status AppendCommands(
   }
 }
 
-static absl::Status AppendCommands(
-    CommandBufferCmdSequence::Builder& cmd_sequence_builder,
-    const ThunkSequence& sequence, const ConvertToCommandsOptions& options) {
+static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+                                   const ThunkSequence& sequence,
+                                   const ConvertToCommandsOptions& options) {
   for (const std::unique_ptr<Thunk>& thunk : sequence)
-    TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence_builder, *thunk, options));
+    TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence, *thunk, options));
   return absl::OkStatus();
 }
 
-absl::StatusOr<CommandBufferCmdSequence> ConvertToCommands(
+absl::StatusOr<CommandBufferCmdExecutor> ConvertToCommands(
     const ThunkSequence& sequence, const ConvertToCommandsOptions& options) {
-  CommandBufferCmdSequence::Builder cmd_sequence_builder;
-  TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence_builder, sequence, options));
-  return std::move(cmd_sequence_builder).Build(options.synchronization_mode);
+  CommandBufferCmdSequence cmd_sequence;
+  TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence, sequence, options));
+  return CommandBufferCmdExecutor::Create(std::move(cmd_sequence),
+                                          options.synchronization_mode);
 }
 
 }  // namespace xla::gpu
