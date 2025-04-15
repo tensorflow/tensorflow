@@ -274,12 +274,19 @@ class Shape {
     state.dimensions[state.layout->minor_to_major(index)] = value;
   }
 
+  [[nodiscard]] static bool ValidateDimensionSize(int64_t value,
+                                                  bool is_dynamic) {
+    return value >= 0 || (value == kUnboundedSize && is_dynamic);
+  }
+
   // Appends a new dimension with the given fixed size.
   // Precondition: this is an array shape, and `value` is >= 0.
-  void add_dimensions(int64_t value) {
+  void add_dimensions(int64_t value, bool is_dynamic = false) {
+    CHECK(ValidateDimensionSize(value, is_dynamic))
+        << "value: " << value << " is_dynamic: " << is_dynamic;
     auto& state = array_state();
     state.dimensions.push_back(value);
-    state.dynamic_dimensions.push_back(false);
+    state.dynamic_dimensions.push_back(is_dynamic);
   }
 
   // Clears all dimensions (i.e. makes this shape a scalar).

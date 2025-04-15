@@ -1063,16 +1063,19 @@ class ShapeUtil {
   static std::vector<const Shape*> FlattenTupleShape(const Shape& shape);
 
  private:
-  // Fills *shape ignoring dynamic dimensions. Returns true on success.
+  // Fills *shape. Returns true on success.
   // This populates the following fields in the shape:
   // - sets shape->element_type to element_type,
   // - sets shape->dimensions to dimensions,
+  // - sets shape->dynamic_dimensions to dynamic_dimensions,
   // - sets shape->layout.minor_to_major to [ndims - 1, ndims - 2, ..., 0]
   //   where ndims is the size of dimensions.
-  // REQUIRES: *shape is empty.
-  [[nodiscard]] static bool FillNewShape(PrimitiveType element_type,
-                                         absl::Span<const int64_t> dimensions,
-                                         Shape* shape);
+  // REQUIRES:
+  // - *shape is empty.
+  // - dynamic_dimensions.size() == dimensions.size()
+  [[nodiscard]] static bool FillNewShape(
+      PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+      const std::vector<bool>& dynamic_dimensions, Shape* shape);
 
   // Helper for ForEachSubshape which visits the subshapes of the given shape in
   // DFS pre-order starting with the index.
