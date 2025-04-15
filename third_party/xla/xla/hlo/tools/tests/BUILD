@@ -1,7 +1,6 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load("//xla:py_strict.bzl", "py_strict_test")
-load("//xla/tsl:tsl.bzl", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -42,7 +41,7 @@ lit_test_suite(
         "hlo_opt_hlo_protobinary.pb",
     ],
     tags_override = {
-        "hlo_opt_emit_proto.hlo": if_oss(["not_run:arm"]),  # TODO(b/394180263)
+        "hlo_opt_emit_proto.hlo": ["no_oss"],  # TODO(b/394180263)
     },
     tools = [
         "//xla/hlo/tools:hlo-opt",
