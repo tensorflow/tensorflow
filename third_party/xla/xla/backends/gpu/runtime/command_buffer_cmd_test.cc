@@ -64,11 +64,11 @@ static constexpr auto s0 = ExecutionStreamId(0);
 
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
-    CommandBufferCmdSequence::SynchronizationMode::kSerialize;
+    CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
 
 // A command buffer cmd for testing automatic barriers insertion by the command
-// buffer cmd sequence. We never execute this command, we need it only to pass
-// buffer usage vector to the command buffer cmd sequence.
+// buffer cmd commands. We never execute this command, we need it only to pass
+// buffer usage vector to the command buffer cmd commands.
 struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
   TestOnlyCommandBufferCmd(ExecutionStreamId execution_stream_id,
                            BufferUseVector buffer_usage)
@@ -153,13 +153,14 @@ TEST(CommandBufferCmdTest, SerializeExecution) {
   auto use0 = BufferUse(slice0, BufferUse::kRead);
   auto use1 = BufferUse(slice1, BufferUse::kRead);
 
-  CommandBufferCmdSequence::Builder builder;
-  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
-  TF_ASSERT_OK_AND_ASSIGN(CommandBufferCmdSequence commands,
-                          std::move(builder).Build(serialize));
+  CommandBufferCmdSequence commands;
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferCmdExecutor executor,
+      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
 
-  // TODO(ezhulenev): Check that commands correctly infer dependencies.
+  // TODO(ezhulenev): Check that executor correctly infer dependencies.
 }
 
 TEST(CommandBufferCmdTest, NoReadBarrier) {
@@ -172,13 +173,14 @@ TEST(CommandBufferCmdTest, NoReadBarrier) {
   auto use0 = BufferUse(slice0, BufferUse::kRead);
   auto use1 = BufferUse(slice1, BufferUse::kRead);
 
-  CommandBufferCmdSequence::Builder builder;
-  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
-  TF_ASSERT_OK_AND_ASSIGN(CommandBufferCmdSequence commands,
-                          std::move(builder).Build(serialize));
+  CommandBufferCmdSequence commands;
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferCmdExecutor executor,
+      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
 
-  // TODO(ezhulenev): Check that commands correctly infer dependencies.
+  // TODO(ezhulenev): Check that executor correctly infer dependencies.
 }
 
 TEST(CommandBufferCmdTest, NoWriteBarrier) {
@@ -191,13 +193,14 @@ TEST(CommandBufferCmdTest, NoWriteBarrier) {
   auto use0 = BufferUse(slice0, BufferUse::kWrite);
   auto use1 = BufferUse(slice1, BufferUse::kWrite);
 
-  CommandBufferCmdSequence::Builder builder;
-  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
-  TF_ASSERT_OK_AND_ASSIGN(CommandBufferCmdSequence commands,
-                          std::move(builder).Build(serialize));
+  CommandBufferCmdSequence commands;
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferCmdExecutor executor,
+      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
 
-  // TODO(ezhulenev): Check that commands correctly infer dependencies.
+  // TODO(ezhulenev): Check that executor correctly infer dependencies.
 }
 
 TEST(CommandBufferCmdTest, WriteConflictBarrier) {
@@ -212,26 +215,29 @@ TEST(CommandBufferCmdTest, WriteConflictBarrier) {
   auto use1 = BufferUse(slice0, BufferUse::kRead);
   auto use2 = BufferUse(slice1, BufferUse::kWrite);
 
-  CommandBufferCmdSequence::Builder builder;
-  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
-  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
-  builder.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use2});
-  TF_ASSERT_OK_AND_ASSIGN(CommandBufferCmdSequence commands,
-                          std::move(builder).Build(serialize));
+  CommandBufferCmdSequence commands;
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUseVector{use2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferCmdExecutor executor,
+      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
 
-  // TODO(ezhulenev): Check that commands correctly infer dependencies.
+  // TODO(ezhulenev): Check that executor correctly infer dependencies.
 }
 
 TEST(CommandBufferCmdTest, MemcpyCmd) {
-  se::StreamExecutor* executor = GpuExecutor();
+  se::StreamExecutor* stream_executor = GpuExecutor();
 
-  auto stream = executor->CreateStream().value();
+  auto stream = stream_executor->CreateStream().value();
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=42, b=0
-  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> a =
+      stream_executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> b =
+      stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
   TF_ASSERT_OK(stream->MemZero(&b, byte_length));
@@ -244,13 +250,14 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence::Builder builder;
-  builder.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_b, slice_a, byte_length);
-  TF_ASSERT_OK_AND_ASSIGN(CommandBufferCmdSequence commands,
-                          std::move(builder).Build(serialize));
+  CommandBufferCmdSequence commands;
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_b, slice_a, byte_length);
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferCmdExecutor executor,
+      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  se::StreamExecutorMemoryAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
   CommandBufferCmd::StateManager state;
@@ -260,9 +267,10 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 
   CommandBufferCmd::RecordParams record_params = {state};
 
-  auto command_buffer =
-      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary).value();
-  TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      stream_executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  TF_ASSERT_OK(executor.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
   TF_ASSERT_OK(command_buffer->Submit(stream.get()));
@@ -275,15 +283,17 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 }
 
 TEST(CommandBufferCmdTest, LaunchCmd) {
-  se::StreamExecutor* executor = GpuExecutor();
+  se::StreamExecutor* stream_executor = GpuExecutor();
 
-  auto stream = executor->CreateStream().value();
+  auto stream = stream_executor->CreateStream().value();
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=42, b=0
-  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> a =
+      stream_executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> b =
+      stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
   TF_ASSERT_OK(stream->MemZero(&b, byte_length));
@@ -299,24 +309,25 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   auto args_access = {BufferUse::kRead, MemoryAccess::kRead, BufferUse::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence::Builder builder;
-  builder.Emplace<LaunchCmd>(s0, "AddI32", args, args_access,
-                             LaunchDimensions(1, 4),
-                             /*shmem_bytes=*/0);
-  TF_ASSERT_OK_AND_ASSIGN(CommandBufferCmdSequence commands,
-                          std::move(builder).Build(serialize));
+  CommandBufferCmdSequence commands;
+  commands.Emplace<LaunchCmd>(s0, "AddI32", args, args_access,
+                              LaunchDimensions(1, 4),
+                              /*shmem_bytes=*/0);
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferCmdExecutor executor,
+      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
 
-  // Initialize command sequence and load device kernels.
+  // Initialize command commands and load device kernels.
   TF_ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,
                           se::gpu::GetGpuTestKernelsFatbin());
   Thunk::ExecutableSource source = {/*text=*/{},
                                     /*binary=*/fatbin};
 
   CommandBufferCmd::StateManager state;
-  TF_ASSERT_OK(commands.Initialize({executor, source}, state));
+  TF_ASSERT_OK(executor.Initialize({stream_executor, source}, state));
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  se::StreamExecutorMemoryAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
@@ -324,9 +335,10 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
 
   CommandBufferCmd::RecordParams record_params = {state};
 
-  auto command_buffer =
-      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary).value();
-  TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      stream_executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  TF_ASSERT_OK(executor.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
   TF_ASSERT_OK(command_buffer->Submit(stream.get()));

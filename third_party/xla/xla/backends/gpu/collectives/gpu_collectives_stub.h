@@ -64,6 +64,11 @@ class GpuCollectivesStub : public GpuCollectives {
 
   absl::Status GroupStart() final { return UnimplementedError(); }
   absl::Status GroupEnd() final { return UnimplementedError(); }
+  absl::StatusOr<void*> Allocate(uint64_t bytes) final {
+    return UnimplementedError();
+  }
+
+  absl::Status Deallocate(void* buffer) final { return UnimplementedError(); }
 
  protected:
   static absl::Status UnimplementedError() {

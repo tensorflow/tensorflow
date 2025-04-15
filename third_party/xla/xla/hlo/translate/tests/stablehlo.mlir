@@ -155,3 +155,56 @@ func.func @main(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf3
 // CHECK-DIRECT: stablehlo.multiply
 // CHECK-DIRECT: stablehlo.power
 // CHECK-DIRECT: stablehlo.subtract
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[128,32]{1,0})->f32[128,128]{1,0}}
+
+// CHECK:       ENTRY %[[$main_3:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[128,32] parameter(0)
+// CHECK-NEXT:  ROOT %[[all_gather_2:[^ ]+]] = f32[128,128] all-gather(%[[Arg_0_1]]), channel_id=1,
+// CHECK-SAME{{LITERAL}}: replica_groups={{0,2,4,6},{1,3,5,7}},
+// CHECK-SAME: dimensions={1},
+func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
+%0 = "stablehlo.all_gather"(%arg0) <{all_gather_dim = 1 : i64, channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>, replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>}> {shard_count = 4 : i64} : (tensor<128x32xf32>) -> tensor<128x128xf32>
+return %0 : tensor<128x128xf32>
+}
+// CHECK-DIRECT: stablehlo.all_gather
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[128,32]{1,0})->f32[128,128]{1,0}}
+
+// CHECK:       ENTRY %[[$main_3:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[128,32] parameter(0)
+// CHECK-NEXT:  ROOT %[[all_gather_2:[^ ]+]] = f32[128,128] all-gather(%[[Arg_0_1]]), channel_id=1,
+// CHECK-SAME{{LITERAL}}: replica_groups={{0,2,4,6},{1,3,5,7}},
+// CHECK-SAME: dimensions={1}, use_global_device_ids=true,
+func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
+  %0 = "stablehlo.all_gather"(%arg0) <{all_gather_dim = 1 : i64, channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>, replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>, use_global_device_ids}> {shard_count = 4 : i64} : (tensor<128x32xf32>) -> tensor<128x128xf32>
+  return %0 : tensor<128x128xf32>
+}
+// CHECK-DIRECT: stablehlo.all_gather
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[8,2]{1,0}, f32[8,4]{1,0})->(f32[8,8]{1,0}, f32[8,16]{1,0})}
+
+// CHECK:       ENTRY %[[$main_10:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[8,2] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = f32[8,4] parameter(1)
+// CHECK-NEXT:  %[[tuple_3:[^ ]+]] = (f32[8,2], f32[8,4]) tuple(%[[Arg_0_1]], %[[Arg_1_2]]),
+// CHECK-NEXT:  %[[get_tuple_element_4:[^ ]+]] = f32[8,2] get-tuple-element(%[[tuple_3]]), index=0,
+// CHECK-NEXT:  %[[get_tuple_element_5:[^ ]+]] = f32[8,4] get-tuple-element(%[[tuple_3]]), index=1,
+// CHECK-NEXT:  %[[all_gather_6:[^ ]+]] = (f32[8,8], f32[8,16]) all-gather(%[[get_tuple_element_4]], %[[get_tuple_element_5]]), channel_id=1,
+// CHECK-SAME{{LITERAL}}: replica_groups={{0,2,4,6},{1,3,5,7}},
+// CHECK-SAME:  dimensions={1}, use_global_device_ids=true,
+// CHECK-NEXT:  %[[get_tuple_element_7:[^ ]+]] = f32[8,8] get-tuple-element(%[[all_gather_6]]), index=0,
+// CHECK-NEXT:  %[[get_tuple_element_8:[^ ]+]] = f32[8,16] get-tuple-element(%[[all_gather_6]]), index=1,
+// CHECK-NEXT:  ROOT %[[tuple_9:[^ ]+]] = (f32[8,8], f32[8,16]) tuple(%[[get_tuple_element_7]], %[[get_tuple_element_8]]),
+func.func @main(%arg0: tensor<8x2xf32>, %arg1: tensor<8x4xf32>) -> tuple<tensor<8x8xf32>, tensor<8x16xf32>> {
+  %0:2 = "stablehlo.all_gather"(%arg0, %arg1) <{all_gather_dim = 1 : i64, channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>, replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>, use_global_device_ids}> : (tensor<8x2xf32>, tensor<8x4xf32>) -> (tensor<8x8xf32>, tensor<8x16xf32>)
+  %1 = stablehlo.tuple %0#0, %0#1 {xla_shape = "(f32[8,8]{0,1}, f32[8,16]{0,1})"} : tuple<tensor<8x8xf32>, tensor<8x16xf32>>
+  return %1 : tuple<tensor<8x8xf32>, tensor<8x16xf32>>
+}
+// CHECK-DIRECT: stablehlo.all_gather

@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <random>

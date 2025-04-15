@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -38,7 +37,7 @@ namespace xla::gpu {
 
 class CommandBufferThunk : public Thunk {
  public:
-  CommandBufferThunk(CommandBufferCmdSequence commands, ThunkInfo thunk_info,
+  CommandBufferThunk(CommandBufferCmdExecutor commands, ThunkInfo thunk_info,
                      std::unique_ptr<SequentialThunk> thunks = nullptr,
                      bool enable_command_buffers_during_profiling = false);
 
@@ -68,7 +67,7 @@ class CommandBufferThunk : public Thunk {
 
     // Returns true if `commands` cmd sequence has to be recorded into
     // `command_buffer` to update it (see `recorded_allocs` below).
-    bool ShouldUpdateCommandBuffer(const CommandBufferCmdSequence& commands,
+    bool ShouldUpdateCommandBuffer(const CommandBufferCmdExecutor& commands,
                                    const Thunk::ExecuteParams& params)
         ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex);
 
@@ -126,8 +125,8 @@ class CommandBufferThunk : public Thunk {
   // Evicts all previously instantiated command buffers.
   static void EvictCommandBuffers();
 
-  // Command sequence that initializes command buffers on each executor.
-  CommandBufferCmdSequence commands_;
+  // Commands executor that initializes command buffers on each stream executor.
+  CommandBufferCmdExecutor commands_;
 
   // Thunk sequence that executes the same commands as in `commands_` but using
   // thunk mechanism. We use it as a fallback mechanism to work around CUPTI

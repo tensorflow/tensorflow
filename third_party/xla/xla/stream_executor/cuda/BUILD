@@ -235,6 +235,9 @@ cc_library(
         "manual",
     ],
     deps = [
+        "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/core/collectives",
+        "//xla/core/collectives:collectives_registry",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/log",
@@ -243,7 +246,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@local_config_nccl//:nccl",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:numbers",
     ],
 )
 
