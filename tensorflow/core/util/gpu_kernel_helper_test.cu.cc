@@ -312,19 +312,6 @@ TEST_F(GpuLaunchConfigTest, GetGpu3DLaunchConfig) {
 #undef TEST_LAUNCH_PARAMETER
 }
 
-#if TENSORFLOW_USE_ROCM
-inline bool isGfx10orGfx11() {
-  hipDeviceProp_t props;
-  int dev = 0;
-  hipError_t result = hipGetDevice(&dev);
-  result = hipGetDeviceProperties(&props, dev);
-  if (result == hipSuccess) {
-    std::string gcnArchName = props.gcnArchName;
-    return (gcnArchName.substr(0,5)=="gfx10" || gcnArchName.substr(0,5)=="gfx11");
-  }
-  return false;
-}
-#endif
 
 TEST(CudaDeviceFunctionsTest, ShuffleGetSrcLane) {
   unsigned* failure_count;
@@ -335,7 +322,8 @@ TEST(CudaDeviceFunctionsTest, ShuffleGetSrcLane) {
 #endif
   *failure_count = 0;
 #if TENSORFLOW_USE_ROCM
-  const int TF_RED_WARPSIZE=isGfx10orGfx11() ? 32 : 64;
+  int TF_RED_WARPSIZE;
+  ASSERT_EQ(AMD_WarpSize(&TF_RED_WARPSIZE), cudaSuccess);
 #endif
   TF_EXPECT_OK(GpuLaunchKernel(GpuShuffleGetSrcLaneTest, 1, TF_RED_WARPSIZE, 0,
                                nullptr, failure_count));
