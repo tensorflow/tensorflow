@@ -1633,14 +1633,6 @@ TEST_F(PassOrderTest,
                   /*last_pass_regex=*/"comparison-expander");
 }
 
-TEST_F(PassOrderTest, CollectivePipelinerRunsAfterCollectiveQuantizer) {
-  DebugOptions options = GetDebugOptionsForTest();
-  options.set_xla_gpu_enable_pipelined_collectives(true);
-  SetDebugOptions(options);
-
-  VerifyPassOrder(/*first_pass_regex=*/"collective-quantizer",
-                  /*last_pass_regex=*/"collective-pipeliner.*");
-}
 
 TEST_F(PassOrderTest,
        AllGatherDynamicSliceSimplifierRunsAfterAllGatherOptimizer) {
@@ -1867,6 +1859,7 @@ TEST_F(GpuCompilerTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,
                           test_runner_as_hlo_runner().ExecutableFromWrapped(
                               std::move(wrapped_exec)));
+  std::cout << "exec module: " << exec->module().ToString() << "\n";
   const char* kExpected = R"(
     // CHECK:      dynamic-slice-fusion{{.+}} {
     // CHECK:        %[[slice:.+]] = {{.+}} slice({{.+}}), slice={[4:8], [0:32]}

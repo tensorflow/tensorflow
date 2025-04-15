@@ -1643,7 +1643,6 @@ ENTRY entry {
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   auto opts = GetDebugOptionsForTest();
-  opts.set_xla_gpu_enable_pipelined_collectives(true);
   opts.set_xla_gpu_enable_triton_gemm(false);
   CollectiveOpsVerifyF8Matmul(
       absl::StrReplaceAll(kModuleReplicatedStr, replacements_), opts);
@@ -1664,7 +1663,6 @@ class CollectiveOpsTestE2EPipelinedNonPipelined : public CollectiveOpsTestE2E {
     HloModuleConfig config =
         GetModuleConfigForTest(kNumReplicas, kNumPartitions);
     auto opts = GetDebugOptionsForTest();
-    opts.set_xla_gpu_enable_pipelined_collectives(true);
     config.set_debug_options(opts);
     TF_ASSERT_OK_AND_ASSIGN(auto module,
                             ParseAndReturnVerifiedModule(hlo_string, config));
@@ -1690,7 +1688,6 @@ class CollectiveOpsTestE2EPipelinedNonPipelined : public CollectiveOpsTestE2E {
     HloModuleConfig ref_config =
         GetModuleConfigForTest(kNumReplicas, kNumPartitions);
     auto ref_opts = GetDebugOptionsForTest();
-    ref_opts.set_xla_gpu_enable_pipelined_collectives(false);
     ref_opts.set_xla_gpu_enable_pipelined_all_reduce(false);
     ref_opts.set_xla_gpu_enable_pipelined_all_gather(false);
     ref_opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);

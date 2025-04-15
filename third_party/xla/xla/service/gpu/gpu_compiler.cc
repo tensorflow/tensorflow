@@ -916,8 +916,7 @@ absl::Status RunCollectiveOptimizationPasses(
   // Remove dead computations after collective quantization.
   collectives_pipeline.AddPass<HloDCE>();
 
-  if (debug_options.xla_gpu_enable_pipelined_collectives() ||
-      debug_options.xla_gpu_enable_pipelined_all_reduce() ||
+  if (debug_options.xla_gpu_enable_pipelined_all_reduce() ||
       IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(*hlo_module)) {
     CollectivePipeliner::Config config{
         /*level_to_operate_on=*/0,
@@ -940,8 +939,7 @@ absl::Status RunCollectiveOptimizationPasses(
     };
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
-  if (debug_options.xla_gpu_enable_pipelined_collectives() ||
-      debug_options.xla_gpu_enable_pipelined_all_gather() ||
+  if (debug_options.xla_gpu_enable_pipelined_all_gather() ||
       IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(*hlo_module)) {
     CollectivePipeliner::Config config{
         /*level_to_operate_on=*/0,
@@ -964,8 +962,7 @@ absl::Status RunCollectiveOptimizationPasses(
     };
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
-  if (debug_options.xla_gpu_enable_pipelined_collectives() ||
-      debug_options.xla_gpu_enable_pipelined_reduce_scatter() ||
+  if (debug_options.xla_gpu_enable_pipelined_reduce_scatter() ||
       IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(*hlo_module)) {
     CollectivePipeliner::Config config{
         /*level_to_operate_on=*/0,
@@ -1017,8 +1014,7 @@ absl::Status RunCollectiveOptimizationPasses(
   bool enable_partial_send_recv_pipelining =
       pipeline_parallelism_opt_level !=
       DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE;
-  if (debug_options.xla_gpu_enable_pipelined_collectives() ||
-      debug_options.xla_gpu_enable_pipelined_p2p() ||
+  if (debug_options.xla_gpu_enable_pipelined_p2p() ||
       enable_partial_send_recv_pipelining) {
     collectives_pipeline.AddPass<GpuP2PPipeliner>(
         enable_partial_send_recv_pipelining);
@@ -2728,10 +2724,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
                 .debug_options()
                 .xla_gpu_experimental_pipeline_parallelism_opt_level() ==
             DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE &&
-        (module->config()
-             .debug_options()
-             .xla_gpu_enable_pipelined_collectives() ||
-         module->config().debug_options().xla_gpu_enable_pipelined_p2p())) {
+        (module->config().debug_options().xla_gpu_enable_pipelined_p2p())) {
       pipeline.AddPass<PipelinedP2PRewriter>();
     }
     pipeline.AddPass<GpuConvertAsyncCollectivesToSync>();

@@ -456,7 +456,7 @@ message DebugOptions {
 
   bool xla_gpu_enable_pipelined_all_reduce = 217;
 
-  bool xla_gpu_enable_pipelined_collectives = 239;
+  bool xla_gpu_enable_pipelined_collectives = 239 [deprecated = true];
 
   bool xla_gpu_enable_pipelined_p2p = 246;
 
