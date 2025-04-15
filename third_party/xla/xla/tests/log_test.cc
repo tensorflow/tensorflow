@@ -28,7 +28,7 @@ namespace {
 
 class LogTest : public ClientLibraryTestBase {};
 
-XLA_TEST_F(LogTest, LogZeroValues) {
+TEST_F(LogTest, LogZeroValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR3FromArray3D<float>(&builder, Array3D<float>(3, 0, 0));
   Log(x);

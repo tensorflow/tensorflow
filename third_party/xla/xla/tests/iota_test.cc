@@ -35,7 +35,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-XLA_TEST_F(HloTestBase, IotaReshapeR1) {
+TEST_F(HloTestBase, IotaReshapeR1) {
   const std::string hlo_text = R"(
   HloModule iota_reshape
   ENTRY main {
@@ -46,7 +46,7 @@ XLA_TEST_F(HloTestBase, IotaReshapeR1) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, IotaReshapeExtraDims) {
+TEST_F(HloTestBase, IotaReshapeExtraDims) {
   const std::string hlo_text = R"(
   HloModule iota_reshape
   ENTRY main {
@@ -70,7 +70,7 @@ class IotaR1Test
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<std::tuple<PrimitiveType, int>> {};
 
-XLA_TEST_P(IotaR1Test, DoIt) {
+TEST_P(IotaR1Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64_t num_elements = std::get<1>(spec);
@@ -117,7 +117,7 @@ class IotaR2Test : public ClientLibraryTestBase,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
-XLA_TEST_P(IotaR2Test, DoIt) {
+TEST_P(IotaR2Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64_t num_elements = std::get<1>(spec);
@@ -155,7 +155,7 @@ class IotaR3Test : public ClientLibraryTestBase,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
-XLA_TEST_P(IotaR3Test, DoIt) {
+TEST_P(IotaR3Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64_t num_elements = std::get<1>(spec);

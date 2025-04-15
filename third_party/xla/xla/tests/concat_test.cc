@@ -45,7 +45,7 @@ using ConcatTestHlo = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 using ::testing::HasSubstr;
 
 // Concatenate expects at least one argument.
-XLA_TEST_F(ConcatTest, Concat_Nothing) {
+TEST_F(ConcatTest, Concat_Nothing) {
   XlaBuilder builder(TestName());
   ConcatInDim(&builder, {}, 0);
   absl::StatusOr<XlaComputation> computation_status = builder.Build();
@@ -55,7 +55,7 @@ XLA_TEST_F(ConcatTest, Concat_Nothing) {
 }
 
 // Concatenate with one argument works.
-XLA_TEST_F(ConcatTest, Concat_R1_With_Nothing) {
+TEST_F(ConcatTest, Concat_R1_With_Nothing) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<float>(&builder, {42.0, 64.0});
   ConcatInDim(&builder, {a}, 0);
@@ -64,7 +64,7 @@ XLA_TEST_F(ConcatTest, Concat_R1_With_Nothing) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_R1_L0_With_Nothing) {
+TEST_F(ConcatTest, Concat_R1_L0_With_Nothing) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<float>(&builder, {});
   ConcatInDim(&builder, {a}, 0);
@@ -75,7 +75,7 @@ XLA_TEST_F(ConcatTest, Concat_R1_L0_With_Nothing) {
 
 // Show that we can't concatenate R0 with R0 because we can't name the dimension
 // to concatenate on.
-XLA_TEST_F(ConcatTest, CannotConcatR0WithR0) {
+TEST_F(ConcatTest, CannotConcatR0WithR0) {
   XlaBuilder builder(TestName());
   auto a = ConstantR0<float>(&builder, 42.0);
   auto b = ConstantR0<float>(&builder, 64.0);
@@ -86,7 +86,7 @@ XLA_TEST_F(ConcatTest, CannotConcatR0WithR0) {
               HasSubstr("out of bounds: 0"));
 }
 
-XLA_TEST_F(ConcatTest, Concat_R1_L0_With_R1_L0) {
+TEST_F(ConcatTest, Concat_R1_L0_With_R1_L0) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<float>(&builder, {});
   auto b = ConstantR1<float>(&builder, {});
@@ -96,7 +96,7 @@ XLA_TEST_F(ConcatTest, Concat_R1_L0_With_R1_L0) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_R1_L0_With_R1_L1) {
+TEST_F(ConcatTest, Concat_R1_L0_With_R1_L1) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<float>(&builder, {});
   auto b = ConstantR1<float>(&builder, {256.0});
@@ -106,7 +106,7 @@ XLA_TEST_F(ConcatTest, Concat_R1_L0_With_R1_L1) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_R1_L2_With_R1_L0) {
+TEST_F(ConcatTest, Concat_R1_L2_With_R1_L0) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<float>(&builder, {42.0, 64.0});
   auto b = ConstantR1<float>(&builder, {});
@@ -116,7 +116,7 @@ XLA_TEST_F(ConcatTest, Concat_R1_L2_With_R1_L0) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_R1_L2_With_R1_L1) {
+TEST_F(ConcatTest, Concat_R1_L2_With_R1_L1) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<float>(&builder, {42.0, 64.0});
   auto b = ConstantR1<float>(&builder, {256.0});
@@ -126,7 +126,7 @@ XLA_TEST_F(ConcatTest, Concat_R1_L2_With_R1_L1) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_R1_L253_With_R1_L7) {
+TEST_F(ConcatTest, Concat_R1_L253_With_R1_L7) {
   std::vector<float> lhs(253);
   std::vector<float> rhs(7);
   std::vector<float> expected(253 + 7);
@@ -145,7 +145,7 @@ XLA_TEST_F(ConcatTest, Concat_R1_L253_With_R1_L7) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_0x0_With_0x0) {
+TEST_F(ConcatTest, Concat_0x0_With_0x0) {
   for (int dim : {0, 1}) {
     XlaBuilder builder(TestName());
     auto a = ConstantR2FromArray2D(&builder, Array2D<float>(0, 0));
@@ -157,7 +157,7 @@ XLA_TEST_F(ConcatTest, Concat_0x0_With_0x0) {
   }
 }
 
-XLA_TEST_F(ConcatTest, Concat_1x1_With_1x1_InDim0) {
+TEST_F(ConcatTest, Concat_1x1_With_1x1_InDim0) {
   XlaBuilder builder(TestName());
   auto a_array = CreatePatternedMatrix(1, 1);
   auto b_array = CreatePatternedMatrix(1, 1, /*offset=*/64.0);
@@ -172,7 +172,7 @@ XLA_TEST_F(ConcatTest, Concat_1x1_With_1x1_InDim0) {
   ComputeAndCompareR2<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_1x1_With_1x1_InDim1) {
+TEST_F(ConcatTest, Concat_1x1_With_1x1_InDim1) {
   XlaBuilder builder(TestName());
   auto a_array = CreatePatternedMatrix(1, 1);
   auto b_array = CreatePatternedMatrix(1, 1, /*offset=*/64.0);
@@ -186,7 +186,7 @@ XLA_TEST_F(ConcatTest, Concat_1x1_With_1x1_InDim1) {
   ComputeAndCompareR2<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat2x0With2x5) {
+TEST_F(ConcatTest, Concat2x0With2x5) {
   XlaBuilder builder(TestName());
   auto b_array = CreatePatternedMatrix(2, 5, /*offset=*/64.0);
   auto a = ConstantR2FromArray2D(&builder, Array2D<float>(2, 0));
@@ -196,7 +196,7 @@ XLA_TEST_F(ConcatTest, Concat2x0With2x5) {
   ComputeAndCompareR2<float>(&builder, *b_array, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat2x3With2x5) {
+TEST_F(ConcatTest, Concat2x3With2x5) {
   XlaBuilder builder(TestName());
   auto a_array = CreatePatternedMatrix(2, 3);
   auto b_array = CreatePatternedMatrix(2, 5, /*offset=*/64.0);
@@ -211,7 +211,7 @@ XLA_TEST_F(ConcatTest, Concat2x3With2x5) {
   ComputeAndCompareR2<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat3x2With0x2) {
+TEST_F(ConcatTest, Concat3x2With0x2) {
   XlaBuilder builder(TestName());
   auto a_array = CreatePatternedMatrix(3, 2);
   auto a = ConstantR2FromArray2D(&builder, *a_array);
@@ -221,7 +221,7 @@ XLA_TEST_F(ConcatTest, Concat3x2With0x2) {
   ComputeAndCompareR2<float>(&builder, *a_array, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat3x2With5x2) {
+TEST_F(ConcatTest, Concat3x2With5x2) {
   XlaBuilder builder(TestName());
   auto a_array = CreatePatternedMatrix(3, 2);
   auto b_array = CreatePatternedMatrix(5, 2, /*offset=*/64.0);
@@ -242,7 +242,7 @@ XLA_TEST_F(ConcatTest, Concat3x2With5x2) {
   ComputeAndCompareR2<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_R3_3x0x2_3x0x1) {
+TEST_F(ConcatTest, Concat_R3_3x0x2_3x0x1) {
   XlaBuilder builder(TestName());
   auto a = ConstantR3FromArray3D(&builder, Array3D<float>(3, 0, 2));
   auto b = ConstantR3FromArray3D(&builder, Array3D<float>(3, 0, 1));
@@ -251,7 +251,7 @@ XLA_TEST_F(ConcatTest, Concat_R3_3x0x2_3x0x1) {
                              ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_R3_3x1x2_3x1x1) {
+TEST_F(ConcatTest, Concat_R3_3x1x2_3x1x1) {
   XlaBuilder builder(TestName());
   Array3D<float> a_array({
       // 3x1x2
@@ -277,7 +277,7 @@ XLA_TEST_F(ConcatTest, Concat_R3_3x1x2_3x1x1) {
   ComputeAndCompareR3<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_R1_1x1_1x1_1x1) {
+TEST_F(ConcatTest, Concat_R1_1x1_1x1_1x1) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<float>(&builder, {42.0});
   auto b = ConstantR1<float>(&builder, {64.0});
@@ -288,7 +288,7 @@ XLA_TEST_F(ConcatTest, Concat_R1_1x1_1x1_1x1) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_R3_3x1x2_3x1x1_3x1x1) {
+TEST_F(ConcatTest, Concat_R3_3x1x2_3x1x1_3x1x1) {
   XlaBuilder builder(TestName());
   Array3D<float> a_array({
       // 3x1x2
@@ -321,7 +321,7 @@ XLA_TEST_F(ConcatTest, Concat_R3_3x1x2_3x1x1_3x1x1) {
   ComputeAndCompareR3<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, DoubleConcatLeftAssociative) {
+TEST_F(ConcatTest, DoubleConcatLeftAssociative) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<float>(&builder, {42.0});
   auto b = ConstantR1<float>(&builder, {64.0});
@@ -333,7 +333,7 @@ XLA_TEST_F(ConcatTest, DoubleConcatLeftAssociative) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, DoubleConcatRightAssociative) {
+TEST_F(ConcatTest, DoubleConcatRightAssociative) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<float>(&builder, {42.0});
   auto b = ConstantR1<float>(&builder, {64.0});
@@ -345,7 +345,7 @@ XLA_TEST_F(ConcatTest, DoubleConcatRightAssociative) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_1x1024_With_1x1024_InDim0) {
+TEST_F(ConcatTest, Concat_1x1024_With_1x1024_InDim0) {
   Array2D<float> lhs(1, 1024);
   Array2D<float> rhs(1, 1024);
   for (int i = 0; i < 1024; ++i) {
@@ -366,7 +366,7 @@ XLA_TEST_F(ConcatTest, Concat_1x1024_With_1x1024_InDim0) {
   ComputeAndCompareR2<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_1x1024_With_1x1024_InDim1) {
+TEST_F(ConcatTest, Concat_1x1024_With_1x1024_InDim1) {
   Array2D<float> lhs(1, 1024);
   Array2D<float> rhs(1, 1024);
   for (int i = 0; i < 1024; ++i) {
@@ -387,7 +387,7 @@ XLA_TEST_F(ConcatTest, Concat_1x1024_With_1x1024_InDim1) {
   ComputeAndCompareR2<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConcatTest, Concat_64x64_With_64x2) {
+TEST_F(ConcatTest, Concat_64x64_With_64x2) {
   Array2D<float> lhs(64, 64);
   Array2D<float> rhs(64, 2);
   for (int i0 = 0; i0 < 64; ++i0) {
@@ -414,7 +414,7 @@ XLA_TEST_F(ConcatTest, Concat_64x64_With_64x2) {
 }
 
 // Show that we can't concatenate with an opaques.
-XLA_TEST_F(ConcatTest, CannotConcatOpaques) {
+TEST_F(ConcatTest, CannotConcatOpaques) {
   XlaBuilder builder(TestName());
   auto opaque_shape = ShapeUtil::MakeOpaqueShape();
   auto r1f32 = xla::ShapeUtil::MakeShape(xla::F32, {1});
@@ -429,7 +429,7 @@ XLA_TEST_F(ConcatTest, CannotConcatOpaques) {
 }
 
 // Show that we can't concatenate with tokens.
-XLA_TEST_F(ConcatTest, CannotConcatTokens) {
+TEST_F(ConcatTest, CannotConcatTokens) {
   XlaBuilder builder(TestName());
   auto token_shape = ShapeUtil::MakeTokenShape();
   auto r1f32 = xla::ShapeUtil::MakeShape(xla::F32, {1});
@@ -443,7 +443,7 @@ XLA_TEST_F(ConcatTest, CannotConcatTokens) {
       HasSubstr("Expected array argument for operand of concatenation"));
 }
 
-XLA_TEST_F(ConcatTest, ConcatSeveralBoxedPredicates) {
+TEST_F(ConcatTest, ConcatSeveralBoxedPredicates) {
   XlaBuilder builder(TestName());
   auto p0 = ConstantR1<bool>(&builder, {true});
   auto p1 = ConstantR1<bool>(&builder, {false});
@@ -454,7 +454,7 @@ XLA_TEST_F(ConcatTest, ConcatSeveralBoxedPredicates) {
   ComputeAndCompareR1<bool>(&builder, expected, {});
 }
 
-XLA_TEST_F(ConcatTest, ConcatSeveralR1S32s) {
+TEST_F(ConcatTest, ConcatSeveralR1S32s) {
   XlaBuilder builder(TestName());
   auto a0 = ConstantR1<int32_t>(&builder, {1});
   auto a1 = ConstantR1<int32_t>(&builder, {2, 3});
@@ -467,7 +467,7 @@ XLA_TEST_F(ConcatTest, ConcatSeveralR1S32s) {
   ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
-XLA_TEST_F(ConcatTest, ConcatR3WeirdDims) {
+TEST_F(ConcatTest, ConcatR3WeirdDims) {
   XlaBuilder builder(TestName());
 
   Array3D<float> arr0(9, 17, 1);
@@ -500,7 +500,7 @@ XLA_TEST_F(ConcatTest, ConcatR3WeirdDims) {
   ComputeAndCompareR3<float>(&builder, expected, {&p0, &p1});
 }
 
-XLA_TEST_F(ConcatTest, ConcatDeeplyNested) {
+TEST_F(ConcatTest, ConcatDeeplyNested) {
   XlaBuilder builder(TestName());
   auto a_literal = LiteralUtil::CreateR1<float>({256.0});
   auto a = Parameter(&builder, 0, a_literal.shape(), "x");
@@ -525,7 +525,7 @@ XLA_TEST_F(ConcatTest, ConcatDeeplyNested) {
   ComputeAndCompareR1<float>(&builder, expected, {&a_literal});
 }
 
-XLA_TEST_F(ConcatTestHlo, ConcatWithBitcast) {
+TEST_F(ConcatTestHlo, ConcatWithBitcast) {
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule jit_broken.874
 
@@ -808,7 +808,7 @@ TEST_P(ConcatR2BinaryTest, DoIt) {
 // add1 add2 add3
 //    \  |   /
 //     concat
-XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
+TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
   auto x_literal = LiteralUtil::CreateR0<float>(2.f);
   auto y_literal = LiteralUtil::CreateR0<float>(3.f);
@@ -828,7 +828,7 @@ XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
 
 // Test that the HLO optimization to replace a concat of a broadcasted scalar
 // produces the correct result in rank 1.
-XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
+TEST_F(ConcatTest, ConcatBroadcastArgument) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
   auto x_literal = LiteralUtil::CreateR1<float>({2.0f, 3.0f, 5.0f, 6.0f});
   auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
@@ -852,7 +852,7 @@ XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
 // Test that the HLO optimization to replace a concat of a broadcasted scalar
 // produces the correct result in rank 3 with both high and low padding in
 // different dimensions.
-XLA_TEST_F(ConcatTest, ConcatBroadcastArgumentR3) {
+TEST_F(ConcatTest, ConcatBroadcastArgumentR3) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
   Array3D<float> x3d(3, 5, 7, 3.14f);
   auto x_literal = LiteralUtil::CreateR3FromArray3D<float>(x3d);

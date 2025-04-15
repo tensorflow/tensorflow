@@ -24,7 +24,7 @@ namespace {
 
 class TopkTest : public HloTestBase {};
 
-XLA_TEST_F(TopkTest, LargestTopK) {
+TEST_F(TopkTest, LargestTopK) {
   absl::string_view hlo_text_module = R"(
     HloModule topk
 
@@ -36,7 +36,7 @@ XLA_TEST_F(TopkTest, LargestTopK) {
   EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{1e-5, 1e-5}));
 }
 
-XLA_TEST_F(TopkTest, SmallestTopK) {
+TEST_F(TopkTest, SmallestTopK) {
   absl::string_view hlo_text_module = R"(
     HloModule topk
 
@@ -48,7 +48,7 @@ XLA_TEST_F(TopkTest, SmallestTopK) {
   EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{1e-5, 1e-5}));
 }
 
-XLA_TEST_F(TopkTest, TopKOfTranspose) {
+TEST_F(TopkTest, TopKOfTranspose) {
   // Regression test for b/362565176
   absl::string_view hlo_text_module = R"(
     HloModule topk

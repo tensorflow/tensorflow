@@ -42,7 +42,7 @@ class TridiagonalTest
     : public ClientLibraryTestRunnerMixin<HloTestBase>,
       public ::testing::WithParamInterface<std::tuple<int, int, int>> {};
 
-XLA_TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {
+TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {
   xla::XlaBuilder builder(TestName());
 
   // Since the last element ignored, it will be {{{34, 35, 0}}}
@@ -84,7 +84,7 @@ XLA_TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {
   EXPECT_EQ(result.data<float>({}), expected_values);
 }
 
-XLA_TEST_P(TridiagonalTest, TridiagonalMatMulWrongShape) {
+TEST_P(TridiagonalTest, TridiagonalMatMulWrongShape) {
   xla::XlaBuilder builder(TestName());
 
   XlaOp upper_diagonal_xla = Parameter(
@@ -103,7 +103,7 @@ XLA_TEST_P(TridiagonalTest, TridiagonalMatMulWrongShape) {
                 "superdiag must have same rank as rhs, but got 3 and 4."));
 }
 
-XLA_TEST_P(TridiagonalTest, Solves) {
+TEST_P(TridiagonalTest, Solves) {
   const auto& spec = GetParam();
   xla::XlaBuilder builder(TestName());
 

@@ -58,7 +58,7 @@ class ReshapeTest : public ::testing::WithParamInterface<PrimitiveType>,
 };
 
 // Collapses 2-dimensional pseudo-scalar (single-element array) to 1 dimension.
-XLA_TEST_P(ReshapeTest, CollapseTrivial1x1) {
+TEST_P(ReshapeTest, CollapseTrivial1x1) {
   XlaBuilder builder(TestName());
   Array2D<float> input_array(1, 1);
   input_array.Fill(1.0f);
@@ -74,7 +74,7 @@ XLA_TEST_P(ReshapeTest, CollapseTrivial1x1) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, CollapseTrivialR1EmptyDims) {
+TEST_P(ReshapeTest, CollapseTrivialR1EmptyDims) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateR1<float>({1.0f});
   XlaOp parameter;
@@ -88,7 +88,7 @@ XLA_TEST_P(ReshapeTest, CollapseTrivialR1EmptyDims) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, CollapseTrivialR1OnlyDim) {
+TEST_P(ReshapeTest, CollapseTrivialR1OnlyDim) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateR1<float>({1.0f});
   XlaOp parameter;
@@ -103,7 +103,7 @@ XLA_TEST_P(ReshapeTest, CollapseTrivialR1OnlyDim) {
 }
 
 // Collapses 2-dimensional pseudo-scalar (single-element array) to scalar.
-XLA_TEST_P(ReshapeTest, SingleElementArrayToScalar) {
+TEST_P(ReshapeTest, SingleElementArrayToScalar) {
   XlaBuilder builder(TestName());
   Array2D<float> input_array(1, 1);
   input_array.Fill(1.0f);
@@ -120,7 +120,7 @@ XLA_TEST_P(ReshapeTest, SingleElementArrayToScalar) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, ScalarToSingleElementArray) {
+TEST_P(ReshapeTest, ScalarToSingleElementArray) {
   XlaBuilder builder(TestName());
 
   Literal param0_literal = LiteralUtil::CreateR0<float>(1.0f);
@@ -136,7 +136,7 @@ XLA_TEST_P(ReshapeTest, ScalarToSingleElementArray) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, Trivial0x3) {
+TEST_P(ReshapeTest, Trivial0x3) {
   XlaBuilder builder(TestName());
   Array2D<float> input_array(0, 3);
   auto input_literal = LiteralUtil::CreateR2FromArray2D(input_array);
@@ -150,7 +150,7 @@ XLA_TEST_P(ReshapeTest, Trivial0x3) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, Trivial0x3WithParameter) {
+TEST_P(ReshapeTest, Trivial0x3WithParameter) {
   XlaBuilder builder(TestName());
 
   Literal param0_literal =
@@ -165,7 +165,7 @@ XLA_TEST_P(ReshapeTest, Trivial0x3WithParameter) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, Trivial3x0) {
+TEST_P(ReshapeTest, Trivial3x0) {
   XlaBuilder builder(TestName());
   Array2D<float> input_array(3, 0);
   auto input_literal = LiteralUtil::CreateR2FromArray2D(input_array);
@@ -180,7 +180,7 @@ XLA_TEST_P(ReshapeTest, Trivial3x0) {
 }
 
 // Collapses a 2-dimensional row vector to 1 dimension.
-XLA_TEST_P(ReshapeTest, Trivial1x3) {
+TEST_P(ReshapeTest, Trivial1x3) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateR2<float>({{1.0f, 2.0f, 3.0f}});
   XlaOp parameter;
@@ -194,7 +194,7 @@ XLA_TEST_P(ReshapeTest, Trivial1x3) {
 }
 
 // Collapses a 2-dimensional column vector to 1 dimension.
-XLA_TEST_P(ReshapeTest, Trivial3x1) {
+TEST_P(ReshapeTest, Trivial3x1) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateR2<float>({{1.0f}, {2.0f}, {3.0f}});
   XlaOp parameter;
@@ -208,7 +208,7 @@ XLA_TEST_P(ReshapeTest, Trivial3x1) {
 }
 
 // Splits an empty vector into an empty matrix.
-XLA_TEST_P(ReshapeTest, R1ToR2_0_To_2x0) {
+TEST_P(ReshapeTest, R1ToR2_0_To_2x0) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateR1<float>({});
   XlaOp parameter;
@@ -222,7 +222,7 @@ XLA_TEST_P(ReshapeTest, R1ToR2_0_To_2x0) {
 }
 
 // Splits a vector into a matrix.
-XLA_TEST_P(ReshapeTest, R1ToR2_6_To_2x3) {
+TEST_P(ReshapeTest, R1ToR2_6_To_2x3) {
   XlaBuilder builder(TestName());
   auto input_literal =
       LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
@@ -238,7 +238,7 @@ XLA_TEST_P(ReshapeTest, R1ToR2_6_To_2x3) {
 }
 
 // Transposes a 2x0 array to a 0x2 array.
-XLA_TEST_P(ReshapeTest, Reshape0x2To2x0) {
+TEST_P(ReshapeTest, Reshape0x2To2x0) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateFromArray(Array2D<float>(0, 2));
   XlaOp parameter;
@@ -252,7 +252,7 @@ XLA_TEST_P(ReshapeTest, Reshape0x2To2x0) {
 }
 
 // Transposes a 2-dimensional row vector to a column vector.
-XLA_TEST_P(ReshapeTest, ReshapeRowToCol) {
+TEST_P(ReshapeTest, ReshapeRowToCol) {
   XlaBuilder builder(TestName());
   auto simple = MakeLinspaceArray2D(1.0f, 3.0f, 1, 3);
   auto input_literal = LiteralUtil::CreateFromArray(*simple);
@@ -269,7 +269,7 @@ XLA_TEST_P(ReshapeTest, ReshapeRowToCol) {
 }
 
 // Transposes a 2-dimensional array.
-XLA_TEST_P(ReshapeTest, TransposeAsReshape) {
+TEST_P(ReshapeTest, TransposeAsReshape) {
   XlaBuilder builder(TestName());
   auto a4x3 = MakeLinspaceArray2D(1.0f, 12.0f, 4, 3);
   auto input_literal = LiteralUtil::CreateFromArray(*a4x3);
@@ -287,7 +287,7 @@ XLA_TEST_P(ReshapeTest, TransposeAsReshape) {
 }
 
 // Transposes a 0x4 array with XlaBuilder::Transpose.
-XLA_TEST_P(ReshapeTest, Transpose0x4) {
+TEST_P(ReshapeTest, Transpose0x4) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateFromArray(Array2D<float>(0, 4));
   XlaOp parameter;
@@ -301,7 +301,7 @@ XLA_TEST_P(ReshapeTest, Transpose0x4) {
 }
 
 // Transposes a 2-dimensional array with ComputationBuilder::Trans.
-XLA_TEST_P(ReshapeTest, Transpose4x3) {
+TEST_P(ReshapeTest, Transpose4x3) {
   XlaBuilder builder(TestName());
   auto a4x3 = MakeLinspaceArray2D(1.0f, 12.0f, 4, 3);
   auto input_literal = LiteralUtil::CreateFromArray(*a4x3);
@@ -319,7 +319,7 @@ XLA_TEST_P(ReshapeTest, Transpose4x3) {
 
 // Reshapes an empty 2-dimensional array with dimensions that are not just a
 // rearrangement of the originals (split), but no reordering (no shuffle).
-XLA_TEST_P(ReshapeTest, ReshapeSplitNoShuffleZeroElements) {
+TEST_P(ReshapeTest, ReshapeSplitNoShuffleZeroElements) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateFromArray(Array2D<float>(6, 0));
   XlaOp parameter;
@@ -333,7 +333,7 @@ XLA_TEST_P(ReshapeTest, ReshapeSplitNoShuffleZeroElements) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, ReshapeR4ToR2ZeroElements) {
+TEST_P(ReshapeTest, ReshapeR4ToR2ZeroElements) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateFromArray(Array4D<float>(2, 3, 4, 0));
   XlaOp parameter;
@@ -348,7 +348,7 @@ XLA_TEST_P(ReshapeTest, ReshapeR4ToR2ZeroElements) {
 
 // Reshapes a 2-dimensional array with dimensions that are not just a
 // rearrangement of the originals (split), but no reordering (no shuffle).
-XLA_TEST_P(ReshapeTest, ReshapeSplitNoShuffle) {
+TEST_P(ReshapeTest, ReshapeSplitNoShuffle) {
   XlaBuilder builder(TestName());
   auto a4x3 = MakeLinspaceArray2D(1.0f, 12.0f, 4, 3);
   auto input_literal = LiteralUtil::CreateFromArray(*a4x3);
@@ -364,7 +364,7 @@ XLA_TEST_P(ReshapeTest, ReshapeSplitNoShuffle) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, ReshapeSplitAndShuffleZeroElements) {
+TEST_P(ReshapeTest, ReshapeSplitAndShuffleZeroElements) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateFromArray(Array2D<float>(0, 6));
   XlaOp parameter;
@@ -380,7 +380,7 @@ XLA_TEST_P(ReshapeTest, ReshapeSplitAndShuffleZeroElements) {
 
 // Reshapes a 2-dimensional array with dimensions that are not just a
 // rearrangement of the originals (split), and reorder the input (shuffle).
-XLA_TEST_P(ReshapeTest, ReshapeSplitAndShuffle) {
+TEST_P(ReshapeTest, ReshapeSplitAndShuffle) {
   XlaBuilder builder(TestName());
   auto a4x3 = MakeLinspaceArray2D(1.0f, 12.0f, 4, 3);
   auto input_literal = LiteralUtil::CreateFromArray(*a4x3);
@@ -408,7 +408,7 @@ static Array3D<float> ArrayForDocR3Tests() {
                          {{40, 41, 42}, {45, 46, 47}}});
 }
 
-XLA_TEST_P(ReshapeTest, DocR3_R1_Collapse_012) {
+TEST_P(ReshapeTest, DocR3_R1_Collapse_012) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateFromArray(ArrayForDocR3Tests());
   XlaOp parameter;
@@ -424,7 +424,7 @@ XLA_TEST_P(ReshapeTest, DocR3_R1_Collapse_012) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, DocR3_R2_Collapse_012_Refine_83) {
+TEST_P(ReshapeTest, DocR3_R2_Collapse_012_Refine_83) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateFromArray(ArrayForDocR3Tests());
   XlaOp parameter;
@@ -445,7 +445,7 @@ XLA_TEST_P(ReshapeTest, DocR3_R2_Collapse_012_Refine_83) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, DocR3_R1_Collapse_120) {
+TEST_P(ReshapeTest, DocR3_R1_Collapse_120) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateFromArray(ArrayForDocR3Tests());
   XlaOp parameter;
@@ -461,7 +461,7 @@ XLA_TEST_P(ReshapeTest, DocR3_R1_Collapse_120) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, DocR3_R2_Collapse_120_Refine_83) {
+TEST_P(ReshapeTest, DocR3_R2_Collapse_120_Refine_83) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateFromArray(ArrayForDocR3Tests());
   XlaOp parameter;
@@ -483,7 +483,7 @@ XLA_TEST_P(ReshapeTest, DocR3_R2_Collapse_120_Refine_83) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, DocR3_R3_Collapse_120_Refine_262) {
+TEST_P(ReshapeTest, DocR3_R3_Collapse_120_Refine_262) {
   XlaBuilder builder(TestName());
   auto input_literal = LiteralUtil::CreateFromArray(ArrayForDocR3Tests());
   XlaOp parameter;
@@ -514,7 +514,7 @@ XLA_TEST_P(ReshapeTest, DocR3_R3_Collapse_120_Refine_262) {
 // Then we collapse Z be collapsed so we just end up with planes:
 //
 // 1 2 3 4 5 6 1 2 3 4 5 6
-XLA_TEST_P(ReshapeTest, FullyConnectedCollapse) {
+TEST_P(ReshapeTest, FullyConnectedCollapse) {
   XlaBuilder builder(TestName());
   Array4D<float> t2x2x2x3(2, 2, 2, 3);
   auto filler2x3 = MakeLinspaceArray2D(1.0f, 6.0f, 2, 3);
@@ -534,7 +534,7 @@ XLA_TEST_P(ReshapeTest, FullyConnectedCollapse) {
 }
 
 // As above, but uses reshape directly.
-XLA_TEST_P(ReshapeTest, FullyConnectedCollapseDesugared) {
+TEST_P(ReshapeTest, FullyConnectedCollapseDesugared) {
   XlaBuilder builder(TestName());
   Array4D<float> t(2, 1, 2, 2);
   t(0, 0, 0, 0) = 0;
@@ -559,7 +559,7 @@ XLA_TEST_P(ReshapeTest, FullyConnectedCollapseDesugared) {
 }
 
 // Reshape various ranks to a scalar.
-XLA_TEST_P(ReshapeTest, ToScalar) {
+TEST_P(ReshapeTest, ToScalar) {
   for (int rank = 0; rank < 8; ++rank) {
     XlaBuilder b(TestName());
     std::vector<int64_t> ones(rank, 1);  // this is {1, ..., 1}.
@@ -579,7 +579,7 @@ XLA_TEST_P(ReshapeTest, ToScalar) {
   }
 }
 
-XLA_TEST_P(ReshapeTest, BadNewSizes) {
+TEST_P(ReshapeTest, BadNewSizes) {
   XlaBuilder b(TestName());
   auto input_literal = LiteralUtil::CreateR1<float>({1.0f, 2.0f});
   XlaOp parameter;
@@ -591,7 +591,7 @@ XLA_TEST_P(ReshapeTest, BadNewSizes) {
               ::testing::HasSubstr("mismatched element counts"));
 }
 
-XLA_TEST_P(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
+TEST_P(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
   XlaBuilder builder(TestName());
   // clang-format off
   auto input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
@@ -647,7 +647,7 @@ XLA_TEST_P(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, actual));
 }
 
-XLA_TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4) {
+TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4) {
   XlaBuilder builder(TestName());
   Literal input_literal = LiteralUtil::CreateR2<float>({
       {0, 1, 2, 3, 4, 5, 6, 7},
@@ -675,7 +675,7 @@ XLA_TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4) {
 }
 
 // Tests R2->R4 reshape with the reshape dimensions {1, 0}.
-XLA_TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4_Dimensions_10) {
+TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4_Dimensions_10) {
   XlaBuilder builder(TestName());
   Literal input_literal = LiteralUtil::CreateR2<float>({
       {0, 1, 2, 3, 4, 5, 6, 7},
@@ -703,7 +703,7 @@ XLA_TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4_Dimensions_10) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, R4ToR2_2x1x1x1_To_2x1) {
+TEST_P(ReshapeTest, R4ToR2_2x1x1x1_To_2x1) {
   XlaBuilder builder(TestName());
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
@@ -723,7 +723,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_2x1x1x1_To_2x1) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, R4ToR2_2x1x4x1_To_4x2) {
+TEST_P(ReshapeTest, R4ToR2_2x1x4x1_To_4x2) {
   XlaBuilder builder(TestName());
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
@@ -744,7 +744,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_2x1x4x1_To_4x2) {
 }
 
 // Tests R4->R2 reshape with the reshape dimensions {0, 2, 1, 3}.
-XLA_TEST_P(ReshapeTest, R4ToR2_5x10x2x3_To_5x60_Dimensions_0213) {
+TEST_P(ReshapeTest, R4ToR2_5x10x2x3_To_5x60_Dimensions_0213) {
   XlaBuilder builder(TestName());
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
@@ -771,7 +771,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_5x10x2x3_To_5x60_Dimensions_0213) {
                            zero_error_spec_);
 }
 
-XLA_TEST_P(ReshapeTest, NoopReshape) {
+TEST_P(ReshapeTest, NoopReshape) {
   XlaBuilder builder(TestName());
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
@@ -829,7 +829,7 @@ XLA_TEST_P(ReshapeTest, NoopReshape) {
   }
 }
 
-XLA_TEST_P(ReshapeTest, R4ToR4Reshape_Trivial) {
+TEST_P(ReshapeTest, R4ToR4Reshape_Trivial) {
   XlaBuilder builder(TestName());
   auto literal_1x2x3x4 = LiteralUtil::CreateR4<float>(
       {{{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
@@ -844,7 +844,7 @@ XLA_TEST_P(ReshapeTest, R4ToR4Reshape_Trivial) {
   ComputeAndCompareLiteral(&builder, literal_1x2x3x4, {input.get()});
 }
 
-XLA_TEST_P(ReshapeTest, R4ToR4Reshape) {
+TEST_P(ReshapeTest, R4ToR4Reshape) {
   auto literal_1x2x3x4 = LiteralUtil::CreateR4<float>(
       {{{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
         {{13, 14, 15, 16}, {17, 18, 19, 20}, {21, 22, 23, 24}}}});
@@ -872,7 +872,7 @@ XLA_TEST_P(ReshapeTest, R4ToR4Reshape) {
   ComputeAndCompareLiteral(&builder, expected_2x4x3x1, {input.get()});
 }
 
-XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeSimple) {
+TEST_P(ReshapeTest, R4TwoMinorTransposeSimple) {
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
   std::vector<int64_t> bounds = {2, 2, 2, 2};
@@ -901,7 +901,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeSimple) {
                            zero_error_spec_, &expected.shape());
 }
 
-XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstEffectiveR2) {
+TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstEffectiveR2) {
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
   std::vector<int64_t> bounds = {1, 1, 250, 300};
@@ -929,7 +929,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstEffectiveR2) {
                            zero_error_spec_, &expected.shape());
 }
 
-XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1) {
+TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1) {
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
   std::vector<int64_t> bounds = {5, 5, 1, 10};
@@ -957,7 +957,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1) {
                            zero_error_spec_, &expected.shape());
 }
 
-XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1InR2) {
+TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1InR2) {
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
   // This happens in NN-Builder MNIST.
@@ -986,7 +986,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1InR2) {
                            zero_error_spec_, &expected.shape());
 }
 
-XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
+TEST_P(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
   std::mt19937 rng;
   std::uniform_real_distribution<float> distribution;
   std::vector<int64_t> bounds = {3, 3, 1, 3};

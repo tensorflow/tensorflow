@@ -26,7 +26,7 @@ namespace {
 
 class DynamicUpdateSliceTest : public HloTestBase {};
 
-XLA_TEST_F(DynamicUpdateSliceTest, ShardedInPlaceDUS) {
+TEST_F(DynamicUpdateSliceTest, ShardedInPlaceDUS) {
   // A dynamic-update-slice within a while loop.  This construction is an easy
   // way to make a DUS which can be run "in-place" (i.e. the input and output
   // are the same buffer, and running the DUS only writes to the updated
@@ -83,7 +83,7 @@ XLA_TEST_F(DynamicUpdateSliceTest, ShardedInPlaceDUS) {
 // kScatter op.  Apologies for the large testcase, this proved difficult to
 // reduce.  The bug we're checking for occurs when the dynamic-update-slice is
 // run in place but is sharded across cores by ParallelTaskAssigner.
-XLA_TEST_F(DynamicUpdateSliceTest, ExpandedScatter) {
+TEST_F(DynamicUpdateSliceTest, ExpandedScatter) {
   const char kModuleStr[] = R"(
 HloModule TensorFlowScatter
 

@@ -59,7 +59,7 @@ class ScatterTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
   }
 };
 
-XLA_TEST_F(ScatterTest, TensorFlowScatterV1_Update) {
+TEST_F(ScatterTest, TensorFlowScatterV1_Update) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -88,7 +88,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatterV1_WithFusedAdds) {
+TEST_F(ScatterTest, TensorFlowScatterV1_WithFusedAdds) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -120,7 +120,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatterV2_Update) {
+TEST_F(ScatterTest, TensorFlowScatterV2_Update) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatterV2
 
@@ -149,7 +149,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatterV2_InversePermutation) {
+TEST_F(ScatterTest, TensorFlowScatterV2_InversePermutation) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatterV2
 
@@ -185,7 +185,7 @@ ENTRY main {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, actual));
 }
 
-XLA_TEST_F(ScatterTest, SimpleR4) {
+TEST_F(ScatterTest, SimpleR4) {
   const char* hlo_text = R"(
 HloModule SimpleR4
 
@@ -216,7 +216,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatter_Add) {
+TEST_F(ScatterTest, TensorFlowScatter_Add) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatter_Add
 
@@ -246,7 +246,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatter_Add_UniqueIndices) {
+TEST_F(ScatterTest, TensorFlowScatter_Add_UniqueIndices) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatter_Add
 
@@ -277,7 +277,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatter_Mul) {
+TEST_F(ScatterTest, TensorFlowScatter_Mul) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatter_Mul
 
@@ -307,7 +307,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatter_F32) {
+TEST_F(ScatterTest, TensorFlowScatter_F32) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatter_F32
 
@@ -337,7 +337,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatter_F16) {
+TEST_F(ScatterTest, TensorFlowScatter_F16) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatter_F16
 
@@ -370,7 +370,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatter_RepeatedIndices) {
+TEST_F(ScatterTest, TensorFlowScatter_RepeatedIndices) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatter
 
@@ -400,7 +400,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatter_MultipleBatchDims) {
+TEST_F(ScatterTest, TensorFlowScatter_MultipleBatchDims) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatterMultipleBatchDims
 
@@ -430,7 +430,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatterNd) {
+TEST_F(ScatterTest, TensorFlowScatterNd) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatterNd
 
@@ -460,7 +460,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatterNdS64) {
+TEST_F(ScatterTest, TensorFlowScatterNdS64) {
   constexpr char hlo_text[] = R"(
 HloModule S64Scatter
 
@@ -491,7 +491,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatterNd_NonDefaultIndexVectorDim) {
+TEST_F(ScatterTest, TensorFlowScatterNd_NonDefaultIndexVectorDim) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatterNdNonDefaultIndexVectorDim
 
@@ -521,7 +521,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, DynamicUpdateSlice) {
+TEST_F(ScatterTest, DynamicUpdateSlice) {
   const char* hlo_text = R"(
 HloModule DynamicUpdateSlice
 
@@ -549,7 +549,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, BatchDynamicUpdateSlice) {
+TEST_F(ScatterTest, BatchDynamicUpdateSlice) {
   const char* hlo_text = R"(
 HloModule BatchDynamicUpdateSlice
 
@@ -577,7 +577,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, ZeroDimBounds) {
+TEST_F(ScatterTest, ZeroDimBounds) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatter_ZeroDimBounds
 
@@ -604,7 +604,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, NoUpdateWindowDims) {
+TEST_F(ScatterTest, NoUpdateWindowDims) {
   const std::string hlo_text = R"(
 HloModule Scatter_NoUpdateWindowDims
 
@@ -633,7 +633,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, OutOfBoundsIndex) {
+TEST_F(ScatterTest, OutOfBoundsIndex) {
   const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
@@ -663,7 +663,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, OutOfBoundsUnsignedIndex) {
+TEST_F(ScatterTest, OutOfBoundsUnsignedIndex) {
   const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
@@ -693,7 +693,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, U8Index) {
+TEST_F(ScatterTest, U8Index) {
   const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
@@ -725,7 +725,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, NegativeIndex) {
+TEST_F(ScatterTest, NegativeIndex) {
   const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
 
@@ -760,7 +760,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, OutOfBoundsUpdateWindow) {
+TEST_F(ScatterTest, OutOfBoundsUpdateWindow) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatterNd_OobUpdateWindow
 
@@ -790,7 +790,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, OneScalarIndex) {
+TEST_F(ScatterTest, OneScalarIndex) {
   const char* hlo_text = R"(
 HloModule OneScalarIndex
 
@@ -819,7 +819,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, ScalarUpdate) {
+TEST_F(ScatterTest, ScalarUpdate) {
   const char* hlo_text = R"(
 HloModule ScalarUpdate
 
@@ -846,7 +846,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, EmptyIndices) {
+TEST_F(ScatterTest, EmptyIndices) {
   const std::string hlo_text = R"(
 HloModule EmptyIndices
 
@@ -873,7 +873,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-XLA_TEST_F(ScatterTest, ScatterIntoScalar) {
+TEST_F(ScatterTest, ScatterIntoScalar) {
   const char* hlo_text = R"(
 HloModule ScatterIntoScalar
 
@@ -901,7 +901,7 @@ ENTRY main {
 }
 
 // TODO(b/230137437): Enable this on GPU once mhlo allows variadic scatter.
-XLA_TEST_F(ScatterTest, DISABLED_ON_GPU(Multioutput)) {
+TEST_F(ScatterTest, DISABLED_ON_GPU(Multioutput)) {
   constexpr char hlo_text[] = R"(
 HloModule MultioutputScatter
 
@@ -942,7 +942,7 @@ ENTRY main {
           {&operand0, &operand1, &scatter_indices, &updates0, &updates1});
 }
 
-XLA_TEST_F(ScatterTest, TensorFlowScatter_Max_F32) {
+TEST_F(ScatterTest, TensorFlowScatter_Max_F32) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatter_Max_F32
 
@@ -977,7 +977,7 @@ class ScatterEdgeCaseTestP
     : public ScatterTest,
       public ::testing::WithParamInterface<absl::string_view /*operator*/> {};
 
-XLA_TEST_P(ScatterEdgeCaseTestP, DoIt) {
+TEST_P(ScatterEdgeCaseTestP, DoIt) {
   using L = std::numeric_limits<float>;
   std::vector<float> edge_cases = {
       0.f,

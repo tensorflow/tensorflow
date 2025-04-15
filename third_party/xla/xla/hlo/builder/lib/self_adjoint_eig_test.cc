@@ -283,7 +283,7 @@ using EighTestCase = int64_t;
 class RandomEighTest : public ClientLibraryTestRunnerMixin<HloTestBase>,
                        public ::testing::WithParamInterface<EighTestCase> {};
 
-XLA_TEST_P(RandomEighTest, Random) {
+TEST_P(RandomEighTest, Random) {
   XlaBuilder builder(TestName());
   int64_t size = GetParam();
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);

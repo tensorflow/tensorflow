@@ -40,7 +40,7 @@ class TransposeTest : public ClientLibraryTestBase {
   void TestTransposeConstant(Vector3 sizes, Vector3 transpose_dims);
 };
 
-XLA_TEST_F(TransposeTest, Transpose0x0) {
+TEST_F(TransposeTest, Transpose0x0) {
   XlaBuilder builder("Transpose");
   auto lhs = ConstantR2FromArray2D<float>(&builder, Array2D<float>(0, 0));
   Transpose(lhs, {1, 0});
@@ -48,7 +48,7 @@ XLA_TEST_F(TransposeTest, Transpose0x0) {
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 0), {}, error_spec_);
 }
 
-XLA_TEST_F(TransposeTest, Transpose0x42) {
+TEST_F(TransposeTest, Transpose0x42) {
   XlaBuilder builder("Transpose");
   auto lhs = ConstantR2FromArray2D<float>(&builder, Array2D<float>(0, 42));
   Transpose(lhs, {1, 0});
@@ -56,7 +56,7 @@ XLA_TEST_F(TransposeTest, Transpose0x42) {
   ComputeAndCompareR2<float>(&builder, Array2D<float>(42, 0), {}, error_spec_);
 }
 
-XLA_TEST_F(TransposeTest, Transpose7x0) {
+TEST_F(TransposeTest, Transpose7x0) {
   XlaBuilder builder("Transpose");
   auto lhs = ConstantR2FromArray2D<float>(&builder, Array2D<float>(7, 0));
   Transpose(lhs, {1, 0});
@@ -77,7 +77,7 @@ TEST_F(TransposeTest, Transpose2x2) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(TransposeTest, Transpose0x2x3_2x3x0) {
+TEST_F(TransposeTest, Transpose0x2x3_2x3x0) {
   XlaBuilder builder("Transpose");
   auto operand =
       ConstantR3FromArray3D<int32_t>(&builder, Array3D<int32_t>(0, 2, 3));
@@ -204,8 +204,8 @@ TEST_F(TransposeTest, TransposeConstant210_DegenerateDim) {
 using HloTransposeTest = HloTestBase;
 
 // Disable HLO passes to verify the default behavior
-XLA_TEST_F(HloTransposeTest, DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
-                                 DISABLED_ON_TPU(HloPassesDisabled)))) {
+TEST_F(HloTransposeTest, DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
+                             DISABLED_ON_TPU(HloPassesDisabled)))) {
   const char* const kModuleStr = R"(
     HloModule Transpose
 

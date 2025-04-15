@@ -31,7 +31,7 @@ namespace {
 
 class SliceTest : public ClientLibraryTestBase {};
 
-XLA_TEST_F(SliceTest, Slice2D) {
+TEST_F(SliceTest, Slice2D) {
   XlaBuilder builder("slice_2d");
   auto original = ConstantR2<float>(
       &builder,
@@ -42,7 +42,7 @@ XLA_TEST_F(SliceTest, Slice2D) {
   ComputeAndCompareR2<float>(&builder, expected, {}, ErrorSpec(0.000001));
 }
 
-XLA_TEST_F(SliceTest, Slice3D) {
+TEST_F(SliceTest, Slice3D) {
   XlaBuilder builder("slice_3d");
   Array3D<float> array_3d(
       {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}});

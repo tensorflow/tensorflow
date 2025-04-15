@@ -42,7 +42,7 @@ const char* const kModuleStr = R"(
   }
 )";
 
-XLA_TEST_F(StochasticConvertTest, CorrectComputation) {
+TEST_F(StochasticConvertTest, CorrectComputation) {
   EXPECT_TRUE(RunAndCompare(kModuleStr, ErrorSpec{0.001}));
 }
 

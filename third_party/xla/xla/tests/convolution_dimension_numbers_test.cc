@@ -83,8 +83,7 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidOutputDimensionNumbers) {
               ::testing::HasSubstr("output are not unique"));
 }
 
-XLA_TEST_F(ConvolutionDimensionNumbersTest,
-           TwoConvsWithDifferentDimensionNumbers) {
+TEST_F(ConvolutionDimensionNumbersTest, TwoConvsWithDifferentDimensionNumbers) {
   auto input_array = std::make_unique<Array4D<float>>(2, 3, 5, 5);
   input_array->FillWithMultiples(0.1);
   auto weight_array = std::make_unique<Array4D<float>>(4, 3, 1, 1);

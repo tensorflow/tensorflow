@@ -68,7 +68,7 @@ TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
   ASSERT_THAT(result_zero_args.status().message(), ContainsRegex("takes 2"));
 }
 
-XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
+TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   XlaBuilder builder("add_two_params");
 
   auto p0 = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "param0");

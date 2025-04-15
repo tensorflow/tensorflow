@@ -131,7 +131,7 @@ class Convolve1D1WindowTestBase
 
 class Convolve1D1WindowTestFloat : public Convolve1D1WindowTestBase {};
 
-XLA_TEST_P(Convolve1D1WindowTestFloat, Convolve1D1Window) { TestImpl<float>(); }
+TEST_P(Convolve1D1WindowTestFloat, Convolve1D1Window) { TestImpl<float>(); }
 
 INSTANTIATE_TEST_CASE_P(
     Convolve1D1WindowTest_Instantiation, Convolve1D1WindowTestFloat,
@@ -167,7 +167,7 @@ INSTANTIATE_TEST_CASE_P(
 #if (XLA_TEST_BACKEND_GPU || XLA_TEST_BACKEND_CPU)
 class Convolve1D1WindowTestHalf : public Convolve1D1WindowTestBase {};
 
-XLA_TEST_P(Convolve1D1WindowTestHalf, Convolve1D1Window) {
+TEST_P(Convolve1D1WindowTestHalf, Convolve1D1Window) {
   TestImpl<Eigen::half>();
 }
 
@@ -202,7 +202,7 @@ INSTANTIATE_TEST_CASE_P(
 );
 #endif
 
-XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
+TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
@@ -269,8 +269,7 @@ TYPED_TEST_CASE(Convolve1D_1x2x5_1x2x2_WithRHSDilation, TestTypes);
 TYPED_TEST(Convolve1D_1x2x5_1x2x2_WithRHSDilation, Types) { this->RunTest(); }
 
 // Basic test with LHS dilation (i.e. strided transposed convolution).
-XLA_TEST_F(ConvolutionTest,
-           Convolve1D_1x1x5_1x1x3_WithLHSDilation_FullPadding) {
+TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_FullPadding) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
@@ -301,7 +300,7 @@ XLA_TEST_F(ConvolutionTest,
                              error_spec_);
 }
 
-XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_NoPadding) {
+TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_NoPadding) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
@@ -331,8 +330,7 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_NoPadding) {
                              error_spec_);
 }
 
-XLA_TEST_F(ConvolutionTest,
-           Convolve1D_1x1x5_1x1x3_WithLHSDilation_HalfPadding) {
+TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_HalfPadding) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
@@ -363,7 +361,7 @@ XLA_TEST_F(ConvolutionTest,
 }
 
 // Test multiple output channels.
-XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_2x1x3_WithLHSDilation) {
+TEST_F(ConvolutionTest, Convolve1D_1x1x5_2x1x3_WithLHSDilation) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
@@ -395,7 +393,7 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_2x1x3_WithLHSDilation) {
 }
 
 // Test multiple input channels.
-XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x3_WithLHSDilation) {
+TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x3_WithLHSDilation) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
@@ -427,7 +425,7 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x3_WithLHSDilation) {
 }
 
 // Batched version of the above test.
-XLA_TEST_F(ConvolutionTest, Convolve1D_3x2x5_1x2x3_WithLHSDilation) {
+TEST_F(ConvolutionTest, Convolve1D_3x2x5_1x2x3_WithLHSDilation) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {3, 2, 5});
@@ -464,7 +462,7 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_3x2x5_1x2x3_WithLHSDilation) {
 }
 
 // Test all together: batched, multiple input and output channels.
-XLA_TEST_F(ConvolutionTest, Convolve1D_3x2x5_2x2x3_WithLHSDilation) {
+TEST_F(ConvolutionTest, Convolve1D_3x2x5_2x2x3_WithLHSDilation) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {3, 2, 5});
@@ -507,7 +505,7 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_3x2x5_2x2x3_WithLHSDilation) {
 // Test LHS dilation (i.e. transposed convolution) and window strides at the
 // same time. That's probably never used in practice, but since the generic
 // algorithm covers it, we test it anyway with a simple case.
-XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilationAndStrides) {
+TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilationAndStrides) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
@@ -538,7 +536,7 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilationAndStrides) {
                              error_spec_);
 }
 
-XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
+TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});

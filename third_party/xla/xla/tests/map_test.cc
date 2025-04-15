@@ -180,7 +180,7 @@ TEST_F(MapTest, MapEachElemPlusOneR0) {
                              ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(MapTest, MapEachElemPlusOneR1S0) {
+TEST_F(MapTest, MapEachElemPlusOneR1S0) {
   // Maps (lambda (x) (+ x 1)) onto an input R1F32 vector of length 0.
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR1<float>({});
@@ -251,7 +251,7 @@ TEST_F(MapTest, MapEachElemLongerChainR1) {
       {param0_data.get()}, ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(MapTest, MapMultipleMapsR1S0) {
+TEST_F(MapTest, MapMultipleMapsR1S0) {
   // Maps (lambda (x) (+ x 1)) onto an input R1F32 vector of length 0, and then
   // maps (lambda (x) (* x 2)) on the result.
   XlaBuilder builder(TestName());
@@ -301,7 +301,7 @@ TEST_F(MapTest, MapEachElemPlusOneR2) {
                              ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(MapTest, ComplexNestedMaps) {
+TEST_F(MapTest, ComplexNestedMaps) {
   // Constructs a complex graph of embedded computations to test the computation
   // lowering order. Python equivalent:
   //
@@ -363,7 +363,7 @@ TEST_F(MapTest, MapBinaryAdder) {
 
 // Adds two rank-2 arrays with different layouts. This test exercises a path
 // for Map that used to fail in shape inference (b/28989438).
-XLA_TEST_F(MapTest, AddWithMixedLayouts) {
+TEST_F(MapTest, AddWithMixedLayouts) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR2WithLayout(
       {{1, 2}, {3, 4}}, LayoutUtil::MakeLayout({1, 0}));
@@ -389,7 +389,7 @@ XLA_TEST_F(MapTest, AddWithMixedLayouts) {
                                {param0_data.get(), param1_data.get()});
 }
 
-XLA_TEST_F(MapTest, AddR3_3x0x2) {
+TEST_F(MapTest, AddR3_3x0x2) {
   XlaBuilder builder(TestName());
   Literal param0_literal =
       LiteralUtil::CreateR3FromArray3D<int32_t>(Array3D<int32_t>(3, 0, 2));
@@ -498,7 +498,7 @@ TEST_F(MapTest, MapOperationWithBuildError) {
 class MapHloTest : public HloTestBase {};
 
 // TODO(b/230123847): Enable this on GPU once mhlo allows mixed-type map.
-XLA_TEST_F(MapHloTest, DISABLED_ON_GPU(MapWithMixedInputTypes)) {
+TEST_F(MapHloTest, DISABLED_ON_GPU(MapWithMixedInputTypes)) {
   absl::string_view hlo_string = R"(
   HloModule MapMixedInputTypes
 

@@ -71,7 +71,7 @@ TEST_F(BitcastConvertTest, BitcastR1S32ToR1F32) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
-XLA_TEST_F(BitcastConvertTest, ConvertR1S0S32ToR1S0F32) {
+TEST_F(BitcastConvertTest, ConvertR1S0S32ToR1S0F32) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<int32_t>(&builder, {});
   BitcastConvertType(a, F32);
@@ -149,7 +149,7 @@ TEST_F(BitcastConvertTest, ConvertReshape) {
 
 class BitcastConvertHloTest : public HloTestBase {};
 
-XLA_TEST_F(BitcastConvertHloTest, S32to4S8) {
+TEST_F(BitcastConvertHloTest, S32to4S8) {
   absl::string_view hlo_string = R"(
 HloModule bitcast_to_smaller
 
@@ -161,7 +161,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(BitcastConvertHloTest, FourS8toS32) {
+TEST_F(BitcastConvertHloTest, FourS8toS32) {
   absl::string_view hlo_string = R"(
 HloModule bitcast_to_larger
 
@@ -173,7 +173,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(BitcastConvertHloTest, F32to2F16) {
+TEST_F(BitcastConvertHloTest, F32to2F16) {
   absl::string_view hlo_string = R"(
 HloModule bitcast_to_smaller
 
@@ -185,7 +185,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
-XLA_TEST_F(BitcastConvertHloTest, TwoF16toF32) {
+TEST_F(BitcastConvertHloTest, TwoF16toF32) {
   absl::string_view hlo_string = R"(
 HloModule bitcast_to_smaller
 
