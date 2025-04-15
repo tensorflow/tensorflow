@@ -43,7 +43,6 @@ limitations under the License.
 #include "tsl/platform/random.h"
 
 namespace tsl {
-class Env;
 
 // Coordination service is used for controlling and coordinating distributed
 // execution in a cluster of multiple tasks.
