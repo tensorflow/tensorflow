@@ -13,25 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cmath>
-#include <limits>
-#include <memory>
-#include <numeric>
-#include <utility>
+#include <cstdint>
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "xla/array2d.h"
-#include "xla/client/local_client.h"
+#include "absl/strings/str_format.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
+#include "xla/literal_util.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -452,8 +446,9 @@ static const uint64_t f64_test_values[][4] = {
     },
 };
 
-class ReducedPrecisionAccuracyTest : public ClientLibraryTestBase,
-                                     public ::testing::WithParamInterface<int> {
+class ReducedPrecisionAccuracyTest
+    : public ClientLibraryTestRunnerMixin<HloTestBase>,
+      public ::testing::WithParamInterface<int> {
  protected:
   template <typename Fp, typename Uint, int kNumTestcases, int kNumInputs>
   void DoIt(int exponent_bits, int mantissa_bits,
@@ -517,7 +512,7 @@ void ReducedPrecisionAccuracyTest::DoIt(
 
   ReducePrecision(a, exponent_bits, mantissa_bits);
 
-  ComputeAndCompare(&builder, {std::move(a_literal)});
+  ComputeAndCompare(&builder, {&a_literal});
 }
 
 INSTANTIATE_TEST_CASE_P(ReducedPrecisionAccuracyTest,

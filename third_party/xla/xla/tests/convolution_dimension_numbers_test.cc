@@ -13,20 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
-#include <array>
+#include <cstdint>
 #include <memory>
 
 #include "absl/status/statusor.h"
 #include "xla/array4d.h"
-#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/padding.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/reference_util.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
+#include "xla/shape_util.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -54,7 +58,8 @@ absl::StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
   return dimension_numbers;
 }
 
-class ConvolutionDimensionNumbersTest : public ClientLibraryTestBase {};
+class ConvolutionDimensionNumbersTest
+    : public ClientLibraryTestRunnerMixin<HloTestBase> {};
 
 // Tests the convolution operation with invalid input dimension numbers.
 TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {
@@ -83,15 +88,13 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidOutputDimensionNumbers) {
               ::testing::HasSubstr("output are not unique"));
 }
 
-XLA_TEST_F(ConvolutionDimensionNumbersTest,
-           TwoConvsWithDifferentDimensionNumbers) {
+TEST_F(ConvolutionDimensionNumbersTest, TwoConvsWithDifferentDimensionNumbers) {
   auto input_array = std::make_unique<Array4D<float>>(2, 3, 5, 5);
   input_array->FillWithMultiples(0.1);
   auto weight_array = std::make_unique<Array4D<float>>(4, 3, 1, 1);
   weight_array->FillWithMultiples(0.2);
-  auto weight_data =
-      client_->TransferToServer(LiteralUtil::CreateR4FromArray4D(*weight_array))
-          .value();
+  const Literal weight_literal =
+      LiteralUtil::CreateR4FromArray4D(*weight_array);
 
   XlaBuilder builder(TestName());
   auto input = ConstantR4FromArray4D<float>(&builder, *input_array);
@@ -121,7 +124,7 @@ XLA_TEST_F(ConvolutionDimensionNumbersTest,
   auto expected_conv2 = ReferenceUtil::ConvArray4DGeneralDimensions(
       *input_array, *expected_conv1, {1, 1}, Padding::kValid, dim_nums);
 
-  ComputeAndCompareR4<float>(&builder, *expected_conv2, {weight_data.get()},
+  ComputeAndCompareR4<float>(&builder, *expected_conv2, {&weight_literal},
                              ErrorSpec(0.001, 0.01));
 }
 
