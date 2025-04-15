@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
 
+#include <unistd.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -48,7 +50,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-namespace {
+
 // When cross_partition_spmd is true, returns the partition IDs of all
 // replica groups in which a given replica participates. Specfically, the k-th
 // element of the outermost vector in the returned data structure holds the
@@ -60,28 +62,30 @@ namespace {
 // element of the outermost vector in the returned data structure holds the
 // replica IDs converted from the global IDs in a collective's replica_groups
 // field for partition k.
-std::vector<std::vector<std::vector<int64_t>>> GroupsForReplicas(
-    absl::Span<const ReplicaGroup> groups, int64_t num_partitions,
-    int64_t replica_count, bool cross_partition_spmd) {
-  int64_t num_replicas = cross_partition_spmd ? replica_count : num_partitions;
+
+std::vector<std::vector<std::vector<int64_t>>>
+HloReplicationAnalysis::GroupsForReplicas(
+    absl::Span<const ReplicaGroup> groups) {
+  int64_t num_replicas =
+      cross_partition_spmd_ ? replica_count_ : num_partitions_;
   std::vector<std::vector<std::vector<int64_t>>> groups_for_replicas(
       num_replicas);
   for (const ReplicaGroup& group : groups) {
     absl::flat_hash_map<int64_t, std::vector<int64_t>> id_to_ids;
     for (int64_t id : group.replica_ids()) {
-      int64_t rid = id / num_partitions;
-      int64_t pid = id % num_partitions;
-      if (cross_partition_spmd) {
+      int64_t rid = id / num_partitions_;
+      int64_t pid = id % num_partitions_;
+      if (cross_partition_spmd_) {
         CHECK_LT(rid, num_replicas)
             << "Got replica ID " << rid
             << " which is greater or equal to the number of replicas: "
             << num_replicas;
         id_to_ids[rid].push_back(pid);
       } else {
-        CHECK_LT(pid, num_partitions)
+        CHECK_LT(pid, num_partitions_)
             << "Got partition ID " << rid
             << " which is greater or equal to the number of partitions: "
-            << num_partitions;
+            << num_partitions_;
         id_to_ids[pid].push_back(rid);
       }
     }
@@ -93,8 +97,6 @@ std::vector<std::vector<std::vector<int64_t>>> GroupsForReplicas(
   return groups_for_replicas;
 }
 
-}  // namespace
-
 // Determines whether an HLO instruction is replicated at index based on current
 // knowledge in hlo_replication. When cross_partition_spmd is true, the
 // instruction must be replicated across all partitions on each replica.
@@ -102,41 +104,30 @@ std::vector<std::vector<std::vector<int64_t>>> GroupsForReplicas(
 // replicated across all replicas on each partition.
 HloReplicationAnalysis::HloReplication
 HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
-    const HloInstruction* hlo, const ShapeIndex& index,
-    bool cross_partition_spmd,
-    const absl::flat_hash_map<const HloInstruction*, ShapeTree<HloReplication>>&
-        hlo_replication,
-    bool support_partial_replication,
-    const absl::flat_hash_map<const HloInstruction*,
-                              std::optional<HloReplication>*>&
-        replica_group_dedup_map,
-    absl::flat_hash_map<std::pair<HloReplication, HloReplication>,
-                        HloReplication>& replication_merge_map) {
-  const auto merge_operand_replication =
-      [&hlo_replication, &replication_merge_map](const HloInstruction* inst) {
-        HloReplication replication = HloReplication::ReplicatedOnAllDevices();
-        for (auto operand : inst->operands()) {
-          auto operand_it = hlo_replication.find(operand);
-          if (operand_it == hlo_replication.end()) {
-            replication = MergeReplications(
-                replication, HloReplication::UniqueOnAllDevices(),
-                replication_merge_map);
-          } else {
-            replication =
-                MergeReplications(replication, operand_it->second.element({}),
-                                  replication_merge_map);
-          }
-        }
-        return replication;
-      };
+    const HloInstruction* hlo, const ShapeIndex& index) {
+  const auto merge_operand_replication = [this](const HloInstruction* inst) {
+    HloReplication replication = HloReplication::ReplicatedOnAllDevices();
+    for (auto operand : inst->operands()) {
+      auto operand_it = hlo_replication_.find(operand);
+      if (operand_it == hlo_replication_.end()) {
+        replication = MergeReplications(replication,
+                                        HloReplication::UniqueOnAllDevices());
+      } else {
+        replication =
+            MergeReplications(replication, operand_it->second.element({}));
+      }
+    }
+    return replication;
+  };
 
-  auto calculate_all_reduce_all_gather_replication = [&](const HloInstruction*
+  auto calculate_all_reduce_all_gather_replication = [this](
+                                                         const HloInstruction*
                                                              hlo) {
     if (!hlo->channel_id().has_value()) {
       if (hlo->replica_groups().empty() || hlo->replica_groups().size() == 1) {
         return HloReplication::ReplicatedOnAllDevices();
       }
-      if (support_partial_replication) {
+      if (support_partial_replication_) {
         std::vector<std::vector<std::vector<int64_t>>> device_sets_per_replica(
             1);
         for (const ReplicaGroup& replica_group : hlo->replica_groups()) {
@@ -157,34 +148,39 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
         global_id = Cast<HloAllGatherInstruction>(hlo)->use_global_device_ids();
       }
       if (global_id) {
-        const int64_t num_partitions =
-            hlo->GetModule()->config().num_partitions();
-        const int64_t replica_count =
-            hlo->GetModule()->config().replica_count();
-        std::vector<std::vector<std::vector<int64_t>>> device_sets_per_replica =
-            GroupsForReplicas(hlo->replica_groups(), num_partitions,
-                              replica_count, cross_partition_spmd);
+        // Wrap the replica_groups() in a ReplicaGroupSpan to enabling hashing
+        // then cache the result of GroupsForReplicas().
+        HashableReplicaGroupSpan hashable_replica_groups(hlo->replica_groups());
+        size_t key = absl::HashOf(hashable_replica_groups);
+        auto [it, inserted] = device_sets_per_replica_map_.try_emplace(key);
+        const std::vector<std::vector<std::vector<int64_t>>>*
+            device_sets_per_replica;
+        if (inserted) {
+          it->second = std::vector<std::vector<std::vector<int64_t>>>(
+              GroupsForReplicas(hlo->replica_groups()));
+        }
+        device_sets_per_replica = &it->second;
 
         // In the fully replicated case, there is one set of partition or
         // replica IDs on each replica or partition. Since the flattened ID
         // replica groups must contain every device, the size of the set is the
         // number of partitions or replicas.
         bool fully_replicated = true;
-        for (const auto& device_sets : device_sets_per_replica) {
+        for (const auto& device_sets : *device_sets_per_replica) {
           fully_replicated &=
               device_sets.size() == 1 &&
               (*device_sets.begin()).size() ==
-                  (cross_partition_spmd ? num_partitions : replica_count);
+                  (cross_partition_spmd_ ? num_partitions_ : replica_count_);
         }
         if (fully_replicated) {
           return HloReplication::ReplicatedOnAllDevices();
-        } else if (support_partial_replication) {
-          return HloReplication::PartiallyReplicated(device_sets_per_replica);
+        } else if (support_partial_replication_) {
+          return HloReplication::PartiallyReplicated(*device_sets_per_replica);
         } else {
           return HloReplication::UniqueOnAllDevices();
         }
       }
-      if (cross_partition_spmd) {
+      if (cross_partition_spmd_) {
         return HloReplication::ReplicatedOnAllDevices();
       }
       if (hlo->replica_groups().empty() || hlo->replica_groups().size() == 1) {
@@ -203,15 +199,15 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
       return replication;
     }
     // This is cross-replica-only.
-    if (!hlo->channel_id().has_value() && cross_partition_spmd) {
+    if (!hlo->channel_id().has_value() && cross_partition_spmd_) {
       return replication;
     }
 
     // To save compile time on very large replica groups, check first if the
     // replica group dedup map has an entry already populated with the
     // replication and if so return that.
-    auto unique_replication_it = replica_group_dedup_map.find(hlo);
-    if (unique_replication_it == replica_group_dedup_map.end()) {
+    auto unique_replication_it = replica_group_dedup_map_.find(hlo);
+    if (unique_replication_it == replica_group_dedup_map_.end()) {
       VLOG(1) << "No dedup entry for " << hlo->name();
       return calculate_all_reduce_all_gather_replication(hlo);
     }
@@ -227,21 +223,21 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
   }
   if (hlo->opcode() == HloOpcode::kReplicaId) {
     // ReplicaId returns the same value for all partitions in each replica.
-    return cross_partition_spmd ? HloReplication::ReplicatedOnAllDevices()
-                                : HloReplication::UniqueOnAllDevices();
+    return cross_partition_spmd_ ? HloReplication::ReplicatedOnAllDevices()
+                                 : HloReplication::UniqueOnAllDevices();
   }
   if (hlo->opcode() == HloOpcode::kPartitionId) {
     // PartitionId returns the same value for all replicas in each partition.
-    return cross_partition_spmd ? HloReplication::UniqueOnAllDevices()
-                                : HloReplication::ReplicatedOnAllDevices();
+    return cross_partition_spmd_ ? HloReplication::UniqueOnAllDevices()
+                                 : HloReplication::ReplicatedOnAllDevices();
   }
-  auto it = hlo_replication.find(hlo);
+  auto it = hlo_replication_.find(hlo);
   if (hlo->opcode() == HloOpcode::kParameter) {
     // Parameters should have been processed.
-    CHECK(it != hlo_replication.end());
+    CHECK(it != hlo_replication_.end());
     return it->second.element(index);
   }
-  if (it != hlo_replication.end() &&
+  if (it != hlo_replication_.end() &&
       it->second.element(index).IsUniqueOnAllDevices()) {
     // The HLO is already marked as non-replicated.
     return it->second.element(index);
@@ -259,7 +255,7 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
   }
 
   // Pattern-match and process cases where the HLO is partially replicated.
-  if (support_partial_replication) {
+  if (support_partial_replication_) {
     // Below is a very specific pattern to match the SPMD pipeline case.
     if (hlo->opcode() == HloOpcode::kDynamicSlice) {
       const HloInstruction* ds_buffer = hlo->operand(0);
@@ -268,12 +264,12 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
           ds_buffer->opcode() == HloOpcode::kConstant &&
           ds_buffer->shape().dimensions().size() == 1 &&
           ds_buffer->shape().element_type() == PrimitiveType::S32 &&
-          ((cross_partition_spmd &&
+          ((cross_partition_spmd_ &&
             hlo->operand(1)->opcode() == HloOpcode::kPartitionId) ||
-           (!cross_partition_spmd &&
+           (!cross_partition_spmd_ &&
             hlo->operand(1)->opcode() == HloOpcode::kReplicaId))) {
         const HloModule* hlo_module = hlo->GetModule();
-        int64_t num_devices = cross_partition_spmd
+        int64_t num_devices = cross_partition_spmd_
                                   ? hlo_module->config().num_partitions()
                                   : hlo_module->config().replica_count();
         absl::flat_hash_map<int64_t, std::vector<int64_t>> value_to_device_set;
@@ -319,7 +315,7 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
 bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
     const HloComputation* computation, bool mark_everything_not_replicated) {
   bool changed = false;
-  for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
+  for (const HloInstruction* inst : computation->MakeInstructionPostOrder()) {
     // Assigns the shape tree to dest if dest doesn't have one yet, or combines
     // it with the existing one by and'ing them. Returns if anything is updated.
     auto assign_or_combine_shapetree =
@@ -331,15 +327,15 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
             return true;
           }
           bool updated = false;
-          it->second.ForEachMutableElement([&](const ShapeIndex& index,
-                                               HloReplication* element) {
-            HloReplication new_replication = MergeReplications(
-                *element, to_combine.element(index), replication_merge_map_);
-            if (!element->Equal(new_replication)) {
-              *element = std::move(new_replication);
-              updated = true;
-            }
-          });
+          it->second.ForEachMutableElement(
+              [&](const ShapeIndex& index, HloReplication* element) {
+                HloReplication new_replication =
+                    MergeReplications(*element, to_combine.element(index));
+                if (!element->Equal(new_replication)) {
+                  *element = std::move(new_replication);
+                  updated = true;
+                }
+              });
           return updated;
         };
     // Assigns or combines source's shape tree to dest. Returns if anything is
@@ -476,10 +472,7 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
         ShapeUtil::ForEachSubshape(
             inst->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
               *shape_tree.mutable_element(index) =
-                  DetermineHloInstructionIsReplicated(
-                      inst, index, cross_partition_spmd_, hlo_replication_,
-                      support_partial_replication_, replica_group_dedup_map_,
-                      replication_merge_map_);
+                  DetermineHloInstructionIsReplicated(inst, index);
             });
         changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
       }
@@ -675,9 +668,9 @@ HloReplicationAnalysis::HloReplication::HloReplication(
     absl::Span<const std::vector<int64_t>> device_set_root_per_replica)
     : state_(state),
       device_set_root_per_replica_(
-          std::make_shared<std::vector<std::vector<int64_t>>>(
-              device_set_root_per_replica.begin(),
-              device_set_root_per_replica.end())) {
+          std::make_shared<
+              HashOnConstruction<std::vector<std::vector<int64_t>>>>(
+              device_set_root_per_replica)) {
   CHECK(state == State::kPartiallyReplicated ||
         device_set_root_per_replica_->empty());
 }
@@ -771,27 +764,11 @@ HloReplicationAnalysis::HloReplication::Merge(
   }
 }
 
-HloReplicationAnalysis::HloReplication::HloReplication(
-    const std::pair<HloReplication, HloReplication>& merge_pair) {
-  auto merged_replication = merge_pair.first.Merge(merge_pair.second);
-  state_ = merged_replication.state_;
-  device_set_root_per_replica_ =
-      std::move(merged_replication.device_set_root_per_replica_);
-}
-
 bool HloReplicationAnalysis::HloReplication::Equal(
     const HloReplication& other) const {
-  if (state_ != other.state_) {
-    return false;
-  }
-  for (int i = 0; i < device_set_root_per_replica_->size(); ++i) {
-    if (device_set_root_per_replica_->at(i) !=
-        other.device_set_root_per_replica_->at(i)) {
-      return false;
-    }
-  }
-
-  return true;
+  return state_ == other.state_ &&
+         device_set_root_per_replica_->hash_ ==
+             other.device_set_root_per_replica_->hash_;
 }
 
 bool HloReplicationAnalysis::HloReplication::operator==(
