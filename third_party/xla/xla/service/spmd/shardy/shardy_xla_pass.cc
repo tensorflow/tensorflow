@@ -198,7 +198,7 @@ ComputationLayout getFlattenedComputationLayout(
         computationLayout.parameter_shape(i),
         [&](const Shape& subShape, const ShapeIndex& index) {
           if (useTupleArgs) {
-            *tupleShape.add_tuple_shapes() = subShape;
+            *tupleShape.add_tuple_shape() = subShape;
           } else {
             flattenedComputationLayout.add_parameter_layout(
                 ShapeLayout(subShape));

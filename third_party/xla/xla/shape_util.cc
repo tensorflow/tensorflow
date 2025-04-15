@@ -497,7 +497,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ void ShapeUtil::AppendShapeToTuple(const Shape& shape,
                                                 Shape* tuple_shape) {
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
-  *tuple_shape->add_tuple_shapes() = shape;
+  *tuple_shape->add_tuple_shape() = shape;
 }
 
 /* static */ void ShapeUtil::UpdateTupleShape(const Shape& shape, int64_t index,

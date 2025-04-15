@@ -317,7 +317,7 @@ const Shape& Shape::tuple_shapes(int index) const {
   return tuple_state().tuple_shapes[index];
 }
 
-Shape* Shape::add_tuple_shapes() {
+Shape* Shape::add_tuple_shape() {
   auto& state = tuple_state();
   state.tuple_shapes.push_back(Shape());
   return &state.tuple_shapes.back();

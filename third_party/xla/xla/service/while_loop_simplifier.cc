@@ -1357,7 +1357,7 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
   if (!trip_counter) {
     VLOG(10) << "Adding new trip counter to end of loop's tuple.";
     trip_counter = new_while_shape.tuple_shapes_size();
-    *new_while_shape.add_tuple_shapes() =
+    *new_while_shape.add_tuple_shape() =
         ShapeUtil::MakeShape(elem_ty, /*dimensions=*/{});
     added_trip_counter = true;
   }

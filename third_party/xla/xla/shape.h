@@ -315,7 +315,7 @@ class Shape {
   // Precondition: this is a tuple shape.
   // Postcondition: the returned pointer is not null, and the pointee is owned
   // by this shape.
-  Shape* add_tuple_shapes();
+  Shape* add_tuple_shape();
 
   // Clears all tuple components (i.e. makes this shape a 0-tuple).
   // Precondition: this is a tuple shape.
