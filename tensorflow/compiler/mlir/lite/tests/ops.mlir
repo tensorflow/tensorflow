@@ -2609,6 +2609,13 @@ func.func @fully_connected(%arg0: tensor<1x37xf32>, %arg1: tensor<40x37xf32>, %a
 
 // -----
 
+func.func @fully_connected_with_int64_num_elements(%arg0: tensor<2048x128xf32>, %arg1: tensor<1049088x128xf32>, %arg2: none) -> tensor<2048x1049088xf32> {
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) <{fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<2048x128xf32>, tensor<1049088x128xf32>, none) -> tensor<2048x1049088xf32>
+  func.return %0 : tensor<2048x1049088xf32>
+}
+
+// -----
+
 func.func @fully_connected_no_bias(%arg0: tensor<2x2x10xf32>, %arg1: tensor<40x40xf32>, %arg2: none) -> tensor<1x40xf32> {
   %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x2x10xf32>, tensor<40x40xf32>, none) -> tensor<1x40xf32>
   func.return %0 : tensor<1x40xf32>
