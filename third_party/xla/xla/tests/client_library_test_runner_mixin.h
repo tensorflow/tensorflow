@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/bitmap.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -260,6 +262,20 @@ class ClientLibraryTestRunnerMixin : public T {
     Literal expected_literal =
         LiteralUtil::CreateR4FromArray4D<NativeT>(expected);
     ComputeAndCompareLiteral(builder, expected_literal, arguments, error);
+  }
+
+  // Compare with string.
+  // Side effect: EXPECT
+  void ComputeAndCompareR1U8(XlaBuilder* builder,
+                             const absl::string_view expected,
+                             absl::Span<const Literal* const> arguments) {
+    const absl::StatusOr<Literal> actual =
+        ExecuteAndTransfer(builder, arguments);
+    TF_EXPECT_OK(actual.status());
+    if (!actual.ok()) {
+      return;
+    }
+    EXPECT_EQ(actual->GetR1U8AsString(), expected);
   }
 
   XlaComputation CreateScalarMax() { return xla::CreateScalarMax(test_type_); }
