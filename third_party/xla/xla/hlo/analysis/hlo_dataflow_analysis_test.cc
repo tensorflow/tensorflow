@@ -3674,5 +3674,56 @@ TEST_P(HloDataflowAnalysisTest, b409416499) {
   EXPECT_THAT(defining_instructions, UnorderedElementsAre(param2, add0));
 }
 
+TEST_P(HloDataflowAnalysisTest, b409756077) {
+  const char* after_layout_bitcast = R"(
+  HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f32[1,256,256]{2,1,0:T(8,128)})->f32[1,256,256]{2,1,0:T(8,128)}}
+  add_f32 {
+    %add_lhs = f32[] parameter(0)
+    %add_rhs = f32[] parameter(1)
+    ROOT %add = f32[] add(%add_lhs, %add_rhs)
+  }
+  
+  %while_body (param.1: f32[256,256]) -> f32[256,256] {
+    %param.1 = f32[256,256]{1,0:T(8,128)} parameter(0)
+    %constant.0 = f32[]{:T(8,128)} constant(1)
+    %constant.1 = f32[256,256]{1,0:T(8,128)} broadcast(%constant.0), dimensions={}
+    ROOT %add.0 = f32[256,256]{1,0:T(8,128)} add(%param.1, %constant.1)
+  }
+
+  %while_condition (param: f32[256,256]) -> pred[] {
+    %param.0 = f32[256,256]{1,0:T(8,128)} parameter(0)
+    %zero = f32[]{:T(8,128)} constant(0)
+    %sum_of_values_in_param = f32[]{:T(8,128)} reduce(%param.0, %zero), dimensions={0,1}, to_apply=%add_f32
+    %constant = f32[]{:T(8,128)} constant(512)
+    ROOT %compare.0 = pred[] compare(%sum_of_values_in_param, %constant), direction=LT
+  }
+
+  ENTRY %main (param.2: f32[1,256,256]) -> f32[1,256,256] {
+    %param.2 = f32[1,256,256]{2,1,0:T(8,128)} parameter(0)
+    %bitcast.2 = f32[256,256]{1,0:T(8,128)} bitcast(%param.2)
+    %while.1 = f32[256,256]{1,0:T(8,128)} while(%bitcast.2), condition=%while_condition, body=%while_body
+    ROOT %bitcast.3 = f32[1,256,256]{2,1,0:T(8,128)} bitcast(%while.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto after_layout_bitcast_module,
+                          ParseAndReturnVerifiedModule(after_layout_bitcast));
+  TF_ASSERT_OK_AND_ASSIGN(auto analysis,
+                          HloDataflowAnalysis::Run(*after_layout_bitcast_module,
+                                                   /*ssa_form=*/false));
+  HloInstruction* bitcast3 =
+      FindInstruction(after_layout_bitcast_module.get(), "bitcast.3");
+  HloInstruction* param2 =
+      FindInstruction(after_layout_bitcast_module.get(), "param.2");
+  HloComputation* while_body =
+      FindComputation(after_layout_bitcast_module.get(), "while_body");
+  HloInstruction* add0 = while_body->root_instruction();
+  std::vector<HloInstruction*> defining_instructions;
+  for (const HloValue* value :
+       analysis->GetValueSet(bitcast3, {}).TakeValues()) {
+    defining_instructions.push_back(value->defining_instruction());
+  }
+  EXPECT_THAT(defining_instructions, UnorderedElementsAre(param2, add0));
+}
+
 }  // namespace
 }  // namespace xla

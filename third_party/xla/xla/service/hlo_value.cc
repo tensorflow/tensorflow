@@ -286,16 +286,6 @@ bool InstructionValueSet::IsAmbiguous() const {
 bool InstructionValueSet::AssignUnionOf(
     absl::Span<const InstructionValueSet* const> inputs) {
   CHECK_GT(inputs.size(), 0);
-  for (int i = 1; i < inputs.size(); ++i) {
-    // It is possible that some values come from effective scalar shapes, i.e.,
-    // X[1] that was bitcasted to X[]. In such cases, shapes are not compatible
-    // but it is still valid to get the union of the values.
-    bool shapes_are_effective_scalar =
-        ShapeUtil::IsEffectiveScalar(inputs[0]->shape()) &&
-        ShapeUtil::IsEffectiveScalar(inputs[i]->shape());
-    DCHECK(ShapeUtil::Compatible(inputs[0]->shape(), inputs[i]->shape()) ||
-           shapes_are_effective_scalar);
-  }
   bool changed = false;
   for (auto& pair : *this) {
     const ShapeIndex& index = pair.first;
