@@ -446,8 +446,9 @@ absl::StatusOr<std::string> WrapDotInFormat(std::string dot,
   }
 }
 
-std::string WrapDotInHtml(std::string dot) {
-  return absl::StrReplaceAll(R"html(
+std::string WrapDotInHtml(std::string dot, absl::string_view layout_engine) {
+  return absl::StrReplaceAll(
+      R"html(
 <!DOCTYPE html>
 <html>
 <head>
@@ -528,14 +529,12 @@ std::string WrapDotInHtml(std::string dot) {
       });
       add_controls(svg);
     };
-    hpccWasm.graphviz.layout(dot_data, "svg", "dot").then(render_callback);
+    hpccWasm.graphviz.layout(dot_data, "svg", "$LAYOUT_ENGINE").then(render_callback);
   </script>
 </body>
 </html>
 )html",
-                             {
-                                 {"$DOT", dot},
-                             });
+      {{"$DOT", dot}, {"$LAYOUT_ENGINE", layout_engine}});
 }
 
 void RegisterGraphvizURLRenderer(

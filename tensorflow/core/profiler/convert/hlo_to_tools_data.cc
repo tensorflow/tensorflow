@@ -83,7 +83,8 @@ absl::StatusOr<std::string> ConvertHloProtoToAllocationTimeline(
     return result_or.status();
   }
 
-  return WrapDotInHtml(std::move(result_or.value().allocation_timeline()));
+  return WrapDotInHtml(std::move(result_or.value().allocation_timeline()),
+                       "neato");
 }
 
 absl::StatusOr<std::string> ConvertHloProtoToGraphViewer(

@@ -321,9 +321,10 @@ std::string HloLiveRange::ToString() const {
     auto it = buffer_live_ranges_.find(value);
     if (it != buffer_live_ranges_.end()) {
       if (it->second.start <= peak_moment && peak_moment <= it->second.end) {
-        int64_t bytes = ShapeUtil::ByteSizeOf(value->instruction()->shape(), 8);
-        absl::StrAppendFormat(&output, "    %s: %lld bytes\n",
-                              value->instruction()->name(), bytes);
+        int64_t bytes = ShapeUtil::ByteSizeOf(value->shape(), 8);
+        absl::StrAppendFormat(&output, "    %s%s: %lld bytes\n",
+                              value->instruction()->name(),
+                              value->index().ToString(), bytes);
       }
     }
   }

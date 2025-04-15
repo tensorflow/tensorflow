@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_FULLY_CONNECTED_H_
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -58,6 +60,59 @@ inline void FullyConnected(
       }
       output_data[out_c + output_depth * b] = ActivationFunctionWithMinMax(
           total + bias_value, output_activation_min, output_activation_max);
+    }
+  }
+}
+
+// This implementation receives the scales in float and performs requant in
+// float to avoid loss of precision.
+inline void FullyConnected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const uint8_t* input_data, const RuntimeShape& filter_shape,
+    const uint8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    float input_scale, float output_scale, float filter_scale,
+    uint8_t* output_data) {
+  const int32_t input_offset = params.input_offset;
+  const int32_t filter_offset = params.weights_offset;
+  const int32_t output_offset = params.output_offset;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
+  TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
+
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  // TODO(b/62193649): This really should be:
+  //     const int batches = ArraySize(output_dims, 1);
+  // but the current --variable_batch hack consists in overwriting the 3rd
+  // dimension with the runtime batch size, as we don't keep track for each
+  // array of which dimension is the batch dimension in it.
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int filter_dim_count = filter_shape.DimensionsCount();
+  const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
+  const int output_depth = MatchingDim(filter_shape, filter_dim_count - 2,
+                                       output_shape, output_dim_count - 1);
+  const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
+  for (int b = 0; b < batches; ++b) {
+    for (int out_c = 0; out_c < output_depth; ++out_c) {
+      int32_t acc = 0;
+      for (int d = 0; d < accum_depth; ++d) {
+        int32_t input_val = input_data[b * accum_depth + d];
+        int32_t filter_val = filter_data[out_c * accum_depth + d];
+        acc += (filter_val + filter_offset) * (input_val + input_offset);
+      }
+      if (bias_data) {
+        acc += bias_data[out_c];
+      }
+      const double effective_output_scale = static_cast<double>(input_scale) *
+                                            static_cast<double>(filter_scale) /
+                                            static_cast<double>(output_scale);
+      int32_t acc_scaled = static_cast<int32_t>(
+          round(static_cast<double>(acc) * effective_output_scale));
+      acc_scaled += output_offset;
+      acc_scaled = std::max(acc_scaled, output_activation_min);
+      acc_scaled = std::min(acc_scaled, output_activation_max);
+      output_data[out_c + output_depth * b] = static_cast<uint8_t>(acc_scaled);
     }
   }
 }
@@ -160,6 +215,60 @@ inline void FullyConnected(
       accum = std::min(accum, output_activation_max - output_offset);
       accum += output_offset;
       output_data[out_c + output_depth * b] = accum;
+    }
+  }
+}
+
+// This implementation receives the scales in float and performs requant in
+// float to avoid loss of precision.
+inline void FullyConnected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const uint8_t* input_data, const RuntimeShape& filter_shape,
+    const uint8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    float input_scale, float output_scale, float filter_scale,
+    int16_t* output_data) {
+  const int32_t input_offset = params.input_offset;
+  const int32_t filter_offset = params.weights_offset;
+  const int32_t output_offset = params.output_offset;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
+
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  TFLITE_DCHECK_EQ(output_offset, 0);
+  // TODO(b/62193649): This really should be:
+  //     const int batches = ArraySize(output_dims, 1);
+  // but the current --variable_batch hack consists in overwriting the 3rd
+  // dimension with the runtime batch size, as we don't keep track for each
+  // array of which dimension is the batch dimension in it.
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int filter_dim_count = filter_shape.DimensionsCount();
+  const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
+  const int output_depth = MatchingDim(filter_shape, filter_dim_count - 2,
+                                       output_shape, output_dim_count - 1);
+  const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
+  for (int b = 0; b < batches; ++b) {
+    for (int out_c = 0; out_c < output_depth; ++out_c) {
+      // Internal accumulation.
+      // Initialize accumulator with the bias-value.
+      int32_t accum = bias_data[out_c];
+      // Accumulation loop.
+      for (int d = 0; d < accum_depth; ++d) {
+        int16_t input_val = input_data[b * accum_depth + d] + input_offset;
+        int16_t filter_val =
+            filter_data[out_c * accum_depth + d] + filter_offset;
+        accum += filter_val * input_val;
+      }
+      const double effective_output_scale = static_cast<double>(input_scale) *
+                                            static_cast<double>(filter_scale) /
+                                            static_cast<double>(output_scale);
+      int32_t acc_scaled = static_cast<int32_t>(
+          round(static_cast<double>(accum) * effective_output_scale));
+      // Saturate, cast to int16_t, and store to output array.
+      acc_scaled = std::max(acc_scaled, output_activation_min - output_offset);
+      acc_scaled = std::min(acc_scaled, output_activation_max - output_offset);
+      acc_scaled += output_offset;
+      output_data[out_c + output_depth * b] = acc_scaled;
     }
   }
 }

@@ -86,7 +86,8 @@ absl::StatusOr<std::string> WrapDotInFormat(std::string dot,
                                             xla::RenderedGraphFormat format);
 
 // Convert dot into visual graph in html
-std::string WrapDotInHtml(std::string dot);
+std::string WrapDotInHtml(std::string dot,
+                          absl::string_view layout_engine = "dot");
 
 // Registers a function which implements RenderedGraphFormat::kUrl.
 // The input to the function is dot, and the output should be a URL or an error.

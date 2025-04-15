@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/execution_graph.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -326,7 +327,8 @@ class CommandBufferCmdSequence {
       Append(std::make_unique<T>(std::forward<Args>(args)...));
     }
 
-    CommandBufferCmdSequence Build(SynchronizationMode synchronization_mode) &&;
+    absl::StatusOr<CommandBufferCmdSequence> Build(
+        SynchronizationMode synchronization_mode) &&;
 
    private:
     std::vector<std::unique_ptr<CommandBufferCmd>> commands_;
@@ -390,7 +392,8 @@ class CommandBufferCmdSequence {
 
   CommandBufferCmdSequence(
       SynchronizationMode synchronization_mode,
-      std::vector<std::unique_ptr<CommandBufferCmd>> commands);
+      std::vector<std::unique_ptr<CommandBufferCmd>> commands,
+      std::optional<ExecutionGraph> execution_graph);
 
   absl::Status CheckCommandBufferState(
       se::CommandBuffer* command_buffer,
@@ -409,6 +412,10 @@ class CommandBufferCmdSequence {
 
   SynchronizationMode synchronization_mode_;
   std::vector<std::unique_ptr<CommandBufferCmd>> commands_;
+
+  // In automatic synchronization mode we build an execution graph for the
+  // sequence of commands and use it to set up dependencies between commands.
+  std::optional<ExecutionGraph> execution_graph_;
 
   // Buffers referenced by commands in this sequence.
   absl::flat_hash_set<BufferUse> buffers_;

@@ -118,3 +118,40 @@ module {
   }
 }
 // CHECK-DIRECT: stablehlo.convolution
+
+// -----
+// Binary elementwise ops
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[2,2]{1,0}, f32[2,2]{1,0})->f32[2,2]{1,0}}
+
+// CHECK:       ENTRY %[[$main_11:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[2,2] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = f32[2,2] parameter(1)
+// CHECK-NEXT:  %[[add_3:[^ ]+]] = f32[2,2] add(%[[Arg_0_1]], %[[Arg_1_2]]),
+// CHECK-NEXT:  %[[atan2_4:[^ ]+]] = f32[2,2] atan2(%[[add_3]], %[[Arg_1_2]]),
+// CHECK-NEXT:  %[[divide_5:[^ ]+]] = f32[2,2] divide(%[[atan2_4]], %[[Arg_1_2]]),
+// CHECK-NEXT:  %[[maximum_6:[^ ]+]] = f32[2,2] maximum(%[[divide_5]], %[[Arg_1_2]]),
+// CHECK-NEXT:  %[[minimum_7:[^ ]+]] = f32[2,2] minimum(%[[maximum_6]], %[[Arg_1_2]]),
+// CHECK-NEXT:  %[[multiply_8:[^ ]+]] = f32[2,2] multiply(%[[minimum_7]], %[[Arg_1_2]]),
+// CHECK-NEXT:  %[[power_9:[^ ]+]] = f32[2,2] power(%[[multiply_8]], %[[Arg_1_2]]),
+// CHECK-NEXT:  ROOT %[[subtract_10:[^ ]+]] = f32[2,2] subtract(%[[power_9]], %[[Arg_1_2]]),
+
+func.func @main(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %0 = stablehlo.add %arg0, %arg1 : tensor<2x2xf32>
+  %1 = stablehlo.atan2 %0, %arg1 : tensor<2x2xf32>
+  %2 = stablehlo.divide %1, %arg1 : tensor<2x2xf32>
+  %3 = stablehlo.maximum %2, %arg1 : tensor<2x2xf32>
+  %4 = stablehlo.minimum %3, %arg1 : tensor<2x2xf32>
+  %5 = stablehlo.multiply %4, %arg1 : tensor<2x2xf32>
+  %6 = stablehlo.power %5, %arg1 : tensor<2x2xf32>
+  %7 = stablehlo.subtract %6, %arg1 : tensor<2x2xf32>
+  return %7 : tensor<2x2xf32>
+}
+// CHECK-DIRECT: stablehlo.add
+// CHECK-DIRECT: stablehlo.atan2
+// CHECK-DIRECT: stablehlo.divide
+// CHECK-DIRECT: stablehlo.maximum
+// CHECK-DIRECT: stablehlo.minimum
+// CHECK-DIRECT: stablehlo.multiply
+// CHECK-DIRECT: stablehlo.power
+// CHECK-DIRECT: stablehlo.subtract
