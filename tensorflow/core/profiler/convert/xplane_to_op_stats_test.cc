@@ -606,11 +606,16 @@ TEST(ConvertXPlaneToOpStats, ConstructDutyCycleTrackerFromXlaOps) {
   CreateXEvent(&device_plane_builder, &op_line, "op.4", /*offset_ps=*/40,
                /*duration_ps=*/10,
                {{StatType::kHloCategory, tsl::profiler::kHloOutfeed}});
+  XLineBuilder xla_module_line = device_plane_builder.GetOrCreateLine(1);
+  xla_module_line.SetName(kXlaModuleLineName);
+  CreateXEvent(&device_plane_builder, &xla_module_line, "module.1",
+               /*offset_ps=*/5,
+               /*duration_ps=*/50);
 
   XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(device_plane);
   DutyCycleTracker tracker = ConstructDutyCycleTracker(visitor);
   EXPECT_EQ(tracker.GetActiveTimePs(), 20);
-  EXPECT_EQ(tracker.GetIdleTimePs(), 20);
+  EXPECT_EQ(tracker.GetIdleTimePs(), 30);
 }
 
 TEST(ConvertXPlaneToOpStats, ConstructDutyCycleTrackerFromSparseCore) {
@@ -668,6 +673,10 @@ TEST(ConvertXPlaneToOpStats, MultiCoreChipBusyAndIdleTimeTest) {
   CreateXEvent(&tc_plane_builder, &xla_op_line, "op.4", /*offset_ps=*/40,
                /*duration_ps=*/10,
                {{StatType::kHloCategory, tsl::profiler::kHloOutfeed}});
+  XLineBuilder xla_module_line = tc_plane_builder.GetOrCreateLine(1);
+  xla_module_line.SetName(kXlaModuleLineName);
+  CreateXEvent(&tc_plane_builder, &xla_module_line, "module.1", /*offset_ps=*/5,
+               /*duration_ps=*/50);
 
   XPlane* sc_plane = GetOrCreateTpuXPlane(
       &space, /*device_ordinal=*/1, /*device_type=*/"TPU v4",

@@ -457,6 +457,7 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
         "@local_xla//xla/tsl/profiler/utils:timespan",
         "@local_xla//xla/tsl/profiler/utils:tpu_xplane_utils",
+        "@local_xla//xla/tsl/profiler/utils:xplane_schema",
         "@local_xla//xla/tsl/profiler/utils:xplane_utils",
         "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:hardware_types_proto_cc",
         "@org_xprof//plugin/tensorboard_plugin_profile/protobuf:kernel_stats_proto_cc",

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
+#include <sys/types.h>
+
 #include <optional>
 #include <ostream>
 #include <string>
@@ -30,6 +32,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/tpu_xplane_utils.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/convert/duty_cycle_combiner.h"
 #include "tensorflow/core/profiler/convert/duty_cycle_tracker.h"
@@ -274,16 +277,23 @@ DutyCycleTracker ConstructDutyCycleTracker(XPlaneVisitor& visitor) {
       line.ForEachEvent([&](const XEventVisitor& event) {
         auto hlo_category_stat = event.GetStat(StatType::kHloCategory);
         duty_cycle_tracker.AddInterval(
-            Timespan(event.OffsetPs(), event.DurationPs()),
+            event.GetTimespan(),
             !(hlo_category_stat &&
               tsl::profiler::IsOffDutyOp(hlo_category_stat->StrOrRefValue())));
       });
-    } else if (line.Name() == kSparseCoreOpLineName ||
-               line.Name() == kSparseCoreModuleLineName) {
+    } else if (line.Name() == kSparseCoreOpLineName) {
       line.ForEachEvent([&](const XEventVisitor& event) {
         duty_cycle_tracker.AddInterval(
-            Timespan(event.OffsetPs(), event.DurationPs()),
-            /*is_active=*/line.Name() == kSparseCoreOpLineName);
+            event.GetTimespan(),
+            // TODO(b/397774568): Add support for SparseCore off-duty ops.
+            /*is_active=*/true);
+      });
+    } else if (line.Name() == tsl::profiler::kXlaModuleLineName ||
+               line.Name() == tsl::profiler::kSparseCoreModuleLineName) {
+      line.ForEachEvent([&](const XEventVisitor& event) {
+        duty_cycle_tracker.AddInterval(event.GetTimespan(),
+                                       /*is_active=*/false);
+        return;
       });
     }
   });
