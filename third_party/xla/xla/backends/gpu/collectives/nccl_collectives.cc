@@ -227,6 +227,33 @@ absl::Status NcclCollectives::GroupEnd() {
   return XLA_NCCL_STATUS(ncclGroupEnd());
 }
 
+absl::StatusOr<void*> NcclCollectives::Allocate(uint64_t bytes) {
+  void* ptr = nullptr;
+  ncclResult_t res = ncclMemAlloc(&ptr, bytes);
+  if (res != ncclSuccess) {
+    return absl::InternalError(absl::StrFormat(
+        "failed to allocate %s (%llu bytes) from device collective memory: %s, "
+        "Last NCCL warning(error) log entry (may be unrelated): %s",
+        tsl::strings::HumanReadableNumBytes(bytes), bytes,
+        ncclGetErrorString(res), ncclGetLastError(nullptr)));
+  }
+  VLOG(2) << "Allocated collective memory " << ptr << " of " << bytes
+          << " bytes";
+  return ptr;
+}
+
+absl::Status NcclCollectives::Deallocate(void* location) {
+  ncclResult_t res = ncclMemFree(location);
+  if (res != ncclSuccess) {
+    return absl::InternalError(absl::StrFormat(
+        "failed to free device collective memory at %p; result: %s, Last NCCL "
+        "warning(error) log entry (may be unrelated): %s",
+        location, ncclGetErrorString(res), ncclGetLastError(nullptr)));
+  }
+
+  VLOG(2) << "Deallocated collective memory " << location;
+  return absl::OkStatus();
+}
 }  // namespace xla::gpu
 
 XLA_COLLECTIVES_REGISTER("gpu", "nccl", 1,

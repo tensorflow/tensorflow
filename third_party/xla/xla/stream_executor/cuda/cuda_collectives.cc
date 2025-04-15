@@ -21,50 +21,39 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
-#include "third_party/nccl/nccl.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/collectives.h"
+#include "xla/core/collectives/collectives_registry.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/numbers.h"
 
 namespace stream_executor::gpu {
+
+absl::StatusOr<xla::gpu::GpuCollectives*> GetGpuCollectives(
+    StreamExecutor* executor) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+  TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
+                      xla::CollectivesRegistry::Default("gpu"));
+  return tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+}
 
 /* static */ absl::StatusOr<void*> CudaCollectives::CollectiveMemoryAllocate(
     StreamExecutor* executor, uint64_t bytes) {
   if (bytes == 0) return nullptr;
 
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-
-  void* ptr = nullptr;
-  ncclResult_t res = ncclMemAlloc(&ptr, bytes);
-  if (res != ncclSuccess) {
-    return absl::InternalError(absl::StrFormat(
-        "failed to allocate %s (%llu bytes) from device collective memory: %s, "
-        "Last NCCL warning(error) log entry (may be unrelated): %s",
-        tsl::strings::HumanReadableNumBytes(bytes), bytes,
-        ncclGetErrorString(res), ncclGetLastError(nullptr)));
-  }
-  VLOG(2) << "Allocated collective memory " << ptr << " for executor "
-          << executor << " of " << bytes << " bytes";
-  return ptr;
+  TF_ASSIGN_OR_RETURN(xla::gpu::GpuCollectives * gpu_collectives,
+                      GetGpuCollectives(executor));
+  return gpu_collectives->Allocate(bytes);
 }
 
 /* static */ absl::Status CudaCollectives::CollectiveMemoryDeallocate(
     StreamExecutor* executor, void* location) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
-  ncclResult_t res = ncclMemFree(location);
-  if (res != ncclSuccess) {
-    return absl::InternalError(absl::StrFormat(
-        "failed to free device collective memory at %p; result: %s, Last NCCL "
-        "warning(error) log entry (may be unrelated): %s",
-        location, ncclGetErrorString(res), ncclGetLastError(nullptr)));
-  }
-
-  VLOG(2) << "Deallocated collective memory " << location << " for executor "
-          << executor;
-  return absl::OkStatus();
+  TF_ASSIGN_OR_RETURN(xla::gpu::GpuCollectives * gpu_collectives,
+                      GetGpuCollectives(executor));
+  return gpu_collectives->Deallocate(location);
 }
 
 }  // namespace stream_executor::gpu
