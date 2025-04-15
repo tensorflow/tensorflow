@@ -69,7 +69,7 @@ struct TpuTopologyChipBoundsExternal {
 
 class TpuTopologyExternal {
  public:
-  explicit TpuTopologyExternal(SE_TpuTopology* topology)
+  explicit TpuTopologyExternal(const SE_TpuTopology* topology)
       : topology_(topology) {}
   int32_t LogicalDevicesPerHost(TpuCoreTypeEnum core_type) const;
   int32_t LogicalDevicesPerChip(TpuCoreTypeEnum core_type) const;
@@ -85,7 +85,7 @@ class TpuTopologyExternal {
   TpuVersionEnum version() const;
 
  private:
-  SE_TpuTopology* topology_;
+  const SE_TpuTopology* topology_;
 };
 
 std::string TpuVersionEnumToString(TpuVersionEnum version);

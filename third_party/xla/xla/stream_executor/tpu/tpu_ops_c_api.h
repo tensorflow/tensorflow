@@ -463,7 +463,7 @@ TFTPU_CAPI_EXPORT uint64_t TpuCompile_CreateGuaranteedConstFingerprint(
     uint64_t fingerprint, const char* data, size_t size);
 
 // Returns a pointer to the TPU topology struct.
-TFTPU_CAPI_EXPORT SE_TpuTopology* TpuUtil_GetTopologyPtr();
+TFTPU_CAPI_EXPORT const SE_TpuTopology* TpuUtil_GetTopologyPtr();
 
 // Returns XLA pad size from TPU topology.
 TFTPU_CAPI_EXPORT size_t TpuUtil_GetXlaPadSizeFromTpuTopology();

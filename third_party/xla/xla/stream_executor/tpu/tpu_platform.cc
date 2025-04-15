@@ -105,7 +105,7 @@ bool TpuPlatform::ShouldRegisterTpuDeviceToDeviceCopy() {
       ->TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopyFn(platform_);
 }
 
-const tensorflow::tpu::TpuTopologyPtr TpuPlatform::GetTopologyPtr() {
+const SE_TpuTopology* TpuPlatform::GetTopologyPtr() {
   return stream_executor::tpu::ExecutorApiFn()->TpuPlatform_GetTopologyPtrFn(
       platform_);
 }
