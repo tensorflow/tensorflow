@@ -252,6 +252,44 @@ ENTRY %main {
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
+TEST_F(SortRewriterTest, NoRewriteDynamicSize) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = u8[] parameter(0)
+  %rhs = u8[] parameter(1)
+  ROOT %lt = pred[] compare(%lhs, %rhs), direction=LT
+}
+
+ENTRY %main {
+  %input = u8[100,<=100] parameter(0)
+  ROOT %sort = u8[100,<=100] sort(%input), dimensions={1}, to_apply=%compare
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_FALSE(RunModuleAndPass(module.get()));
+}
+
+TEST_F(SortRewriterTest, NoRewriteDynamicBatch) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = u8[] parameter(0)
+  %rhs = u8[] parameter(1)
+  ROOT %lt = pred[] compare(%lhs, %rhs), direction=LT
+}
+
+ENTRY %main {
+  %input = u8[<=100,100] parameter(0)
+  ROOT %sort = u8[<=100,100] sort(%input), dimensions={1}, to_apply=%compare
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_FALSE(RunModuleAndPass(module.get()));
+}
+
 // Kernels are compiled for a subset of types.
 TEST_F(SortRewriterTest, NoRewriteUnsupportedType) {
   constexpr char kHlo[] = R"(

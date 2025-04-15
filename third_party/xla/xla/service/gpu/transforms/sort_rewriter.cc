@@ -390,11 +390,19 @@ bool IsCubCompatibleSort(const se::DeviceDescription& device_description,
     return false;
   }
 
+  for (const auto& op : sort_op->operands()) {
+    if (op->shape().is_dynamic()) {
+      VLOG(2) << "Dynamic shape is not supported: " << op->shape().ToString();
+      return false;
+    }
+  }
+
   const Shape& operand_shape = sort_op->operand(0)->shape();
   if (sort_op->sort_dimension() != operand_shape.dimensions().size() - 1) {
     VLOG(2) << "Sort dimension should be the minor one";
     return false;
   }
+
   if (!ShouldRewriteCompatibleSort(device_description, sort_op)) {
     VLOG(2) << "Tensor shape and type will not see an improvement.";
     return false;

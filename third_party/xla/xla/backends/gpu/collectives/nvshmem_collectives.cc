@@ -57,6 +57,12 @@ NvshmemCollectives* NvshmemCollectives::Default() {
   LOG(FATAL) << "Unsupported collectives implementation for NVSHMEM";
 }
 
+absl::Status NvshmemCollectives::InitializeTopology(Topology topology) {
+  SetEnvInfo(topology.node_id, topology.num_nodes,
+             topology.device_count_per_process, topology.kv_store);
+  return absl::OkStatus();
+}
+
 void NvshmemCollectives::SetEnvInfo(
     int process_id, size_t num_processes, size_t device_count_per_process,
     std::weak_ptr<KeyValueStoreInterface> kv_store) {
