@@ -152,8 +152,8 @@ std::unique_ptr<tensorflow::profiler::DataTable> CreateHloStatsDataTable(
     row->AddCell(record.avg_time_in_us());
     row->AddCell(record.total_self_time_in_us());
     row->AddCell(record.avg_self_time_in_us());
-    row->AddCell(record.total_self_time_as_fraction());
-    row->AddCell(record.cumulative_total_self_time_as_fraction());
+    row->AddCell(record.total_self_time_as_fraction() * 100);
+    row->AddCell(record.cumulative_total_self_time_as_fraction() * 100);
     row->AddCell(record.dma_stall_fraction());
     row->AddCell(record.model_flop_rate());
     row->AddCell(record.measured_flop_rate());
