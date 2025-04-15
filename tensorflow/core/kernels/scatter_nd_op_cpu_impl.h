@@ -22,7 +22,7 @@ limitations under the License.
 
 #include <atomic>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -137,7 +137,9 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
       }
       if (TF_PREDICT_FALSE(out_of_bounds)) {
         error_loc = loc;
-        break;
+        // Don't break the loop here, but continue to update the rest because
+        // the caller might ignore bad indices.
+        continue;
       } else {
         auto input_chip = Toutput.template chip<0>(i);
         auto output_chip = input_chip;

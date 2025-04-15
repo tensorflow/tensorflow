@@ -49,7 +49,7 @@ REGISTER_OP("SymbolicGradient")
           c->set_output(i, c->input(i));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("RemoteCall")
@@ -90,7 +90,7 @@ else_branch: A function that takes 'inputs' and returns a list of
     tensors.  whose types are the same as what then_branch returns.
 )doc");
 
-Status IfShapeInferenceFn(shape_inference::InferenceContext* c) {
+absl::Status IfShapeInferenceFn(shape_inference::InferenceContext* c) {
   std::vector<PartialTensorShape> output_shapes;
   TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
   // If `output_shapes` attr is set use that as the shapes of the outputs
@@ -107,7 +107,7 @@ Status IfShapeInferenceFn(shape_inference::InferenceContext* c) {
         output_shapes[i], &output_shape_handle));
     c->set_output(static_cast<int>(i), output_shape_handle);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("StatelessIf")
@@ -135,7 +135,7 @@ REGISTER_OP("If")
     .SetIsStateful()
     .SetShapeFn(IfShapeInferenceFn);
 
-Status CaseShapeInferenceFn(shape_inference::InferenceContext* c) {
+absl::Status CaseShapeInferenceFn(shape_inference::InferenceContext* c) {
   std::vector<PartialTensorShape> output_shapes;
   TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
   // If `output_shapes` attr is set use that as the shapes of the outputs
@@ -152,7 +152,7 @@ Status CaseShapeInferenceFn(shape_inference::InferenceContext* c) {
         output_shapes[i], &output_shape_handle));
     c->set_output(static_cast<int>(i), output_shape_handle);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("StatelessCase")
@@ -188,7 +188,7 @@ REGISTER_OP("_While")
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->input(i));
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 output = input; While (Cond(output)) { output = Body(output) }
@@ -207,7 +207,7 @@ body: A function that takes a list of tensors and returns another
       by T.
 )doc");
 
-Status WhileShapeInferenceFn(shape_inference::InferenceContext* c) {
+absl::Status WhileShapeInferenceFn(shape_inference::InferenceContext* c) {
   std::vector<PartialTensorShape> output_shapes;
   TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
   // If `output_shapes` attr is set use that as the shapes of the outputs
@@ -229,7 +229,7 @@ Status WhileShapeInferenceFn(shape_inference::InferenceContext* c) {
       c->set_output(i, c->input(i));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("While")
@@ -309,7 +309,7 @@ REGISTER_OP("FakeParam")
       shape_inference::ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
       c->set_output(0, out);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 // Returns the device index.

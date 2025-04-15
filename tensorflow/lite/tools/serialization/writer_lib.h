@@ -16,6 +16,8 @@ limitations under the License.
 
 #ifndef TENSORFLOW_LITE_TOOLS_SERIALIZATION_WRITER_LIB_H_
 #define TENSORFLOW_LITE_TOOLS_SERIALIZATION_WRITER_LIB_H_
+#include <cstddef>
+#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <set>
@@ -24,13 +26,34 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
+
+// This #include needs to precede the inclusion of any other TF Lite header
+// file that might depend on the non-mutable schema_generated.h, directly,
+// e.g. core/api/op_resolver.h, or indirectly, e.g. core/subgraph.h.
+// That's because "tensorflow/lite/schema/mutable/schema_generated.h"
+// and "tensorflow/lite/schema/schema_generated.h" both use the same
+// header guard macro (FLATBUFFERS_GENERATED_SCHEMA_TFLITE_H_), but have
+// different contents (the former is a superset of the latter). In particular
+// the one in mutable/ is built with the "--gen-mutable" and "--gen-object-api"
+// flags to the flatbuffer schema compiler which cause some additional
+// (non-virtual) accessor methods and API functions to be declared.
+// The code here uses those methods, so we need to make sure that we get
+// the mutable variant of this header.
+//
+//  The '#if' here prevents automatic reordering of this #include.
+#if 1
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#endif
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/tools/serialization/enum_mapping.h"
 #include "tensorflow/lite/version.h"
 

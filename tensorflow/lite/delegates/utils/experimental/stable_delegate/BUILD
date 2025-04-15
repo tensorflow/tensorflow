@@ -34,6 +34,7 @@ cc_library_with_tflite(
     deps = [
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -79,6 +80,7 @@ cc_test(
     deps = [
         ":delegate_loader",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration/c:stable_delegate",
         "//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate",
         "@com_google_googletest//:gtest_main",
     ],
@@ -131,13 +133,13 @@ cc_library(
     srcs = ["kernel_test_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/kernels:acceleration_test_util",
         "//tensorflow/lite/kernels:acceleration_test_util_internal",
         "//tensorflow/lite/kernels:test_delegate_providers_lib",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/kernels:test_util_delegate_providers",
         "//tensorflow/lite/testing:util",
-        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
     ],
 )

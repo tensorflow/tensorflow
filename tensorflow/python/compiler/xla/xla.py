@@ -167,7 +167,7 @@ class XLACompileContext(control_flow_ops.XLAControlFlowContext):
         logging.warning('... and %d more',
                         len(self._unsupported_ops) - _MAX_WARNING_LINES)
 
-  def _RemoveExternalControlEdges(self, op):
+  def _RemoveExternalControlEdges(self, op: ops.Operation):
     """Remove any external control dependency on this op."""
     internal_control_inputs = []
     external_control_inputs = []
@@ -191,7 +191,7 @@ class XLACompileContext(control_flow_ops.XLAControlFlowContext):
     # pylint: enable=protected-access
     return internal_control_inputs, external_control_inputs
 
-  def AddOp(self, op):
+  def AddOp(self, op: ops.Operation):
     """Create op in XLACompileContext and notifies outer context recursively."""
     # pylint: disable=protected-access
     if op.type in _DENYLISTED_OPS:
@@ -281,7 +281,7 @@ class XLACompileContext(control_flow_ops.XLAControlFlowContext):
 
     return result
 
-  def AddInnerOp(self, op):
+  def AddInnerOp(self, op: ops.Operation):
     self.AddOp(op)
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
@@ -570,21 +570,6 @@ class _CapturedObject(object):
 
   def get(self):
     return self._object
-
-
-def _get_scaffold(captured_scaffold_fn):
-  """Retrieves the Scaffold from `captured_scaffold_fn`."""
-  scaffold_fn = captured_scaffold_fn.get()
-
-  if not scaffold_fn:
-    return None
-
-  scaffold = scaffold_fn()
-  if scaffold is None:
-    raise ValueError(
-        'TPUEstimatorSpec.scaffold_fn returns None, which is not allowed')
-
-  return scaffold
 
 
 def check_function_argument_count(func, input_arity, infeed_queue):

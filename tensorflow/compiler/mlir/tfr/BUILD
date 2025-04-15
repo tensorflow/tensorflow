@@ -1,3 +1,8 @@
+load(
+    "@llvm-project//mlir:tblgen.bzl",
+    "gentbl_cc_library",
+    "td_library",
+)
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -5,13 +10,8 @@ load(
     "tf_cc_test",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test", "tf_python_pybind_extension")
-load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
-load(
-    "@llvm-project//mlir:tblgen.bzl",
-    "gentbl_cc_library",
-    "td_library",
-)
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -53,16 +53,10 @@ td_library(
 gentbl_cc_library(
     name = "tfr_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/tfr_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/tfr_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tfr_ops.h.inc": ["-gen-op-decls"],
+        "ir/tfr_ops.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfr_ops.td",
     deps = [
@@ -73,12 +67,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tfr_decompose_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/generated_decompose.inc",
-        ),
-    ],
+    tbl_outs = {"passes/generated_decompose.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/decompose_patterns.td",
     deps = [
@@ -111,8 +100,10 @@ cc_library(
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:SideEffectInterfaces",
@@ -162,6 +153,7 @@ cc_library(
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SCFDialect",
@@ -182,7 +174,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -223,22 +215,26 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_attr",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
-        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_executor_to_graph",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -247,99 +243,32 @@ tf_cc_test(
     srcs = ["integration/tfr_decompose_ctx_test.cc"],
     deps = [
         ":tfr_decompose_ctx",
-        "//tensorflow/compiler/xla:test",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "graph_decompose_pass",
-    srcs = ["integration/graph_decompose_pass.cc"],
-    hdrs = ["integration/graph_decompose_pass.h"],
-    deps = [
-        ":tfr_decompose_ctx",
-        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/common_runtime:device_set",
-        "@llvm-project//mlir:IR",
-    ],
-    alwayslink = 1,
-)
-
-tf_py_strict_test(
-    name = "graph_decompose_test",
-    size = "small",
-    srcs = ["integration/graph_decompose_test.py"],
-    data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    tags = [
-        "no_windows",  # TODO(b/170752141)
-        "nomac",  # TODO(b/170752141)
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:nn_ops",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-cc_library(
-    name = "node_expansion_pass",
-    srcs = ["integration/node_expansion_pass.cc"],
-    hdrs = ["integration/node_expansion_pass.h"],
-    deps = [
-        ":tfr_decompose_ctx",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/common_runtime/eager:core_no_xla",
-        "//tensorflow/core/common_runtime/eager:eager_op_rewrite_registry",
-        "@com_google_absl//absl/strings",
-    ],
-    alwayslink = 1,
-)
-
-tf_py_strict_test(
-    name = "node_expansion_test",
-    size = "small",
-    srcs = ["integration/node_expansion_test.py"],
-    data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    tags = [
-        "no_windows",  # TODO(b/170752141)
-        "nomac",  # TODO(b/170752141)
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:nn_ops",
-        "//tensorflow/python/ops:resource_variable_ops_gen",
-        "//tensorflow/python/platform:client_testlib",
+        "@local_xla//xla/hlo/testlib:test",
     ],
 )
 
 tf_python_pybind_extension(
     name = "tfr_wrapper",
     srcs = ["python/tfr_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "tfr_wrapper.pyi",
+    ],
+    starlark_only = True,
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         ":tfr",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//tensorflow/python/lib/core:pybind11_status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -354,13 +283,11 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "composite",
     srcs = ["python/composite.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "tfr_gen",
     srcs = ["python/tfr_gen.py"],
-    srcs_version = "PY3",
     deps = [
         ":tfr_wrapper",
         "//tensorflow:tensorflow_py",  # buildcleaner: keep
@@ -377,21 +304,19 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct/static_analysis:reaching_definitions",
         "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
         "//tensorflow/python/autograph/pyct/static_analysis:type_inference",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:load_library",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_inspect",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
 tf_py_strict_test(
     name = "tfr_gen_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/tfr_gen_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":composite",
         ":tfr_gen",
@@ -409,14 +334,13 @@ tf_py_strict_test(
 py_strict_library(
     name = "op_reg_gen",
     srcs = ["python/op_reg_gen.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/autograph/pyct:transformer",
         "//tensorflow/python/autograph/pyct:transpiler",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/util:tf_inspect",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -424,8 +348,6 @@ tf_py_strict_test(
     name = "op_reg_gen_test",
     size = "small",
     srcs = ["python/op_reg_gen_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":composite",
         ":op_reg_gen",
@@ -437,7 +359,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "test_utils",
     srcs = ["python/test_utils.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/eager:backprop",

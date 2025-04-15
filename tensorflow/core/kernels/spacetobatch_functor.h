@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <type_traits>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -100,7 +100,7 @@ struct SpaceToBatchFunctor {
   //     then this is the input to the conversion.
   //
   // The caller must ensure that the dimensions of the tensors are correct.
-  Status operator()(
+  absl::Status operator()(
       const Device& d,
       typename TTypes<InputT, NUM_BLOCK_DIMS + 2>::Tensor space_tensor,
       const int64_t block_shape[NUM_BLOCK_DIMS],

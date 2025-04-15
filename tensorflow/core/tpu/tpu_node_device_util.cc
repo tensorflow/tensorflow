@@ -15,14 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_node_device_util.h"
 
+#include "absl/log/log.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 
 bool TpuOpFilter(KernelDef* kdef) {
-  StringPiece op(kdef->op());
+  absl::string_view op(kdef->op());
   VLOG(2) << "TpuOpFilter " << op;
   // Enable const string operands to Assert op (b/69167214).
   if (op == "Const") {

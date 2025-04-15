@@ -1,0 +1,44 @@
+# Dockerfile to build a manylinux 2010 compliant cross-compiler.
+#
+# Builds a devtoolset gcc/libstdc++ that targets manylinux 2010 compatible
+# glibc (2.12) and system libstdc++ (4.4).
+#
+# To push a new version, run:
+# $ docker build -f Dockerfile.rbe.cuda12.2-cudnn8.6-ubuntu20.04-manylinux2014-multipython \
+#  --tag "gcr.io/tensorflow-testing/nosla-cuda12.2-cudnn8.6-ubuntu20.04-manylinux2014-multipython" .
+# $ docker push gcr.io/tensorflow-testing/nosla-cuda12.2-cudnn8.6-ubuntu20.04-manylinux2014-multipython
+
+FROM gcr.io/tensorflow-sigs/build@sha256:b6f572a897a69fa3311773f949b9aa9e81bc393e4fbe2c0d56d8afb03a6de080
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+COPY install/install_bootstrap_deb_packages.sh /install/
+RUN /install/install_bootstrap_deb_packages.sh
+
+COPY install/install_deb_packages.sh /install/
+RUN /install/install_deb_packages.sh
+
+RUN apt-get update && apt-get install -y \
+    libbz2-dev \
+    libffi-dev \
+    libgdbm-dev \
+    libncurses5-dev \
+    libnss3-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    patchelf \
+      && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY install/build_and_install_python.sh /install/
+RUN /install/build_and_install_python.sh "3.9.18"
+RUN /install/build_and_install_python.sh "3.10.13"
+RUN /install/build_and_install_python.sh "3.11.6"
+RUN /install/build_and_install_python.sh "3.12.0"
+
+COPY install/install_pip_packages_by_version.sh /install/
+# https://github.com/numpy/numpy/issues/22623 for `SETUPTOOLS_USE_DISTUTILS`.
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.11" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.12" "jax"

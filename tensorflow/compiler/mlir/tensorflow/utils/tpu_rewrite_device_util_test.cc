@@ -21,24 +21,38 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
 
-tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetMlirModuleFromString(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetMlirModuleFromString(
     llvm::StringRef string, mlir::MLIRContext* context) {
   mlir::DialectRegistry mlir_registry;
   RegisterAllTensorFlowDialects(mlir_registry);
@@ -118,8 +132,10 @@ TEST_P(ParameterizedMetadataTest, BadMetadata) {
   ASSERT_TRUE(DeviceNamesToParsedNames(
       {"/job:worker/replica:0/task:0/device:TPU_SYSTEM:0",
        "/job:worker/replica:0/task:0/device:TPU:0",
+       "/job:worker/replica:0/task:0/device:CPU:0",
        "/job:worker/replica:0/task:1/device:TPU_SYSTEM:0",
-       "/job:worker/replica:0/task:1/device:TPU:0"},
+       "/job:worker/replica:0/task:1/device:TPU:0",
+       "/job:worker/replica:0/task:1/device:CPU:0"},
       &devices));
   std::string compilation_device;
   llvm::SmallVector<llvm::SmallVector<std::string, 8>, 8> execution_devices;
@@ -513,6 +529,130 @@ TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh2x2x2) {
   EXPECT_EQ(computation_device_1.replica_device_ids(2), 3);
   EXPECT_EQ(computation_device_1.replica_device_ids(3), 7);
 }
+TEST(TPURewriteDeviceUtilTest, ValidXLADeviceAssignmentMesh1x2x1x3) {
+  tpu::TopologyProto topology_proto;
+  {
+    topology_proto.add_mesh_shape(1);
+    topology_proto.add_mesh_shape(2);
+    topology_proto.add_mesh_shape(1);
+    topology_proto.add_mesh_shape(3);
+    topology_proto.set_num_tasks(3);
+    topology_proto.set_num_tpu_devices_per_task(2);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(2);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(2);
+  }
+
+  std::string topology_attr = topology_proto.SerializeAsString();
+  std::vector<int64_t> device_assignment_attr{
+      0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 2, 0, 1, 0, 2, 0, 0, 0, 0, 0, 1, 0, 0};
+
+  llvm::SmallVector<Device, 8> devices;
+  std::vector<std::string> device_names =
+      MakeDeviceSet(/*num_tasks=*/3, /*num_devices_per_task=*/2);
+  ASSERT_TRUE(DeviceNamesToParsedNames(device_names, &devices));
+
+  auto xla_device_assignment = GetXlaDeviceAssignmentProto(
+      topology_attr, /*num_replicas=*/2, /*num_cores_per_replica=*/3,
+      device_assignment_attr);
+
+  TF_ASSERT_OK(xla_device_assignment.status());
+  EXPECT_EQ(xla_device_assignment->replica_count(), 2);
+  EXPECT_EQ(xla_device_assignment->computation_count(), 3);
+  ASSERT_EQ(xla_device_assignment->computation_devices_size(), 3);
+  const auto& computation_device_0 =
+      xla_device_assignment->computation_devices(0);
+  ASSERT_EQ(computation_device_0.replica_device_ids_size(), 2);
+  const auto& computation_device_1 =
+      xla_device_assignment->computation_devices(1);
+  ASSERT_EQ(computation_device_1.replica_device_ids_size(), 2);
+  const auto& computation_device_2 =
+      xla_device_assignment->computation_devices(2);
+  ASSERT_EQ(computation_device_2.replica_device_ids_size(), 2);
+
+  EXPECT_EQ(computation_device_0.replica_device_ids(0), 1);
+  EXPECT_EQ(computation_device_0.replica_device_ids(1), 5);
+  EXPECT_EQ(computation_device_1.replica_device_ids(0), 4);
+  EXPECT_EQ(computation_device_1.replica_device_ids(1), 0);
+  EXPECT_EQ(computation_device_2.replica_device_ids(0), 2);
+  EXPECT_EQ(computation_device_2.replica_device_ids(1), 3);
+}
+
+TEST(TPURewriteDeviceUtilTest, InvalidXLADeviceAssignmentMesh1x2x1x3) {
+  tpu::TopologyProto topology_proto;
+  {
+    topology_proto.add_mesh_shape(1);
+    topology_proto.add_mesh_shape(2);
+    topology_proto.add_mesh_shape(1);
+    topology_proto.add_mesh_shape(3);
+    topology_proto.set_num_tasks(3);
+    topology_proto.set_num_tpu_devices_per_task(2);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(2);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(2);
+  }
+
+  std::string topology_attr = topology_proto.SerializeAsString();
+  std::vector<int64_t> device_assignment_attr{
+      0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 2, 0, 1, 0, 2, 0, 0, 0, 0, 0, 1, 0, 0};
+
+  llvm::SmallVector<Device, 8> devices;
+  std::vector<std::string> device_names =
+      MakeDeviceSet(/*num_tasks=*/3, /*num_devices_per_task=*/2);
+  ASSERT_TRUE(DeviceNamesToParsedNames(device_names, &devices));
+
+  auto xla_device_assignment = GetXlaDeviceAssignmentProto(
+      topology_attr, /*num_replicas=*/2, /*num_cores_per_replica=*/2,
+      device_assignment_attr);
+
+  EXPECT_THAT(xla_device_assignment,
+              testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  ::testing::HasSubstr(
+                      "must be 'num_replicas' * 'num_cores_per_replica' * ")));
+}
 
 TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh1x2x1x3) {
   tpu::TopologyProto topology_proto;
@@ -863,6 +1003,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceNotReplicated) {
                 builder.getStrArrayAttr(llvm::ArrayRef<llvm::StringRef>(
                     {"/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0",
                      "/job:localhost/replica:0/task:0/device:TPU:0",
+                     "/job:localhost/replica:0/task:0/device:CPU:0",
                      "/job:worker/replica:0/task:0/device:CPU:0"})));
 
   llvm::SmallVector<mlir::Type, 8> result_types;

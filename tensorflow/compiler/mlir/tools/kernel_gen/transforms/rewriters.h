@@ -47,17 +47,10 @@ namespace transforms {
 /// Collects a set of patterns that bufferize operations from the standard and
 /// other dialects.
 void populateExtraBufferizeDialects(DialectRegistry &registry);
-void populateExtraBufferizePatterns(
-    ConversionTarget &target, MLIRContext *context,
-    bufferization::BufferizeTypeConverter *converter,
-    RewritePatternSet *patterns);
-
-/// Populate patterns to rewrite TF operations to TF framework JIT invocations.
-void PopulateTFToJITInvocationPatterns(
-    MLIRContext *ctx, RewritePatternSet *patterns,
-    llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
-    int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
-    bool cpu_codegen, bool jit_i64_indexed_for_large_tensors);
+void populateExtraBufferizePatterns(ConversionTarget &target,
+                                    MLIRContext *context,
+                                    TypeConverter *converter,
+                                    RewritePatternSet *patterns);
 
 }  // namespace transforms
 }  // namespace kernel_gen

@@ -1,11 +1,11 @@
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "mkl_deps",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test_mkl",
     "tf_mkl_kernel_library",
-)
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "mkl_deps",
 )
 
 package(
@@ -29,14 +29,14 @@ MKL_SHORT_DEPS = [
 ] + mkl_deps()
 
 MKL_DEPS = MKL_SHORT_DEPS + [
-    "//third_party/eigen3",
+    "@eigen_archive//:eigen3",
     "//tensorflow/core:array_grad",
     "//tensorflow/core:math_grad",
     "//tensorflow/core:nn_grad",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/kernels:concat_lib",
     "//tensorflow/core/kernels:conv_2d",
-    "//tensorflow/tsl/framework/contraction:eigen_contraction_kernel",
+    "@local_xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
     "//tensorflow/core/kernels:fill_functor",
     "//tensorflow/core/kernels:gather_functor",
     "//tensorflow/core/kernels:transpose_functor",
@@ -62,9 +62,11 @@ tf_mkl_kernel_library(
     srcs = ["mkl_batch_matmul_op.cc"],
     hdrs = [
         "mkl_batch_matmul_helper.h",
+        "mkl_kernel_util.h",
         "mkl_matmul_ops_common.h",
     ],
     deps = [
+        "//tensorflow/core:graph",
         "//tensorflow/core/kernels:batch_matmul_op",
         "//tensorflow/core/kernels:matmul_op",
     ] + MKL_DEPS,
@@ -75,9 +77,11 @@ tf_mkl_kernel_library(
     srcs = ["mkl_einsum_op.cc"],
     hdrs = [
         "mkl_batch_matmul_helper.h",
+        "mkl_kernel_util.h",
         "mkl_matmul_ops_common.h",
     ],
     deps = [
+        "//tensorflow/core:graph",
         "//tensorflow/core/kernels/linalg:einsum_op",
     ] + MKL_DEPS,
 )
@@ -88,8 +92,43 @@ tf_mkl_kernel_library(
         "mkl_matmul_op.cc",
         "mkl_matmul_op_fused.cc",
     ],
-    hdrs = ["mkl_matmul_ops_common.h"],
-    deps = MKL_DEPS,
+    hdrs = [
+        "mkl_kernel_util.h",
+        "mkl_matmul_ops_common.h",
+        "mkl_quantized_conv_ops.h",
+    ],
+    deps = [
+        "//tensorflow/core:graph",
+        "@com_google_absl//absl/container:inlined_vector",
+    ] + MKL_DEPS,
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_sparse_matrix_matmul_op",
+    srcs = [
+        "mkl_sparse_matrix_matmul_op.cc",
+    ],
+    hdrs = [
+        "mkl_kernel_util.h",
+        "mkl_matmul_ops_common.h",
+    ],
+    deps = [
+        "//tensorflow/core:graph",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_functor",
+        "//tensorflow/core/kernels/sparse:kernels",
+        "//tensorflow/core/kernels/sparse:sparse_matrix",
+    ] + MKL_DEPS,
+)
+
+tf_cc_test_mkl(
+    name = "mkl_sparse_matrix_matmul_op_benchmark",
+    size = "small",
+    srcs = ["mkl_sparse_matrix_matmul_op_benchmark.cc"],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/core/kernels/mkl:mkl_sparse_matrix_matmul_op",
+    ] + MKL_TEST_DEPS,
 )
 
 tf_cc_test_mkl(
@@ -134,6 +173,7 @@ tf_cc_test_mkl(
     srcs = ["mkl_qmatmul_op_test.cc"],
     linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
+        ":mkl_matmul_op",
         ":mkl_qmatmul_op",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
@@ -204,10 +244,12 @@ tf_mkl_kernel_library(
     name = "mkl_qmatmul_op",
     srcs = ["mkl_qmatmul_op.cc"],
     hdrs = [
+        "mkl_kernel_util.h",
         "mkl_matmul_ops_common.h",
         "mkl_quantized_conv_ops.h",
     ],
     deps = [
+        "//tensorflow/core:graph",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:mkl_nn_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
@@ -224,6 +266,7 @@ tf_mkl_kernel_library(
     ],
     prefix = "mkl_conv",
     deps = [
+        "//tensorflow/core:graph",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:no_op",
@@ -276,7 +319,7 @@ tf_mkl_kernel_library(
         "mkl_pooling_ops_common.cc",
     ],
     hdrs = ["mkl_pooling_ops_common.h"],
-    deps = MKL_SHORT_DEPS,
+    deps = MKL_SHORT_DEPS + ["//tensorflow/core/kernels:pooling_ops_hdrs"],
 )
 
 tf_mkl_kernel_library(
@@ -311,6 +354,7 @@ tf_cc_test_mkl(
     linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_dequantize_op",
+        ":mkl_kernel_util",
         ":mkl_tfconv_op",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
@@ -350,23 +394,14 @@ tf_mkl_kernel_library(
     prefix = "mkl_softmax",
     deps = [
         "//tensorflow/core/graph:mkl_graph_util",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ] + MKL_SHORT_DEPS,
 )
 
 tf_mkl_kernel_library(
-    name = "mkl_tmp_bf16_ops",
-    prefix = "mkl_tmp_bf16_ops",
+    name = "mkl_tmp_ops",
+    prefix = "mkl_tmp_ops",
     deps = MKL_DEPS,
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_deprecated_ops",
-    prefix = "mkl_deprecated_ops",
-    deps = [
-        "//tensorflow/core/graph:mkl_graph_util",
-        "//tensorflow/core/kernels:cwise_op",
-    ] + MKL_DEPS,
 )
 
 tf_mkl_kernel_library(
@@ -506,6 +541,7 @@ tf_mkl_kernel_library(
         "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core:graph",
         "//tensorflow/core/kernels:quantization_utils",
     ],
 )
@@ -519,5 +555,23 @@ tf_cc_test_mkl(
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core/kernels:softmax_op",
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
+    ] + MKL_TEST_DEPS,
+)
+
+tf_cc_test_mkl(
+    name = "onednn_fused_matmul_ops_test",
+    size = "medium",
+    srcs = ["onednn_fused_matmul_ops_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
+    deps = [
+        ":mkl_kernel_util",
+        ":mkl_matmul_op",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core/kernels:bias_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:quantization_utils",
+        "//tensorflow/core/kernels:relu_op",
+        "@com_google_absl//absl/strings",
     ] + MKL_TEST_DEPS,
 )

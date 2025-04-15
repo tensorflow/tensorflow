@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "KubernetesExecutableLocation"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
     name: "SimpleClusterResolver"
     mtype: "<type \'type\'>"
   }

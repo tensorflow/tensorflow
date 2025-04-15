@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_TESTS_AUTO_CLUSTERING_TEST_HELPER_H_
 #define TENSORFLOW_COMPILER_JIT_TESTS_AUTO_CLUSTERING_TEST_HELPER_H_
 
-#include "tensorflow/compiler/xla/statusor.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -47,23 +47,23 @@ namespace tensorflow {
 
 class AutoClusteringTest : public ::testing::Test {
  protected:
-  Status RunAutoClusteringTestWithPbtxt(
+  absl::Status RunAutoClusteringTestWithPbtxt(
       absl::string_view pbtxt_file_path,
       absl::string_view golden_summary_file_path);
-  Status RunAutoClusteringTestWithGzippedPbtxt(
+  absl::Status RunAutoClusteringTestWithGzippedPbtxt(
       absl::string_view gzipped_pbtxt_file_path,
       absl::string_view golden_summary_file_path);
 
  private:
-  Status RunAutoClusteringTestImpl(GraphDef graphdef,
-                                   absl::string_view golden_summary_file_path);
+  absl::Status RunAutoClusteringTestImpl(
+      GraphDef graphdef, absl::string_view golden_summary_file_path);
 };
 
 #if defined(PLATFORM_GOOGLE)
 // Reads the GraphDef stored in graph_def_path (which must be a pbtxt file) and
 // benchmarks MarkForCompilationPass on this graphdef.
-Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
-                                   benchmark::State& state);
+absl::Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
+                                         benchmark::State& state);
 #endif  // PLATFORM_GOOGLE
 
 }  // namespace tensorflow

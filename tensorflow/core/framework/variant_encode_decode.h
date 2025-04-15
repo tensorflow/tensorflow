@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/abi.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -39,11 +40,13 @@ namespace tensorflow {
 // * A protocol buffer (TypeResolver<T, false, false, true>)
 // * None of the above (TypeResolver<T, false, false, false>)
 //
-template <typename T, bool = std::is_pod<typename std::decay<T>::type>::value,
-          bool = std::is_same<typename std::decay<T>::type,
-                              ::tensorflow::Tensor>::value,
-          bool = std::is_base_of<protobuf::MessageLite,
-                                 typename std::decay<T>::type>::value>
+template <
+    typename T,
+    bool = std::is_trivially_copyable<typename std::decay<T>::type>::value,
+    bool =
+        std::is_same<typename std::decay<T>::type, ::tensorflow::Tensor>::value,
+    bool = std::is_base_of<protobuf::MessageLite,
+                           typename std::decay<T>::type>::value>
 struct TypeResolver {};
 
 // Specialization for POD type
@@ -68,7 +71,10 @@ void EncodeVariantImpl(const T& value,
                        TypeResolver<T, false /* is_pod */, false /* Tensor */,
                                     true /* protobuf */>,
                        VariantTensorData* data) {
-  value.SerializeToString(&data->metadata_);
+  if (!value.SerializeToString(&data->metadata_)) {
+    data->metadata_.clear();
+    LOG(ERROR) << "Failed to encode variant " << value.DebugString();
+  }
 }
 
 // Specialization for other types
@@ -152,7 +158,7 @@ template <typename T>
 std::string TypeNameVariantImpl(
     const T& value, TypeNameResolver<T, false /* has_type_name */,
                                      false /* Tensor */, true /* protobuf */>) {
-  return value.GetTypeName();
+  return std::string(value.GetTypeName());
 }
 
 template <typename T>

@@ -31,7 +31,7 @@ limitations under the License.
 #include <algorithm>
 #include <complex>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #else
@@ -70,23 +70,23 @@ using cudaError_t = int;
 static std::string cudaGetErrorString(int err) { return std::to_string(err); }
 #endif
 
-#define TF_RETURN_IF_CUDA_ERROR(result)                   \
-  do {                                                    \
-    cudaError_t error(result);                            \
-    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {         \
-      return errors::Internal("Cuda call failed with ",   \
-                              cudaGetErrorString(error)); \
-    }                                                     \
+#define TF_RETURN_IF_CUDA_ERROR(result)                                       \
+  do {                                                                        \
+    cudaError_t error(result);                                                \
+    if (!TF_PREDICT_TRUE(error == cudaSuccess)) {                             \
+      return absl::InternalError(                                             \
+          absl::StrCat("Cuda call failed with ", cudaGetErrorString(error))); \
+    }                                                                         \
   } while (0)
 
-#define TF_OP_REQUIRES_CUDA_SUCCESS(context, result)                   \
-  do {                                                                 \
-    cudaError_t error(result);                                         \
-    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {                      \
-      context->SetStatus(errors::Internal("Cuda call failed with",     \
-                                          cudaGetErrorString(error))); \
-      return;                                                          \
-    }                                                                  \
+#define TF_OP_REQUIRES_CUDA_SUCCESS(context, result)                          \
+  do {                                                                        \
+    cudaError_t error(result);                                                \
+    if (!TF_PREDICT_TRUE(error == cudaSuccess)) {                             \
+      context->SetStatus(absl::InternalError(                                 \
+          absl::StrCat("Cuda call failed with", cudaGetErrorString(error)))); \
+      return;                                                                 \
+    }                                                                         \
   } while (0)
 
 namespace tensorflow {
@@ -194,7 +194,7 @@ __device__ const unsigned kGpuWarpAll = 0xffffffff;
 __device__ inline unsigned GpuLaneId() {
   unsigned int lane_id;
 #if GOOGLE_CUDA
-#if __clang__
+#if __clang__ && !__NVCC__
   return __nvvm_read_ptx_sreg_laneid();
 #else   // __clang__
   asm("mov.u32 %0, %%laneid;" : "=r"(lane_id));

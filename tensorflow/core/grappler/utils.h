@@ -16,19 +16,26 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_H_
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_H_
 
+#include <cstdint>
 #include <functional>
 #include <iterator>
+#include <set>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -62,8 +69,8 @@ inline int NodePositionIfSameNode(absl::string_view input_name,
 }
 
 // Returns the node name and position in a single call.
-inline StringPiece ParseNodeNameAsStringPiece(absl::string_view name,
-                                              int* position) {
+inline absl::string_view ParseNodeNameAsStringPiece(absl::string_view name,
+                                                    int* position) {
   const bool is_control = absl::StartsWith(name, "^");
   TensorId id = ParseTensorName(name);
   if (position) {
@@ -82,7 +89,7 @@ inline string ParseNodeName(const string& name, int* position) {
 
 // Return the node name corresponding to 'name' if name is valid, or the empty
 // string otherwise.
-inline StringPiece NodeNameAsStringPiece(const string& name) {
+inline absl::string_view NodeNameAsStringPiece(const string& name) {
   return ParseNodeNameAsStringPiece(name, nullptr);
 }
 
@@ -374,10 +381,11 @@ int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map);
 void DedupControlInputs(NodeDef* node);
 
 // Returns an error if an attribute with the given key does not exist in node.
-Status CheckAttrExists(const NodeDef& node, const string& key);
+absl::Status CheckAttrExists(const NodeDef& node, const string& key);
 
 // Returns an error if attributes with the given keys do not exist in node.
-Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys);
+absl::Status CheckAttrsExist(const NodeDef& node,
+                             absl::Span<const string> keys);
 
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
@@ -402,14 +410,14 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
 
 // Returns OkStatus() if a kernel is registered for node.op() on the device
 // type corresponding to node.device().
-Status IsKernelRegisteredForNode(
+absl::Status IsKernelRegisteredForNode(
     absl::string_view node_name, bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
     absl::string_view node_op, absl::string_view node_device,
     AttrSlice node_attrs);
-Status IsKernelRegisteredForNode(const NodeDef& node);
+absl::Status IsKernelRegisteredForNode(const NodeDef& node);
 
-Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
+absl::Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
 
 void EraseNodesFromGraph(const std::set<int>& nodes_to_delete, GraphDef* graph);
 

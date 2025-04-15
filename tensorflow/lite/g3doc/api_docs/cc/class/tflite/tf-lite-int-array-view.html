@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+
+<html devsite="">
+<head>
+<title>tflite::TfLiteIntArrayView Class Reference</title>
+<meta name="page_type" value="reference"/>
+<meta content="reference" name="page_type"/></head>
+<body>
+<div id="top"><!-- do not remove this div --></div>
+<h1>tflite::<wbr/>TfLiteIntArrayView</h1>
+<code>#include &lt;context_util.h&gt;</code>
+<p>Provides a range iterable wrapper for TfLiteIntArray* (C lists) that TfLite C api uses. </p>
+<h2>Summary</h2>
+<table class="constructors responsive">
+<tr>
+<th colspan="2">
+<h3>Constructors and Destructors</h3>
+</th>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1_tf_lite_int_array_view_1a22c60d8b5eddb831cf5039cd1e080bd6">TfLiteIntArrayView</a>(const TfLiteIntArray *int_array)</code>
+<br/>
+<div>Construct a view of a TfLiteIntArray*. </div>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1_tf_lite_int_array_view_1a1c58f41ee7afe69e71a88481727f5af3">TfLiteIntArrayView</a>(const <a href="/lite/api_docs/cc/class/tflite/tf-lite-int-array-view.html#classtflite_1_1_tf_lite_int_array_view">TfLiteIntArrayView</a> &amp;)</code>
+<br/>
+</td>
+</tr>
+</table>
+<table class="properties responsive">
+<tr>
+<th colspan="2">
+<h3>Public types</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_tf_lite_int_array_view_1a3f97ac192f11ecf7529c9cc10a618157">const_iterator</a></code>
+</td>
+<td>typedef<div>
+<code>const int *</code>
+</div></td>
+</tr>
+</table>
+<table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Public functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_tf_lite_int_array_view_1a3866d6abfb940498d5f035bdf324bdf0">begin</a>() const </code>
+</td>
+<td>
+<div>
+<code>const_iterator</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_tf_lite_int_array_view_1a400f377c2ff85ac6642bd2791e89094a">end</a>() const </code>
+</td>
+<td>
+<div>
+<code>const_iterator</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_tf_lite_int_array_view_1ae957ce79889460e6aa5cc50e1c976357">operator=</a>(const <a href="/lite/api_docs/cc/class/tflite/tf-lite-int-array-view.html#classtflite_1_1_tf_lite_int_array_view">TfLiteIntArrayView</a> &amp; rhs)=default</code>
+</td>
+<td>
+<div>
+<code><a href="/lite/api_docs/cc/class/tflite/tf-lite-int-array-view.html#classtflite_1_1_tf_lite_int_array_view">TfLiteIntArrayView</a> &amp;</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_tf_lite_int_array_view_1a950aee768378ff776a7149548c535565">operator[]</a>(size_t pos) const </code>
+</td>
+<td>
+<div>
+<code>int</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_tf_lite_int_array_view_1a45e83a94e3f4870a8f82ffaafaa630e3">size</a>() const </code>
+</td>
+<td>
+<div>
+<code>size_t</code>
+</div>
+</td>
+</tr>
+</table>
+<h2>Public types</h2>
+<div id="classtflite_1_1_tf_lite_int_array_view_1a3f97ac192f11ecf7529c9cc10a618157">
+<h3>const_iterator</h3>
+<pre class="prettyprint">const int * const_iterator</pre>
+<div></div>
+</div>
+<h2>Public functions</h2>
+<div id="classtflite_1_1_tf_lite_int_array_view_1a22c60d8b5eddb831cf5039cd1e080bd6">
+<h3>TfLiteIntArrayView</h3>
+<pre class="prettyprint"> TfLiteIntArrayView(
+  const TfLiteIntArray *int_array
+)</pre>
+<div>
+<p>Construct a view of a TfLiteIntArray*. </p>
+<p>Note, <code>int_array</code> should be non-null and this view does not take ownership of it. </p>
+</div>
+</div>
+<div id="classtflite_1_1_tf_lite_int_array_view_1a1c58f41ee7afe69e71a88481727f5af3">
+<h3>TfLiteIntArrayView</h3>
+<pre class="prettyprint"> TfLiteIntArrayView(
+  const <a href="/lite/api_docs/cc/class/tflite/tf-lite-int-array-view.html#classtflite_1_1_tf_lite_int_array_view">TfLiteIntArrayView</a> &amp;
+)=default</pre>
+<div></div>
+</div>
+<div id="classtflite_1_1_tf_lite_int_array_view_1a3866d6abfb940498d5f035bdf324bdf0">
+<h3>begin</h3>
+<pre class="prettyprint">const_iterator begin() const </pre>
+<div></div>
+</div>
+<div id="classtflite_1_1_tf_lite_int_array_view_1a400f377c2ff85ac6642bd2791e89094a">
+<h3>end</h3>
+<pre class="prettyprint">const_iterator end() const </pre>
+<div></div>
+</div>
+<div id="classtflite_1_1_tf_lite_int_array_view_1ae957ce79889460e6aa5cc50e1c976357">
+<h3>operator=</h3>
+<pre class="prettyprint"><a href="/lite/api_docs/cc/class/tflite/tf-lite-int-array-view.html#classtflite_1_1_tf_lite_int_array_view">TfLiteIntArrayView</a> &amp; operator=(
+  const <a href="/lite/api_docs/cc/class/tflite/tf-lite-int-array-view.html#classtflite_1_1_tf_lite_int_array_view">TfLiteIntArrayView</a> &amp; rhs
+)=default</pre>
+<div></div>
+</div>
+<div id="classtflite_1_1_tf_lite_int_array_view_1a950aee768378ff776a7149548c535565">
+<h3>operator[]</h3>
+<pre class="prettyprint">int operator[](
+  size_t pos
+) const </pre>
+<div></div>
+</div>
+<div id="classtflite_1_1_tf_lite_int_array_view_1a45e83a94e3f4870a8f82ffaafaa630e3">
+<h3>size</h3>
+<pre class="prettyprint">size_t size() const </pre>
+<div></div>
+</div>
+</body>
+</html>

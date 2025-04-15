@@ -12,27 +12,29 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/lib/core/errors.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
 
-::tensorflow::Status ResolveTensorFlowSwitch::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status ResolveTensorFlowSwitch::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   const auto switch_it = model->operators.begin() + op_index;
   const auto* switch_op = switch_it->get();
   if (switch_op->type != OperatorType::kSwitch) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   CHECK_EQ(switch_op->inputs.size(), 2);
@@ -44,7 +46,7 @@ namespace toco {
     AddMessageF(
         "Waiting for the boolean predicate of %s to be resolved to a constant",
         LogName(*switch_op));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // The predicate should be boolean, and should consist of a single value.
@@ -97,7 +99,7 @@ namespace toco {
         // Let us guard our assumption that only Merge nodes consume the outputs
         // of Switch nodes:
         if (other_op->type != OperatorType::kMerge) {
-          return ::tensorflow::Status(
+          return absl::Status(
               absl::StatusCode::kFailedPrecondition,
               ::absl::StrCat(
                   "Found ", HelpfulOperatorTypeName(*other_op),
@@ -132,7 +134,7 @@ namespace toco {
   AddMessageF("Removing already-resolved %s", LogName(*switch_op));
   DeleteOpAndArrays(model, switch_op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <limits>
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -161,7 +163,7 @@ class DequantizeOp : public OpKernel {
                         const float min_range, const float max_range,
                         Tensor* output) {
     const float half_range =
-        !std::is_signed<T>::value
+        !std::numeric_limits<T>::is_signed
             ? 0.0f
             : (static_cast<float>(std::numeric_limits<T>::max()) -
                std::numeric_limits<T>::min() + 1) /
@@ -210,7 +212,7 @@ class DequantizeOp : public OpKernel {
     // TODO(pauldonnelly): Factor out the similar calculations in quantize,
     //   dequantize and quantize_and_dequantize ops.
     const float half_range =
-        !std::is_signed<T>::value
+        !std::numeric_limits<T>::is_signed
             ? 0.0f
             : (static_cast<float>(std::numeric_limits<T>::max()) -
                std::numeric_limits<T>::min() + 1) /

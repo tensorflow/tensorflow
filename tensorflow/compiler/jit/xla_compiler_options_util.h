@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/client/local_client.h"
+#include "xla/pjrt/pjrt_client.h"
 
 namespace tensorflow {
 
@@ -40,12 +40,24 @@ XlaCompiler::Options GenerateCompilerOptionsForTfrtTpu(
 
 // Returns created options for XLA compiler when PjRt (Device API) is used for
 // compilation and execution.
-// TODO(b/255826209): Remove default arg once PjRtCompileOnDemand op is deleted.
 XlaCompiler::Options GenerateCompilerOptionsForPjRt(
     const FunctionLibraryRuntime& function_library,
     const DeviceBase* device_base, const XlaPlatformInfo& platform_info,
     const DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>*
-        pjrt_device_compiler = nullptr);
+        pjrt_device_compiler);
+
+// Returns created options for XLA compiler when PjRt (Device API) is used for
+// compilation and execution.
+XlaCompiler::Options GenerateCompilerOptionsForPjRt(
+    const FunctionLibraryDefinition* function_library_def,
+    int graph_def_version, const DeviceBase* device_base,
+    const XlaPlatformInfo& platform_info,
+    const DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>*
+        pjrt_device_compiler);
+
+// Returns created CompileOptions for XLA compiler.
+XlaCompiler::CompileOptions GenerateCompileOptions(
+    bool has_ref_vars, bool may_alias_resource_update);
 
 }  // namespace tensorflow
 

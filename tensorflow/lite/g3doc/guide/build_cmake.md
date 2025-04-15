@@ -82,9 +82,11 @@ variables to point to your library installations.
 cmake ../tensorflow_src/tensorflow/lite -DTFLITE_ENABLE_INSTALL=ON \
   -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON \
   -DSYSTEM_FARMHASH=ON \
+  -DSYSTEM_PTHREADPOOL=ON \
   -Dabsl_DIR=<install path>/lib/cmake/absl \
   -DEigen3_DIR=<install path>/share/eigen3/cmake \
   -DFlatBuffers_DIR=<install path>/lib/cmake/flatbuffers \
+  -Dgemmlowp_DIR=<install path>/lib/cmake/gemmlowp \
   -DNEON_2_SSE_DIR=<install path>/lib/cmake/NEON_2_SSE \
   -Dcpuinfo_DIR=<install path>/share/cpuinfo \
   -Druy_DIR=<install path>/lib/cmake/ruy
@@ -283,12 +285,22 @@ follow [step 1](#step-1-install-cmake-tool) to
 [step 3](#step-3-create-cmake-build-directory) first. After that, run the
 following commands.
 
+### Linux / MacOS
 ```sh
 cmake ../tensorflow_src/tensorflow/lite/c
 cmake --build . -j
 ```
 
-This command generates the following shared library in the current directory.
+### Windows
+```sh
+cmake ../tensorflow_src/tensorflow/lite/c
+cmake --build . -j --config Release
+```
+
+### Compiled Library
+
+The above command generates the following shared library in the current
+directory.
 
 Platform | Library name
 -------- | ---------------------------

@@ -24,7 +24,9 @@ limitations under the License.
 namespace mlir {
 namespace odml {
 
-std::vector<std::string> GetAcceptedDialects();
+std::vector<std::string> GetAcceptedStableHLODialects();
+
+std::vector<std::string> GetAcceptedTFLiteDialects();
 
 // Can we find the given `dialect_name` in the `accepted_dialects`?
 bool IsAcceptedDialect(llvm::StringRef dialect_name,

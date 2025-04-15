@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SegmentMaxV2"
   input_arg {
     name: "data"

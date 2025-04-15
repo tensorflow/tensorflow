@@ -12,16 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <limits>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/quantization_util.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -59,14 +64,13 @@ void GetBoundsForQuantizedDataType(ArrayDataType quantized_data_type,
   }
 }
 
-::tensorflow::Status ResolveConstantFakeQuant::Run(Model* model,
-                                                   std::size_t op_index,
-                                                   bool* modified) {
+absl::Status ResolveConstantFakeQuant::Run(Model* model, std::size_t op_index,
+                                           bool* modified) {
   *modified = false;
   const auto fakequant_it = model->operators.begin() + op_index;
   const auto* fakequant_base_op = fakequant_it->get();
   if (fakequant_base_op->type != OperatorType::kFakeQuant) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const auto* fakequant_op =
@@ -74,12 +78,12 @@ void GetBoundsForQuantizedDataType(ArrayDataType quantized_data_type,
 
   // Yield until the fakequant MinMax has been resolved.
   if (!fakequant_op->minmax) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // This transformation only applies when the input array is constant.
   if (!IsConstantParameterArray(*model, fakequant_op->inputs[0])) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const auto& input_array = model->GetArray(fakequant_op->inputs[0]);
@@ -90,7 +94,7 @@ void GetBoundsForQuantizedDataType(ArrayDataType quantized_data_type,
   if (!InferQuantizedDataTypeFromFakeQuant(*fakequant_op,
                                            &quantized_data_type)) {
     AddMessageF("Unsupported FakeQuant num_bits=%d", fakequant_op->num_bits);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   AddMessageF("Resolving constant %s", LogName(*fakequant_op));
@@ -134,7 +138,7 @@ void GetBoundsForQuantizedDataType(ArrayDataType quantized_data_type,
                             size);
   DeleteOpAndArrays(model, fakequant_op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

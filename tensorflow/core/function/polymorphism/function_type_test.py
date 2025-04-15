@@ -779,6 +779,15 @@ class SerializationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(original.to_proto(), expected)
     self.assertEqual(function_type.FunctionType.from_proto(expected), original)
 
+  def testCapturedDefaultValueStr(self):
+    f_type = function_type.FunctionType([
+        function_type.Parameter(
+            "a", function_type.Parameter.POSITIONAL_OR_KEYWORD, True, None
+        ),
+    ])
+
+    self.assertEqual(str(f_type), "(a=<captured_default_value>)")
+
 
 class FromStructuredSignatureTest(test.TestCase, parameterized.TestCase):
 

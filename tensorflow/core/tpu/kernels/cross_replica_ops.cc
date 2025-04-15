@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -62,7 +62,8 @@ class CrossReplicaSumOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CrossReplicaSumOp);
+  CrossReplicaSumOp(const CrossReplicaSumOp&) = delete;
+  void operator=(const CrossReplicaSumOp&) = delete;
 };
 
 class AllToAllOp : public XlaOpKernel {
@@ -90,7 +91,8 @@ class AllToAllOp : public XlaOpKernel {
   int64_t concat_dimension_;
   int64_t split_count_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AllToAllOp);
+  AllToAllOp(const AllToAllOp&) = delete;
+  void operator=(const AllToAllOp&) = delete;
 };
 
 class CollectivePermuteOp : public XlaOpKernel {
@@ -121,7 +123,8 @@ class CollectivePermuteOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectivePermuteOp);
+  CollectivePermuteOp(const CollectivePermuteOp&) = delete;
+  void operator=(const CollectivePermuteOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("AllToAll").CompileTimeConstantInput("group_assignment"),

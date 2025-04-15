@@ -200,18 +200,20 @@ class CSVDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "CSVDatasetOp::Dataset"; }
 
-    Status CheckExternalState() const override { return OkStatus(); }
+    absl::Status CheckExternalState() const override {
+      return absl::OkStatus();
+    }
 
-    Status InputDatasets(
+    absl::Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->clear();
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
-    Status AsGraphDefInternal(SerializationContext* ctx,
-                              DatasetGraphDefBuilder* b,
-                              Node** output) const override {
+    absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                    DatasetGraphDefBuilder* b,
+                                    Node** output) const override {
       Node* filenames = nullptr;
       Node* compression_type = nullptr;
       Node* buffer_size = nullptr;
@@ -269,7 +271,7 @@ class CSVDatasetOp : public DatasetOpKernel {
             {std::make_pair(8, record_defaults)},  // Tensor list inputs
             {}, output));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -278,16 +280,16 @@ class CSVDatasetOp : public DatasetOpKernel {
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {}
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+      absl::Status GetNextInternal(IteratorContext* ctx,
+                                   std::vector<Tensor>* out_tensors,
+                                   bool* end_of_sequence) override {
         mutex_lock l(mu_);
         bool select_all =
             dataset()->select_cols_.empty() && dataset()->exclude_cols_.empty();
         do {
           // We are currently processing a file, so try to read the next record
           if (input_stream_) {
-            Status s =
+            absl::Status s =
                 ReadRecord(ctx, out_tensors, select_all,
                            dataset()->select_cols_, dataset()->exclude_cols_);
             if (s.ok()) {
@@ -314,7 +316,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           // Iteration ends when there are no more files to process.
           if (current_file_index_ == dataset()->filenames_.size()) {
             *end_of_sequence = true;
-            return OkStatus();
+            return absl::OkStatus();
           }
           TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
         } while (true);
@@ -326,8 +328,8 @@ class CSVDatasetOp : public DatasetOpKernel {
         return model::MakeSourceNode(std::move(args));
       }
 
-      Status SaveInternal(SerializationContext* ctx,
-                          IteratorStateWriter* writer) override {
+      absl::Status SaveInternal(SerializationContext* ctx,
+                                IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("current_file_index"),
                                                current_file_index_));
@@ -340,11 +342,11 @@ class CSVDatasetOp : public DatasetOpKernel {
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("num_buffer_reads"),
                                                  num_buffer_reads_));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
-      Status RestoreInternal(IteratorContext* ctx,
-                             IteratorStateReader* reader) override {
+      absl::Status RestoreInternal(IteratorContext* ctx,
+                                   IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         ResetStreamsLocked();
         int64_t current_file_index;
@@ -364,7 +366,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           num_buffer_reads_ = size_t(num_buffer_reads - 1);
 
           // Restores the most recently held buffer
-          Status s = input_stream_->SkipNBytes(
+          absl::Status s = input_stream_->SkipNBytes(
               num_buffer_reads_ * dataset()->options_.input_buffer_size);
           if (!s.ok() && !errors::IsOutOfRange(s)) {
             // We might get out of range error here if the size of the file
@@ -374,13 +376,13 @@ class CSVDatasetOp : public DatasetOpKernel {
             return s;
           }
 
-          Status s2 = FillBuffer(&buffer_);
+          absl::Status s2 = FillBuffer(&buffer_);
           if (!s2.ok() && !errors::IsOutOfRange(s2)) {
             return s2;
           }
           pos_ = size_t(pos);
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:
@@ -392,9 +394,10 @@ class CSVDatasetOp : public DatasetOpKernel {
       // character of the record in buffer_, or past the end of the buffer.
       // Note: ctx and out_tensors are only used in this function
       // when fields are included in the record.
-      Status ReadRecord(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                        bool select_all, const std::vector<int64_t>& selected,
-                        const std::vector<int64_t>& excluded)
+      absl::Status ReadRecord(IteratorContext* ctx,
+                              std::vector<Tensor>* out_tensors, bool select_all,
+                              const std::vector<int64_t>& selected,
+                              const std::vector<int64_t>& excluded)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (pos_ >= buffer_.size()) {
           // At the end of the file, this will return errors::OutOfRange
@@ -410,7 +413,7 @@ class CSVDatasetOp : public DatasetOpKernel {
         size_t num_selected_parsed = 0;
         size_t num_excluded_parsed = 0;
 
-        Status result;
+        absl::Status result;
 
         while (!end_of_record) {  // Read till we reach \n, \r or EOF
           bool explicit_exclude = num_excluded_parsed < excluded.size() &&
@@ -436,22 +439,22 @@ class CSVDatasetOp : public DatasetOpKernel {
       // Parses one field from position pos_ in the buffer. Fields are
       // delimited by delim, CRLF, or EOF. Advances pos_ to the first char of
       // the next field.
-      Status ParseOneField(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_record, bool include)
+      absl::Status ParseOneField(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_record, bool include)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (pos_ >= buffer_.size()) {
           // If we get here, this means the previous field's end coincided
           // with the end of the buffer. We can fill the buffer without abandon.
-          Status s = FillBuffer(&buffer_);
+          absl::Status s = FillBuffer(&buffer_);
 
           if (errors::IsOutOfRange(s)) {
             // Reached EOF, and last field is empty
             *end_of_record = true;
             if (include) {
-              return FieldToOutput(ctx, StringPiece(), out_tensors);
+              return FieldToOutput(ctx, absl::string_view(), out_tensors);
             } else {
-              return OkStatus();
+              return absl::OkStatus();
             }
           } else if (!s.ok()) {
             return s;  // Surface other errors back to caller
@@ -480,8 +483,8 @@ class CSVDatasetOp : public DatasetOpKernel {
       // Given that pos_ exceeds the buffer, saves the relevant part of the
       // current buffer (if necessary), fills the buffer, and resets indices to
       // 0.
-      Status SaveAndFillBuffer(std::vector<Piece>* earlier_pieces,
-                               size_t* start, bool include)
+      absl::Status SaveAndFillBuffer(std::vector<Piece>* earlier_pieces,
+                                     size_t* start, bool include)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         tstring temp_buffer;
 
@@ -499,18 +502,19 @@ class CSVDatasetOp : public DatasetOpKernel {
       // reads from buffer until end of field is reached (delim, CRLF, or EOF).
       // Advances pos_ to keep track of our position in the buffer as we go,
       // stopping at the first character of the next field.
-      Status ParseQuotedField(IteratorContext* ctx,
-                              std::vector<Tensor>* out_tensors,
-                              bool* end_of_record, bool include)
+      absl::Status ParseQuotedField(IteratorContext* ctx,
+                                    std::vector<Tensor>* out_tensors,
+                                    bool* end_of_record, bool include)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         std::vector<Piece> earlier_pieces;
         size_t start = pos_;
         pos_++;  // Starting quotation mark
 
-        Status parse_result;
+        absl::Status parse_result;
         while (true) {  // Each iter reads 1 char, filling buffer if necessary
           if (pos_ >= buffer_.size()) {
-            Status s = SaveAndFillBuffer(&earlier_pieces, &start, include);
+            absl::Status s =
+                SaveAndFillBuffer(&earlier_pieces, &start, include);
             if (errors::IsOutOfRange(s)) {
               return errors::InvalidArgument(
                   "Reached end of file without closing quoted field in "
@@ -526,12 +530,14 @@ class CSVDatasetOp : public DatasetOpKernel {
             // decide what to do
             pos_++;
             if (pos_ >= buffer_.size()) {
-              Status s = SaveAndFillBuffer(&earlier_pieces, &start, include);
+              absl::Status s =
+                  SaveAndFillBuffer(&earlier_pieces, &start, include);
               if (errors::IsOutOfRange(s)) {
                 // This was the last field. We are done
                 *end_of_record = true;
-                parse_result.Update(QuotedFieldToOutput(
-                    ctx, StringPiece(), out_tensors, earlier_pieces, include));
+                parse_result.Update(
+                    QuotedFieldToOutput(ctx, absl::string_view(), out_tensors,
+                                        earlier_pieces, include));
                 return parse_result;
               } else if (!s.ok()) {
                 return s;
@@ -542,14 +548,14 @@ class CSVDatasetOp : public DatasetOpKernel {
             pos_++;
             if (next == dataset()->delim_) {
               parse_result.Update(QuotedFieldToOutput(
-                  ctx, StringPiece(&buffer_[start], pos_ - 1 - start),
+                  ctx, absl::string_view(&buffer_[start], pos_ - 1 - start),
                   out_tensors, earlier_pieces, include));
               return parse_result;
 
             } else if (next == '\n' || next == '\r') {
               *end_of_record = true;
               parse_result.Update(QuotedFieldToOutput(
-                  ctx, StringPiece(&buffer_[start], pos_ - 1 - start),
+                  ctx, absl::string_view(&buffer_[start], pos_ - 1 - start),
                   out_tensors, earlier_pieces, include));
               if (next == '\r') SkipNewLineIfNecessary();
               return parse_result;
@@ -570,12 +576,13 @@ class CSVDatasetOp : public DatasetOpKernel {
       // Converts quoted field to an output tensor, removing the starting
       // and ending quotes from it and unescaping double quotations if
       // necessary.
-      Status QuotedFieldToOutput(IteratorContext* ctx, StringPiece field,
-                                 std::vector<Tensor>* out_tensors,
-                                 const std::vector<Piece>& earlier_pieces,
-                                 bool include)
+      absl::Status QuotedFieldToOutput(IteratorContext* ctx,
+                                       absl::string_view field,
+                                       std::vector<Tensor>* out_tensors,
+                                       const std::vector<Piece>& earlier_pieces,
+                                       bool include)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        if (!include) return OkStatus();
+        if (!include) return absl::OkStatus();
 
         if (earlier_pieces.empty()) {
           if (field.find('\"', 1) == field.size() - 1) {
@@ -600,17 +607,17 @@ class CSVDatasetOp : public DatasetOpKernel {
         // the opening quotation mark of the quoted field.
         bool skip_next_quote = true;
         for (const Piece& p : earlier_pieces) {
-          AppendUnescapedPiece(StringPiece(&p.buffer[p.start], p.len),
+          AppendUnescapedPiece(absl::string_view(&p.buffer[p.start], p.len),
                                &field_complete, &skip_next_quote);
         }
         AppendUnescapedPiece(field, &field_complete, &skip_next_quote);
-        StringPiece result = StringPiece(field_complete);
+        absl::string_view result = absl::string_view(field_complete);
         result.remove_suffix(1);  // Skip final quote
 
         return FieldToOutput(ctx, result, out_tensors);
       }
 
-      void AppendUnescapedPiece(StringPiece piece, string* field_complete,
+      void AppendUnescapedPiece(absl::string_view piece, string* field_complete,
                                 bool* skip_next_quote) {
         size_t from = 0;
         size_t found = piece.find('\"', from);
@@ -633,24 +640,25 @@ class CSVDatasetOp : public DatasetOpKernel {
       // reads from buffer until end of field is reached (delim, CRLF, or EOF).
       // Advances pos_ to keep track of our position in the buffer as we go,
       // stopping at the first character of the next field.
-      Status ParseUnquotedField(IteratorContext* ctx,
-                                std::vector<Tensor>* out_tensors,
-                                bool* end_of_record, bool include)
+      absl::Status ParseUnquotedField(IteratorContext* ctx,
+                                      std::vector<Tensor>* out_tensors,
+                                      bool* end_of_record, bool include)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         std::vector<Piece> earlier_pieces;
         size_t start = pos_;
-        Status parse_result;
+        absl::Status parse_result;
 
         while (true) {  // Each iter reads 1 char, filling buffer if necessary
           if (pos_ >= buffer_.size()) {
-            Status s = SaveAndFillBuffer(&earlier_pieces, &start, include);
+            absl::Status s =
+                SaveAndFillBuffer(&earlier_pieces, &start, include);
             // Handle errors
             if (errors::IsOutOfRange(s)) {
               // Whatever we have is the last field of the last record
               *end_of_record = true;
               parse_result.Update(UnquotedFieldToOutput(
-                  ctx, StringPiece(&buffer_[start], pos_ - start), out_tensors,
-                  earlier_pieces, include));
+                  ctx, absl::string_view(&buffer_[start], pos_ - start),
+                  out_tensors, earlier_pieces, include));
               return parse_result;
             } else if (!s.ok()) {
               return s;  // Surface all other errors to caller
@@ -661,8 +669,8 @@ class CSVDatasetOp : public DatasetOpKernel {
 
           if (ch == dataset()->delim_) {
             parse_result.Update(UnquotedFieldToOutput(
-                ctx, StringPiece(&buffer_[start], pos_ - start), out_tensors,
-                earlier_pieces, include));
+                ctx, absl::string_view(&buffer_[start], pos_ - start),
+                out_tensors, earlier_pieces, include));
             pos_++;
             return parse_result;
           }
@@ -670,8 +678,8 @@ class CSVDatasetOp : public DatasetOpKernel {
             // need special case to skip over first \n of record if the line
             // breaks are \r\n
             parse_result.Update(UnquotedFieldToOutput(
-                ctx, StringPiece(&buffer_[start], pos_ - start), out_tensors,
-                earlier_pieces, include));
+                ctx, absl::string_view(&buffer_[start], pos_ - start),
+                out_tensors, earlier_pieces, include));
             *end_of_record = true;
             pos_++;
             if (ch == '\r') SkipNewLineIfNecessary();
@@ -687,22 +695,23 @@ class CSVDatasetOp : public DatasetOpKernel {
         }
       }
 
-      Status FillBuffer(tstring* result) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      absl::Status FillBuffer(tstring* result)
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         result->clear();
         ++num_buffer_reads_;
-        Status s = input_stream_->ReadNBytes(
+        absl::Status s = input_stream_->ReadNBytes(
             dataset()->options_.input_buffer_size, result);
 
         if (errors::IsOutOfRange(s) && !result->empty()) {
           // Ignore OutOfRange error when ReadNBytes read < N bytes.
-          return OkStatus();
+          return absl::OkStatus();
         }
         return s;
       }
 
       // Given a field, converts it to the right output tensor type
-      Status FieldToOutput(IteratorContext* ctx, StringPiece field,
-                           std::vector<Tensor>* out_tensors) {
+      absl::Status FieldToOutput(IteratorContext* ctx, absl::string_view field,
+                                 std::vector<Tensor>* out_tensors) {
         size_t output_idx = out_tensors->size();
         if (output_idx >= dataset()->out_type_.size()) {
           // We can get here if we're selecting all columns, but the number of
@@ -730,7 +739,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                   dataset()->record_defaults_[output_idx].flat<int32>()(0);
             } else {
               int32_t value;
-              if (!strings::safe_strto32(field, &value)) {
+              if (!absl::SimpleAtoi(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
                     " in record is not a valid int32: ", field);
@@ -745,7 +754,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                   dataset()->record_defaults_[output_idx].flat<int64_t>()(0);
             } else {
               int64_t value;
-              if (!strings::safe_strto64(field, &value)) {
+              if (!absl::SimpleAtoi(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
                     " in record is not a valid int64: ", field);
@@ -760,7 +769,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                   dataset()->record_defaults_[output_idx].flat<float>()(0);
             } else {
               float value;
-              if (!strings::safe_strtof(field, &value)) {
+              if (!absl::SimpleAtof(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
                     " in record is not a valid float: ", field);
@@ -775,7 +784,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                   dataset()->record_defaults_[output_idx].flat<double>()(0);
             } else {
               double value;
-              if (!strings::safe_strtod(field, &value)) {
+              if (!absl::SimpleAtod(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
                     " in record is not a valid double: ", field);
@@ -798,7 +807,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                                            " not supported in field ",
                                            output_idx);
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Records can be delimited by "\r\n" line breaks. When we encounter a
@@ -806,7 +815,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       // linebreak, and ignore it if so.
       void SkipNewLineIfNecessary() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (pos_ >= buffer_.size()) {
-          Status s = FillBuffer(&buffer_);
+          absl::Status s = FillBuffer(&buffer_);
           pos_ = 0;
           // If we failed to fill buffer, it doesn't matter because we're done
           // with the record
@@ -820,12 +829,12 @@ class CSVDatasetOp : public DatasetOpKernel {
       // Given a string field, and its index in the output,
       // converts it to a Tensor of the right type and adds it to the
       // out_tensors vector.
-      Status UnquotedFieldToOutput(IteratorContext* ctx, StringPiece field,
-                                   std::vector<Tensor>* out_tensors,
-                                   const std::vector<Piece>& earlier_pieces,
-                                   bool include)
+      absl::Status UnquotedFieldToOutput(
+          IteratorContext* ctx, absl::string_view field,
+          std::vector<Tensor>* out_tensors,
+          const std::vector<Piece>& earlier_pieces, bool include)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        if (!include) return OkStatus();
+        if (!include) return absl::OkStatus();
 
         if (earlier_pieces.empty()) {
           return FieldToOutput(ctx, field, out_tensors);
@@ -847,7 +856,8 @@ class CSVDatasetOp : public DatasetOpKernel {
       }
 
       // Sets up reader streams to read from the file at `current_file_index_`.
-      Status SetupStreamsLocked(Env* env) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      absl::Status SetupStreamsLocked(Env* env)
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (current_file_index_ >= dataset()->filenames_.size()) {
           return errors::InvalidArgument(
               "current_file_index_:", current_file_index_,
@@ -878,12 +888,12 @@ class CSVDatasetOp : public DatasetOpKernel {
           // the first newline because it might contain quoted fields with
           // newlines in the header as well
           std::vector<int64_t> empty;
-          Status s = ReadRecord(nullptr, nullptr, false, empty, empty);
+          absl::Status s = ReadRecord(nullptr, nullptr, false, empty, empty);
           if (!s.ok()) {
             return errors::InvalidArgument("Can't read header of file");
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Resets all reader streams.

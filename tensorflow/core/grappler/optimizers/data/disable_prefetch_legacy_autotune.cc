@@ -34,14 +34,14 @@ constexpr char kPrefetchDataset[] = "PrefetchDataset";
 
 }  // namespace
 
-Status DisablePrefetchLegacyAutotune::OptimizeAndCollectStats(
+absl::Status DisablePrefetchLegacyAutotune::OptimizeAndCollectStats(
     Cluster* cluster, const GrapplerItem& item, GraphDef* output,
     OptimizationStats* stats) {
   *output = item.graph;
   if (!autotune_) {
     VLOG(1) << "The optimization disable_prefetch_legacy_autotune is not "
                "applied if autotune is off.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   MutableGraphView graph(output);
@@ -58,7 +58,7 @@ Status DisablePrefetchLegacyAutotune::OptimizeAndCollectStats(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(DisablePrefetchLegacyAutotune,

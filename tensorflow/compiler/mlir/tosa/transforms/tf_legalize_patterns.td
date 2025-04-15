@@ -32,6 +32,7 @@ def : Pat<(TF_AbsOp $arg), (Tosa_AbsOp $arg)>;
 def : Pat<(TF_CeilOp $arg), (Tosa_CeilOp $arg)>;
 def : Pat<(TF_FloorOp $arg), (Tosa_FloorOp $arg)>;
 def : Pat<(TF_ExpOp $arg), (Tosa_ExpOp $arg)>;
+def : Pat<(TF_ErfOp $arg), (Tosa_ErfOp $arg)>;
 def : Pat<(TF_LogOp $arg), (Tosa_LogOp $arg)>;
 def : Pat<(TF_ReciprocalOp $arg), (Tosa_ReciprocalOp $arg)>;
 def : Pat<(TF_RsqrtOp $arg), (Tosa_RsqrtOp $arg)>;
@@ -40,10 +41,3 @@ def : Pat<(TF_InvertOp $arg1), (Tosa_BitwiseNotOp $arg1)>;
 def : Pat<(TF_CastOp $in, BoolAttr : $truncate), (Tosa_CastOp $in)>;
 
 // Binary ops patterns.
-
-def : Pat<(TF_BitwiseOrOp $arg1, $arg2), (Tosa_BitwiseOrOp $arg1, $arg2)>;
-def : Pat<(TF_BitwiseXorOp $arg1, $arg2), (Tosa_BitwiseXorOp $arg1, $arg2)>;
-def : Pat<(TF_BitwiseAndOp $arg1, $arg2), (Tosa_BitwiseAndOp $arg1, $arg2)>;
-def : Pat<(TF_LogicalAndOp $l, $r), (Tosa_LogicalAndOp $l, $r)>;
-def : Pat<(TF_LogicalOrOp $l, $r), (Tosa_LogicalOrOp $l, $r)>;
-def : Pat<(TF_PowOp $l, $r), (Tosa_PowOp $l, $r)>;

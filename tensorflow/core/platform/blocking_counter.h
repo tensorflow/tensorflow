@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/tsl/platform/blocking_counter.h"
+#include "tsl/platform/blocking_counter.h"
 
 namespace tensorflow {
 using tsl::BlockingCounter;  // NOLINT

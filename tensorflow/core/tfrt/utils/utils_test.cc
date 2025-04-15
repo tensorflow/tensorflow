@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tfrt/cpp_tests/test_util.h""  // from @tf_runtime
+#include "tfrt/cpp_tests/test_util.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 namespace tfrt {
@@ -61,7 +61,7 @@ TEST(UtilsTest, ReturnIfErrorInImport) {
   auto status = []() {
     RETURN_IF_ERROR_IN_IMPORT(
         tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}}));
-    return tensorflow::OkStatus();
+    return absl::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(status.ToString().c_str(),
@@ -73,7 +73,7 @@ TEST(UtilsTest, ReturnIfErrorInCompile) {
   auto status = []() {
     RETURN_IF_ERROR_IN_COMPILE(
         tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}}));
-    return tensorflow::OkStatus();
+    return absl::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(
@@ -87,7 +87,7 @@ TEST(UtilsTest, ReturnIfErrorInInit) {
   auto status = []() {
     RETURN_IF_ERROR_IN_INIT(
         tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}}));
-    return tensorflow::OkStatus();
+    return absl::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(status.ToString().c_str(),
@@ -99,9 +99,9 @@ TEST(UtilsTest, AssignOrReturnInImport) {
   auto status = []() {
     ASSIGN_OR_RETURN_IN_IMPORT(
         [[maybe_unused]] auto unused_value,
-        tensorflow::StatusOr<int>(
+        absl::StatusOr<int>(
             tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}})));
-    return tensorflow::OkStatus();
+    return absl::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(status.ToString().c_str(),
@@ -113,9 +113,9 @@ TEST(UtilsTest, AssignOrReturnInCompile) {
   auto status = []() {
     ASSIGN_OR_RETURN_IN_COMPILE(
         [[maybe_unused]] auto unused_value,
-        tensorflow::StatusOr<int>(
+        absl::StatusOr<int>(
             tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}})));
-    return tensorflow::OkStatus();
+    return absl::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(status.ToString().c_str(),
@@ -128,9 +128,9 @@ TEST(UtilsTest, AssignOrReturnInInit) {
   auto status = []() {
     ASSIGN_OR_RETURN_IN_INIT(
         [[maybe_unused]] auto unused_value,
-        tensorflow::StatusOr<int>(
+        absl::StatusOr<int>(
             tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}})));
-    return tensorflow::OkStatus();
+    return absl::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(std::string(status.ToString()).c_str(),

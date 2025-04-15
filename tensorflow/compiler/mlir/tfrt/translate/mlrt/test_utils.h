@@ -21,23 +21,31 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_context.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/tfrt/graph_executor/sync_resource_state.h"
 #include "tensorflow/core/tfrt/mlrt/attribute/attribute.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/kernel.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/interpreter_testutil.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
+#include "tensorflow/core/tfrt/stubs/tfrt_native_lowering_stub.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
-#include "tensorflow/tsl/platform/errors.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/support/string_util.h"  // from @tf_runtime
+#include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/dense_tensor_utils.h"  // from @tf_runtime
 
 namespace mlrt {
@@ -67,12 +75,8 @@ absl::Status TestMlrtKernel(
                       CreateKernelAndAttrs(num_inputs, num_outputs,
                                            execution_context, &buffer, attrs));
 
-  tfrt::ExecutionContext tfrt_execution_context(
-      *tfrt::RequestContextBuilder(host, nullptr).build());
   tensorflow::tfrt_stub::SyncResourceState sync_resource_state;
-  auto sync_context =
-      std::make_unique<tfrt::SyncContext>(*host, &sync_resource_state);
-  execution_context.AddUserContext(std::move(sync_context));
+  tfrt::AddSyncContext(execution_context, *host, &sync_resource_state);
 
   auto kernel_fn = registry->Get(kernel_name);
   mlrt::KernelFrame::State state(regs, kernel_and_attrs.second,

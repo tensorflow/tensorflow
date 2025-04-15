@@ -479,6 +479,28 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(t.shape.as_list(), [3])
     self.assertAllEqual(self.evaluate(t), np.zeros((3,)))
 
+  def testGatherWithInvalidIndicesFails(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3
+    )
+
+    # Should raise an error when the input index is negative.
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Trying to gather element -1 in a list with 3 elements.",
+    ):
+      t = list_ops.tensor_list_gather(l, [-1], element_dtype=dtypes.float32)
+      self.evaluate(t)
+
+    # Should raise an error when the input index is larger than the number of
+    # elements in the list.
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Trying to gather element 3 in a list with 3 elements.",
+    ):
+      t = list_ops.tensor_list_gather(l, [3], element_dtype=dtypes.float32)
+      self.evaluate(t)
+
   def testScatterOutputListSize(self):
     c0 = constant_op.constant([1.0, 2.0])
     l = list_ops.tensor_list_scatter(c0, [1, 3], [])

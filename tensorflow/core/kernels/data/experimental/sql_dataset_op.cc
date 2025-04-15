@@ -12,11 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+#include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/data/experimental/sql/driver_manager.h"
 #include "tensorflow/core/kernels/data/experimental/sql/query_connection.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
@@ -103,17 +109,19 @@ class SqlDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "SqlDatasetOp::Dataset"; }
 
-    Status InputDatasets(
+    absl::Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status CheckExternalState() const override { return OkStatus(); }
+    absl::Status CheckExternalState() const override {
+      return absl::OkStatus();
+    }
 
    protected:
-    Status AsGraphDefInternal(SerializationContext* ctx,
-                              DatasetGraphDefBuilder* b,
-                              Node** output) const override {
+    absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                    DatasetGraphDefBuilder* b,
+                                    Node** output) const override {
       Node* driver_name_node;
       TF_RETURN_IF_ERROR(b->AddScalar(driver_name_, &driver_name_node));
       Node* data_source_name_node;
@@ -123,7 +131,7 @@ class SqlDatasetOp : public DatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddScalar(query_, &query_node));
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {driver_name_node, data_source_name_node, query_node}, output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -133,21 +141,21 @@ class SqlDatasetOp : public DatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
       ~Iterator() override {
         if (query_connection_initialized_) {
-          Status s = query_connection_->Close();
+          absl::Status s = query_connection_->Close();
           if (!s.ok()) {
             LOG(WARNING) << "Failed to close query connection: " << s;
           }
         }
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+      absl::Status GetNextInternal(IteratorContext* ctx,
+                                   std::vector<Tensor>* out_tensors,
+                                   bool* end_of_sequence) override {
         mutex_lock l(mu_);
         if (!query_connection_initialized_) {
           TF_RETURN_IF_ERROR(InitializeQueryConnection());
         }
-        Status status = OkStatus();
+        absl::Status status = absl::OkStatus();
         if (!end_of_sequence_) {
           next_calls_++;
           status =
@@ -163,18 +171,18 @@ class SqlDatasetOp : public DatasetOpKernel {
         return model::MakeSourceNode(std::move(args));
       }
 
-      Status SaveInternal(SerializationContext* ctx,
-                          IteratorStateWriter* writer) override {
+      absl::Status SaveInternal(SerializationContext* ctx,
+                                IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (query_connection_initialized_) {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("next_calls"), next_calls_));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
-      Status RestoreInternal(IteratorContext* ctx,
-                             IteratorStateReader* reader) override {
+      absl::Status RestoreInternal(IteratorContext* ctx,
+                                   IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (reader->Contains(full_name("next_calls"))) {
           TF_RETURN_IF_ERROR(InitializeQueryConnection());
@@ -192,24 +200,25 @@ class SqlDatasetOp : public DatasetOpKernel {
           query_connection_initialized_ = false;
           end_of_sequence_ = false;
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:
-      Status InitializeQueryConnection() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      absl::Status InitializeQueryConnection()
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         query_connection_initialized_ = true;
         end_of_sequence_ = false;
         query_connection_ =
             sql::DriverManager::CreateQueryConnection(dataset()->driver_name_);
-        Status s = query_connection_->Open(dataset()->data_source_name_,
-                                           dataset()->query_,
-                                           dataset()->output_types_);
+        absl::Status s = query_connection_->Open(dataset()->data_source_name_,
+                                                 dataset()->query_,
+                                                 dataset()->output_types_);
         next_calls_ = 0;
         if (!s.ok()) {
           LOG(WARNING) << "Failed to connect to database: " << s;
           return s;
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       mutex mu_;

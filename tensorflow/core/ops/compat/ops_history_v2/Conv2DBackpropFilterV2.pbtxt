@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Conv2DBackpropFilterV2"
   input_arg {
     name: "input"

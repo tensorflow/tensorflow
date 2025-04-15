@@ -882,7 +882,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     dispatch.unregister_dispatch_for(masked_tensor_equals)  # clean up.
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"Dispatch function's signature \(self, other, name=None\) "
         r"does not match API's signature \(self, other\)\."):
 
@@ -957,7 +957,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
       def silly_abs(x: SillyTensor):
         del x
 
-      # Note: `expeced` does not contain keys or values from SillyTensor.
+      # Note: `expected` does not contain keys or values from SillyTensor.
       targets = dispatch.type_based_dispatch_signatures_for(MaskedTensor)
       expected = {math_ops.add: [{"x": MaskedTensor, "y": MaskedTensor}],
                   array_ops.concat: [{"values": MaskedTensorList}]}

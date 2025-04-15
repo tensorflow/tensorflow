@@ -1,14 +1,14 @@
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_libtpu",
     "tf_cuda_cc_test",
 )
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 # Library of gradient functions.
 package(
@@ -56,7 +56,7 @@ cc_library(
         "nn_grad.h",
     ],
     visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+        "//tensorflow/python/framework/experimental:__pkg__",
     ],
     deps = [
         "//tensorflow/c/eager:abstract_tensor_handle",
@@ -148,9 +148,7 @@ cc_library(
     testonly = True,
     srcs = ["grad_test_helper.cc"],
     hdrs = ["grad_test_helper.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/c/eager:gradient_checker",
         "//tensorflow/c/eager:gradients_internal",

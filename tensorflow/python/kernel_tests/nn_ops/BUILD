@@ -97,7 +97,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "bias_op_base",
     srcs = ["bias_op_base.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -281,7 +280,9 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -319,6 +320,7 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -368,7 +370,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "cudnn_deterministic_base",
     srcs = ["cudnn_deterministic_base.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
@@ -473,8 +474,11 @@ cuda_py_strict_test(
         "no_cuda_asan",  # Size limit: b/192505612
     ],
     deps = [
+        "//tensorflow/python/compat",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -482,10 +486,13 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:data_flow_ops",
         "//tensorflow/python/ops:embedding_ops",
         "//tensorflow/python/ops:gradient_checker",
+        "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/ops:linalg_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:partitioned_variables",
+        "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:sort_ops",
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
@@ -728,10 +735,12 @@ cuda_py_strict_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:random_seed",
-        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
@@ -890,7 +899,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "xent_op_test_base",
     srcs = ["xent_op_test_base.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:config",

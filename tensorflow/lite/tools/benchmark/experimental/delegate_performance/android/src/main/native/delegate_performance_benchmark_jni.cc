@@ -24,7 +24,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/tflite_settings_json_parser.h"
 #include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto/delegate_performance.pb.h"
 #include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/native/accuracy_benchmark.h"
+
+#ifndef TFLITE_WITH_STABLE_ABI
 #include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/native/latency_benchmark.h"
+#endif  // !TFLITE_WITH_STABLE_ABI
 
 namespace {
 
@@ -67,6 +70,10 @@ Java_org_tensorflow_lite_benchmark_delegateperformance_DelegatePerformanceBenchm
     JNIEnv* env, jclass clazz, jobjectArray args_obj,
     jbyteArray tflite_settings_byte_array, jstring tflite_settings_path_obj,
     jint model_fd, jlong model_offset, jlong model_size) {
+  tflite::proto::benchmark::LatencyResults results;
+
+// The latency benchmark doesn't support TF Lite with the stable ABI path.
+#ifndef TFLITE_WITH_STABLE_ABI
   std::vector<std::string> args = toStringVector(env, args_obj);
   const char* tflite_settings_path_chars =
       env->GetStringUTFChars(tflite_settings_path_obj, nullptr);
@@ -76,16 +83,15 @@ Java_org_tensorflow_lite_benchmark_delegateperformance_DelegatePerformanceBenchm
       flatbuffers::GetRoot<tflite::TFLiteSettings>(
           reinterpret_cast<const char*>(tflite_settings_bytes));
 
-  tflite::proto::benchmark::LatencyResults results =
-      tflite::benchmark::latency::Benchmark(
-          *tflite_settings, tflite_settings_path_chars,
-          static_cast<int>(model_fd), static_cast<size_t>(model_offset),
-          static_cast<size_t>(model_size), args);
+  results = tflite::benchmark::latency::Benchmark(
+      *tflite_settings, tflite_settings_path_chars, static_cast<int>(model_fd),
+      static_cast<size_t>(model_offset), static_cast<size_t>(model_size), args);
 
   env->ReleaseByteArrayElements(tflite_settings_byte_array,
                                 tflite_settings_bytes, JNI_ABORT);
   env->ReleaseStringUTFChars(tflite_settings_path_obj,
                              tflite_settings_path_chars);
+#endif  // !TFLITE_WITH_STABLE_ABI
   return CppProtoToBytes(env, results);
 }
 

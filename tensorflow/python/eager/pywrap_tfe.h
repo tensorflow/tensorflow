@@ -29,10 +29,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
-typedef tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 4>
-    TFE_InputTensorHandles;
-typedef tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 2>
-    TFE_OutputTensorHandles;
+typedef absl::InlinedVector<TFE_TensorHandle*, 4UL> TFE_InputTensorHandles;
+typedef absl::InlinedVector<TFE_TensorHandle*, 2UL> TFE_OutputTensorHandles;
 
 // Execute a TensorFlow operation.
 //
@@ -114,7 +112,7 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception);
 // Returns 0 if 'status' is ok. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
 // TFE_Py_RegisterExceptionClass), and returns -1.
-int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
+int MaybeRaiseExceptionFromStatus(const absl::Status& status,
                                   PyObject* exception);
 
 // Returns the string associated with the passed-in python object.
@@ -135,10 +133,12 @@ void TFE_DeleteContextCapsule(PyObject* context);
 bool EagerTensor_CheckExact(const PyObject* o);
 
 // Helper function to construct a new EagerTensor from a TFE_TensorHandle.
+// This functions takes the ownership of the handle.
 PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
                                 const bool is_packed = false);
 
 // Extracts the handle inside EagerTensor object `o`. Returns nullptr on error.
+// This functions returns a unreferenced pointer to the handle.
 TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
 
 // Creates the `EagerTensor` class by subclassing `base_class` and returns the
@@ -443,7 +443,7 @@ EagerContextThreadLocalData* GetEagerContextThreadLocalData(
 // wish to destroy thread-local state associated with a single py_eager_context
 // for multiple threads, then you must call this method from each thread.
 //
-// Thread-local state assocaited with eager contexts is also automatically
+// Thread-local state associated with eager contexts is also automatically
 // cleaned up when the thread is destroyed.
 //
 // This function assumes that the Python GIL is held (and does not perform its

@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/mkl/mkl_conv_ops.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -100,7 +100,7 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
   void Execute(const T* diff_src_data, const T* filter_data,
                const T* diff_dst_data,
                std::shared_ptr<stream> bwd_input_stream) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
 #if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
@@ -255,7 +255,7 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
   }
 
   struct ConvBwdInputContext context_;
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };
@@ -344,11 +344,12 @@ class MklConvCustomBackpropInputOp
       const Tensor& filter_tensor = MklGetInput(context, kFilterIdx);
       const Tensor& diff_dst_tensor = MklGetInput(context, kOutbpropIdx);
 
-      OP_REQUIRES(
-          context, diff_dst_tensor.dims() == 4 || diff_dst_tensor.dims() == 5,
-          errors::InvalidArgument("input_sizes must be 4 or 5-dimensional, "
-                                  "got: ",
-                                  diff_dst_tensor.dims()));
+      OP_REQUIRES(context,
+                  diff_dst_tensor.dims() == 4 || diff_dst_tensor.dims() == 5,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("input_sizes must be 4 or 5-dimensional, "
+                                   "got: ",
+                                   diff_dst_tensor.dims())));
 
       if (std::is_same<T, float>::value) {
         (void)SetFPMathMode();
@@ -431,7 +432,7 @@ class MklConvCustomBackpropInputOp
 
       auto mkl_fmt_tag = MklTensorFormatToMklDnnDataFormat(tf_fmt);
       OP_REQUIRES(context, mkl_fmt_tag != memory::format_tag::undef,
-                  errors::InvalidArgument("Invalid data format"));
+                  absl::InvalidArgumentError("Invalid data format"));
 
       // If filter is in MKL layout, then simply grab filter layout;
       // otherwise, construct filter in TF layout.
@@ -470,7 +471,12 @@ class MklConvCustomBackpropInputOp
                           (MklPrimitiveFactory<T>::IsLegacyPlatform() ||
                            IsConv1x1StrideNot1(fwd_filter_dims, strides));
 
-      MklDnnThreadPool eigen_tp(context);
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(context);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       MklConvBwdInputPrimitive<T>* conv_bwd_input =
           MklConvBwdInputPrimitiveFactory<T>::Get(convBwdInputDims,
                                                   do_not_cache);
@@ -538,9 +544,9 @@ class MklConvCustomBackpropInputOp
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(
-          context,
-          errors::Aborted("Operation received an exception:", error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Operation received an exception:", error_msg)));
     }
   }
 
@@ -666,6 +672,7 @@ class MklConvCustomBackpropInputOp
 
 TF_CALL_float(REGISTER_MKL_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_KERNELS);
+TF_CALL_half(REGISTER_MKL_CPU_KERNELS);
 
 #undef REGISTER_MKL_CPU_KERNELS
 #undef SET_MKL_LAYOUT

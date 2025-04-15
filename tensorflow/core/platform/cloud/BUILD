@@ -1,11 +1,11 @@
 # Description:
 # Cloud file system implementation.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
-    "//tensorflow/tsl:tsl.bzl",
+    "@local_xla//xla/tsl:tsl.bzl",
     "tsl_copts",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -31,7 +31,7 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform/cloud:expiring_lru_cache",
+        "@local_xla//xla/tsl/platform/cloud:expiring_lru_cache",
     ],
 )
 
@@ -42,7 +42,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/tsl/platform/cloud:file_block_cache",
+        "@local_xla//xla/tsl/platform/cloud:file_block_cache",
     ],
 )
 
@@ -55,7 +55,7 @@ cc_library(
         ":file_block_cache",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/tsl/platform/cloud:ram_file_block_cache",
+        "@local_xla//xla/tsl/platform/cloud:ram_file_block_cache",
     ],
 )
 
@@ -66,7 +66,7 @@ cc_library(
     deps = [
         ":http_request",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform/cloud:gcs_dns_cache",
+        "@local_xla//xla/tsl/platform/cloud:gcs_dns_cache",
     ],
 )
 
@@ -76,7 +76,7 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform/cloud:gcs_throttle",
+        "@local_xla//xla/tsl/platform/cloud:gcs_throttle",
     ],
 )
 
@@ -108,8 +108,8 @@ cc_library(
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringprintf",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/tsl/platform/cloud:gcs_file_system",
         "@jsoncpp_git//:jsoncpp",
+        "@local_xla//xla/tsl/platform/cloud:gcs_file_system",
     ],
     alwayslink = 1,
 )
@@ -145,8 +145,8 @@ cc_library(
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringprintf",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/tsl/platform/cloud:gcs_file_system_disabled",
         "@jsoncpp_git//:jsoncpp",
+        "@local_xla//xla/tsl/platform/cloud:gcs_file_system_disabled",
     ],
     alwayslink = 1,
 )
@@ -155,11 +155,15 @@ cc_library(
     name = "http_request",
     hdrs = ["http_request.h"],
     copts = tsl_copts(),
+    visibility = [
+        ":dependency_allowlist",
+        "//learning/brain/research/meta_architect/hub/pythia:__pkg__",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/tsl/platform/cloud:http_request",
+        "@local_xla//xla/tsl/platform/cloud:http_request",
     ],
 )
 
@@ -175,8 +179,8 @@ cc_library(
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/util:env_var",
-        "//tensorflow/tsl/platform/cloud:curl_http_request",
         "@curl",
+        "@local_xla//xla/tsl/platform/cloud:curl_http_request",
     ],
 )
 
@@ -195,8 +199,8 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/tsl/platform/cloud:http_request_fake",
         "@curl",
+        "@local_xla//xla/tsl/platform/cloud:http_request_fake",
     ],
 )
 
@@ -207,6 +211,10 @@ cc_library(
         "google_auth_provider.h",
     ],
     copts = tsl_copts(),
+    visibility = [
+        ":dependency_allowlist",
+        "//learning/brain/research/meta_architect/hub/pythia:__pkg__",
+    ],
     deps = [
         ":compute_engine_metadata_client",
         ":oauth_client",
@@ -217,9 +225,9 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:retrying_utils",
         "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/platform/cloud:google_auth_provider",
         "@com_google_absl//absl/strings",
         "@jsoncpp_git//:jsoncpp",
+        "@local_xla//xla/tsl/platform/cloud:google_auth_provider",
     ],
 )
 
@@ -235,7 +243,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:retrying_utils",
-        "//tensorflow/tsl/platform/cloud:compute_engine_metadata_client",
+        "@local_xla//xla/tsl/platform/cloud:compute_engine_metadata_client",
     ],
 )
 
@@ -253,7 +261,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
-        "//tensorflow/tsl/platform/cloud:compute_engine_zone_provider",
+        "@local_xla//xla/tsl/platform/cloud:compute_engine_zone_provider",
     ],
 )
 
@@ -265,7 +273,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/tsl/platform/cloud:now_seconds_env",
+        "@local_xla//xla/tsl/platform/cloud:now_seconds_env",
     ],
 )
 
@@ -283,9 +291,9 @@ cc_library(
         "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/platform/cloud:oauth_client",
         "@boringssl//:crypto",
         "@jsoncpp_git//:jsoncpp",
+        "@local_xla//xla/tsl/platform/cloud:oauth_client",
     ],
 )
 
@@ -298,6 +306,6 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/tsl/platform/cloud:time_util",
+        "@local_xla//xla/tsl/platform/cloud:time_util",
     ],
 )

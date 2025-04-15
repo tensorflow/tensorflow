@@ -24,7 +24,7 @@ class Graph;
 class Node;
 
 // Replaces Case node `n` with a lowered form that uses _SwitchN/Merge nodes.
-Status RewriteCaseNode(Node* n, Graph* g, bool keep_node_fetchable);
+absl::Status RewriteCaseNode(Node* n, Graph* g, bool keep_node_fetchable);
 
 }  // namespace tensorflow
 

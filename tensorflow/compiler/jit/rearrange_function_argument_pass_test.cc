@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
 #include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
-#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -118,7 +117,7 @@ TEST(RearrangeFunctionArgumentForFunctionTest, Basic) {
                                                    &fld, &new_fbody));
         *fbody = new_fbody.get();
         fbodies.push_back(std::move(new_fbody));
-        return OkStatus();
+        return absl::OkStatus();
       },
       g.get(), &fld));
 
@@ -221,7 +220,7 @@ TEST(RearrangeFunctionArgumentForFunctionTest,
   TF_CHECK_OK(s.ToGraph(g.get()));
 
   std::vector<std::unique_ptr<FunctionBody>> fbodies;
-  Status status = RearrangeFunctionArguments(
+  absl::Status status = RearrangeFunctionArguments(
       [&](const NameAttrList &function, const FunctionBody **fbody) {
         std::unique_ptr<FunctionBody> new_fbody;
         TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fld.Find(function.name()),
@@ -229,7 +228,7 @@ TEST(RearrangeFunctionArgumentForFunctionTest,
                                                    &fld, &new_fbody));
         *fbody = new_fbody.get();
         fbodies.push_back(std::move(new_fbody));
-        return OkStatus();
+        return absl::OkStatus();
       },
       g.get(), &fld);
   EXPECT_EQ(status.code(), error::UNIMPLEMENTED);

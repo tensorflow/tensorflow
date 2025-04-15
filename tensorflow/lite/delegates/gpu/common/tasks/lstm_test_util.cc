@@ -66,15 +66,13 @@ absl::Status LstmTest(TestExecutionEnvironment* env) {
           {BHWC(1, 1, 1, 4), BHWC(1, 1, 1, 4)}, {&new_state, &new_activ}));
       RETURN_IF_ERROR(
           PointWiseNear({7.0 / 15.0, 10.0 / 15.0, 13.0 / 15.0, 16.0 / 15.0},
-                        new_state.data, eps))
-          << ToString(storage) << ", " << ToString(precision);
+                        new_state.data, eps));
       RETURN_IF_ERROR(PointWiseNear(
           {static_cast<float>((1.0 / 6.0) * std::tanh(7.0 / 15.0)),
            static_cast<float>((1.0 / 6.0) * std::tanh(10.0 / 15.0)),
            static_cast<float>((1.0 / 6.0) * std::tanh(13.0 / 15.0)),
            static_cast<float>((1.0 / 6.0) * std::tanh(16.0 / 15.0))},
-          new_activ.data, eps))
-          << ToString(storage) << ", " << ToString(precision);
+          new_activ.data, eps));
     }
   }
   return absl::OkStatus();

@@ -149,7 +149,7 @@ MoveNet outperforms PoseNet on a variety of datasets, especially in images with
 fitness action images. Therefore, we recommend using MoveNet over PoseNet.
 
 Performance benchmark numbers are generated with the tool
-[described here](../../performance/measurement). Accuracy (mAP) numbers are
+[described here](../../performance/measurement.md). Accuracy (mAP) numbers are
 measured on a subset of the [COCO dataset](https://cocodataset.org/#home) in
 which we filter and crop each image to contain only one person .
 

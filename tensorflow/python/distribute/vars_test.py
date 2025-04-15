@@ -31,6 +31,7 @@ from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -654,7 +655,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(ms_combination + tpu_combination)
   def testScatterOpsWithNoneAggregation(self, distribution):
-
+    config.disable_mlir_bridge()
     def assert_close(v, op, delta, expect):
       scatter_op = getattr(v, op)
 
@@ -816,9 +817,11 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       self.skipTest("Assigning PerReplica values is not supported. See"
                     " sponge/80ba41f8-4220-4516-98ce-bbad48f9f11a.")
 
-    self.skipTest("We don't support assiging PerReplica values in cross "
-                  "replica context or replica context. see error in "
-                  "sponge/2b2e54c1-eda6-4534-82e1-c73b1dcd517f.")
+    self.skipTest(
+        "We don't support assigning PerReplica values in cross "
+        "replica context or replica context. see error in "
+        "sponge/2b2e54c1-eda6-4534-82e1-c73b1dcd517f."
+    )
 
     with distribution.scope():
       per_replica_value = values.PerReplica(

@@ -15,9 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <string>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -80,8 +81,22 @@ monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64_t num_bytes);
 
-// Records the number of times tf.data experiment is applied to input pipelines.
+// Records the number of times a tf.data experiment was applied.
 void RecordTFDataExperiment(const string& name);
+
+// Records the number of times a tf.data experiment could have been applied.
+void RecordTFDataExperimentLive(const string& name);
+
+// Records the number of times a tf.data experiment was opted into.
+void RecordTFDataExperimentOptIn(const string& experiment_name);
+
+// Records the number of times a tf.data experiment was opted out of.
+void RecordTFDataExperimentOptOut(const string& experiment_name);
+
+// Records the time (in microseconds) spent generating an element and
+// transferring it over the network for the given protocol.
+void RecordTFDataServiceGetElementDuration(const string& data_transfer_protocol,
+                                           uint64 duration_us);
 
 // Records the time (in microseconds) spent in a single invocation of
 // `ItertatorResource::GetNext()`.
@@ -101,6 +116,14 @@ void RecordTFDataAutotuneMaxBufferBudgetRatio(const double ratio);
 // The `name` argument identifies the Dataset graph fingerprint,
 // created using GraphHash().
 void RecordTFDataFingerprint(const string& name);
+
+// Records the event of a tf.data service pipeline getting a runtime
+// compression decision.
+void RecordTFDataServiceRuntimeCompressionDecision(bool compression_decision);
+
+// Records the event of a tf.data service pipeline making the compression
+// related action.
+void RecordTFDataServiceCompressionAction(const string& action);
 
 // Records the time (in microseconds) during which `IteratorResource` was busy
 // processing at least one `GetNext()` request.
@@ -159,8 +182,12 @@ void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 // Records tf.data service cross-trainer cache memory usage in bytes.
 void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
 
-// Records distributed tf.data snapshot bytes committed.
+// Records tf.data distributed snapshot bytes committed.
 void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes);
+
+// Records tf.data distributed snapshot save/load ops.
+void RecordTFDataServiceSnapshotOp(const std::string& path,
+                                   const std::string& op);
 
 // Records the current estimated optimal number of tf.data service workers.
 void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers);
@@ -169,6 +196,23 @@ void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers);
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
 void RecordTFDataFilename(const string& name, const string& filename);
+
+// Records the total attempts made by file logger.
+void RecordTFDataFileLoggerAttempts();
+
+// Records an error of type `code` with message `error_message` encountered by
+// file logger.
+void RecordTFDataFileLoggerErrors(error::Code code,
+                                  const string& error_message);
+
+// Records the total number of files attempted to be logged by file logger.
+void RecordTFDataFileLoggerAttemptedNumFiles(size_t num_files);
+
+// Records the number of files that encountered an error of type
+// `code` with message `error_message` during logging by file logger with this
+// error code.
+void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files, error::Code code,
+                                          const string& error_message);
 
 // Records statistics of tf.data auto sharding.
 //
@@ -191,6 +235,21 @@ void RecordTFDataAutoShardRewriteBatchSize(
 // criterion is met.
 void RecordTFDataAutotuneStoppingCriteria(const string& name);
 
+// Records the number of times this event occured, for debugging.
+void RecordTFDataDebug(const string& event);
+
+// Records the number of times an error of this type occurred with this status
+// code.
+void RecordTFDataError(const string& error_type, const string& error_code);
+
+// Records the framework type used to build the tf.data.Dataset.
+void RecordTFDataFrameworkType(const std::string& framework_type);
+
+// Records the number of times tf.data file logger encountered an error of this
+// type occurred with this status code.
+void RecordTFDataFileLoggerError(const string& error_type,
+                                 const string& error_code);
+
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);
 
@@ -212,6 +271,16 @@ void UpdateGraphPendingQueueLength(uint64 len);
 
 // Records that one output of an op of type `op_name` was unused.
 void RecordUnusedOutput(const string& op_name);
+
+// Records the pipeline processing time in microseconds
+void RecordPipelineProcessingTime(const string& id,
+                                  double pipeline_processing_time_usec);
+
+// Increments the count of binaries loaded from the persistent cache.
+void UpdatePersistentCacheLoadCount();
+
+// Increments the count of BEF and MLIR deserialized.
+void UpdateAotBefMlirLoadCount();
 
 // Updates the metrics stored about time spent building graphs.
 //
@@ -271,15 +340,73 @@ int64_t GetFunctionGraphOptimizationCacheLoadCount(
     GraphOptimizationSource source);
 
 // Records the activity of the first phase of the mlir bridge using the
-// tf_metadata.tf_mlir_bridge_first_phase_count metric.
-// device_type: tpu, cpu, gpu, etc.
+// tf_metadata.tf_mlir_bridge_first_phase_v2_count metric.
+// bridge_type: replicated, nonreplicated, etc.
 // bridge_version: v1 compat, v2, etc.
+// device_type: tpu, cpu, gpu, etc.
 // fallback_enabled: true if fallback will happen, false if not
 // result: outcome of bridge (success, failure, disabled, invalid_graph, etc.)
-void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
+void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& bridge_type,
                                          const std::string& bridge_version,
+                                         const std::string& device_type,
                                          bool fallback_enabled,
                                          const std::string& result);
+
+enum class Phase2XlaCompilerMetric {
+  // Bridge phase 2 CompileSingleOp Xla Builder (old version) was successful
+  kCompileSingleOpXlaBuilderSuccess,
+  // Bridge phase 2 CompileSingleOp Xla Builder (old version) failed
+  kCompileSingleOpXlaBuilderFailure,
+  // Bridge phase 2 CompileSingleOp MLIR version was successful
+  kCompileSingleOpMlirSuccess,
+  // Bridge phase 2 CompileSingleOp MLIR version failed
+  kCompileSingleOpMlirFailure,
+  // Bridge phase 2 CompileFunction Xla Builder (old version) was successful
+  kCompileFunctionXlaBuilderSuccess,
+  // Bridge phase 2 CompileFunction Xla Builder (old version) failed
+  kCompileFunctionXlaBuilderFailure,
+  // Bridge phase 2 CompileFunction MLIR version was successful
+  kCompileFunctionMlirSuccess,
+  // Bridge phase 2 CompileFunction MLIR version failed
+  kCompileFunctionMlirFailure,
+};
+
+// Records the activity of the XlaCompiler entry points.
+void IncrementPhase2XlaCompilerCounter(Phase2XlaCompilerMetric metric);
+
+enum class MlirBridgeSecondPhaseMetric {
+  // MLIR bridge phase 2 was executed and the graph was processed successfully
+  // (fallback enabled).
+  kMlirWithFallbackModeSuccess,
+  // MLIR bridge phase 2 compilation was failure (fallback enabled).
+  kMlirWithFallbackModeFailure,
+  // MLIR bridge phase 2 compilation was successful (manually enabled).
+  kMlirModeSuccess,
+  // MLIR bridge phase 2 compilation fails (manually enabled)
+  kMlirModeFailure,
+  // Old bridge compilation was run successfully (was run because MLIR bridge
+  // could not process the graph).
+  kOldBridgeMlirFilteredSuccess,
+  // Old bridge failed (was run b/c MLIR bridge could not process the graph).
+  kOldBridgeMlirFilteredFailure,
+  // Old bridge compilation was successfully run after MLIR bridge ran and
+  // failed.
+  kOldBridgeWithFallbackModeSuccess,
+  // Old Bridge failed in fallback (was run because MLIR bridge failed first).
+  kOldBridgeWithFallbackModeFailure,
+  // MLIR bridge phase 2 Combined Bridge MLIR was successful
+  kMlirCombinedMlirSuccess,
+  // MLIR bridge phase 2 Combined Bridge MLIR failed
+  kMlirCombinedMlirFailure,
+  // MLIR bridge phase 2 Combined Bridge Old bridge was successful
+  kMlirCombinedOldSuccess,
+  // MLIR bridge phase 2 Combined Bridge Old bridge was successful
+  kMlirCombinedOldFailure,
+};
+
+// Records the activity of the second phase of the mlir bridge.
+void IncrementTfMlirBridgeSecondPhaseCounter(
+    MlirBridgeSecondPhaseMetric metric);
 
 // Records the activity per op using the
 // tf_metadata.tf_mlir_bridge_graph_analysis_per_op.

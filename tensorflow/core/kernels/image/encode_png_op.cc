@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/overflow.h"
-#include "tensorflow/tsl/platform/mutex.h"
+#include "tsl/platform/mutex.h"
 
 namespace tensorflow {
 
@@ -61,7 +61,7 @@ class EncodePngOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& image = context->input(0);
     OP_REQUIRES(context, image.dims() >= 3,
-                errors::InvalidArgument("images must be ast least rank 3",
+                errors::InvalidArgument("images must be at least rank 3",
                                         image.shape().DebugString()));
     OP_REQUIRES(context, image.NumElements() >= 0,
                 errors::Internal("Invalid image provided."));

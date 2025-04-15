@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/ops_util.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/test.h"
@@ -71,7 +71,7 @@ class OpsUtilTest : public ::testing::Test {
   static void VerifyGet2dOutputSizeBoundaries(padding_struct pad_struct,
                                               error::Code code) {
     int64_t new_height, new_width, pad_rows, pad_cols;
-    Status status = GetWindowedOutputSize(
+    absl::Status status = GetWindowedOutputSize(
         pad_struct.input.in_height, pad_struct.input.filter_height,
         /*dilation_rate=*/1, pad_struct.input.row_stride,
         pad_struct.input.padding, &new_height, &pad_rows);
@@ -86,7 +86,7 @@ class OpsUtilTest : public ::testing::Test {
   static void VerifyGet2dOutputSizeValues(padding_struct pad_struct,
                                           error::Code code) {
     int64_t new_height, new_width, pad_rows, pad_cols;
-    Status status = GetWindowedOutputSize(
+    absl::Status status = GetWindowedOutputSize(
         pad_struct.input.in_height, pad_struct.input.filter_height,
         /*dilation_rate=*/1, pad_struct.input.row_stride,
         pad_struct.input.padding, &new_height, &pad_rows);
@@ -105,15 +105,15 @@ class OpsUtilTest : public ::testing::Test {
   static void VerifyGet2dOutputVerboseSizeValues(padding_struct pad_struct,
                                                  error::Code code) {
     int64_t new_height, new_width, pad_top, pad_bottom, pad_left, pad_right;
-    Status status = GetWindowedOutputSizeVerbose(
+    absl::Status status = GetWindowedOutputSizeVerbose(
         pad_struct.input.in_height, pad_struct.input.filter_height,
-        pad_struct.input.row_stride, pad_struct.input.padding, &new_height,
-        &pad_top, &pad_bottom);
+        /*dilation_rate=*/1, pad_struct.input.row_stride,
+        pad_struct.input.padding, &new_height, &pad_top, &pad_bottom);
     EXPECT_EQ(status.code(), code) << status;
     status = GetWindowedOutputSizeVerbose(
         pad_struct.input.in_width, pad_struct.input.filter_width,
-        pad_struct.input.col_stride, pad_struct.input.padding, &new_width,
-        &pad_left, &pad_right);
+        /*dilation_rate=*/1, pad_struct.input.col_stride,
+        pad_struct.input.padding, &new_width, &pad_left, &pad_right);
     EXPECT_EQ(status.code(), code) << status;
     EXPECT_EQ(pad_struct.output.new_height, new_height);
     EXPECT_EQ(pad_struct.output.new_width, new_width);
@@ -125,7 +125,7 @@ class OpsUtilTest : public ::testing::Test {
 
   static void VerifyBoundaries(bcast_struct bcast, error::Code code) {
     int new_index, new_size;
-    Status status = GetBroadcastSize(
+    absl::Status status = GetBroadcastSize(
         bcast.input.index, bcast.input.in_size, bcast.input.ksize,
         bcast.input.stride, bcast.input.pad_size, &new_index, &new_size);
     EXPECT_EQ(status.code(), code) << status;
@@ -133,7 +133,7 @@ class OpsUtilTest : public ::testing::Test {
 
   static void VerifyBcastValues(bcast_struct bcast) {
     int new_index, new_size;
-    EXPECT_EQ(OkStatus(),
+    EXPECT_EQ(absl::OkStatus(),
               GetBroadcastSize(bcast.input.index, bcast.input.in_size,
                                bcast.input.ksize, bcast.input.stride,
                                bcast.input.pad_size, &new_index, &new_size));

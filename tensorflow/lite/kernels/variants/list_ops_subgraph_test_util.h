@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_VARIANTS_LIST_OPS_SUBGRAPH_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_VARIANTS_LIST_OPS_SUBGRAPH_TEST_UTIL_H_
 
+#include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -55,6 +56,9 @@ class ListOpsSubgraphBuilder {
   // at given indice into given tensorlist. Additionally increment and return
   // the given int by 1.
   void BuildSetItemAndIncrementSubgraph(Subgraph* subgraph);
+
+  // Populates the given Subgraph with a "ListReserve" and "ListLength" op.
+  void BuildReserveLengthSubgraph(Subgraph* subgraph);
 
  private:
   // Creates a constant tensor in given Subgraphs at given indice with

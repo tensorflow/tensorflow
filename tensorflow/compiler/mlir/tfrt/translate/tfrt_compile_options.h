@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_TFRT_COMPILE_OPTIONS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_TFRT_COMPILE_OPTIONS_H_
 
+#include <cstdint>
 #include <iosfwd>
 #include <ostream>
 #include <string>
@@ -121,23 +122,13 @@ struct TfrtCompileOptions {
   // supposed to be turned on by default.
   bool sink_in_invariant_ops = false;
 
-  // If true, tf.While's iterations will be parallelized on a best-effort
-  // basis. This is currently experimental.
+  // This flag behaves differently for TFRT and MLRT.
+  // For TFRT, if true, tf.While's iterations will be parallelized on a
+  // best-effort basis. This is currently experimental. MLRT attempts to convert
+  // tf.while to tf_mlrt.map_fn regardless of this flag. For tf.While that
+  // cannot be converted tf_mlrt.map_fn, MLRT try to parallelize tf.while's
+  // iterations on a best-effort basis.
   bool enable_while_parallel_iterations = false;
-
-  // A set of flags to control auto-fusion: automatic clustering of Tensorflow
-  // operations and compiling outlined regions using MLIR based compilation
-  // stack.
-  //
-  // WARNING: These flags are experimental and are intended for manual testing
-  // of different auto-fusion strategies. They will be removed in the future.
-
-  // A list of Tensorflow operations that are supported by auto-fusion
-  // clustering and compilation (e.g. tf.Tanh).
-  std::vector<std::string> auto_fusion_oplist;
-
-  // Minimum size of the cluster to be compiled at runtime.
-  int auto_fusion_min_cluster_size = 2;
 
   // The cost threshold to decide whether a sequence of operations is cheap, and
   // then whether it can be executed inline. If the cost is smaller than the
@@ -146,13 +137,26 @@ struct TfrtCompileOptions {
   // expensive.
   uint64_t cost_threshold = 1;
 
-  // The threshold to decie whether an inline execution sequence is too large
-  // even if the operations forms a sequential data dependency as it may occupy
-  // the CPU core for too long. In that case, they are broken into multiple
-  // sequences. The default is -1 which means no limit.
-  int64_t upper_cost_threshold = -1;
+  // The minimum number of batch threads. This number provides a lower bound on
+  // the number of batch threads on top of what is specified in the model. If
+  // the number of batch threads is too small (e.g. smaller than the number of
+  // parallel hardware accelerator available), it can lead to under utilization
+  // of resources.
+  int64_t min_num_batch_threads = 1;
 
-  // If true, streams with inter data depenedencies will be preferred to be
+  // The minimum of the maximum number of enqueued batches. This number provides
+  // a lower bound on top of what is specified in the model. If the number of
+  // max_enqueued_batches is too small, it can lead to under utilization of
+  // resources.
+  int64_t min_max_enqueued_batches = 1;
+
+  // The policy used by a BatchScheduler to pad (or split) batches.
+  std::string batch_padding_policy;
+
+  // Batching parameters to be rewritten in the existing BatchFunction ops.
+  BatchingOptions batch_options;
+
+  // If true, streams with inter data dependencies will be preferred to be
   // merged for inline execution.
   bool merge_inter_dependent_streams = true;
 
@@ -162,9 +166,21 @@ struct TfrtCompileOptions {
   // Whether to compile to sync TFRT dialect.
   bool compile_to_sync_tfrt_dialect = false;
 
-  // Whether to use bridge for GPU.
-  // TODO(b/260915352): Remove the flag and default to using bridge.
-  bool use_bridge_for_gpu = false;
+  // Whether to use gpurt.compile_and_execute for GPU.
+  // TODO(b/294895431): Remove the flag and default to the fused op.
+  bool use_gpu_compile_and_execute_op = false;
+
+  // If true, MLIR module will be serialized to aot_packages.
+  bool serialize_mlir_module_to_aot_packages = false;
+
+  // Serialized MLIR module file under aot_packages.
+  std::string aot_mlir_module_file;
+
+  // If true, BEF will be serialized to aot_packages.
+  bool serialize_bef_to_aot_packages = false;
+
+  // Serialized BEF file under aot_packages.
+  std::string aot_bef_file;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_GRAPH_TO_FUNC_H_
 #define TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_GRAPH_TO_FUNC_H_
 
+#include <string>
+
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -26,17 +28,16 @@ namespace tfg {
 // function arguments, `fetches` for function returned values, and
 // `control_rets` for returned control values. The Graph op is replaced in-place
 // by a GraphFuncOp with a name defined in the dialect.
-tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
-                               ArrayRef<Value> fetches,
-                               ArrayRef<Value> control_rets);
+absl::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
+                         ArrayRef<Value> fetches, ArrayRef<Value> control_rets);
 
 // Lifts a graph into a function, using the provided array of `feeds` for
 // function arguments, `fetches` for function returned values, and
 // `control_rets` for returned control values. The Graph op is replaced in-place
 // by a GraphFuncOp with a name defined in the dialect.
-tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<std::string> feeds_names,
-                               ArrayRef<std::string> fetches_names,
-                               ArrayRef<std::string> control_rets);
+absl::Status GraphToFunc(GraphOp graph, ArrayRef<std::string> feeds_names,
+                         ArrayRef<std::string> fetches_names,
+                         ArrayRef<std::string> control_rets);
 
 }  // namespace tfg
 }  // namespace mlir

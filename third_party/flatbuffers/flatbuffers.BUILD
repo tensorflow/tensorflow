@@ -1,4 +1,5 @@
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 load(":build_defs.bzl", "flatbuffer_py_strip_prefix_srcs")
 
 package(default_visibility = ["//visibility:public"])
@@ -21,8 +22,6 @@ config_setting(
     name = "windows",
     values = {"cpu": "x64_windows"},
 )
-
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 
 # Public flatc library to compile flatbuffer files at runtime.
 cc_library(
@@ -68,7 +67,7 @@ filegroup(
         "include/flatbuffers/vector_downward.h",
         "include/flatbuffers/verifier.h",
     ],
-    visibility = ["//:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
 
 # Public flatc compiler library.
@@ -88,6 +87,8 @@ cc_binary(
         ":platform_freebsd": [
             "-lm",
         ],
+        # If Visual Studio 2022 developers facing linking errors,
+        # change the line below as ":windows": ["/DEFAULTLIB:msvcrt.lib"],
         ":windows": [],
         "//conditions:default": [
             "-lm",
@@ -105,7 +106,7 @@ filegroup(
     srcs = [
         "include/flatbuffers/flatc.h",
     ],
-    visibility = ["//:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
 
 # Library used by flatbuffer_cc_library rules.

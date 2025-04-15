@@ -70,3 +70,12 @@ class HardwareFeature(object):
     """
     return HardwareFeature._embedding_feature_proto_to_string(
         self.tpu_hardware_feature_proto.embedding_feature)
+
+  @property
+  def num_embedding_devices_per_chip(self):
+    """Number of embedding accelerator devices per chip.
+
+    Returns:
+      Number of embedding devices per chip.
+    """
+    return self.tpu_hardware_feature_proto.num_embedding_devices_per_chip

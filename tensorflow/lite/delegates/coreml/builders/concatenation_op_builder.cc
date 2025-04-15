@@ -16,8 +16,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlmodel/format/NeuralNetwork.pb.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/coreml/builders/op_builder.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_validator.h"
 
 namespace tflite {

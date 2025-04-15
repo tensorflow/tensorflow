@@ -1044,10 +1044,6 @@ _Layout assignment pass._
 ```
 -force-data-format : Force data format for all layout sensitive ops.
 ```
-### `-tf-legalize-hlo`
-
-_Legalize from HLO to the TF dialect_
-
 ### `-tf-localize-var-handles`
 
 _Creates VarHandleOps next to the operations that use them._

@@ -19,10 +19,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status SendTensorsToRendezvous(
+absl::Status SendTensorsToRendezvous(
     RendezvousInterface* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
-    const std::vector<string>& keys, gtl::ArraySlice<Tensor> tensors_to_send) {
+    const std::vector<string>& keys, absl::Span<const Tensor> tensors_to_send) {
   if (keys.size() != tensors_to_send.size()) {
     return errors::InvalidArgument(
         "keys and tensors_to_send are not the same size. keys.size() = ",
@@ -50,7 +50,7 @@ Status SendTensorsToRendezvous(
     TF_RETURN_IF_ERROR(
         rendezvous->Send(parsed, rendez_args, tensors_to_send[i], false));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RecvOutputsFromRendezvousAsync(
@@ -59,7 +59,7 @@ void RecvOutputsFromRendezvousAsync(
     const std::vector<string>& keys, std::vector<Tensor>* received_tensors,
     StatusCallback done) {
   if (keys.empty()) {
-    done(OkStatus());
+    done(absl::OkStatus());
     return;
   }
   if (!alloc_attrs.empty() && (keys.size() != alloc_attrs.size())) {
@@ -74,7 +74,7 @@ void RecvOutputsFromRendezvousAsync(
       arguments;
   for (int i = 0; i < keys.size(); ++i) {
     Rendezvous::ParsedKey parsed;
-    Status s = Rendezvous::ParseKey(keys[i], &parsed);
+    absl::Status s = Rendezvous::ParseKey(keys[i], &parsed);
     received_tensors->push_back(Tensor());
     if (!s.ok()) {
       done(s);
@@ -99,11 +99,11 @@ void RecvOutputsFromRendezvousAsync(
     status_cb->Ref();
     rendezvous->RecvAsync(
         parsed, rendez_args,
-        [val, key, status_cb](const Status& s,
+        [val, key, status_cb](const absl::Status& s,
                               const Rendezvous::Args& send_args,
                               const Rendezvous::Args& recv_args,
                               const Tensor& v, const bool is_dead) {
-          Status status = s;
+          absl::Status status = s;
           if (status.ok()) {
             *val = v;
             if (is_dead) {
@@ -118,9 +118,9 @@ void RecvOutputsFromRendezvousAsync(
   status_cb->Unref();
 }
 
-Status RecvOutputsFromRendezvous(RendezvousInterface* rendezvous,
-                                 NamedTensors* out,
-                                 const Rendezvous::Args& args) {
+absl::Status RecvOutputsFromRendezvous(RendezvousInterface* rendezvous,
+                                       NamedTensors* out,
+                                       const Rendezvous::Args& args) {
   // Receives values requested by the caller.
   Rendezvous::ParsedKey parsed;
   for (auto& p : *out) {
@@ -134,7 +134,7 @@ Status RecvOutputsFromRendezvous(RendezvousInterface* rendezvous,
                                      " was not valid.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

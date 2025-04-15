@@ -37,18 +37,21 @@ namespace cpu_backend_gemm {
 // The main entry point for CpuBackendGemm::Gemm.
 //
 // If TFLITE_WITH_RUY is set, CpuBackendGemm::Gemm will always go to Ruy aka
-// GemmImplUsingRuy. Other cases are as follows:
+// GemmImplUsingRuy. The behavior is as follows:
 //
 //                    |Quantized (uint8)|Quantized (int8)| Float |
 // TFLITE_WITH_RUY    |      Ruy        |      Ruy       | Ruy   |
 // !TFLITE_WITH_RUY   |      gemmlowp   |  Ruy/gemmlowp* | eigen |
 // * - Ruy if NEON is not available.
-
-//  On x86 platforms:
+//
+//  On most ARM32/ARM64 platforms, the default is TFLITE_WITH_RUY:
+//  (default)         |      Ruy        |     Ruy        | Ruy   |
+//
+//  On other platforms (including x86), the default is !TFLITE_WITH_RUY:
 //  (default)         |      gemmlowp   |     Ruy        | eigen |
-//  TFLITE_X86_RUY_\  |      Ruy        |     Ruy        | Ruy   |
-//  ENABLED && (AVX
-//  or above available)
+//
+// Use --define=tflite_with_ruy=true or --define=tflite_with_ruy=false to
+// override the default.
 
 #if !defined(TFLITE_WITH_RUY) && defined(TFLITE_X86_PLATFORM)
 /* GEMM dispatch implementation for x86.
@@ -176,7 +179,7 @@ template <QuantizationFlavor quantization_flavor>
 void Gemm(const MatrixParams<int8_t>& lhs_params, const int8_t* lhs_data,
           const MatrixParams<int16_t>& rhs_params, const int16_t* rhs_data,
           const MatrixParams<int16_t>& dst_params, int16_t* dst_data,
-          const GemmParams<int32_t, int16, quantization_flavor>& params,
+          const GemmParams<int32_t, int16_t, quantization_flavor>& params,
           CpuBackendContext* context) {
   ruy::profiler::ScopeLabel label("cpu_backend_gemm::Gemm");
   ValidateParams(lhs_params, rhs_params, dst_params, params);
@@ -187,7 +190,7 @@ void Gemm(const MatrixParams<int8_t>& lhs_params, const int8_t* lhs_data,
 
   // Currently, only Ruy backend supports 16x8 quant gemm so we use ruy
   // only.
-  detail::GemmImplUsingRuy<int8_t, int16_t, int32_t, int16,
+  detail::GemmImplUsingRuy<int8_t, int16_t, int32_t, int16_t,
                            quantization_flavor>::Run(lhs_params, lhs_data,
                                                      rhs_params, rhs_data,
                                                      dst_params, dst_data,

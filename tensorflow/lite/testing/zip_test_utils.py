@@ -25,10 +25,12 @@ import tempfile
 import traceback
 import zipfile
 
+import ml_dtypes
 import numpy as np
 import tensorflow as tf
 
 from google.protobuf import text_format
+from tensorflow.lite.python import lite
 from tensorflow.lite.testing import _pywrap_string_util
 from tensorflow.lite.testing import generate_examples_report as report_lib
 from tensorflow.lite.tools import flatbuffer_utils
@@ -87,7 +89,7 @@ MAP_TF_TO_NUMPY_TYPE = {
     tf.int16: np.int16,
     tf.int64: np.int64,
     tf.bool: np.bool_,
-    tf.string: np.string_,
+    tf.string: np.bytes_,
 }
 
 
@@ -126,10 +128,16 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
     value = np.random.randint(min_value, max_value + 1, shape)
   elif dtype == tf.bool:
     value = np.random.choice([True, False], size=shape)
-  elif dtype == np.string_:
+  elif dtype == np.bytes_:
     # Not the best strings, but they will do for some basic testing.
     letters = list(string.ascii_uppercase)
     return np.random.choice(letters, size=shape).astype(dtype)
+  elif dtype == tf.bfloat16:
+    value = (max_value - min_value) * np.random.random_sample(shape) + min_value
+    # There is no bfloat16 type in numpy. Uses ml_dtypes.bfloat16 for Eigen.
+    dtype = ml_dtypes.bfloat16
+  else:
+    raise ValueError("Unsupported dtype: %s" % dtype)
   return np.dtype(dtype).type(value) if np.isscalar(value) else value.astype(
       dtype)
 
@@ -146,9 +154,15 @@ def create_scalar_data(dtype, min_value=-100, max_value=100):
     value = np.random.randint(min_value, max_value + 1)
   elif dtype == tf.bool:
     value = np.random.choice([True, False])
-  elif dtype == np.string_:
+  elif dtype == np.bytes_:
     l = np.random.randint(1, 6)
     value = "".join(np.random.choice(list(string.ascii_uppercase), size=l))
+  elif dtype == tf.bfloat16:
+    value = (max_value - min_value) * np.random.random() + min_value
+    # There is no bfloat16 type in numpy. Uses ml_dtypes.bfloat16 for Eigen.
+    dtype = ml_dtypes.bfloat16
+  else:
+    raise ValueError("Unsupported dtype: %s" % dtype)
   return np.array(value, dtype=dtype)
 
 
@@ -168,9 +182,14 @@ def freeze_graph(session, outputs):
 
 def format_result(t):
   """Convert a tensor to a format that can be used in test specs."""
-  if t.dtype.kind not in [np.dtype(np.string_).kind, np.dtype(np.object_).kind]:
+  if t.dtype.kind not in [np.dtype(np.bytes_).kind, np.dtype(np.object_).kind]:
     # Output 9 digits after the point to ensure the precision is good enough.
-    values = ["{:.9f}".format(value) for value in list(t.flatten())]
+    # bfloat16 promotes the value to string, not float. so we need to
+    # convert it to float explicitly.
+    if t.dtype == ml_dtypes.bfloat16:
+      values = ["{:.9f}".format(float(value)) for value in list(t.flatten())]
+    else:
+      values = ["{:.9f}".format(value) for value in list(t.flatten())]
     return ",".join(values)
   else:
     # SerializeAsHexString returns bytes in PY3, so decode if appropriate.
@@ -483,7 +502,7 @@ def make_zip_of_tests(options,
           (input_values, output_values): Maps of input values and output values
           built.
         """
-        interpreter = tf.lite.Interpreter(model_content=tflite_model_binary)
+        interpreter = lite.Interpreter(model_content=tflite_model_binary)
         interpreter.allocate_tensors()
 
         input_details = interpreter.get_input_details()

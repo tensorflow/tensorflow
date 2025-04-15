@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SelectV2"
   input_arg {
     name: "condition"

@@ -76,7 +76,7 @@ void VariableOp::Compute(OpKernelContext* ctx) {
   auto creator = [this](LegacyVar** var) {
     *var = new LegacyVar(dtype_);
     (*var)->tensor()->set_shape(shape_);
-    return OkStatus();
+    return absl::OkStatus();
   };
   LegacyVar* var;
   OP_REQUIRES_OK(ctx, cinfo_.resource_manager()->LookupOrCreate<LegacyVar>(
@@ -104,7 +104,7 @@ class TemporaryVariableOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    Status s;
+    absl::Status s;
     ResourceMgr* rm = context->resource_manager();
     OP_REQUIRES(context, rm, errors::Internal("No per-step resource manager."));
     auto unique_name = TemporaryVariableName(var_name_, context->frame_iter());

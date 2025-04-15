@@ -15,11 +15,23 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/analysis/cost_analysis.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cstdint>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tfrt/compiler/opdefs/tfrt_op_interfaces.h"  // from @tf_runtime
@@ -59,14 +71,14 @@ int64_t InferLookupTableFindV2Cost(const CostContext& context,
   constexpr int64_t kLookupTableFindCostScale = 8;
   constexpr int64_t kLookupTableFindStringKeyCostScale = 16;
 
-  auto value_type = op.getValues().getType().cast<mlir::TensorType>();
-  auto key_type = op.getKeys().getType().cast<mlir::TensorType>();
+  auto value_type = mlir::cast<mlir::TensorType>(op.getValues().getType());
+  auto key_type = mlir::cast<mlir::TensorType>(op.getKeys().getType());
 
   int64_t output_size = InferTensorSize(context, value_type);
 
   int64_t cost = kLookupTableFindCostScale * output_size;
 
-  if (key_type.getElementType().isa<mlir::TF::StringType>())
+  if (mlir::isa<mlir::TF::StringType>(key_type.getElementType()))
     cost *= kLookupTableFindStringKeyCostScale;
 
   return cost;
@@ -74,15 +86,15 @@ int64_t InferLookupTableFindV2Cost(const CostContext& context,
 
 // The cost function for tf.GatherV2.
 int64_t InferGatherV2Cost(const CostContext& context, mlir::TF::GatherV2Op op) {
-  return InferTensorSize(context,
-                         op.getOutput().getType().cast<mlir::TensorType>());
+  return InferTensorSize(
+      context, mlir::cast<mlir::TensorType>(op.getOutput().getType()));
 }
 
 // The cost function for tf.SparseSegmentSumOp.
 template <typename OpType>
 int64_t InferSparseSegmentOpCost(const CostContext& context, OpType op) {
   return InferTensorSize(
-      context, op.getOutput().getType().template cast<mlir::TensorType>());
+      context, mlir::cast<mlir::TensorType>(op.getOutput().getType()));
 }
 
 // CostFunctionRegistry is a map from op names to their cost functions.
@@ -145,8 +157,8 @@ void CostAnalysis::AnalyzeArguments(mlir::func::FuncOp func_op) {
   // Use the max size among function inputs as the default size of dynamic
   // shaped tensors in the function.
   for (auto arg : func_op.getArguments()) {
-    if (!arg.getType().isa<mlir::TensorType>()) continue;
-    auto type = arg.getType().cast<mlir::TensorType>();
+    if (!mlir::isa<mlir::TensorType>(arg.getType())) continue;
+    auto type = mlir::cast<mlir::TensorType>(arg.getType());
     if (type.hasRank()) {
       max_arg_size_ = std::max(max_arg_size_, GetRankedTensorSize(type));
     }
@@ -204,7 +216,7 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
   // For other ops, use the sum of input sizes as its cost.
   int64_t cost = kDefaultCheapCost;
   for (auto operand : op->getOperands()) {
-    auto type = operand.getType().cast<mlir::TensorType>();
+    auto type = mlir::cast<mlir::TensorType>(operand.getType());
     if (type.hasRank()) {
       cost += GetRankedTensorSize(type);
     } else {

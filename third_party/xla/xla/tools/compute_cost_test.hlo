@@ -1,0 +1,14 @@
+// RUN: compute_cost --all --input=%s | FileCheck %s
+
+
+// CHECK: HLO name, deduplicated name, bytes accessed, flops
+// CHECK-NEXT: a, a, 30, 10
+// CHECK-NEXT: a2, a, 30, 10
+// CHECK-NEXT: r, r, 210, 0
+
+e {
+  c = s8[10] constant(1)
+  a = s8[10] add(c, c)
+  a2 = s8[10] add(a, a), metadata={deduplicated_name="a"}
+  r = s8[10,20] broadcast(a2), dimensions={0}
+}

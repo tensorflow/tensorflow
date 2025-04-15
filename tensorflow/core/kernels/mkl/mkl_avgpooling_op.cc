@@ -123,7 +123,12 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
           dnnl::algorithm::pooling_avg_exclude_padding, pooling_prop_kind,
           static_cast<memory::format_tag>(this->data_format_mkldnn_), input_md,
           this->native_format_);
-      MklDnnThreadPool eigen_tp(context);
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(context);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       pooling_fwd = MklPoolingFwdPrimitiveFactory<T>::Get(fwdParams);
 
       // Allocate output tensor.
@@ -228,17 +233,16 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
         const int64_t out_backprop_batch = grad_tensor.dim_size(0);
         const int64_t out_backprop_rows = grad_tensor.dim_size(1);
         const int64_t out_backprop_cols = grad_tensor.dim_size(2);
-        const int64_t out_backprop_depth = grad_tensor.dim_size(3);
         int64_t out_height, out_width, pad_rows, pad_cols;
         OP_REQUIRES_OK(
-            context, GetWindowedOutputSize(in_rows, window_rows, row_stride,
-                                           /*dilation_rate=*/1, this->padding_,
-                                           &out_height, &pad_rows));
+            context, GetWindowedOutputSize(
+                         in_rows, window_rows, /*dilation_rate=*/1, row_stride,
+                         this->padding_, &out_height, &pad_rows));
 
         OP_REQUIRES_OK(
-            context, GetWindowedOutputSize(in_cols, window_cols, col_stride,
-                                           /*dilation_rate=*/1, this->padding_,
-                                           &out_width, &pad_cols));
+            context, GetWindowedOutputSize(
+                         in_cols, window_cols, /*dilation_rate=*/1, col_stride,
+                         this->padding_, &out_width, &pad_cols));
 
         for (int64_t r = 0; r < out_backprop_rows; ++r) {
           int rindex, rsize;
@@ -340,7 +344,10 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           prop_kind::forward_training,
           static_cast<memory::format_tag>(this->data_format_mkldnn_), src_md,
           this->native_format_);
-      MklDnnThreadPool eigen_tp(context);
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(context);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       MklPoolingBwdPrimitive<T>* pooling_bwd =
           MklPoolingBwdPrimitiveFactory<T>::Get(bwdParams);
 
@@ -443,7 +450,6 @@ TF_CALL_float(REGISTER_MKL_AVGPOOL_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_AVGPOOL_KERNELS);
 #undef REGISTER_MKL_AVGPOOL_KERNELS
 
-#ifndef ENABLE_ONEDNN_V3
 REGISTER_KERNEL_BUILDER(Name("_MklQuantizedAvgPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T")
@@ -455,7 +461,6 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizedAvgPool")
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
                         MklAvgPoolingOp<CPUDevice, qint8, true>);
-#endif  // !ENABLE_ONEDNN_V3
 
 }  // namespace tensorflow
 

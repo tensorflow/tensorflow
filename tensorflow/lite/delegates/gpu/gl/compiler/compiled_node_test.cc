@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/compiler/compiled_node.h"
 
-#include <memory>
+#include <algorithm>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -26,6 +26,16 @@ namespace tflite {
 namespace gpu {
 namespace gl {
 namespace {
+
+bool VariableDuplicates(std::vector<Variable> variables) {
+  std::sort(
+      std::begin(variables), std::end(variables),
+      [](const auto& lhs, const auto& rhs) { return lhs.name < rhs.name; });
+  for (int i = 0; i < variables.size() - 1; ++i) {
+    if (variables[i].name == variables[i + 1].name) return true;
+  }
+  return false;
+}
 
 TEST(CompiledNodeTest, NoDuplicates) {
   Variable scalar;
@@ -38,14 +48,23 @@ TEST(CompiledNodeTest, NoDuplicates) {
   merged_attr.code.parameters = {scalar};
   ASSERT_OK(MergeCode(&attr, &merged_attr));
 
-  // Count instances of "scalar1". Expect only 1.
-  int count = 0;
-  for (const Variable& var : merged_attr.code.parameters) {
-    if (var.name == "scalar1") {
-      ++count;
-    }
-  }
-  EXPECT_EQ(count, 1);
+  // Check for duplicates
+  EXPECT_FALSE(VariableDuplicates(merged_attr.code.parameters));
+}
+
+TEST(CompiledNodeTest, NameConvergenceConflict) {
+  Variable scalar;
+  scalar.name = "scalar";
+  Variable scalar1;
+  scalar1.name = "scalar1";
+  CompiledNodeAttributes attr;
+  CompiledNodeAttributes merged_attr;
+  attr.code.parameters = {scalar1, scalar};
+  merged_attr.code.parameters = {scalar};
+  ASSERT_OK(MergeCode(&attr, &merged_attr));
+
+  // Check for duplicates
+  EXPECT_FALSE(VariableDuplicates(merged_attr.code.parameters));
 }
 
 }  // namespace

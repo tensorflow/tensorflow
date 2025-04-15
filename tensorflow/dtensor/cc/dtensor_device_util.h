@@ -49,8 +49,8 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tensor_with_layout.h"
-#include "tensorflow/tsl/platform/fingerprint.h"
-#include "tensorflow/tsl/platform/refcount.h"
+#include "tsl/platform/fingerprint.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -294,20 +294,20 @@ class ResourceHandleWithLayout
   tensorflow::Fprint128 CacheKey() const override;
 
   // Updates the layout for the tensors.
-  tsl::Status UpdateLayout(const Layout& new_layout);
+  absl::Status UpdateLayout(const Layout& new_layout);
 
   // Updates the element layouts for the tensors.
-  tsl::Status UpdateElementLayouts(const std::vector<Layout>& layouts) {
+  absl::Status UpdateElementLayouts(const std::vector<Layout>& layouts) {
     dereferenced_element_layouts_.emplace(layouts);
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   // Updates the local shape and dtype of the tensors.
-  tsl::Status UpdateShapeAndDType(const TensorShapeProto& shape,
-                                  const DataType& dtype) {
+  absl::Status UpdateShapeAndDType(const TensorShapeProto& shape,
+                                   const DataType& dtype) {
     set_dereferenced_shape(shape);
     set_dereferenced_dtype(dtype);
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   ConstValueNode* const_value_node() const override { return nullptr; }
@@ -431,6 +431,11 @@ std::unique_ptr<TensorWithLayoutTf> CreateDummyTensorWithLayout(
     const std::vector<int64_t>& local_shape, TF_DataType dtype,
     const Layout& layout);
 
+// Creates a DTensor from one or more tensor handles and a compatible
+// layout. Optionally accepts a `shape` argument that overrides the
+// actual shape of the underlying tensors; this argument should be
+// provided when there's a possibility of the inferred shape from
+// differing from the actual shape (like when it is dynamic).
 StatusOr<std::unique_ptr<TensorWithLayoutTf>> CreateTensorWithLayout(
     std::vector<TensorHandlePtr>&& tensor, const Layout& layout,
     std::optional<std::vector<int64_t>>&& shape = std::nullopt);
@@ -569,16 +574,20 @@ class ExecutableManager : public tsl::core::WeakRefCounted {
 };
 
 // Returns the shape of a given tensor.
+StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
+    const tensorflow::PartialTensorShape& shape);
+
+// Returns the shape of a given tensor.
 StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(TFE_TensorHandle* tensor);
 
-Status InferOutputLayouts(const DTensorOperation& doperation,
-                          const NameAttrList& attributes,
-                          const std::optional<Layout>& default_layout,
-                          tensorflow::Graph* graph,
-                          std::vector<const Layout*>* output_layouts);
+absl::Status InferOutputLayouts(const DTensorOperation& doperation,
+                                const NameAttrList& attributes,
+                                const std::optional<Layout>& default_layout,
+                                tensorflow::Graph* graph,
+                                std::vector<const Layout*>* output_layouts);
 // Creates a Graph with _Arg and _Retval nodes surrounding an
 // `operation_name`-type node.
-Status PrepareGraphForMlir(
+absl::Status PrepareGraphForMlir(
     const ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>& module_manager,
     const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation,
@@ -599,7 +608,8 @@ StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
 // be dropped during MLIR lowering.
 // TODO(b/171265131): fix the underlying issue to avoid inserting identity
 // nodes.
-Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph);
+absl::Status MaybeInsertIdentityNodes(const FunctionDef* function_def,
+                                      Graph* graph);
 
 // Add DTensor specific function attributes to be compatible with eager runtime.
 void AddDTensorFunctionAttr(FunctionDef& function_def);

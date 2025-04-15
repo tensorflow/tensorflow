@@ -45,7 +45,7 @@ using tsl::Env;
 //
 // Custom schemas can be supported by registering a handler with the
 // `DescriptorPoolRegistry`.
-Status GetDescriptorPool(
+absl::Status GetDescriptorPool(
     Env* env, string const& descriptor_source,
     protobuf::DescriptorPool const** desc_pool,
     std::unique_ptr<protobuf::DescriptorPool>* owned_desc_pool);

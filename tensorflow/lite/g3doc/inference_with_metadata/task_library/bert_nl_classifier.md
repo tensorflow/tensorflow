@@ -21,7 +21,7 @@ Sentencepiece tokenizations outside the TFLite model.
 The following models are compatible with the `BertNLClassifier` API.
 
 *   Bert Models created by
-    [TensorFlow Lite Model Maker for text Classfication](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification).
+    [TensorFlow Lite Model Maker for text Classfication](https://ai.google.dev/edge/litert/libraries/modify/text_classification).
 
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).
@@ -49,7 +49,7 @@ dependencies {
     // Other dependencies
 
     // Import the Task Text Library dependency (NNAPI is included)
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.4.4'
 }
 ```
 
@@ -85,7 +85,7 @@ Add the TensorFlowLiteTaskText pod in Podfile
 ```
 target 'MySwiftAppWithTaskAPI' do
   use_frameworks!
-  pod 'TensorFlowLiteTaskText', '~> 0.2.0'
+  pod 'TensorFlowLiteTaskText', '~> 0.4.4'
 end
 ```
 
@@ -148,7 +148,7 @@ for more options to configure `BertNLClassifier`.
 ## Example results
 
 Here is an example of the classification results of movie reviews using the
-[MobileBert](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification)
+[MobileBert](https://ai.google.dev/edge/litert/libraries/modify/text_classification)
 model from Model Maker.
 
 Input: "it's a charming and often affecting journey"

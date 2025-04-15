@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TPUCompilationResult"
   output_arg {
     name: "output"

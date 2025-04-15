@@ -15,9 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_ENTRY_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_ENTRY_H_
 
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 
 namespace tensorflow {
@@ -44,6 +41,7 @@ class TpuCompilationCacheEntry {
   const TpuProgramGroupInterface* tpu_program_group_;
   int core_index_;
 };
+
 }  // namespace tpu
 }  // namespace tensorflow
 

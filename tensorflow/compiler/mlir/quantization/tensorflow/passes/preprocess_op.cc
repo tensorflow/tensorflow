@@ -14,26 +14,36 @@ limitations under the License.
 ==============================================================================*/
 // This transformation pass applies quantization propagation on TF dialect.
 
-#include <algorithm>
+#include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
-#include <vector>
 
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 //===----------------------------------------------------------------------===//
 // The preprocess-op Pass.
@@ -44,16 +54,17 @@ namespace quant {
 namespace {
 
 using QuantMethod =
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+    ::tensorflow::quantization::QuantizationMethod::PresetMethod;
 using QuantizationUnit = std::pair<Operation*, int>;
 using QuantizationUnits = llvm::SetVector<QuantizationUnit>;
+using ::tensorflow::quantization::OpSet;
 
 // Preprocesses ops to allow multi-axis quantization, prior to quantization
 // passes. Currently, per-channel quantization only supports 1D results.
 class PreprocessOpPass
     : public PassWrapper<PreprocessOpPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TF::TensorFlowDialect, QuantizationDialect,
+    registry.insert<TF::TensorFlowDialect, QuantDialect,
                     quantfork::QuantizationForkDialect>();
   }
 
@@ -101,16 +112,18 @@ class PreprocessOpPass
 
   Option<QuantMethod> quantization_method_{
       *this, "quantization-method",
-      llvm::cl::init(
-          tensorflow::quantization::QuantizationMethod::STATIC_RANGE),
+      llvm::cl::init(tensorflow::quantization::QuantizationMethod::
+                         METHOD_STATIC_RANGE_INT8),
       llvm::cl::desc("Choose quantization method."),
       llvm::cl::values(
-          clEnumValN(tensorflow::quantization::QuantizationMethod::STATIC_RANGE,
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_STATIC_RANGE_INT8,
                      "ptq", "Post-training static-range quantization"),
-          clEnumValN(
-              tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE,
-              "drq", "Post-training dynamic-range quantizaiton"),
-          clEnumValN(tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY,
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_DYNAMIC_RANGE_INT8,
+                     "drq", "Post-training dynamic-range quantizaiton"),
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8,
                      "weight_only", "Post-training weight-only quantizaiton"))};
 
   Option<bool> enable_per_channel_quantization_{
@@ -189,13 +202,13 @@ class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
 
   LogicalResult matchAndRewrite(TF::PartitionedCallOp op,
                                 PatternRewriter& rewriter) const override {
-    const auto f_attr = op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+    const auto f_attr = mlir::dyn_cast<FlatSymbolRefAttr>(op.getFAttr());
     // Non-quantizable op
     if (!op->hasAttr(kQuantTraitAttrName)) return failure();
     StringRef function_name = f_attr.getValue();
     // TODO(b/228928859): Improve the getter function to match attributes rather
     // than function name.
-    if (!function_name.startswith("composite_")) {
+    if (!function_name.starts_with("composite_")) {
       return failure();
     }
 
@@ -209,7 +222,8 @@ class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
       if (op_set_ == OpSet::UNIFORM_QUANTIZED ||
           (op_set_ == OpSet::XLA && enable_per_channel_quantization_ &&
            quantization_method_ ==
-               tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY)) {
+               tensorflow::quantization::QuantizationMethod::
+                   METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8)) {
         return addReshapeOpToDepthwiseWeight(op, rewriter, function_name);
       }
     }
@@ -235,7 +249,7 @@ void PreprocessOpPass::runOnOperation() {
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 
   for (auto func : module_op.getOps<func::FuncOp>()) {
-    if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+    if (failed(applyPatternsGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-preprocess-op failed.";
       signalPassFailure();
     }

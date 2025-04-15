@@ -20,25 +20,24 @@ limitations under the License.
 #include <string.h>
 #include <sys/types.h>
 
+#include <cstdint>
 #include <utility>
 
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/kernel/tensor_util.h"
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"
-#include "tensorflow/core/runtime_fallback/util/type_util.h"
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/device.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
-#include "tfrt/support/error_util.h"  // from @tf_runtime
+#include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
 #include "tfrt/tensor/conversion_registry.h"  // from @tf_runtime
 #include "tfrt/tensor/conversion_utils.h"  // from @tf_runtime
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
-#include "tfrt/tensor/host_tensor.h"  // from @tf_runtime
-#include "tfrt/tensor/tensor.h"  // from @tf_runtime
-#include "tfrt/tensor/tensor_shape.h"  // from @tf_runtime
+#include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {

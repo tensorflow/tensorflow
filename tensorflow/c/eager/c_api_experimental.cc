@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/eager/c_api_experimental.h"
 
+#include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -26,7 +28,11 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "xla/tsl/c/tsl_status_internal.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/framework/cancellation.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -40,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 using tensorflow::string;
 
@@ -558,6 +563,39 @@ bool TFE_CancellationManagerIsCancelled(
   return tensorflow::unwrap(cancellation_manager)->IsCancelled();
 }
 
+bool TFE_CancellationManagerIsCancelling(
+    TFE_CancellationManager* cancellation_manager) {
+  return tensorflow::unwrap(cancellation_manager)->IsCancelling();
+}
+
+TFE_CancellationToken TFE_CancellationManagerGetToken(
+    TFE_CancellationManager* cancellation_manager) {
+  return tensorflow::unwrap(cancellation_manager)->get_cancellation_token();
+}
+
+bool TFE_CancellationManagerRegisterCallback(
+    TFE_CancellationManager* cancellation_manager, TFE_CancellationToken token,
+    const TFE_CancelCallback* c_callback, const char* callback_name) {
+  tensorflow::CancelCallback callback = [callback = c_callback->callback,
+                                         context = c_callback->context]() {
+    callback(context);
+  };
+  return tensorflow::unwrap(cancellation_manager)
+      ->RegisterCallbackWithErrorLogging(token, callback, callback_name);
+}
+
+bool TFE_CancellationManagerDeregisterCallback(
+    TFE_CancellationManager* cancellation_manager,
+    TFE_CancellationToken token) {
+  return tensorflow::unwrap(cancellation_manager)->DeregisterCallback(token);
+}
+
+bool TFE_CancellationManagerTryDeregisterCallback(
+    TFE_CancellationManager* cancellation_manager,
+    TFE_CancellationToken token) {
+  return tensorflow::unwrap(cancellation_manager)->TryDeregisterCallback(token);
+}
+
 void TFE_DeleteCancellationManager(
     TFE_CancellationManager* cancellation_manager) {
   delete tensorflow::unwrap(cancellation_manager);
@@ -568,7 +606,7 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TF_Status* status) {
   tensorflow::unwrap(op)->SetCancellationManager(
       tensorflow::unwrap(cancellation_manager));
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 TFE_Executor* TFE_NewExecutor(bool is_async, bool enable_streaming_enqueue,
@@ -629,7 +667,7 @@ void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 void TFE_ContextGetGraphDebugInfo(TFE_Context* ctx, const char* function_name,
@@ -653,7 +691,7 @@ void TFE_ContextGetGraphDebugInfo(TFE_Context* ctx, const char* function_name,
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx, TF_DataType dtype,
@@ -779,7 +817,7 @@ void TFE_GetExecutedOpNames(TFE_Context* ctx, TF_Buffer* buf,
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 void TFE_SetLogicalCpuDevices(TFE_Context* ctx, int num_cpus,
@@ -879,8 +917,7 @@ void TFE_ReportErrorToCluster(TFE_Context* ctx, int error_code,
         "Coordination service is not enabled.");
     return;
   }
-  tensorflow::Status s(static_cast<absl::StatusCode>(error_code),
-                       error_message);
+  absl::Status s(static_cast<absl::StatusCode>(error_code), error_message);
   status->status = coord_agent->ReportError(s);
 }
 
@@ -922,7 +959,7 @@ void TFE_GetTaskStates(TFE_Context* ctx, const TF_Buffer& tasks, void* states,
     *state_iter = std::move(s);
     ++state_iter;
   }
-  status->status = tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 void TFE_WaitAtBarrier(TFE_Context* ctx, const char* barrier_id,

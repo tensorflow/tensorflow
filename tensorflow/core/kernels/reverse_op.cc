@@ -26,7 +26,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -217,7 +217,7 @@ class ReverseOp : public OpKernel {
 
 template <typename Device, typename T, int NDIMS>
 void HandleReverseV2Case(OpKernelContext* context,
-                         const gtl::ArraySlice<bool> axes, Tensor* result) {
+                         const absl::Span<const bool> axes, Tensor* result) {
   const Tensor& input = context->input(0);
 
   // Use optimized reverse if possible.
@@ -259,7 +259,7 @@ class ReverseV2Op : public OpKernel {
       OP_REQUIRES(context, TensorShapeUtils::IsVector(sparse_dims_shape),
                   errors::InvalidArgument("'dims' must be 1-dimension, not ",
                                           sparse_dims.dims()));
-      gtl::InlinedVector<bool, 8> axes_dense(input_dims, false);
+      absl::InlinedVector<bool, 8> axes_dense(input_dims, false);
       for (int dummy = 0; dummy < axes_sparse_flat.size(); dummy++) {
         Tidx axis = internal::SubtleMustCopy<Tidx>(axes_sparse_flat(dummy));
         Tidx canonical_axis = axis < 0 ? input_dims + axis : axis;

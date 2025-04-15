@@ -20,8 +20,8 @@ limitations under the License.
 
 include "mlir/Dialect/Shape/IR/ShapeBase.td"
 include "mlir/IR/OpBase.td"
-include "mlir/IR/FunctionInterfaces.td"
-include "mlir/Dialect/Quant/QuantOpsBase.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
+include "mlir/Dialect/Quant/IR/QuantBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
@@ -61,7 +61,7 @@ def TFR_AllTensorTypes : Type<Or<[
 // attribute argument types
 def TFR_AttrType : TFR_Type<"TFRAttr">;
 def TFR_AttrScalarType: TypeAlias<TF_ElementType, "scalar attribute">;
-def TFR_AttrVectorType : VectorOf<[TF_ElementType, TFR_AttrType]>;
+def TFR_AttrVectorType : VectorOfNonZeroRankOf<[TF_ElementType, TFR_AttrType]>;
 def TFR_AllAttrTypes : Type<Or<[
     TFR_AttrType.predicate,
     Index.predicate,
@@ -132,7 +132,9 @@ def TFR_CallOp : TFR_Op<"call", [CallOpInterface]> {
 
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
-    Variadic<TFR_allowedArgType>:$args);
+    Variadic<TFR_allowedArgType>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs);
 
   let results = (outs
     Variadic<TFR_allowedResultType>:$outs);
@@ -140,6 +142,9 @@ def TFR_CallOp : TFR_Op<"call", [CallOpInterface]> {
   let extraClassDeclaration = [{
     // Get the argument operands to the called function.
     operand_range getArgOperands() { return getArgs(); }
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
 
     // Return the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getCalleeAttr(); }
@@ -383,7 +388,6 @@ def TFR_GetLengthOp : TFR_Op<"get_length", [Pure]> {
 //===----------------------------------------------------------------------===//
 
 def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
-                                    DeclareOpInterfaceMethods<CallableOpInterface>,
                                     FunctionOpInterface,
                                     IsolatedFromAbove, Symbol]> {
   let summary = "TFR Function defines a composition of other ops";
@@ -437,6 +441,8 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
 
   let extraClassDeclaration = [{
     LogicalResult verifyType() { return success(); }
+
+    mlir::Region *getCallableRegion();
 
     /// Returns the argument types of this function.
     ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }

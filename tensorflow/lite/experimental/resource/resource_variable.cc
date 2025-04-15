@@ -17,10 +17,11 @@ limitations under the License.
 
 #include <cstdlib>
 #include <cstring>
-#include <map>
 #include <memory>
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/experimental/resource/resource_base.h"
 
 namespace tflite {
 namespace resource {

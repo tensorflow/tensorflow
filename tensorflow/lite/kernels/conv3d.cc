@@ -46,17 +46,14 @@ static constexpr size_t kMaxIm2colBufferSizeMobile = 1024 * 1024 * 1024;  // 1GB
 struct OpData {
   Padding3DValues padding;
   int im2col_tensor_id = kTensorNotAllocated;
-  int transposed_filter_tensor_id = kTensorNotAllocated;
 
   bool need_im2col = false;
-  bool need_transposed_filter = false;
 
   // Disable im2col if the temporary im2col tensor requires too much memory
   // (i.e. >= kMaxIm2colBufferSizeMobile).
   bool im2col_oversized = false;
 
   int32_t im2col_index;
-  int32_t transposed_filter_index;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -83,16 +80,12 @@ TfLiteStatus AllocateTemporaryTensorsIfRequired(
 
   opdata->need_im2col = (kernel_type == kGenericOptimized) &&
                         (need_dilated_im2col || need_non_dilated_im2col);
-  // TODO(b/183455632): Add transposing logic in converter so constant folding
-  // might work on constant filter tensor.
-  opdata->need_transposed_filter = (kernel_type == kGenericOptimized);
 
   // On mobile platforms, the generic optimized kernel will not be used if the
   // temporary im2col tensor requires too much memory.
   if (IsMobilePlatform() && opdata->need_im2col &&
       im2col_bytes >= kMaxIm2colBufferSizeMobile) {
     opdata->need_im2col = false;
-    opdata->need_transposed_filter = false;
     opdata->im2col_oversized = true;
   }
 
@@ -102,15 +95,6 @@ TfLiteStatus AllocateTemporaryTensorsIfRequired(
           context, context->AddTensors(context, 1, &opdata->im2col_tensor_id));
     }
     opdata->im2col_index = temporaries_count++;
-  }
-
-  if (opdata->need_transposed_filter) {
-    if (opdata->transposed_filter_tensor_id == kTensorNotAllocated) {
-      TF_LITE_ENSURE_OK(
-          context, context->AddTensors(context, 1,
-                                       &opdata->transposed_filter_tensor_id));
-    }
-    opdata->transposed_filter_index = temporaries_count++;
   }
 
   TfLiteIntArrayFree(node->temporaries);
@@ -212,25 +196,6 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
                       context->ResizeTensor(context, im2col, im2col_size));
   }
 
-  if (opdata->need_transposed_filter) {
-    TfLiteIntArray* transposed_filter_size = TfLiteIntArrayCreate(5);
-    transposed_filter_size->data[0] = filter->dims->data[4];
-    transposed_filter_size->data[1] = filter->dims->data[0];
-    transposed_filter_size->data[2] = filter->dims->data[1];
-    transposed_filter_size->data[3] = filter->dims->data[2];
-    transposed_filter_size->data[4] = filter->dims->data[3];
-
-    TfLiteTensor* transposed_filter;
-    node->temporaries->data[opdata->transposed_filter_index] =
-        opdata->transposed_filter_tensor_id;
-    TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node,
-                                                opdata->transposed_filter_index,
-                                                &transposed_filter));
-    transposed_filter->type = filter->type;
-    transposed_filter->allocation_type = kTfLiteArenaRw;
-    TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, transposed_filter,
-                                                     transposed_filter_size));
-  }
   return kTfLiteOk;
 }
 
@@ -239,11 +204,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return Prepare(kernel_type, context, node);
 }
 
-void EvalFloat(KernelType kernel_type, TfLiteContext* context, TfLiteNode* node,
-               TfLiteConv3DParams* params, OpData* opdata,
-               const TfLiteTensor* input, const TfLiteTensor* filter,
-               const TfLiteTensor* bias, TfLiteTensor* im2col,
-               TfLiteTensor* tranposed_filter, TfLiteTensor* output) {
+TfLiteStatus EvalFloat(KernelType kernel_type, TfLiteContext* context,
+                       TfLiteNode* node, TfLiteConv3DParams* params,
+                       OpData* opdata, const TfLiteTensor* input,
+                       const TfLiteTensor* filter, const TfLiteTensor* bias,
+                       TfLiteTensor* im2col, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
@@ -265,19 +230,17 @@ void EvalFloat(KernelType kernel_type, TfLiteContext* context, TfLiteNode* node,
                             GetTensorData<float>(filter), GetTensorShape(bias),
                             GetTensorData<float>(bias), GetTensorShape(output),
                             GetTensorData<float>(output));
-      break;
+      return kTfLiteOk;
     }
     case kGenericOptimized: {
-      optimized_ops::Conv3D(
+      return optimized_ops::Conv3D(
           runtime_params, GetTensorShape(input), GetTensorData<float>(input),
           GetTensorShape(filter), GetTensorData<float>(filter),
           GetTensorShape(bias), GetTensorData<float>(bias),
           GetTensorShape(output), GetTensorData<float>(output),
           GetTensorShape(im2col), GetTensorData<float>(im2col),
-          GetTensorShape(tranposed_filter),
-          GetTensorData<float>(tranposed_filter),
           CpuBackendContext::GetFromContext(context));
-    } break;
+    }
   }
 }
 
@@ -297,11 +260,6 @@ TfLiteStatus Eval(KernelType kernel_type, TfLiteContext* context,
   TfLiteTensor* im2col = opdata->need_im2col
                              ? &context->tensors[opdata->im2col_tensor_id]
                              : nullptr;
-  TfLiteTensor* transposed_filter =
-      opdata->need_transposed_filter
-          ? &context->tensors[opdata->transposed_filter_tensor_id]
-          : nullptr;
-
   // Fallback to reference execution path when im2col is needed but disabled.
   if (opdata->im2col_oversized) {
     kernel_type = kReference;
@@ -309,9 +267,8 @@ TfLiteStatus Eval(KernelType kernel_type, TfLiteContext* context,
 
   switch (input->type) {
     case kTfLiteFloat32:
-      EvalFloat(kernel_type, context, node, params, opdata, input, filter, bias,
-                im2col, transposed_filter, output);
-      break;
+      return EvalFloat(kernel_type, context, node, params, opdata, input,
+                       filter, bias, im2col, output);
     default:
       TF_LITE_KERNEL_LOG(context, "Type %s currently not supported.",
                          TfLiteTypeGetName(input->type));

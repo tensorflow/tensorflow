@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_VIRTUAL_DEVICE_H_
 #define TENSORFLOW_CORE_TPU_VIRTUAL_DEVICE_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 
 namespace tensorflow {
 
@@ -26,12 +28,12 @@ class VirtualDevice : public Device {
  public:
   VirtualDevice(Env* env, const DeviceAttributes& device_attributes);
 
-  Status Sync() override;
+  absl::Status Sync() override;
   Allocator* GetAllocator(AllocatorAttributes attr) override;
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override;
-  Status TryGetDeviceContext(DeviceContext** out_context) override;
+  absl::Status MakeTensorFromProto(const TensorProto& tensor_proto,
+                                   const AllocatorAttributes alloc_attrs,
+                                   Tensor* tensor) override;
+  absl::Status TryGetDeviceContext(DeviceContext** out_context) override;
 };
 
 }  // namespace tensorflow

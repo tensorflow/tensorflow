@@ -57,7 +57,7 @@ class MultiWorkerMirroredStrategyTest(tf_test.TestCase, parameterized.TestCase):
 
   def test_strategy_creation_with_default_cluster_resolver(self):
     strategy = mwms.MultiWorkerMirroredStrategy()
-    mesh = strategy._mesh
+    mesh = strategy.mesh
     self.assertIsNotNone(mesh)
     self.assertLen(mesh.global_device_ids(),
                    self.num_client * self.num_local_devices)
@@ -110,7 +110,7 @@ class MultiWorkerMirroredStrategyTest(tf_test.TestCase, parameterized.TestCase):
 
     self.assertIsInstance(v, d_variable.DVariable)
     self.assertIsNotNone(v.layout)
-    self.assertEqual(v.layout, layout.Layout.replicated(strategy._mesh, rank=1))
+    self.assertEqual(v.layout, layout.Layout.replicated(strategy.mesh, rank=1))
 
   def test_strategy_extension(self):
     strategy = mwms.MultiWorkerMirroredStrategy()
@@ -121,17 +121,21 @@ class MultiWorkerMirroredStrategyTest(tf_test.TestCase, parameterized.TestCase):
     self.assertEqual(strategy.num_replicas_in_sync,
                      self.num_client * self.num_local_devices)
 
+  def test_mesh(self):
+    strategy = mwms.MultiWorkerMirroredStrategy()
+    self.assertIsNotNone(strategy.mesh)
+
   def test_worker_devices(self):
     strategy = mwms.MultiWorkerMirroredStrategy()
     worker_devices = strategy.extended.worker_devices
     self.assertLen(worker_devices, self.num_local_devices)
-    self.assertEqual(worker_devices, tuple(strategy._mesh.local_devices()))
+    self.assertEqual(worker_devices, tuple(strategy.mesh.local_devices()))
 
   def test_parameter_devices(self):
     strategy = mwms.MultiWorkerMirroredStrategy()
     parameter_devices = strategy.extended.parameter_devices
     self.assertLen(parameter_devices, self.num_local_devices)
-    self.assertEqual(parameter_devices, tuple(strategy._mesh.local_devices()))
+    self.assertEqual(parameter_devices, tuple(strategy.mesh.local_devices()))
 
   def test_variable_created_in_scope(self):
     strategy1 = mwms.MultiWorkerMirroredStrategy()
@@ -577,7 +581,7 @@ class StrategyDatasetTest(tf_test.TestCase, parameterized.TestCase):
 
     self.assertEqual(d_api.fetch_layout(distributed_values),
                      layout.Layout.batch_sharded(
-                         strategy._mesh, batch_dim='batch', rank=1))
+                         strategy.mesh, batch_dim='batch', rank=1))
     unpacked_value = d_api.unpack(distributed_values)
     self.assertLen(unpacked_value, self.num_local_devices)
     start = 1.0 + self.num_local_devices * self.client_id

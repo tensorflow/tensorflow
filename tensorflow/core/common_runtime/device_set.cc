@@ -80,7 +80,7 @@ static bool DeviceTypeComparator(const DeviceType& a, const DeviceType& b) {
     return a_priority > b_priority;
   }
 
-  return StringPiece(a.type()) < StringPiece(b.type());
+  return absl::string_view(a.type()) < absl::string_view(b.type());
 }
 
 std::vector<DeviceType> DeviceSet::PrioritizedDeviceTypeList() const {
@@ -134,7 +134,8 @@ void DeviceSet::SortPrioritizedDeviceVector(PrioritizedDeviceVector* vector) {
       return a.first->IsLocal();
     }
 
-    return StringPiece(a.first->name()) < StringPiece(b.first->name());
+    return absl::string_view(a.first->name()) <
+           absl::string_view(b.first->name());
   };
   std::sort(vector->begin(), vector->end(), device_sort);
 }

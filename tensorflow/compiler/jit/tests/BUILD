@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 licenses(["notice"])
 
@@ -20,8 +20,6 @@ cc_library(
         "//tensorflow/compiler/jit:xla_cluster_util",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/jit:xla_gpu_jit",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -30,7 +28,9 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/tools/optimization:optimization_pass_runner_lib",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla:status_macros",
     ],
 )
 
@@ -67,7 +67,6 @@ cc_library(
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/jit:xla_gpu_device",
         "//tensorflow/compiler/jit:xla_gpu_jit",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -80,6 +79,7 @@ cc_library(
         "//tensorflow/core/platform:path",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/service:hlo_proto_cc",
     ],
 )
 
@@ -88,9 +88,6 @@ tf_cc_test(
     srcs = [
         "device_compiler_serialize_test.cc",
     ],
-    env = {
-        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
-    },
     tags = [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
@@ -110,9 +107,6 @@ tf_cc_test(
     srcs = [
         "device_compiler_serialize_options_test.cc",
     ],
-    env = {
-        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
-    },
     tags = [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
@@ -124,5 +118,8 @@ tf_cc_test(
         "//tensorflow/compiler/jit:compilation_passes",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:test",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )

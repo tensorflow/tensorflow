@@ -21,21 +21,19 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 
@@ -58,16 +56,15 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
   if (auto layout_op = llvm::dyn_cast<mlir::TF::DTensorLayout>(op)) {
     cluster->setAttr(kMeshAttr, builder->getStringAttr(
                                     layout_op.getLayout().mesh().ToString()));
-  } else if (auto copy_to_mesh = llvm::dyn_cast<mlir::TF::CopyToMeshOp>(op)) {
+  } else if (auto copy_to_mesh = llvm::dyn_cast<mlir::TF::RelayoutOp>(op)) {
     const std::string layout_string = copy_to_mesh.getLayout().str();
-    auto layout_or = Layout::FromString(layout_string);
-    if (!layout_or.ok())
-      return op->emitOpError(
-          llvm::formatv("Found tf.CopyToMesh Op with unparsable layout : {0}",
-                        layout_string));
+    auto layout = Layout::FromString(layout_string);
+    if (!layout.ok())
+      return op->emitOpError(llvm::formatv(
+          "Found tf.Relayout Op with unparsable layout: {0}", layout_string));
 
     cluster->setAttr(kMeshAttr,
-                     builder->getStringAttr(layout_or->mesh().ToString()));
+                     builder->getStringAttr(layout->mesh().ToString()));
   } else {
     // If mesh configuration can be inferred from the op directly, use the mesh
     // information from op attribute directly. If op is not annotated with mesh

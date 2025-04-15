@@ -176,14 +176,14 @@ CollectiveContext::CollectiveContext(
 int64_t CollectiveExecutor::kInvalidId = -1;
 
 /*static*/
-Status CollectiveRegistry::Lookup(
+absl::Status CollectiveRegistry::Lookup(
     const string& collective_name,
     CollectiveImplementationInterface** implementation) {
   return LookupHelper(collective_name, implementation, false);
 }
 
 /*static*/
-Status CollectiveRegistry::LookupParamResolverInstance(
+absl::Status CollectiveRegistry::LookupParamResolverInstance(
     const string& collective_name,
     CollectiveImplementationInterface** implementation) {
   return LookupHelper(collective_name, implementation, true);
@@ -198,8 +198,8 @@ void CollectiveRegistry::GetAll(
 }
 
 /*static*/
-Status CollectiveRegistry::Register(const string& collective_name,
-                                    Factory factory) {
+absl::Status CollectiveRegistry::Register(const string& collective_name,
+                                          Factory factory) {
   std::vector<RegistrationInfo>* registry = MutableCollectiveRegistry();
   for (const RegistrationInfo& reg_info : *registry) {
     if (reg_info.name == collective_name)
@@ -207,11 +207,11 @@ Status CollectiveRegistry::Register(const string& collective_name,
                               collective_name);
   }
   registry->emplace_back(collective_name, std::move(factory));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/
-Status CollectiveRegistry::LookupHelper(
+absl::Status CollectiveRegistry::LookupHelper(
     const string& collective_name,
     CollectiveImplementationInterface** implementation, bool param_resolver) {
   std::vector<RegistrationInfo>* registry = MutableCollectiveRegistry();
@@ -222,7 +222,7 @@ Status CollectiveRegistry::LookupHelper(
       } else {
         *implementation = reg_info.factory();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   return errors::Internal(

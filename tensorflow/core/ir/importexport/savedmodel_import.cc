@@ -22,7 +22,7 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
-tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelToMlir(
+absl::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelToMlir(
     mlir::MLIRContext *context, const tensorflow::GraphDebugInfo &debug_info,
     const tensorflow::SavedModel &saved_model) {
   if (saved_model.meta_graphs_size() == 0) {

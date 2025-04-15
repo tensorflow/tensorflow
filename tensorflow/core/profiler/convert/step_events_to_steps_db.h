@@ -19,7 +19,8 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
-#include "tensorflow/core/profiler/utils/event_span.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/steps_db.pb.h"  // from @org_xprof
+#include "xprof/utils/event_span.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
@@ -29,7 +30,7 @@ TF_CONST_INIT extern const uint32 kDefaultGpuLocalCoreId;
 // Converts from overlapped Step-Events to StepDatabaseResult.
 StepDatabaseResult ConvertStepEventsToStepDb(
     bool has_device, bool maybe_drop_incomplete_steps,
-    const StepEvents& overlapped_step_events);
+    StepEvents& overlapped_step_events);
 
 }  // namespace profiler
 }  // namespace tensorflow

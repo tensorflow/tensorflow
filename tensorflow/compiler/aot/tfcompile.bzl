@@ -22,7 +22,9 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_target_cpu")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_friends", "tfcompile_target_cpu")
+
+visibility(tfcompile_friends())
 
 def _tfcompile_model_library_rule_impl(ctx):
     header_file = ctx.outputs.header_out
@@ -313,32 +315,21 @@ def _tf_library(
         ] + (need_xla_data_proto and [
             # If we're generating the program shape, we must depend on the
             # proto.
-            "//tensorflow/compiler/xla:xla_data_proto_cc",
+            "@local_xla//xla:xla_data_proto_cc",
         ] or []) + (enable_xla_hlo_profiling and [
-            "//tensorflow/compiler/xla/service:hlo_profile_printer_data_cc",
+            "@local_xla//xla/service:hlo_profile_printer_data_cc",
         ] or []) + (include_standard_runtime_deps and [
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
-            "//tensorflow/compiler/xla/service/cpu/runtime:convolution_ffi",
-            "//tensorflow/compiler/xla/service/cpu/runtime:rng_ffi",
-            "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
-            "//tensorflow/compiler/xla/service/cpu:runtime_custom_call_status",
-            "//tensorflow/compiler/xla/service/cpu:runtime_key_value_sort",
-            "//tensorflow/compiler/xla/service/cpu:runtime_matmul",
-            "//tensorflow/compiler/xla/service/cpu:runtime_topk",
-            "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",
-            "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
-            "//third_party/eigen3",
-        ] or []) + (
-            mlir_components.count("HloLowering") > 0 and [
-                "//tensorflow/compiler/xla/runtime:aot_ffi_c_symbols",
-                "//tensorflow/compiler/xla/service/cpu:runtime_mlir_utils",
-            ] or []
-        ) + (
-            include_standard_runtime_deps and mlir_components == "HloLowering" and [
-                "//tensorflow/compiler/xla/service/cpu/runtime:retain",
-            ] or []
-        ) + (deps or []),
+            "@local_xla//xla/service/cpu:runtime_conv2d",
+            "@local_xla//xla/service/cpu:runtime_custom_call_status",
+            "@local_xla//xla/service/cpu:runtime_key_value_sort",
+            "@local_xla//xla/service/cpu:runtime_matmul",
+            "@local_xla//xla/service/cpu:runtime_topk",
+            "@local_xla//xla/service/cpu:runtime_single_threaded_conv2d",
+            "@local_xla//xla/service/cpu:runtime_single_threaded_matmul",
+            "@eigen_archive//:eigen3",
+        ] or []) + (deps or []),
         tags = tags,
         copts = copts,
     )
@@ -390,8 +381,8 @@ def _tf_library(
             deps = [
                 ":" + name,
                 "//tensorflow/compiler/aot:tf_library_test_main",
-                "//tensorflow/compiler/xla:executable_run_options",
-                "//third_party/eigen3",
+                "@local_xla//xla:executable_run_options",
+                "@eigen_archive//:eigen3",
             ] + if_oss([
                 "//tensorflow/core:lib",
                 "//tensorflow/core:test",
@@ -443,8 +434,8 @@ def _tf_library(
             deps = [
                 ":" + name,
                 "//tensorflow/compiler/aot:benchmark",
-                "//tensorflow/compiler/xla:executable_run_options",
-                "//third_party/eigen3",
+                "@local_xla//xla:executable_run_options",
+                "@eigen_archive//:eigen3",
             ] + if_android([
                 "//tensorflow/compiler/aot:benchmark_extra_android",
             ]),
@@ -489,6 +480,9 @@ def tf_library(
                       gen_benchmark=True.
     The output header is called <name>.h.
 
+    Deprecated:
+      tfcompile is deprecated (b/389018081). As an alternative, consider using
+      XLA:CPU's AOT capabilities directly.
     Args:
       name: The name of the build rule.
       graph: The TensorFlow GraphDef to compile.  If the file ends in '.pbtxt'
@@ -559,31 +553,6 @@ def tf_library(
         copts,
         xla_flags,
     )
-    if mlir_components == "None":
-        _tf_library(
-            name + "_mlir",
-            graph,
-            config,
-            debug_info,
-            freeze_checkpoint,
-            freeze_saver,
-            cpp_class,
-            gen_test,
-            gen_benchmark,
-            gen_compiler_log,
-            visibility,
-            testonly,
-            tfcompile_flags,
-            tfcompile_tool,
-            include_standard_runtime_deps,
-            enable_xla_hlo_profiling,
-            enable_tracemes,
-            "HloLowering",
-            deps,
-            tags + ["notap", "local", "manual"],
-            copts,
-            xla_flags,
-        )
 
 def target_llvm_triple():
     """Returns the target LLVM triple to be used for compiling the target."""

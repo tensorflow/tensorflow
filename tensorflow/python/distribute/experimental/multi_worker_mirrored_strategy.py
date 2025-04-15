@@ -80,6 +80,11 @@ class MultiWorkerMirroredStrategy(distribute_lib.Strategy):
   def reduce(self, reduce_op, value, axis):
     return dtensor_util.dtensor_reduce(self, reduce_op, value, axis)
 
+  @property
+  def mesh(self):
+    """Returns the mesh used by the strategy."""
+    return self._mesh
+
 
 def _parse_dtensor_env_var_from_cluster_resolver(cluster_resolver):
   """Parse the env vars for Dtensor based on the cluster resolver.

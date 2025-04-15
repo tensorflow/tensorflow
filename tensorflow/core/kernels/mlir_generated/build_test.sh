@@ -19,13 +19,13 @@
 set -e
 
 # KernelGen binary
-TF_TO_KERNEL="$1"
+HLO_TO_KERNEL="$1"
 OUTPUT_FILE="${TEST_TMPDIR}/output.mlir"
 INPUT="$2"
 PLATFORM="$3"
 
 # Do something
-${TF_TO_KERNEL} --input=${INPUT} --output=${OUTPUT_FILE} ${PLATFORM} "${@:4}"  || die "Failed to generate kernel"
+${HLO_TO_KERNEL} --input=${INPUT} --output=${OUTPUT_FILE} ${PLATFORM} "${@:4}"  || die "Failed to generate kernel"
 
 # Check something
 [ -s ${OUTPUT_FILE} ] || die "output file was empty"

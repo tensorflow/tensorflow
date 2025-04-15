@@ -18,44 +18,47 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
 // Returns a BorrowingLiteral that utilizes the same underlying buffer owned by
 // 'host_tensor'.
-Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
-                                    xla::BorrowingLiteral* literal);
+absl::Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
+                                          xla::BorrowingLiteral* literal);
 // Similar as above, except the literal shape is explicitly provided and used
 // instead of obtaining it from the 'host_tensor'. The provided literal shape
 // 'xla_shape' must be compatible with the shape of 'host_tensor'.
-Status HostTensorToBorrowingLiteral(const xla::Shape& xla_shape,
-                                    const Tensor& host_tensor,
-                                    xla::BorrowingLiteral* literal);
+absl::Status HostTensorToBorrowingLiteral(const xla::Shape& xla_shape,
+                                          const Tensor& host_tensor,
+                                          xla::BorrowingLiteral* literal);
 
 // Returns a Literal with the contents of 'host_tensor', backed by its own
 // storage (i.e., not reusing 'host_tensor's buffers.)
-StatusOr<xla::Literal> HostTensorToLiteral(const Tensor& host_tensor);
+absl::StatusOr<xla::Literal> HostTensorToLiteral(const Tensor& host_tensor);
 
 // Returns a MutableBorrowingLiteral that utilizes the same underlying buffer
 // owned by 'host_tensor', but is mutable via the xla::Literal methods.
-Status HostTensorToMutableBorrowingLiteral(
+absl::Status HostTensorToMutableBorrowingLiteral(
     Tensor* host_tensor, xla::MutableBorrowingLiteral* literal);
 // Similar as above, except the literal shape is explicitly provided and used
 // instead of obtaining it from the 'host_tensor'. The provided literal shape
 // 'xla_shape' must be compatible with the shape of 'host_tensor'.
-Status HostTensorToMutableBorrowingLiteral(
+absl::Status HostTensorToMutableBorrowingLiteral(
     const xla::Shape& xla_shape, Tensor* host_tensor,
     xla::MutableBorrowingLiteral* literal);
 
 // Returns a BorrowingLiteral tuple that utilizes the same underlying buffers
 // owned by 'host_tensors'.
-Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
-                                          xla::BorrowingLiteral* literal);
+absl::Status HostTensorsToBorrowingLiteralTuple(
+    absl::Span<const Tensor> host_tensors, xla::BorrowingLiteral* literal);
 
 // Copies 'literal' to freshly allocated 'host_tensor', which is allocated of
 // type <target_type>.
@@ -64,14 +67,14 @@ Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
 // derivable from the type of <literal>, because multiple tensorflow types map
 // to the same XLA type (e.g. INT32 and QINT32 both map to INT32 in
 // XLA).
-Status LiteralToHostTensor(const xla::LiteralSlice& literal,
-                           DataType target_type, Tensor* host_tensor);
+absl::Status LiteralToHostTensor(const xla::LiteralSlice& literal,
+                                 DataType target_type, Tensor* host_tensor);
 
 // Copies the contents of 'literal' to a previously allocated tensor
 // 'host_tensor'. The tensor and the literal must have the same number of
 // elements and the same type.
-Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
-                               Tensor* host_tensor);
+absl::Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
+                                     Tensor* host_tensor);
 
 }  // namespace tensorflow
 

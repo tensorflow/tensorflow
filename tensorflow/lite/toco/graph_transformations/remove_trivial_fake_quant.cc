@@ -12,17 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <iterator>
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/remove_trivial_passthrough.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -64,27 +65,26 @@ bool IsFakeQuantTrivial(GraphTransformation* transformation, const Model& model,
 }  // namespace
 
 // Removes FakeQuant ops that are trivial (have no effect, are redundant, etc).
-::tensorflow::Status RemoveTrivialFakeQuant::Run(Model* model,
-                                                 std::size_t op_index,
-                                                 bool* modified) {
+absl::Status RemoveTrivialFakeQuant::Run(Model* model, std::size_t op_index,
+                                         bool* modified) {
   *modified = false;
   const auto op_it = model->operators.begin() + op_index;
   auto* op = op_it->get();
   if (op->type != OperatorType::kFakeQuant) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   auto* fakequant_op = static_cast<FakeQuantOperator*>(op);
 
   if (!IsFakeQuantTrivial(this, *model, *fakequant_op)) {
     AddMessageF("%s is not trivial", LogName(*fakequant_op));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   AddMessageF("Removing trivial %s", LogName(*fakequant_op));
 
   CHECK_EQ(fakequant_op->inputs.size(), 1);
   *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

@@ -12,9 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Copied and modified from
-// //third_party/tensorflow/compiler/mlir/lite/transforms/quantize.cc
-// This transformation pass applies quantization on TF dialect.
 #include <memory>
 #include <string>
 #include <utility>
@@ -25,7 +22,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -43,11 +40,10 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -59,6 +55,8 @@ namespace quant {
 // The actual Quantize Pass.
 //===----------------------------------------------------------------------===//
 namespace {
+
+using ::tensorflow::quantization::OpSet;
 
 enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };
 
@@ -315,7 +313,7 @@ class QuantizeSameScaleOpsPattern
   }
 
  private:
-  // Checks whether the operation is connnected with a composite function.
+  // Checks whether the operation is connected with a composite function.
   // If not, the same-scale op will not be quantized. This decision is based
   // on the current assumption that the performance gain of the same-scale
   // op itself could not beat the overhead of the quantize and dequantize
@@ -384,7 +382,7 @@ class QuantizeSameScaleOpsPattern
     }
 
     const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
-    if (!f_attr || !f_attr.getValue().startswith("composite_")) {
+    if (!f_attr || !f_attr.getValue().starts_with("composite_")) {
       return false;
     }
 
@@ -552,14 +550,14 @@ void QuantizePass::runOnOperation() {
                                               target_opset_);
     patterns.add<QuantizeAvgPoolOpPattern>(ctx);
   }
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     func.emitWarning("Failed to converge pattern at QuantizePass.");
   }
 
   if (!shouldKeepUnusedQdqPattern()) {
     RewritePatternSet patterns_2(&getContext());
     patterns_2.add<RemoveUnusedQdqPattern>(ctx);
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns_2)))) {
+    if (failed(applyPatternsGreedily(func, std::move(patterns_2)))) {
       signalPassFailure();
     }
   }

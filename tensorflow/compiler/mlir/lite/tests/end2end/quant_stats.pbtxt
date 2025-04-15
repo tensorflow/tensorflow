@@ -58,7 +58,7 @@ versions {
 
 # MLIR-LABEL: func @main(%arg0: tensor<4x!quant.uniform<u8:f32, 0.015686274509803921:128>>, %arg1: tensor<4x!quant.uniform<u8:f32, 0.023529411764705882:128>>) -> tensor<4x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
 # MLIR-SAME:    attributes {tf.entry_function = {control_outputs = "", inputs = "input0,input1", outputs = "Add"}} {
-# MLIR-NEXT:    %[[add:.*]] = tfl.add(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<4x!quant.uniform<u8:f32, 0.015686274509803921:128>>, tensor<4x!quant.uniform<u8:f32, 0.023529411764705882:128>>) -> tensor<4x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+# MLIR-NEXT:    %[[add:.*]] = tfl.add(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<4x!quant.uniform<u8:f32, 0.015686274509803921:128>>, tensor<4x!quant.uniform<u8:f32, 0.023529411764705882:128>>) -> tensor<4x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
 # MLIR-NEXT:    return %[[add]] : tensor<4x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
 # MLIR-NEXT:  }
 

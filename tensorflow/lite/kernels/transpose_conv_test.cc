@@ -61,7 +61,8 @@ class BaseTransposeConvOpModel : public SingleOpModel {
                            const TensorData& input, const TensorData& output,
                            Padding padding, int stride_w, int stride_h,
                            tflite::ActivationFunctionType fused_activation,
-                           TestType test_type, int version = 1) {
+                           TestType test_type, int version = 1,
+                           const TensorType& bias_type = TensorType_INT32) {
     // Just to be confusing, transpose_conv has an _input_ named "output_shape"
     // that sets the shape of the output tensor of the op :). It must always be
     // an int32 1D four element tensor.
@@ -76,11 +77,11 @@ class BaseTransposeConvOpModel : public SingleOpModel {
 
     output_ = AddOutput(output);
 
-    SetBuiltinOp(BuiltinOperator_TRANSPOSE_CONV,
-                 BuiltinOptions_TransposeConvOptions,
-                 CreateTransposeConvOptions(builder_, padding, stride_w,
-                                            stride_h, fused_activation)
-                     .Union());
+    SetBuiltinOp(
+        BuiltinOperator_TRANSPOSE_CONV, BuiltinOptions_TransposeConvOptions,
+        CreateTransposeConvOptions(builder_, padding, stride_w, stride_h,
+                                   fused_activation, bias_type)
+            .Union());
     resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_TRANSPOSE_CONV, registration, version);
     BuildInterpreter(
@@ -153,9 +154,10 @@ TEST_P(TransposeConvOpTest, SimpleTest) {
   model.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({29, 62, 83, 75, 99, 192, 237, 198, 207, 372,
-                                417, 330, 263, 446, 485, 365}));
+  EXPECT_THAT(
+      model.GetOutput(),
+      Pointwise(FloatingPointEq(), {29, 62, 83, 75, 99, 192, 237, 198, 207, 372,
+                                    417, 330, 263, 446, 485, 365}));
   // GetOutputShape() should always be same as model.SetOutputShape(...);
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
@@ -182,8 +184,8 @@ TEST_P(TransposeConvOpTest, fusedRELUTest) {
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({29, 24, 0, 0, 99, 72, 0, 0, 207, 186, 0, 0, 263,
-                                292, 141, 0}));
+              Pointwise(FloatingPointEq(), {29, 24, 0, 0, 99, 72, 0, 0, 207,
+                                            186, 0, 0, 263, 292, 141, 0}));
   // GetOutputShape() should always be same as model.SetOutputShape(...);
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
@@ -212,8 +214,9 @@ TEST_P(TransposeConvOpTest, TwoFiltersTest) {
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({184, 412, 568, 528, 678, 1347, 1689, 1434, 1494,
-                                2715, 3057, 2442, 1968, 3352, 3652, 2760}));
+              Pointwise(FloatingPointEq(),
+                        {184, 412, 568, 528, 678, 1347, 1689, 1434, 1494, 2715,
+                         3057, 2442, 1968, 3352, 3652, 2760}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
 
@@ -242,10 +245,11 @@ TEST_P(TransposeConvOpTest, PaddingValidTest) {
 
   EXPECT_THAT(
       model.GetOutput(),
-      ElementsAreArray({5,    22,   59,   101,  114,  83,   52,   184,  412,
-                        568,  528,  344,  237,  678,  1347, 1689, 1434, 879,
-                        597,  1494, 2715, 3057, 2442, 1431, 856,  1968, 3352,
-                        3652, 2760, 1548, 689,  1534, 2543, 2729, 2010, 1103}));
+      Pointwise(FloatingPointEq(),
+                {5,    22,   59,   101,  114,  83,   52,   184,  412,
+                 568,  528,  344,  237,  678,  1347, 1689, 1434, 879,
+                 597,  1494, 2715, 3057, 2442, 1431, 856,  1968, 3352,
+                 3652, 2760, 1548, 689,  1534, 2543, 2729, 2010, 1103}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 6, 6, 1}));
 }
 
@@ -268,10 +272,10 @@ TEST_P(TransposeConvOpTest, StrideValidTest) {
   model.SetInput({1, 2, 3, 4});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(
-      model.GetOutput(),
-      ElementsAreArray({1,  2,  5,  4,  6,  4,  5,  14, 10, 12, 10, 14, 36,
-                        24, 30, 12, 15, 34, 20, 24, 21, 24, 55, 32, 36}));
+  EXPECT_THAT(model.GetOutput(),
+              Pointwise(FloatingPointEq(),
+                        {1,  2,  5,  4,  6,  4,  5,  14, 10, 12, 10, 14, 36,
+                         24, 30, 12, 15, 34, 20, 24, 21, 24, 55, 32, 36}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 5, 5, 1}));
 }
 
@@ -294,12 +298,12 @@ TEST_P(TransposeConvOpTest, MultiChannelTest) {
   model.SetInput({1, 2, 3, 4});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(
-      model.GetOutput(),
-      ElementsAreArray({1,  2,  3,  4,  7,  10,  6,   8,  10, 12, 7,  8,  9,
-                        10, 25, 28, 18, 20, 22,  24,  16, 20, 24, 28, 62, 72,
-                        42, 48, 54, 60, 21, 24,  27,  30, 61, 68, 36, 40, 44,
-                        48, 39, 42, 45, 48, 103, 110, 60, 64, 68, 72}));
+  EXPECT_THAT(model.GetOutput(),
+              Pointwise(FloatingPointEq(),
+                        {1,  2,  3,  4,  7,  10,  6,   8,  10, 12, 7,  8,  9,
+                         10, 25, 28, 18, 20, 22,  24,  16, 20, 24, 28, 62, 72,
+                         42, 48, 54, 60, 21, 24,  27,  30, 61, 68, 36, 40, 44,
+                         48, 39, 42, 45, 48, 103, 110, 60, 64, 68, 72}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 5, 5, 2}));
 }
 
@@ -613,7 +617,7 @@ class PerChannelQuantizedTransposeConvOpModel16x8
   }
 };
 
-TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannel16x8) {
+TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannel16x8NoBiasInt32) {
   const std::initializer_list<float> filter_data = {
       // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
       1, 2,  // out channel = 0, y = 0, x = 0
@@ -652,7 +656,8 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannel16x8) {
        /*zero_point=*/0},
       /*padding=*/Padding_SAME,
       /*stride_w=*/1, /*stride_h=*/1,
-      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType());
+      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*bias_type=*/TensorType_INT32);
   model.SetInput({
       // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
       3, 2,    // batch = 0, y = 0, x = 0
@@ -739,18 +744,80 @@ TEST_P(TransposeConvOpTest,
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 3, 2}));
 }
 
-template <typename InputType>
+TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannel16x8NoBiasInt64) {
+  // Float would be {1, 2, 3, 4, 5, 6, 7, 8, 9}
+  const std::initializer_list<float> filter_data = {
+      // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+      1, 2,  // out channel = 0, y = 0, x = 0
+      3, 4,  // out channel = 0, y = 0, x = 1
+      3, 4,  // out channel = 0, y = 1, x = 0
+      5, 6,  // out channel = 0, y = 1, x = 1
+      7, 8,  // out channel = 1, y = 0, x = 0
+      5, 6,  // out channel = 1, y = 0, x = 1
+      3, 4,  // out channel = 1, y = 1, x = 0
+      1, 2,  // out channel = 1, y = 1, x = 1
+  };
+  PerChannelQuantizedTransposeConvOpModel16x8 model(
+      GetRegistration(),
+      /*output_shape_data=*/{1, 2, 3, 2},
+      /*filter=*/
+      {TensorType_INT8,
+       /*shape=*/{2, 2, 2, 2},
+       /*min=*/-64, /*max=*/64,
+       /*scale=*/0, /*zero_point=*/0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{7.0 / 127, 8.0 / 127},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      /*filter_data=*/{},
+      /*input=*/
+      {TensorType_INT16,
+       /*shape=*/{1, 2, 3, 2},
+       /*min=*/0, /*max=*/0,
+       /*scale=*/4.0 / 127,
+       /*zero_point=*/0},
+      /*output=*/
+      {TensorType_INT16,
+       /*shape=*/{},
+       /*min=*/0, /*max=*/0,
+       /*scale=*/1.0,
+       /*zero_point=*/0},
+      /*padding=*/Padding_SAME,
+      /*stride_w=*/1, /*stride_h=*/1,
+      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*version=*/1,
+      /*bias_type=*/TensorType_INT64);
+  model.SetInput({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3, 2,    // batch = 0, y = 0, x = 0
+      1, -1,   // batch = 0, y = 0, x = 1
+      -2, -3,  // batch = 0, y = 0, x = 2
+      4, 3,    // batch = 0, y = 1, x = 0
+      2, -2,   // batch = 0, y = 1, x = 1
+      -3, -4,  // batch = 0, y = 1, x = 2
+  });
+  model.SetFilter(filter_data);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {7, 37, 16, 26, -9, -39, 27, 69, 48, 42, -32, -74}, 1e-5)));
+
+  // GetOutputShape() should always be same as model.SetOutputShape(...);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 3, 2}));
+}
+
+template <typename InputType, typename FilterType>
 class BaseTransposeConvBiasOpModel : public SingleOpModel {
  public:
-  BaseTransposeConvBiasOpModel(TfLiteRegistration* registration,
-                               std::initializer_list<int> output_shape_data,
-                               const TensorData& filter,
-                               std::initializer_list<InputType> filter_data,
-                               const TensorData& input,
-                               const TensorData& output, Padding padding,
-                               int stride_w, int stride_h,
-                               tflite::ActivationFunctionType fused_activation,
-                               TestType test_type, int version = 3) {
+  BaseTransposeConvBiasOpModel(
+      TfLiteRegistration* registration,
+      std::initializer_list<int> output_shape_data, const TensorData& filter,
+      std::initializer_list<FilterType> filter_data, const TensorData& input,
+      const TensorData& output, Padding padding, int stride_w, int stride_h,
+      tflite::ActivationFunctionType fused_activation, TestType test_type,
+      int version = 3, const TensorType& bias_type = TensorType_INT32) {
+    bias_type_ = bias_type;
     if (test_type == TestType::kDynamic) {
       output_shape_ = AddInput({TensorType_INT32, {4}});
       filter_ = AddInput(filter);
@@ -759,54 +826,59 @@ class BaseTransposeConvBiasOpModel : public SingleOpModel {
       filter_ = AddConstInput(filter, filter_data);
     }
     input_ = AddInput(input);
-
     int bias_size = GetShape(filter_)[0];
     if (input.type == TensorType_FLOAT32) {
+      bias_type_ = TensorType_FLOAT32;
       bias_ = AddInput({TensorType_FLOAT32, {bias_size}});
-    } else if (input.type == TensorType_INT8) {
-      // per channel quantization.
-      std::vector<float> bias_scale(
-          filter.per_channel_quantization_scales.size());
-      std::vector<int64_t> bias_zero_points(
-          filter.per_channel_quantization_scales.size());
-      for (size_t i = 0; i < filter.per_channel_quantization_scales.size();
-           ++i) {
-        bias_scale[i] = input.scale * filter.per_channel_quantization_scales[i];
-        bias_zero_points[i] = 0;
-      }
-      TensorData bias{TensorType_INT32,
-                      {bias_size},
-                      /*min=*/0,
-                      /*max=*/0,
-                      /*scale=*/0,
-                      /*zero_point=*/0,
-                      true,
-                      /*per_channel_quantization_scales=*/bias_scale,
-                      /*per_channel_quantization_offsets=*/bias_zero_points,
-                      /*channel_index==*/0};
-      bias_ = AddInput(bias);
     } else {
-      // per tensor quantization.
-      auto bias_scale = GetScale(input_) * GetScale(filter_);
-      TensorData bias{TensorType_INT32, {bias_size}, 0, 0, bias_scale};
-      bias_ = AddInput(bias);
+      if (filter.per_channel_quantization) {
+        // per channel quantization.
+        std::vector<float> bias_scale(
+            filter.per_channel_quantization_scales.size());
+        std::vector<int64_t> bias_zero_points(
+            filter.per_channel_quantization_scales.size());
+        for (size_t i = 0; i < filter.per_channel_quantization_scales.size();
+             ++i) {
+          bias_scale[i] =
+              input.scale * filter.per_channel_quantization_scales[i];
+          bias_zero_points[i] = 0;
+        }
+        TensorData bias{bias_type,
+                        {bias_size},
+                        /*min=*/0,
+                        /*max=*/0,
+                        /*scale=*/0,
+                        /*zero_point=*/0,
+                        true,
+                        /*per_channel_quantization_scales=*/bias_scale,
+                        /*per_channel_quantization_offsets=*/bias_zero_points,
+                        /*channel_index==*/0};
+        bias_ = AddInput(bias);
+      } else {
+        // per tensor quantization.
+        auto bias_scale = GetScale(input_) * GetScale(filter_);
+        TensorData bias{bias_type, {bias_size}, 0, 0, bias_scale};
+        bias_ = AddInput(bias);
+      }
     }
 
     output_ = AddOutput(output);
 
-    SetBuiltinOp(BuiltinOperator_TRANSPOSE_CONV,
-                 BuiltinOptions_TransposeConvOptions,
-                 CreateTransposeConvOptions(builder_, padding, stride_w,
-                                            stride_h, fused_activation)
-                     .Union());
+    SetBuiltinOp(
+        BuiltinOperator_TRANSPOSE_CONV, BuiltinOptions_TransposeConvOptions,
+        CreateTransposeConvOptions(builder_, padding, stride_w, stride_h,
+                                   fused_activation, bias_type)
+            .Union());
     resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_TRANSPOSE_CONV, registration, version);
     BuildInterpreter({GetShape(output_shape_), GetShape(filter_),
                       GetShape(input_), GetShape(bias_)});
-
     if (test_type == TestType::kDynamic) {
       PopulateTensor<int32_t>(output_shape_, output_shape_data);
-      PopulateTensor<InputType>(filter_, filter_data);
+      if (!std::is_same<InputType, int16_t>::value &&
+          !std::is_same<InputType, int8_t>::value) {
+        PopulateTensor<FilterType>(filter_, filter_data);
+      }
     }
   }
 
@@ -815,6 +887,8 @@ class BaseTransposeConvBiasOpModel : public SingleOpModel {
       QuantizeAndPopulate<uint8_t>(input_, data);
     } else if (std::is_same<InputType, int8_t>::value) {
       QuantizeAndPopulate<int8_t>(input_, data);
+    } else if (std::is_same<InputType, int16_t>::value) {
+      QuantizeAndPopulate<int16_t>(input_, data);
     } else {
       PopulateTensor(input_, data);
     }
@@ -823,7 +897,7 @@ class BaseTransposeConvBiasOpModel : public SingleOpModel {
   void SetBias(std::initializer_list<float> bias) {
     if (std::is_same<InputType, uint8_t>::value) {
       QuantizeAndPopulate<int32_t>(bias_, bias);
-    } else if (std::is_same<InputType, int8_t>::value) {
+    } else if (std::is_same<FilterType, int8_t>::value) {
       PerChannelQuantizeBias(bias_, bias);
     } else {
       PopulateTensor(bias_, bias);
@@ -838,9 +912,11 @@ class BaseTransposeConvBiasOpModel : public SingleOpModel {
   int input_;
   int bias_;
   int output_;
+  TensorType bias_type_;
 };
 
-class TransposeConvOpBiasModel : public BaseTransposeConvBiasOpModel<float> {
+class TransposeConvOpBiasModel
+    : public BaseTransposeConvBiasOpModel<float, float> {
  public:
   using BaseTransposeConvBiasOpModel::BaseTransposeConvBiasOpModel;
 
@@ -874,12 +950,12 @@ TEST_P(TransposeConvOpTest, MultiChannelBiasTest) {
   model.SetBias({3, 4});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(
-      model.GetOutput(),
-      ElementsAreArray({4,  6,  6,  8,  10, 14,  9,   12, 13, 16, 10, 12, 12,
-                        14, 28, 32, 21, 24, 25,  28,  19, 24, 27, 32, 65, 76,
-                        45, 52, 57, 64, 24, 28,  30,  34, 64, 72, 39, 44, 47,
-                        52, 42, 46, 48, 52, 106, 114, 63, 68, 71, 76}));
+  EXPECT_THAT(model.GetOutput(),
+              Pointwise(FloatingPointEq(),
+                        {4,  6,  6,  8,  10, 14,  9,   12, 13, 16, 10, 12, 12,
+                         14, 28, 32, 21, 24, 25,  28,  19, 24, 27, 32, 65, 76,
+                         45, 52, 57, 64, 24, 28,  30,  34, 64, 72, 39, 44, 47,
+                         52, 42, 46, 48, 52, 106, 114, 63, 68, 71, 76}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 5, 5, 2}));
 }
 
@@ -915,17 +991,17 @@ TEST_P(TransposeConvOpTest, MultiChannelBiasWithFusedActivationTest) {
   model.SetBias({3, 4});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(
-      model.GetOutput(),
-      ElementsAreArray({4,  6,  6,  8,  10, 14, 9,  12, 13, 16, 10, 12, 12,
-                        14, 28, 32, 21, 24, 25, 28, 13, 12, 9,  8,  35, 40,
-                        45, 52, 57, 64, 0,  0,  0,  0,  0,  0,  39, 44, 47,
-                        52, 0,  0,  0,  0,  4,  6,  63, 68, 71, 76}));
+  EXPECT_THAT(model.GetOutput(),
+              Pointwise(FloatingPointEq(),
+                        {4,  6,  6,  8,  10, 14, 9,  12, 13, 16, 10, 12, 12,
+                         14, 28, 32, 21, 24, 25, 28, 13, 12, 9,  8,  35, 40,
+                         45, 52, 57, 64, 0,  0,  0,  0,  0,  0,  39, 44, 47,
+                         52, 0,  0,  0,  0,  4,  6,  63, 68, 71, 76}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 5, 5, 2}));
 }
 
 class QuantizedTransposeConvBiasOpModel
-    : public BaseTransposeConvBiasOpModel<uint8_t> {
+    : public BaseTransposeConvBiasOpModel<uint8_t, uint8_t> {
  public:
   using BaseTransposeConvBiasOpModel::BaseTransposeConvBiasOpModel;
 
@@ -989,7 +1065,7 @@ TEST_P(TransposeConvOpTest, SimpleBiasWithFusedActivationTestQuantized) {
 }
 
 class PerChannelQuantizedTransposeConvBiasOpModel
-    : public BaseTransposeConvBiasOpModel<int8_t> {
+    : public BaseTransposeConvBiasOpModel<int8_t, int8_t> {
  public:
   using BaseTransposeConvBiasOpModel::BaseTransposeConvBiasOpModel;
 
@@ -1033,6 +1109,245 @@ TEST_P(TransposeConvOpTest, SimpleBiasTestQuantizedPerChannelSingleChannel) {
 
   // GetOutputShape() should always be same as model.SetOutputShape(...);
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+class PerChannel16x8TransposeConvBiasOpModel
+    : public BaseTransposeConvBiasOpModel<int16_t, int8_t> {
+ public:
+  using BaseTransposeConvBiasOpModel::BaseTransposeConvBiasOpModel;
+
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<int16_t>(ExtractVector<int16_t>(output_),
+                               GetScale(output_), GetZeroPoint(output_));
+  }
+
+  void SetFilter(const std::initializer_list<float>& data) {
+    PerChannelSymmetricQuantizeAndPopulate(filter_, data);
+  }
+};
+
+TEST_P(TransposeConvOpTest, SimpleBiasTestQuantizedPerChannel16x8Bias32) {
+  const float scale = 128.0 / 65536;
+
+  const std::initializer_list<float> filter_data = {
+      // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+      1, 2,  // out channel = 0, y = 0, x = 0
+      3, 4,  // out channel = 0, y = 0, x = 1
+      3, 4,  // out channel = 0, y = 1, x = 0
+      5, 6,  // out channel = 0, y = 1, x = 1
+      7, 8,  // out channel = 1, y = 0, x = 0
+      5, 6,  // out channel = 1, y = 0, x = 1
+      3, 4,  // out channel = 1, y = 1, x = 0
+      1, 2,  // out channel = 1, y = 1, x = 1
+  };
+  PerChannel16x8TransposeConvBiasOpModel model(
+      GetRegistration(),
+      /*output_shape_data=*/{1, 2, 3, 2},
+      /*filter=*/
+      {TensorType_INT8,
+       /*shape=*/{2, 2, 2, 2},
+       /*min=*/-64, /*max=*/64,
+       /*scale=*/0, /*zero_point=*/0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{7.0 / 127, 8.0 / 127},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      /*filter_data=*/{},
+      /*input=*/
+      {TensorType_INT16,
+       /*shape=*/{1, 2, 3, 2},
+       /*min=*/0, /*max=*/0,
+       /*scale=*/4.0 / 127,
+       /*zero_point=*/0},
+      /*output=*/
+      {TensorType_INT16,
+       /*shape=*/{},
+       /*min=*/0, /*max=*/0,
+       /*scale=*/scale,
+       /*zero_point=*/0},
+      /*padding=*/Padding_SAME,
+      /*stride_w=*/1, /*stride_h=*/1,
+      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*bias_type=*/TensorType_INT32);
+  model.SetInput({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3, 2,    // batch = 0, y = 0, x = 0
+      1, -1,   // batch = 0, y = 0, x = 1
+      -2, -3,  // batch = 0, y = 0, x = 2
+      4, 3,    // batch = 0, y = 1, x = 0
+      2, -2,   // batch = 0, y = 1, x = 1
+      -3, -4,  // batch = 0, y = 1, x = 2
+  });
+  model.SetFilter(filter_data);
+  model.SetBias({3, -2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {10, 35, 19, 24, -6, -41, 30, 64, 51, 40, -29, -64}, 0.19)));
+
+  // GetOutputShape() should always be same as model.SetOutputShape(...);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 3, 2}));
+}
+
+TEST_P(TransposeConvOpTest, SimpleBiasTestQuantizedPerChannel16x8Bias64) {
+  const float scale = 128.0 / 65536;
+
+  const std::initializer_list<float> filter_data = {
+      // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+      1, 2,  // out channel = 0, y = 0, x = 0
+      3, 4,  // out channel = 0, y = 0, x = 1
+      3, 4,  // out channel = 0, y = 1, x = 0
+      5, 6,  // out channel = 0, y = 1, x = 1
+      7, 8,  // out channel = 1, y = 0, x = 0
+      5, 6,  // out channel = 1, y = 0, x = 1
+      3, 4,  // out channel = 1, y = 1, x = 0
+      1, 2,  // out channel = 1, y = 1, x = 1
+  };
+  PerChannel16x8TransposeConvBiasOpModel model(
+      GetRegistration(),
+      /*output_shape_data=*/{1, 2, 3, 2},
+      /*filter=*/
+      {TensorType_INT8,
+       /*shape=*/{2, 2, 2, 2},
+       /*min=*/-64, /*max=*/64,
+       /*scale=*/0, /*zero_point=*/0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{7.0 / 127, 8.0 / 127},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      /*filter_data=*/{},
+      /*input=*/
+      {TensorType_INT16,
+       /*shape=*/{1, 2, 3, 2},
+       /*min=*/0, /*max=*/0,
+       /*scale=*/4.0 / 127,
+       /*zero_point=*/0},
+      /*output=*/
+      {TensorType_INT16,
+       /*shape=*/{},
+       /*min=*/0, /*max=*/0,
+       /*scale=*/scale,
+       /*zero_point=*/0},
+      /*padding=*/Padding_SAME,
+      /*stride_w=*/1, /*stride_h=*/1,
+      /*fused_activation_function=*/ActivationFunctionType_NONE, GetTestType(),
+      /*bias_type=*/TensorType_INT64);
+  model.SetInput({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3, 2,    // batch = 0, y = 0, x = 0
+      1, -1,   // batch = 0, y = 0, x = 1
+      -2, -3,  // batch = 0, y = 0, x = 2
+      4, 3,    // batch = 0, y = 1, x = 0
+      2, -2,   // batch = 0, y = 1, x = 1
+      -3, -4,  // batch = 0, y = 1, x = 2
+  });
+  model.SetFilter(filter_data);
+  model.SetBias({3, -2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {10, 35, 19, 24, -6, -41, 30, 64, 51, 40, -29, -64}, 0.19)));
+
+  // GetOutputShape() should always be same as model.SetOutputShape(...);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 3, 2}));
+}
+
+class HybridTransposeConvOpModel
+    : public BaseTransposeConvBiasOpModel<float, int8_t> {
+ public:
+  using BaseTransposeConvBiasOpModel::BaseTransposeConvBiasOpModel;
+
+  void SetFilter(std::initializer_list<float> f) {
+    PerChannelSymmetricQuantizeAndPopulate(filter_, f);
+  }
+
+  void SetBias(std::initializer_list<float> b) { PopulateTensor(bias_, b); }
+
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+};
+
+TEST_P(TransposeConvOpTest, SimpleTestHybridInt8) {
+  const std::initializer_list<float> filter_data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  const std::initializer_list<int8_t> const_filter_data = {14, 28, 42,  56, 71,
+                                                           85, 99, 113, 127};
+  HybridTransposeConvOpModel model(
+      /*registration=*/GetRegistration(), /*output_shape_data=*/{1, 4, 4, 1},
+      /*filter=*/
+      {TensorType_INT8, {1, 3, 3, 1}, 0, 0, 0, 0, true, {9.0 / 127}, {0}, 0},
+      /*filter_data=*/const_filter_data,
+      /*input=*/{TensorType_FLOAT32, {1, 4, 4, 1}},
+      /*output=*/{TensorType_FLOAT32, {}},
+      /*padding=*/Padding_SAME, /*stride_w=*/1, /*stride_h=*/1,
+      /*fused_activation=*/ActivationFunctionType_NONE,
+      /*test_type=*/GetTestType(),
+      /*version=*/3,
+      /*bias_type=*/TensorType_FLOAT32);
+  model.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  if (GetTestType() == TestType::kDynamic) {
+    model.SetFilter(filter_data);
+  }
+
+  model.SetBias({1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  // The values are taken from float model "SimpleTest".
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                     {30, 63, 84, 76, 100, 193, 238, 199, 208,
+                                      373, 417.5, 331, 263.7, 447, 486, 366.5},
+                                     0.19)));
+
+  // GetOutputShape() should always be same as model.SetOutputShape(...);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST_P(TransposeConvOpTest, SimpleTestHybridInt8MultiChannel) {
+  const std::initializer_list<float> filter_data = {
+      1, 3, 5, 7, 9, 11, 13, 15, 17, 2, 4, 6, 8, 10, 12, 14, 16, 18};
+  const std::initializer_list<int8_t> const_filter_data = {
+      7,  22, 37, 52, 67, 82, 97, 112, 127,
+      14, 28, 42, 56, 71, 85, 99, 113, 127};
+  HybridTransposeConvOpModel model(
+      /*registration=*/GetRegistration(), /*output_shape_data=*/{1, 5, 5, 2},
+      /*filter=*/
+      {TensorType_INT8,
+       {2, 3, 3, 1},
+       0,
+       0,
+       0,
+       0,
+       true,
+       {17.0 / 127, 18.0 / 127},
+       {0, 0},
+       0},
+      /*filter_data=*/const_filter_data,
+      /*input=*/{TensorType_FLOAT32, {1, 2, 2, 1}},
+      /*output=*/{TensorType_FLOAT32, {}},
+      /*padding=*/Padding_VALID, /*stride_w=*/2, /*stride_h=*/2,
+      /*fused_activation=*/ActivationFunctionType_NONE,
+      /*test_type=*/GetTestType(),
+      /*version=*/3,
+      /*bias_type=*/TensorType_FLOAT32);
+
+  model.SetInput({1, 2, 3, 4});
+  if (GetTestType() == TestType::kDynamic) {
+    model.SetFilter(filter_data);
+  }
+  model.SetBias({3, 4});
+
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  // The values are taken from float model "MultiChannelBiasTest".
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {4,    6,  6,    8,    10, 14,  9,   12, 13,   16, 10, 12,   12,
+           14,   28, 32,   21,   24, 25,  28,  19, 24,   27, 32, 64.5, 76,
+           44.5, 52, 56.5, 63.5, 24, 28,  30,  34, 63.5, 72, 39, 44,   47,
+           52,   42, 46,   48,   52, 106, 114, 63, 68,   71, 76},
+          0.26)));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 5, 5, 2}));
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_MEM_H_
 #define TENSORFLOW_CORE_PLATFORM_MEM_H_
 
-#include "tensorflow/tsl/platform/mem.h"
+#include "tsl/platform/mem.h"
 // TODO(cwhipkey): remove this when callers use annotations directly.
 #include "tensorflow/core/platform/dynamic_annotations.h"
 

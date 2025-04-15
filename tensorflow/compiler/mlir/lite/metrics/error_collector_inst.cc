@@ -21,7 +21,11 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
+#include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
 
 namespace mlir {
 namespace TFL {

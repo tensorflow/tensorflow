@@ -39,6 +39,59 @@ VALID_FFT_RANKS = (1, 2, 3)
 # better tolerances, at least for the complex128 tests.
 class BaseFFTOpsTest(test.TestCase):
 
+  def _Compare_fftn(
+      self,
+      x,
+      fft_length=None,
+      axes=None,
+      norm=None,
+      use_placeholder=False,
+      rtol=1e-4,
+      atol=1e-4,
+  ):
+    self._CompareForward_fftn(
+        x, fft_length, axes, norm, use_placeholder, rtol, atol
+    )
+    self._CompareBackward_fftn(
+        x, fft_length, axes, norm, use_placeholder, rtol, atol
+    )
+
+  def _CompareForward_fftn(
+      self,
+      x,
+      fft_length=None,
+      axes=None,
+      norm=None,
+      use_placeholder=False,
+      rtol=1e-4,
+      atol=1e-4,
+  ):
+    x_np = self._np_fftn(x, fft_length, axes, norm)
+    if use_placeholder:
+      x_ph = array_ops.placeholder(dtype=dtypes.as_dtype(x.dtype))
+      x_tf = self._tf_fftn(x_ph, fft_length, axes, norm, feed_dict={x_ph: x})
+    else:
+      x_tf = self._tf_fftn(x, fft_length, axes, norm)
+    self.assertAllClose(x_np, x_tf, rtol=rtol, atol=atol)
+
+  def _CompareBackward_fftn(
+      self,
+      x,
+      fft_length=None,
+      axes=None,
+      norm=None,
+      use_placeholder=False,
+      rtol=1e-4,
+      atol=1e-4,
+  ):
+    x_np = self._np_ifftn(x, fft_length, axes, norm)
+    if use_placeholder:
+      x_ph = array_ops.placeholder(dtype=dtypes.as_dtype(x.dtype))
+      x_tf = self._tf_ifftn(x_ph, fft_length, axes, norm, feed_dict={x_ph: x})
+    else:
+      x_tf = self._tf_ifftn(x, fft_length, axes, norm)
+    self.assertAllClose(x_np, x_tf, rtol=rtol, atol=atol)
+
   def _compare(self, x, rank, fft_length=None, use_placeholder=False,
                rtol=1e-4, atol=1e-4):
     self._compare_forward(x, rank, fft_length, use_placeholder, rtol, atol)
@@ -139,6 +192,26 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     else:
       raise ValueError("invalid rank")
 
+  def _tf_fftn(self, x, fft_length=None, axes=None, norm=None, feed_dict=None):
+    with self.cached_session() as sess:
+      return sess.run(
+          fft_ops.fftnd(x, fft_length=fft_length, axes=axes, norm=norm),
+          feed_dict=feed_dict,
+      )
+
+  def _tf_ifftn(self, x, fft_length=None, axes=None, norm=None, feed_dict=None):
+    with self.cached_session() as sess:
+      return sess.run(
+          fft_ops.ifftnd(x, fft_length=fft_length, axes=axes, norm=norm),
+          feed_dict=feed_dict,
+      )
+
+  def _np_fftn(self, x, fft_length=None, axes=None, norm=None):
+    return np.fft.fftn(x, s=fft_length, axes=axes, norm=norm)
+
+  def _np_ifftn(self, x, fft_length=None, axes=None, norm=None):
+    return np.fft.ifftn(x, s=fft_length, axes=axes, norm=norm)
+
   def _tf_fft_for_rank(self, rank):
     if rank == 1:
       return fft_ops.fft
@@ -176,6 +249,123 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     self._compare(
         np.mod(np.arange(np.power(4, dims)), 10).reshape(
             (4,) * dims).astype(np_type), rank, rtol=tol, atol=tol)
+
+  @parameterized.parameters(
+      itertools.product(range(3, 5), (np.complex64, np.complex128))
+  )
+  @test_util.run_gpu_only
+  def testBasic_fftn(self, dims, np_type):
+    fft_length = (4,)
+    axes = (-1,)
+    tol = 1e-4 if np_type == np.complex64 else 1e-8
+    self._Compare_fftn(
+        np.mod(np.arange(np.power(4, dims)), 10)
+        .reshape((4,) * dims)
+        .astype(np_type),
+        fft_length=fft_length,
+        axes=axes,
+        rtol=tol,
+    )
+
+  @parameterized.parameters(
+      itertools.product(range(1, 5), (np.complex64, np.complex128))
+  )
+  @test_util.run_gpu_only
+  def testFftLength_fftn(self, dims, np_type):
+    tol = 1e-4 if np_type == np.complex64 else 1e-8
+    if dims == 1:
+      fft_length = (4,)
+      axes = (0,)
+    elif dims == 2:
+      fft_length = (2, 2)
+      axes = (0, 1)
+    else:
+      fft_length = (6, 4, 6)
+      axes = (-3, -2, -1)
+    self._Compare_fftn(
+        np.mod(np.arange(np.power(4, dims)), 10)
+        .reshape((4,) * dims)
+        .astype(np_type),
+        fft_length=fft_length,
+        axes=axes,
+        rtol=tol,
+    )
+
+  @parameterized.parameters(
+      itertools.product(range(1, 4), (np.complex64, np.complex128))
+  )
+  @test_util.run_gpu_only
+  def testAxes_fftn(self, dims, np_type):
+    tol = 1e-4 if np_type == np.complex64 else 1e-8
+    if dims == 1:
+      fft_length = (4,)
+      axes = (-1,)
+    elif dims == 2:
+      fft_length = (4, 4)
+      axes = (0, 1)
+    else:
+      fft_length = None
+      axes = None
+    self._Compare_fftn(
+        np.mod(np.arange(np.power(4, dims)), 10)
+        .reshape((4,) * dims)
+        .astype(np_type),
+        fft_length=fft_length,
+        axes=axes,
+        rtol=tol,
+    )
+
+  @test_util.run_gpu_only
+  def testAxesError_fftn(self):
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "Shape .* must have rank at least {}.*".format(2)
+    ):
+      with self.cached_session():
+        self.evaluate(self._tf_fftn(np.zeros((8,)), axes=(1, 0)))
+
+    with self.assertRaisesWithPredicateMatch(
+        errors.InvalidArgumentError,
+        "The last axis to perform transform on must be -1",
+    ):
+      with self.cached_session():
+        self.evaluate(
+            self._tf_fftn(
+                np.zeros((
+                    8,
+                    8,
+                    8,
+                )),
+                axes=(1,),
+            )
+        )
+
+    with self.assertRaisesWithPredicateMatch(
+        errors.InvalidArgumentError, "axes must be successive and ascending."
+    ):
+      with self.cached_session():
+        self.evaluate(self._tf_fftn(np.zeros((8, 8, 8)), axes=(1, 0, 2)))
+
+    with self.assertRaisesWithPredicateMatch(
+        errors.InvalidArgumentError, "axes must be successive and ascending."
+    ):
+      with self.cached_session():
+        self.evaluate(self._tf_fftn(np.zeros((8, 8, 8, 8)), axes=(0, 2, -1)))
+
+  @parameterized.parameters(
+      itertools.product(
+          ("backward", "ortho", "forward"), (np.complex64, np.complex128)
+      )
+  )
+  @test_util.run_gpu_only
+  def testNorm_fftn(self, norm, np_type):
+    tol = 1e-4 if np_type == np.complex64 else 1e-8
+    self._Compare_fftn(
+        np.mod(np.arange(np.power(4, 4)), 10).reshape((4,) * 4).astype(np_type),
+        fft_length=(4, 4),
+        axes=(-2, -1),
+        norm=norm,
+        rtol=tol,
+    )
 
   @parameterized.parameters(itertools.product(
       (1,), range(3), (np.complex64, np.complex128)))
@@ -282,7 +472,6 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-@test_util.disable_xla("b/155276727")
 class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
   def _tf_fft(self, x, rank, fft_length=None, feed_dict=None):
@@ -294,6 +483,26 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     with self.cached_session() as sess:
       return sess.run(
           self._tf_ifft_for_rank(rank)(x, fft_length), feed_dict=feed_dict)
+
+  def _tf_fftn(self, x, fft_length=None, axes=None, norm=None, feed_dict=None):
+    with self.cached_session() as sess:
+      return sess.run(
+          fft_ops.rfftnd(x, fft_length=fft_length, axes=axes, norm=norm),
+          feed_dict=feed_dict,
+      )
+
+  def _tf_ifftn(self, x, fft_length=None, axes=None, norm=None, feed_dict=None):
+    with self.cached_session() as sess:
+      return sess.run(
+          fft_ops.irfftnd(x, fft_length=fft_length, axes=axes, norm=norm),
+          feed_dict=feed_dict,
+      )
+
+  def _np_fftn(self, x, fft_length=None, axes=None, norm=None):
+    return np.fft.rfftn(x, s=fft_length, axes=axes, norm=norm)
+
+  def _np_ifftn(self, x, fft_length=None, axes=None, norm=None):
+    return np.fft.irfftn(x, s=fft_length, axes=axes, norm=norm)
 
   def _np_fft(self, x, rank, fft_length=None):
     if rank == 1:
@@ -374,6 +583,124 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     c2r = self._generate_valid_irfft_input(c2r, np_ctype, r2c, np_rtype, rank,
                                            fft_length)
     self._compare_backward(c2r, rank, fft_length, rtol=tol, atol=tol)
+
+  @parameterized.parameters(
+      itertools.product(range(3, 5), (5, 6), (np.float32, np.float64))
+  )
+  @test_util.run_gpu_only
+  def testBasic_rfftn(self, dims, size, np_rtype):
+    fft_length = (size, size)
+    axes = (-2, -1)
+    inner_dim = size // 2 + 1
+    np_ctype = np.complex64 if np_rtype == np.float32 else np.complex128
+    tol = 1e-4 if np_ctype == np.complex64 else 1e-8
+    r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape((size,) * dims)
+    self._CompareForward_fftn(
+        r2c.astype(np_rtype),
+        fft_length=fft_length,
+        axes=axes,
+        rtol=tol,
+    )
+    c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim), 10).reshape(
+        (size,) * (dims - 1) + (inner_dim,)
+    )
+    c2r = self._generate_valid_irfft_input(
+        c2r, np_ctype, r2c, np_rtype, 2, fft_length
+    )
+    self._CompareBackward_fftn(c2r, fft_length, axes, rtol=tol)
+
+  @parameterized.parameters(
+      itertools.product(range(1, 5), (5, 6), (np.float32, np.float64))
+  )
+  @test_util.run_gpu_only
+  def testFftLength_rfftn(self, dims, size, np_rtype):
+    inner_dim = size // 2 + 1
+    np_ctype = np.complex64 if np_rtype == np.float32 else np.complex128
+    tol = 1e-4 if np_ctype == np.complex64 else 1e-8
+    r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape((size,) * dims)
+    if dims == 1:
+      fft_length = (size,)
+      axes = (-1,)
+    elif dims == 2:
+      fft_length = (size // 2, size // 2)
+      axes = (-2, -1)
+    else:
+      fft_length = (size * 2, size, size * 2)
+      axes = (-3, -2, -1)
+    self._CompareForward_fftn(
+        r2c.astype(np_rtype),
+        fft_length=fft_length,
+        axes=axes,
+        rtol=tol,
+    )
+    c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim), 10).reshape(
+        (size,) * (dims - 1) + (inner_dim,)
+    )
+    c2r = self._generate_valid_irfft_input(
+        c2r, np_ctype, r2c, np_rtype, 2, fft_length
+    )
+    self._CompareBackward_fftn(c2r, fft_length, axes, rtol=tol)
+
+  @parameterized.parameters(
+      itertools.product(range(1, 4), (5, 6), (np.float32, np.float64))
+  )
+  @test_util.run_gpu_only
+  def testAxes_rfftn(self, dims, size, np_rtype):
+    inner_dim = size // 2 + 1
+    np_ctype = np.complex64 if np_rtype == np.float32 else np.complex128
+    tol = 1e-4 if np_ctype == np.complex64 else 1e-8
+    r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape((size,) * dims)
+    if dims == 1:
+      fft_length = (size,)
+      axes = (-1,)
+    elif dims == 2:
+      fft_length = (size, size)
+      axes = (0, 1)
+    else:
+      fft_length = None
+      axes = None
+    self._CompareForward_fftn(
+        r2c.astype(np_rtype),
+        fft_length=fft_length,
+        axes=axes,
+        rtol=tol,
+    )
+    c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim), 10).reshape(
+        (size,) * (dims - 1) + (inner_dim,)
+    )
+    c2r = self._generate_valid_irfft_input(
+        c2r, np_ctype, r2c, np_rtype, 2, fft_length
+    )
+    self._CompareBackward_fftn(c2r, fft_length, axes, rtol=tol)
+
+  @parameterized.parameters(
+      itertools.product(
+          ("backward", "ortho", "forward"), (np.float32, np.float64)
+      )
+  )
+  @test_util.run_gpu_only
+  def testNorm_rfftn(self, norm, np_rtype):
+    inner_dim = 3
+    np_ctype = np.complex64 if np_rtype == np.float32 else np.complex128
+    tol = 1e-4 if np_ctype == np.complex64 else 1e-8
+    r2c = np.mod(np.arange(np.power(5, 4)), 10).reshape((5,) * 4)
+    fft_length = (5, 5)
+    axes = (-2, -1)
+
+    self._CompareForward_fftn(
+        r2c.astype(np_rtype),
+        fft_length=fft_length,
+        axes=axes,
+        norm=norm,
+        rtol=tol,
+    )
+    c2r = np.mod(np.arange(np.power(5, 4 - 1) * inner_dim), 10).reshape(
+        (5,) * (4 - 1) + (inner_dim,)
+    )
+    c2r = self._generate_valid_irfft_input(
+        c2r, np_ctype, r2c, np_rtype, 2, fft_length
+    )
+    self._CompareBackward_fftn(c2r, fft_length, axes, norm=norm, rtol=tol)
 
   @parameterized.parameters(itertools.product(
       (1,), range(3), (64, 128), (np.float32, np.float64)))
@@ -615,7 +942,10 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     # Test case for GitHub issue 55263
     a = np.empty([6, 0])
     b = np.array([1, -1])
-    with self.assertRaisesRegex(errors.InvalidArgumentError, "must >= 0"):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "(.*must be greater or equal to.*)|(must >= 0)",
+    ):
       with self.session():
         v = fft_ops.rfft2d(input_tensor=a, fft_length=b)
         self.evaluate(v)

@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -88,7 +88,8 @@ class AddNOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(AddNOp);
+  AddNOp(const AddNOp&) = delete;
+  void operator=(const AddNOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("AddN").AllowVariantTypes(), AddNOp);

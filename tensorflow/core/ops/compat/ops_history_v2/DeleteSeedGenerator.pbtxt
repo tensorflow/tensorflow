@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "DeleteSeedGenerator"
   input_arg {
     name: "handle"

@@ -103,7 +103,7 @@ class Calibrator:
         if not isinstance(sample[1], dict):
           raise ValueError(
               "You need to provide either a dictionary with input "
-              "names and values in the second arugment in the "
+              "names and values in the second argument in the "
               "tuple"
           )
         # Convert signature based inputs to the tensor index based data.
@@ -165,6 +165,7 @@ class Calibrator:
       bias_type=dtypes.int32,
       resize_input=True,
       disable_per_channel=False,
+      disable_per_channel_quantization_for_dense_layers=False,
   ):
     """Calibrates the model with specified generator and then quantizes it.
 
@@ -189,6 +190,8 @@ class Calibrator:
         from the input.
       disable_per_channel: A boolean. True if disabling per-channel
         quantization.
+      disable_per_channel_quantization_for_dense_layers: A boolean. True if
+        disabling per-channel quantization only in Dense layers.
     """
     self._feed_tensors(dataset_gen, resize_input)
     return self._calibrator.QuantizeModel(
@@ -198,6 +201,7 @@ class Calibrator:
         np.dtype(activations_type.as_numpy_dtype()).num,
         np.dtype(bias_type.as_numpy_dtype()).num,
         disable_per_channel,
+        disable_per_channel_quantization_for_dense_layers,
     )
 
   @convert_phase(

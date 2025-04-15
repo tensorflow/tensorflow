@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ReadFile"
   input_arg {
     name: "filename"

@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/tsl/platform/base64.h"
+#include "tsl/platform/base64.h"
 
 namespace tensorflow {
 

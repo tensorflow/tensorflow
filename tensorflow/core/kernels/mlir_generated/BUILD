@@ -2,16 +2,16 @@
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load(
+    "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
+)
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test", "tf_kernel_library")
+load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
     "gpu_kernel_library",
     "if_mlir_generated_experimental_kernels_enabled",
     "if_mlir_generated_gpu_kernels_enabled",
 )
-load(
-    "//tensorflow:tensorflow.bzl",
-    "if_cuda_or_rocm",
-)
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -157,7 +157,7 @@ tf_kernel_library(
         ":gpu_sign_kernels",
         ":gpu_sqrt_kernels",
         ":gpu_square_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         ":gpu_abs_kernels",
         ":gpu_atanh_kernels",
         ":gpu_acos_kernels",
@@ -171,7 +171,7 @@ tf_kernel_library(
         ":gpu_sinh_kernels",
         ":gpu_tan_kernels",
         ":gpu_tanh_kernels",
-    ]),
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -239,7 +239,7 @@ tf_kernel_library(
         ":gpu_xlog1py_kernels",
         ":gpu_xlogy_kernels",
         ":gpu_zeta_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         ":gpu_add_v2_kernels",
         ":gpu_sub_kernels",
         ":gpu_div_kernels",
@@ -253,16 +253,12 @@ tf_kernel_library(
         ":gpu_greater_equal_kernels",
         ":gpu_less_equal_kernels",
         ":gpu_less_kernels",
-    ]),
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
     name = "cwise_op",
     srcs = [],
-    visibility = [
-        ":friends",
-        "//tensorflow/core/kernels:__subpackages__",
-    ],
     deps = if_cuda_or_rocm([
         ":gpu_cwise_unary_op",
         ":gpu_cwise_binary_op",
@@ -278,8 +274,8 @@ tf_kernel_library(
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_cast_kernels",
-        "//third_party/eigen3",
-    ]),
+        "@eigen_archive//:eigen3",
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -305,8 +301,8 @@ tf_kernel_library(
         ":base_gpu_op",
         ":gpu_ones_like_kernels",
         ":gpu_zeros_like_kernels",
-        "//third_party/eigen3",
-    ]),
+        "@eigen_archive//:eigen3",
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -327,7 +323,7 @@ tf_kernel_library(
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_next_after_kernels",
-    ]),
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -352,8 +348,8 @@ tf_kernel_library(
         ":gpu_elu_kernels",
         ":gpu_relu_kernels",
         ":gpu_selu_kernels",
-        "//third_party/eigen3",
-    ]),
+        "@eigen_archive//:eigen3",
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -374,8 +370,8 @@ tf_kernel_library(
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_softplus_kernels",
-        "//third_party/eigen3",
-    ]),
+        "@eigen_archive//:eigen3",
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -396,8 +392,8 @@ tf_kernel_library(
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_softsign_kernels",
-        "//third_party/eigen3",
-    ]),
+        "@eigen_archive//:eigen3",
+    ]) + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -418,6 +414,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:tensorflow",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
@@ -463,8 +460,16 @@ tf_cuda_cc_test(
     deps = [
         ":base_ops_test",
         ":base_unary_ops_test",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
+        "@llvm-project//llvm:Support",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -484,8 +489,11 @@ tf_cuda_cc_test(
     deps = [
         ":base_ops_test",
         ":base_unary_ops_test",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/common_runtime:device_factory",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -527,7 +535,6 @@ tf_cuda_cc_test(
     shard_count = 20,
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
-        "no_rocm",  # failed since 7de9cf4
     ],
     deps = [
         ":base_binary_ops_test",
@@ -555,6 +562,7 @@ tf_cuda_cc_test(
         ":base_ops_test",
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/common_runtime:device_factory",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -775,6 +783,15 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_floor_mod_kernels",
+    filename_override = {
+        "f16": "floor_mod_float",
+        "f32": "floor_mod_float",
+        "f64": "floor_mod_float",
+        "ui8": "floor_mod_unsigned",
+        "ui16": "floor_mod_unsigned",
+        "ui32": "floor_mod_unsigned",
+        "ui64": "floor_mod_unsigned",
+    },
     jit_types = [
         "i8",
         "i16",
@@ -807,6 +824,11 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_round_kernels",
+    filename_override = {
+        "f16": "round_float",
+        "f32": "round_float",
+        "f64": "round_float",
+    },
     jit_types = [
         "f16",
         "f32",
@@ -1138,6 +1160,10 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_div_no_nan_kernels",
+    filename_override = {
+        "c64": "div_no_nan_cmplx",
+        "c128": "div_no_nan_cmplx",
+    },
     jit_i64_indexed_for_large_tensors_types = [
         "f16",
         "f32",
@@ -1152,12 +1178,17 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_floor_div_kernels",
+    filename_override = {
+        "f16": "floor_div_float",
+        "f32": "floor_div_float",
+        "f64": "floor_div_float",
+    },
     jit_i64_indexed_for_large_tensors_types = [
         "f16",
         "f32",
+        "f64",
         "i16",
         "i64",
-        "f64",
     ],
     jit_types = [
         "i8",
@@ -1237,6 +1268,10 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_mul_no_nan_kernels",
+    filename_override = {
+        "c64": "mul_no_nan_cmplx",
+        "c128": "mul_no_nan_cmplx",
+    },
     jit_i64_indexed_for_large_tensors_types = [
         "f16",
         "f32",
@@ -1292,6 +1327,13 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_reciprocal_kernels",
+    filename_override = {
+        "f16": "reciprocal_float",
+        "f32": "reciprocal_float",
+        "f64": "reciprocal_float",
+        "c64": "reciprocal_cmplx",
+        "c128": "reciprocal_cmplx",
+    },
     jit_types = [
         "c64",
         "c128",
@@ -1350,6 +1392,11 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_truncate_div_kernels",
+    filename_override = {
+        "f16": "truncate_div_float",
+        "f32": "truncate_div_float",
+        "f64": "truncate_div_float",
+    },
     jit_types = [
         "i8",
         "ui32",
@@ -1365,6 +1412,10 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_xdivy_kernels",
+    filename_override = {
+        "c64": "xdivy_cmplx",
+        "c128": "xdivy_cmplx",
+    },
     jit_types = [
         "f16",
         "f32",
@@ -1435,6 +1486,10 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_xlogy_kernels",
+    filename_override = {
+        "c64": "xlogy_cmplx",
+        "c128": "xlogy_cmplx",
+    },
     jit_types = [
         "f16",
         "f32",
@@ -1456,6 +1511,10 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_xlog1py_kernels",
+    filename_override = {
+        "c64": "xlog1py_cmplx",
+        "c128": "xlog1py_cmplx",
+    },
     jit_types = [
         "f16",
         "f32",
@@ -1611,6 +1670,12 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_right_shift_kernels",
+    filename_override = {
+        "ui8": "right_shift_unsigned",
+        "ui16": "right_shift_unsigned",
+        "ui32": "right_shift_unsigned",
+        "ui64": "right_shift_unsigned",
+    },
     jit_types = [
         "i8",
         "i16",
@@ -1736,20 +1801,13 @@ gpu_kernel_library(
     # unroll_factors = "4",
 )
 
-# TODO(b/160731748): Re-enable when it works again.
-# gpu_kernel_library(
-#     name = "gpu_bias_add_kernels",
-#     op = "bias_add",
-#     tile_size = "16x16",
-#     types = [
-#         "f16",
-#         "f32",
-#         "f64",
-#     ],
-# )
-
 gpu_kernel_library(
     name = "gpu_relu_kernels",
+    filename_override = {
+        "f16": "relu_float",
+        "f32": "relu_float",
+        "f64": "relu_float",
+    },
     jit_types = [
         "i8",
         "i16",
@@ -1804,6 +1862,24 @@ gpu_kernel_library(
     types = [],
 )
 
+gpu_kernel_library(
+    name = "gpu_softplus_kernels",
+    filename_override = {
+        "f16": "softplus_f16",
+        "f32": "softplus_f32",
+        "f64": "softplus_f64",
+    },
+    jit_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "softplus",
+    tile_size = "256",
+    types = [],
+    unroll_factors = "4",
+)
+
 # Kernels that support all floating-point types.
 [
     gpu_kernel_library(
@@ -1820,7 +1896,6 @@ gpu_kernel_library(
     )
     for op in [
         "relu_grad",
-        "softplus",
         "softsign",
     ]
 ]
@@ -1876,7 +1951,6 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
-    max_supported_rank = 8,
     op = "select_v2",
     tile_size = "256",
     types = [],
@@ -1884,6 +1958,13 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_zeros_like_kernels",
+    filename_override = {
+        "f16": "zeros_like_float",
+        "f32": "zeros_like_float",
+        "f64": "zeros_like_float",
+        "c64": "zeros_like_cmplx",
+        "c128": "zeros_like_cmplx",
+    },
     jit_types = [
         "i8",
         "i16",
@@ -1906,6 +1987,13 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_ones_like_kernels",
+    filename_override = {
+        "f16": "ones_like_float",
+        "f32": "ones_like_float",
+        "f64": "ones_like_float",
+        "c64": "ones_like_cmplx",
+        "c128": "ones_like_cmplx",
+    },
     jit_types = [
         "i8",
         "i16",

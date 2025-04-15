@@ -33,6 +33,7 @@ import time
 import numpy as np
 
 from tensorflow.python import pywrap_tfe
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import benchmarks_test_base
 from tensorflow.python.eager import context
@@ -43,6 +44,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -52,6 +54,7 @@ from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -101,7 +104,6 @@ def run_benchmark(func, num_iters, execution_mode=None):
 
 
 class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
-
   def __init__(self):
     # used for multiply benchmarks
     self._m_2 = random_ops.random_uniform([2])
@@ -1683,6 +1685,60 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def benchmark_embedding_lookup_sparse_with_ragged_input_dense_grads(self):
     self._benchmark_embedding_lookup_sparse_with_ragged_input(
         allow_fast_lookup=True
+    )
+
+  def _RandomIdsAndWeights(self, batch_size, vocab_size, max_val_per_entry):
+    vals_per_batch_entry = np.random.randint(
+        1, max_val_per_entry, size=batch_size
+    )
+    num_vals = np.sum(vals_per_batch_entry)
+
+    ids = np.random.randint(vocab_size, size=num_vals)
+    weights = 1 + np.random.rand(num_vals)
+
+    indices = []
+    for batch_entry, num_val in enumerate(vals_per_batch_entry):
+      for val_index in range(num_val):
+        indices.append([batch_entry, val_index])
+
+    shape = [batch_size, max_val_per_entry]
+
+    sp_ids = sparse_tensor.SparseTensor(
+        constant_op.constant(indices, dtypes.int64),
+        constant_op.constant(ids, dtypes.int32),
+        constant_op.constant(shape, dtypes.int64),
+    )
+    sp_weights = sparse_tensor.SparseTensor(
+        constant_op.constant(indices, dtypes.int64),
+        constant_op.constant(weights, dtypes.float32),
+        constant_op.constant(shape, dtypes.int64),
+    )
+    return sp_ids, sp_weights
+
+  def _benchmark_embedding_lookup_sparse_with_gradient(
+      self, params, batch_size, max_val_per_entry, device
+  ):
+    def func(sp_ids):
+      with forward_compat.forward_compatibility_horizon(2023, 9, 26):
+        with gradients.GradientTape() as g:
+          y = embedding_ops.embedding_lookup_sparse(params, sp_ids, None)
+        params_grad = g.gradient(y, params)
+        return params_grad
+
+    vocab_size = params.get_shape()[0]
+    with context.device(device):
+      sp_ids, _ = self._RandomIdsAndWeights(
+          batch_size, vocab_size, max_val_per_entry
+      )
+      func(sp_ids)
+      self._run(lambda: func(sp_ids), num_iters=2000)
+
+  def benchmark_embedding_lookup_sparse_with_gradient(self):
+    params = random_ops.random_uniform((1024 * 1024, 16))
+    params = params.gpu()
+    params = resource_variable_ops.ResourceVariable(params)
+    self._benchmark_embedding_lookup_sparse_with_gradient(
+        params, batch_size=32768, max_val_per_entry=64, device=GPU
     )
 
 

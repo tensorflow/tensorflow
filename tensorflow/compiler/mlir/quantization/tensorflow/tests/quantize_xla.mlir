@@ -21,9 +21,9 @@ func.func private @conv(%input: tensor<1x3x4x3xf32> {tf._user_specified_name = "
 
 // CHECK-DAG: [[bias:%.+]] = "arith.constant"() <{value = dense<[7.11401462, 7.05456924]> : tensor<2xf32>}> : () -> tensor<2xf32>
 // CHECK-DAG: [[weight:%.+]] = "arith.constant"() <{value = dense_resource<__elided__> : tensor<2x3x3x2xf32>}> : () -> tensor<2x3x3x2x!quant.uniform<i8:f32, 0.074855112561992565:-1>>
-// CHECK: [[q_input:%.+]] = "quantfork.qcast"(%arg0) : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3x!quant.uniform<i8:f32, 0.58810077742034317:-128>>
+// CHECK: [[q_input:%.+]] = "quantfork.qcast"([[ARG0:%arg[0-9]+]]) : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3x!quant.uniform<i8:f32, 0.58810077742034317:-128>>
 // CHECK-NEXT: [[q_bias:%.+]] = "quantfork.qcast"([[bias]]) : (tensor<2xf32>) -> tensor<2x!quant.uniform<i32:f32, 0.044022349891595126>>
-// CHECK-NEXT: [[conv:%.+]] = "tf.PartitionedCall"([[q_input]], [[weight]], [[q_bias]]) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @[[composite_fn:composite_conv2d_with_bias_and_relu6_fn.*]]} : (tensor<1x3x4x3x!quant.uniform<i8:f32, 0.58810077742034317:-128>>, tensor<2x3x3x2x!quant.uniform<i8:f32, 0.074855112561992565:-1>>, tensor<2x!quant.uniform<i32:f32, 0.044022349891595126>>) -> tensor<*x!quant.uniform<i8:f32, 0.023529411764705882:-128>>
+// CHECK-NEXT: [[conv:%.+]] = "tf.PartitionedCall"([[q_input]], [[weight]], [[q_bias]]) <{config = "", config_proto = "", executor_type = "", f = @[[composite_fn:composite_conv2d_with_bias_and_relu6_fn.*]]}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x3x4x3x!quant.uniform<i8:f32, 0.58810077742034317:-128>>, tensor<2x3x3x2x!quant.uniform<i8:f32, 0.074855112561992565:-1>>, tensor<2x!quant.uniform<i32:f32, 0.044022349891595126>>) -> tensor<*x!quant.uniform<i8:f32, 0.023529411764705882:-128>>
 // CHECK-NEXT: [[res:%.+]] = "quantfork.dcast"([[conv]]) : (tensor<*x!quant.uniform<i8:f32, 0.023529411764705882:-128>>) -> tensor<*xf32>
 // CHECK-NEXT: "func.return"([[res]]) : (tensor<*xf32>) -> ()
 
@@ -127,10 +127,10 @@ func.func private @avgpool_after_conv(%input: tensor<1x3x4x3xf32> {tf._user_spec
 // CHECK-SAME: f = @composite_conv2d_with_bias_and_relu6_fn_1
 // CHECK-SAME: (tensor<1x3x4x3x!quant.uniform<i8:f32, 0.58810077742034317:-128>>, tensor<2x3x3x2x!quant.uniform<i8:f32, 0.074855112561992565:-1>>, tensor<2x!quant.uniform<i32:f32, 0.044022349891595126>>) -> tensor<*x!quant.uniform<i8:f32, 0.023529411764705882:-128>>
 // CHECK: %[[scast:.*]] = "quantfork.scast"(%[[conv]]
-// CHECK: %[[fcast:.*]] = "tf.Cast"(%[[scast]]) {Truncate = false} : (tensor<*xi8>) -> tensor<*xf32>
+// CHECK: %[[fcast:.*]] = "tf.Cast"(%[[scast]]) <{Truncate = false}> : (tensor<*xi8>) -> tensor<*xf32>
 // CHECK: %[[avgpool_f32:.*]] = "tf.AvgPool"(%[[fcast]])
 // CHECK-SAME: (tensor<*xf32>) -> tensor<*xf32>
 // CHECK: %[[round:.*]] = "tf.Round"(%[[avgpool_f32]])
-// CHECK: %[[icast:.*]] = "tf.Cast"(%[[round]]) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
+// CHECK: %[[icast:.*]] = "tf.Cast"(%[[round]]) <{Truncate = false}> : (tensor<*xf32>) -> tensor<*xi8>
 // CHECK: %[[reshape:.*]] = "tf.Reshape"(%[[icast]]
 // CHECK: %[[sc2:.*]] = "quantfork.scast"(%[[reshape]])

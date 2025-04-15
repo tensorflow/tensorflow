@@ -17,10 +17,15 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_OPS_TEST_H_
 
 #include <complex>
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <string>
+#include <type_traits>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -264,7 +269,6 @@ absl::InlinedVector<T, 10> ComplexInputFromValues(
     const absl::InlinedVector<typename T::value_type, 10>& real,
     const absl::InlinedVector<typename T::value_type, 10>& imag) {
   using ElementType = typename T::value_type;
-  auto input = test::DefaultInput<ElementType>();
   absl::InlinedVector<T, 10> complex_input;
   CHECK_EQ(real.size(), imag.size());
   for (size_t i = 0; i < real.size() && i < imag.size(); ++i) {

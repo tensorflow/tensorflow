@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "LeakyRelu"
   input_arg {
     name: "features"

@@ -75,7 +75,7 @@ class Partitioner(object):
 
     Returns:
       A list of integers representing the number of partitions on each axis,
-      where i-th value correponds to i-th axis.
+      where i-th value corresponds to i-th axis.
     """
     raise NotImplementedError
 
@@ -438,7 +438,7 @@ class ShardedVariableMixin(trackable.Trackable):
         )
       for i in range(len(self._variables)):
         if i == len(self._variables) - 1 or (
-            s > self._var_offsets[i][0] and s < self._var_offsets[i + 1][0]
+            s >= self._var_offsets[i][0] and s < self._var_offsets[i + 1][0]
         ):
           return self._variables[i][
               (s - self._var_offsets[i][0],) + slice_spec[1:]
@@ -620,7 +620,7 @@ class ShardedVariableMixin(trackable.Trackable):
     actual_first_dim = [v.shape.as_list()[0] for v in self._variables]
     if expect_first_dim != actual_first_dim:
       raise NotImplementedError(
-          'scater_xxx ops are not supported in ShardedVariale that does not '
+          'scatter_xxx ops are not supported in ShardedVariable that does not '
           'conform to "div" sharding'
       )
 
@@ -632,8 +632,8 @@ class ShardedVariableMixin(trackable.Trackable):
     #
     # Example:
     #   base = 10, extra = 2, partitions: [0, 11), [11, 22), [22, 32)
-    #   index = 10 -> partition_assigment = 0
-    #   index = 22 -> partition_assiment = 2
+    #   index = 10 -> partition_assignment = 0
+    #   index = 22 -> partition_assignment = 2
     partition_assignments = math_ops.maximum(
         indices // (base + 1), (indices - extra) // base
     )
@@ -786,10 +786,17 @@ class ShardedVariableMixin(trackable.Trackable):
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
+  def _copy_trackable_to_cpu(self, object_map):
+    """For implementing `Trackable` async checkpointing."""
+    # This is not implemented in the ShardedVariableMixin class because multiple
+    # classes inherit from it. If your class contains values that should be
+    # copied to CPU for async checkpointing, please implement this in the class
+    # definition.
+
   def _export_to_saved_model_graph(
       self, object_map, tensor_map, options, **kwargs
   ):
-    """For implementing `Trackable`."""
+    """For implementing `Trackable` SavedModel export."""
     resource_list = []
     for v in self._variables + [self._saving_variable]:
       resource_list.extend(
@@ -924,6 +931,22 @@ class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
         self._saving_variable, proto, options, enforce_naming=False
     )
 
+  def _copy_trackable_to_cpu(self, object_map):
+    """For implementing `Trackable` async checkpointing."""
+    if self in object_map:
+      # If populated already, simply loop through sub-variables to copy values.
+      for v in self._variables:
+        v._copy_trackable_to_cpu(object_map)  # pylint: disable=protected-access
+    else:
+      # If not populated, populate first, then copy.
+      copied_vars = []
+      for v in self._variables:
+        # This step will both instantiate `v`'s CPU copy and copy its value.
+        v._copy_trackable_to_cpu(object_map)  # pylint: disable=protected-access
+        copied_vars.append(object_map[v])
+      new_var = ShardedVariable(copied_vars, name=self.name)
+      object_map[self] = new_var
+
 
 def _var_to_tensor(var, dtype=None, name=None, as_ref=False):
   """Converts a `ShardedVariable` to a `Tensor`."""
@@ -941,7 +964,7 @@ def _var_to_tensor(var, dtype=None, name=None, as_ref=False):
   # with ShardedVariable. This requires embedding_lookup ops to raise TypeError
   # when called with ShardedVariable. However since ShardedVariable can be
   # converted to a tensor via concat, embedding_lookup ops would silently
-  # do the convertion and never raise a TypeError. To be able to properly
+  # do the conversion and never raise a TypeError. To be able to properly
   # raise a TypeError, namescope is used to detect if this method is called
   # within a embedding_lookup op.
   # NOTE: This doesn't work in eager mode since op namescope is always cleared

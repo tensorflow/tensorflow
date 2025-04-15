@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <cstdint>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_domains.h"
@@ -34,7 +34,7 @@ class FuzzIdentity : public FuzzSession<Tensor> {
     tensorflow::ops::Identity(scope.WithOpName("output"), op_node);
   }
   void FuzzImpl(const Tensor& input_tensor) final {
-    Status s = RunInputsWithStatus({{"input", input_tensor}});
+    absl::Status s = RunInputsWithStatus({{"input", input_tensor}});
     if (!s.ok()) {
       LOG(ERROR) << "Execution failed: " << s.message();
     }
@@ -43,11 +43,11 @@ class FuzzIdentity : public FuzzSession<Tensor> {
 
 // Setup up fuzzing test.
 FUZZ_TEST_F(FuzzIdentity, Fuzz)
-    .WithDomains(fuzzing::AnyValidTensor(fuzzing::AnyValidTensorShape(
-                                             /*max_rank=*/5,
-                                             /*dim_lower_bound=*/0,
-                                             /*dim_upper_bound=*/10),
-                                         fuzztest::Just(DT_INT32)));
+    .WithDomains(fuzzing::AnyValidNumericTensor(fuzzing::AnyValidTensorShape(
+                                                    /*max_rank=*/5,
+                                                    /*dim_lower_bound=*/0,
+                                                    /*dim_upper_bound=*/10),
+                                                fuzztest::Just(DT_INT32)));
 
 }  // end namespace fuzzing
 }  // end namespace tensorflow

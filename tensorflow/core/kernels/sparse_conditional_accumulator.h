@@ -69,7 +69,7 @@ class SparseConditionalAccumulator
                            Eigen::Unaligned>
       SliceConstT;
 
-  Status ValidateShape(
+  absl::Status ValidateShape(
       std::tuple<const Tensor*, const Tensor*, const Tensor*>* tensor,
       bool has_known_shape) TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     const Tensor* tensor_idx = std::get<0>(*tensor);
@@ -140,7 +140,7 @@ class SparseConditionalAccumulator
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void AllocateAndAssignToAccumGradFunction(
@@ -429,7 +429,8 @@ class SparseConditionalAccumulator
     return true;
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SparseConditionalAccumulator);
+  SparseConditionalAccumulator(const SparseConditionalAccumulator&) = delete;
+  void operator=(const SparseConditionalAccumulator&) = delete;
 };
 
 }  // namespace tensorflow

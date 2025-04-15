@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
@@ -42,7 +42,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-Status GetTestDevice(Session* session, string* test_device) {
+absl::Status GetTestDevice(Session* session, string* test_device) {
   std::vector<DeviceAttributes> devices;
   TF_RETURN_IF_ERROR(session->ListDevices(&devices));
 
@@ -60,7 +60,7 @@ Status GetTestDevice(Session* session, string* test_device) {
 
   *test_device = found_gpu ? "GPU" : "CPU";
   VLOG(2) << "Using test device " << *test_device;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void FillZeros(Tensor* tensor) {

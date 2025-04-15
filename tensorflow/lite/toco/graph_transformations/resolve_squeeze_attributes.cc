@@ -12,26 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <memory>
-#include <string>
-#include <unordered_map>
+#include <cstddef>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/remove_trivial_passthrough.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-::tensorflow::Status ResolveSqueezeAttributes::Run(Model* model,
-                                                   std::size_t op_index,
-                                                   bool* modified) {
+absl::Status ResolveSqueezeAttributes::Run(Model* model, std::size_t op_index,
+                                           bool* modified) {
   *modified = false;
   auto* squeeze_op = model->operators[op_index].get();
   if (squeeze_op->type != OperatorType::kSqueeze) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   DCHECK_EQ(squeeze_op->inputs.size(), 1);
   DCHECK_EQ(squeeze_op->outputs.size(), 1);
@@ -46,10 +46,10 @@ namespace toco {
           LogName(*squeeze_op));
 
       *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

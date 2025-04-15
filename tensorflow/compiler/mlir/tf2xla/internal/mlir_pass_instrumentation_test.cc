@@ -16,15 +16,17 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/mlir_pass_instrumentation.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace mlir {
@@ -98,9 +100,10 @@ TEST_F(TestPassInstrumentation, CreatedCalledAndSetsPassName) {
   auto compilation_result = tensorflow::XlaCompilationResult();
 
   TF_EXPECT_OK(tensorflow::CompileSerializedMlirToXlaHlo(
-      legalization, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
-      /*use_tuple_args=*/true, /*enable_op_fallback=*/false,
-      /*shape_determination_fns=*/{}, &compilation_result));
+                   legalization, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
+                   /*use_tuple_args=*/true, /*enable_op_fallback=*/false,
+                   /*shape_determination_fns=*/{}, &compilation_result)
+                   .status());
 
   EXPECT_FALSE(GetPassThatChangedIdentity().empty());
 }

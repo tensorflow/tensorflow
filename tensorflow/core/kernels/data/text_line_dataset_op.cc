@@ -71,16 +71,17 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return OkStatus();
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
+    return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override { return OkStatus(); }
+  absl::Status CheckExternalState() const override { return absl::OkStatus(); }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* filenames = nullptr;
     Node* compression_type = nullptr;
     Node* buffer_size = nullptr;
@@ -89,7 +90,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(options_.input_buffer_size, &buffer_size));
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {filenames, compression_type, buffer_size}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -98,16 +99,18 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);
       do {
         // We are currently processing a file, so try to read the next line.
         if (buffered_input_stream_) {
           Tensor line_contents(tstring{});
           tstring& line_contents_str = line_contents.scalar<tstring>()();
-          Status s = buffered_input_stream_->ReadLine(&line_contents_str);
+          absl::Status s = buffered_input_stream_->ReadLine(&line_contents_str);
 
           if (s.ok()) {
             // Produce the line as output.
@@ -117,7 +120,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
             bytes_counter->IncrementBy(line_contents_str.size());
             out_tensors->push_back(std::move(line_contents));
             *end_of_sequence = false;
-            return OkStatus();
+            return absl::OkStatus();
           } else if (!errors::IsOutOfRange(s)) {
             // Report non-EOF errors to the caller.
             return s;
@@ -131,7 +134,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
         // Iteration ends when there are no more files to process.
         if (current_file_index_ == dataset()->filenames_.size()) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
@@ -144,8 +147,8 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurrentFileIndex,
                                              current_file_index_));
@@ -156,11 +159,11 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurrentPos,
                                                buffered_input_stream_->Tell()));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       ResetStreamsLocked();
       int64_t current_file_index;
@@ -177,12 +180,12 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
         TF_RETURN_IF_ERROR(buffered_input_stream_->Seek(current_pos));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
     // Sets up reader streams to read from the file at `current_file_index_`.
-    Status SetupStreamsLocked(Env* env) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    absl::Status SetupStreamsLocked(Env* env) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (current_file_index_ >= dataset()->filenames_.size()) {
         return errors::InvalidArgument(
             "current_file_index_:", current_file_index_,
@@ -207,7 +210,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
         buffered_input_stream_ = std::make_unique<io::BufferedInputStream>(
             input_stream_.get(), dataset()->options_.input_buffer_size, false);
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Resets all reader streams.
@@ -279,6 +282,7 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
     filenames.push_back(filenames_tensor->flat<tstring>()(i));
     metrics::RecordTFDataFilename(kDatasetType, filenames[i]);
   }
+  LogFilenames(filenames);
 
   *output = new Dataset(ctx, std::move(filenames), compression_type,
                         zlib_compression_options);

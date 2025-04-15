@@ -21,6 +21,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_EXECUTOR_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_EXECUTOR_H_
 
+#include "mlir/Bytecode/BytecodeOpInterface.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -51,11 +52,13 @@ class TensorFlowExecutorDialect : public Dialect {
 class ControlType : public Type::TypeBase<ControlType, Type, TypeStorage> {
  public:
   using Base::Base;
+  static constexpr ::mlir::StringLiteral name = "tf_executor.control";
 };
 
 class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
  public:
   using Base::Base;
+  static constexpr ::mlir::StringLiteral name = "tf_executor.token";
 };
 
 }  // namespace tf_executor

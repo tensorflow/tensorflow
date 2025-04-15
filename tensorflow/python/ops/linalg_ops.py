@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Operations for linear algebra."""
+"""Operations for linear algebra.
+
+API docstring: tensorflow.linalg
+"""
 
 import numpy as np
 

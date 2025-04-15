@@ -22,12 +22,18 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "tensorflow/compiler/jit/xla_compile_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
+
 struct FakeExecutable {
   std::string data;
   explicit FakeExecutable(const std::string& s) : data(s) {}
@@ -36,7 +42,7 @@ struct FakeExecutable {
 using Cache = DeviceCompilationCache<FakeExecutable>;
 using Signature = DeviceCompilationClusterSignature;
 
-StatusOr<Signature> BuildSampleSignature(const std::string& fn_name) {
+absl::StatusOr<Signature> BuildSampleSignature(const std::string& fn_name) {
   NameAttrList fn;
   fn.set_name(fn_name);
   std::vector<XlaCompiler::Argument> args(1);
@@ -96,7 +102,7 @@ TEST(DeviceCompilationCacheTest, RequestCountUnchangedOnStore) {
   EXPECT_EQ(cache_value.request_count, 3);
 
   auto compilation_result = std::make_unique<XlaCompiler::CompilationResult>();
-  cache->Store(key, DeviceCompileState::kCompiled, OkStatus(),
+  cache->Store(key, DeviceCompileState::kCompiled, absl::OkStatus(),
                std::move(compilation_result), std::nullopt);
   cache_value = cache->LookupOrCreate(key);
 
@@ -109,7 +115,7 @@ TEST(DeviceCompilationCacheTest, StoreLookup) {
   TF_ASSERT_OK_AND_ASSIGN(auto key, BuildSampleSignature("foo"));
   auto compilation_result = std::make_unique<XlaCompiler::CompilationResult>();
   auto executable = std::make_unique<FakeExecutable>("foo_exe");
-  cache->Store(key, DeviceCompileState::kCompiled, OkStatus(),
+  cache->Store(key, DeviceCompileState::kCompiled, absl::OkStatus(),
                std::move(compilation_result), std::move(executable));
   auto cache_value = cache->Lookup(key);
 
@@ -127,7 +133,7 @@ TEST(DeviceCompilationCacheTest, StoreLookupOrCreate) {
   TF_ASSERT_OK_AND_ASSIGN(auto key, BuildSampleSignature("foo"));
   auto compilation_result = std::make_unique<XlaCompiler::CompilationResult>();
   auto executable = std::make_unique<FakeExecutable>("foo_exe");
-  cache->Store(key, DeviceCompileState::kCompiled, OkStatus(),
+  cache->Store(key, DeviceCompileState::kCompiled, absl::OkStatus(),
                std::move(compilation_result), std::move(executable));
   auto cache_value = cache->LookupOrCreate(key);
 
@@ -198,7 +204,7 @@ TEST(DeviceCompilationCacheTest, StoreMultipleEntries) {
   cache->Store(key1, DeviceCompileState::kCompiled,
                errors::InvalidArgument("Invalid argument."),
                std::move(compilation_result1), std::move(executable1));
-  cache->Store(key2, DeviceCompileState::kCompiling, OkStatus(),
+  cache->Store(key2, DeviceCompileState::kCompiling, absl::OkStatus(),
                std::move(compilation_result2), std::move(executable2));
   auto cache_value_1 = cache->Lookup(key1);
   auto cache_value_2 = cache->Lookup(key2);
@@ -214,6 +220,56 @@ TEST(DeviceCompilationCacheTest, StoreMultipleEntries) {
   EXPECT_TRUE(cache_value_2->compilation_result != nullptr);
   EXPECT_TRUE(cache_value_2->executable != nullptr);
   EXPECT_EQ(cache_value_2->executable->data, "bar_exe");
+}
+
+TEST(DeviceCompilationCacheTest, Finalize) {
+  auto cache = std::make_unique<Cache>();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto key, BuildSampleSignature("foo"));
+  auto computation = std::make_shared<xla::XlaComputation>();
+  auto compilation_result = std::make_unique<XlaCompiler::CompilationResult>();
+  compilation_result->computation = computation;
+
+  cache->Store(key, /*compile_state=*/DeviceCompileState::kCompiled,
+               /*compilation_status=*/absl::OkStatus(),
+               std::move(compilation_result),
+               /*executable=*/std::make_unique<FakeExecutable>("foo_exe"));
+
+  std::optional<Cache::Value> cache_value = cache->Lookup(key);
+  ASSERT_TRUE(cache_value.has_value());
+  ASSERT_TRUE(cache_value->compilation_result != nullptr);
+  EXPECT_EQ(cache_value->compilation_result->computation, computation);
+
+  cache->Finalize();
+
+  cache_value = cache->Lookup(key);
+  ASSERT_TRUE(cache_value.has_value());
+  ASSERT_TRUE(cache_value->compilation_result != nullptr);
+  EXPECT_TRUE(cache_value->compilation_result->computation == nullptr);
+}
+
+TEST(DeviceCompilationCache, FinalizeWithNullComputation) {
+  auto cache = std::make_unique<Cache>();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto key, BuildSampleSignature("foo"));
+
+  cache->Store(
+      key, /*compile_state=*/DeviceCompileState::kCompiled,
+      /*compilation_status=*/absl::OkStatus(),
+      /*compilation_result=*/std::make_unique<XlaCompiler::CompilationResult>(),
+      /*executable=*/std::make_unique<FakeExecutable>("foo_exe"));
+
+  std::optional<Cache::Value> cache_value = cache->Lookup(key);
+  ASSERT_TRUE(cache_value.has_value());
+  ASSERT_TRUE(cache_value->compilation_result != nullptr);
+  EXPECT_TRUE(cache_value->compilation_result->computation == nullptr);
+
+  cache->Finalize();
+
+  cache_value = cache->Lookup(key);
+  ASSERT_TRUE(cache_value.has_value());
+  ASSERT_TRUE(cache_value->compilation_result != nullptr);
+  EXPECT_TRUE(cache_value->compilation_result->computation == nullptr);
 }
 
 }  // namespace

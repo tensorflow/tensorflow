@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/repeat_dataset_op.h"
 
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -47,19 +49,19 @@ class RepeatDatasetParams : public DatasetParams {
     return {CreateTensor<int64_t>(TensorShape({}), {count_})};
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(RepeatDatasetOp::kInputDataset);
     input_names->emplace_back(RepeatDatasetOp::kCount);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);
     attr_vector->emplace_back("metadata", "");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override { return RepeatDatasetOp::kDatasetType; }

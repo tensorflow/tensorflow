@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -26,6 +26,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
+#include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -40,6 +41,8 @@ limitations under the License.
 namespace py = pybind11;
 
 PYBIND11_MODULE(_pywrap_server_lib, m) {
+  pybind11_protobuf::ImportNativeProtoCasters();
+
   py::class_<tensorflow::data::DispatchGrpcDataServer>(m,
                                                        "DispatchGrpcDataServer")
       .def("start", &tensorflow::data::DispatchGrpcDataServer::Start)
@@ -50,7 +53,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
       .def("num_workers",
            [](tensorflow::data::DispatchGrpcDataServer* server) -> int {
              int num_workers;
-             tensorflow::Status status = server->NumWorkers(&num_workers);
+             absl::Status status = server->NumWorkers(&num_workers);
              tensorflow::MaybeRaiseFromStatus(status);
              return num_workers;
            })
@@ -59,8 +62,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
               const std::string& path)
                -> std::vector<tensorflow::data::SnapshotStreamInfoWrapper> {
              std::vector<tensorflow::data::SnapshotStreamInfoWrapper> streams;
-             tensorflow::Status status =
-                 server->SnapshotStreams(path, &streams);
+             absl::Status status = server->SnapshotStreams(path, &streams);
              tensorflow::MaybeRaiseFromStatus(status);
              return streams;
            });
@@ -74,7 +76,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
       .def("num_tasks",
            [](tensorflow::data::WorkerGrpcDataServer* server) -> int {
              int num_tasks;
-             tensorflow::Status status = server->NumTasks(&num_tasks);
+             absl::Status status = server->NumTasks(&num_tasks);
              tensorflow::MaybeRaiseFromStatus(status);
              return num_tasks;
            })
@@ -83,7 +85,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
                -> std::vector<tensorflow::data::SnapshotTaskProgressWrapper> {
              std::vector<tensorflow::data::SnapshotTaskProgressWrapper>
                  snapshot_task_progresses;
-             tensorflow::Status status =
+             absl::Status status =
                  server->SnapshotTaskProgresses(&snapshot_task_progresses);
              tensorflow::MaybeRaiseFromStatus(status);
              return snapshot_task_progresses;
@@ -99,7 +101,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
               "Failed to deserialize dispatcher config."));
         }
         std::unique_ptr<tensorflow::data::DispatchGrpcDataServer> server;
-        tensorflow::Status status =
+        absl::Status status =
             tensorflow::data::NewDispatchServer(config, server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
@@ -116,8 +118,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
               "Failed to deserialize worker config."));
         }
         std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> server;
-        tensorflow::Status status =
-            tensorflow::data::NewWorkerServer(config, server);
+        absl::Status status = tensorflow::data::NewWorkerServer(config, server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },
@@ -130,7 +131,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
         tensorflow::data::DataServiceMetadata metadata;
         tensorflow::data::DataServiceDispatcherClient client(address, protocol);
         int64_t deadline_micros = tensorflow::kint64max;
-        tensorflow::Status status;
+        absl::Status status;
         Py_BEGIN_ALLOW_THREADS;
         status = tensorflow::data::grpc_util::Retry(
             [&]() {
@@ -147,16 +148,6 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
       },
       py::return_value_policy::reference);
 
-  py::class_<tensorflow::data::DataServiceMetadata> data_service_metadata(
-      m, "DataServiceMetadata");
-  data_service_metadata.def(py::init<>())
-      .def_property_readonly(
-          "element_spec",
-          [](const tensorflow::data::DataServiceMetadata& data_service_metadata)
-              -> py::bytes { return data_service_metadata.element_spec(); })
-      .def_property_readonly(
-          "compression", &tensorflow::data::DataServiceMetadata::compression)
-      .def("__repr__", &tensorflow::data::DataServiceMetadata::DebugString);
   py::class_<tensorflow::data::SnapshotTaskProgressWrapper>
       snapshot_task_progress_wrapper(m, "SnapshotTaskProgressWrapper");
   snapshot_task_progress_wrapper.def(py::init<>())

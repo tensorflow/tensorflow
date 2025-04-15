@@ -1,0 +1,15 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  %iota.0 = s32[1,200,200] iota(), iota_dimension=1
+  %iota.1 = s32[1,200,200] iota(), iota_dimension=0
+  %compare = pred[1,200,200] compare(%iota.0, %iota.1), direction=GE
+  %transpose = pred[1,200,200] transpose(%compare), dimensions={0,2,1}
+  %copy = pred[1,200,200] copy(%transpose)
+  %copy.1 = pred[1,200,200] copy(%transpose)
+  ROOT %tuple = (pred[1,200,200], pred[1,200,200], pred[1,200,200])
+        tuple(%transpose, %copy, %copy.1)
+}
+// CHECK: xla_gpu.allocate_shared

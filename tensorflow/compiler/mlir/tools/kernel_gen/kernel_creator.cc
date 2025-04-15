@@ -23,29 +23,37 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/Transforms/OptimizeForNVVM.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/GPU/GPUToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
@@ -54,15 +62,18 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
-#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/transforms/gpu_passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/transforms/passes.h"
+#include "xla/mlir_hlo/deallocation/transforms/passes.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/mlir_hlo/transforms/gpu_passes.h"
+#include "xla/mlir_hlo/transforms/passes.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
@@ -82,7 +93,7 @@ bool IsSmallAlloc(Value alloc) {
   constexpr unsigned kMaximumSizeInBytes = 64;
   constexpr unsigned kMaxRankOfAllocatedMemRef = 1;
 
-  auto type = alloc.getType().dyn_cast<mlir::ShapedType>();
+  auto type = mlir::dyn_cast<mlir::ShapedType>(alloc.getType());
   if (!type || !alloc.getDefiningOp<mlir::memref::AllocOp>()) return false;
   if (!type.hasStaticShape()) {
     // Check if the dynamic shape dimension of the alloc is produced by RankOp
@@ -109,20 +120,18 @@ bool IsSmallAlloc(Value alloc) {
   return type.getNumElements() * bitwidth <= kMaximumSizeInBytes * 8;
 }
 
-Status LowerTFToJITInvocation(mlir::ModuleOp module,
-                              llvm::ArrayRef<int64_t> tile_sizes,
-                              llvm::ArrayRef<int64_t> unroll_factors,
-                              int64_t max_supported_rank, bool enable_ftz,
-                              bool index_64bit,
-                              bool jit_i64_indexed_for_large_tensors,
-                              bool apply_cl_options) {
+absl::Status LowerHloToJITInvocation(mlir::ModuleOp module,
+                                     llvm::ArrayRef<int64_t> tile_sizes,
+                                     llvm::ArrayRef<int64_t> unroll_factors,
+                                     bool enable_ftz, bool index_64bit,
+                                     bool jit_i64_indexed_for_large_tensors,
+                                     bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
   pm.addNestedPass<FuncOp>(
-      mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
-          tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
-          index_64bit,
+      mlir::kernel_gen::transforms::CreateFuncToJITInvocationPass(
+          tile_sizes, unroll_factors, enable_ftz, index_64bit,
           /*cpu_codegen=*/false, jit_i64_indexed_for_large_tensors));
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   pm.addNestedPass<FuncOp>(
@@ -135,48 +144,41 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
       mlir::kernel_gen::transforms::populateExtraBufferizePatterns));
 
   if (failed(pm.run(module))) {
-    return tensorflow::errors::Internal(
-        "Lowering TF to JIT invocation failed.");
+    return absl::InternalError("Lowering HLO to JIT invocation failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
-                      llvm::ArrayRef<int64_t> unroll_factors,
-                      int64_t max_supported_rank, bool enable_ftz,
-                      bool index_64bit, bool jit_i64_indexed_for_large_tensors,
-                      bool apply_cl_options) {
+absl::Status LowerHlotoLoops(mlir::ModuleOp module,
+                             llvm::ArrayRef<int64_t> tile_sizes,
+                             llvm::ArrayRef<int64_t> unroll_factors,
+                             bool enable_ftz, bool index_64bit,
+                             bool jit_i64_indexed_for_large_tensors,
+                             bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
   if (jit_i64_indexed_for_large_tensors) {
     pm.addNestedPass<FuncOp>(
-        mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
-            tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
-            index_64bit,
+        mlir::kernel_gen::transforms::CreateFuncToJITInvocationPass(
+            tile_sizes, unroll_factors, enable_ftz, index_64bit,
             /*cpu_codegen=*/false,
             /*jit_i64_indexed_for_large_tensors=*/true));
   }
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFNoFallbackPass(
-      /*allow_partial_conversion=*/true));
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createRankSpecializationClusterPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::mhlo::createRankSpecializationToSCFPass(max_supported_rank));
+
   pm.addNestedPass<FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
 
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createShapeSimplification());
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
+  pm.addNestedPass<FuncOp>(mlir::kernel_gen::createShapeSimplificationPass());
+  pm.addNestedPass<FuncOp>(mlir::kernel_gen::createMergeAssumingOpsPass());
+  pm.addNestedPass<FuncOp>(mlir::kernel_gen::createBroadcastPropagationPass());
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
 
   // Transform HLO operations to LinAlg and standard.
   pm.addNestedPass<FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
 
   // Remove the remaining references to unsigned types after all HLO compute
   // operations were converted.
@@ -193,8 +195,8 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
 
-  // Partial bufferization: Transforms inparticular HLO and Linalg operations to
-  // their corresponding LHLO operations and converts the function signature.
+  // Partial bufferization: Transforms in particular HLO and Linalg operations
+  // to their corresponding LHLO operations and converts the function signature.
   // Leaves shape operations untouched.
   //
   // TODO(pifon): Rename the pass to CreateHloLinalgBufferizePass or bufferize
@@ -233,13 +235,13 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
   if (failed(pm.run(module))) {
-    return tensorflow::errors::Internal("Lowering TF to loops failed.");
+    return absl::InternalError("Lowering HLO to loops failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
-                       bool apply_cl_options) {
+absl::Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
+                             bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
@@ -273,14 +275,13 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
   pm.addNestedPass<FuncOp>(mlir::bufferization::createPromoteBuffersToStackPass(
       [](Value alloc) { return IsSmallAlloc(alloc); }));
   // Free all temporaries,
-  pm.addNestedPass<FuncOp>(
-      ::mlir::bufferization::createBufferDeallocationPass());
+  pm.addNestedPass<FuncOp>(mlir::deallocation::createBufferDeallocationPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(::mlir::createConvertLinalgToLoopsPass());
 
   // Apply the mapping and go to GPU. We cannot do this earlier as the GPU
   // dialect requires memrefs.
-  pm.addNestedPass<FuncOp>(mlir::createParallelLoopToGpuPass());
+  pm.addNestedPass<FuncOp>(mlir::createConvertParallelLoopToGpuPass());
 
   // Some basic cleanup.
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
@@ -288,29 +289,30 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
   // Make loops with min bounds into a conditional plus static bounds.
   pm.addNestedPass<FuncOp>(mlir::createForLoopSpecializationPass());
   // Take launches to launches with kernels.
-  pm.addPass(mlir::createGpuLauchSinkIndexComputationsPass());
+  pm.addPass(mlir::createGpuLaunchSinkIndexComputationsPass());
   const std::string gpuDataLayoutSpec =
       index_64bit ? "#dlti.dl_spec<#dlti.dl_entry<index,64:i64>>"
                   : "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
-  pm.addPass(mlir::createGpuKernelOutliningPass(gpuDataLayoutSpec));
+  pm.addPass(
+      mlir::createGpuKernelOutliningPass({.dataLayoutStr = gpuDataLayoutSpec}));
 
   pm.addPass(::mlir::createLowerAffinePass());
   // Constraints are removed as late as possible and before lowering to CFG.
   pm.addNestedPass<FuncOp>(::mlir::createConvertShapeConstraintsPass());
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
-  pm.addPass(::mlir::createConvertSCFToCFPass());
+  pm.addPass(::mlir::createSCFToControlFlowPass());
   // Map asserts to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateRewriteTFFrameworkAssert());
   if (failed(pm.run(module))) {
-    return tensorflow::errors::Internal("Lowering to GPU kernels failed.");
+    return absl::InternalError("Lowering to GPU kernels failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
-                                     bool apply_cl_options) {
+absl::Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
+                                           bool apply_cl_options) {
 #if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
-  return tensorflow::errors::Internal(
+  return absl::InternalError(
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
       " Did you specify either --config=rocm or --config=cuda ?");
 #endif
@@ -334,7 +336,7 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   // pm.enableVerifier(false);
   if (apply_cl_options) tensorflow::applyTensorflowAndCLOptions(pm);
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
-  kernelPm.addPass(::mlir::createConvertSCFToCFPass());
+  kernelPm.addPass(::mlir::createSCFToControlFlowPass());
 #if TENSORFLOW_USE_ROCM
   kernelPm.addPass(mlir::createGpuKernelToRocdlPass());
 #elif GOOGLE_CUDA
@@ -349,11 +351,11 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
         "Lowering to low-level device IR failed.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
-                                            bool apply_cl_options) {
+absl::Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
+                                                  bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
@@ -365,14 +367,14 @@ Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
   return failed(pm.run(module))
              ? tensorflow::errors::Internal(
                    "Amending LLVMIR with static knowledge failed.")
-             : OkStatus();
+             : absl::OkStatus();
 }
 
-Status GenerateDeviceCode(mlir::ModuleOp module,
-                          llvm::StringRef gpu_binary_attr_name,
-                          llvm::ArrayRef<std::string> architectures,
-                          bool print_ptx, bool print_llvmir, bool enable_ftz,
-                          bool apply_cl_options) {
+absl::Status GenerateDeviceCode(mlir::ModuleOp module,
+                                llvm::StringRef gpu_binary_attr_name,
+                                llvm::ArrayRef<std::string> architectures,
+                                bool print_ptx, bool print_llvmir,
+                                bool enable_ftz, bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
   mlir::registerLLVMDialectTranslation(*module->getContext());
@@ -386,10 +388,11 @@ Status GenerateDeviceCode(mlir::ModuleOp module,
 
   return failed(pm.run(module))
              ? tensorflow::errors::Internal("Generating device code failed.")
-             : OkStatus();
+             : absl::OkStatus();
 }
 
-Status LowerHostSideToFinalForm(mlir::ModuleOp module, bool apply_cl_options) {
+absl::Status LowerHostSideToFinalForm(mlir::ModuleOp module,
+                                      bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
   if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
@@ -401,16 +404,18 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module, bool apply_cl_options) {
 
   return failed(pm.run(module)) ? tensorflow::errors::Internal(
                                       "Final lowering of host side failed.")
-                                : OkStatus();
+                                : absl::OkStatus();
 }
 
 }  // namespace
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
     mlir::MLIRContext& context, llvm::StringRef tf_code) {
   mlir::DialectRegistry registry;
-  mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::chlo::ChloDialect, mlir::mhlo::MhloDialect>();
+  registry.insert<mlir::shape::ShapeDialect, mlir::scf::SCFDialect,
+                  mlir::cf::ControlFlowDialect>();
+  registry.insert<mlir::complex::ComplexDialect, mlir::func::FuncDialect>();
   mlir::registerBuiltinDialectTranslation(registry);
   mlir::registerGPUDialectTranslation(registry);
   mlir::registerLLVMDialectTranslation(registry);
@@ -419,21 +424,22 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
   context.appendDialectRegistry(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::parseSourceString<mlir::ModuleOp>(tf_code, &context);
-  if (!module)
-    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
-                              "invalid kernel IR");
+  if (!module) {
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        "invalid kernel IR");
+  }
   return module;
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForHloCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
-    int64_t max_supported_rank, bool print_ptx, bool print_llvmir,
-    bool enable_ftz, bool index_64bit, bool jit_compile,
-    bool jit_i64_indexed_for_large_tensors, bool apply_cl_options) {
+    bool print_ptx, bool print_llvmir, bool enable_ftz, bool index_64bit,
+    bool jit_compile, bool jit_i64_indexed_for_large_tensors,
+    bool apply_cl_options) {
   if (jit_compile && jit_i64_indexed_for_large_tensors) {
-    return tensorflow::Status(
+    return absl::Status(
         absl::StatusCode::kInvalidArgument,
         "jit compilation for large tensors "
         "(`jit_i64_indexed_for_large_tensors`) and unconditioned jit "
@@ -446,15 +452,13 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
   if (jit_compile) {
     assert(!jit_i64_indexed_for_large_tensors &&
            "expect to have reported an error earlier");
-    TF_RETURN_IF_ERROR(LowerTFToJITInvocation(
-        module.get(), tile_sizes, unroll_factors, max_supported_rank,
-        enable_ftz, index_64bit,
+    TF_RETURN_IF_ERROR(LowerHloToJITInvocation(
+        module.get(), tile_sizes, unroll_factors, enable_ftz, index_64bit,
         /*jit_i64_indexed_for_large_tensors=*/false, apply_cl_options));
   } else {
-    TF_RETURN_IF_ERROR(
-        LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
-                       max_supported_rank, enable_ftz, index_64bit,
-                       jit_i64_indexed_for_large_tensors, apply_cl_options));
+    TF_RETURN_IF_ERROR(LowerHlotoLoops(
+        module.get(), tile_sizes, unroll_factors, enable_ftz, index_64bit,
+        jit_i64_indexed_for_large_tensors, apply_cl_options));
     TF_RETURN_IF_ERROR(
         LowerLoopsToGPU(module.get(), index_64bit, apply_cl_options));
     TF_RETURN_IF_ERROR(

@@ -5,6 +5,7 @@ op {
     name: "input"
     description: <<END
 Input tensor to split across all dimensions.
+END
   }
   out_arg {
     name: "outputs"

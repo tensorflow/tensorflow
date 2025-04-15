@@ -18,9 +18,9 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#include "third_party/eigen3/Eigen/Cholesky"
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/QR"
+#include "Eigen/Cholesky"  // from @eigen_archive
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/QR"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"

@@ -1,6 +1,6 @@
 // RUN: json_to_flatbuffer %p/test_schema.fbs %s | flatbuffer_translate --tflite-flatbuffer-to-mlir -o - | FileCheck %s
 
-// CHECK: %0 = "tfl.pseudo_const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK: %0 = "tfl.pseudo_const"() <{value = dense<2> : tensor<2xi32>}> : () -> tensor<2xi32>
 // CHECK: %1 = "tfl.reshape"(%arg0, %0) : (tensor<1x4xf32>, tensor<2xi32>) -> tensor<2x2xf32>
 
 {

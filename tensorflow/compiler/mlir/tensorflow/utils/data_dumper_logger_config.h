@@ -26,9 +26,11 @@ namespace tensorflow {
 class DataDumperLoggerConfig : public ::tensorflow::BridgeLoggerConfig {
  public:
   explicit DataDumperLoggerConfig(
-      std::function<std::string(const std::string &)> get_filename,
+      std::function<std::string(const std::string &, mlir::Operation *op)>
+          get_filename,
       const std::string &pass_prefix = "", bool print_module_scope = false,
-      bool print_after_only_on_change = true);
+      bool print_after_only_on_change = true,
+      mlir::OpPrintingFlags op_printing_flags = mlir::OpPrintingFlags());
 
   void printBeforeIfEnabled(mlir::Pass *pass, mlir::Operation *op,
                             PrintCallbackFn print_callback) override;
@@ -43,7 +45,8 @@ class DataDumperLoggerConfig : public ::tensorflow::BridgeLoggerConfig {
   // The function to dump the target MLIR string to file.
   // The parameter that will be sent to the dump_func_ is:
   // The pass name (std::string)
-  std::function<std::string(const std::string &)> get_filename_;
+  std::function<std::string(const std::string &, mlir::Operation *op)>
+      get_filename_;
 
   // The pass prefix.
   std::string pass_prefix_;

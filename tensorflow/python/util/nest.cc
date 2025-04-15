@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/util/nest.h"
 
-#include <utility>
+#include <Python.h>
+
+#include <cstddef>
+#include <string>
 
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/util.h"
@@ -41,7 +43,7 @@ std::string PyObject_ToString(PyObject* o, int length = -1) {
   if (length < 0 || str.size() <= length) {
     return str;
   }
-  tensorflow::StringPiece str_piece(str);
+  absl::string_view str_piece(str);
   return tensorflow::strings::StrCat(str_piece.substr(length), "...");
 }
 

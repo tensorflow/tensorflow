@@ -17,17 +17,22 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "flatbuffers/string.h"  // from @flatbuffers
+#include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
-#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -44,6 +49,10 @@ void UnaryElementwiseTester::Test(tflite::BuiltinOperator unary_op,
   switch (unary_op) {
     case BuiltinOperator_SQRT:
       input_distribution = std::uniform_real_distribution<float>(0.0f, 10.0f);
+      break;
+    case BuiltinOperator_RSQRT:
+      input_distribution = std::uniform_real_distribution<float>(
+          std::numeric_limits<float>::epsilon(), 10.0f);
       break;
     default:
       break;
@@ -107,18 +116,19 @@ void UnaryElementwiseTester::Test(tflite::BuiltinOperator unary_op,
     case BuiltinOperator_RELU6:
     case BuiltinOperator_ROUND:
     case BuiltinOperator_SQUARE:
-    case BuiltinOperator_SQRT:
       for (size_t i = 0; i < Size(); i++) {
         ASSERT_EQ(default_output_data[i], delegate_output_data[i]);
       }
       break;
     default:
       for (size_t i = 0; i < Size(); i++) {
-        ASSERT_NEAR(
-            default_output_data[i], delegate_output_data[i],
-            std::numeric_limits<float>::epsilon() *
-                std::max(std::abs(default_output_data[i]) * RelativeTolerance(),
-                         1.0f));
+        ASSERT_NEAR(default_output_data[i], delegate_output_data[i],
+                    std::max(std::numeric_limits<float>::epsilon() *
+                                 AbsoluteTolerance(),
+                             std::numeric_limits<float>::epsilon() *
+                                 std::max(std::abs(default_output_data[i]) *
+                                              RelativeTolerance(),
+                                          1.0f)));
       }
       break;
   }

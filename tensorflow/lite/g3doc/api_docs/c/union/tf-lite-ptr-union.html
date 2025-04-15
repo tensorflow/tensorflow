@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLitePtrUnion Union Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLitePtrUnion</h1>
+  <code>#include &lt;common.h&gt;</code>
+  <p>A union of pointers that points to memory for a given tensor. </p>
+  <h2>Summary</h2>
+  <p>Do not access these members directly, if possible, use <code>GetTensorData<TYPE>(tensor)</code> instead, otherwise only access <code>.data</code>, as other members are deprecated. </p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1a0a529d9e09c05b17faffd61c07c52a54">b</a></code>
+      </td>
+      <td>
+        <div>
+          <code>bool *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1aae61e795a0c8d7e2b29ce2b03a0efa69">c128</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-complex128.html#struct_tf_lite_complex128">TfLiteComplex128</a> *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1acc593362cafcbd03b15b6260738d7af8">c64</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-complex64.html#struct_tf_lite_complex64">TfLiteComplex64</a> *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1a2045bb9cf02ac8b80a586f29b18d851b">data</a></code>
+      </td>
+      <td>
+        <div>
+          <code>void *</code>
+        </div>
+        <div>Only use this member. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1ac8eb9281e0894ebe40a4c29765148bbb">f</a></code>
+      </td>
+      <td>
+        <div>
+          <code>float *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1a6360d848024571a502534aebfc266ea8">f16</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-float16.html#struct_tf_lite_float16">TfLiteFloat16</a> *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1a866c09d481a90345f8f2ebe0d748d300">f64</a></code>
+      </td>
+      <td>
+        <div>
+          <code>double *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1af53e67413285f91aabf2c8420a11a52a">i16</a></code>
+      </td>
+      <td>
+        <div>
+          <code>int16_t *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1a2601f170ecd1335ea8211f98b5e46a9c">i32</a></code>
+      </td>
+      <td>
+        <div>
+          <code>int32_t *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1af45bc91e8569cba73447247e1e210970">i64</a></code>
+      </td>
+      <td>
+        <div>
+          <code>int64_t *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1a0bf74439fb3aa2e1ff978f90ae6e9763">int8</a></code>
+      </td>
+      <td>
+        <div>
+          <code>int8_t *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1a6941a989f073e07710ec823a3424f57d">raw</a></code>
+      </td>
+      <td>
+        <div>
+          <code>char *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1af381b6358aafa90f8d3bd75f2ec82b3b">raw_const</a></code>
+      </td>
+      <td>
+        <div>
+          <code>const char *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1ac578fa5886fce9c561cee5030302347f">u32</a></code>
+      </td>
+      <td>
+        <div>
+          <code>uint32_t *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1a7d20a91fbed9d53b44ecbc9aced1633f">u64</a></code>
+      </td>
+      <td>
+        <div>
+          <code>uint64_t *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1a44ea6c217261de811235f7e72ebb6de6">ui16</a></code>
+      </td>
+      <td>
+        <div>
+          <code>uint16_t *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#union_tf_lite_ptr_union_1add4c13ab4a368f46181e9ff84341b389">uint8</a></code>
+      </td>
+      <td>
+        <div>
+          <code>uint8_t *</code>
+        </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="union_tf_lite_ptr_union_1a0a529d9e09c05b17faffd61c07c52a54">
+    <h3>b</h3>
+    <pre class="prettyprint">bool * b</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1aae61e795a0c8d7e2b29ce2b03a0efa69">
+    <h3>c128</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-complex128.html#struct_tf_lite_complex128">TfLiteComplex128</a> * c128</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1acc593362cafcbd03b15b6260738d7af8">
+    <h3>c64</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-complex64.html#struct_tf_lite_complex64">TfLiteComplex64</a> * c64</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1a2045bb9cf02ac8b80a586f29b18d851b">
+    <h3>data</h3>
+    <pre class="prettyprint">void * data</pre>
+    <div>
+      <p>Only use this member. </p>
+    </div>
+  </div>
+  <div id="union_tf_lite_ptr_union_1ac8eb9281e0894ebe40a4c29765148bbb">
+    <h3>f</h3>
+    <pre class="prettyprint">float * f</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1a6360d848024571a502534aebfc266ea8">
+    <h3>f16</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-float16.html#struct_tf_lite_float16">TfLiteFloat16</a> * f16</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1a866c09d481a90345f8f2ebe0d748d300">
+    <h3>f64</h3>
+    <pre class="prettyprint">double * f64</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1af53e67413285f91aabf2c8420a11a52a">
+    <h3>i16</h3>
+    <pre class="prettyprint">int16_t * i16</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1a2601f170ecd1335ea8211f98b5e46a9c">
+    <h3>i32</h3>
+    <pre class="prettyprint">int32_t * i32</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1af45bc91e8569cba73447247e1e210970">
+    <h3>i64</h3>
+    <pre class="prettyprint">int64_t * i64</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1a0bf74439fb3aa2e1ff978f90ae6e9763">
+    <h3>int8</h3>
+    <pre class="prettyprint">int8_t * int8</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1a6941a989f073e07710ec823a3424f57d">
+    <h3>raw</h3>
+    <pre class="prettyprint">char * raw</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1af381b6358aafa90f8d3bd75f2ec82b3b">
+    <h3>raw_const</h3>
+    <pre class="prettyprint">const char * raw_const</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1ac578fa5886fce9c561cee5030302347f">
+    <h3>u32</h3>
+    <pre class="prettyprint">uint32_t * u32</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1a7d20a91fbed9d53b44ecbc9aced1633f">
+    <h3>u64</h3>
+    <pre class="prettyprint">uint64_t * u64</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1a44ea6c217261de811235f7e72ebb6de6">
+    <h3>ui16</h3>
+    <pre class="prettyprint">uint16_t * ui16</pre>
+    <div />
+  </div>
+  <div id="union_tf_lite_ptr_union_1add4c13ab4a368f46181e9ff84341b389">
+    <h3>uint8</h3>
+    <pre class="prettyprint">uint8_t * uint8</pre>
+    <div />
+  </div>
+</body>
+</html>

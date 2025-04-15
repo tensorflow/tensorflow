@@ -14,6 +14,8 @@
 # ==============================================================================
 """Operations for constructing RaggedTensors."""
 
+from typing import Union
+
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -24,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util import dispatch
+from tensorflow.python.util.numpy_compat import np_reshape
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -32,8 +35,14 @@ from tensorflow.python.util.tf_export import tf_export
 #===============================================================================
 @tf_export("ragged.constant")
 @dispatch.add_dispatch_support
-def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None,
-             name=None, row_splits_dtype=dtypes.int64):
+def constant(
+    pylist,
+    dtype=None,
+    ragged_rank=None,
+    inner_shape=None,
+    name=None,
+    row_splits_dtype=dtypes.int64,
+) -> Union[ragged_tensor.RaggedTensor, ops._EagerTensorBase, ops.Operation]:
   """Constructs a constant RaggedTensor from a nested Python list.
 
   Example:
@@ -85,8 +94,13 @@ def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None,
 
 @tf_export(v1=["ragged.constant_value"])
 @dispatch.add_dispatch_support
-def constant_value(pylist, dtype=None, ragged_rank=None, inner_shape=None,
-                   row_splits_dtype="int64"):
+def constant_value(
+    pylist,
+    dtype=None,
+    ragged_rank=None,
+    inner_shape=None,
+    row_splits_dtype="int64",
+) -> Union[ragged_tensor_value.RaggedTensorValue, np.ndarray]:
   """Constructs a RaggedTensorValue from a nested Python list.
 
   Warning: This function returns a `RaggedTensorValue`, not a `RaggedTensor`.
@@ -137,14 +151,19 @@ def constant_value(pylist, dtype=None, ragged_rank=None, inner_shape=None,
     return ragged_tensor_value.RaggedTensorValue(values, row_splits)
 
   def _inner_factory(pylist, dtype, shape, name=None):  # pylint: disable=unused-argument
-    return np.reshape(np.array(pylist, dtype=dtype), shape)
+    if dtype is object or dtype is None:
+      return np_reshape(np.array(pylist, dtype=dtype), shape)
+    else:
+      return np_reshape(np.array(pylist).astype(dtype), shape)
 
-  return _constant_value(_ragged_factory, _inner_factory, pylist, dtype,
-                         ragged_rank, inner_shape)
+  return _constant_value(
+      _ragged_factory, _inner_factory, pylist, dtype, ragged_rank, inner_shape
+  )
 
 
-def _constant_value(ragged_factory, inner_factory, pylist, dtype, ragged_rank,
-                    inner_shape):
+def _constant_value(
+    ragged_factory, inner_factory, pylist, dtype, ragged_rank, inner_shape
+):
   """Constructs a constant RaggedTensor or RaggedTensorValue.
 
   Args:

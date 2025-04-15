@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdio>
-#include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/lite/toco/model_cmdline_flags.h"
 #include "tensorflow/lite/toco/toco_cmdline_flags.h"
 #include "tensorflow/lite/toco/toco_convert.h"
@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
   toco::port::InitGoogle(argv[0], effective_argc, &effective_argv, true);
   auto status = toco::Convert(parsed_toco_flags, parsed_model_flags);
   if (!status.ok()) {
-    fprintf(stderr, "%s\n", tsl::NullTerminatedMessage(status));
+    fprintf(stderr, "%s\n", absl::StatusMessageAsCStr(status));
     fflush(stderr);
     return 1;
   }

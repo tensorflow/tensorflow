@@ -13,20 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <vector>
+
+#include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
+#include "tensorflow/core/config/flag_defs.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -43,7 +52,7 @@ SessionOptions SessionOptionsWithInlining() {
   return session_options;
 }
 
-Status Rewrite(std::unique_ptr<Graph>* graph) {
+absl::Status Rewrite(std::unique_ptr<Graph>* graph) {
   FunctionLibraryDefinition flib_def((*graph)->flib_def());
   GraphOptimizationPassOptions opt_options;
   SessionOptions session_options = SessionOptionsWithInlining();
@@ -169,6 +178,65 @@ TEST(LowerWhileOpTest, Simple) {
     ASSERT_EQ(out_tensors.size(), 1);
     EXPECT_EQ(out_tensors[0].scalar<int>()(), 12);
   }
+}
+
+static void DanglingNodeTestHelper(int expected_count) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  // Add test functions for cond and body.
+  FunctionDefLibrary f_lib_proto;
+  *f_lib_proto.add_function() =
+      test::function::XTimesTwoWithDanglingFloorDivNode();
+  *f_lib_proto.add_function() = test::function::LessThanOrEqualToN(8);
+
+  Scope root = Scope::NewRootScope().ExitOnError();
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
+  Node* while_node;
+  std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
+  AttrValue cond_func;
+  cond_func.mutable_func()->set_name("LessThanOrEqualToN");
+  AttrValue body_func;
+  body_func.mutable_func()->set_name("XTimesTwoWithDanglingFloorDivNode");
+  TF_ASSERT_OK(
+      NodeBuilder("while", "While", &root.graph()->flib_def())
+          .Input(inputs)
+          .Attr("T", {DT_INT32})
+          .Attr("cond", cond_func)
+          .Attr("body", body_func)
+          .Attr("parallel_iterations", 100)
+          .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
+          .Finalize(root.graph(), &while_node));
+  auto c = ops::Identity(
+      root.WithOpName("C").WithControlDependencies(Output(while_node)),
+      Output(while_node));
+  TF_ASSERT_OK(root.DoShapeInference(while_node));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(Rewrite(&graph));
+
+  int mul_count = 0;
+  int floor_div_count = 0;
+
+  for (const auto* op : graph->op_nodes()) {
+    if (op->type_string() == "Mul") {
+      mul_count++;
+    }
+    if (op->type_string() == "FloorDiv") {
+      floor_div_count++;
+    }
+  }
+
+  ASSERT_EQ(mul_count, 1);
+  ASSERT_EQ(floor_div_count, expected_count);
+}
+
+TEST(LowerWhileOpTest, DanglingNode) { DanglingNodeTestHelper(1); }
+
+TEST(LowerWhileOpTest, DanglingNodeWithPruning) {
+  flags::Global().enable_function_pruning_before_inlining.reset(true);
+  DanglingNodeTestHelper(0);
+  flags::Global().enable_function_pruning_before_inlining.reset(false);
 }
 
 TEST(LowerWhileOpTest, ForwardAssignedInputDevice) {
@@ -401,6 +469,178 @@ TEST(LowerWhileOpTest, ForwardRequestedInputDevice) {
   }
   ASSERT_NE(loop_executed_node, nullptr);
   ASSERT_EQ(loop_executed_node->requested_device(), gpu_2_device);
+}
+
+// Same test as above, except we check forwarding of colocation key
+TEST(LowerWhileOpTest, ForwardColocationKeyAttribute) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  // Add test functions for cond and body.
+  FunctionDefLibrary f_lib_proto;
+  *f_lib_proto.add_function() = test::function::XTimesTwo();
+  *f_lib_proto.add_function() = test::function::LessThanOrEqualToN(8);
+
+  TF_ASSERT_OK(graph->AddFunctionLibrary(f_lib_proto));
+  auto type = DT_FLOAT;
+  // We will place the loop var on the gpu:0.
+  const string gpu_0_device = "/job:localhost/replica:0/task:0/gpu:0";
+  // We will place loop's control input on the gpu:1.
+  const string gpu_1_device = "/job:localhost/replica:0/task:0/gpu:1";
+  // We will place While op on gpu:2.
+  const string gpu_2_device = "/job:localhost/replica:0/task:0/gpu:2";
+  Node* gpu_0_ph;
+  AttrValue gpu_0_colocation_attr;
+  gpu_0_colocation_attr.mutable_list()->add_s("loc@:some_op_on_gpu_0_device");
+  AttrValue gpu_1_colocation_attr;
+  gpu_1_colocation_attr.mutable_list()->add_s("loc@:some_op_on_gpu_1_device");
+  AttrValue gpu_2_colocation_attr;
+  gpu_2_colocation_attr.mutable_list()->add_s("loc@:some_op_on_gpu_2_device");
+
+  TF_CHECK_OK(NodeBuilder("placed_node", "Placeholder")
+                  .Attr("dtype", type)
+                  .Attr(kColocationAttrName, gpu_0_colocation_attr)
+                  .Finalize(graph.get(), &gpu_0_ph));
+  Node* control_in;
+  // Add a control input to the While op to trigger the creation of a
+  // LoopExecuted node.
+  TF_CHECK_OK(NodeBuilder("control_in", "Placeholder")
+                  .Attr("dtype", type)
+                  .Attr(kColocationAttrName, gpu_1_colocation_attr)
+                  .Finalize(graph.get(), &control_in));
+  Node* while_node;
+  std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(gpu_0_ph)});
+  AttrValue cond_func;
+  cond_func.mutable_func()->set_name("LessThanOrEqualToN");
+  AttrValue body_func;
+  body_func.mutable_func()->set_name("XTimesTwo");
+  TF_ASSERT_OK(
+      NodeBuilder("while", "While", &graph->flib_def())
+          .Input(inputs)
+          .ControlInput(control_in)
+          .Attr(kColocationAttrName, gpu_2_colocation_attr)
+          .Attr("T", {type})
+          .Attr("cond", cond_func)
+          .Attr("body", body_func)
+          .Attr("parallel_iterations", 100)
+          .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
+          .Finalize(graph.get(), &while_node));
+
+  // Create an empty Const node with control dep from the While op.
+  // This triggers the creation of a LoopExecuted node.
+  Node* control_out;
+  TensorProto proto;
+  proto.set_dtype(DT_FLOAT);
+  TensorShape empty_shape({0});
+  empty_shape.AsProto(proto.mutable_tensor_shape());
+  TF_ASSERT_OK(NodeBuilder("control_out", "Const")
+                   .ControlInput(while_node)
+                   .Attr("dtype", DT_FLOAT)
+                   .Attr("value", proto)
+                   .Finalize(graph.get(), &control_out));
+
+  TF_ASSERT_OK(Rewrite(&graph));
+
+  const Node* placeholder_node = nullptr;
+  for (const auto* op : graph->op_nodes()) {
+    if (op->name() == "placed_node") {
+      placeholder_node = op;
+    }
+  }
+  ASSERT_NE(placeholder_node, nullptr);
+  // Verify the requested device of the Enter node.
+  int enter_consumers = 0;
+  const Node* enter_node = nullptr;
+  for (const Node* consumer : placeholder_node->out_nodes()) {
+    if (consumer->type_string() == "Enter") {
+      enter_consumers += 1;
+      enter_node = consumer;
+      auto* coloc_attr = consumer->attrs().Find(kColocationAttrName);
+      ASSERT_NE(coloc_attr, nullptr);
+      ASSERT_EQ(coloc_attr->list().s_size(), 1);
+      ASSERT_EQ(coloc_attr->list().s(0), "loc@:some_op_on_gpu_0_device");
+    }
+  }
+  ASSERT_EQ(enter_consumers, 1);
+  // Verify the requested device of the Merge node.
+  int merge_consumers = 0;
+  const Node* merge_node = nullptr;
+  for (const Node* consumer : enter_node->out_nodes()) {
+    if (consumer->type_string() == "Merge") {
+      merge_consumers += 1;
+      merge_node = consumer;
+      // ASSERT_EQ(consumer->requested_device(), gpu_0_device);
+      auto* coloc_attr = consumer->attrs().Find(kColocationAttrName);
+      ASSERT_NE(coloc_attr, nullptr);
+      ASSERT_EQ(coloc_attr->list().s_size(), 1);
+      ASSERT_EQ(coloc_attr->list().s(0), "loc@:some_op_on_gpu_0_device");
+    }
+  }
+  ASSERT_EQ(merge_consumers, 1);
+  // Verify the requested device of the NextIteration node.
+  int next_iteration_consumers = 0;
+  for (const Node* consumer : merge_node->in_nodes()) {
+    if (consumer->type_string() == "NextIteration") {
+      next_iteration_consumers += 1;
+      // ASSERT_EQ(consumer->requested_device(), gpu_0_device);
+      auto* coloc_attr = consumer->attrs().Find(kColocationAttrName);
+      ASSERT_NE(coloc_attr, nullptr);
+      ASSERT_EQ(coloc_attr->list().s_size(), 1);
+      ASSERT_EQ(coloc_attr->list().s(0), "loc@:some_op_on_gpu_0_device");
+    }
+  }
+  ASSERT_EQ(next_iteration_consumers, 1);
+  // Verify the requested device of the Switch node.
+  int switch_consumers = 0;
+  const Node* switch_node = nullptr;
+  for (const Node* consumer : merge_node->out_nodes()) {
+    if (consumer->type_string() == "Switch") {
+      switch_consumers += 1;
+      switch_node = consumer;
+      auto* coloc_attr = consumer->attrs().Find(kColocationAttrName);
+      ASSERT_NE(coloc_attr, nullptr);
+      ASSERT_EQ(coloc_attr->list().s_size(), 1);
+      ASSERT_EQ(coloc_attr->list().s(0), "loc@:some_op_on_gpu_0_device");
+    }
+  }
+  ASSERT_EQ(switch_consumers, 1);
+  // Verify the requested device of the Exit node.
+  int exit_consumers = 0;
+  for (const Node* consumer : switch_node->out_nodes()) {
+    if (consumer->type_string() == "Exit") {
+      exit_consumers += 1;
+      auto* coloc_attr = consumer->attrs().Find(kColocationAttrName);
+      ASSERT_NE(coloc_attr, nullptr);
+      ASSERT_EQ(coloc_attr->list().s_size(), 1);
+      ASSERT_EQ(coloc_attr->list().s(0), "loc@:some_op_on_gpu_0_device");
+    }
+  }
+  ASSERT_EQ(exit_consumers, 1);
+  // Verify the requested device of LoopControlInputs.
+  const Node* loop_control_inputs_node = nullptr;
+  for (const auto* op : graph->op_nodes()) {
+    if (absl::StrContains(op->name(), "LoopControlInputs")) {
+      loop_control_inputs_node = op;
+    }
+  }
+  ASSERT_NE(loop_control_inputs_node, nullptr);
+  auto* coloc_attr =
+      loop_control_inputs_node->attrs().Find(kColocationAttrName);
+  ASSERT_NE(coloc_attr, nullptr);
+  ASSERT_EQ(coloc_attr->list().s_size(), 1);
+  ASSERT_EQ(coloc_attr->list().s(0), "loc@:some_op_on_gpu_2_device");
+  // ASSERT_EQ(loop_control_inputs_node->requested_device(), gpu_2_device);
+  // Verify the requested device of LoopExecuted.
+  const Node* loop_executed_node = nullptr;
+  for (const auto* op : graph->op_nodes()) {
+    if (absl::StrContains(op->name(), "LoopExecuted")) {
+      loop_executed_node = op;
+    }
+  }
+  ASSERT_NE(loop_executed_node, nullptr);
+  coloc_attr = loop_executed_node->attrs().Find(kColocationAttrName);
+  ASSERT_NE(coloc_attr, nullptr);
+  ASSERT_EQ(coloc_attr->list().s_size(), 1);
+  ASSERT_EQ(coloc_attr->list().s(0), "loc@:some_op_on_gpu_2_device");
 }
 
 TEST(LowerWhileOpTest, MultipleInputs) {

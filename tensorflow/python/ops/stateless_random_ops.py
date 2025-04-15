@@ -76,7 +76,7 @@ def split(seed, num=2, alg="auto_select"):
 
   Returns:
     A tensor with shape [num, 2] representing `num` new seeds. It will have the
-    same dtype as `seed` (if `seed` doesn't have an explict dtype, the dtype
+    same dtype as `seed` (if `seed` doesn't have an explicit dtype, the dtype
     will be determined by `tf.convert_to_tensor`).
   """
   seed = ops.convert_to_tensor(seed)
@@ -122,8 +122,8 @@ def fold_in(seed, data, alg="auto_select"):
   Returns:
     A new RNG seed that is a deterministic function of the inputs and is
     statistically safe for producing a stream of new pseudo-random values. It
-    will have the same dtype as `data` (if `data` doesn't have an explict dtype,
-    the dtype will be determined by `tf.convert_to_tensor`).
+    will have the same dtype as `data` (if `data` doesn't have an explicit
+    dtype, the dtype will be determined by `tf.convert_to_tensor`).
   """
   data = ops.convert_to_tensor(data)
   seed1 = stateless_random_uniform(
@@ -169,7 +169,7 @@ def index_shuffle(index, seed, max_index):
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.map(
   ...  lambda idx: tf.random.experimental.index_shuffle(idx, [5, 8], 9))
-  >>> print(list(dataset.as_numpy_iterator()))
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [3, 8, 0, 1, 2, 7, 6, 9, 4, 5]
 
   This operation is stateless (like the `tf.random.stateless_*`

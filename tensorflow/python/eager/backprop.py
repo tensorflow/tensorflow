@@ -42,6 +42,7 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gradients_impl  # pylint: disable=unused-import
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients

@@ -42,7 +42,7 @@ bool IsFlexDelegate(Operation *op) {
   // Our MLIR might be the result of a conversion from a previously generated
   // flatbuffer file.
   if (auto custom_op = dyn_cast<mlir::TFL::CustomOp>(*op)) {
-    return custom_op.getCustomCode().startswith("Flex");
+    return custom_op.getCustomCode().starts_with("Flex");
   }
 
   // We never see TFL::IfOps in the IR -- it is flatbuffer_export that rewrites

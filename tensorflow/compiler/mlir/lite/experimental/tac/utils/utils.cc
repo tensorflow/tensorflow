@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/experimental/tac/utils/utils.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,22 +24,29 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 
 namespace mlir {
 namespace TFL {
@@ -78,9 +86,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
       experimental_prune_unreachable_nodes_unconditionally);
 }
 
-absl::Status ExportFlatbufferOrMlir(const std::string& output_filename,
-                                    bool output_mlir, mlir::ModuleOp module,
-                                    bool enable_select_tf_ops) {
+absl::Status ExportFlatbufferOrMlir(
+    const std::string& output_filename, bool output_mlir, mlir::ModuleOp module,
+    bool enable_select_tf_ops, std::optional<int> custom_option_alignment) {
   std::string error_msg;
   auto output = mlir::openOutputFile(output_filename, &error_msg);
   if (output == nullptr) {
@@ -94,16 +102,36 @@ absl::Status ExportFlatbufferOrMlir(const std::string& output_filename,
     module.print(os);
     os.flush();
   } else {
-    tflite::FlatbufferExportOptions options;
-    options.toco_flags.set_force_select_tf_ops(false);
-    options.toco_flags.set_allow_custom_ops(true);
-    if (enable_select_tf_ops) {
-      options.toco_flags.set_enable_select_tf_ops(true);
-      options.toco_flags.set_allow_all_select_tf_ops(true);
-    } else {
-      options.toco_flags.set_enable_select_tf_ops(false);
+    // This extra attribute is added by TAC pass. We need to remove it before
+    // converting to VHLO.
+    module.walk([&](mlir::Operation* op) {
+      if (op->hasAttr(mlir::TFL::tac::kSkipTargetAnnotation)) {
+        op->removeAttr(mlir::TFL::tac::kSkipTargetAnnotation);
+      }
+    });
+    // Converts stablehlo to vhlo so that flatbuffer export can handle it.
+    auto pass_manager =
+        std::make_unique<mlir::PassManager>(module.getContext());
+    pass_manager->addPass(mlir::odml::createLegalizeStablehloToVhloPass());
+    pass_manager->addPass(mlir::createReconcileUnrealizedCastsPass());
+    if (failed(pass_manager->run(module))) {
+      return absl::UnknownError("Failed to legalize stablehlo to vhlo.");
     }
-    if (!tflite::MlirToFlatBufferTranslateFunction(module, options, &result)) {
+
+    tflite::FlatbufferExportOptions options;
+    options.converter_flags.set_force_select_tf_ops(false);
+    options.converter_flags.set_allow_custom_ops(true);
+    if (enable_select_tf_ops) {
+      options.converter_flags.set_enable_select_tf_ops(true);
+      options.converter_flags.set_allow_all_select_tf_ops(true);
+    } else {
+      options.converter_flags.set_enable_select_tf_ops(false);
+    }
+    if (custom_option_alignment.has_value()) {
+      options.custom_option_alignment = *custom_option_alignment;
+    }
+    if (!tflite::MlirToFlatBufferTranslateFunction(
+            module, options, &result, /*serialize_stablehlo_ops=*/true)) {
       return absl::UnknownError("Failed to export tflite file.");
     }
   }

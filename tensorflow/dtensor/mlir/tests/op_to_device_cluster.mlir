@@ -39,10 +39,10 @@ func.func @check_device_cluster_from_dtensor_layout_op(%arg0: tensor<i32>) -> te
 // CHECK-LABEL: func @check_device_cluster_from_copy_to_mesh_op
 func.func @check_device_cluster_from_copy_to_mesh_op(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK:        "tf_device.cluster"
-  // CHECK-NEXT:     %[[A_OUT:.*]] = "tf.CopyToMesh"
+  // CHECK-NEXT:     %[[A_OUT:.*]] = "tf.Relayout"
   // CHECK-NEXT:     tf_device.return %[[A_OUT]]
   // CHECK-NEXT:   _mesh = "|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3"
-  %0 = "tf.CopyToMesh"(%arg0) { layout = "sharding_specs:x, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3"} : (tensor<i32>) -> tensor<i32>
+  %0 = "tf.Relayout"(%arg0) { layout = "sharding_specs:x, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3"} : (tensor<i32>) -> tensor<i32>
   func.return %0 : tensor<i32>
 }
 

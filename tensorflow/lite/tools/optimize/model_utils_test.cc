@@ -17,11 +17,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/tools/optimize/test_util.h"
 
 namespace tflite {
 namespace optimize {
@@ -53,6 +51,7 @@ TEST(ModelUtilsTest, HasBuffer) {
   EXPECT_TRUE(HasBuffer(&model, model.subgraphs[0].get(), 0));
 }
 
+// LINT.IfChange(HasMinMaxTest)
 TEST(ModelUtilsTest, HasMinMax) {
   TensorT tensor;
   tensor.quantization = std::make_unique<QuantizationParametersT>();
@@ -61,6 +60,7 @@ TEST(ModelUtilsTest, HasMinMax) {
   tensor.quantization->max.push_back(1.5);
   EXPECT_TRUE(HasMinMax(&tensor));
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/model_utils_test.cc:HasMinMaxTest)
 
 }  // namespace
 }  // namespace utils

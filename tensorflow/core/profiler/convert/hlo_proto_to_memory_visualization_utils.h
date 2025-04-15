@@ -19,7 +19,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/statusor.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "xla/service/hlo.pb.h"
 #include "tensorflow/core/profiler/protobuf/memory_viewer_preprocess.pb.h"
 
 namespace tensorflow {

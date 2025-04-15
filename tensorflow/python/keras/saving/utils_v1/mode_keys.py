@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # LINT.IfChange
-"""Utils for managing different mode strings used by Keras and Estimator models.
+"""Utils for managing different mode strings used by Keras models.
 """
 
 import collections
@@ -34,44 +34,24 @@ class KerasModeKeys:
   PREDICT = 'predict'
 
 
-# TODO(kathywu): Remove copy in Estimator after nightlies
-class EstimatorModeKeys:
-  """Standard names for Estimator model modes.
-
-  The following standard keys are defined:
-
-  * `TRAIN`: training/fitting mode.
-  * `EVAL`: testing/evaluation mode.
-  * `PREDICT`: predication/inference mode.
-  """
-
-  TRAIN = 'train'
-  EVAL = 'eval'
-  PREDICT = 'infer'
-
-
 def is_predict(mode):
-  return mode in [KerasModeKeys.PREDICT, EstimatorModeKeys.PREDICT]
+  return mode == KerasModeKeys.PREDICT
 
 
 def is_eval(mode):
-  return mode in [KerasModeKeys.TEST, EstimatorModeKeys.EVAL]
+  return mode == KerasModeKeys.TEST
 
 
 def is_train(mode):
-  return mode in [KerasModeKeys.TRAIN, EstimatorModeKeys.TRAIN]
+  return mode == KerasModeKeys.TRAIN
 
 
 class ModeKeyMap(collections.abc.Mapping):
   """Map using ModeKeys as keys.
 
   This class creates an immutable mapping from modes to values. For example,
-  SavedModel export of Keras and Estimator models use this to map modes to their
+  SavedModel export of Keras models use this to map modes to their
   corresponding MetaGraph tags/SignatureDef keys.
-
-  Since this class uses modes, rather than strings, as keys, both "predict"
-  (Keras's PREDICT ModeKey) and "infer" (Estimator's PREDICT ModeKey) map to the
-  same value.
   """
 
   def __init__(self, **kwargs):

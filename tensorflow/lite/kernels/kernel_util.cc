@@ -456,6 +456,12 @@ std::string GetShapeDebugString(const TfLiteIntArray* shape) {
   return str;
 }
 
+std::string GetTensorDebugString(const TfLiteTensor* tensor) {
+  return std::string("{\n  type: ") + TfLiteTypeGetName(tensor->type) +
+         "\n  data: {...}\n  dims: " + GetShapeDebugString(tensor->dims) +
+         "\n}";
+}
+
 TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input1,
                                         const TfLiteTensor* input2,
@@ -572,12 +578,11 @@ int TfLiteTypeGetSize(TfLiteType type) {
 bool IsMobilePlatform() {
 #if defined(ANDROID) || defined(__ANDROID__)
   return true;
-#elif defined(__APPLE__)
-#if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
+#elif defined(__APPLE__) && (TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE)
   return true;
-#endif
-#endif
+#else
   return false;
+#endif
 }
 
 bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {

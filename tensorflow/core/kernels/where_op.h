@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_WHERE_OP_H_
 #define TENSORFLOW_CORE_KERNELS_WHERE_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/macros.h"
@@ -38,7 +38,7 @@ namespace functor {
 
 template <typename Device, typename T, typename TIndex>
 struct NumTrue {
-  EIGEN_ALWAYS_INLINE static Status Compute(
+  EIGEN_ALWAYS_INLINE static absl::Status Compute(
       OpKernelContext* ctx, const Device& d,
       typename TTypes<T>::ConstFlat input,
       typename TTypes<TIndex>::UnalignedScalar num_true);
@@ -52,7 +52,7 @@ struct Where {
   //   *found_true != output.dimension(0),
   // then the input may have changed between the initial counting of
   // the true values and the call to Where.
-  EIGEN_ALWAYS_INLINE static Status Compute(
+  EIGEN_ALWAYS_INLINE static absl::Status Compute(
       OpKernelContext* ctx, const Device& d,
       typename TTypes<T, NDIM>::ConstTensor input,
       typename TTypes<int64_t>::Matrix output, TIndex* found_true);

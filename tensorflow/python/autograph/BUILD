@@ -10,10 +10,8 @@ py_strict_library(
     srcs = [
         "__init__.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python/autograph/converters:__init__",
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/autograph/lang:directives",

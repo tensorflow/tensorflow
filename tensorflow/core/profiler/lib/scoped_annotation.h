@@ -15,25 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_SCOPED_ANNOTATION_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_SCOPED_ANNOTATION_H_
 
-#include <stddef.h>
-
-#include <atomic>
-#include <string>
-#include <string_view>
-#include <utility>
-
-#include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/profiler/lib/scoped_annotation.h"
-
-#if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/backends/cpu/annotation_stack.h"
-#endif
+#include "absl/base/macros.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::ScopedAnnotation;  // NOLINT
+using ScopedAnnotation ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::ScopedAnnotation;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

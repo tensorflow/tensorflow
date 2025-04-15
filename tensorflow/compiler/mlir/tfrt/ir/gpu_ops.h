@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_IR_GPU_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_IR_GPU_OPS_H_
 
+#include "mlir/Bytecode/BytecodeOpInterface.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project

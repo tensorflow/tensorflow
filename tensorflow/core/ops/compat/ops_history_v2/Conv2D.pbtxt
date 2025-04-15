@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Conv2D"
   input_arg {
     name: "input"

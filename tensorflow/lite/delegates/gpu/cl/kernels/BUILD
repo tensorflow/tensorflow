@@ -2,6 +2,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gtest_main_no_heapcheck_deps")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -18,14 +19,13 @@ cc_test(
         "notsan",
         "requires-gpu-nvidia",
     ],
+    # TODO(b/279977471) Once b/279347631 is resolved, check for heap again
     deps = [
         ":cl_test",
-        # TODO(b/279977471) Once b/279347631 is resolved, check for heap again
-        "@com_google_googletest//:gtest_main_no_heapcheck",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -42,8 +42,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:cast_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_library(
@@ -76,8 +75,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -94,8 +92,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",  # constant buffers leak on nvidia
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -112,8 +109,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -130,8 +126,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_library(
@@ -173,8 +168,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -191,8 +185,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -209,8 +202,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_thin_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",  # constant buffers leak on nvidia
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -227,8 +219,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -245,8 +236,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_thin_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",  # constant buffers leak on nvidia
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -263,8 +253,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:cumsum_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -281,8 +270,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -300,8 +288,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -318,8 +305,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -341,8 +327,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -359,8 +344,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:gather_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -377,8 +361,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:lstm_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -414,8 +397,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -432,8 +414,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -450,8 +431,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:one_hot_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -468,8 +448,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:padding_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -486,8 +465,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:pooling_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -504,8 +482,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -522,8 +499,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -540,8 +516,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:reduce_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -558,8 +533,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -576,8 +550,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:resampler_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -594,8 +567,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshape_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -612,8 +584,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshape_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -630,8 +601,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:select_v2_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -648,8 +618,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -666,8 +635,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -684,8 +652,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -702,8 +669,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:split_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -720,8 +686,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -738,8 +703,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:tile_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -756,8 +720,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -774,8 +737,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:resize_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_test(
@@ -792,8 +754,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",
-    ],
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 test_suite(

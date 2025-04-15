@@ -59,6 +59,7 @@ DEFINE(bfloat16, float8_e5m2);
 DEFINE(Eigen::half, float8_e5m2);
 DEFINE(float8_e5m2, float8_e5m2);
 DEFINE(float8_e4m3fn, float8_e5m2);
+
 DEFINE(double, float8_e4m3fn);
 DEFINE(float, float8_e4m3fn);
 DEFINE(bfloat16, float8_e4m3fn);
@@ -148,6 +149,37 @@ DEFINE_ALL_TO_FLOAT(float);
 DEFINE_ALL_TO_FLOAT(std::complex<float>);
 #endif
 
+#define DEFINE_TO_INT(from_type) \
+  DEFINE(from_type, int8);       \
+  DEFINE(from_type, int16);      \
+  DEFINE(from_type, int32);      \
+  DEFINE(from_type, int64_t);    \
+  DEFINE(from_type, uint8);      \
+  DEFINE(from_type, uint16);     \
+  DEFINE(from_type, uint32);     \
+  DEFINE(from_type, uint64)
+
+#define DEFINE_FROM_INT(out_type) \
+  DEFINE(int8, out_type);         \
+  DEFINE(int16, out_type);        \
+  DEFINE(int32, out_type);        \
+  DEFINE(int64_t, out_type);      \
+  DEFINE(uint8, out_type);        \
+  DEFINE(uint16, out_type);       \
+  DEFINE(uint32, out_type);       \
+  DEFINE(uint64, out_type)
+
+DEFINE_TO_INT(int4);
+DEFINE_TO_INT(uint4);
+DEFINE_FROM_INT(int4);
+DEFINE_FROM_INT(uint4);
+DEFINE(int4, int4);
+DEFINE(int4, uint4);
+DEFINE(uint4, int4);
+DEFINE(uint4, uint4);
+
+#undef DEFINE_TO_INT
+#undef DEFINE_FROM_INT
 #undef DEFINE_ALL_TO_FLOAT
 #undef DEFINE_ALL_TO_HALF
 #undef DEFINE_ALL_FROM

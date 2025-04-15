@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ResourceApplyAdamWithAmsgrad"
   input_arg {
     name: "var"

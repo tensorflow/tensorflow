@@ -18,12 +18,16 @@ limitations under the License.
 
 #include <functional>
 #include <stack>
+#include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
+
+// Return a list of attribute names that indicates an entry function.
+std::vector<llvm::StringRef> GetEntryFunctionAttributeNames();
 
 // Check if a function is an entry in an MLIR module.
 bool IsEntryFunction(func::FuncOp func);
@@ -106,6 +110,9 @@ LogicalResult GetOpsOfTypeUntilMiss(
   }
   return success();
 }
+
+// Check if a function has one region and one block only.
+bool HasSingleBlock(func::FuncOp func);
 
 }  // namespace mlir
 

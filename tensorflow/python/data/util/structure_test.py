@@ -15,11 +15,12 @@
 """Tests for utilities working with arbitrarily nested structures."""
 
 import collections
+import dataclasses
 import functools
 
+from absl.testing import parameterized
 import numpy as np
 import wrapt
-from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -492,6 +493,22 @@ def _test_to_batched_tensor_list_combinations():
   return functools.reduce(reduce_fn, cases, [])
 
 
+@dataclasses.dataclass
+class MaskedTensor:
+  mask: bool
+  value: tensor.Tensor
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  def __tf_unflatten__(self, metadata, components):
+    mask = metadata[0]
+    value = components[0]
+    return MaskedTensor(mask=mask, value=value)
+
+
 # TODO(jsimsa): Add tests for OptionalStructure and DatasetStructure.
 class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
 
@@ -953,6 +970,23 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       test_obj.most_specific_compatible_shape(100)
     self.assertEqual(test_obj,
                      test_obj.most_specific_compatible_shape(test_obj))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDataclasses(self):
+    mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
+
+    mt_type_spec = structure.type_spec_from_value(mt)
+    self.assertEqual(mt_type_spec.mask, mt.mask)
+    self.assertEqual(
+        mt_type_spec.value, structure.type_spec_from_value(mt.value)
+    )
+
+    mt2 = MaskedTensor(mask=True, value=constant_op.constant([2]))
+    mt3 = MaskedTensor(mask=False, value=constant_op.constant([1]))
+    mt2_type_spec = structure.type_spec_from_value(mt2)
+    mt3_type_spec = structure.type_spec_from_value(mt3)
+    self.assertEqual(mt_type_spec, mt2_type_spec)
+    self.assertNotEqual(mt_type_spec, mt3_type_spec)
 
 
 class CustomMap(collections_abc.Mapping):

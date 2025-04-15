@@ -196,6 +196,142 @@ TfLiteRegistration* Register_ZEROS_LIKE();
 TfLiteRegistration* Register_BITCAST();
 TfLiteRegistration* Register_BITWISE_XOR();
 TfLiteRegistration* Register_RIGHT_SHIFT();
+TfLiteRegistration* Register_STABLEHLO_RNG_BIT_GENERATOR();
+TfLiteRegistration*
+Register_STABLEHLO_LOGISTIC();  // WARNING: not implemented, using this op will
+                                // crash the runtime
+
+TfLiteRegistration* Register_STABLEHLO_ADD();
+
+TfLiteRegistration*
+Register_STABLEHLO_DIVIDE();  // WARNING: not implemented, using this op will
+                              // crash the runtime
+
+TfLiteRegistration* Register_STABLEHLO_MULTIPLY();
+
+TfLiteRegistration* Register_STABLEHLO_MAXIMUM();
+
+TfLiteRegistration* Register_STABLEHLO_MINIMUM();
+
+TfLiteRegistration*
+Register_STABLEHLO_RESHAPE();  // WARNING: not implemented, using this op will
+                               // crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_CLAMP();  // WARNING: not implemented, using this op will
+                             // crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_CONCATENATE();  // WARNING: not implemented, using this op
+                                   // will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_BROADCAST_IN_DIM();  // WARNING: not implemented, using this
+                                        // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_CONVOLUTION();  // WARNING: not implemented, using this
+                                   // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_SLICE();  // WARNING: not implemented, using this
+                             // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_CUSTOM_CALL();  // WARNING: not implemented, using this
+                                   // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_REDUCE();  // WARNING: not implemented, using this
+                              // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_ABS();  // WARNING: not implemented, using this
+                           // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_AND();  // WARNING: not implemented, using this
+                           // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_COSINE();  // WARNING: not implemented, using this
+                              // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_EXPONENTIAL();  // WARNING: not implemented, using this
+                                   // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_FLOOR();  // WARNING: not implemented, using this
+                             // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_LOG();  // WARNING: not implemented, using this
+                           // op will crash the runtime
+
+TfLiteRegistration*
+Register_STABLEHLO_NEGATE();  // WARNING: not implemented, using this
+                              // op will crash the runtime
+TfLiteRegistration* Register_STABLEHLO_OR();  // WARNING: not implemented, using
+                                              // this op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_POWER();  // WARNING: not implemented, using this
+                             // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_REMAINDER();  // WARNING: not implemented, using this
+                                 // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_RSQRT();  // WARNING: not implemented, using this
+                             // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_SELECT();  // WARNING: not implemented, using this
+                              // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_SUBTRACT();  // WARNING: not implemented, using this
+                                // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_TANH();  // WARNING: not implemented, using this
+                            // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_COMPARE();  // WARNING: not implemented, using this
+                               // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_CONVERT();  // WARNING: not implemented, using this
+                               // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_DYNAMIC_SLICE();  // WARNING: not implemented, using this
+                                     // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_DYNAMIC_UPDATE_SLICE();  // WARNING: not implemented, using
+                                            // this op will crash the runtime
+
+TfLiteRegistration* Register_STABLEHLO_PAD();
+
+TfLiteRegistration*
+Register_STABLEHLO_IOTA();  // WARNING: not implemented, using this
+                            // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_DOT_GENERAL();  // WARNING: not implemented, using this
+                                   // op will crash the runtime
+
+TfLiteRegistration* Register_STABLEHLO_REDUCE_WINDOW();
+
+TfLiteRegistration*
+Register_STABLEHLO_SORT();  // WARNING: not implemented, using this
+                            // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_WHILE();  // WARNING: not implemented, using this
+                             // op will crash the runtime
+
+TfLiteRegistration* Register_STABLEHLO_SCATTER();
+
+TfLiteRegistration* Register_STABLEHLO_GATHER();
+
+TfLiteRegistration*
+Register_STABLEHLO_TRANSPOSE();  // WARNING: not implemented, using this
+                                 // op will crash the runtime
+
+TfLiteRegistration* Register_DILATE();
+
+TfLiteRegistration* Register_REDUCE_WINDOW();
+
+TfLiteRegistration*
+Register_STABLEHLO_COMPOSITE();  // WARNING: not implemented, using this
+                                 // op will crash the runtime
+TfLiteRegistration* Register_STABLEHLO_SHIFT_LEFT();
+
+TfLiteRegistration*
+Register_STABLEHLO_CBRT();  // WARNING: not implemented, using this
+                            // op will crash the runtime
+
+TfLiteRegistration* Register_STABLEHLO_CASE();
 
 }  // namespace builtin
 }  // namespace ops

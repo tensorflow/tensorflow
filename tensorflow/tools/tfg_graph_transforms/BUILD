@@ -1,7 +1,10 @@
 # Description:
 #   Utilities to perform MLIR TFG graph transformations.
 
-load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_binary")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,17 +20,15 @@ cc_library(
         "utils.h",
     ],
     deps = [
+        "//tensorflow/cc/saved_model/image_format:internal_api",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "@com_google_absl//absl/strings",
-    ] + if_google([
-        "//tensorflow/cc/experimental/image_format:internal_api",
-    ]) + if_oss([
-        "//tensorflow/tools/proto_splitter_public:internal_api",
-    ]),
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 TFG_GRAPH_TRANSFORM_DEPS = [
@@ -61,7 +62,11 @@ tf_cc_binary(
     srcs = [
         "tfg_graph_transforms_main.cc",
     ],
-    deps = TFG_GRAPH_TRANSFORM_DEPS,
+    deps = TFG_GRAPH_TRANSFORM_DEPS + [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:Support",
+    ],
 )
 
 # Description:
@@ -73,5 +78,9 @@ cc_library(
         "tfg_graph_transforms_main.cc",
     ],
     visibility = ["//visibility:public"],
-    deps = TFG_GRAPH_TRANSFORM_DEPS,
+    deps = TFG_GRAPH_TRANSFORM_DEPS + [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:Support",
+    ],
 )

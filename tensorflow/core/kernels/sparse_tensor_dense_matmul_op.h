@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SPARSE_TENSOR_DENSE_MATMUL_OP_H_
 #define TENSORFLOW_CORE_KERNELS_SPARSE_TENSOR_DENSE_MATMUL_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -29,7 +29,7 @@ namespace functor {
 template <typename Device, typename T, typename Tindices, bool ADJ_A,
           bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor {
-  static EIGEN_ALWAYS_INLINE Status Compute(
+  static EIGEN_ALWAYS_INLINE absl::Status Compute(
       OpKernelContext* ctx, typename TTypes<T>::Matrix out,
       typename TTypes<Tindices>::ConstMatrix a_indices,
       typename TTypes<T>::ConstVec a_values, typename TTypes<T>::ConstMatrix b);

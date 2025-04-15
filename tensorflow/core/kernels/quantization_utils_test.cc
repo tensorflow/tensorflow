@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <limits>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
@@ -45,7 +45,7 @@ void TestRequantizeMany(Eigen::ThreadPoolDevice* eigen_device, float input_min,
   }
 
   Tensor i_tensor =
-      tensorflow::test::AsTensor(gtl::ArraySlice<qint32>(values_quantized));
+      tensorflow::test::AsTensor(absl::Span<const qint32>(values_quantized));
   Tensor o_tensor(DT_QUINT8, TensorShape{values_count});
   auto output_values = o_tensor.flat<quint8>();
 
@@ -87,7 +87,7 @@ void TestRequantizeMany8To32Bit(float input_min, float input_max,
   }
 
   const Tensor i_tensor =
-      tensorflow::test::AsTensor(gtl::ArraySlice<quint8>(values_quantized));
+      tensorflow::test::AsTensor(absl::Span<const quint8>(values_quantized));
   Tensor o_tensor(DT_QINT32, TensorShape{values_count});
   auto output_values = o_tensor.flat<qint32>();
 

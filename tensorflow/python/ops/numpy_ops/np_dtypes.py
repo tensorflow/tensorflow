@@ -17,39 +17,115 @@
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.ops.numpy_ops import np_export
+from tensorflow.python.util import tf_export
 
 
 # We use numpy's dtypes instead of TF's, because the user expects to use them
 # with numpy facilities such as `np.dtype(np.int64)` and
 # `if x.dtype.type is np.int64`.
-bool_ = np_export.np_export_constant(__name__, 'bool_', np.bool_)
-complex_ = np_export.np_export_constant(__name__, 'complex_', np.complex_)
-complex128 = np_export.np_export_constant(__name__, 'complex128', np.complex128)
-complex64 = np_export.np_export_constant(__name__, 'complex64', np.complex64)
-float_ = np_export.np_export_constant(__name__, 'float_', np.float_)
-float16 = np_export.np_export_constant(__name__, 'float16', np.float16)
-float32 = np_export.np_export_constant(__name__, 'float32', np.float32)
-float64 = np_export.np_export_constant(__name__, 'float64', np.float64)
-inexact = np_export.np_export_constant(__name__, 'inexact', np.inexact)
-int_ = np_export.np_export_constant(__name__, 'int_', np.int_)
-int16 = np_export.np_export_constant(__name__, 'int16', np.int16)
-int32 = np_export.np_export_constant(__name__, 'int32', np.int32)
-int64 = np_export.np_export_constant(__name__, 'int64', np.int64)
-int8 = np_export.np_export_constant(__name__, 'int8', np.int8)
-object_ = np_export.np_export_constant(__name__, 'object_', np.object_)
-string_ = np_export.np_export_constant(__name__, 'string_', np.string_)
-uint16 = np_export.np_export_constant(__name__, 'uint16', np.uint16)
-uint32 = np_export.np_export_constant(__name__, 'uint32', np.uint32)
-uint64 = np_export.np_export_constant(__name__, 'uint64', np.uint64)
-uint8 = np_export.np_export_constant(__name__, 'uint8', np.uint8)
-unicode_ = np_export.np_export_constant(__name__, 'unicode_', np.unicode_)
+bool_ = np.bool_
+tf_export.tf_export('experimental.numpy.bool_', v1=[]).export_constant(
+    __name__, 'bool_'
+)
+complex128 = np.complex128
+tf_export.tf_export('experimental.numpy.complex128', v1=[]).export_constant(
+    __name__, 'complex128'
+)
+complex64 = np.complex64
+tf_export.tf_export('experimental.numpy.complex64', v1=[]).export_constant(
+    __name__, 'complex64'
+)
+float16 = np.float16
+tf_export.tf_export('experimental.numpy.float16', v1=[]).export_constant(
+    __name__, 'float16'
+)
+float32 = np.float32
+tf_export.tf_export('experimental.numpy.float32', v1=[]).export_constant(
+    __name__, 'float32'
+)
+float64 = np.float64
+tf_export.tf_export('experimental.numpy.float64', v1=[]).export_constant(
+    __name__, 'float64'
+)
+inexact = np.inexact
+tf_export.tf_export('experimental.numpy.inexact', v1=[]).export_constant(
+    __name__, 'inexact'
+)
+int_ = np.int_
+tf_export.tf_export('experimental.numpy.int_', v1=[]).export_constant(
+    __name__, 'int_'
+)
+int16 = np.int16
+tf_export.tf_export('experimental.numpy.int16', v1=[]).export_constant(
+    __name__, 'int16'
+)
+int32 = np.int32
+tf_export.tf_export('experimental.numpy.int32', v1=[]).export_constant(
+    __name__, 'int32'
+)
+int64 = np.int64
+tf_export.tf_export('experimental.numpy.int64', v1=[]).export_constant(
+    __name__, 'int64'
+)
+int8 = np.int8
+tf_export.tf_export('experimental.numpy.int8', v1=[]).export_constant(
+    __name__, 'int8'
+)
+object_ = np.object_
+tf_export.tf_export('experimental.numpy.object_', v1=[]).export_constant(
+    __name__, 'object_'
+)
+# np.string_ is aliased to np.bytes_ and depercated in numpy 2.0.
+string_ = np.bytes_
+tf_export.tf_export('experimental.numpy.string_', v1=[]).export_constant(
+    __name__, 'string_'
+)
+uint16 = np.uint16
+tf_export.tf_export('experimental.numpy.uint16', v1=[]).export_constant(
+    __name__, 'uint16'
+)
+uint32 = np.uint32
+tf_export.tf_export('experimental.numpy.uint32', v1=[]).export_constant(
+    __name__, 'uint32'
+)
+uint64 = np.uint64
+tf_export.tf_export('experimental.numpy.uint64', v1=[]).export_constant(
+    __name__, 'uint64'
+)
+uint8 = np.uint8
+tf_export.tf_export('experimental.numpy.uint8', v1=[]).export_constant(
+    __name__, 'uint8'
+)
+# np.unicode_ is aliased to np.str_ and depercated in numpy 2.0.
+unicode_ = np.str_
+tf_export.tf_export('experimental.numpy.unicode_', v1=[]).export_constant(
+    __name__, 'unicode_'
+)
+if int(np.__version__.split('.')[0]) < 2:
+  complex_ = np.complex_
+  float_ = np.float_
+else:
+  # Aliases np.complex_ and np.float_ have been removed in Numpy 2.0. Use
+  # np.complex128 and np.float64 instead.
+  complex_ = np.complex128
+  float_ = np.float64
+tf_export.tf_export('experimental.numpy.complex_', v1=[]).export_constant(
+    __name__, 'complex_'
+)
+tf_export.tf_export('experimental.numpy.float_', v1=[]).export_constant(
+    __name__, 'float_'
+)
 
 
-iinfo = np_export.np_export_constant(__name__, 'iinfo', np.iinfo)
+iinfo = np.iinfo
+tf_export.tf_export('experimental.numpy.iinfo', v1=[]).export_constant(
+    __name__, 'iinfo'
+)
 
 
-issubdtype = np_export.np_export('issubdtype')(np.issubdtype)
+issubdtype = tf_export.tf_export('experimental.numpy.issubdtype', v1=[])(
+    np.issubdtype
+)
 
 
 _to_float32 = {
@@ -101,6 +177,7 @@ def canonicalize_dtype(dtype):
 
 def _result_type(*arrays_and_dtypes):
   """Returns the resulting type given a set of arrays."""
+
   def preprocess_float(x):
     if is_prefer_float32():
       if isinstance(x, float):
@@ -108,6 +185,7 @@ def _result_type(*arrays_and_dtypes):
       elif isinstance(x, complex):
         return np.complex64(x)
     return x
+
   arrays_and_dtypes = [preprocess_float(x) for x in arrays_and_dtypes]
   dtype = np.result_type(*arrays_and_dtypes)
   return dtypes.as_dtype(canonicalize_dtype(dtype))

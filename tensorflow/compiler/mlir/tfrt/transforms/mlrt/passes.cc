@@ -14,25 +14,33 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/passes.h"
 
+#include "absl/log/check.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/assign_op_key.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/async_while.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/fuse_mlrt_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/ifrt_set_tpu_host_allocator.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/parallelization.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/rewrite_ifrt_load_variable.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/tf_to_mlrt.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/while_to_map_fn.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
 
 namespace tensorflow {
 namespace mlrt_compiler {
 
 void RegisterMlrtPasses() {
   mlir::registerPass([]() { return CreateAssignOpKeyPass(); });
+  mlir::registerPass([]() { return CreateAsyncWhilePass(); });
   mlir::registerPass([]() { return CreateParallelizationPass(); });
   mlir::registerPass([]() { return CreateWhileToMapFnPass(); });
+  mlir::registerPass([]() { return CreateRewriteIfrtLoadVariablePass(); });
+  mlir::registerPass([]() { return CreateIfrtSetTpuHostAllocatorPass(); });
   mlir::registerPass(
       []() { return CreateTfToMlrtPreParallelizationConversionPass({}); });
   mlir::registerPass([]() { return CreateTfToMlrtConversionPass({}); });
@@ -45,6 +53,17 @@ void CreateTfToMlrtPipeline(mlir::OpPassManager &pm,
                             const tfrt_stub::CostRecorder *cost_recorder) {
   pm.addPass(
       mlrt_compiler::CreateTfToMlrtPreParallelizationConversionPass(options));
+
+  if (options.use_tpu_host_allocator_for_inputs) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlrt_compiler::CreateIfrtSetTpuHostAllocatorPass());
+  }
+  pm.addPass(mlrt_compiler::CreateRewriteIfrtLoadVariablePass());
+
+  if (options.enable_while_parallel_iterations) {
+    pm.addPass(mlrt_compiler::CreateAsyncWhilePass());
+  }
+
   pm.addPass(mlrt_compiler::CreateParallelizationPass(
       options.cost_threshold, options.merge_inter_dependent_streams,
       cost_recorder));

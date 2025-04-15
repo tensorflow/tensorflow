@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -88,6 +89,23 @@ class ClipOpsTest(test.TestCase):
     # Zero norm.
     self._testClipTensorByGlobalNorm([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], 4.0,
                                      [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+
+  @test_util.run_deprecated_v1
+  def testClipTensorByGlobalNormMultipleDtypes(self):
+    (a, b), _ = self.evaluate(
+        clip_ops.clip_by_global_norm(
+            [
+                ops.convert_to_tensor([-3.0, 0.0, 0.0], dtype=dtypes.float32),
+                ops.convert_to_tensor([4.0, 0.0, 0.0], dtype=dtypes.bfloat16),
+            ],
+            clip_norm=4.0,
+            use_norm=ops.convert_to_tensor(5.0, dtype=dtypes.float32),
+        )
+    )
+    self.assertAllClose(a, [-2.4, 0.0, 0.0])
+    self.assertEqual(a.dtype, dtypes.float32)
+    self.assertAllClose(b, [3.203125, 0.0, 0.0])
+    self.assertEqual(b.dtype, dtypes.bfloat16)
 
   @test_util.run_deprecated_v1
   def testGlobalClipWithNonfinite(self):

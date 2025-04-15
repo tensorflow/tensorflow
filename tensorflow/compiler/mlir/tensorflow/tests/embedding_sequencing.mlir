@@ -317,3 +317,78 @@ module {
     return %0 : tensor<i1>
   }
 }
+
+// -----
+// This test verifies that the sequencing pass WAI even when tf.WriteSummaryOp is present. This is a complement to the logic/test for embedding_pipelining.cc/mlir
+module {
+  func.func @main(%arg0: tensor<*x!tf_type.resource>) {
+    %cst_main = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %0:2 = "tf.While"(%cst_main, %arg0) {body = @while_body, cond = @while_cond, is_stateless = false} : (tensor<i32>, tensor<*x!tf_type.resource>) -> (tensor<i32>, tensor<*x!tf_type.resource>)
+    return
+  }
+  func.func private @while_body(%arg0: tensor<i32>, %arg1: tensor<*x!tf_type.resource>) -> (tensor<i32>, tensor<*x!tf_type.resource>) {
+    // Verify that everything is extracted into one of the four functions.
+    // The order of these functions is also significant.
+    // CHECK: {{.*StatefulPartitionedCall.* f = @_func_non_tpu.*}}
+    // CHECK-NEXT: {{.*StatefulPartitionedCall.* f = @_func_sc_forward.*}}
+    // CHECK-NEXT: {{.*StatefulPartitionedCall.* f = @_func_core_tpu.*}}
+    // CHECK-NEXT: {{.*StatefulPartitionedCall.* f = @_func_sc_backward.*}}
+    // CHECK-NEXT: return
+    // metadata ops
+    "tf.TPUReplicateMetadata"() {_has_manual_control_dependencies = true, _replication_info = "repl_info", num_replicas = 2 : i64} : () -> ()
+    %comp_res = "tf.TPUCompilationResult"() {_tpu_compilation_status = "repl_info"} : () -> tensor<!tf_type.string>
+
+    // forward_ops
+    %res_f = "tf.Const"() {_embedding_pipelining = "forward", _replication_info = "repl_info", value = dense<2> : tensor<i32>} : () -> tensor<i32>
+
+    // core_tpu ops:
+    %res_t = "tf.Identity"(%res_f) {_replication_info = "repl_info"} : (tensor<i32>) -> tensor<i32>
+
+    // backward_ops
+    %res_b = "tf.Identity"(%res_t) {_embedding_pipelining = "backward", _replication_info = "repl_info"} : (tensor<i32>) -> tensor<i32>
+
+    // non_tpu_ops
+    %res_n = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+
+    %tensor_int64 = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
+    %tensor_string = "tf.Const"() {value = dense<""> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
+    "tf.WriteSummary"(%arg1, %tensor_int64, %tensor_int64, %tensor_string, %tensor_string): (tensor<*x!tf_type.resource>, tensor<i64>, tensor<i64>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> ()
+
+    return %res_n, %arg1 : tensor<i32>, tensor<*x!tf_type.resource>
+  }
+  func.func private @while_cond(%arg0: tensor<i32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<i1> {
+    %0 = "tf.Less"(%arg0, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    return %0 : tensor<i1>
+  }
+}
+
+// -----
+// This test verifies that the WhileOp's parallel_iterations attribute is preserved.
+module {
+  func.func @main() {
+    %cst = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+    // CHECK: {{.*tf.While.*body = @while_body.* cond = @while_cond.* parallel_iterations = 3}}
+    %0 = "tf.While"(%cst) {body = @while_body, cond = @while_cond, is_stateless = false, parallel_iterations = 3} : (tensor<i32>) -> (tensor<i32>)
+    return
+  }
+  func.func private @while_body(%arg0: tensor<i32>) -> (tensor<i32>) {
+    // metadata ops
+    "tf.TPUReplicateMetadata"() {_has_manual_control_dependencies = true, _replication_info = "repl_info", num_replicas = 1 : i64} : () -> ()
+    %1 = "tf.TPUCompilationResult"() {_tpu_compilation_status = "repl_info"} : () -> tensor<!tf_type.string>
+
+    // forward_ops
+    %res_f = "tf.Identity"(%arg0) {_embedding_pipelining = "forward", _replication_info = "repl_info"} : (tensor<i32>) -> tensor<i32>
+
+    // core_tpu ops:
+    %res_t = "tf.Identity"(%res_f) {_replication_info = "repl_info"} : (tensor<i32>) -> tensor<i32>
+
+    // non_tpu_ops
+    %res_n = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+
+    return %res_n : tensor<i32>
+  }
+  func.func private @while_cond(%arg0: tensor<i32>) -> tensor<i1> {
+    %0 = "tf.Less"(%arg0, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    return %0 : tensor<i1>
+  }
+}

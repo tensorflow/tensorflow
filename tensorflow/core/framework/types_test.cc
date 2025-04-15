@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/framework/types.h"
 
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -47,9 +50,10 @@ TEST(TypesTest, kDataTypeRefOffset) {
   for (;
        DataType_IsValid(e) && DataType_IsValid(e_ref) && e_ref <= DataType_MAX;
        ++e, ++e_ref) {
-    string enum_name = enum_descriptor->FindValueByNumber(e)->name();
-    string enum_ref_name = enum_descriptor->FindValueByNumber(e_ref)->name();
-    EXPECT_EQ(enum_name + "_REF", enum_ref_name)
+    absl::string_view enum_name = enum_descriptor->FindValueByNumber(e)->name();
+    absl::string_view enum_ref_name =
+        enum_descriptor->FindValueByNumber(e_ref)->name();
+    EXPECT_EQ(strings::StrCat(enum_name, "_REF"), enum_ref_name)
         << enum_name << "_REF should have value " << e_ref << " not "
         << enum_ref_name;
     // Validate DataTypeString() as well.
@@ -71,16 +75,18 @@ TEST(TypesTest, kDataTypeRefOffset) {
       << "Extra reference enum "
       << enum_descriptor->FindValueByNumber(e_ref)->name()
       << " without corresponding base enum with value " << e;
-  ASSERT_LT(DataType_MAX, e_ref)
-      << "Gap in reference types, missing value for " << e_ref;
+  // TODO - b/299182407: Temporarily disable the following check,
+  // since we purposely have a gap for the remaining float8 types.
+  // ASSERT_LT(DataType_MAX, e_ref)
+  //     << "Gap in reference types, missing value for " << e_ref;
 
-  // Make sure there are no enums defined after the last regular type before
-  // the first reference type.
-  for (; e < DataType_MIN + kDataTypeRefOffset; ++e) {
-    EXPECT_FALSE(DataType_IsValid(e))
-        << "Discontinuous enum value "
-        << enum_descriptor->FindValueByNumber(e)->name() << " = " << e;
-  }
+  // // Make sure there are no enums defined after the last regular type before
+  // // the first reference type.
+  // for (; e < DataType_MIN + kDataTypeRefOffset; ++e) {
+  //   EXPECT_FALSE(DataType_IsValid(e))
+  //       << "Discontinuous enum value "
+  //       << enum_descriptor->FindValueByNumber(e)->name() << " = " << e;
+  // }
 }
 
 TEST(TypesTest, DataTypeFromString) {
@@ -104,6 +110,16 @@ TEST(TypesTest, DataTypeFromString) {
   EXPECT_EQ(DT_FLOAT8_E5M2, dt);
   ASSERT_TRUE(DataTypeFromString("float8_e4m3fn", &dt));
   EXPECT_EQ(DT_FLOAT8_E4M3FN, dt);
+  ASSERT_TRUE(DataTypeFromString("float8_e4m3fnuz", &dt));
+  EXPECT_EQ(DT_FLOAT8_E4M3FNUZ, dt);
+  ASSERT_TRUE(DataTypeFromString("float8_e4m3b11fnuz", &dt));
+  EXPECT_EQ(DT_FLOAT8_E4M3B11FNUZ, dt);
+  ASSERT_TRUE(DataTypeFromString("float8_e5m2fnuz", &dt));
+  EXPECT_EQ(DT_FLOAT8_E5M2FNUZ, dt);
+  ASSERT_TRUE(DataTypeFromString("int4", &dt));
+  EXPECT_EQ(DT_INT4, dt);
+  ASSERT_TRUE(DataTypeFromString("uint4", &dt));
+  EXPECT_EQ(DT_UINT4, dt);
 }
 
 template <typename T>
@@ -135,6 +151,11 @@ TEST(TypesTest, QuantizedTypes) {
   EXPECT_FALSE(DataTypeIsQuantized(DT_BFLOAT16));
   EXPECT_FALSE(DataTypeIsQuantized(DT_FLOAT8_E5M2));
   EXPECT_FALSE(DataTypeIsQuantized(DT_FLOAT8_E4M3FN));
+  EXPECT_FALSE(DataTypeIsQuantized(DT_FLOAT8_E4M3FNUZ));
+  EXPECT_FALSE(DataTypeIsQuantized(DT_FLOAT8_E4M3B11FNUZ));
+  EXPECT_FALSE(DataTypeIsQuantized(DT_FLOAT8_E5M2FNUZ));
+  EXPECT_FALSE(DataTypeIsQuantized(DT_UINT4));
+  EXPECT_FALSE(DataTypeIsQuantized(DT_INT4));
 }
 
 TEST(TypesTest, ComplexTypes) {

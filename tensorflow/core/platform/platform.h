@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_PLATFORM_H_
 #define TENSORFLOW_CORE_PLATFORM_PLATFORM_H_
 
-#include "tensorflow/tsl/platform/platform.h"
+#include "tsl/platform/platform.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_PLATFORM_H_

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ResourceScatterMax"
   input_arg {
     name: "resource"

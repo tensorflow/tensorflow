@@ -16,12 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_BODY_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_BODY_H_
 
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
 
+class FunctionRecord;
 class Graph;
 class Node;
 
@@ -29,22 +33,34 @@ class Node;
 // instantiated function that is represented as a Graph with arg/ret
 // nodes annotated.
 struct FunctionBody {
-  FunctionDef fdef;
+  core::RefCountPtr<FunctionRecord> record;
   Graph* graph = nullptr;  // owned.
   DataTypeVector arg_types;
   DataTypeVector ret_types;
   // arg_nodes[i] contains the i'th function input. In other words,
   // GetNodeAttr(arg_nodes[i]->attrs(), "index") == i.
-  gtl::InlinedVector<Node*, 4> arg_nodes;
+  absl::InlinedVector<Node*, 4UL> arg_nodes;
   // ret_nodes[i] contains the i'th function output. In other words,
   // GetNodeAttr(ret_nodes[i]->attrs(), "index") == i.
-  gtl::InlinedVector<Node*, 4> ret_nodes;
-  gtl::InlinedVector<Node*, 4> control_ret_nodes;
+  absl::InlinedVector<Node*, 4UL> ret_nodes;
+  absl::InlinedVector<Node*, 4UL> control_ret_nodes;
+
+  // Allocator attributes arg/ret nodes of the function body.
+  absl::InlinedVector<AllocatorAttributes, 4UL> args_alloc_attrs;
+  absl::InlinedVector<AllocatorAttributes, 4UL> rets_alloc_attrs;
 
   FunctionBody() {}
-  FunctionBody(const FunctionDef& f, DataTypeSlice arg_types,
-               DataTypeSlice ret_types, Graph* g);
+  FunctionBody(core::RefCountPtr<FunctionRecord>&& record,
+               DataTypeSlice arg_types, DataTypeSlice ret_types, Graph* g);
   ~FunctionBody();
+
+  // Finalizes the function body by unreferencing the function record,
+  // destructing the graph it own, and resetting the node pointers. It populates
+  // the alloc attrs for the function body, so that
+  // FunctionLibraryRuntime::RunRemote can use it to allocate tensors.
+  //
+  // Returns an error if the allocator attributes cannot be populated.
+  absl::Status Finalize();
 };
 
 }  // end namespace tensorflow

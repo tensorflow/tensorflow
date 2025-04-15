@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/compiler/compiled_node.h"
 
 #include <algorithm>
+#include <iterator>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/rename.h"
 
@@ -44,12 +46,11 @@ absl::Status MergeCode(CompiledNodeAttributes* attr,
   RETURN_IF_ERROR(Rename(
       [&](absl::string_view name) -> std::string {
         std::string n(name.begin(), name.end());
-        // if a name is unique, then keep it as is. Otherwise append a unique
-        // index.
-        if (known_names.find(n) == known_names.end()) {
-          return n;
+        // Add index to the end of a variable name until it's unique
+        std::string ret = n;
+        while (known_names.find(ret) != known_names.end()) {
+          ret = absl::StrCat(n, index++);
         }
-        std::string ret = absl::StrCat(n, index++);
         known_names.insert(ret);
         return ret;
       },

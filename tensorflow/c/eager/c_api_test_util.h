@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_
 #define TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_
 
+#include <vector>
+
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/tf_datatype.h"
@@ -156,5 +158,17 @@ TFE_TensorHandle* CreateVarHandle(TFE_Context* ctx,
 TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
                                  const tensorflow::string& device_name,
                                  const tensorflow::string& variable_name);
+
+TFE_Context* CreateContext(const std::string& serialized_server_def,
+                           bool isolate_session_state,
+                           int64_t init_timeout_in_ms);
+
+tensorflow::ServerDef ReplaceTaskInServerDef(
+    const tensorflow::ServerDef& server_def, int task_index);
+
+void ReplaceTaskInServerDef(tensorflow::ServerDef* server_def, int task_index,
+                            const std::string& host, int port);
+
+std::vector<std::string> ListDeviceNames(TFE_Context* ctx);
 
 #endif  // TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_

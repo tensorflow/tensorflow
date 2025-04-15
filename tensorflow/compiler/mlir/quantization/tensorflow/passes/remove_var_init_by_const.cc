@@ -64,26 +64,23 @@ class RemoveVariableInitializationByConstPass
 struct RemoveVariableAssignmentByConst
     : public OpRewritePattern<TF::AssignVariableOp> {
   // Inherit the constructors.
-  using OpRewritePattern<TF::AssignVariableOp>::OpRewritePattern;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(TF::AssignVariableOp assign_op) const override {
+  LogicalResult matchAndRewrite(TF::AssignVariableOp assign_op,
+                                PatternRewriter& rewriter) const override {
     Value resource_operand = assign_op.getOperand(0);
     Value assigned_value_operand = assign_op.getOperand(1);
 
-    if (isa<TF::VarHandleOp>(resource_operand.getDefiningOp()) &&
-        isa<TF::ConstOp>(assigned_value_operand.getDefiningOp())) {
-      return success();
-    } else {
+    if (!isa<TF::VarHandleOp>(resource_operand.getDefiningOp()) ||
+        !isa<TF::ConstOp>(assigned_value_operand.getDefiningOp())) {
       return failure();
     }
-  }
 
-  void rewrite(TF::AssignVariableOp assign_op,
-               PatternRewriter& rewriter) const override {
     // `TF::ConstOp` and `TF::VarHandleOp` are not manually erased.
-    // `applyPatternsAndFoldGreedily` performs dead code elimination and unsed
+    // `applyPatternsGreedily` performs dead code elimination and unsed
     // ops will be erased during the optimization.
     rewriter.eraseOp(assign_op);
+    return success();
   }
 };
 
@@ -97,8 +94,7 @@ void RemoveVariableInitializationByConstPass::runOnOperation() {
   func::FuncOp init_func_op = GetInitializerFunction(
       module_op, /*initializer_type=*/kTfSavedModelInitializerRestoreType);
   if (init_func_op) {
-    if (failed(
-            applyPatternsAndFoldGreedily(init_func_op, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(init_func_op, std::move(patterns)))) {
       init_func_op->emitError(
           "Failed to remove variable assignment by const patterns.");
       signalPassFailure();

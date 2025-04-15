@@ -17,8 +17,8 @@ syntax = "proto3";
 
 package tensorflow;
 
-import "tensorflow/compiler/xla/service/hlo.proto";
-import "tensorflow/compiler/xla/xla_data.proto";
+import "xla/service/hlo.proto";
+import "xla/xla_data.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 
 // A serialization of TPUExecutable. Only includes fields necessary to load
@@ -63,34 +63,8 @@ message TPUExecutableInfoProto {
   xla.DeviceAssignmentProto device_assignment = 6;
 }
 
-// Metadata for a data transfer between device and host.
-message TPUHostTransferProto {
-  enum TransferDirection {
-    NONE = 0;
-    DEVICE_TO_HOST = 1;
-    HOST_TO_DEVICE = 2;
-  }
-  // Channel identifier assigned by compiler and used in host commands.
-  int64 channel = 1;
-  // Direction of the transfer operation.
-  TransferDirection direction = 2;
-  // Channel identifier prodided by XLA client.
-  string key = 3;
-  reserved 4;  // was nested_while_level
-  // Shape of the data to be transferred (including layout).
-  xla.ShapeProto shape = 5;
-  // Address of the device buffer in HBM (byte offset).
-  int64 buffer_offset = 6;
-  // Original data type for this host transfer before X64 rewrite.
-  xla.PrimitiveType original_type = 7;
-  // If this host transfer is a splitted X64 transfer, specifies whether this
-  // transfer is for lower bits.
-  bool is_lower_bits = 8;
-  // The name of host side command handler.
-  string host_handler_name = 9;
-  reserved 10;
-}
-
 message TPUHostTransferInfoProto {
-  repeated TPUHostTransferProto host_transfers = 1;
+  reserved 1;
+  // Serialized metadata for a data transfer between device and host.
+  repeated bytes serialized_transfers = 2 [ctype = CORD];
 }

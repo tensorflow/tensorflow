@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_H_
 #define TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -64,9 +64,9 @@ struct ScatterNdFunctor {
 // before the scatter is executed.
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp Op>
-Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
-                   const Tensor& updates, const TensorShape& shape, Tensor* out,
-                   bool allocate);
+absl::Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
+                         const Tensor& updates, const TensorShape& shape,
+                         Tensor* out, bool allocate);
 
 }  // namespace functor
 }  // namespace tensorflow

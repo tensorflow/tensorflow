@@ -43,6 +43,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
   switch (params->type) {
+    case kTfLiteBFloat16:
+    case kTfLiteFloat16:
     case kTfLiteFloat32:
     case kTfLiteUInt8:
     case kTfLiteInt8:
@@ -50,6 +52,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt64:
     case kTfLiteInt32:
     case kTfLiteString:
+    case kTfLiteBool:
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
@@ -136,6 +139,12 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
 
   TfLiteStatus status = kTfLiteError;
   switch (params->type) {
+    case kTfLiteBFloat16:
+      status = GatherNd<Eigen::bfloat16, IndicesT>(params, indices, output);
+      break;
+    case kTfLiteFloat16:
+      status = GatherNd<Eigen::half, IndicesT>(params, indices, output);
+      break;
     case kTfLiteFloat32:
       status = GatherNd<float, IndicesT>(params, indices, output);
       break;
@@ -156,6 +165,9 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
       break;
     case kTfLiteString:
       status = GatherNdString<IndicesT>(params, indices, output);
+      break;
+    case kTfLiteBool:
+      status = GatherNd<bool, IndicesT>(params, indices, output);
       break;
     default:
       TF_LITE_KERNEL_LOG(context,

@@ -15,35 +15,45 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 
+#include <functional>
 #include <memory>
+#include <string>
 
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/runtime_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/mlir/create_dtensor_mlir_passes.h"
+#include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.h"
 
 namespace tensorflow {
 namespace dtensor {
 namespace {
-class ConditionalPrinter : public BridgeLoggerConfig {
+class ConditionalPrinter : public DataDumperLoggerConfig {
  private:
   bool do_not_print_;
 
  public:
   explicit ConditionalPrinter(
+      std::function<std::string(const std::string &, mlir::Operation *op)>
+          get_filename,
       bool print_module_scope = false, bool print_after_only_on_change = true,
       mlir::OpPrintingFlags op_printing_flags = mlir::OpPrintingFlags())
-      : BridgeLoggerConfig(print_module_scope, print_after_only_on_change,
-                           op_printing_flags) {
+      : DataDumperLoggerConfig(get_filename,
+                               /*pass_prefix=*/"", print_module_scope,
+                               print_after_only_on_change, op_printing_flags) {
     do_not_print_ = !(LogOnAllTasks() || (ClientId() == 0));
   }
 
@@ -64,14 +74,16 @@ class ConditionalPrinter : public BridgeLoggerConfig {
     mlir::ModuleOp module = mlir::dyn_cast<mlir::ModuleOp>(operation);
     if (!module) module = operation->getParentOfType<mlir::ModuleOp>();
     if (module && !module->hasAttr(dtensor::kDoNotLog) && !do_not_print_)
-      BridgeLoggerConfig::printAfterIfEnabled(pass, operation, print_callback);
+      DataDumperLoggerConfig::printAfterIfEnabled(pass, operation,
+                                                  print_callback);
   }
 };
 }  // namespace
 
 // Adds logger to DTensor transformation passmanager.
 bool MaybeEnableLogging(mlir::PassManager *pm) {
-  if (VLOG_IS_ON(1)) {
+  if (VLOG_IS_ON(1) ||
+      DEBUG_DATA_DUMPER()->ShouldDump("", kDebugGroupDTensorMlir)) {
     // Print the whole module after each pass, which requires disabling
     // multi-threading as well.
     pm->getContext()->disableMultithreading();
@@ -82,6 +94,19 @@ bool MaybeEnableLogging(mlir::PassManager *pm) {
       flags = flags.enableDebugInfo(true, true).useLocalScope();
     }
     pm->enableIRPrinting(std::make_unique<ConditionalPrinter>(
+        [](const std::string &tag, mlir::Operation *op) {
+          // As we don't have a good way to pass down the DOperation name, use
+          // a dummy string.
+          auto module = mlir::dyn_cast<mlir::ModuleOp>(op);
+          if (!module) {
+            module = op->getParentOfType<mlir::ModuleOp>();
+          }
+          std::string operation_name = GetOperationName(module);
+          return DEBUG_DATA_DUMPER()->GetDumpFilename(
+              "dtensor", kDebugGroupDTensorMlir,
+              absl::StrReplaceAll(absl::StrCat(tag, ".", operation_name),
+                                  {{" ", "_"}}));
+        },
         /*print_module_scope=*/true, /*print_after_only_on_change=*/true,
         flags));
     return true;
@@ -124,7 +149,7 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   pm->addPass(CreateDTensorSparseTensorToDenseTensor());
 
   // After shape inference, there may be unused constants ops added when
-  // propagating caller-callee constants. As DTensor mesh/layout propgation
+  // propagating caller-callee constants. As DTensor mesh/layout propagation
   // passes assumes that there are no unreachable ops, removes trivial unused
   // ops. Note that `Canonicalizer` pass in TF includes similar optimization.
   // However, canonicalizer pass also rewrites some ops and may remove `_layout`
@@ -169,11 +194,6 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // Merge Clusters
   pm->addPass(CreateDTensorMergeClustersPass());
 
-  // Mark all ops and functions with global shape attribute to preserve global
-  // shape information as it is needed during Layout Propagation and SPMD
-  // expansion.
-  pm->addPass(CreateDTensorAnnotateGlobalShape());
-
   ////////
   // Propagate layout to all ops in graph.
 
@@ -182,6 +202,11 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // outputs from the tf.AssignVariableOps that consume these outputs.
   // This pass fills in all missing shapes caused by tf.RestoreV2 ops.
   pm->addPass(CreateDTensorInferShapesForRestoreV2Op());
+
+  // Mark all ops and functions with global shape attribute to preserve global
+  // shape information as it is needed during Layout Propagation and SPMD
+  // expansion.
+  pm->addPass(CreateDTensorAnnotateGlobalShape());
 
   pm->addPass(CreateDTensorLayoutPropagationPassV2());
 
@@ -227,7 +252,7 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
 
   // DTensorReduceScatter lowering should come before DTensorAllReduce
   // and DTensorAllScatter lowerings since for some devices DTensorReduceScatter
-  // will be decomposed into an DTensorAllReduce+DTensorScatter.
+  // will be decomposed into a DTensorAllReduce+DTensorScatter.
   pm->addPass(CreateDTensorReduceScatterLoweringPass());
 
   // For large enough reduction groups in reduction ops, upcast the input
@@ -327,9 +352,6 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     // library.
     pm->addPass(CreateFunctionRenamingPass());
 
-    // Expands the DTensor call ops across devices within a "multi-device" main.
-    pm->addPass(CreateDTensorMultiDeviceExpansionPass());
-
     // As DTensor SPMD expansion handles sharded inputs for model
     // parallelism, we set input/output sharding to maximal sharding
     // for inputs/outputs of the TPU computation.
@@ -371,6 +393,8 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     // and transfer program key using send/recv operations.
     pm->addPass(CreateDTensorMoveCompilationToHost());
     pm->addPass(mlir::createSymbolDCEPass());
+    // Expands the DTensor call ops across devices within a "multi-device" main.
+    pm->addPass(CreateDTensorMultiDeviceExpansionPass());
   }
 
   pm->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
@@ -380,6 +404,8 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   pm->addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm->addPass(mlir::CreateBreakUpIslandsPass());
+  pm->addNestedPass<mlir::func::FuncOp>(
+      mlir::TFDevice::CreateParallelExecuteToIslandsPass());
   pm->addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateLaunchToDeviceAttributePass());
   // Add additional BreakUpIslandPass as LaunchToDeviceAttribute pass may have

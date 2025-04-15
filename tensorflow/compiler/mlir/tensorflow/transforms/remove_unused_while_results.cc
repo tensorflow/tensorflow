@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
@@ -114,7 +115,7 @@ void RemoveUnusedWhileResultsPass::runOnOperation() {
   MLIRContext* context = &getContext();
   RewritePatternSet patterns(context);
   TF::WhileRegionOp::getCanonicalizationPatterns(patterns, context);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     signalPassFailure();
   }
 }

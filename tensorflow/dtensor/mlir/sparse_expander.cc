@@ -17,9 +17,15 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/core/framework/registration/registration.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/sparse_expander_common.h"
 
@@ -48,7 +54,7 @@ InitOnStartupMarker SparseExpanderRegistry::RegisterSparseExpansionFn(
   return {};
 }
 
-Status RunSparseExpansion(mlir::Operation* op, mlir::Operation** output) {
+absl::Status RunSparseExpansion(mlir::Operation* op, mlir::Operation** output) {
   // Only expand if there are any SparseTensor inputs.
   if (HasAnySparseInput(op)) {
     SparseExpanderBase* expander =
@@ -64,7 +70,7 @@ Status RunSparseExpansion(mlir::Operation* op, mlir::Operation** output) {
   } else {  // If there is no SparseTensor inputs then just return the op.
     *output = op;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace dtensor

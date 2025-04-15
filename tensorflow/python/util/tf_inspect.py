@@ -17,8 +17,6 @@ import collections
 import functools
 import inspect as _inspect
 
-import six
-
 from tensorflow.python.util import tf_decorator
 
 
@@ -235,7 +233,7 @@ def _get_argspec_for_partial(obj):
     all_defaults[-len(defaults):] = defaults
 
   # Fill in default values provided by partial function in all_defaults.
-  for kw, default in six.iteritems(partial_keywords):
+  for kw, default in iter(partial_keywords.items()):
     if kw in args:
       idx = args.index(kw)
       all_defaults[idx] = default

@@ -75,10 +75,14 @@ ResourceValueAndSubtype GetResourceWriteResult(
 // Checks if resource is read by TPU cluster.
 bool ClusterFuncHasResourceRead(tf_device::ClusterFuncOp cluster_func,
                                 Value resource) {
-  for (Operation* resource_user : resource.getUsers())
-    if (auto read = dyn_cast<TF::ReadVariableOp>(resource_user))
-      for (Operation* read_user : read.getValue().getUsers())
+  for (Operation* resource_user : resource.getUsers()) {
+    if (auto read = dyn_cast<TF::ReadVariableOp>(resource_user)) {
+      for (Operation* read_user : read.getValue().getUsers()) {
         if (read_user == cluster_func) return true;
+        if (isa<tf_device::ReplicateOp>(read_user)) return true;
+      }
+    }
+  }
 
   return false;
 }
@@ -124,7 +128,7 @@ void TPUResourceReadForWritePass::runOnOperation() {
       block.addArgument(read_operand.getType(), loc);
 
     func.setType(FunctionType::get(&getContext(), block.getArgumentTypes(),
-                                   func.getCallableResults()));
+                                   func.getResultTypes()));
     cluster_func.erase();
   }
 }

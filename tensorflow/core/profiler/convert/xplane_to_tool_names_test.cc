@@ -23,14 +23,17 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -40,37 +43,57 @@ struct XPlaneToToolsTestCase {
   std::string test_name;
   std::string_view plane_name;
   bool has_hlo_module;
+  bool has_dcn_collective_stats;
   std::vector<std::string> expected_tools;
 };
 
 SessionSnapshot CreateSessionSnapshot(std::unique_ptr<XSpace> xspace,
-                                      bool has_hlo_module) {
+                                      bool has_hlo_module,
+                                      bool has_dcn_collective_stats) {
   std::string test_name =
       ::testing::UnitTest::GetInstance()->current_test_info()->name();
   std::string path = absl::StrCat("ram://", test_name, "/");
   std::unique_ptr<WritableFile> xplane_file;
-  tensorflow::Env::Default()
+  tsl::Env::Default()
       ->NewAppendableFile(absl::StrCat(path, "hostname.xplane.pb"),
                           &xplane_file)
       .IgnoreError();
   std::vector<std::string> paths = {path};
 
   if (has_hlo_module) {
-    tensorflow::Env::Default()
+    tsl::Env::Default()
         ->NewAppendableFile(absl::StrCat(path, "module_name.hlo_proto.pb"),
                             &xplane_file)
         .IgnoreError();
   } else {
-    tensorflow::Env::Default()
+    tsl::Env::Default()
         ->NewAppendableFile(absl::StrCat(path, "NO_MODULE.hlo_proto.pb"),
                             &xplane_file)
+        .IgnoreError();
+  }
+
+  if (has_dcn_collective_stats) {
+    tsl::Env::Default()
+        ->NewAppendableFile(
+            absl::StrCat(path, "hostname.dcn_collective_stats.pb"),
+            &xplane_file)
+        .IgnoreError();
+    tsl::Env::Default()
+        ->NewAppendableFile(
+            absl::StrCat(path, "ALL_HOSTS.dcn_collective_stats.pb"),
+            &xplane_file)
+        .IgnoreError();
+  } else {
+    tsl::Env::Default()
+        ->NewAppendableFile(
+            absl::StrCat(path, "NO_HOST.dcn_collective_stats.pb"), &xplane_file)
         .IgnoreError();
   }
 
   std::vector<std::unique_ptr<XSpace>> xspaces;
   xspaces.push_back(std::move(xspace));
 
-  StatusOr<SessionSnapshot> session_snapshot =
+  absl::StatusOr<SessionSnapshot> session_snapshot =
       SessionSnapshot::Create(paths, std::move(xspaces));
   TF_CHECK_OK(session_snapshot.status());
   return std::move(session_snapshot.value());
@@ -84,21 +107,29 @@ TEST_P(XPlaneToToolsTest, ToolsList) {
   FindOrAddMutablePlaneWithName(xspace.get(), test_case.plane_name);
 
   SessionSnapshot sessionSnapshot =
-      CreateSessionSnapshot(std::move(xspace), test_case.has_hlo_module);
+      CreateSessionSnapshot(std::move(xspace), test_case.has_hlo_module,
+                            test_case.has_dcn_collective_stats);
 
-  StatusOr<std::string> toolsString = GetAvailableToolNames(sessionSnapshot);
+  absl::StatusOr<std::string> toolsString =
+      GetAvailableToolNames(sessionSnapshot);
   ASSERT_TRUE(toolsString.ok());
 
   std::vector<std::string> tools = absl::StrSplit(toolsString.value(), ',');
 
-  std::vector<std::string> expected_tools = {"trace_viewer@",
-                                             "overview_page",
-                                             "input_pipeline_analyzer",
-                                             "tensorflow_stats",
-                                             "memory_profile",
-                                             "pod_viewer",
-                                             "tf_data_bottleneck_analysis",
-                                             "op_profile"};
+  std::vector<std::string> expected_tools = {
+      "trace_viewer",
+      "overview_page",
+      // TODO(jonahweaver): Re-enable input_pipeline_analyzer when it is ready.
+      // b/407096031
+      // "input_pipeline_analyzer",
+      "framework_op_stats",
+      "memory_profile",
+      "pod_viewer",
+      "op_profile",
+      "hlo_stats",
+      "roofline_model",
+      "inference_profile",
+  };
   expected_tools.insert(expected_tools.end(), test_case.expected_tools.begin(),
                         test_case.expected_tools.end());
   EXPECT_THAT(tools, ::testing::UnorderedElementsAreArray(expected_tools));
@@ -107,19 +138,27 @@ TEST_P(XPlaneToToolsTest, ToolsList) {
 INSTANTIATE_TEST_SUITE_P(
     XPlaneToToolsTests, XPlaneToToolsTest,
     ::testing::ValuesIn<XPlaneToToolsTestCase>({
-        {"ToolsForTpuWithoutHloModule", kTpuPlanePrefix, false, {}},
+        {"ToolsForTpuWithoutHloModule", kTpuPlanePrefix, false, false, {}},
         {"ToolsForTpuWithHloModule",
          kTpuPlanePrefix,
          true,
+         false,
          {"graph_viewer", "memory_viewer"}},
         {"ToolsForGpuWithoutHloModule",
          kGpuPlanePrefix,
+         false,
          false,
          {"kernel_stats"}},
         {"ToolsForGpuWithHloModule",
          kGpuPlanePrefix,
          true,
+         false,
          {"kernel_stats", "graph_viewer", "memory_viewer"}},
+        {"ToolsForTpuWithDcnCollectiveStats",
+         kTpuPlanePrefix,
+         false,
+         true,
+         {"dcn_collective_stats"}},
     }),
     [](const ::testing::TestParamInfo<XPlaneToToolsTest::ParamType>& info) {
       return info.param.test_name;

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ToBool"
   input_arg {
     name: "input"

@@ -138,7 +138,7 @@ def convert_saved_model_v1(
     A textual representation of the MLIR module corresponding to the
     SavedModule.
   """
-  return pywrap_mlir.experimental_convert_saved_model_v1(
+  return pywrap_mlir.experimental_convert_saved_model_v1_to_mlir(
       saved_model_path,
       exported_names,
       tags,

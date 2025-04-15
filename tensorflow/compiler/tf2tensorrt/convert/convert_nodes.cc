@@ -15,65 +15,65 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 
-#include <algorithm>
-#include <bitset>
-#include <cmath>
-#include <cstring>
-#include <map>
-#include <memory>
-#include <set>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+#include <algorithm>      // IWYU pragma: keep
+#include <bitset>         // IWYU pragma: keep
+#include <cmath>          // IWYU pragma: keep
+#include <cstring>        // IWYU pragma: keep
+#include <map>            // IWYU pragma: keep
+#include <memory>         // IWYU pragma: keep
+#include <set>            // IWYU pragma: keep
+#include <unordered_map>  // IWYU pragma: keep
+#include <utility>        // IWYU pragma: keep
+#include <vector>         // IWYU pragma: keep
 
-#include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
-#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/algorithm_selector.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/ops/layer_utils.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/ops/quantization_ops.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/ops/slice_ops.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/timing_cache.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_experimental_features.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
-#include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_shape.pb.h"  // NOLINT
-#include "tensorflow/core/framework/tensor_util.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/op_types.h"
-#include "tensorflow/core/grappler/optimizers/constant_folding.h"
-#include "tensorflow/core/grappler/optimizers/generic_layout_optimizer.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/tensor_coding.h"
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/annotated_traceme.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/public/version.h"
-#include "tensorflow/core/util/env_var.h"
-#include "tensorflow/core/util/strided_slice_op.h"
+#include "absl/algorithm/container.h"      // IWYU pragma: keep
+#include "absl/container/flat_hash_set.h"  // IWYU pragma: keep
+#include "absl/memory/memory.h"            // IWYU pragma: keep
+#include "absl/strings/match.h"            // IWYU pragma: keep
+#include "absl/strings/str_cat.h"          // IWYU pragma: keep
+#include "absl/strings/str_format.h"       // IWYU pragma: keep
+#include "absl/strings/string_view.h"      // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/algorithm_selector.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/ops/layer_utils.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/ops/quantization_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/ops/slice_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/timing_cache.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_experimental_features.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"  // IWYU pragma: keep
+#include "tensorflow/core/common_runtime/graph_constructor.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/node_def.pb.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/node_def_builder.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/tensor.pb.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/tensor_shape.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/tensor_shape.pb.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/tensor_util.h"  // IWYU pragma: keep
+#include "tensorflow/core/framework/types.h"  // IWYU pragma: keep
+#include "tensorflow/core/graph/algorithm.h"  // IWYU pragma: keep
+#include "tensorflow/core/graph/graph.h"      // IWYU pragma: keep
+#include "tensorflow/core/grappler/grappler_item.h"  // IWYU pragma: keep
+#include "tensorflow/core/grappler/op_types.h"  // IWYU pragma: keep
+#include "tensorflow/core/grappler/optimizers/constant_folding.h"  // IWYU pragma: keep
+#include "tensorflow/core/grappler/optimizers/generic_layout_optimizer.h"  // IWYU pragma: keep
+#include "tensorflow/core/lib/core/errors.h"  // IWYU pragma: keep
+#include "tensorflow/core/lib/core/status.h"  // IWYU pragma: keep
+#include "tensorflow/core/lib/strings/numbers.h"  // IWYU pragma: keep
+#include "tensorflow/core/lib/strings/str_util.h"  // IWYU pragma: keep
+#include "tensorflow/core/lib/strings/strcat.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/logging.h"   // IWYU pragma: keep
+#include "tensorflow/core/platform/mutex.h"     // IWYU pragma: keep
+#include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/tensor_coding.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/tensor_float_32_utils.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/types.h"  // IWYU pragma: keep
+#include "tensorflow/core/profiler/lib/annotated_traceme.h"  // IWYU pragma: keep
+#include "tensorflow/core/profiler/lib/traceme.h"  // IWYU pragma: keep
+#include "tensorflow/core/public/release_version.h"  // IWYU pragma: keep
+#include "tensorflow/core/util/env_var.h"  // IWYU pragma: keep
+#include "tensorflow/core/util/strided_slice_op.h"  // IWYU pragma: keep
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
@@ -90,7 +90,7 @@ limitations under the License.
   }
 
 // Max kernel volume copied from TRT's limits.
-#define MAX_KERNEL_DIMS_PRODUCT(x) (int64_t(std::pow(100000.0F, (x)*0.5F)))
+#define MAX_KERNEL_DIMS_PRODUCT(x) (int64_t(std::pow(100000.0F, (x) * 0.5F)))
 
 namespace tensorflow {
 namespace tensorrt {
@@ -236,7 +236,7 @@ void GetInputProperties(const grappler::GraphProperties& graph_properties,
 // return the corresponding trt_dtype, the trt_dims and the batch_size (latter
 // is only needed in implicit batch mode).
 //
-// The return status indicates wether the tensor is compatible.
+// The return status indicates whether the tensor is compatible.
 //
 // For implicit batch mode, when validation_only == false, we also check that
 // all input dimensions (besides the batch dimension) are known dimensions.
@@ -2009,7 +2009,7 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
     weights_rsck = std::move(tmp).value();
   }
 
-  // In explcit precision mode, trace the input back to the constant while also
+  // In explicit precision mode, trace the input back to the constant while also
   // verifying that QDQ scale layers are present.
   if (!inputs.at(1).is_weights()) {
     TRT_ENSURE(params->use_explicit_precision);
@@ -2712,17 +2712,16 @@ Status ConvertSlice(const OpConverterParams* params) {
       &is_identity, &is_simple_slice, &slice_dim0, &begin, &end, &strides,
       &strided_slice_spec));
 
-  VLOG(2) << "ConvertSlice: "
-          << "\n input_shape: " << input_shape
-          << "\n procesing_shape: " << processing_shape
+  VLOG(2) << "ConvertSlice: " << "\n input_shape: " << input_shape
+          << "\n processing_shape: " << processing_shape
           << "\n final_shape: " << final_shape
           << "\n  begin: " << DebugString(begin)
           << "\n  stride: " << DebugString(strides)
           << "\n  end: " << DebugString(end)
           << "\n is identity: " << is_identity
           << "\n is simple_slice: " << is_simple_slice
-          << "\n slice dim0: " << slice_dim0 << " StridedSliceShapeSpec:"
-          << "\n   begin_dense_mask: "
+          << "\n slice dim0: " << slice_dim0
+          << " StridedSliceShapeSpec:" << "\n   begin_dense_mask: "
           << std::bitset<32>(strided_slice_spec.begin_dense_mask)
           << "\n   end_dense_mask: "
           << std::bitset<32>(strided_slice_spec.end_dense_mask)
@@ -2803,17 +2802,16 @@ Status ConvertStridedSlice(const OpConverterParams* params) {
       &strides, &strided_slice_spec));
 
   if (!params->validation_only) {
-    VLOG(2) << "After ValidateStridedSliceOp:"
-            << "\n input_shape: " << input_shape
-            << "\n procesing_shape: " << processing_shape
+    VLOG(2) << "After ValidateStridedSliceOp:" << "\n input_shape: "
+            << input_shape << "\n processing_shape: " << processing_shape
             << "\n final_shape: " << final_shape
             << "\n  begin: " << DebugString(begin)
             << "\n  stride: " << DebugString(strides)
             << "\n  end: " << DebugString(end)
             << " is identity: " << is_identity
             << "\n is simple_slice: " << is_simple_slice
-            << "\n slice dim0: " << slice_dim0 << " StridedSliceShapeSpec:"
-            << "\n   begin_dense_mask: "
+            << "\n slice dim0: " << slice_dim0
+            << " StridedSliceShapeSpec:" << "\n   begin_dense_mask: "
             << std::bitset<32>(strided_slice_spec.begin_dense_mask)
             << "\n   end_dense_mask: "
             << std::bitset<32>(strided_slice_spec.end_dense_mask)
@@ -3653,7 +3651,7 @@ Status ConvertIdentity(const OpConverterParams* params) {
 }
 
 // This converter is a debug-only feature designed to allow graph segmentation
-// experiments. Its use is being controled by
+// experiments. Its use is being controlled by
 // `TF_TRT_OP_FAKELIST=OpName1,OpName2,...`.
 // See `op_converter_registry.cc` for further details.
 //
@@ -5481,23 +5479,24 @@ Status ConvertCombinedNMS(const OpConverterParams* params) {
   float score_thresh = *(score_threshold.GetPointer<float>());
   nvinfer1::PluginField fields[] = {
 #if IS_TRT_VERSION_GE(8, 2, 1, 6) || defined(TF_TRT_USE_EFFICIENT_NMS_PLUGIN)
-    {"max_output_size_per_class", &max_size_per_class,
-     nvinfer1::PluginFieldType::kINT32, 1},
-    {"max_total_size", &max_total_size, nvinfer1::PluginFieldType::kINT32, 1},
-    {"iou_threshold", &iou_thresh, nvinfer1::PluginFieldType::kFLOAT32, 1},
-    {"score_threshold", &score_thresh, nvinfer1::PluginFieldType::kFLOAT32, 1},
-    {"pad_per_class", &pad_per_class, nvinfer1::PluginFieldType::kINT32, 1},
-    {"clip_boxes", &clip_boxes, nvinfer1::PluginFieldType::kINT32, 1},
+      {"max_output_size_per_class", &max_size_per_class,
+       nvinfer1::PluginFieldType::kINT32, 1},
+      {"max_total_size", &max_total_size, nvinfer1::PluginFieldType::kINT32, 1},
+      {"iou_threshold", &iou_thresh, nvinfer1::PluginFieldType::kFLOAT32, 1},
+      {"score_threshold", &score_thresh, nvinfer1::PluginFieldType::kFLOAT32,
+       1},
+      {"pad_per_class", &pad_per_class, nvinfer1::PluginFieldType::kINT32, 1},
+      {"clip_boxes", &clip_boxes, nvinfer1::PluginFieldType::kINT32, 1},
 #else  // IS_TRT_VERSION_GE(7, 1, 3, 0)
-    {"shareLocation", &share_location, nvinfer1::PluginFieldType::kINT32, 1},
-    {"backgroundLabelId", &backgrnd_id, nvinfer1::PluginFieldType::kINT32, 1},
-    {"numClasses", &num_classes, nvinfer1::PluginFieldType::kINT32, 1},
-    {"topK", &top_k, nvinfer1::PluginFieldType::kINT32, 1},
-    {"keepTopK", &keep_top_k, nvinfer1::PluginFieldType::kINT32, 1},
-    {"scoreThreshold", &score_thresh, nvinfer1::PluginFieldType::kFLOAT32, 1},
-    {"iouThreshold", &iou_thresh, nvinfer1::PluginFieldType::kFLOAT32, 1},
-    {"isNormalized", &is_normalized, nvinfer1::PluginFieldType::kINT32, 1},
-    {"clipBoxes", &clip_boxes, nvinfer1::PluginFieldType::kINT32, 1},
+      {"shareLocation", &share_location, nvinfer1::PluginFieldType::kINT32, 1},
+      {"backgroundLabelId", &backgrnd_id, nvinfer1::PluginFieldType::kINT32, 1},
+      {"numClasses", &num_classes, nvinfer1::PluginFieldType::kINT32, 1},
+      {"topK", &top_k, nvinfer1::PluginFieldType::kINT32, 1},
+      {"keepTopK", &keep_top_k, nvinfer1::PluginFieldType::kINT32, 1},
+      {"scoreThreshold", &score_thresh, nvinfer1::PluginFieldType::kFLOAT32, 1},
+      {"iouThreshold", &iou_thresh, nvinfer1::PluginFieldType::kFLOAT32, 1},
+      {"isNormalized", &is_normalized, nvinfer1::PluginFieldType::kINT32, 1},
+      {"clipBoxes", &clip_boxes, nvinfer1::PluginFieldType::kINT32, 1},
 #endif
   };
 
@@ -5569,7 +5568,7 @@ Status ConvertResize(const OpConverterParams* params) {
   ITensorProxyPtr inputs_tensor = inputs.at(0).tensor();
   TFTRT_RETURN_ERROR_IF_NULLPTR(inputs_tensor, params->node_def.name());
 
-  // Check output size. It must constain two values i.e. [H_out, W_out]
+  // Check output size. It must contain two values i.e. [H_out, W_out]
   const bool const_output_size = inputs.at(1).is_weights();
   if (const_output_size) {
     // Output size is given as a constant.

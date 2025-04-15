@@ -35,6 +35,24 @@ def CreateOp: TensorflowMlrt_Op<"createop", []> {
   let assemblyFormat = "attr-dict";
 }
 
+def ConstOp: TensorflowMlrt_Op<"constop", []> {
+  let summary = "The tf_mlrt ConstOp";
+
+  let description = [{
+    The ConstOp creates a constant tensorflow::Tensor from serialized proto.
+  }];
+
+  let arguments = (ins
+    StrAttr:$tensor_proto
+  );
+
+  let results = (outs
+    TFTensorType:$result
+  );
+
+  let assemblyFormat = "attr-dict";
+}
+
 def ExecuteOp : TensorflowMlrt_Op<"executeop", []> {
   let summary = "The Fallback ExecuteOp";
   let description = [{
@@ -288,6 +306,21 @@ def TensorToIntOp : TensorflowMlrt_Op<"tensor_to_int32", [Pure]> {
   let assemblyFormat = "operands attr-dict";
 }
 
+def BoolToTensorOp : TensorflowMlrt_Op<"bool_to_tensor", [Pure]> {
+  let summary = "Cast a boolean to a tensor.";
+  let description = [{
+    Cast a boolean to a tensor.
+
+    Example:
+      %one = tf_mlrt.bool_to_tensor %src_bool
+  }];
+
+  let arguments = (ins I1: $src);
+  let results = (outs TFTensorType:$result);
+
+  let assemblyFormat = "operands attr-dict";
+}
+
 def PredicateOp : TensorflowMlrt_Op<"predicate", [Pure]> {
   let summary = "Converts a fallback tensor to a bool";
 
@@ -391,5 +424,78 @@ def MapFnOp : TensorflowMlrt_Op<"map_fn", [AttrSizedOperandSegments, Pure]> {
   let assemblyFormat = "`(`$max_iterations`,` $tensor_list_or_flow_in`,` $invariant_args `)` attr-dict `:` functional-type(operands, results)";
 }
 
+def AsyncWhileOp : TensorflowMlrt_Op<"async_while", [Pure]> {
+  let summary = "Asynchronously execution of while op for tf_mlrt";
+  let description = [{
+    cond: The boolean to control whether the first iteration should be executed.
+    arguments: the last $immutable_size elements are invariants between iterations.
+    results: a list of futures.
+    body_fn: its input are [predicate_promise, arg0_future, arg0_promise, arg1_future, arg1_promise, ..., invariant_args] and has no returned results.
+  }];
+
+  let arguments = (ins TFTensorType:$cond,
+                       Variadic<TFTensorType>:$arguments,
+                       FlatSymbolRefAttr:$body_fn,
+                       I32Attr:$invariant_size);
+
+  let results = (outs Variadic<MlrtFutureType>);
+
+  let assemblyFormat = [{
+    $body_fn `(` $cond `,` $arguments `)` attr-dict `:` `(` type($cond) `,` type($arguments) `)` `->` `(` type(results) `)`
+  }];
+}
+
+def IfrtLoadVariableOp: TensorflowMlrt_Op<"ifrt_load_variable", [Pure]> {
+  let summary = "Loads a variable tensor as an IFRT array for mlrt";
+
+  let description = [{
+    This op loads a restored variable tensor as a tensor future. It is a
+    replacement of `tf.ReadVariableOp`.
+
+    This op returns a scalar string tensor containing the restored variable name, which can be
+    used as a key within the runtime, as well as a future for the tensor.
+
+    The `tf.IfrtCall` kernel uses the output $array_key.
+    Other ops executed by TFRT may make use of $tensor_future.
+  }];
+
+  let arguments = (ins
+    TFTensorType:$variable,
+    DefaultValuedAttr<BoolAttr, "false">:$used_by_host
+  );
+
+  let results = (outs
+    TFTensorType:$array_key,
+    MlrtFutureType: $tensor_future
+  );
+}
+
+def IfrtRestoreVariableOp: TensorflowMlrt_Op<"ifrt_restore_variable", []> {
+  let summary = "Restore variable tensors";
+  let description = [{
+    This is the MLRT version of tf.IfrtRestoreVariableOp.
+
+    This Op is similar to a combination of RestoreV2 and AssignVariable Op, but
+    this Op's execution is asynchronous.
+
+    This Op is specific to MLRT runtime and is not a stable interface for
+    serialization.
+
+    This Op will restore the tensors asynchronously and allow the runtime to look
+    for them.
+    The runtime shall handle the possibility that the tensors are not ready when requested
+    because the tensors are loaded asynchronously.
+
+  }];
+
+  let arguments = (ins
+    TFTensorType:$prefix,
+    TFTensorType:$tensor_names,
+    TFTensorType:$shape_and_slices,
+    Variadic<TFTensorType>:$var_handles,
+    TypeArrayAttr: $restored_dtypes,
+    DenseBoolArrayAttr: $truncate_in_cast
+  );
+}
 
 #endif

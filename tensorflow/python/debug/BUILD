@@ -19,7 +19,6 @@ package(
 py_strict_library(
     name = "debug_py",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     tags = ["keep_dep"],  # Generated files need dependencies that build_cleaner would remove
     visibility = ["//visibility:public"],
     deps = [
@@ -47,7 +46,6 @@ py_strict_library(
 py_strict_library(
     name = "debug_pip",
     data = ["//tensorflow/python/debug/lib:grpc_tensorflow_server"],
-    srcs_version = "PY3",
     deps = [
         ":debug_py",
         "//tensorflow/python/debug/cli:cli_test_utils",

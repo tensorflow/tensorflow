@@ -17,16 +17,20 @@ limitations under the License.
 
 #include <numeric>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
+#include "xla/layout_util.h"
+#include "xla/shape_util.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace {
 
-Status PopulateInfeedLayoutVector(const xla::Shape& shape,
-                                  std::vector<int>* layouts) {
+absl::Status PopulateInfeedLayoutVector(const xla::Shape& shape,
+                                        std::vector<int>* layouts) {
   if (shape.IsTuple()) {
     int64_t tuple_elements = xla::ShapeUtil::TupleElementCount(shape);
     for (int64_t i = 0; i < tuple_elements; ++i) {
@@ -39,16 +43,16 @@ Status PopulateInfeedLayoutVector(const xla::Shape& shape,
       layouts->push_back(dim);
     }
   } else {
-    layouts->insert(layouts->end(), shape.rank(), -1);
+    layouts->insert(layouts->end(), shape.dimensions().size(), -1);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Populate the output layout unless the minor_to_major array contains all -1
 // value, in which case the layout is considered missing and the API returns
 // false.
-StatusOr<bool> MakeLayout(absl::Span<const int64_t> minor_to_major,
-                          xla::Layout* layout) {
+absl::StatusOr<bool> MakeLayout(absl::Span<const int64_t> minor_to_major,
+                                xla::Layout* layout) {
   if (std::all_of(minor_to_major.begin(), minor_to_major.end(),
                   [](int64_t dim) { return dim == -1; })) {
     return false;
@@ -69,7 +73,7 @@ StatusOr<bool> MakeLayout(absl::Span<const int64_t> minor_to_major,
   return true;
 }
 
-Status AssignLayout(
+absl::Status AssignLayout(
     absl::Span<const int64_t> minor_to_major,
     const std::function<xla::Layout(const xla::Shape&)>& layout_func,
     xla::Shape* shape) {
@@ -79,34 +83,80 @@ Status AssignLayout(
     layout = layout_func(*shape);
   }
   *shape->mutable_layout() = layout;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
 // Convert an XLA Shape into the equivalent TensorFlow shape.
-Status XLAShapeToTensorShape(const xla::Shape& shape,
-                             TensorShape* tensor_shape) {
+absl::Status XLAShapeToTensorShape(const xla::Shape& shape,
+                                   TensorShape* tensor_shape) {
   if (shape.IsTuple()) {
     return errors::InvalidArgument("XLA shape ",
                                    xla::ShapeUtil::HumanString(shape),
                                    " cannot be converted to a TensorShape");
   }
   *tensor_shape = TensorShape();
-  for (int i = 0; i < shape.rank(); ++i) {
+  for (int i = 0; i < shape.dimensions().size(); ++i) {
     TF_RETURN_IF_ERROR(tensor_shape->AddDimWithStatus(shape.dimensions(i)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Convert a TensorShape into the equivalent XLA Shape proto.
-Status TensorShapeToXLAShape(DataType dtype,
-                             const PartialTensorShape& tensor_shape,
-                             xla::Shape* shape) {
+absl::Status TensorShapeToXLAShape(DataType dtype,
+                                   const PartialTensorShape& tensor_shape,
+                                   xla::Shape* shape) {
   xla::PrimitiveType type;
   TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype, &type));
   *shape = TensorShapeToXLAShape(type, tensor_shape);
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+absl::Status TensorShapeToBoundedXLAShape(
+    DataType dtype, const PartialTensorShape& tensor_shape,
+    const TensorShape& bound, xla::Shape* shape) {
+  xla::PrimitiveType type;
+  TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype, &type));
+  if (tensor_shape.unknown_rank()) {
+    // For unknown shape, create a rank 1 size 0 tensor.
+    *shape = xla::ShapeUtil::MakeShapeWithDenseLayout(type, {0}, {0});
+    return absl::OkStatus();
+  }
+
+  if (tensor_shape.dims() != bound.dims()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "`tensor_shape` and `bound` have different ranks. tensor_shape=",
+        tensor_shape.dims(), "vs bound=", bound.dims()));
+  }
+
+  int rank = tensor_shape.dims();
+  std::vector<int64_t> dimensions(rank);
+  std::vector<int64_t> layout(rank);
+  for (int d = 0; d < rank; ++d) {
+    if (bound.dim_size(d) < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Bound dimension ", d, " has unknown size."));
+    }
+    if (tensor_shape.dim_size(d) > 0 &&
+        bound.dim_size(d) != tensor_shape.dim_size(d)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Bounding shape does not match dynamic shape for known dimension ", d,
+          tensor_shape.dim_size(d), " vs ", bound.dim_size(d)));
+    }
+    dimensions[d] = bound.dim_size(d);
+  }
+  // XLA uses minor-to-major; Tensorflow uses major-to-minor.
+  std::iota(layout.rbegin(), layout.rend(), 0);
+  xla::Shape result =
+      xla::ShapeUtil::MakeShapeWithDenseLayout(type, dimensions, layout);
+  for (int d = 0; d < rank; ++d) {
+    if (tensor_shape.dim_size(d) < 0) {
+      result.set_dynamic_dimension(d, true);
+    }
+  }
+  *shape = result;
+  return absl::OkStatus();
 }
 
 xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
@@ -134,16 +184,17 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
 }
 
 // Convert a TensorShape into the equivalent XLA Shape proto.
-Status TensorShapeToXLAShape(DataType dtype, const TensorShape& tensor_shape,
-                             xla::Shape* shape) {
+absl::Status TensorShapeToXLAShape(DataType dtype,
+                                   const TensorShape& tensor_shape,
+                                   xla::Shape* shape) {
   xla::PrimitiveType type;
   TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype, &type));
   *shape = TensorShapeToXLAShape(type, tensor_shape);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<xla::Shape> TensorShapeToXLAShape(DataType dtype,
-                                           const TensorShape& tensor_shape) {
+absl::StatusOr<xla::Shape> TensorShapeToXLAShape(
+    DataType dtype, const TensorShape& tensor_shape) {
   xla::Shape out;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, tensor_shape, &out));
   return out;
@@ -163,13 +214,13 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
   return xla::ShapeUtil::MakeShapeWithDenseLayout(type, dimensions, layout);
 }
 
-StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape) {
+absl::StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape) {
   std::vector<int> layouts;
   TF_RETURN_IF_ERROR(PopulateInfeedLayoutVector(shape, &layouts));
   return layouts;
 }
 
-Status GetShapeWithLayout(
+absl::Status GetShapeWithLayout(
     const xla::Shape& input_shape, absl::Span<const int64_t> minor_to_major,
     const std::function<xla::Layout(const xla::Shape&)>& layout_func,
     xla::Shape* output_shape) {
@@ -186,7 +237,7 @@ Status GetShapeWithLayout(
             "Nested tuples not supported: ",
             xla::ShapeUtil::HumanString(input_shape));
       }
-      int64_t rank = shape.rank();
+      int64_t rank = shape.dimensions().size();
       if (position + rank > minor_to_major.size()) {
         return errors::InvalidArgument(
             "Not enough layout attribute elements: position=", position,
@@ -208,7 +259,7 @@ Status GetShapeWithLayout(
     }
     *output_shape = xla::ShapeUtil::MakeTupleShape(shapes);
   } else {
-    int64_t rank = input_shape.rank();
+    int64_t rank = input_shape.dimensions().size();
     const int64_t minor_to_major_size = minor_to_major.size();
     if (rank != minor_to_major_size) {
       return errors::InvalidArgument(
@@ -221,7 +272,7 @@ Status GetShapeWithLayout(
     VLOG(4) << "Shape[] = "
             << xla::ShapeUtil::HumanStringWithLayout(*output_shape);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -1,0 +1,37 @@
+path: "tensorflow.types.experimental.FunctionType"
+tf_class {
+  is_instance: "<class \'tensorflow.python.types.core.FunctionType\'>"
+  is_instance: "<class \'inspect.Signature\'>"
+  member {
+    name: "empty"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "parameters"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "return_annotation"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'parameters\', \'return_annotation\', \'__validate_parameters__\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+  }
+  member_method {
+    name: "bind"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "bind_partial"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "from_callable"
+    argspec: "args=[\'cls\', \'obj\', \'follow_wrapped\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+  member_method {
+    name: "replace"
+    argspec: "args=[\'self\', \'parameters\', \'return_annotation\'], varargs=None, keywords=None, defaults=[\"<class \'inspect._void\'>\", \"<class \'inspect._void\'>\"], "
+  }
+}

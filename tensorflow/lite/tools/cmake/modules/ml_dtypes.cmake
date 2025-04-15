@@ -23,7 +23,9 @@ OverridableFetchContent_Declare(
   ml_dtypes
   GIT_REPOSITORY https://github.com/jax-ml/ml_dtypes
   # Sync with tensorflow/third_party/py/ml_dtypes/workspace.bzl
-  GIT_TAG 5b9fc9ad978757654843f4a8d899715dbea30e88
+  # Github link:
+  # https://github.com/jax-ml/ml_dtypes/commit/0fa5313b65efe848c5968a15dd37dd220cc29567
+  GIT_TAG 00d98cd92ade342fef589c0470379abb27baebe9
   # It's not currently possible to shallow clone with a GIT TAG
   # as cmake attempts to git checkout the commit hash after the clone
   # which doesn't work as it's a shallow clone hence a different commit hash.

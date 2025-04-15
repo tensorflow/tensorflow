@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_C_TF_STATUS_H_
 
 #include "tensorflow/c/c_api_macros.h"
-#include "tensorflow/tsl/c/tsl_status.h"
+#include "xla/tsl/c/tsl_status.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,6 +29,7 @@ typedef struct TSL_Status TF_Status;
 // TF_Code holds an error code.  The enum values here are identical to
 // corresponding values in error_codes.proto.
 typedef TSL_Code TF_Code;
+// LINT.IfChange
 #define TF_OK TSL_OK
 #define TF_CANCELLED TSL_CANCELLED
 #define TF_UNKNOWN TSL_UNKNOWN
@@ -46,6 +47,7 @@ typedef TSL_Code TF_Code;
 #define TF_INTERNAL TSL_INTERNAL
 #define TF_UNAVAILABLE TSL_UNAVAILABLE
 #define TF_DATA_LOSS TSL_DATA_LOSS
+// LINT.ThenChange(//tensorflow/python/py_exception_registry_wrapper.cc)
 
 // --------------------------------------------------------------------------
 
@@ -65,6 +67,14 @@ TF_CAPI_EXPORT extern void TF_SetStatus(TF_Status* s, TF_Code code,
 // is OK.
 TF_CAPI_EXPORT void TF_SetPayload(TF_Status* s, const char* key,
                                   const char* value);
+
+// Iterates over the stored payloads and calls the `visitor(key, value)`
+// callable for each one. `key` and `value` is only usable during the callback.
+// `capture` will be passed to the callback without modification.
+#define TF_PayloadVisitor TSL_PayloadVisitor
+TF_CAPI_EXPORT extern void TF_ForEachPayload(const TF_Status* s,
+                                             TF_PayloadVisitor visitor,
+                                             void* capture);
 
 // Convert from an I/O error code (e.g., errno) to a TF_Status value.
 // Any previous information is lost. Prefer to use this instead of TF_SetStatus

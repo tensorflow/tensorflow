@@ -14,15 +14,15 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 
 // CHECK-LABEL: func @depthwise_conv
 // CHECK: "tf.PartitionedCall"
+// CHECK-SAME: f = @composite_depthwise_conv2d_with_bias_and_relu6_fn_1
 // Check that the `_tfl_quant_trait` attribute has been removed.
 // CHECK-NOT: _tfl_quant_trait = "fully_quantizable"
-// CHECK-SAME: f = @composite_depthwise_conv2d_with_bias_and_relu6_fn_1
 
 // CHECK-LABEL: private @composite_depthwise_conv2d_with_bias_and_relu6_fn_1
 // CHECK: %[[DEPTHWISECONV2D_0:.*]] = "tf.DepthwiseConv2dNative"(%arg0, %arg1)
+// CHECK-SAME: <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 2, 2, 1]}>
 // Check that the `attr_map` attribute has been removed.
 // CHECK-NOT: attr_map
-// CHECK-SAME: {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 2, 2, 1]}
 
 // -----
 
@@ -35,17 +35,17 @@ func.func @conv_with_non_constant_filter(%arg0: tensor<1x3x4x3xf32>, %arg1: tens
 }
 
 // CHECK-LABEL: func @conv_with_non_constant_filter
-// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() <{value = dense<0.000000e+00> : tensor<2xf32>}> : () -> tensor<2xf32>
 // CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1, %[[CONST_0]])
+// CHECK-SAME: f = @composite_conv2d_with_bias_and_relu6_fn_1
 // Check that the `_tfl_quant_trait` attribute has been removed.
 // CHECK-NOT: _tfl_quant_trait = "fully_quantizable"
-// CHECK-SAME: f = @composite_conv2d_with_bias_and_relu6_fn_1
 
 // CHECK-LABEL: func private @composite_conv2d_with_bias_and_relu6_fn_1
 // CHECK: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %arg1)
+// CHECK-SAME: data_format = "NHWC", dilations = [1, 1, 2, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1]
 // Check that the `attr_map` attribute has been removed.
 // CHECK-NOT: attr_map
-// CHECK-SAME: data_format = "NHWC", dilations = [1, 1, 2, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1]
 
 // -----
 
@@ -59,18 +59,18 @@ func.func @conv_with_dynamic_channel_dim(%arg0: tensor<1x3x4x?xf32>) -> tensor<*
 }
 
 // CHECK-LABEL: func @conv_with_dynamic_channel_dim
-// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<1xf32>
+// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() <{value = dense<0.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
 // CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() {{.*}} : () -> tensor<2x3x3x1xf32>
 // CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %[[CONST_1]], %[[CONST_0]])
+// CHECK-SAME: f = @composite_conv2d_with_bias_and_relu6_fn_1
 // Check that the `_tfl_quant_trait` attribute has been removed.
 // CHECK-NOT: _tfl_quant_trait = "fully_quantizable"
-// CHECK-SAME: f = @composite_conv2d_with_bias_and_relu6_fn_1
 
 // CHECK-LABEL: func private @composite_conv2d_with_bias_and_relu6_fn_1
 // CHECK: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %arg1)
+// CHECK-SAME: data_format = "NHWC", dilations = [1, 1, 2, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1]
 // Check that the `attr_map` attribute has been removed.
 // CHECK-NOT: attr_map
-// CHECK-SAME: data_format = "NHWC", dilations = [1, 1, 2, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1]
 
 // -----
 
@@ -93,11 +93,11 @@ func.func @const_filter_with_q_dq(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x2x2
 
 // CHECK-LABEL: func @const_filter_with_q_dq
 // CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() {{.*}} : () -> tensor<2x3x3x2xf32>
-// CHECK-DAG: %[[BIAS:.*]] = "tf.Const"() {device = "", value = dense<[1.000000e-01, 2.000000e-01]> : tensor<2xf32>}
+// CHECK-DAG: %[[BIAS:.*]] = "tf.Const"() <{value = dense<[1.000000e-01, 2.000000e-01]> : tensor<2xf32>}> {device = ""}
 // CHECK: %[[Q_W:.*]] = "quantfork.qcast"(%[[WEIGHT]])
 // CHECK: %[[DQ_W:.*]] = "quantfork.dcast"(%[[Q_W]])
 // CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"({{.*}}, %[[DQ_W]], %[[BIAS]])
-// CHECK-SAME: _tfl_quant_trait = "fully_quantizable"
 // CHECK-SAME: f = @composite_conv2d_with_bias_and_relu_fn_1
+// CHECK-SAME: _tfl_quant_trait = "fully_quantizable"
 
 // CHECK-LABEL: func private @composite_conv2d_with_bias_and_relu_fn_1

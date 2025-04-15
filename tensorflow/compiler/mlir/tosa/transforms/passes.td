@@ -19,7 +19,7 @@ def TosaLegalizeTFPass : Pass<"tosa-legalize-tf", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow to TOSA";
   let constructor = "createLegalizeTFPass()";
   let dependentDialects = ["TosaDialect",
-    "quant::QuantizationDialect","quantfork::QuantizationForkDialect"
+    "quant::QuantDialect","quantfork::QuantizationForkDialect"
   ];
 }
 
@@ -89,12 +89,6 @@ def TosaDequantizeTFLSoftmaxPass : Pass<"tosa-dequantize-tfl-softmax", "mlir::fu
   let dependentDialects = ["mlir::TFL::TFLDialect", "quantfork::QuantizationForkDialect"];
 }
 
-def LowerGlobalTensors :
-    Pass<"tflite-lower-global-tensors", "mlir::ModuleOp"> {
-  let summary = "Lowers TFLite global tensors to MLProgram dialect variables.";
-  let constructor = "createLowerGlobalTensorsPass()";
-}
-
 def RetainCallOnceFuncs :
     Pass<"tflite-retain-call-once-funcs", "mlir::ModuleOp"> {
   let summary = "Guarantees that functions used by tfl.call_once are retained.";
@@ -125,3 +119,11 @@ def ConvertFunctionMetadata :
   let constructor = "createConvertFunctionMetadataPass()";
 }
 
+def TosaLegalizeTFLStatefulPass : Pass<"tosa-legalize-tfl-stateful-tensors", "mlir::ModuleOp"> {
+  let summary = "Legalize tfl stateful operators to tosa stateful operators";
+  let description = [{
+    This pass is legalizing the tfl.call_once op to tosa stateful operators
+  }];
+  let constructor = "createLegalizeTFLStatefulPass()";
+  let dependentDialects = ["mlir::TFL::TFLDialect"];
+}

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/platform/types.h"
 
 // This is an unoptimized but debuggable implementation of the GEMM matrix

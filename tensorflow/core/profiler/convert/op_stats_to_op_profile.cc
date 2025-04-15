@@ -18,27 +18,27 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/match.h"
-#include "tensorflow/core/platform/logging.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/convert/op_profile_builder.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/hardware_types.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"  // from @org_xprof
+#include "xprof/utils/op_metrics_db_utils.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
-using ::tensorflow::profiler::GigaToGibi;
 using ::tensorflow::profiler::IsIdleOp;
 using ::tensorflow::profiler::OpMetrics;
 using ::tensorflow::profiler::OpProfileBuilder;
 using ::tensorflow::profiler::OpProfileOptions;
 using ::tensorflow::profiler::OpStats;
-using ::tensorflow::profiler::TeraToGiga;
 using ::tensorflow::profiler::TotalTimePs;
 using ::tensorflow::profiler::op_profile::Node;
 
@@ -63,10 +63,10 @@ void BuildOpProfileNodeTree(const OpStats& op_stats, bool group_by_program,
 
   const auto& perf_env = op_stats.perf_env();
   double max_gigaflops_per_second_per_core =
-      TeraToGiga(perf_env.peak_tera_flops_per_second());
+      tsl::profiler::TeraToGiga(perf_env.peak_tera_flops_per_second());
   std::vector<double> peak_bws;
   for (auto bw : perf_env.peak_bws_giga_bytes_per_second()) {
-    peak_bws.push_back(GigaToGibi(bw));
+    peak_bws.push_back(tsl::profiler::GigaToGibi(bw));
   }
   builder.Finalize(max_gigaflops_per_second_per_core, peak_bws,
                    TotalTimePs(metrics_db, exclude_idle_ops));
@@ -88,18 +88,15 @@ void ConvertOpStatsToOpProfile(
                          /*exclude_idle_ops=*/true, op_profile_limit,
                          profile.mutable_by_category_exclude_idle());
 
-  // Don't generate per program profile if there's only a single program.
-  if (op_stats.program_id_to_name_map_size() > 1) {
-    BuildOpProfileNodeTree(op_stats,
-                           /*group_by_program=*/true,
-                           /*exclude_idle_ops=*/false, op_profile_limit,
-                           profile.mutable_by_program());
+  BuildOpProfileNodeTree(op_stats,
+                         /*group_by_program=*/true,
+                         /*exclude_idle_ops=*/false, op_profile_limit,
+                         profile.mutable_by_program());
 
-    BuildOpProfileNodeTree(op_stats,
-                           /*group_by_program=*/true,
-                           /*exclude_idle_ops=*/true, op_profile_limit,
-                           profile.mutable_by_program_exclude_idle());
-  }
+  BuildOpProfileNodeTree(op_stats,
+                         /*group_by_program=*/true,
+                         /*exclude_idle_ops=*/true, op_profile_limit,
+                         profile.mutable_by_program_exclude_idle());
 }
 
 }  // namespace profiler

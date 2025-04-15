@@ -1,0 +1,79 @@
+op {
+  name: "XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_pos_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "weights"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "activations"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "preserved_valencies"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "preserved_vectors"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "input_size"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "max_valency"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_weights"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "combiner_computation"
+    type: "func"
+  }
+  attr {
+    name: "quantization_config_low"
+    type: "float"
+  }
+  attr {
+    name: "quantization_config_high"
+    type: "float"
+  }
+  attr {
+    name: "quantization_config_num_buckets"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}

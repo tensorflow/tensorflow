@@ -15,29 +15,27 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/resampler_ops.h"
 
+#include <cstdint>
 #include <numeric>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -267,8 +265,9 @@ XlaOp CalculateGradData(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
   std::vector<int64_t> reshape_dims(warp_shape.dims());
   std::iota(reshape_dims.begin(), reshape_dims.end(), 0);
   // The dimension is [batch, dim_0,..., dim_n, 2, 2].
-  auto reshaped_weights = xla::Reshape(weights, /*dimensions=*/reshape_dims,
-                                       /*new_sizes=*/reshaped_weights_dims);
+  auto reshaped_weights =
+      xla::Reshape(xla::Transpose(weights, /*permutation=*/reshape_dims),
+                   /*dimensions=*/reshaped_weights_dims);
 
   std::vector<int64_t> weights_with_channels_dims = reshaped_weights_dims;
   weights_with_channels_dims.push_back(data_channels);
@@ -458,16 +457,13 @@ XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
   std::vector<int64_t> reshaped_sizes = warp_dims_without_last_dims;
   reshaped_sizes.push_back(1);
 
-  std::vector<int64_t> reshaped_dims(warp_dims_without_last_dims.size());
-  std::iota(reshaped_dims.begin(), reshaped_dims.end(), 0);
-
   // Reduce-add along the channel dimension.
   auto x_result =
       xla::Reduce(x_before_reduce, xla::Zero(ctx->builder(), data_type),
                   xla::CreateScalarAddComputation(data_type, ctx->builder()),
                   {last_warp_dim});
   // Reshape before concatenating with y values.
-  XlaOp reshaped_x = xla::Reshape(x_result, reshaped_dims, reshaped_sizes);
+  XlaOp reshaped_x = xla::Reshape(x_result, reshaped_sizes);
 
   auto y_before_reduce = grad_output * weight_x * bottom_right_minus_top_right +
                          one_minus_x * bottom_left_minus_top_left;
@@ -477,7 +473,7 @@ XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
 
                   xla::CreateScalarAddComputation(data_type, ctx->builder()),
                   {last_warp_dim});
-  XlaOp reshaped_y = xla::Reshape(y_result, reshaped_dims, reshaped_sizes);
+  XlaOp reshaped_y = xla::Reshape(y_result, reshaped_sizes);
 
   return xla::ConcatInDim(ctx->builder(), {reshaped_x, reshaped_y},
                           last_warp_dim);

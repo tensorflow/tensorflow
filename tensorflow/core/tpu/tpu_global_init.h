@@ -15,12 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_GLOBAL_INIT_H_
 #define TENSORFLOW_CORE_TPU_TPU_GLOBAL_INIT_H_
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
-#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 
@@ -57,20 +57,23 @@ namespace tensorflow {
 // "TPU_SYSTEM" devices across all tasks.
 // For example, device_set should contain two "TPU_SYSTEM" devices on 2 tasks
 // for a 4x2 (2 TPU workers) setup, and other non "TPU_SYSTEM" devices.
-Status InitializeTPUSystemGlobally(absl::string_view job_name,
-                                   absl::string_view session_target,
-                                   const DeviceSet& device_set, Env* env,
-                                   tpu::TopologyProto* tpu_topology);
+absl::Status InitializeTPUSystemGlobally(absl::string_view job_name,
+                                         absl::string_view session_target,
+                                         const DeviceSet& device_set, Env* env,
+                                         tpu::TopologyProto* tpu_topology);
 
-Status InitializeTPUSystemGlobally(Env* env, tpu::TopologyProto* tpu_topology);
+absl::Status InitializeTPUSystemGlobally(Env* env,
+                                         tpu::TopologyProto* tpu_topology);
 
-Status InitializeTPUSystemGlobally();
+absl::Status InitializeTPUSystemGlobally();
 
 }  // namespace tensorflow
+
 // Many clients rely on ADL to lookup InitializeTPUSystemGlobally, now that Env
 // moved to namespace tsl they are all broken without these forwarding
 // declarations.
 namespace tsl {
 using tensorflow::InitializeTPUSystemGlobally;  // NOLINT
 }
+
 #endif  // TENSORFLOW_CORE_TPU_TPU_GLOBAL_INIT_H_

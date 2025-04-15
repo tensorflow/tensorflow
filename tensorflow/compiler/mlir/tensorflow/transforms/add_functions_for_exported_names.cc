@@ -59,14 +59,14 @@ void Unexport(func::FuncOp f) {
     llvm::ArrayRef<mlir::NamedAttribute> attrs =
         mlir::function_interface_impl::getArgAttrs(f, i);
     for (NamedAttribute a : attrs) {
-      if (a.getName().strref().startswith("tf_saved_model.")) {
+      if (a.getName().strref().starts_with("tf_saved_model.")) {
         f.removeArgAttr(i, a.getName());
       }
     }
   }
   for (int i = 0; i < f.getNumResults(); ++i) {
     for (NamedAttribute a : f.getResultAttrs(i)) {
-      if (a.getName().strref().startswith("tf_saved_model.")) {
+      if (a.getName().strref().starts_with("tf_saved_model.")) {
         f.removeResultAttr(i, a.getName());
       }
     }

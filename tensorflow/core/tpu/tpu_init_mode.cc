@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_init_mode.h"
 
-#include <atomic>
-
-#include "tensorflow/core/lib/core/errors.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
@@ -38,7 +39,7 @@ void ForceSetTPUInitMode(const TPUInitMode mode) {
 
 }  // namespace test
 
-Status SetTPUInitMode(const TPUInitMode mode) {
+absl::Status SetTPUInitMode(const TPUInitMode mode) {
   if (mode == TPUInitMode::kNone) {
     return errors::InvalidArgument("State cannot be set to: ",
                                    static_cast<int>(mode));
@@ -55,7 +56,7 @@ Status SetTPUInitMode(const TPUInitMode mode) {
     }
     init_mode = mode;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TPUInitMode GetTPUInitMode() {

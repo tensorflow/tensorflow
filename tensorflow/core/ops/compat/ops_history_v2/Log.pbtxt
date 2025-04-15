@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Log"
   input_arg {
     name: "x"

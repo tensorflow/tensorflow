@@ -35,13 +35,6 @@ class TFLiteSubgraphResource : public tensorflow::ResourceBase {
   explicit TFLiteSubgraphResource(Subgraph& subgraph, TfLiteDelegate* delegate)
       : subgraph_(subgraph), delegate_(delegate) {}
 
-  // This class is movable but not copyable.
-  TFLiteSubgraphResource(TFLiteSubgraphResource&&) = default;
-  TFLiteSubgraphResource& operator=(TFLiteSubgraphResource&&) = default;
-
-  TFLiteSubgraphResource(const TFLiteSubgraphResource&) = delete;
-  TFLiteSubgraphResource& operator=(TFLiteSubgraphResource&) = delete;
-
   std::string DebugString() const override { return "TFLiteSubgraphResource"; }
 
   // Returns the TFLite subgraph. Before calling

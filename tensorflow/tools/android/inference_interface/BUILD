@@ -32,6 +32,7 @@ cc_library(
     name = "android_tensorflow_inference_jni",
     srcs = if_android([":android_tensorflow_inference_jni_srcs"]),
     copts = tf_copts(),
+    features = ["-layering_check"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -45,7 +46,6 @@ android_library(
     name = "android_tensorflow_inference_java",
     srcs = glob(["java/**/*.java"]) + ["//tensorflow/java:java_sources"],
     javacopts = [
-        "-XepOpt:CheckReturnValue:CheckAllConstructors=false",  # b/226969262
     ],
     tags = [
         "manual",

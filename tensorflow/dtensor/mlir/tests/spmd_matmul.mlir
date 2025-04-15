@@ -8,10 +8,10 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK:    "tf_device.cluster"
   // CHECK:      %[[MATMUL_OUT:.*]] = "tf.BatchMatMulV2"(%arg1, %arg2)
   // CHECK-SAME: (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
-  // CHECK:      %[[GROUP_ID:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  // CHECK:      %[[GROUP_ID:.*]] = "tf.Const"() <{value = dense<{{.*}}> : tensor<2x2xi32>}> : () -> tensor<2x2xi32>
   // CHECK:      %[[SUM_OUT:.*]] = "tf.DTensorAllReduce"(%[[MATMUL_OUT]], %[[GROUP_ID]])
-  // CHECK-SAME: _layout = ["sharding_specs:unsharded,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME: reduce_op = "Add"
+  // CHECK-SAME: _layout = ["sharding_specs:unsharded,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME: (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
   // CHECK-NEXT: tf_device.return
   // CHECK-SAME: %[[SUM_OUT]]
@@ -35,10 +35,10 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK:    "tf_device.cluster"
   // CHECK:      %[[MATMUL_OUT:.*]] = "tf.BatchMatMulV2"
   // CHECK-SAME: (tensor<4x2x2xi32>, tensor<4x2x2xi32>) -> tensor<4x2x2xi32>
-  // CHECK:      %[[GROUP_ID:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  // CHECK:      %[[GROUP_ID:.*]] = "tf.Const"() <{value = dense<{{.*}}> : tensor<2x2xi32>}> : () -> tensor<2x2xi32>
   // CHECK:      %[[SUM_OUT:.*]] = "tf.DTensorAllReduce"(%[[MATMUL_OUT]], %[[GROUP_ID]])
-  // CHECK-SAME: _layout = ["sharding_specs:x,unsharded,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME: reduce_op = "Add"
+  // CHECK-SAME: _layout = ["sharding_specs:x,unsharded,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME: (tensor<4x2x2xi32>, tensor<2x2xi32>) -> tensor<4x2x2xi32>
   // CHECK-NEXT: tf_device.return
   // CHECK-SAME: %[[SUM_OUT]]
@@ -80,8 +80,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-SAME:   (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
   // CHECK-NEXT:   %[[GROUP_ID:.*]] = "tf.Const"()
   // CHECK-NEXT:   %[[SUM_OUT:.*]] = "tf.DTensorAllReduce"(%[[MATMUL_OUT]], %[[GROUP_ID]])
-  // CHECK-SAME:   _layout = ["sharding_specs:unsharded,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME: reduce_op = "Add"
+  // CHECK-SAME:   _layout = ["sharding_specs:unsharded,unsharded, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:   (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
   // CHECK-NEXT:   tf_device.return
   // CHECK-SAME:   %[[SUM_OUT]]

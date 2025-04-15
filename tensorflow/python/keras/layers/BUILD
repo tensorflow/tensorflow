@@ -1,6 +1,8 @@
 # Description:
 #   Contains the Keras layers (internal TensorFlow version).
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove non-keras deps from TF.
@@ -10,6 +12,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/trackable:__pkg__",
         "//tensorflow/tools/pip_package:__pkg__",
+        "//tensorflow/tools/pip_package:__subpackages__",
         "//tensorflow_models/official/projects/residual_mobilenet/modeling/backbones:__pkg__",
     ],
     licenses = ["notice"],
@@ -143,7 +146,7 @@ py_library(
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],

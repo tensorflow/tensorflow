@@ -1,9 +1,9 @@
 # tf.data service client library.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_profiler_service")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -45,7 +45,7 @@ cc_library(
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/data/service:worker_client",
         "//tensorflow/core/data/service:worker_impl",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/core/data/service:worker_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
@@ -55,8 +55,14 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:retrying_utils",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -73,12 +79,16 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/data/service:common",
+        "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:test_cluster",
         "//tensorflow/core/data/service:test_util",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
 
@@ -89,15 +99,19 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data/service:dispatcher_client",
+        "//tensorflow/core/data/service:dispatcher_proto_cc",
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/protobuf:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ],
 )
 
@@ -114,10 +128,11 @@ tf_cc_test(
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:test_cluster",
         "//tensorflow/core/data/service:test_util",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:status_matchers",
-        "//tensorflow/tsl/protobuf:protos_all_cc",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
 
@@ -135,6 +150,7 @@ cc_library(
         "//tensorflow/core/data/service:worker_impl",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -153,5 +169,7 @@ tf_cc_test(
         "//tensorflow/core/data/service:worker_impl",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

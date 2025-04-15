@@ -17,8 +17,14 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/tpu/kernels/transfer_ops.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
+
 namespace tensorflow {
 namespace {
+
 template <class T>
 class StreamExecutorOutfeedDequeueOp : public TpuOutfeedDequeueOp<T> {
  public:

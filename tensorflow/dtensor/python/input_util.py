@@ -67,6 +67,7 @@ from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.data.experimental.ops import data_service_ops
+from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
@@ -418,6 +419,11 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
     For a DTensor mesh, the number of replicas is equal to the size of the
     mesh's batch dimension.
 
+    Note: `tf.experimental.dtensor.DTensorDataset` instances do *not* implement
+    the full interface of `tf.data.Dataset`. It only supports two usages we will
+    mention below: iteration and `element_spec`. We don't support any other APIs
+    to transform or inspect the dataset.
+
     TODO(b/223275517): add support for input datasets that are already batched
     to the global batch size.
 
@@ -471,7 +477,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
     flattened_elem_spec = nest.flatten(dataset.element_spec)
 
     if batch_dim:
-      num_global_replicas = mesh.dim_size(batch_dim)
+      self.num_global_replicas = mesh.dim_size(batch_dim)
       self._local_replica_ids = list(
           dict.fromkeys(
               [loc[batch_dim] for loc in mesh.local_device_locations()]))
@@ -483,7 +489,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
                'contain it: %s') % (batch_dim, layout))
     else:
       # Only one replica since there is no sharding on the batch dimension.
-      num_global_replicas = 1
+      self.num_global_replicas = 1
       self._local_replica_ids = [0]
 
     # Validate layout and element spec compatibility, and raise ValueError if
@@ -493,7 +499,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
         flattened_elem_spec,
         dataset_already_batched=dataset_already_batched)
 
-    expected_batch_size = global_batch_size // num_global_replicas
+    expected_batch_size = global_batch_size // self.num_global_replicas
     if not dataset_already_batched:
       self._batched_dataset = dataset.batch(
           expected_batch_size, drop_remainder=True)
@@ -519,7 +525,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
         dataset.element_spec, flattened_global_elem_spec)
 
     num_global_devices_per_replica = config.num_global_devices(
-        mesh.device_type()) // num_global_replicas
+        mesh.device_type()) // self.num_global_replicas
     self._num_local_replicas = len(self._local_replica_ids)
     self._num_local_devices_per_replica = mesh.num_local_devices(
     ) // self._num_local_replicas
@@ -579,7 +585,11 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
     for local_replica_idx, replica_id in enumerate(self._local_replica_ids):
       # Select the shard for the corresponding replica.
-      dataset = local_dataset.shard(self._num_local_replicas, local_replica_idx)
+      dataset = distribute._AutoShardDataset(
+          local_dataset,
+          num_workers=self._num_local_replicas,
+          index=local_replica_idx,
+          num_replicas=self.num_global_replicas)
 
       # Repeat each batch for each local device in the replica.
       dataset = self._repeat_batch(dataset, self._num_local_devices_per_replica)
@@ -609,6 +619,10 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
         layouts=self._layouts)
 
   def _repeat_batch(self, dataset, repeats):
+    if repeats == 1:
+      # Remove this shortcut if tf.data can optimize this away.
+      return dataset
+
     def repeat(*x):
       return dataset_ops.DatasetV2.from_tensors(x).repeat(repeats)
 
@@ -616,6 +630,9 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
   def _partition(self, dataset):
     """Slices each dataset element on any sharded non-batch dimension."""
+    if self._num_local_devices_per_replica == 1 and self._partition_offset == 0:
+      # Remove this shortcut if tf.data can optimize this away.
+      return dataset
 
     # TODO(b/223275517): decouple from self and make testable.
     def slice_batch(index, batch):

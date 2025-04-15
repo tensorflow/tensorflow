@@ -47,7 +47,12 @@ final class TensorImpl implements Tensor {
    * SignatureRunner is valid until the tensor is closed.
    */
   static TensorImpl fromSignatureInput(long signatureRunnerHandle, String inputName) {
-    return new TensorImpl(createSignatureInputTensor(signatureRunnerHandle, inputName));
+    long tensorHandle = createSignatureInputTensor(signatureRunnerHandle, inputName);
+    if (tensorHandle == -1) {
+      throw new IllegalArgumentException("Input error: input " + inputName + " not found.");
+    } else {
+      return new TensorImpl(tensorHandle);
+    }
   }
 
   /**
@@ -57,7 +62,12 @@ final class TensorImpl implements Tensor {
    * SignatureRunner is valid until the tensor is closed.
    */
   static TensorImpl fromSignatureOutput(long signatureRunnerHandle, String outputName) {
-    return new TensorImpl(createSignatureOutputTensor(signatureRunnerHandle, outputName));
+    long tensorHandle = createSignatureOutputTensor(signatureRunnerHandle, outputName);
+    if (tensorHandle == -1) {
+      throw new IllegalArgumentException("Input error: output " + outputName + " not found.");
+    } else {
+      return new TensorImpl(tensorHandle);
+    }
   }
 
   /** Disposes of any resources used by the Tensor wrapper. */

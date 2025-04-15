@@ -26,7 +26,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/string_util.h"
@@ -112,6 +112,8 @@ bool DataExpectation::Check(bool verbose, const TfLiteTensor& tensor) {
       return TypedCheck<double, double>(verbose, tensor);
     case kTfLiteFloat16:
       return TypedCheck<Eigen::half, float>(verbose, tensor);
+    case kTfLiteBFloat16:
+      return TypedCheck<Eigen::bfloat16, float>(verbose, tensor);
     default:
       fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
       return false;

@@ -153,6 +153,13 @@ class CumsumTest(test.TestCase):
   @test_util.disable_xla("b/123860949")  # The computation is constant folded
   def testLarge(self):
     for dtype in self.valid_dtypes:
+      if np.__version__ >= np.lib.NumpyVersion("2.0.0") and dtype == np.float16:
+        continue
+      if dtype == dtypes.bfloat16.as_numpy_dtype:
+        # https://github.com/numpy/numpy/issues/27709, which might be fixed
+        # in some numpy version after 2.1.3.
+        continue
+
       x = np.ones([1000000], dtype=dtype) / 1024
       self._compareAll(x, 0)
 
@@ -228,7 +235,10 @@ class CumprodTest(test.TestCase):
     with self.cached_session():
       tf_out = math_ops.cumprod(x, axis, exclusive, reverse).eval()
 
-    self.assertAllClose(np_out, tf_out)
+    atol = rtol = 1e-6
+    if x.dtype == dtypes.bfloat16.as_numpy_dtype:
+      atol = rtol = 1e-2
+    self.assertAllClose(np_out, tf_out, atol=atol, rtol=rtol)
 
   def _compareAll(self, x, axis):
     for exclusive in [True, False]:

@@ -183,7 +183,7 @@ GPUOperation CreateDW7x7Conv2To6ConcatConv8to8(
     constants.push_back(conv2to6.weights.data[i]);
   }
 
-  auto alpha0 = absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
+  auto alpha0 = std::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
       &prelu0.alpha);
   for (int i = 0; i < 6; ++i) {
     constants.push_back(alpha0->data[i]);
@@ -222,7 +222,7 @@ GPUOperation CreateDW7x7Conv2To6ConcatConv8to8(
     }
   }
 
-  auto alpha1 = absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
+  auto alpha1 = std::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
       &prelu1.alpha);
   for (int i = 0; i < 8; ++i) {
     constants.push_back(alpha1->data[i]);

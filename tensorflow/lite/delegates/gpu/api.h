@@ -44,6 +44,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
+
+// The `absl::Status` conflicts with the macro definition in the X11/Xlib.h,
+// undefine the VK_USE_PLATFORM_XLIB_KHR to exclude the header file.
+#undef VK_USE_PLATFORM_XLIB_KHR
 #include "vulkan/vulkan.h"  // from @vulkan_headers
 
 #define GL_NO_PROTOTYPES
@@ -371,6 +375,11 @@ struct InferenceOptions {
   InferencePriority priority2 = InferencePriority::AUTO;
 
   InferencePriority priority3 = InferencePriority::AUTO;
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+  // Number of times to invoke the inference in GPU delegate, to collect more
+  // accurate latency result. Default as 1, which is the original behavior.
+  int gpu_invoke_loop_times = 1;
+#endif
 };
 
 // Returns a position number for the priority. If priority is missing,

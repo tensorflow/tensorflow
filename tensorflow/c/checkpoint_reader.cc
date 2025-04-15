@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
+#include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 namespace tensorflow {
 namespace checkpoint {
@@ -88,7 +90,7 @@ const string CheckpointReader::DebugString() const {
 void CheckpointReader::GetTensor(
     const string& name, std::unique_ptr<tensorflow::Tensor>* out_tensor,
     TF_Status* out_status) const {
-  Status status;
+  absl::Status status;
   if (reader_ != nullptr) {
     status = reader_->GetTensor(name, out_tensor);
   } else {

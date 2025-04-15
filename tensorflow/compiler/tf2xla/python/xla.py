@@ -25,7 +25,7 @@ operators. Please reach out to the JAX team if you want to make changes.
 """
 
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
-from tensorflow.compiler.xla import xla_data_pb2
+from local_xla.xla import xla_data_pb2
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -663,12 +663,16 @@ def call_module(
   return res
 
 
+def call_module_maximum_supported_version():
+  """Maximum version of XlaCallModule op supported.
+
+  See versioning details documentation for the XlaCallModule op at:
+  https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_call_module+%22int+kVersionMaximumSupported%22&type=code
+  """
+  return 9
+
 # pylint: enable=g-doc-args
 # pylint: enable=g-doc-return-or-yield
-
-
-def call_module_maximum_supported_version():
-  return 6
 
 
 def call_module_disable_check_platform():

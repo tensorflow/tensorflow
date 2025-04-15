@@ -16,10 +16,11 @@
 
 import itertools
 import math
-from absl.testing import parameterized
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,10 +31,13 @@ from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -652,7 +656,7 @@ class EmbeddingLookupTest(test.TestCase):
 # tensorflow/python/ops/embedding_ops_test.py
 class EmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
 
-  def _RandomIdsAndWeights(self, batch_size, vocab_size, ragged):
+  def _RandomIdsAndWeights(self, batch_size, vocab_size, ragged=False):
     max_val_per_entry = 6
     vals_per_batch_entry = np.random.randint(
         1, max_val_per_entry, size=batch_size)
@@ -908,6 +912,104 @@ class EmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):
           sp_ids,
           sp_weights,
       )
+
+  def _SortByKey(self, keys, vals):
+    perm = sort_ops.argsort(keys)
+    return array_ops.gather(keys, perm), array_ops.gather(vals, perm)
+
+  def _ExpectedSparseGradient(
+      self, nnz, param_shape, np_type, sp_ids, sp_weights, combiner
+  ):
+    """Returns the expected indices and values corresponding to the (sparse)
+
+    gradient of a sparse embedding lookup.
+    """
+    expected_values = np.ones([nnz] + param_shape, dtype=np_type)
+    segment_ids = sp_ids.indices[:, 0]
+    ignore_weights = sp_weights is None
+    weights = (
+        array_ops.ones(nnz, dtype=dtypes.float32)
+        if ignore_weights
+        else sp_weights.values
+    )
+    if combiner == "sqrtn":
+      weights = weights**2
+    segment_weights = math_ops.segment_sum(weights, segment_ids)
+    if combiner != "sum":
+      grad_scale = 1.0 / array_ops.gather(segment_weights, segment_ids)
+      if combiner == "sqrtn":
+        grad_scale = math_ops.sqrt(grad_scale)
+      expected_values *= grad_scale[:, None]
+    if not ignore_weights:
+      expected_values *= sp_weights.values[:, None]
+    expected_indices = sp_ids.values
+    # Sort and deduplicate the indices in the expected sparse tensor.
+    expected_indices, expected_values = self._SortByKey(
+        expected_indices, expected_values
+    )
+    expected_indices, unique_mapping = array_ops.unique(expected_indices)
+    expected_values = math_ops.segment_sum(expected_values, unique_mapping)
+    return expected_indices, expected_values
+
+  def testResourceVariableGradientEmbeddingLookupSparse(self):
+    """Explicitly checks the gradient of a sparse embedding lookup with
+
+    ResourceVariable input.
+    """
+    vocab_size = 128
+    batch_size = 32
+    param_shape = [16]
+    sp_ids, sp_weights, _, _, _ = self._RandomIdsAndWeights(
+        batch_size, vocab_size
+    )
+
+    for combiner, dtype, ignore_weights in itertools.product(
+        ["sum", "mean", "sqrtn"],
+        [dtypes.float32, dtypes.float64],
+        [True, False],
+    ):
+      with self.test_session(), forward_compat.forward_compatibility_horizon(
+          2023, 9, 26
+      ):
+        x_shape = [vocab_size] + param_shape
+        np_type = "f" if dtype == dtypes.float32 else "d"
+        x = np.random.uniform(size=x_shape).astype(np_type) + 1
+        x = resource_variable_ops.ResourceVariable(x)
+        self.evaluate(variables.global_variables_initializer())
+
+        def forward(x_):
+          y_ = embedding_ops.embedding_lookup_sparse(
+              x_,
+              sp_ids,
+              None if ignore_weights else sp_weights,
+              combiner=combiner,
+          )
+          return y_
+
+        with gradients.GradientTape() as g:
+          y = forward(x)
+        dx = g.gradient(y, x)
+        self.assertAllEqual(dx.dense_shape, x_shape)
+
+        actual_indices, actual_values = dx.indices, dx.values
+        # The sort order of the output is not guaranteed, so we must sort it
+        # into a consistent order before comparing.
+        actual_indices, actual_values = self._SortByKey(
+            actual_indices, actual_values
+        )
+
+        nnz = sp_ids.values.get_shape()[0]
+        expected_indices, expected_values = self._ExpectedSparseGradient(
+            nnz,
+            param_shape,
+            np_type,
+            sp_ids,
+            None if ignore_weights else sp_weights,
+            combiner,
+        )
+
+        self.assertAllEqual(actual_indices, expected_indices)
+        self.assertAllClose(actual_values, expected_values)
 
 
 class SafeEmbeddingLookupSparseTest(test.TestCase, parameterized.TestCase):

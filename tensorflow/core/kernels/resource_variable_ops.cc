@@ -45,6 +45,10 @@ limitations under the License.
 //   (use_locking=false), we never copy even if the variable's
 //   reference count is >1.
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -95,10 +99,11 @@ ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
 
 namespace {
 
-Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
+absl::Status CopyVariable(int output_idx, OpKernelContext* ctx,
+                          const Tensor* t) {
   Tensor* output;
   Notification n;
-  Status status;
+  absl::Status status;
   AllocatorAttributes attr;
   if (t->dtype() == DT_VARIANT) {
     attr.set_on_host(true);
@@ -112,7 +117,7 @@ Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
     // OpKernelContext
     Device* device = down_cast<Device*>(ctx->device());
     ctx->op_device_context()->CopyTensorInSameDevice(
-        t, device, output, [&n, &status](const Status& s) {
+        t, device, output, [&n, &status](const absl::Status& s) {
           status = s;
           n.Notify();
         });
@@ -125,12 +130,16 @@ Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
     output->flat<type>() = t->flat<type>(); \
     break;
       TF_CALL_ALL_TYPES(HANDLER);
+      TF_CALL_float8_e5m2(HANDLER);
+      TF_CALL_float8_e4m3fn(HANDLER);
+      TF_CALL_int4(HANDLER);
+      TF_CALL_uint4(HANDLER);
 #undef HANDLER
       default:
         return errors::Internal("Unsupported dtype", t->dtype());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -231,6 +240,7 @@ REGISTER_KERNEL_BUILDER(
 VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
   OP_REQUIRES_OK(context, context->GetAttr("shared_name", &name_));
+  OP_REQUIRES_OK(context, context->GetAttr("debug_name", &debug_name_));
 
   OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
   OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
@@ -251,7 +261,7 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
 
 void VarHandleOp::Compute(OpKernelContext* ctx) {
   if (is_anonymous_) {
-    Var* resource = new Var(dtype_and_shape_.dtype);
+    Var* resource = new Var(dtype_and_shape_.dtype, debug_name_);
     ResourceMgr* mgr = ctx->resource_manager();
     ResourceHandle handle = ResourceHandle::MakeRefCountingHandle<Var>(
         resource, ctx->device()->name(),
@@ -291,6 +301,8 @@ REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_CPU), VarHandleOp);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
+TF_CALL_int4(REGISTER_GPU_KERNELS);
+TF_CALL_uint4(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -304,16 +316,18 @@ TF_CALL_variant(REGISTER_GPU_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_DEFAULT_KERNELS);
 TF_CALL_variant(REGISTER_DEFAULT_KERNELS);
+TF_CALL_int4(REGISTER_DEFAULT_KERNELS);
+TF_CALL_uint4(REGISTER_DEFAULT_KERNELS);
 #undef REGISTER_DEFAULT_KERNELS
 
-REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
-                            .Device(DEVICE_DEFAULT)
-                            .HostMemory("resources")
-                            .TypeConstraint("dtypes",
-                                            {DT_INT64, DT_COMPLEX64,
-                                             DT_COMPLEX128, DT_HALF, DT_FLOAT,
-                                             DT_DOUBLE, DT_BOOL, DT_VARIANT}),
-                        ResourceHandlesOp<Var>);
+REGISTER_KERNEL_BUILDER(
+    Name("_VarHandlesOp")
+        .Device(DEVICE_DEFAULT)
+        .HostMemory("resources")
+        .TypeConstraint("dtypes", {DT_INT64, DT_COMPLEX64, DT_COMPLEX128,
+                                   DT_HALF, DT_FLOAT, DT_DOUBLE, DT_BOOL,
+                                   DT_VARIANT, DT_BFLOAT16, DT_INT8}),
+    ResourceHandlesOp<Var>);
 
 REGISTER_KERNEL_BUILDER(
     Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int32>("out_type"),
@@ -344,7 +358,7 @@ DestroyResourceOp::DestroyResourceOp(OpKernelConstruction* ctx)
 
 void DestroyResourceOp::Compute(OpKernelContext* ctx) {
   const ResourceHandle& p = HandleFromInput(ctx, 0);
-  Status status = DeleteResource(ctx, p);
+  absl::Status status = DeleteResource(ctx, p);
   if (ignore_lookup_error_ && errors::IsNotFound(status)) {
     return;
   }
@@ -419,7 +433,7 @@ class AssignVariableOp : public OpKernel {
                                   *ptr = new Var(dtype_);
                                   *(*ptr)->tensor() = value;
                                   (*ptr)->is_initialized = true;
-                                  return OkStatus();
+                                  return absl::OkStatus();
                                 }));
     mutex_lock ml(*variable->mu());
     // (variable->tensor()->dtype() == DT_INVALID && !variable->is_initialized)
@@ -488,7 +502,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                                 [](Var** ptr) {
                                   // Created on host.
                                   *ptr = new Var(DT_VARIANT);
-                                  return OkStatus();
+                                  return absl::OkStatus();
                                 }));
 
     // For purposes of forwarding DT_VARIANT, we want the least
@@ -551,6 +565,10 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
+TF_CALL_float8_e5m2(REGISTER_KERNELS);
+TF_CALL_float8_e4m3fn(REGISTER_KERNELS);
+TF_CALL_int4(REGISTER_KERNELS);
+TF_CALL_uint4(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -563,6 +581,10 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
+TF_CALL_float8_e5m2(REGISTER_GPU_KERNELS);
+TF_CALL_float8_e4m3fn(REGISTER_GPU_KERNELS);
+TF_CALL_int4(REGISTER_GPU_KERNELS);
+TF_CALL_uint4(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -575,6 +597,8 @@ TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
+TF_CALL_int4(REGISTER_KERNELS);
+TF_CALL_uint4(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T, DenseUpdateType Op>
@@ -640,6 +664,21 @@ TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#define REGISTER_KERNELS(type)                                           \
+  REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")                    \
+                              .Device(DEVICE_DEFAULT)                    \
+                              .TypeConstraint<type>("dtype")             \
+                              .HostMemory("resource"),                   \
+                          AssignUpdateVariableOp<CPUDevice, type, ADD>); \
+  REGISTER_KERNEL_BUILDER(Name("AssignSubVariableOp")                    \
+                              .Device(DEVICE_DEFAULT)                    \
+                              .TypeConstraint<type>("dtype")             \
+                              .HostMemory("resource"),                   \
+                          AssignUpdateVariableOp<CPUDevice, type, SUB>);
+
+TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
 class VarIsInitializedOp : public OpKernel {
  public:
   explicit VarIsInitializedOp(OpKernelConstruction* c) : OpKernel(c) {}
@@ -650,7 +689,8 @@ class VarIsInitializedOp : public OpKernel {
                    context->allocate_output(0, TensorShape({}), &output));
     auto output_tensor = output->tensor<bool, 0>();
     core::RefCountPtr<Var> variable;
-    Status s = LookupResource(context, HandleFromInput(context, 0), &variable);
+    absl::Status s =
+        LookupResource(context, HandleFromInput(context, 0), &variable);
     if (!s.ok()) {
       output_tensor() = false;
       return;
@@ -674,6 +714,9 @@ class ResourceGatherOp : public OpKernel {
  public:
   explicit ResourceGatherOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("batch_dims", &batch_dims_));
+    OP_REQUIRES(c, batch_dims_ >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "batch_dims is negative (", batch_dims_, ")")));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -932,12 +975,14 @@ bool ValidateInput<Variant>(const Tensor& updates) {
 }
 
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
-Status DoScatter(OpKernelContext* c, Tensor* params, const Tensor& indices,
-                 const Tensor& updates, Index num_indices);
+absl::Status DoScatter(OpKernelContext* c, Tensor* params,
+                       const Tensor& indices, const Tensor& updates,
+                       Index num_indices);
 
 template <typename T, typename Index, scatter_op::UpdateOp Op>
-Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
-                      const Tensor& updates, Index num_indices);
+absl::Status DoScatterOnCpu(OpKernelContext* c, Tensor* params,
+                            const Tensor& indices, const Tensor& updates,
+                            Index num_indices);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -953,8 +998,8 @@ Status CopyTensorToHost(OpKernelContext* c, const Tensor& device_tensor,
   se::DeviceMemoryBase device_ptr(
       const_cast<Tensor&>(device_tensor).flat<T>().data(),
       device_tensor.flat<T>().size() * sizeof(T));
-  stream->ThenMemcpy(host_tensor->flat<T>().data(), device_ptr,
-                     device_tensor.NumElements() * sizeof(T));
+  TF_RETURN_IF_ERROR(stream->Memcpy(host_tensor->flat<T>().data(), device_ptr,
+                                    device_tensor.NumElements() * sizeof(T)));
   if (!stream) {
     return errors::Internal("Failed to copy indices to host");
   }
@@ -989,8 +1034,8 @@ Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
   // Copy 'host_params' to device.
   se::DeviceMemoryBase params_ptr(params->flat<T>().data(),
                                   params->flat<T>().size() * sizeof(T));
-  stream->ThenMemcpy(&params_ptr, host_params.flat<T>().data(),
-                     host_params.NumElements() * sizeof(T));
+  TF_RETURN_IF_ERROR(stream->Memcpy(&params_ptr, host_params.flat<T>().data(),
+                                    host_params.NumElements() * sizeof(T)));
   if (!stream) {
     return errors::Internal("Failed to copy params to device");
   }
@@ -1005,8 +1050,9 @@ Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
-Status DoScatter(OpKernelContext* c, Tensor* params, const Tensor& indices,
-                 const Tensor& updates, Index num_indices) {
+absl::Status DoScatter(OpKernelContext* c, Tensor* params,
+                       const Tensor& indices, const Tensor& updates,
+                       Index num_indices) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (std::is_same<Device, GPUDevice>::value &&
       tensorflow::OpDeterminismRequired() && !DisableScatterOpDeterminism()) {
@@ -1055,7 +1101,7 @@ Status DoScatter(OpKernelContext* c, Tensor* params, const Tensor& indices,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -1066,7 +1112,7 @@ class ResourceScatterUpdateOp : public OpKernel {
   explicit ResourceScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {
     // We use the same kernel for many operations.
     // Each operation has a different set of attributes defined in its nodes.
-    Status s = c->GetAttr("use_locking", &use_exclusive_lock_);
+    absl::Status s = c->GetAttr("use_locking", &use_exclusive_lock_);
     if (!s.ok()) {
       use_exclusive_lock_ = false;
     }
@@ -1075,26 +1121,30 @@ class ResourceScatterUpdateOp : public OpKernel {
   void Compute(OpKernelContext* c) override {
     core::RefCountPtr<Var> v;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+
+    // Check data type of update and resource to scatter.
+    const DataType update_dtype = c->input(2).dtype();
+    OP_REQUIRES(c, v->tensor()->dtype() == update_dtype,
+                errors::InvalidArgument(
+                    "DType of scatter resource and updates does not match."));
+
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
-    const bool is_non_pod_dtype = c->input_dtype(0) == DT_RESOURCE ||
-                                  c->input_dtype(0) == DT_STRING ||
-                                  c->input_dtype(0) == DT_VARIANT;
+    const bool is_non_pod_dtype =
+        update_dtype == DT_STRING || update_dtype == DT_VARIANT;
     if (is_non_pod_dtype || use_exclusive_lock_) {
       mutex_lock ml(*v->mu());
-      DoCompute(c);
+      DoCompute(c, v.get());
     } else {
       // For POD dtypes, we can safely run the update without the mutex.
       tf_shared_lock ml(*v->mu());
-      DoCompute(c);
+      DoCompute(c, v.get());
     }
   }
 
  private:
   bool use_exclusive_lock_;
 
-  void DoCompute(OpKernelContext* c) {
-    core::RefCountPtr<Var> v;
-    OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+  void DoCompute(OpKernelContext* c, Var* v) {
     Tensor* params = v->tensor();
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);

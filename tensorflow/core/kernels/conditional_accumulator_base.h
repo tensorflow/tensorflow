@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <deque>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/numeric_op.h"
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -73,9 +73,9 @@ class ConditionalAccumulatorBase : public ResourceBase {
   // SetGlobalStep is a modifier method for current_global_step.
   // It returns an InvalidArgument error if the new_global_step is less than
   // current_global_step.
-  Status SetGlobalStep(int64_t new_global_step);
+  absl::Status SetGlobalStep(int64_t new_global_step);
 
-  Status MatchesNodeDef(const NodeDef& node_def);
+  absl::Status MatchesNodeDef(const NodeDef& node_def);
 
  protected:
   // Virtual methods to be implemented by sub-classes for different datatypes.

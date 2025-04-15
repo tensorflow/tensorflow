@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Reverse"
   input_arg {
     name: "tensor"

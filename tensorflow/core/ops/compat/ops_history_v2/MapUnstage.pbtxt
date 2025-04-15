@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "MapUnstage"
   input_arg {
     name: "key"

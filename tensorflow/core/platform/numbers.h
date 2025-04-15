@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/numbers.h"
+#include "tsl/platform/numbers.h"
 
 namespace tensorflow {
 namespace strings {
@@ -45,8 +45,6 @@ using tsl::strings::safe_strtof;
 using tsl::strings::safe_strtou32;
 using tsl::strings::safe_strtou64;
 using tsl::strings::SafeStringToNumeric;
-using tsl::strings::StringToFp;
-using tsl::strings::Uint64ToHexString;
 // NOLINTEND(misc-unused-using-decls)
 }  // namespace strings
 }  // namespace tensorflow

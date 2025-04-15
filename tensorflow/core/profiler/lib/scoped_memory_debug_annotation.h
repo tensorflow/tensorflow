@@ -15,18 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_SCOPED_MEMORY_DEBUG_ANNOTATION_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_SCOPED_MEMORY_DEBUG_ANNOTATION_H_
 
-#include <cstdint>
-#include <functional>
-#include <string>
-#include <utility>
-
-#include "tensorflow/tsl/profiler/lib/scoped_memory_debug_annotation.h"
+#include "absl/base/macros.h"
+#include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
 
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::MemoryDebugAnnotation;        // NOLINT
-using tsl::profiler::ScopedMemoryDebugAnnotation;  // NOLINT
+using MemoryDebugAnnotation ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::MemoryDebugAnnotation;  // NOLINT
+using ScopedMemoryDebugAnnotation ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::ScopedMemoryDebugAnnotation;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -23,6 +23,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import sysconfig
 
 
 class TensorFloat32Test(xla_test.XLATestCase):
@@ -41,8 +42,23 @@ class TensorFloat32Test(xla_test.XLATestCase):
 
       # Test the output is sufficiently precise by comparing with FP64 results
       out = compiled_fn(*inputs)
-      f64_out = compiled_fn(*[math_ops.cast(x, 'float64') for x in inputs])
-      self.assertAllClose(out, f64_out, rtol=1e-5, atol=1e-5)
+      sys_details = sysconfig.get_build_info()
+      if sys_details['is_rocm_build']:  # MIOpen does not support fp64 data type
+        f32_out = compiled_fn(*[math_ops.cast(x, 'float32') for x in inputs])
+        self.assertAllClose(out, f32_out, rtol=1e-5, atol=1e-5)
+      else:
+        f64_out = compiled_fn(*[math_ops.cast(x, 'float64') for x in inputs])
+        # This test compares the F32 output of the model with the F64 output.
+        # oneDNN algorithms may loose some precision due to significant accumulations
+        # for large inputs. Therefore, we need to adjust the tolerance accordingly
+        # in these cases.
+        rtol_val, atol_val = (
+            (3e-4, 1e-5)
+            if test_util.IsCPUTargetAvailable('x86')
+            and test_util.IsBuiltWithXLA()
+            else (1e-5, 1e-5)
+        )
+        self.assertAllClose(out, f64_out, rtol=rtol_val, atol=atol_val)
 
       # Test with TF32 enabled. Recompile fn because enabling TF32 does not
       # reset function cache.

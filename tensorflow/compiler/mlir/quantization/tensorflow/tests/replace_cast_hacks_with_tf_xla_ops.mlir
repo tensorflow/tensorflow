@@ -57,17 +57,17 @@ module attributes {} {
   }
 
 // CHECK-LABEL: func @conv_with_bias_and_relu
-// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
-// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() {value = dense<1> : tensor<2xi32>} : () -> tensor<2xi32>
-// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-// CHECK-DAG: %[[CONST_3:.*]] = "tf.Const"() {value = dense<0> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
-// CHECK-DAG: %[[CONST_4:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() <{value = dense<[1, 2]> : tensor<2xi32>}> : () -> tensor<2xi32>
+// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() <{value = dense<1> : tensor<2xi32>}> : () -> tensor<2xi32>
+// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
+// CHECK-DAG: %[[CONST_3:.*]] = "tf.Const"() <{value = dense<0> : tensor<2x2xi32>}> : () -> tensor<2x2xi32>
+// CHECK-DAG: %[[CONST_4:.*]] = "tf.Const"() <{value = dense<{{.*}}> : tensor<4x2xi32>}> : () -> tensor<4x2xi32>
 // CHECK-DAG-SAME{LITERAL}: value = dense<[[0, 0], [0, 1], [0, 1], [0, 0]]>
-// CHECK-DAG: %[[CONST_5:.*]] = "tf.Const"() {value = dense<-128> : tensor<i8>} : () -> tensor<i8>
-// CHECK-DAG: %[[CONST_6:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<2x3x3x2xi8>} : () -> tensor<2x3x3x2xi8>
-// CHECK-DAG: %[[CONST_7:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<1x1x1x2xi32>} : () -> tensor<1x1x1x2xi32>
+// CHECK-DAG: %[[CONST_5:.*]] = "tf.Const"() <{value = dense<-128> : tensor<i8>}> : () -> tensor<i8>
+// CHECK-DAG: %[[CONST_6:.*]] = "tf.Const"() <{value = dense<{{.*}}> : tensor<2x3x3x2xi8>}> : () -> tensor<2x3x3x2xi8>
+// CHECK-DAG: %[[CONST_7:.*]] = "tf.Const"() <{value = dense<{{.*}}> : tensor<1x1x1x2xi32>}> : () -> tensor<1x1x1x2xi32>
 // CHECK-DAG-SAME{LITERAL}: value = dense<[[[[-22016, -23680]]]]>
-// CHECK-DAG: %[[CONST_8:.*]] = "tf.Const"() {value = dense<[162, 160]> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK-DAG: %[[CONST_8:.*]] = "tf.Const"() <{value = dense<[162, 160]> : tensor<2xi32>}> : () -> tensor<2xi32>
 // CHECK: %[[PADV2_0:.*]] = "tf.PadV2"({{.*}}, %[[CONST_4]], %[[CONST_5]]) : (tensor<1x3x4x3xi8>, tensor<4x2xi32>, tensor<i8>) -> tensor<1x4x5x3xi8>
 // CHECK: %[[XLACONVV2_0:.*]] = "tf.XlaConvV2"(%[[PADV2_0]], %[[CONST_6]], %[[CONST_0]], %[[CONST_3]], %[[CONST_1]], %[[CONST_1]], %[[CONST_2]])
 // CHECK-SAME: (tensor<1x4x5x3xi8>, tensor<2x3x3x2xi8>, tensor<2xi32>, tensor<2x2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<i32>) -> tensor<1x3x2x2xi32>
@@ -144,16 +144,16 @@ module attributes {} {
   }
 
 // CHECK-LABEL: func @depthwise_conv_with_bias_and_relu6
-// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
-// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() {value = dense<-128> : tensor<i8>} : () -> tensor<i8>
-// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<2x3x1x3xi8>} : () -> tensor<2x3x1x3xi8>
-// CHECK-DAG: %[[CONST_3:.*]] = "tf.Const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
-// CHECK-DAG: %[[CONST_4:.*]] = "tf.Const"() {value = dense<0> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
-// CHECK-DAG: %[[CONST_5:.*]] = "tf.Const"() {value = dense<1> : tensor<2xi32>} : () -> tensor<2xi32>
-// CHECK-DAG: %[[CONST_6:.*]] = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
-// CHECK-DAG: %[[CONST_7:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<1x1x1x3xi32>} : () -> tensor<1x1x1x3xi32>
+// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() <{value = dense<{{.*}}> : tensor<4x2xi32>}> : () -> tensor<4x2xi32>
+// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() <{value = dense<-128> : tensor<i8>}> : () -> tensor<i8>
+// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() <{value = dense<{{.*}}> : tensor<2x3x1x3xi8>}> : () -> tensor<2x3x1x3xi8>
+// CHECK-DAG: %[[CONST_3:.*]] = "tf.Const"() <{value = dense<2> : tensor<2xi32>}> : () -> tensor<2xi32>
+// CHECK-DAG: %[[CONST_4:.*]] = "tf.Const"() <{value = dense<0> : tensor<2x2xi32>}> : () -> tensor<2x2xi32>
+// CHECK-DAG: %[[CONST_5:.*]] = "tf.Const"() <{value = dense<1> : tensor<2xi32>}> : () -> tensor<2xi32>
+// CHECK-DAG: %[[CONST_6:.*]] = "tf.Const"() <{value = dense<3> : tensor<i32>}> : () -> tensor<i32>
+// CHECK-DAG: %[[CONST_7:.*]] = "tf.Const"() <{value = dense<{{.*}}> : tensor<1x1x1x3xi32>}> : () -> tensor<1x1x1x3xi32>
 // CHECK-DAG-SAME{LITERAL}: value = dense<[[[[55040, -15104, -21376]]]]>
-// CHECK-DAG: %[[CONST_8:.*]] = "tf.Const"() {value = dense<[129, 166, 221]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG: %[[CONST_8:.*]] = "tf.Const"() <{value = dense<[129, 166, 221]> : tensor<3xi32>}> : () -> tensor<3xi32>
 // CHECK: %[[PADV2_0:.*]] = "tf.PadV2"({{.*}}, %[[CONST_0]], %[[CONST_1]]) : (tensor<1x3x4x3xi8>, tensor<4x2xi32>, tensor<i8>) -> tensor<1x4x5x3xi8>
 // CHECK: %[[XLACONVV2_0:.*]] = "tf.XlaConvV2"(%[[PADV2_0]], %[[CONST_2]], %[[CONST_3]], %[[CONST_4]], %[[CONST_5]], %[[CONST_5]], %[[CONST_6]])
 // CHECK-SAME: (tensor<1x4x5x3xi8>, tensor<2x3x1x3xi8>, tensor<2xi32>, tensor<2x2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<i32>) -> tensor<1x2x2x3xi32>
@@ -198,14 +198,14 @@ module attributes {} {
   }
 
 // CHECK-LABEL: func @dynamic_shaped_conv2d_with_bias_and_relu6_inlined
-// CHECK-DAG: %[[filter:.*]] = "tf.Const"() {device = "", value = dense<2> : tensor<2x3x3x2xi8>} : () -> tensor<2x3x3x2xi8>
+// CHECK-DAG: %[[filter:.*]] = "tf.Const"() <{value = dense<2> : tensor<2x3x3x2xi8>}> {device = ""} : () -> tensor<2x3x3x2xi8>
 // CHECK-DAG: %[[input_shape:.*]] = "tf.Shape"({{.*}}) : (tensor<?x?x?x3xi8>) -> tensor<4xi32>
-// CHECK-DAG: %[[input_dim_1:.*]] = "tf.StridedSlice"(%[[input_shape]], {{.*}}, {{.*}}, {{.*}}) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
-// CHECK-DAG: %[[input_dim_2:.*]] = "tf.StridedSlice"(%[[input_shape]], {{.*}}, {{.*}}, {{.*}}) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
+// CHECK-DAG: %[[input_dim_1:.*]] = "tf.StridedSlice"(%[[input_shape]], {{.*}}, {{.*}}, {{.*}}) <{begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64}> : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
+// CHECK-DAG: %[[input_dim_2:.*]] = "tf.StridedSlice"(%[[input_shape]], {{.*}}, {{.*}}, {{.*}}) <{begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64}> : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
 // CHECK-DAG: %[[padding_rank_1:.*]] = "tf.Concat"({{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}) : (tensor<i32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<8xi32>
 // CHECK-DAG: %[[padding_rank_2:.*]] = "tf.Reshape"(%[[padding_rank_1]], {{.*}}) : (tensor<8xi32>, tensor<2xi64>) -> tensor<4x2xi32>
 // CHECK-DAG: %[[input_padded:.*]] = "tf.PadV2"(%{{.*}}, %[[padding_rank_2]], {{.*}}) : (tensor<?x?x?x3xi8>, tensor<4x2xi32>, tensor<i8>) -> tensor<?x?x?x3xi8>
-// CHECK: %[[conv_output:.*]] = "tf.XlaConvV2"(%[[input_padded]], %[[filter]], {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}) {batch_group_count = 1 : i64, dimension_numbers = "{{.*}}", precision_config = ""} : (tensor<?x?x?x3xi8>, tensor<2x3x3x2xi8>, tensor<2xi32>, tensor<2x2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<i32>) -> tensor<?x?x?x2xi32>
+// CHECK: %[[conv_output:.*]] = "tf.XlaConvV2"(%[[input_padded]], %[[filter]], {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}) <{dimension_numbers = "{{.*}}", precision_config = ""}> : (tensor<?x?x?x3xi8>, tensor<2x3x3x2xi8>, tensor<2xi32>, tensor<2x2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<i32>) -> tensor<?x?x?x2xi32>
 // CHECK: %[[conv_output_sub:.*]] = "tf.Sub"(%[[conv_output]], {{.*}}) : (tensor<?x?x?x2xi32>, tensor<1x1x1x2xi32>) -> tensor<?x?x?x2xi32>
 // CHECK: %[[conv_output_add:.*]] = "tf.AddV2"(%[[conv_output_sub]], {{.*}}) {device = ""} : (tensor<?x?x?x2xi32>, tensor<2xi32>) -> tensor<?x?x?x2xi32>
 }
@@ -264,7 +264,7 @@ module attributes {tf_saved_model.semantics} {
   }
 
 // CHECK-LABEL: func @conv_with_filter_larger_than_1MB
-// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<-264192> : tensor<1x1x1x512xi32>} : () -> tensor<1x1x1x512xi32>
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() <{value = dense<-264192> : tensor<1x1x1x512xi32>}> : () -> tensor<1x1x1x512xi32>
 // CHECK: %[[PADV2_0:.*]] = "tf.PadV2"
 // CHECK: %[[XLACONVV2_0:.*]] = "tf.XlaConvV2"(%[[PADV2_0]]
 // CHECK: %[[SUB_0:.*]] = "tf.Sub"(%[[XLACONVV2_0]], %[[CONST]])
@@ -297,8 +297,8 @@ module attributes {tf_saved_model.semantics} {
     return %12 : tensor<1x3xf32>
   }
 // CHECK-LABEL: func @matmul_with_relu
-// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() {device = "", value = dense<1> : tensor<1024x3xi8>} : () -> tensor<1024x3xi8>
-// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<-131072> : tensor<1x3xi32>} : () -> tensor<1x3xi32>
+// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() <{value = dense<1> : tensor<1024x3xi8>}> {device = ""} : () -> tensor<1024x3xi8>
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() <{value = dense<-131072> : tensor<1x3xi32>}> : () -> tensor<1x3xi32>
 // CHECK: %[[MATMUL:.*]] = "tf.XlaDotV2"({{.*}}, %[[WEIGHT]])
 // CHECK-SAME: (tensor<1x1024xi8>, tensor<1024x3xi8>) -> tensor<1x3xi32>
 // CHECK: %[[SUB:.*]] = "tf.Sub"(%[[MATMUL]], %[[CONST]]) : (tensor<1x3xi32>, tensor<1x3xi32>) -> tensor<1x3xi32>
@@ -479,11 +479,11 @@ module attributes {tf_saved_model.semantics} {
   }
 
 // CHECK-LABEL: func @conv3d_with_static_shape
-// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() {device = "", value = dense<1> : tensor<2x3x3x3x2xi8>} : () -> tensor<2x3x3x3x2xi8>
+// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() <{value = dense<1> : tensor<2x3x3x3x2xi8>}> {device = ""} : () -> tensor<2x3x3x3x2xi8>
 // CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {{.*}} : () -> tensor<5x2xi32>
 // CHECK-DAG-SAME{LITERAL}: value = dense<[[0, 0], [0, 1], [0, 1], [1, 1], [0, 0]]> : tensor<5x2xi32>
-// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() {value = dense<-43> : tensor<i8>} : () -> tensor<i8>
-// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() {value = dense<-2322> : tensor<1x1x1x1x2xi32>} : () -> tensor<1x1x1x1x2xi32>
+// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() <{value = dense<-43> : tensor<i8>}> : () -> tensor<i8>
+// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() <{value = dense<-2322> : tensor<1x1x1x1x2xi32>}> : () -> tensor<1x1x1x1x2xi32>
 
 // CHECK: %[[PAD:.*]] = "tf.PadV2"({{.*}}, %[[CONST]], %[[CONST_1]])
 // CHECK: %[[CONV:.*]] = "tf.XlaConvV2"(%[[PAD]], %[[WEIGHT]]
@@ -524,9 +524,9 @@ module attributes {tf_saved_model.semantics} {
   }
 
 // CHECK-LABEL: func @conv3d_with_dynamic_shape
-// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() {device = "", value = dense<1> : tensor<2x3x3x3x2xi8>} : () -> tensor<2x3x3x3x2xi8>
-// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() {value = dense<-43> : tensor<i8>} : () -> tensor<i8>
-// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() {value = dense<-2322> : tensor<1x1x1x1x2xi32>} : () -> tensor<1x1x1x1x2xi32>
+// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() <{value = dense<1> : tensor<2x3x3x3x2xi8>}> {device = ""} : () -> tensor<2x3x3x3x2xi8>
+// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() <{value = dense<-43> : tensor<i8>}> : () -> tensor<i8>
+// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() <{value = dense<-2322> : tensor<1x1x1x1x2xi32>}> : () -> tensor<1x1x1x1x2xi32>
 
 // CHECK: %[[CONCAT:.*]] = "tf.Concat"({{.*}})
 // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%[[CONCAT]], {{.*}}) : (tensor<10xi32>, tensor<2xi64>) -> tensor<5x2xi32>
@@ -565,7 +565,7 @@ module attributes {tf_saved_model.semantics} {
   }
 
 // CHECK-LABEL: func @batch_matmul
-// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<-131072> : tensor<20x30x1x3xi32>} : () -> tensor<20x30x1x3xi32>
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() <{value = dense<-131072> : tensor<20x30x1x3xi32>}> : () -> tensor<20x30x1x3xi32>
 // CHECK: %[[CAST:.*]] = "tf.Cast"
 // CHECK: %[[XLADOTV2_0:.*]] = "tf.XlaDotV2"(%[[CAST]]
 // CHECK: %[[SUB_0:.*]] = "tf.Sub"(%[[XLADOTV2_0]], %[[CONST]]) : (tensor<20x30x64x3xi32>, tensor<20x30x1x3xi32>) -> tensor<20x30x64x3xi32>
@@ -602,7 +602,7 @@ module attributes {tf_saved_model.semantics} {
   }
 
 // CHECK-LABEL: func @broadcasting_weight_batch_matmul
-// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<[2, 1024, 3]> : tensor<3xi64>} : () -> tensor<3xi64>
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() <{value = dense<[2, 1024, 3]> : tensor<3xi64>}> : () -> tensor<3xi64>
 // CHECK: %[[CAST:.*]] = "tf.Cast"
 // CHECK: %[[BROADCAST_TO:.*]] = "tf.BroadcastTo"({{.*}}, %[[CONST]]) : (tensor<1024x3xi8>, tensor<3xi64>) -> tensor<2x1024x3xi8>
 // CHECK: %[[XLADOTV2_0:.*]] = "tf.XlaDotV2"(%[[CAST]], %[[BROADCAST_TO]])
@@ -639,8 +639,8 @@ module attributes {tf_saved_model.semantics} {
   }
 
 // CHECK-LABEL: func @broadcasting_input_batch_matmul
-// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() {device = "", value = {{.*}} : tensor<2x2x1024x3xi8>} : () -> tensor<2x2x1024x3xi8>
-// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<[2, 2, 1, 1024]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() <{value = {{.*}} : tensor<2x2x1024x3xi8>}> {device = ""} : () -> tensor<2x2x1024x3xi8>
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() <{value = dense<[2, 2, 1, 1024]> : tensor<4xi64>}> : () -> tensor<4xi64>
 // CHECK: %[[CAST:.*]] = "tf.Cast"
 // CHECK: %[[BROADCAST_TO:.*]] = "tf.BroadcastTo"(%[[CAST]], %[[CONST]]) : (tensor<2x1x1024xi8>, tensor<4xi64>) -> tensor<2x2x1x1024xi8>
 // CHECK: %[[XLADOTV2_0:.*]] = "tf.XlaDotV2"(%[[BROADCAST_TO]], %[[WEIGHT]])
@@ -677,14 +677,14 @@ module attributes {tf_saved_model.semantics} {
   }
 
 // CHECK-LABEL: func @dynamic_shape_batch_matmul
-// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
-// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
-// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
-// CHECK-DAG: %[[CONST_3:.*]] = "tf.Const"() {value = dense<[1024, 3]> : tensor<2xi64>} : () -> tensor<2xi64>
-// CHECK-DAG: %[[CONST_4:.*]] = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
-// CHECK-DAG: %[[CONST_5:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() {device = "", value = {{.*}} : tensor<1024x3xi8>} : () -> tensor<1024x3xi8>
-// CHECK: %[[CAST:.*]] = "tf.Cast"({{.*}}) {Truncate = false, device = ""} : (tensor<?x1x1024xf32>) -> tensor<?x1x1024xi8>
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() <{value = dense<0> : tensor<1xi32>}> : () -> tensor<1xi32>
+// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() <{value = dense<2> : tensor<1xi32>}> : () -> tensor<1xi32>
+// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}> : () -> tensor<1xi32>
+// CHECK-DAG: %[[CONST_3:.*]] = "tf.Const"() <{value = dense<[1024, 3]> : tensor<2xi64>}> : () -> tensor<2xi64>
+// CHECK-DAG: %[[CONST_4:.*]] = "tf.Const"() <{value = dense<> : tensor<0xi64>}> : () -> tensor<0xi64>
+// CHECK-DAG: %[[CONST_5:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
+// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() <{{{value = .* : tensor<1024x3xi8>}}}> {device = ""} : () -> tensor<1024x3xi8>
+// CHECK: %[[CAST:.*]] = "tf.Cast"({{.*}}) <{Truncate = false}> {device = ""} : (tensor<?x1x1024xf32>) -> tensor<?x1x1024xi8>
 // CHECK: %[[SHAPE:.*]] = "tf.Shape"(%[[CAST]]) : (tensor<?x1x1024xi8>) -> tensor<3xi64>
 // CHECK: %[[SLICE_1:.*]] = "tf.Slice"(%[[SHAPE]], %[[CONST]], %[[CONST_2]]) : (tensor<3xi64>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi64>
 // CHECK: %[[SLICE_2:.*]] = "tf.Slice"(%[[SHAPE]], %[[CONST_2]], %[[CONST_1]]) : (tensor<3xi64>, tensor<1xi32>, tensor<1xi32>) -> tensor<2xi64>

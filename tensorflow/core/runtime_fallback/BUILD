@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
 
 package_group(
     name = "internal",
@@ -27,11 +27,9 @@ package(
 tf_cc_binary(
     name = "tf_bef_executor",
     testonly = True,
-    tags = ["no_oss"],
     deps = [
         ":bef_executor_lib",
         "@com_google_absl//absl/strings",
-        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/runtime_fallback/conversion:conversion_alwayslink",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_kernels_alwayslink",
@@ -47,7 +45,6 @@ tf_cc_binary(
         # copybara:uncomment "@tf_runtime//backends/cpu:image_alwayslink",
         # copybara:uncomment "@tf_runtime//backends/cpu:proto_alwayslink",
         "@tf_runtime//backends/cpu:test_ops_alwayslink",
-        "@tf_runtime//backends/jitrt:jitrt_corert_kernels_alwayslink",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -55,16 +52,7 @@ tf_cc_binary(
         "//conditions:default": [
             "//tensorflow/core:all_kernels",
         ],
-    }) + if_cuda([
-        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_gpu_alwayslink",
-        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_gpu_alwayslink",
-    ]) + select({
-        "@tf_runtime//:gpu_enabled": [
-            "@tf_runtime//backends/gpu:gpu_op_handler_alwayslink",
-            "@tf_runtime//backends/gpu:gpu_test_ops_alwayslink",
-        ],
-        "//conditions:default": [],
-    }),
+    }) + if_cuda([]),
 )
 
 cc_library(
@@ -72,7 +60,7 @@ cc_library(
     testonly = True,
     srcs = ["bef_executor_flags.cc"],
     hdrs = ["bef_executor_flags.h"],
-    visibility = ["//third_party/tf_runtime_google:__pkg__"],
+    visibility = ["//visibility:private"],
     deps = [
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",
@@ -86,7 +74,6 @@ cc_library(
     srcs = [
         "tf_bef_executor_main.cc",
     ],
-    tags = ["no_oss"],
     visibility = [
         ":internal",
     ],

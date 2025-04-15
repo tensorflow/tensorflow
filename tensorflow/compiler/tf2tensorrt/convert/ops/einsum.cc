@@ -100,7 +100,7 @@ class EinsumDescriptor {
         begin, end, [val](EinsumDimensionType t) { return t == val; }));
   }
 
-  // Appends indices to the "permute" vector where types maches value.
+  // Appends indices to the "permute" vector where types matches value.
   void AppendMatchingIndicesToPermute(
       const std::vector<EinsumDimensionType>& types, EinsumDimensionType val) {
     for (int i = 0; i < types.size(); i++) {

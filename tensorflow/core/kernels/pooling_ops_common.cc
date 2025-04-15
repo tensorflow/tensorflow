@@ -86,9 +86,9 @@ struct PadInputWithNegativeInf<qint8> {
 
 }  // namespace
 
-Status CheckPaddingSize(int64_t window_rows, int64_t window_cols,
-                        int64_t pad_top, int64_t pad_bottom, int64_t pad_left,
-                        int64_t pad_right) {
+absl::Status CheckPaddingSize(int64_t window_rows, int64_t window_cols,
+                              int64_t pad_top, int64_t pad_bottom,
+                              int64_t pad_left, int64_t pad_right) {
   if (!FastBoundsCheck(pad_top, window_rows)) {
     return errors::InvalidArgument("Top padding ", pad_top,
                                    " needs to be smaller than the "
@@ -113,7 +113,7 @@ Status CheckPaddingSize(int64_t window_rows, int64_t window_cols,
                                    "window size ",
                                    window_cols);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 PoolParameters::PoolParameters(OpKernelContext* context,
@@ -164,12 +164,14 @@ PoolParameters::PoolParameters(OpKernelContext* context,
   }
 
   if (depth_window == 1) {
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                tensor_in_rows, window_rows, row_stride,
-                                padding, &out_height, &pad_top, &pad_bottom));
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                tensor_in_cols, window_cols, col_stride,
-                                padding, &out_width, &pad_left, &pad_right));
+    OP_REQUIRES_OK(
+        context, GetWindowedOutputSizeVerbose(
+                     tensor_in_rows, window_rows, /*dilation_rate=*/1,
+                     row_stride, padding, &out_height, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSizeVerbose(
+                       tensor_in_cols, window_cols, /*dilation_rate=*/1,
+                       col_stride, padding, &out_width, &pad_left, &pad_right));
     pad_depth = 0;
     out_depth = depth;
   } else {
@@ -195,18 +197,20 @@ PoolParameters::PoolParameters(OpKernelContext* context,
                 errors::Unimplemented("Depthwise max pooling is currently "
                                       "only implemented for CPU devices."));
 
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                tensor_in_rows, window_rows, row_stride,
-                                padding, &out_height, &pad_top, &pad_bottom));
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                tensor_in_cols, window_cols, col_stride,
-                                padding, &out_width, &pad_left, &pad_right));
+    OP_REQUIRES_OK(
+        context, GetWindowedOutputSizeVerbose(
+                     tensor_in_rows, window_rows, /*dilation_rate=*/1,
+                     row_stride, padding, &out_height, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSizeVerbose(
+                       tensor_in_cols, window_cols, /*dilation_rate=*/1,
+                       col_stride, padding, &out_width, &pad_left, &pad_right));
     pad_depth = 0;
     out_depth = depth / depth_window;
   }
 }
 
-Status PoolParameters::forward_output_shape(TensorShape* shape) {
+absl::Status PoolParameters::forward_output_shape(TensorShape* shape) {
   if (depth_window == 1) {
     // Spatial pooling
     return ShapeFromFormatWithStatus(data_format, tensor_in_batch, out_height,
@@ -216,7 +220,7 @@ Status PoolParameters::forward_output_shape(TensorShape* shape) {
     *shape = TensorShape(
         {tensor_in_batch, tensor_in_rows, tensor_in_cols, out_depth});
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -398,6 +402,9 @@ void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
 
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+  auto* dnn = stream->parent()->AsDnn();
+  OP_REQUIRES(context, dnn != nullptr,
+              errors::Internal("No DNN support for stream."));
 
 #if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(
@@ -406,14 +413,15 @@ void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
   );
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
-  OP_REQUIRES_OK(context,
-                 stream->ThenPoolForward(pooling_desc, GetNumericOptions(),
-                                         input_desc, input_data, output_desc,
-                                         &output_data, &scratch_allocator));
+  OP_REQUIRES_OK(context, dnn->PoolForward(stream, pooling_desc,
+                                           GetNumericOptionsForCuDnn(),
+                                           input_desc, input_data, output_desc,
+                                           &output_data, &scratch_allocator));
 #else
-  OP_REQUIRES_OK(context, stream->ThenPoolForward(
-                              pooling_desc, GetNumericOptions(), input_desc,
-                              input_data, output_desc, &output_data));
+  OP_REQUIRES_OK(
+      context,
+      dnn->PoolForward(stream, pooling_desc, GetNumericOptionsForCuDnn(),
+                       input_desc, input_data, output_desc, &output_data));
 #endif
 
 #if CUDNN_VERSION < 7300
@@ -458,8 +466,7 @@ void DnnPoolingOp<Eigen::bfloat16>::Compute(
                  context->allocate_output(0, tensor_out_shape, &tensor_out));
 
   auto* stream = context->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
+  const bool cast_to_float = !IsBF16SupportedInOps(stream);
   if (cast_to_float) {
     Tensor casted_tensor_in;
     Tensor casted_tensor_out;
@@ -795,6 +802,9 @@ void DnnPoolingGradImpl(OpKernelContext* context,
 
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+  auto* dnn = stream->parent()->AsDnn();
+  OP_REQUIRES(context, dnn != nullptr,
+              errors::Internal("No DNN support for stream."));
 
 #if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(
@@ -805,16 +815,16 @@ void DnnPoolingGradImpl(OpKernelContext* context,
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
   OP_REQUIRES_OK(
       context,
-      stream->ThenPoolBackward(
-          pooling_desc, GetNumericOptions(), orig_input_desc, orig_input_data,
-          orig_output_desc, orig_output_data, output_backprop_data,
-          &input_backprop_data, &scratch_allocator));
+      dnn->PoolBackward(stream, pooling_desc, GetNumericOptionsForCuDnn(),
+                        orig_input_desc, orig_input_data, orig_output_desc,
+                        orig_output_data, output_backprop_data,
+                        &input_backprop_data, &scratch_allocator));
 #else
-  OP_REQUIRES_OK(context,
-                 stream->ThenPoolBackward(
-                     pooling_desc, GetNumericOptions(), orig_input_desc,
-                     orig_input_data, orig_output_desc, orig_output_data,
-                     output_backprop_data, &input_backprop_data));
+  OP_REQUIRES_OK(context, dnn->PoolBackward(
+                              stream, pooling_desc, GetNumericOptionsForCuDnn(),
+                              orig_input_desc, orig_input_data,
+                              orig_output_desc, orig_output_data,
+                              output_backprop_data, &input_backprop_data));
 #endif
 
   if (padding == EXPLICIT && (params.pad_top != params.pad_bottom ||
@@ -872,8 +882,7 @@ void DnnPoolingGradOp<Eigen::bfloat16>::Compute(
   OP_REQUIRES_OK(context,
                  context->allocate_output(0, tensor_in_shape, &input_backprop));
   auto* stream = context->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
+  const bool cast_to_float = !IsBF16SupportedInOps(stream);
   if (cast_to_float) {
     Tensor casted_tensor_in;
     Tensor casted_tensor_out;

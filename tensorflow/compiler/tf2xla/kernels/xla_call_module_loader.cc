@@ -16,50 +16,61 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
-#include "stablehlo/transforms/Passes.h"  // from @stablehlo
+#include "stablehlo/transforms/StablehloRefineShapes.h"  // from @stablehlo
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/python/refine_polymorphic_shapes.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/regexp.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/translate/stablehlo.h"
+#include "xla/mlir/utils/type_util.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/python/refine_polymorphic_shapes.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -67,434 +78,348 @@ namespace {
 
 // When adding a new version, write when it was added. Also change the default
 // version in the constructor in xla.py.
-// Version 1 used MHLO & CHLO, not supported anymore.
-// Version 2 supports StableHLO & CHLO. From 10/2022.
-constexpr int VERSION_START_STABLE_HLO = 2;
-// Version 3 supports platform checking and multiple platforms. From 02/2023.
-constexpr int VERSION_START_PLATFORMS = 3;
-// Version 4 supports StableHLO with compatibility guarantees.
-// Used in jax2tf from March 15, 2023 (cl/516885716). Starting with
-// March 28th, 2023 we stopped using dim_args_spec (cl/520033493).
-// TODO(b/283439649): Remove support for dim_args_spec.
-constexpr int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
-// Version 5 adds support for call_tf_graph. This does not change the semantics
-// of the op, but it allows the `function_list` attribute.
-// Used in jax2tf from May 3rd, 2023 (cl/529106145).
-constexpr int VERSION_START_SUPPORT_CALL_TF_GRAPH = 5;
-// Version 6 adds support for the `disabled_checks` attribute. This version
-// mandates a non-empty `platforms` attribute.
-// Used in jax2tf since June 2023.
-constexpr int VERSION_START_SUPPORT_DISABLED_CHECKS = 6;
-constexpr int VERSION_MINIMUM_SUPPORTED =
-    VERSION_START_STABLE_HLO_COMPATIBILITY;
+// See
+// https://github.com/google/jax/blob/main/jax/experimental/jax2tf/README.md#native-serialization-versions
+// for a description of the different versions.
 
-constexpr int VERSION_MAXIMUM_SUPPORTED = VERSION_START_SUPPORT_DISABLED_CHECKS;
+constexpr int kVersionStartStableHloCompatibility = 4;
+constexpr int kVersionStartSupportCallTFGraph = 5;
+constexpr int kVersionStartSupportDisabledChecks = 6;
+constexpr int kVersionStartSupportShapeAssertions = 7;
+constexpr int kVersionStartSupportUsesShapePolymorphismAttr = 8;
+constexpr int kVersionStartSupportEffects = 9;
+constexpr int kVersionMinimumSupported = kVersionStartStableHloCompatibility;
 
-constexpr absl::string_view DISABLED_CHECK_PLATFORM = "platform";
+// This should match xla.py:call_module_maximum_supported_version
+constexpr int kVersionMaximumSupported = kVersionStartSupportEffects;
+
+constexpr llvm::StringRef kDisabledCheckPlatform = "platform";
 
 bool IsPlatformCheckDisabled(absl::Span<const std::string> disabled_checks) {
-  return std::find(disabled_checks.begin(), disabled_checks.end(),
-                   DISABLED_CHECK_PLATFORM) != disabled_checks.end();
+  return llvm::is_contained(disabled_checks, kDisabledCheckPlatform);
 }
 
-// Computes a dimension value from the dim_arg specification.
-// The specification is of the form "<arg_idx>.<arg_axis_idx>".
-// TODO(b/283439649): Remove support for dim_args_spec.
-tsl::StatusOr<mlir::Value> ComputeDimensionValue(
-    int version, std::string dim_arg_spec, std::vector<mlir::Value> arguments,
-    mlir::OpBuilder op_builder, mlir::Type dim_arg_type) {
-  static const LazyRE2 dim_arg_spec_re = {R"((\d+).(\d+))"};
-  int arg_idx, arg_axis_idx;
-  if (!RE2::FullMatch(dim_arg_spec, *dim_arg_spec_re, &arg_idx,
-                      &arg_axis_idx)) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Syntax error in dim_args_spec '", dim_arg_spec, "'"));
-  }
-  if (arg_idx < 0 || arg_idx >= arguments.size()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Invalid argument index ", arg_idx,
-        " when the number of non-dimension arguments is ", arguments.size(),
-        " in dim_arg_spec '", dim_arg_spec, "'"));
-  }
-  mlir::RankedTensorType arg_type =
-      arguments[arg_idx].getType().dyn_cast<mlir::RankedTensorType>();
-  if (!arg_type) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Argument ", arg_idx, " referenced in dim_arg_spec '",
-                     dim_arg_spec, "' does not have a RankedTensorType"));
-  }
-  if (arg_axis_idx < 0 || arg_axis_idx >= arg_type.getShape().size()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Invalid axis index ", arg_axis_idx,
-        " when the rank of non-dimension argument ", arg_idx, " is ",
-        arg_type.getShape().size(), " in dim_arg_spec '", dim_arg_spec, "'"));
-  }
-  mlir::Value val;
-  mlir::Type get_dim_type =
-      mlir::RankedTensorType::get({}, op_builder.getI32Type());
-  val = op_builder.create<mlir::stablehlo::GetDimensionSizeOp>(
-      arguments[arg_idx].getLoc(), get_dim_type, arguments[arg_idx],
-      op_builder.getI64IntegerAttr(arg_axis_idx));
-  if (dim_arg_type != get_dim_type) {
-    val = op_builder.create<mlir::stablehlo::ConvertOp>(
-        arguments[arg_idx].getLoc(), dim_arg_type, val);
-  }
-  return val;
+constexpr llvm::StringRef kDisabledCheckShapeAssertions = "shape_assertions";
+
+bool IsShapeAssertionsCheckDisabled(
+    absl::Span<const std::string> loading_disabled_checks) {
+  return llvm::is_contained(loading_disabled_checks,
+                            kDisabledCheckShapeAssertions);
 }
+
+constexpr llvm::StringRef kUsesShapePolymorphismAttr =
+    "jax.uses_shape_polymorphism";
 
 }  // namespace
 
-tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
-    mlir::MLIRContext *context, int version, std::string module_str,
-    std::vector<std::string> dim_args_spec,
-    std::vector<std::string> disabled_checks,
-    std::vector<std::string> platforms, std::string loading_platform) {
+bool IsTokenType(mlir::Type type) {
+  return mlir::isa<mlir::stablehlo::TokenType>(type);
+}
+
+absl::StatusOr<std::unique_ptr<XlaCallModuleLoader>>
+XlaCallModuleLoader::Create(mlir::MLIRContext *context, int version,
+                            mlir::StringRef module_str,
+                            std::vector<std::string> disabled_checks,
+                            std::vector<std::string> platforms,
+                            int num_invocation_args,
+                            bool main_has_token_input_output) {
   std::unique_ptr<XlaCallModuleLoader> loader(new XlaCallModuleLoader);
-  TF_RETURN_IF_ERROR(loader->LoadAndPreprocessModule(
-      context, version, std::move(module_str), std::move(dim_args_spec),
-      std::move(disabled_checks), std::move(platforms),
-      std::move(loading_platform)));
+  TF_RETURN_IF_ERROR(loader->LoadModule(
+      context, version, module_str, std::move(disabled_checks),
+      std::move(platforms), num_invocation_args, main_has_token_input_output));
   return loader;
 }
 
-// Adds a wrapper for the "main" function to compute the platform index and the
-// dimension arguments.
-//
-// The input module has the following structure:
-//
-//    func public main(%arg_platform_index: i32, %arg_dim0: i32, %arg_dim1: i32,
-//                     %arg0: f32[?, ?, 8]) { ... }
-//
-// where %arg_platform_index is the index of the current compilation platform
-// among the declared `platforms` (missing if version < 3 or if platforms has
-// fewer than 2 elements), %arg_dim0 and %arg_dim1 are dimension arguments
-// (missing if dim_args_spec is empty). The value of the dimension arguments
-// are computed based on the static shapes of the actual arguments
-// (%arg0 and following).
-// In the above example, the dim_args_spec array would have two elements, one
-// for %arg_dim0 and one for %arg_dim1. E.g., ['0.0', '0.1'] specifies that
-// %arg_dim0 should be set to the size of axis 0 or array argument 0 (%arg0),
-// while %arg_dim1 should be set to the size of axis 1.
-// The platform index argument must be a 0-dimensional 32-bit integer, and the
-// dimension arguments must be 0-dimensional tensors of integer type.
-//
-// We create a new "main" function as follows:
-//   func public main(%arg0: f32[?, ?, 8]) {
-//      %arg_platform_index = stablehlo.constant <platform_index>
-//      %arg_dim0 = stablehlo.get_dimension_size(%arg0) dimension=0
-//      %arg_dim1 = stablehlo.get_dimension_size(%arg0) dimension=1
-//      %res = func.call _wrapped_main(%arg_platform_index,
-//                                     %arg_dim0, %arg_dim1, %arg0)
-//      return %res
-//   }
-//   func private _wrapped_main(%arg_platform_index: i32,
-//                              %arg_dim0: i32, %arg_dim1: i32,
-//                              %arg0: f32[?, ?, 8]) {
-//      ... the original main function ...
-//   }
-//
-// and then we run the inliner. This is important because in the
-// RefineDynamicShapes method called in Compile we refine the shape of the
-// array arguments. This would create a type error at the call to _wrapped_main
-// with the expected type of %arg0.
-tsl::Status XlaCallModuleLoader::AddMainWrapper() {
-  int nr_dim_args = dim_args_spec_.size();
-  // Locate the 'main' function.
-  // This is the convention used by MlirToXlaComputation.
-  mlir::func::FuncOp orig_main =
-      module_->lookupSymbol<mlir::func::FuncOp>("main");
-  if (!orig_main) {
-    return absl::InvalidArgumentError("Cannot find 'main' in module");
-  }
-  int nr_platform_args = 0;
-  if (platform_index_ >= 0) {
-    nr_platform_args = 1;
-  }
-  if (orig_main.getNumArguments() <= nr_platform_args + nr_dim_args) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("The module should have ", nr_platform_args,
-                     " platform index arguments and ", nr_dim_args,
-                     " dimension arguments, but it ", "has only ",
-                     orig_main.getNumArguments(), " total arguments"));
-  }
-  mlir::Block &orig_main_body = orig_main.front();
-
-  mlir::SymbolTable::setSymbolVisibility(
-      orig_main, mlir::SymbolTable::Visibility::Private);
-  mlir::OpBuilder op_builder(module_->getBodyRegion());
-  orig_main.setName(op_builder.getStringAttr("_wrapped_main"));
-  mlir::Location loc = module_->getLoc();
-  std::vector<mlir::Type> new_main_arg_types(
-      orig_main.getArgumentTypes().begin() + nr_platform_args + nr_dim_args,
-      orig_main.getArgumentTypes().end());
-  mlir::func::FuncOp new_main = op_builder.create<mlir::func::FuncOp>(
-      loc, "main",
-      mlir::FunctionType::get(module_->getContext(),
-                              /*inputs=*/new_main_arg_types,
-                              /*results=*/orig_main.getResultTypes()));
-  mlir::SymbolTable::setSymbolVisibility(new_main,
-                                         mlir::SymbolTable::Visibility::Public);
-  mlir::Block *new_main_block = new_main.addEntryBlock();
-  std::vector<mlir::Value> block_args(new_main_block->getArguments().begin(),
-                                      new_main_block->getArguments().end());
-  op_builder.setInsertionPointToStart(new_main_block);
-
-  std::vector<mlir::Value> call_args(orig_main_body.getNumArguments());
-  for (int i = 0; i < orig_main_body.getNumArguments(); ++i) {
-    if (i < nr_platform_args + nr_dim_args) {
-      mlir::Type arg_type = orig_main.getArgument(i).getType();
-      mlir::RankedTensorType arg_ranked_type =
-          arg_type.dyn_cast<mlir::RankedTensorType>();
-      if (!arg_ranked_type ||
-          !arg_ranked_type.getElementType().dyn_cast<mlir::IntegerType>() ||
-          !arg_ranked_type.getShape().empty()) {
-        std::string argument_type =
-            (i < nr_platform_args) ? "platform index" : "dimension";
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Module argument at index ", i,
-            " should be a 0-dimensional integer-tensor ", argument_type,
-            " argument but has type ", mlir::debugString(arg_type)));
-      }
-      if (i < nr_platform_args) {
-        if (arg_ranked_type.getElementTypeBitWidth() != 32) {
-          return absl::InvalidArgumentError(
-              absl::StrCat("Module argument at index ", i,
-                           " should be a 0-dimensional 32-bit integer-tensor"
-                           " platform index argument but has type ",
-                           mlir::debugString(arg_type)));
-        }
-        call_args[i] = op_builder.create<mlir::stablehlo::ConstantOp>(
-            block_args[0].getLoc(),
-            op_builder.getI32IntegerAttr(platform_index_));
+absl::Status XlaCallModuleLoader::SetPlatformIndex(
+    absl::string_view compilation_platform) {
+  int platform_index = -1;
+  if (!platforms_.empty()) {
+    auto found_platform =
+        std::find(platforms_.begin(), platforms_.end(), compilation_platform);
+    if (found_platform == platforms_.end()) {
+      if (!IsPlatformCheckDisabled(loading_disabled_checks_)) {
+        return absl::NotFoundError(absl::StrCat(
+            "The current platform ", compilation_platform,
+            " is not among the platforms required by the module: [",
+            absl::StrJoin(platforms_, ", "), "]"));
       } else {
-        TF_ASSIGN_OR_RETURN(
-            call_args[i],
-            ComputeDimensionValue(
-                version_, dim_args_spec_[i - nr_platform_args], block_args,
-                op_builder, orig_main.getArgument(i).getType()));
+        if (platforms_.size() > 1) {
+          platform_index = 0;
+        }
       }
     } else {
-      call_args[i] =
-          new_main_block->getArgument(i - nr_platform_args - nr_dim_args);
+      // We only use a platform index argument if we support at least 2
+      // platforms.
+      if (platforms_.size() > 1) {
+        platform_index = found_platform - platforms_.begin();
+      }
     }
   }
-  mlir::func::CallOp call_op = op_builder.create<mlir::func::CallOp>(
-      loc, orig_main.getResultTypes(), orig_main.getSymName(), call_args);
-  op_builder.create<mlir::func::ReturnOp>(loc, call_op.getResults());
 
-  if (VLOG_IS_ON(5)) {
-    DumpMlirOpToFile("xla_call_module.after_add_main_wrapper", *module_);
+  if (platform_index < 0) return absl::OkStatus();
+  VLOG(3) << "XlaCallModule setting the platform_index to " << platform_index
+          << " for platform " << compilation_platform << ".";
+  mlir::Block &main_body = main_.front();
+
+  if (main_.getNumArguments() < 1) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "The module should have a platform index argument but it has no ",
+        "arguments"));
   }
+  mlir::OpBuilder op_builder(main_);
+  op_builder.setInsertionPointToStart(&main_body);
+  mlir::BlockArgument platform_index_arg = main_body.getArgument(0);
+  mlir::RankedTensorType arg_ranked_type =
+      mlir::dyn_cast<mlir::RankedTensorType>(platform_index_arg.getType());
+  if (!arg_ranked_type || arg_ranked_type.getRank() != 0 ||
+      !(arg_ranked_type.getElementType().isSignlessInteger(32) ||
+        arg_ranked_type.getElementType().isSignlessInteger(64))) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Module argument at index 0 should be a 0-dimensional "
+                     "32-bit or 64-bit integer-tensor platform index argument "
+                     "but has type ",
+                     mlir::debugString(platform_index_arg.getType())));
+  }
+  bool is_32_bit = arg_ranked_type.getElementType().isSignlessInteger(32);
+  auto const_attr = is_32_bit ? op_builder.getI32IntegerAttr(platform_index)
+                              : op_builder.getI64IntegerAttr(platform_index);
+  auto platform_index_op = op_builder.create<mlir::stablehlo::ConstantOp>(
+      platform_index_arg.getLoc(), const_attr);
+  platform_index_arg.replaceAllUsesWith(platform_index_op);
 
-  return tsl::OkStatus();
+  main_.eraseArgument(0);
+  platform_index_arg_set_ = true;
+  return absl::OkStatus();
 }
 
-tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
+absl::Status XlaCallModuleLoader::RefineDynamicShapes(
     llvm::ArrayRef<xla::Shape> input_shapes) {
-  // Locate the (wrapped) 'main' function.
-  // This is the convention used by MlirToXlaComputation.
-  mlir::Block &main_body = main_.front();
-  int nr_platform_args = (platform_index_ >= 0 ? 1 : 0);
-  int nr_dim_args = dim_args_spec_.size();
-  int non_dimension_arguments = input_shapes.size();
-  if (non_dimension_arguments != main_body.getNumArguments()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Incorrect number of arguments passed to XlaCallModule: ",
-        non_dimension_arguments, ". The module takes ",
-        main_body.getNumArguments() + nr_platform_args + nr_dim_args,
-        " arguments of which ", nr_platform_args,
-        " platform index arguments and ", nr_dim_args,
-        " dimension arguments. It must be called with ",
-        main_body.getNumArguments(), " arguments."));
-  }
+  // Skip shape refinement for new versions if USES_SHAPE_POLYMORPHISM_ATTR=1
+  if (version_ >= kVersionStartSupportUsesShapePolymorphismAttr) {
+    if (mlir::Attribute uses_shape_poly_attr =
+            (*module_)->getAttr(kUsesShapePolymorphismAttr)) {
+      mlir::BoolAttr uses_shape_poly_bool_attr =
+          llvm::dyn_cast<mlir::BoolAttr>(uses_shape_poly_attr);
 
-  mlir::Builder builder(module_->getContext());
-  std::vector<mlir::Type> static_array_input_types(non_dimension_arguments);
-  for (int i = 0, end = non_dimension_arguments; i < end; ++i) {
-    const xla::Shape &xla_shape = input_shapes[i];
-    if (xla_shape.IsToken()) {
-      static_array_input_types[i] = mlir::stablehlo::TokenType::get(context_);
+      if (!uses_shape_poly_bool_attr) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "jax.uses_shape_polymorphism is not a boolean attribute: ",
+            mlir::debugString(uses_shape_poly_attr)));
+      }
+      if (!uses_shape_poly_bool_attr.getValue()) {
+        VLOG(3) << "XlaCallModule skipping shape refinement due to module "
+                << " attribute " << kUsesShapePolymorphismAttr.str() << "="
+                << mlir::debugString(uses_shape_poly_attr);
+        return absl::OkStatus();
+      }
     } else {
-      std::vector<int64_t> xla_dimensions(xla_shape.dimensions().begin(),
-                                          xla_shape.dimensions().end());
-      TF_ASSIGN_OR_RETURN(
-          mlir::Type element_type,
-          ConvertPrimitiveTypeToMLIRType(xla_shape.element_type(), builder));
-      mlir::RankedTensorType type =
-          mlir::RankedTensorType::get(xla_dimensions, element_type);
-      // TODO(burmako): This fails with an obscure compilation error.
-      // TF_ASSIGN_OR_RETURN(
-      //     mlir::Type type,
-      //     ConvertShapeToType<mlir::RankedTensorType>(xla_shape, builder));
-      VLOG(3) << "XlaCallModule static array input type #" << i << ": "
-              << mlir::debugString(type);
-      mlir::TensorType arg_type =
-          main_body.getArgument(i).getType().dyn_cast<mlir::TensorType>();
-      if (arg_type == nullptr) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Argument ", i, " passed to XlaCallModule is not a tensor"));
-      }
-
-      if (arg_type.getElementType() != type.getElementType()) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Element type mismatch for argument ", i,
-            " passed to XlaCallModule: ", "expecting ",
-            mlir::debugString(arg_type), ", got ", mlir::debugString(type)));
-      }
-
-      if (auto ranked_arg_type = arg_type.dyn_cast<mlir::RankedTensorType>()) {
-        if (mlir::failed(mlir::verifyCompatibleShape(ranked_arg_type.getShape(),
-                                                     type.getShape()))) {
-          return absl::InvalidArgumentError(absl::StrCat(
-              "Shape mismatch for argument ", i,
-              " passed to XlaCallModule: ", "expecting ",
-              mlir::debugString(arg_type), ", got ", mlir::debugString(type)));
-        }
-      }
-
-      static_array_input_types[i] = type;
+      VLOG(3) << "XlaCallModule skipping shape refinement due to module "
+              << " attribute " << kUsesShapePolymorphismAttr.str()
+              << " missing";
+      return absl::OkStatus();
     }
   }
+  // Add the tokens to the input_shapes. Starting with version 9, the main
+  // function may take token arguments that do not correspond with op inputs.
+  int nr_inputs = NrInputs();
+  int nr_expected_tokens = llvm::count_if(InputTypes(), IsTokenType);
+  bool has_platform_index_arg =
+      platforms_.size() > 1 && !platform_index_arg_set_;
+  int nr_expected_platform_index_args = has_platform_index_arg ? 1 : 0;
+  if (input_shapes.size() !=
+      nr_inputs - nr_expected_tokens - nr_expected_platform_index_args) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "XlaCallModule RefineDynamicShapes called with ", input_shapes.size(),
+        " input shapes, but the main function takes ",
+        nr_inputs - nr_expected_tokens - nr_expected_platform_index_args,
+        " non-token and non-platform-index arguments. The input ",
+        "shapes are (",
+        absl::StrJoin(input_shapes, ", ",
+                      [](std::string *out, const xla::Shape &s) {
+                        absl::StrAppend(out, s.ToString());
+                      }),
+        ") and the main function argument types are ",
+        absl::StrJoin(InputTypes(), ", ",
+                      [](std::string *out, const mlir::Type &t) {
+                        absl::StrAppend(out, mlir::debugString(t));
+                      }),
+        ")"));
+  }
 
-  // Refine 'main' argument types to use static input types instead.
-  // This will only change the argument types and will not propagate the
-  // additional type information further. For that, we'll need to run
-  // shape refinement as explained below.
-  // Before refining the argument types it is useful to run the inliner to
-  // remove calls that may be called with the input arguments.
+  // Derive static input types to use for main.
+  mlir::Block &main_body = main_.front();
+  mlir::Builder builder(module_->getContext());
+  std::vector<mlir::Type> static_array_input_types(nr_inputs);
+  int next_actual_input = 0;
+  for (int i = 0, end = nr_inputs; i < end; ++i) {
+    mlir::Type arg_type = main_body.getArgument(i).getType();
+    if (i == 0 && has_platform_index_arg) {
+      static_array_input_types[i] = arg_type;
+      continue;
+    }
+    if (IsTokenType(arg_type)) {
+      static_array_input_types[i] = arg_type;
+      VLOG(3) << "XlaCallModule static array input type #" << i << ": "
+              << mlir::debugString(static_array_input_types[i])
+              << " for argument type " << mlir::debugString(arg_type);
+      continue;
+    }
+
+    // Get static MLIR Type from xla Shape.
+    const xla::Shape &xla_shape = input_shapes[next_actual_input++];
+    std::vector<int64_t> xla_dimensions;
+    if (xla_shape.IsArray()) {
+      xla_dimensions = std::vector<int64_t>(xla_shape.dimensions().begin(),
+                                            xla_shape.dimensions().end());
+    }
+    TF_ASSIGN_OR_RETURN(
+        mlir::Type element_type,
+        ConvertPrimitiveTypeToMlirType(xla_shape.element_type(), builder));
+    mlir::RankedTensorType type =
+        mlir::RankedTensorType::get(xla_dimensions, element_type);
+
+    VLOG(3) << "XlaCallModule static array input type #" << i << ": "
+            << mlir::debugString(type) << " for argument type "
+            << mlir::debugString(arg_type);
+    static_array_input_types[i] = type;
+  }
+
+  // Insert custom_call ops as shims to maintain the validity of the module when
+  // main's input types are changed later. This is a workaround to allow shape
+  // refinement to be applied; the custom_calls are removed before returning.
+  // Arguments to main may occur as return values, or as inputs to called
+  // functions, and changing their types may invalidate the module due to type
+  // mismatches. To prevent this, for each argument that is a dynamically-shaped
+  // tensor, we insert a custom_call op that takes the argument as an input and
+  // replace uses of the argument with the custom_call's result. custom_call
+  // is used as it allows its inputs and outputs to be unranked.
+  //
+  // Example:
+  //
+  // The below main function returns its argument directly:
+  //
+  // func.func @main(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  //   return %arg0 : tensor<*xf32>
+  // }
+  //
+  // Changing the argument's type invalidates the IR (type mismatch):
+  //
+  // func.func @main(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
+  //   return %arg0 : tensor<*xf32>
+  // }
+  //
+  // Inserting a custom_call allows the IR to remain valid:
+  //
+  // func.func @main(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
+  //   %0 = stablehlo.constant dense<[2, 3]> : tensor<2xi64>
+  //   %1 = stablehlo.custom_call
+  //   @stablehlo.shape_refinement_operand_wrapper(%arg0, %0)
+  //   {indices_of_shape_operands = dense<1> : tensor<1xi64>} :
+  //   (tensor<2x3xf32>, tensor<2xi64>) -> tensor<*xf32>
+  //   return %1 : tensor<*xf32>
+  // }
+  //
+  // After shapes are refined and the custom_calls are removed, we get:
+  //
+  // func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  //   return %arg0 : tensor<2x3xf32>
+  // }
+  //
   {
     mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
-
-    mlir::PassManager pm_inline(module_->getContext());
-    applyTensorflowAndCLOptions(pm_inline);
-    pm_inline.addPass(mlir::createInlinerPass());
-
-    if (mlir::failed(pm_inline.run(*module_))) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Module inlining failed: ", diag_handler.ConsumeStatus().ToString()));
+    if (failed(mlir::stablehlo::refineArguments(main_,
+                                                static_array_input_types))) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Error refining argument shapes: ",
+                       diag_handler.ConsumeStatus().ToString()));
     }
   }
 
-  auto static_array_output_types = llvm::to_vector(main_.getResultTypes());
-  for (auto i = 0; i < main_body.getNumArguments(); ++i) {
-    auto arg = main_body.getArgument(i);
-    arg.setType(static_array_input_types[i]);
-    // If the argument is used by `func.return`, then we also need to
-    // update the function result types. It's not great that we need this hack,
-    // but in the future when we have stablehlo.func, stablehlo.return, etc,
-    // this will not be needed.
-    // TODO(burmako): Once https://github.com/openxla/stablehlo/issues/425 is
-    // fixed, clean this up.
-    for (mlir::OpOperand &use : arg.getUses()) {
-      if (auto ret = llvm::dyn_cast<mlir::func::ReturnOp>(use.getOwner())) {
-        static_array_output_types[use.getOperandNumber()] = arg.getType();
-      }
-    }
-  }
-  main_.setType(builder.getFunctionType(static_array_input_types,
-                                        static_array_output_types));
   if (VLOG_IS_ON(5)) {
     DumpMlirOpToFile("xla_call_module.after_refined_input_types", *module_);
   }
+  bool enable_shape_assertions =
+      (version_ >= kVersionStartSupportShapeAssertions &&
+       !IsShapeAssertionsCheckDisabled(loading_disabled_checks_));
 
-  TF_RETURN_IF_ERROR(xla::RefinePolymorphicShapes(*module_));
+  // Store the original output types before shape refinement.
+  mlir::TypeRange original_output_types = OutputTypes();
+
+  // RefinePolymorphicShapes will refine using the new static types and clean up
+  // the shape_refinement_operand_wrapper custom calls.
+  TF_RETURN_IF_ERROR(
+      xla::RefinePolymorphicShapes(*module_, enable_shape_assertions));
 
   if (VLOG_IS_ON(3)) {
     DumpMlirOpToFile("xla_call_module.after_shape_refinement", *module_);
   }
-  return tsl::OkStatus();
+
+  // Mark the output types as refined if they are different from the original
+  // output types.
+  if (OutputTypes() != original_output_types) {
+    output_types_refined_ = true;
+  }
+
+  return absl::OkStatus();
 }
 
-tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
-    mlir::MLIRContext *context, int version, std::string module_str,
-    std::vector<std::string> dim_args_spec,
+absl::Status XlaCallModuleLoader::LoadModule(
+    mlir::MLIRContext *context, int version, mlir::StringRef module_str,
     std::vector<std::string> disabled_checks,
-    std::vector<std::string> platforms, std::string loading_platform) {
+    std::vector<std::string> platforms, int num_invocation_args,
+    bool main_has_token_input_output) {
   context_ = context;
   version_ = version;
-  dim_args_spec_ = std::move(dim_args_spec);
+  platforms_ = platforms;
+  loading_disabled_checks_ = disabled_checks;
+  loading_disabled_checks_.insert(
+      loading_disabled_checks_.end(),
+      GetXlaCallModuleFlags()->disabled_checks.begin(),
+      GetXlaCallModuleFlags()->disabled_checks.end());
 
   // Load a superset of dialects; we should check at serialization time that
   // we only include allowable dialects.
   context_->loadDialect<mlir::func::FuncDialect>();
   context_->loadDialect<mlir::stablehlo::StablehloDialect>();
-  context_->loadDialect<mlir::mhlo::MhloDialect>();
   context_->loadDialect<mlir::chlo::ChloDialect>();
   context_->loadDialect<mlir::vhlo::VhloDialect>();
 
-  if (version >= VERSION_START_SUPPORT_DISABLED_CHECKS && platforms.empty()) {
+  if (version < kVersionMinimumSupported) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "XlaCallModuleOp with version ", version,
+        " is not supported anymore. Must be >= ", kVersionMinimumSupported));
+  }
+  if (version > kVersionMaximumSupported) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("XlaCallModuleOp with version ", version,
+                     " is not supported by this build. Must be <= ",
+                     kVersionMaximumSupported));
+  }
+  if (version >= kVersionStartSupportDisabledChecks && platforms.empty()) {
     return absl::InvalidArgumentError(
         absl::StrCat("XlaCallModuleOp with version ", version,
                      " must have non-empty platforms."));
   }
 
-  // Parses both IR text and bytecode.
-  if (version >= VERSION_START_STABLE_HLO_COMPATIBILITY) {
+  // Parse the StableHLO/VHLO bytecode
+  {
+    mlir::StatusScopedDiagnosticHandler diag_handler(context_);
     module_ =
         mlir::stablehlo::deserializePortableArtifact(module_str, context_);
-  } else {
-    module_ = mlir::parseSourceString<mlir::ModuleOp>(module_str, context_);
-  }
-
-  std::vector<std::string> loading_disabled_checks = disabled_checks;
-  loading_disabled_checks.insert(
-      loading_disabled_checks.end(),
-      GetXlaCallModuleFlags()->disabled_checks.begin(),
-      GetXlaCallModuleFlags()->disabled_checks.end());
-  if (!module_) {
-    return absl::InvalidArgumentError("Cannot deserialize computation");
-  }
-
-  VLOG(3) << "Parsed serialized module (version = " << version
-          << ", platforms = [" << absl::StrJoin(platforms, ", ")
-          << "], loading_platform = " << loading_platform
-          << ", dim_args_spec = [" << absl::StrJoin(dim_args_spec_, ", ")
-          << "], disabled_checks = [" << absl::StrJoin(disabled_checks, ", ")
-          << "], loading_disabled_checks = ["
-          << absl::StrJoin(loading_disabled_checks, ", ") << "]), module = "
-          << DumpMlirOpToFile("xla_call_module.parsed", *module_);
-
-  if (version < VERSION_MINIMUM_SUPPORTED) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "XlaCallModuleOp with version ", version,
-        " is not supported anymore. Must be >= ", VERSION_MINIMUM_SUPPORTED));
-  }
-  if (version > VERSION_MAXIMUM_SUPPORTED) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("XlaCallModuleOp with version ", version,
-                     " is not supported by this build. Must be <= ",
-                     VERSION_MAXIMUM_SUPPORTED));
-  }
-
-  platform_index_ = -1;
-  if (!platforms.empty()) {
-    auto found_platform =
-        std::find(platforms.begin(), platforms.end(), loading_platform);
-    if (found_platform == platforms.end()) {
-      if (!IsPlatformCheckDisabled(loading_disabled_checks)) {
-        return absl::NotFoundError(absl::StrCat(
-            "The current platform ", loading_platform,
-            " is not among the platforms required by the module: [",
-            absl::StrJoin(platforms, ", "), "]"));
-      } else {
-        if (platforms.size() > 1) {
-          platform_index_ = 0;
-        }
-      }
-    } else {
-      // We only use a platform index arguments if we support at least 2
-      // platforms.
-      if (platforms.size() > 1) {
-        platform_index_ = found_platform - platforms.begin();
-      }
+    if (!module_) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot deserialize computation: ",
+                       diag_handler.ConsumeStatus().ToString()));
     }
   }
+  VLOG(3) << "Parsed serialized module (version = " << version
+          << ", platforms = [" << absl::StrJoin(platforms, ", ")
+          << "], main_has_token_input_output = " << main_has_token_input_output
+          << ", disabled_checks = [" << absl::StrJoin(disabled_checks, ", ")
+          << "], loading_disabled_checks = ["
+          << absl::StrJoin(loading_disabled_checks_, ", ") << "]), module = "
+          << DumpMlirOpToFile("xla_call_module.parsed", *module_);
 
-  if (version >= VERSION_START_SUPPORT_CALL_TF_GRAPH &&
-      !dim_args_spec_.empty()) {
-    return absl::InvalidArgumentError(
-        "dim_args_spec not supported in this version");
-  }
   {
     mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
     if (mlir::failed(mlir::verify(*module_))) {
@@ -507,14 +432,35 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
     return absl::InvalidArgumentError("Cannot find 'main' in module");
   }
 
-  if (!dim_args_spec_.empty() || platform_index_ >= 0) {
-    TF_RETURN_IF_ERROR(AddMainWrapper());
-    main_ = module_->lookupSymbol<mlir::func::FuncOp>("main");
+  mlir::Block &main_body = main_.front();
+
+  int nr_token_arguments = llvm::count_if(InputTypes(), IsTokenType);
+  if (version < kVersionStartSupportEffects) {
+    bool has_token_at_start = (nr_token_arguments == 1 &&
+                               IsTokenType(main_.getArgument(0).getType()));
+    if (main_has_token_input_output != has_token_at_start) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Expected a token at start iff main_has_token_input_output. ",
+          "Found main function type ",
+          mlir::debugString(main_.getFunctionType()),
+          " and main_has_token_input_output = ", main_has_token_input_output));
+    }
   }
-  return tsl::OkStatus();
+  int nr_platform_args = (platforms.size() > 1 ? 1 : 0);
+  if (num_invocation_args !=
+      main_body.getNumArguments() - nr_platform_args - nr_token_arguments) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Incorrect number of arguments passed to XlaCallModule = ",
+        num_invocation_args, ". It must be called with ",
+        main_body.getNumArguments() - nr_platform_args - nr_token_arguments,
+        " because the module main function takes ", main_body.getNumArguments(),
+        " arguments of which ", nr_platform_args, " platform index arguments, ",
+        "and ", nr_token_arguments, " token arguments."));
+  }
+  return absl::OkStatus();
 }
 
-tsl::Status XlaCallModuleLoader::ValidateDialect() {
+absl::Status XlaCallModuleLoader::ValidateDialect() {
   mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
   bool moduleHasUnsupportedDialects = false;
 
@@ -534,24 +480,24 @@ tsl::Status XlaCallModuleLoader::ValidateDialect() {
         absl::StrCat("Module has unsupported dialects: ",
                      diag_handler.ConsumeStatus().ToString()));
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
+absl::Status XlaCallModuleLoader::ValidateStaticShapes() {
+  return xla::ValidateStaticShapes(*module_);
+}
+
+absl::Status XlaCallModuleLoader::PrepareStablehloForLowering() {
   mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
 
+  // TODO (b/410057228): Replace MHLO canonicalization with StableHLO.
+  // This code requires MHLO CaseOp canonicalization to remove unreachable
+  // branches, else `tf.call_tf_function` inlining can fail.
   mlir::PassManager pm(module_->getContext());
-  applyTensorflowAndCLOptions(pm);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createLegalizeSparseChloToLinalgPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass(
-      /*legalizeBroadcasts=*/true, /*expandCompositions=*/true));
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  // In order to export to XLA, we must sink constants to control flow
-  // regions, since XLA uses functional control flow.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createSinkConstantsToControlFlowPass());
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+
   if (failed(pm.run(*module_))) {
     return absl::InternalError(
         absl::StrCat("MHLO->HLO lowering passes failed: ",
@@ -559,18 +505,15 @@ absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
   }
 
   if (VLOG_IS_ON(5)) {
-    DumpMlirOpToFile("xla_call_module.after_mhlo_lowering", *module_);
+    DumpMlirOpToFile("xla_call_module.after_canonicalization", *module_);
   }
 
   return absl::OkStatus();
 }
 
-tsl::StatusOr<xla::XlaComputation> XlaCallModuleLoader::ToXlaComputation() {
+absl::StatusOr<xla::XlaComputation> XlaCallModuleLoader::ToXlaComputation() {
   xla::HloProto proto;
-  mlir::MlirToHloConversionOptions options;
-  TF_RETURN_IF_ERROR(
-      mlir::ConvertMlirHloToHlo(*module_, &proto, /*use_tuple_args=*/false,
-                                /*return_tuple=false*/ false, options));
+  TF_RETURN_IF_ERROR(xla::ConvertStablehloToHloProto(*module_, &proto));
   return xla::XlaComputation(std::move(*proto.mutable_hlo_module()));
 }
 

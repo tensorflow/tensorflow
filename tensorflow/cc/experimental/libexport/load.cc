@@ -23,34 +23,29 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
-#define RETURN_IF_ERROR(s) \
-  {                        \
-    auto c = (s);          \
-    if (!c.ok()) return c; \
-  }
-
 namespace tensorflow {
 namespace libexport {
 
 using protobuf::RepeatedPtrField;
 
-tensorflow::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
+absl::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
   // Load the proto
   TFPackage tf_package;
   const string saved_model_pb_path = io::JoinPath(path, kSavedModelFilenamePb);
   const string saved_model_pbtxt_path =
       io::JoinPath(path, kSavedModelFilenamePbTxt);
   if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
-    RETURN_IF_ERROR(ReadBinaryProto(Env::Default(), saved_model_pb_path,
-                                    &tf_package.saved_model_proto_));
+    TF_RETURN_IF_ERROR(ReadBinaryProto(Env::Default(), saved_model_pb_path,
+                                       &tf_package.saved_model_proto_));
   } else if (Env::Default()->FileExists(saved_model_pbtxt_path).ok()) {
-    RETURN_IF_ERROR(ReadTextProto(Env::Default(), saved_model_pbtxt_path,
-                                  &tf_package.saved_model_proto_));
+    TF_RETURN_IF_ERROR(ReadTextProto(Env::Default(), saved_model_pbtxt_path,
+                                     &tf_package.saved_model_proto_));
   } else {
-    return Status(absl::StatusCode::kNotFound,
-                  "Could not find SavedModel .pb or .pbtxt at supplied export "
-                  "directory path: " +
-                      path);
+    return absl::Status(
+        absl::StatusCode::kNotFound,
+        "Could not find SavedModel .pb or .pbtxt at supplied export "
+        "directory path: " +
+            path);
   }
 
   // Load the trackable object graph for restoring checkpoint values
@@ -65,7 +60,7 @@ tensorflow::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
     tf_package.variable_reader_ = std::make_unique<tensorflow::BundleReader>(
         tensorflow::Env::Default(), tf_package.variables_filepath_);
     tensorflow::Tensor object_graph_tensor;
-    RETURN_IF_ERROR(tf_package.variable_reader_->Lookup(
+    TF_RETURN_IF_ERROR(tf_package.variable_reader_->Lookup(
         tensorflow::kObjectGraphProtoKey, &object_graph_tensor));
     const auto* object_graph_string =
         reinterpret_cast<const tensorflow::tstring*>(
@@ -89,8 +84,7 @@ tensorflow::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
   return tf_package;
 }
 
-tensorflow::StatusOr<std::string> TFPackage::GetVariableCheckpointKey(
-    int index) {
+absl::StatusOr<std::string> TFPackage::GetVariableCheckpointKey(int index) {
   // TODO(danielellis): make sure valid index
   const auto& trackable_object = trackable_object_graph_.nodes(index);
   const TrackableObjectGraph::TrackableObject::SerializedTensor*
@@ -101,8 +95,8 @@ tensorflow::StatusOr<std::string> TFPackage::GetVariableCheckpointKey(
     }
   }
   if (serialized_tensor == nullptr) {
-    return tensorflow::Status(absl::StatusCode::kInternal,
-                              "Failed to find variable value field.");
+    return absl::Status(absl::StatusCode::kInternal,
+                        "Failed to find variable value field.");
   }
   return serialized_tensor->checkpoint_key();
 }
@@ -111,12 +105,12 @@ const SavedObjectGraph& TFPackage::GetObjectGraph() {
   return saved_model_proto_.mutable_meta_graphs(0)->object_graph_def();
 }
 
-tensorflow::StatusOr<const tensorflow::NodeDef*> TFPackage::GetGraphDefNode(
+absl::StatusOr<const tensorflow::NodeDef*> TFPackage::GetGraphDefNode(
     std::string name) {
   const auto& iter = graph_def_nodes_by_name_.find(name);
   if (iter == graph_def_nodes_by_name_.end()) {
-    return tensorflow::Status(absl::StatusCode::kInternal,
-                              absl::StrCat("Failed to find node named ", name));
+    return absl::Status(absl::StatusCode::kInternal,
+                        absl::StrCat("Failed to find node named ", name));
   }
   return iter->second;
 }

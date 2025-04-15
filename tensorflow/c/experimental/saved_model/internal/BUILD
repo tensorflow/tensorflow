@@ -9,8 +9,6 @@
 # Note(bmzhao): The *.cc files in this directory form the direct implementation of the
 # C API functions exposed in tf/c/experimental/saved_model/public/.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-
 # Note(bmzhao): All *type.h files in this directory are the internal definitions of
 # the opaque C types. These headers should only be visible to internal tensorflow
 # implementors.
@@ -19,6 +17,7 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -153,6 +152,7 @@ cc_library(
         "//tensorflow/c/experimental/saved_model/core:tf_saved_model_api",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:context",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -162,9 +162,7 @@ cc_library(
     hdrs = [
         "saved_model_api_type.h",
     ],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/c:conversion_macros",
         "//tensorflow/c/experimental/saved_model/core:saved_model_api",
@@ -373,7 +371,9 @@ tf_cc_test(
         "//tensorflow/c/experimental/saved_model/public:signature_def_param_list",
         "//tensorflow/c/experimental/saved_model/public:tensor_spec",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
     ],
 )

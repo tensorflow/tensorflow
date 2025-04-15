@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
-#include "tensorflow/compiler/xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -235,7 +235,7 @@ class ExtractOutsideCompilationForFunctionTest : public ::testing::Test {
     device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
   }
 
-  Status ExtractOutsideCompilationTest(
+  absl::Status ExtractOutsideCompilationTest(
       const string &xla_cluster_attr_name,
       const string &outside_compilation_attr_name,
       const string &xla_cluster_name, const NameAttrList &func_name_attrs,
@@ -740,7 +740,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInFunction) {
                     .Attr("dtype", DT_INT32)
                     .Attr("value", tensor_proto)
                     .Finalize(&const_def));
-    Status s;
+    absl::Status s;
     Node *const_node = g->AddNode(const_def, &s);
     TF_CHECK_OK(s);
 

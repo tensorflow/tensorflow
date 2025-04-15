@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -30,7 +31,7 @@ namespace custom_op_examples {
 
 using ::tensorflow::shape_inference::InferenceContext;
 
-Status MultiplexShapeFunction(InferenceContext* c) {
+absl::Status MultiplexShapeFunction(InferenceContext* c) {
   int64_t num_cond_a;
   TF_RETURN_IF_ERROR(c->GetAttr("N", &num_cond_a));
   tensorflow::shape_inference::ShapeHandle unused;
@@ -42,7 +43,7 @@ Status MultiplexShapeFunction(InferenceContext* c) {
     TF_RETURN_IF_ERROR(c->Merge(c->input(i), c->input(last), &unused));
   }
   c->set_output(0, c->input(last));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("Examples>MultiplexDense")

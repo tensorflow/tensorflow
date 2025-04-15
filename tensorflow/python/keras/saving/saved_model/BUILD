@@ -16,6 +16,8 @@
 # Description:
 #   Keras saving and loading files for SavedModel.
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -61,6 +63,6 @@ py_library(
         "//tensorflow/python/saved_model:utils",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
     ],
 )

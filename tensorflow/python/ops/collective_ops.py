@@ -151,6 +151,7 @@ def all_reduce_v2(t,
       final_op=final_op,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout,
+      is_stateless=False,
       ordering_token=ordering_token,
       max_subdivs_per_device=max_subdivs_per_device,
       name=name)
@@ -241,6 +242,7 @@ def all_gather_v2(t,
       instance_key=instance_key,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout,
+      is_stateless=False,
       ordering_token=ordering_token,
       name=name)
 
@@ -543,6 +545,7 @@ def all_to_all_v2(
       instance_key=instance_key,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout,
+      is_stateless=False,
       ordering_token=ordering_token,
       name=name,
   )

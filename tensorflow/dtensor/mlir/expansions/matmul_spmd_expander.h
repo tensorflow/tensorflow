@@ -16,10 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_MATMUL_SPMD_EXPANDER_H_
 #define TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_MATMUL_SPMD_EXPANDER_H_
 
+#include <optional>
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
 
 namespace tensorflow {
@@ -41,7 +49,7 @@ class MatMulSPMDExpander : public SPMDExpanderBase {
   StatusOr<Layout> OutputLayoutAndReducedDims(
       bool allow_unknown_layouts, mlir::Operation* op,
       absl::flat_hash_set<std::string>* reduced_dims,
-      absl::optional<Layout>* left, absl::optional<Layout>* right);
+      std::optional<Layout>* left, std::optional<Layout>* right);
 
   // This function prepares the inputs (x, y or a, b) to (Batch)MatMul by
   // possibly computing a new layout for each input that allows us to simply
@@ -55,11 +63,11 @@ class MatMulSPMDExpander : public SPMDExpanderBase {
   // matmul_layout will be set to the layout of the output of the local matmul
   // (after the above reduction). This may be different from the desired output
   // layout.
-  Status MaybeRelayoutInputs(mlir::Operation* op, const Layout& left_layout,
-                             bool left_transposed, const Layout& right_layout,
-                             bool right_transposed, const Layout& output_layout,
-                             std::string& reduced_dim, Layout& matmul_layout,
-                             mlir::Value& left, mlir::Value& right);
+  absl::Status MaybeRelayoutInputs(
+      mlir::Operation* op, const Layout& left_layout, bool left_transposed,
+      const Layout& right_layout, bool right_transposed,
+      const Layout& output_layout, std::string& reduced_dim,
+      Layout& matmul_layout, mlir::Value& left, mlir::Value& right);
 };
 
 }  // namespace dtensor

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ExtractImagePatches"
   input_arg {
     name: "images"

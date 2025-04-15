@@ -14,25 +14,30 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/core/tools/verifier.h"
 
+#include <cstdarg>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "flatbuffers/flatbuffers.h"
-#include "flatbuffers/util.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/core/framework/numeric_types.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/core/platform/resource_loader.h"
-#include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
-#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/error_reporter.h"
+#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/op_resolver.h"
-#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
@@ -155,7 +160,7 @@ class TfLiteFlatbufferModelBuilder {
 
   flatbuffers::FlatBufferBuilder builder_;
   MutableOpResolver resolver_;
-  TfLiteRegistration fake_op_;
+  TfLiteRegistration fake_op_{};
   MockErrorReporter mock_reporter_;
   std::vector<flatbuffers::Offset<Operator>> operators_;
   std::vector<flatbuffers::Offset<OperatorCode>> operator_codes_;
@@ -628,7 +633,7 @@ TEST(VerifyModel, SimpleValidSparseTensor) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_TRUE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -653,7 +658,7 @@ TEST(VerifyModel, InvalidSparseTensorMissingBlockMap) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_FALSE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -681,7 +686,7 @@ TEST(VerifyModel, InvalidSparseTensorIndexOutOfBound) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_FALSE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -708,7 +713,7 @@ TEST(VerifyModel, InvalidSparseTensorInvalidBuffer) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_FALSE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -737,7 +742,7 @@ TEST(VerifyModel, InvalidSparseTensorInvalidTraversalOrder) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_FALSE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -778,7 +783,7 @@ TEST(VerifyModel, ValidSparseTensorBCSC) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_TRUE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));

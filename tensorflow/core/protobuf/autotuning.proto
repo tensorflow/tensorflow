@@ -2,6 +2,6 @@ syntax = "proto3";
 
 package tensorflow.dummy;
 
-import public "tensorflow/compiler/xla/autotuning.proto";
+import public "xla/autotuning.proto";
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";

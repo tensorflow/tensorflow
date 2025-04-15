@@ -19,19 +19,34 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_context.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/local_device.h"
+#include "xla/util.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
-#include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/tfrt/common/pjrt_util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -40,7 +55,7 @@ const char* const DEVICE_GPU_XLA_JIT = "XLA_GPU_JIT";
 const char* const DEVICE_XLA_CPU = "XLA_CPU";
 const char* const DEVICE_XLA_GPU = "XLA_GPU";
 
-static Status LaunchOpHasKernelForDevice(const DeviceType& device_type) {
+static absl::Status LaunchOpHasKernelForDevice(const DeviceType& device_type) {
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef("XlaLaunch", &op_def));
   NodeDef node_def;
@@ -51,7 +66,7 @@ static Status LaunchOpHasKernelForDevice(const DeviceType& device_type) {
                                    &kernel_class_name));
   VLOG(1) << "LaunchOpHasKernelForDevice"
           << " kernel_class_name: " << kernel_class_name;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 XlaOpRegistry::XlaOpRegistry() = default;
@@ -174,6 +189,28 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   }();
   (void)registration_init;
 
+  // Register GPU JIT devices for NextPluggableDevice if its jit_device_type is
+  // `XLA_GPU_JIT`.
+  if (DeviceFactory::IsPluggableDevice(device_name) &&
+      GetPjRtClient(DeviceType(device_name)).ok()) {
+    mutex_lock lock(registry.mutex_);
+
+    NextPluggableDeviceFactory* device_factory =
+        static_cast<NextPluggableDeviceFactory*>(
+            DeviceFactory::GetFactory(device_name));
+    if (device_factory != nullptr &&
+        DeviceType(device_factory->compilation_device_name()) ==
+            DeviceType(DEVICE_GPU_XLA_JIT) &&
+        registry.compilation_devices_.find(device_name) ==
+            registry.compilation_devices_.end()) {
+      DeviceRegistration& registration =
+          registry.compilation_devices_[device_name];
+      registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
+      registration.autoclustering_policy =
+          XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally;
+    }
+  }
+
   mutex_lock lock(registry.mutex_);
   auto it = registry.compilation_devices_.find(device_name);
   if (it == registry.compilation_devices_.end()) return false;
@@ -220,7 +257,7 @@ void XlaOpRegistry::RegisterCompilationKernels() {
 
     for (auto& op_registration : op_registrations) {
       const OpDef* op_def;
-      Status lookup_status = op_registry->LookUpOpDef(op_name, &op_def);
+      absl::Status lookup_status = op_registry->LookUpOpDef(op_name, &op_def);
       if (!lookup_status.ok()) {
         LOG(ERROR) << lookup_status.message();
         XLA_LOG_LINES(
@@ -391,7 +428,7 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
   }
 }
 
-/* static */ Status XlaOpRegistry::CompileTimeConstantInputs(
+/* static */ absl::Status XlaOpRegistry::CompileTimeConstantInputs(
     const NodeDef& node_def, const OpKernel* op_kernel, const OpDef* op_def,
     std::vector<int>* result) {
   result->clear();
@@ -413,7 +450,7 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
     compile_time_constant_inputs =
         CompileTimeConstantInputArgNames(node_def.op());
     if (compile_time_constant_inputs->empty()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -446,7 +483,7 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
   }
 
   absl::c_sort(*result);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ bool XlaOpRegistry::IsMetadataOp(const string& op) {

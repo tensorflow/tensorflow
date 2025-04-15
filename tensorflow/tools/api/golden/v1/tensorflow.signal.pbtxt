@@ -17,6 +17,10 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "fftnd"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'axes\', \'norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "fftshift"
     argspec: "args=[\'x\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
@@ -49,6 +53,10 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ifftnd"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'axes\', \'norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "ifftshift"
     argspec: "args=[\'x\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
@@ -75,6 +83,10 @@ tf_module {
   member_method {
     name: "irfft3d"
     argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "irfftnd"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'axes\', \'norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "kaiser_bessel_derived_window"
@@ -111,6 +123,10 @@ tf_module {
   member_method {
     name: "rfft3d"
     argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "rfftnd"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'axes\', \'norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "stft"

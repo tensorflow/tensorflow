@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_COMMON_H_
 #define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_COMMON_H_
 
+#include <cstdint>
 #include <optional>
 
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -146,6 +147,11 @@ std::optional<Value> convertStridedSliceOp(
     int32_t begin_mask, int32_t end_mask, int32_t ellipsis_mask,
     int32_t new_axis_mask, int32_t shrink_axis_mask);
 
+// Helper function to perform division with floor rounding mode (rounding result
+// down) for integer type inputs.
+Value floorIntDiv(PatternRewriter& rewriter, Operation* op, ShapedType outType,
+                  Value lhs, Value rhs);
+
 // Lowers FloorDiv to a sequence of TOSA operators.
 std::optional<Value> convertFloorDivOp(PatternRewriter& rewriter, Operation* op,
                                        Value result_value, Value lhs_value,
@@ -187,14 +193,16 @@ std::optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems);
+                                        ElementsAttr axes_elems,
+                                        StringRef nan_mode = "PROPAGATE");
 
 // Lowers ReduceMax to a sequence of TOSA ops.
 std::optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems);
+                                        ElementsAttr axes_elems,
+                                        StringRef nan_mode = "PROPAGATE");
 
 // Lowers ReduceProd to a sequence of TOSA ops.
 std::optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
@@ -266,13 +274,11 @@ std::optional<Value> convertTFConv2DCommon(
 
 // Lowers TensorFlow and TensorFlow Lite Conv3D to a sequence of TOSA
 // quantization ops.
-std::optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
-                                         Operation* op, ShapedType output_type,
-                                         Value input, Value filter, Value bias,
-                                         ArrayRef<int64_t> strides,
-                                         ArrayRef<int64_t> dilations,
-                                         StringRef padding_ref,
-                                         StringRef data_format_ref);
+std::optional<Value> convertConv3DCommon(
+    PatternRewriter& rewriter, Operation* op, ShapedType output_type,
+    Value input, Value filter, Value bias, DenseI64ArrayAttr pads,
+    DenseI64ArrayAttr strides, DenseI64ArrayAttr dilations, TypeAttr acc_type,
+    StringRef data_format_ref);
 
 // Preprocess TensorFlow Conv3D attributes prior to calling
 // `convertConv3DCommon`
@@ -283,14 +289,20 @@ std::optional<Value> convertTFConv3DCommon(
 
 // Lowers Gather operator to a sequence of TOSA ops.
 std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
-                                     Value result_value, Value params_value,
-                                     Value indices_value, int32_t batch_dims,
-                                     int32_t axis);
+                                     Value params_value, Value indices_value,
+                                     int32_t batch_dims, int32_t axis,
+                                     bool tosaOnly = true);
 
 // Lowers GatherNd operator to a sequence of TOSA ops.
 std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
                                        Value result_value, Value params_value,
                                        Value indices_value);
+
+// Lowers ScatterNd operator to a sequence of TOSA ops.
+std::optional<Value> convertScatterNdOp(PatternRewriter& rewriter,
+                                        Operation* op, Value result_value,
+                                        Value indices_value,
+                                        Value updates_value, Value shape_value);
 
 // Lowers OneHot operator to a sequence of TOSA ops.
 std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
@@ -298,13 +310,18 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
                                      Value on_value, Value off_value,
                                      int32_t depth, int32_t axis);
 
-// Lowers 32-bit floating sin operator to a sequence of TOSA ops.
-std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
-                                  Value input, ShapedType output_type);
+// Lowers cast operator to a sequence of TOSA ops.
+std::optional<Value> convertCastOp(PatternRewriter& rewriter, Operation* op,
+                                   Value input, RankedTensorType output_type);
 
 // Lowers Sign operator to a sequence of TOSA ops.
 std::optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
                                    Value input, RankedTensorType output_type);
+
+// Lowers BroadcastTo operator to a sequence of TOSA ops.
+std::optional<Value> convertBroadcastToOp(PatternRewriter& rewriter,
+                                          Operation* op, Value input,
+                                          Value shape);
 
 };  // namespace tosa
 };  // namespace mlir

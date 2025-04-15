@@ -19,8 +19,10 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import flexible_dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import weak_tensor
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import weak_tensor_test_util
@@ -816,8 +818,8 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
           (dtypes.float64, False),
       )
 
-  # Test Dtypes type inference.
-  def testResultTypeDtype(self):
+  # Test TF Dtypes type inference.
+  def testResultTypeTFDtype(self):
     with DtypeConversionTestEnv('all'):
       d1 = dtypes.float32
       d2 = dtypes.float16
@@ -826,13 +828,37 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
           (dtypes.float32, False),
       )
 
+  # Test NP dtype class type inference.
+  def testResultTypeNPDtype(self):
+    with DtypeConversionTestEnv('all'):
+      d = np.dtype(np.float32)
+      self.assertEqual(
+          flexible_dtypes.result_type(d),
+          (dtypes.float32, False),
+      )
+
+      d = np.dtype([('f1', np.int16)])
+      with self.assertRaises(NotImplementedError):
+        _ = flexible_dtypes.result_type(d)
+
+      d = np.dtype([('a', 'f8'), ('b', 'S10')])
+      with self.assertRaises(NotImplementedError):
+        _ = flexible_dtypes.result_type(d)
+
+  # Test bool type inference.
+  def testResultTypeBool(self):
+    with DtypeConversionTestEnv('all'):
+      self.assertEqual(
+          flexible_dtypes.result_type(True, False),
+          (dtypes.bool, False),
+      )
+
   # Test Tensor shape type inference.
   def testResultTypeTensorShape(self):
     with DtypeConversionTestEnv('all'):
-      t = constant_op.constant(1, dtype=dtypes.float64)
+      t = constant_op.constant([1, 2], dtype=dtypes.float64)
       self.assertEqual(
-          flexible_dtypes.result_type(t, t.shape),
-          (dtypes.float64, False),
+          flexible_dtypes.result_type(t.shape), (dtypes.int32, False)
       )
 
   # Test string types.
@@ -841,7 +867,9 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       res = flexible_dtypes.result_type('foo', 'bar')
       self.assertEqual(res[0], dtypes.string)
       with self.assertRaisesRegex(
-          KeyError, 'Please convert the input manually'
+          NotImplementedError,
+          "Implicit Conversion between <dtype: 'string'> and <dtype: 'int32'>"
+          ' is not allowed. Please convert the input manually if you need to.',
       ):
         flexible_dtypes.result_type('foo', 1)
 
@@ -851,7 +879,9 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       res = flexible_dtypes.result_type(b'foo', b'bar')
       self.assertEqual(res[0], dtypes.string)
       with self.assertRaisesRegex(
-          KeyError, 'Please convert the input manually'
+          NotImplementedError,
+          "Implicit Conversion between <dtype: 'string'> and <dtype: 'int32'>"
+          ' is not allowed. Please convert the input manually if you need to.',
       ):
         flexible_dtypes.result_type(b'foo', 1)
 
@@ -861,6 +891,18 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
       dtype, is_weak = flexible_dtypes.result_type()
       self.assertEqual(dtype, dtypes.float32)
       self.assertTrue(is_weak)
+
+  def testResultTypeUnsupportedInputType(self):
+    class MyTensor(extension_type.ExtensionType):
+      value: tensor.Tensor
+
+    with DtypeConversionTestEnv('all'):
+      a = MyTensor(constant_op.constant(1))
+      with self.assertRaisesRegex(
+          NotImplementedError,
+          f'Auto dtype conversion semantics does not support {type(a)} type.',
+      ):
+        _ = flexible_dtypes.result_type(a)
 
   # Test v1 + v2 = v2 + v1.
   def testCommunicativity(self):

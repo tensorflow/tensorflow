@@ -32,10 +32,8 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import profiler_v2 as profiler
 from tensorflow.python.summary import summary as tf_summary
 from tensorflow.python.training import saver
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export(v1=['keras.callbacks.TensorBoard'])
 class TensorBoard(callbacks.TensorBoard):
   # pylint: disable=line-too-long
   """Enable visualizations for TensorBoard.

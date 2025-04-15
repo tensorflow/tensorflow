@@ -19,12 +19,20 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_kernels.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_split.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -40,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -82,14 +91,6 @@ limitations under the License.
 #include "tfrt/tensor/scalar_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_serialize_utils.h"  // from @tf_runtime
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_device.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
-#include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_gpu_allocator.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 namespace tfd {
@@ -143,7 +144,7 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
     TensorHandle* handle, HostContext* host) {
   OwnedTensorHandle th(handle);
   int rank;
-  tensorflow::Status status = th->NumDims(&rank);
+  absl::Status status = th->NumDims(&rank);
   if (!status.ok())
     return tfrt::MakeErrorAsyncValueRef(tfrt::StrCat(
         "error getting rank from TF tensor handle: ", status.message()));
@@ -211,94 +212,6 @@ static void TfdPrintTFT(Argument<RuntimeFallbackTensor> tft,
   out_chain.Set(in_chain);
 }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-static tensorflow::Status InjectTfGpuResourcesHelper(
-    tensorflow::EagerContext* ctx) {
-  // Inject TF's GPU resources to TFRT GpuOpHandler.
-  // Note that this requires RuntimeFallbackOpHandler to be created and
-  // initialized before tfrt::GpuOpHandler to work.
-
-  auto tf_gpu_process_state = tensorflow::GPUProcessState::singleton();
-  if (tf_gpu_process_state && tf_gpu_process_state->HasGPUDevice()) {
-    constexpr char gpu_device_type[] = "GPU";
-    int num_gpu = ctx->local_device_mgr()->NumDeviceType(gpu_device_type);
-    for (int gpu_ordinal = 0; gpu_ordinal < num_gpu; gpu_ordinal++) {
-      auto gpu_device_name = absl::StrCat(gpu_device_type, ":", gpu_ordinal);
-      Device* device;
-      TF_RETURN_IF_ERROR(
-          ctx->local_device_mgr()->LookupDevice(gpu_device_name, &device));
-      auto gpu_device = static_cast<tensorflow::BaseGPUDevice*>(device);
-      if (!gpu_device)
-        return tensorflow::errors::NotFound("TF BaseGPUDevice not found");
-#if TENSORFLOW_USE_ROCM
-      static_assert(
-          false,
-          "static_cast to GpuContext and CUstream are invalid for ROCm.");
-#endif
-      CUcontext gpu_context =
-          static_cast<stream_executor::gpu::GpuContext*>(
-              gpu_device->executor()->implementation()->GpuContextHack())
-              ->context();
-
-      // TF GPU allocator is already created in
-      // tensorflow::DeviceFactory::AddDevices above, so this GetGPUAllocator
-      // ignores options and total_bytes passed in and retrieves allocator based
-      // on `tf_device_id`.
-      TfDeviceId tf_device_id{gpu_ordinal};
-      GPUOptions dummy_options;
-      tensorflow::Allocator* tf_allocator =
-          tf_gpu_process_state->GetGPUAllocator(dummy_options, tf_device_id,
-                                                /*total_bytes=*/0,
-                                                /*peer_gpu_ids=*/{});
-      if (!tf_allocator)
-        return tensorflow::errors::NotFound("TF allocator not found");
-      auto accelerator_device_info =
-          gpu_device->tensorflow_accelerator_device_info();
-      if (!accelerator_device_info)
-        return tensorflow::errors::NotFound(
-            "accelerator_device_info not found");
-
-      tfrt::gpu::GpuResources gpu_resources;
-      gpu_resources.gpu_context = tfrt::gpu::wrapper::Context(gpu_context);
-      gpu_resources.allocator_factory =
-          CreateRuntimeFallbackGpuAllocatorFactory(tf_allocator);
-      gpu_resources.stream = tfrt::gpu::wrapper::Stream(static_cast<CUstream>(
-          accelerator_device_info->stream->implementation()->GpuStreamHack()));
-      auto platform = tfrt::gpu::wrapper::Platform::CUDA;
-      tfrt::gpu::SetTfrtGpuResources(
-          tfrt::gpu::wrapper::Device(gpu_ordinal, platform), gpu_resources);
-    }
-  }
-  return OkStatus();
-}
-
-tensorflow::Status InjectTfGpuResources() {
-  // TODO(zhangqiaorjc) Use more direct and low-level APIs to initialize GPU
-  // resources than using EagerContext. Note that this EagerContext is strictly
-  // locally scoped and an implementation detail of injecting GPU resources, and
-  // not is the same EagerContext set in RequestContext.
-  static bool already_injected_gpu_devices = false;
-  static absl::Mutex* mutex = new absl::Mutex();
-
-  absl::MutexLock lock(mutex);
-  if (!already_injected_gpu_devices) {
-    tfrt::Expected<OwnedEagerContext> ctx = InitEagerContext();
-    if (!ctx) {
-      return tensorflow::errors::Internal(
-          tfrt::StrCat("error initializing eager context: ", ctx.takeError()));
-    }
-
-    // GPU resources should be injected once per gpu ordinal.
-    TF_RETURN_IF_ERROR(InjectTfGpuResourcesHelper(ctx->get()));
-    already_injected_gpu_devices = true;
-  }
-
-  return OkStatus();
-}
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 // Kernel for initializing TF EagerContext.
 //
 // This kernel should be invoked at least once before any TF delegation kernels
@@ -319,7 +232,6 @@ static void TfdInitEagerContext(Argument<Chain> in_chain,
               tensorflow::tfd::kEagerContextResourceName);
   (void)eager_context_resource;
 
-  // TODO(zhangqiaorjc): Inject GPU resources to GPU kernels.
   out_chain.Set(in_chain);
 }
 
@@ -341,7 +253,7 @@ OwnedTFTensor MoveDHTToTFTensor(DenseHostTensor&& dht, HostContext* host) {
   return tf_tensor;
 }
 
-static tensorflow::Status DecodeDenseAttrToTensorInterface(
+static absl::Status DecodeDenseAttrToTensorInterface(
     const DenseAttr& dense_attr, HostContext* host,
     tensorflow::TensorInterface* result) {
   Expected<DenseHostTensor> dht =
@@ -354,7 +266,7 @@ static tensorflow::Status DecodeDenseAttrToTensorInterface(
   tensorflow::Tensor t;
   TF_RETURN_IF_ERROR(TF_TensorToTensor(tf_tensor.get(), &t));
   *result = tensorflow::TensorInterface(std::move(t));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Handle attributes.
@@ -365,11 +277,11 @@ static tensorflow::Status DecodeDenseAttrToTensorInterface(
 // Note we currently do not support the following attribute value types:
 // TFE_OpSetAttrFunction
 // TFE_OpSetAttrFunctionName
-static tensorflow::Status PrepareAttributes(EagerOperation* eager_op,
-                                            const OpAttrsRef& attrs,
-                                            HostContext* host,
-                                            EagerContext* eager_ctx) {
-  tensorflow::Status status;
+static absl::Status PrepareAttributes(EagerOperation* eager_op,
+                                      const OpAttrsRef& attrs,
+                                      HostContext* host,
+                                      EagerContext* eager_ctx) {
+  absl::Status status;
   attrs.IterateEntries([eager_op, eager_ctx, status_ptr = &status, host,
                         &attrs](const OpAttrsRawEntry& entry) {
     // TFE does not expect a device attribute.
@@ -547,13 +459,12 @@ static tensorflow::Status PrepareAttributes(EagerOperation* eager_op,
   return status;
 }
 
-Status CallEagerExecute(const tfrt::ExecutionContext& exec_ctx,
-                        EagerContext* eager_ctx, const char* op_name,
-                        const char* device_name,
-                        llvm::ArrayRef<TensorHandle*> input_tensor_handles,
-                        const OpAttrsRef& attrs,
-                        llvm::MutableArrayRef<tensorflow::AbstractTensorHandle*>
-                            result_tensor_handles) {
+absl::Status CallEagerExecute(
+    const tfrt::ExecutionContext& exec_ctx, EagerContext* eager_ctx,
+    const char* op_name, const char* device_name,
+    llvm::ArrayRef<TensorHandle*> input_tensor_handles, const OpAttrsRef& attrs,
+    llvm::MutableArrayRef<tensorflow::AbstractTensorHandle*>
+        result_tensor_handles) {
   assert(eager_ctx != nullptr && "EagerContext is NULL");
 
   // Create TF EagerOperation.
@@ -573,7 +484,7 @@ Status CallEagerExecute(const tfrt::ExecutionContext& exec_ctx,
   TF_RETURN_IF_ERROR(eager_op->Execute(
       absl::MakeSpan(result_tensor_handles.data(), num_retvals), &num_retvals));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static bool ShouldAddHostContextAttr(const char* op_name) {
@@ -589,7 +500,7 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
     const char* op_name, const char* device_name,
     llvm::ArrayRef<Tensor*> arguments, const OpAttrsRef& attrs,
     llvm::MutableArrayRef<RCReference<AsyncValue>> results) {
-  auto emit_error = [&exec_ctx, results](const tensorflow::Status& status) {
+  auto emit_error = [&exec_ctx, results](const absl::Status& status) {
     // Set the correct TFRT error code according to the error propagated from
     // runtime fallback execution.
     auto error = EmitErrorAsync(exec_ctx, status);
@@ -608,7 +519,7 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
   int num_retvals = results.size();
   llvm::SmallVector<tensorflow::AbstractTensorHandle*, 4> result_tensor_handles(
       num_retvals);
-  Status status;
+  absl::Status status;
   if (!ShouldAddHostContextAttr(op_name)) {
     status =
         CallEagerExecute(exec_ctx, eager_ctx, op_name, device_name,
@@ -779,7 +690,7 @@ static void RuntimeFallbackKernel(
   int num_retvals = output_tensors.size();
   llvm::SmallVector<tensorflow::AbstractTensorHandle*, 4> retvals(num_retvals);
 
-  tensorflow::Status status = eager_op->Execute(
+  absl::Status status = eager_op->Execute(
       absl::MakeSpan(retvals.data(), num_retvals), &num_retvals);
   TFD_REPORT_AND_RETURN_IF_ERROR(handler, status);
 
@@ -932,10 +843,9 @@ void CoreRTTensorHandleToFallbackTensorInternal(
 void CoreRTTensorHandleToFallbackTensor(
     RemainingArguments args, RemainingResults results, StringAttr device,
     const tfrt::ExecutionContext& exec_ctx) {
-  tensorflow::profiler::TraceMe trace_me(
-      "corert_tensorhandle_to_fallback_tensor");
+  tsl::profiler::TraceMe trace_me("corert_tensorhandle_to_fallback_tensor");
   trace_me.AppendMetadata([request_id = exec_ctx.request_ctx()->id()]() {
-    return tensorflow::profiler::TraceMeEncode({{"id", request_id}});
+    return tsl::profiler::TraceMeEncode({{"id", request_id}});
   });
 
   CoreRTTensorHandleToFallbackTensorInternal(args.values(), results.values(),
@@ -973,10 +883,9 @@ static void FallbackTensorToCoreRTTensorHandleInternal(
 void FallbackTensorToCoreRTTensorHandle(
     RemainingArguments args, RemainingResults results, StringAttr device,
     const tfrt::ExecutionContext& exec_ctx) {
-  tensorflow::profiler::TraceMe trace_me(
-      "fallback_tensor_to_corert_tensorhandle");
+  tsl::profiler::TraceMe trace_me("fallback_tensor_to_corert_tensorhandle");
   trace_me.AppendMetadata([request_id = exec_ctx.request_ctx()->id()]() {
-    return tensorflow::profiler::TraceMeEncode({{"id", request_id}});
+    return tsl::profiler::TraceMeEncode({{"id", request_id}});
   });
 
   FallbackTensorToCoreRTTensorHandleInternal(args.values(), results.values(),
@@ -1034,7 +943,8 @@ static void RuntimeFallbackExecuteOp(
 
   // Get device.
   Device* device = nullptr;
-  Status s = eager_ctx->local_device_mgr()->LookupDevice(device_name, &device);
+  absl::Status s =
+      eager_ctx->local_device_mgr()->LookupDevice(device_name, &device);
   if (!s.ok()) {
     // The device name can be invalid in certain cases. Use default CPU device.
     VLOG(1) << s.message() << " using default CPU device.";
@@ -1084,7 +994,7 @@ static void RuntimeFallbackExecuteOp(
     auto& runtime_fallback_tensor =
         tfrt_tensor_results[i]->get<RuntimeFallbackTensor>();
     const tensorflow::Tensor* tf_tensor = nullptr;
-    tensorflow::Status s =
+    absl::Status s =
         runtime_fallback_tensor.GetTensorHandle()->Tensor(&tf_tensor);
     DCHECK(s.ok()) << s;
     results[i] =
@@ -1138,7 +1048,7 @@ static OwnedTensorHandle ConvertTFRTTensorToTFTensorHandle(
 
 static llvm::Expected<tfrt::Value> ConvertTFTensorHandleToTFRTTensor(
     OwnedTensorHandle tensor_handle, HostContext* host) {
-  tensorflow::Status status;
+  absl::Status status;
   // Resolve ensures Tensor is on host CPU.
   OwnedAbstractTensorInterface tensor_interface{
       tensor_handle->Resolve(&status)};

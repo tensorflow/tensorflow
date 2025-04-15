@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_PARALLEL_BATCH_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_PARALLEL_BATCH_H_
 
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -30,14 +33,15 @@ class ParallelBatch : public TFDataOptimizerBase {
 
   bool UsesFunctionLibrary() const override { return false; }
 
-  Status Init(
+  absl::Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
-                                 GraphDef* output,
-                                 OptimizationStats* stats) override;
+  absl::Status OptimizeAndCollectStats(Cluster* cluster,
+                                       const GrapplerItem& item,
+                                       GraphDef* output,
+                                       OptimizationStats* stats) override;
 };
 
 }  // namespace grappler

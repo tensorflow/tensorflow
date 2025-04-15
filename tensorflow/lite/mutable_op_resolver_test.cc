@@ -20,7 +20,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace {
@@ -64,7 +63,7 @@ TfLiteRegistration* GetDummy2Registration() {
   return &registration;
 }
 
-TEST(MutableOpResolverTest, FinOp) {
+TEST(MutableOpResolverTest, FindOp) {
   MutableOpResolver resolver;
   resolver.AddBuiltin(BuiltinOperator_ADD, GetDummyRegistration());
 

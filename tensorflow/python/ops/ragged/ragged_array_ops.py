@@ -20,6 +20,7 @@ from typing import Union
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -484,7 +485,7 @@ def size(input: ragged_tensor.Ragged, out_type=dtypes.int32, name=None):  # pyli
 
   #### Example:
 
-  >>> tf.size(tf.ragged.constant([[1, 2], [3]])).numpy()
+  >>> tf.size(tf.ragged.constant([[1, 2], [3]])).numpy().item()
   3
 
   Args:
@@ -522,7 +523,7 @@ def rank(input: ragged_tensor.Ragged, name=None):  # pylint: disable=redefined-b
 
   >>> # shape of tensor 't' is [2, None, None]
   >>> t = tf.ragged.constant([[[1], [2, 2]], [[3, 3, 3], [4, 4, 4, 4]]])
-  >>> tf.rank(t).numpy()
+  >>> tf.rank(t).numpy().item()
   3
 
   Args:
@@ -704,7 +705,7 @@ def reverse(tensor: ragged_tensor.Ragged, axis, name=None):
                     'when reversing axes in a ragged tensor')
 
   with ops.name_scope(name, 'Reverse', [tensor, axis]):
-    if isinstance(axis, ops.Tensor):
+    if isinstance(axis, tensor_lib.Tensor):
       axis = tensor_util.constant_value(axis)
       if axis is None:
         raise TypeError(type_error_msg)
@@ -1135,7 +1136,7 @@ def split(value: ragged_tensor.Ragged,
 def ragged_reshape(
     tensor: ragged_tensor.RaggedOrDense,
     shape: dynamic_ragged_shape.DenseOrRaggedShape
-) -> Union[ragged_tensor.RaggedTensor, ops.Tensor]:
+) -> Union[ragged_tensor.RaggedTensor, tensor_lib.Tensor]:
   """Reshapes a tensor or ragged tensor."""
   tensor = ragged_tensor.convert_to_tensor_or_ragged_tensor(
       tensor, name='tensor')
@@ -1157,7 +1158,7 @@ def ragged_reshape(
 def broadcast_to(
     input: ragged_tensor.RaggedOrDense,  # pylint: disable=redefined-builtin
     shape: dynamic_ragged_shape.DynamicRaggedShape
-) -> Union[ragged_tensor.RaggedTensor, ops.Tensor]:
+) -> Union[ragged_tensor.RaggedTensor, tensor_lib.Tensor]:
   """Broadcasts a potentially ragged tensor to a ragged shape.
 
   Tiles `input` as necessary to match the given shape.

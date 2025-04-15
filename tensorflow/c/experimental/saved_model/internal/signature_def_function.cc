@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/public/signature_def_function.h"
 
+#include <cstddef>
+
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"

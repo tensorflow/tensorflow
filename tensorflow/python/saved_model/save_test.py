@@ -17,19 +17,24 @@
 import os
 
 from absl.testing import parameterized
-import numpy as np
 
 from google.protobuf import text_format
 from tensorflow.core.config import flags
+from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.checkpoint import checkpoint
+from tensorflow.python.checkpoint.sharding import sharding_policies
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -49,6 +54,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
@@ -59,11 +65,8 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training import saver
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
-# Placeholder for protosplitter constants import.
-
-
-is_oss = True  # Updated by copybara.
 
 
 def _run_signature(
@@ -949,6 +952,48 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     result = save.save(root, save_dir)
     self.assertIsNone(result)
 
+  def test_sharding_callback_saveoption(self):
+    servers = [server_lib.Server.create_local_server() for _ in range(3)]
+    cluster_spec = server_lib.ClusterSpec({
+        "worker": [s.target[len("grpc://"):] for s in servers]})
+    remote.connect_to_cluster(cluster_spec)
+    root = module.Module()
+    with ops.device("/job:worker/task:0/cpu:0"):
+      v0 = resource_variable_ops.ResourceVariable(0.0, name="v0")
+    self.evaluate(v0.initializer)
+    with ops.device("/job:worker/task:1/cpu:0"):
+      v1 = resource_variable_ops.ResourceVariable(1.0, name="v1")
+      v2 = resource_variable_ops.ResourceVariable([2.0, 3.0], name="v2")
+    self.evaluate(v1.initializer)
+    self.evaluate(v2.initializer)
+    root.v0 = v0
+    root.v1 = v1
+    root.v2 = v2
+
+    save_dir = os.path.join(self.get_temp_dir(), "shard_by_task")
+    save.save(
+        root, save_dir, options=save_options.SaveOptions(
+            experimental_sharding_callback=(
+                sharding_policies.ShardByTaskPolicy())))
+    self.assertLen(gfile.Glob(save_dir + "/variables/variables.data*"), 3)
+    loaded_root = load.load(save_dir)
+    self.assertEqual(loaded_root.v0.numpy(), root.v0.numpy())
+    self.assertEqual(loaded_root.v1.numpy(), root.v1.numpy())
+    self.assertEqual(loaded_root.v2.numpy()[0], root.v2.numpy()[0])
+    self.assertEqual(loaded_root.v2.numpy()[1], root.v2.numpy()[1])
+
+    save_dir = os.path.join(self.get_temp_dir(), "max_shard_size")
+    save.save(
+        root, save_dir, options=save_options.SaveOptions(
+            experimental_sharding_callback=(
+                sharding_policies.MaxShardSizePolicy(max_shard_size=(4)))))
+    self.assertLen(gfile.Glob(save_dir + "/variables/variables.data*"), 5)
+    loaded_root = load.load(save_dir)
+    self.assertEqual(loaded_root.v0.numpy(), root.v0.numpy())
+    self.assertEqual(loaded_root.v1.numpy(), root.v1.numpy())
+    self.assertEqual(loaded_root.v2.numpy()[0], root.v2.numpy()[0])
+    self.assertEqual(loaded_root.v2.numpy()[1], root.v2.numpy()[1])
+
 
 class DependencyTest(test.TestCase):
   """Tests for deserialization dependencies (saving-related only)."""
@@ -1069,22 +1114,160 @@ class SavingOptionsTest(test.TestCase):
     # If the user passes an empty list for the namespace whitelist rather than
     # nothing, we should then throw an exception if a custom op is used.
     with self.assertRaisesRegex(
-        ValueError, "Attempted to save ops from non-whitelisted namespaces"):
+        ValueError, "Attempted to save ops from non-whitelisted namespaces"
+    ):
       save._verify_ops(graph_def, [])
+
+  def test_strip_debug_nodes(self):
+    # Test that we are able to strip debug nodes from a meta_graph correctly.
+    test_node_defs = [
+        node_def_pb2.NodeDef(
+            name="AssertNode",
+            op="Assert",
+            input=[
+                "NonControlInput:output:0",
+                "^ControlInput:output:0",
+            ],
+            attr={
+                "regular_node_attr": attr_value_pb2.AttrValue(i=1),
+                "_non_regular_node_attr": attr_value_pb2.AttrValue(i=2),
+            }
+        ),
+        node_def_pb2.NodeDef(
+            name="ConstNode",
+            op="Const",
+        ),
+        node_def_pb2.NodeDef(
+            name="CheckNumericsNode",
+            op="CheckNumerics",
+            input=[
+                "NonControlInput:output:0",
+                "NonControlInputTwo:output:0",
+                "^ControlInput:output:0",
+            ],
+            attr={
+                "T": attr_value_pb2.AttrValue(i=4),
+                "NotT": attr_value_pb2.AttrValue(i=5),
+            }
+        ),
+        node_def_pb2.NodeDef(
+            name="CheckNumericsNodeTwo",
+            op="CheckNumerics",
+            input=[
+                "NonControlInput:output:0",
+                "NonControlInputTwo:output:0",
+                "^ControlInput:output:0",
+            ],
+            attr={
+                "OnlyNotT": attr_value_pb2.AttrValue(i=6),
+            },
+        ),
+        node_def_pb2.NodeDef(
+            name="PrintNode",
+            op="Print",
+            input=[
+                "NonControlInput:output:0",
+            ],
+        ),
+        node_def_pb2.NodeDef(
+            name="PrintV2Node",
+            op="PrintV2",
+            input=[
+                "NonControlInput:output:0",
+            ],
+        ),
+    ]
+
+    expected_node_defs = [
+        node_def_pb2.NodeDef(
+            name="AssertNode",
+            op="NoOp",
+            input=[
+                "^NonControlInput",
+                "^ControlInput:output:0",
+            ],
+            attr={
+                "_non_regular_node_attr": attr_value_pb2.AttrValue(i=2),
+            }
+        ),
+        node_def_pb2.NodeDef(
+            name="ConstNode",
+            op="Const",
+        ),
+        node_def_pb2.NodeDef(
+            name="CheckNumericsNode",
+            op="Identity",
+            input=[
+                "NonControlInput:output:0",
+                "^NonControlInputTwo",
+                "^ControlInput:output:0",
+            ],
+            attr={
+                "T": attr_value_pb2.AttrValue(i=4),
+            }
+        ),
+        node_def_pb2.NodeDef(
+            name="CheckNumericsNodeTwo",
+            op="Identity",
+            input=[
+                "NonControlInput:output:0",
+                "^NonControlInputTwo",
+                "^ControlInput:output:0",
+            ],
+        ),
+        node_def_pb2.NodeDef(
+            name="PrintNode",
+            op="Identity",
+            input=[
+                "NonControlInput:output:0",
+            ],
+        ),
+        node_def_pb2.NodeDef(
+            name="PrintV2Node",
+            op="NoOp",
+            input=[
+                "^NonControlInput",
+            ],
+        ),
+    ]
+
+    meta_graph_def = meta_graph_pb2.MetaGraphDef(
+        graph_def=graph_pb2.GraphDef(
+            node=test_node_defs,
+            library=function_pb2.FunctionDefLibrary(
+                function=[function_pb2.FunctionDef(node_def=test_node_defs)]
+            ),
+        ),
+    )
+
+    expected = meta_graph_pb2.MetaGraphDef(
+        graph_def=graph_pb2.GraphDef(
+            node=expected_node_defs,
+            library=function_pb2.FunctionDefLibrary(
+                function=[function_pb2.FunctionDef(node_def=expected_node_defs)]
+            ),
+        ),
+    )
+
+    save._strip_debug_nodes(meta_graph_def)
+    self.assertEqual(expected, meta_graph_def)
 
   def test_save_debug_info_enabled(self):
     root = autotrackable.AutoTrackable()
     root.f = def_function.function(
-        lambda x: math_ops.mul(2., x, name="DEBUG_INFO_OP"),
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+        lambda x: math_ops.mul(2.0, x, name="DEBUG_INFO_OP"),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)],
+    )
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(
         root,
         save_dir,
         root.f,
-        options=save_options.SaveOptions(save_debug_info=True))
-    debug_info_file_name = os.path.join(save_dir, "debug",
-                                        "saved_model_debug_info.pb")
+        options=save_options.SaveOptions(save_debug_info=True),
+    )
+    debug_info_file_name = os.path.join(
+        save_dir, "debug", "saved_model_debug_info.pb"
+    )
     self.assertTrue(os.path.exists(debug_info_file_name))
     debug_info = graph_debug_info_pb2.GraphDebugInfo()
     with open(debug_info_file_name, "rb") as f:
@@ -1093,11 +1276,13 @@ class SavingOptionsTest(test.TestCase):
     # Verify that there is a trace for DEBUG_INFO_OP just to ensure that
     # function debug info tracing is nominally functioning.
     found_op = False
-    for key in debug_info.traces.keys():
+    for key in debug_info.name_to_trace_id.keys():
       if key.startswith("DEBUG_INFO_OP@"):
         found_op = True
         break
-    self.assertTrue(found_op, "Did not find DEBUG_INFO_OP in trace")
+    self.assertTrue(
+        found_op, "Did not find DEBUG_INFO_OP in trace: %s" % debug_info
+    )
 
   def test_save_debug_info_disabled(self):
     root = autotrackable.AutoTrackable()
@@ -1220,41 +1405,6 @@ class SavingOptionsTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, "invalid VariablePolicy value"):
       options = save_options.SaveOptions(
           experimental_variable_policy="not_a_valid_value")
-
-  def test_save_experimental_image_format(self):
-    if is_oss:
-      self.skipTest("Experimental image format disabled in OSS.")
-    root = module.Module()
-    root.c = constant_op.constant(np.random.random_sample([150, 150]))
-    root.get_c = def_function.function(lambda: root.c)
-    save_dir = os.path.join(self.get_temp_dir(), "chunked_model")
-    constants.debug_set_max_size(80000)
-    options = save_options.SaveOptions(experimental_image_format=True)
-    save.save(
-        root,
-        save_dir,
-        signatures=root.get_c.get_concrete_function(),
-        options=options,
-    )
-    self.assertTrue(os.path.exists(save_dir + "/saved_model.cpb"))
-
-  def test_save_experimental_image_format_not_chunked(self):
-    if is_oss:
-      self.skipTest("Experimental image format disabled in OSS.")
-    root = module.Module()
-    root.c = constant_op.constant(np.random.random_sample([150, 150]))
-    root.get_c = def_function.function(lambda: root.c)
-    save_dir = os.path.join(self.get_temp_dir(), "not_chunked_model")
-    constants.debug_set_max_size(1 << 31)  # 2GB
-    options = save_options.SaveOptions(experimental_image_format=True)
-    save.save(
-        root,
-        save_dir,
-        signatures=root.get_c.get_concrete_function(),
-        options=options,
-    )
-    # Should save an unchunked proto (.pb) and not .cpb
-    self.assertTrue(os.path.exists(save_dir + "/saved_model.pb"))
 
 
 class AssetTests(test.TestCase):

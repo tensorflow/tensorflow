@@ -16,11 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_RESOURCE_BASE_H_
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_RESOURCE_BASE_H_
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/time/time.h"
+#include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/request_cost.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -29,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
 #include "tensorflow/core/platform/context.h"
@@ -39,12 +49,27 @@ limitations under the License.
 namespace tensorflow {
 namespace serving {
 
+// Options used to create a batch resource.
+struct BatchResourceOptions {
+  int32_t num_batch_threads;
+  int32_t max_batch_size;
+  int32_t batch_timeout_micros;
+  int32_t max_enqueued_batches;
+  std::vector<int32_t> allowed_batch_sizes;
+  std::string batch_padding_policy{kPadUpPolicy};
+  int32_t low_priority_max_batch_size;
+  int32_t low_priority_batch_timeout_micros;
+  int32_t low_priority_max_enqueued_batches;
+  std::vector<int32_t> low_priority_allowed_batch_sizes;
+  MixedPriorityBatchingPolicy mixed_priority_batching_policy;
+};
+
 // Base class for resource that encapsulating the state and logic for batching
 // tensors.
 class BatchResourceBase : public ResourceBase {
  public:
   // Given a BatchTask (from one op invocation) with 'num_outputs'== M and
-  // splitted into N sub tasks, TensorMatrix is a N X M matrix.
+  // split into N sub tasks, TensorMatrix is a N X M matrix.
   // Namely, TensorMatrix[i][j] indicates the i-th split tensor of j-th output;
   // concatenating tensors along the 2nd dimension gives a output tensor.
   typedef std::vector<std::vector<Tensor>> TensorMatrix;
@@ -59,6 +84,8 @@ class BatchResourceBase : public ResourceBase {
   // Note input from one batch-op invocation is valid and considered a
   // specialized `slice`.
   struct BatchTask : public tensorflow::serving::BatchTask {
+    BatchTask() : criticality_val(tsl::criticality::GetCriticality()) {};
+
     // A unique ID to identify this invocation of Batch.
     int64_t guid;
 
@@ -107,10 +134,23 @@ class BatchResourceBase : public ResourceBase {
     // this task's processing costs.
     RequestCost* request_cost = nullptr;
 
+    // Returns the criticality associated with the task.
+    tsl::criticality::Criticality criticality() const override {
+      return criticality_val;
+    };
+
+    // If nonzero, make a batch of this size entirely out of padding. This
+    // batch is processed, but is not propagated to the kernel outputs.
+    int forced_warmup_batch_size = 0;
+
    protected:
     virtual std::unique_ptr<BatchTask> CreateDerivedTask() {
       return std::make_unique<BatchTask>();
     }
+
+   private:
+    // Criticality associated with the task.
+    ::tsl::criticality::Criticality criticality_val;
   };
 
   // Appending a T suffix to make the type alias different to those in
@@ -130,8 +170,7 @@ class BatchResourceBase : public ResourceBase {
         batcher_(std::move(batcher)),
         batcher_queue_options_(batcher_queue_options),
         allowed_batch_sizes_(std::move(allowed_batch_sizes)),
-        allowed_batch_sizes_str_(absl::StrJoin(allowed_batch_sizes_, ",")),
-        disable_padding_(batcher_queue_options.disable_padding) {}
+        allowed_batch_sizes_str_(absl::StrJoin(allowed_batch_sizes_, ",")) {}
 
   BatchResourceBase(bool has_process_batch_function,
                     std::shared_ptr<AdaptiveBatcherT> batcher,
@@ -141,8 +180,7 @@ class BatchResourceBase : public ResourceBase {
         adaptive_batcher_(std::move(batcher)),
         adaptive_batcher_queue_options_(batcher_queue_options),
         allowed_batch_sizes_(std::move(allowed_batch_sizes)),
-        allowed_batch_sizes_str_(absl::StrJoin(allowed_batch_sizes_, ",")),
-        disable_padding_(batcher_queue_options.disable_padding) {}
+        allowed_batch_sizes_str_(absl::StrJoin(allowed_batch_sizes_, ",")) {}
 
   void set_session_metadata(tensorflow::SessionMetadata session_metadata) {
     session_metadata_ = std::move(session_metadata);
@@ -153,18 +191,39 @@ class BatchResourceBase : public ResourceBase {
   using CreateBatchTaskFn =
       std::function<StatusOr<std::unique_ptr<BatchTask>>()>;
 
+  // Like `RegisterInput`, but extra "dummy" batches are processed for each
+  // batch size. Only the real request's outputs are propagated to the caller.
+  Status RegisterWarmupInputs(int64_t guid, OpKernelContext* context,
+                              const string& batcher_queue_name,
+                              const CreateBatchTaskFn& create_batch_task_fn,
+                              AsyncOpKernel::DoneCallback done);
   // Ingests data from one invocation of the batch op. The data is enqueued to
   // be combined with others into a batch, asynchronously.
+  // `CreateBatchTaskFn` should be used to instantiate fields added to a
+  // child class of `BatchTask` by the caller.
   Status RegisterInput(int64_t guid, OpKernelContext* context,
                        const string& batcher_queue_name,
                        const CreateBatchTaskFn& create_batch_task_fn,
-                       AsyncOpKernel::DoneCallback done_callback);
+                       AsyncOpKernel::DoneCallback done_callback,
+                       int forced_warmup_batch_size = 0);
 
   static BatcherT::QueueOptions GetBatcherQueueOptions(
       int32_t num_batch_threads, int32_t max_batch_size,
       int32_t batch_timeout_micros, int32_t max_enqueued_batches,
       const std::vector<int32>& allowed_batch_sizes,
       bool enable_large_batch_splitting, bool disable_padding);
+
+  static BatcherT::QueueOptions GetBatcherQueueOptions(
+      int32_t num_batch_threads, int32_t max_batch_size,
+      int32_t batch_timeout_micros, int32_t max_enqueued_batches,
+      const std::vector<int32>& allowed_batch_sizes,
+      bool enable_large_batch_splitting, bool disable_padding,
+      absl::string_view batch_padding_policy,
+      int32_t low_priority_max_batch_size,
+      int32_t low_priority_batch_timeout_micros,
+      int32_t low_priority_max_enqueued_batches,
+      const std::vector<int32>& low_priority_allowed_batch_sizes,
+      MixedPriorityBatchingPolicy mixed_priority_batching_policy);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
       int32_t max_batch_size, int32_t batch_timeout_micros,
@@ -196,19 +255,34 @@ class BatchResourceBase : public ResourceBase {
   // Inputs:
   // 1) batch_cost_measurements, which provides the total cost of each type;
   // 2) processed_size, it's the batch size plus the padding amount;
-  // 3) batch, provides the batch size.
+  // 3) batch, provides the batch size and input sizes.
   //
   // Outputs:
-  // The request_cost in each batch task will be updated. This function will use
-  // two approaches to split the batch cost (if it's non-zero), thus two costs
-  // will be output.
-  // 1) smeared cost: batch cost is split proportionally to each task's size,
-  //    and paddings do not share any cost;
-  // 2) non-smeared cost: batch cost is split proportionally to each task or
-  //    padding's size. Here padding's cost is not assigned to any tasks.
-  static void SplitBatchCosts(
-      std::vector<std::unique_ptr<CostMeasurement>>& batch_cost_measurements,
-      const int64_t processed_size, BatchT& batch);
+  // The request_cost in each batch task will be updated.
+  // - This function will use two approaches to split the batch cost (if it's
+  //   non-zero), thus two costs will be output.
+  //   1) smeared cost: batch cost is split proportionally to each task's size,
+  //      and paddings do not share any cost;
+  //   2) non-smeared cost: batch cost is split proportionally to each task or
+  //      padding's size. Here padding's cost is not assigned to any tasks.
+  // - This function will also record the metrics of this batch in each task,
+  //   including:
+  //   1) the batch size;
+  //   2) the input size from this task;
+  //   3) the padding amount.
+  static void SplitBatchCostsAndRecordMetrics(
+      const std::string& model_name, const std::string& op_name,
+      const std::vector<std::unique_ptr<CostMeasurement>>&
+          batch_cost_measurements,
+      int64_t processed_size, BatchT& batch);
+
+  // Records information about the delay between a task being registered and
+  // that task being scheduled into a batch.
+  static void RecordBatchDelayMetrics(
+      const BatchResourceBase::BatchT& batch, const std::string& model_name,
+      const std::string& op_name, int64_t processed_size,
+      absl::Time batch_schedule_time,
+      std::optional<absl::Duration> batch_timeout);
 
  private:
   // Implementation of calling the process batch function.
@@ -221,21 +295,46 @@ class BatchResourceBase : public ResourceBase {
   // Assumes the batch is non-empty.
   static Status ValidateBatch(const BatchT& batch);
 
+  // Returns a boolean indicating whether a batch is formed from low priority
+  // tasks only or not.
+  bool IsLowPriorityBatch(const BatchT& batch) const;
+
   // Returns the smallest entry in 'allowed_batch_sizes_' that is greater than
   // or equal to 'batch_size'. If 'allowed_batch_sizes_' is empty, simply
   // returns 'batch_size'.
-  int RoundToLowestAllowedBatchSize(int batch_size) const;
+  int RoundToLowestAllowedBatchSize(int batch_size,
+                                    bool is_low_priority_batch = false) const;
 
-  Status ConcatInputTensors(const BatchT& batch, OpKernelContext* context,
-                            std::vector<Tensor>* concatenated_tensors) const;
+  // Helper function to propagate the status to the task's context and call the
+  // done callback on the task.
+  void CleanUpFunctionHelper(BatchTask& task, const Status& status) const;
 
-  Status SplitOutputTensors(const std::vector<Tensor>& combined_outputs,
-                            BatchT* batch) const;
+  // Concatenates the input tensors of the tasks from the batch and the
+  // unbatched task vector. When padding is enabled in the batcher queue, they
+  // are padded with garbage value up to the nearest allowed batch size.
+  Status ConcatInputTensors(
+      const BatchT& batch,
+      const std::vector<std::unique_ptr<BatchTask>>& unbatched_tasks,
+      OpKernelContext* context,
+      std::vector<Tensor>* concatenated_tensors) const;
 
-  void ProcessFuncBatch(std::unique_ptr<BatchT> batch) const;
+  Status SplitOutputTensors(
+      const std::vector<Tensor>& combined_outputs, BatchT* batch,
+      std::vector<std::unique_ptr<BatchTask>>& unbatched_tasks) const;
+
+  void ProcessFuncBatch(
+      std::unique_ptr<BatchT> batch,
+      std::vector<std::unique_ptr<BatchTask>> unbatched_tasks = {}) const;
 
   // Processes a batch of one or more BatchTask entries.
   void ProcessBatch(std::unique_ptr<BatchT> batch) const;
+
+  // Callback function that wraps the Process*Batch functions above. The caller
+  // of the callback must guarantee that the unique pointers passed as argument
+  // are not null.
+  void ProcessBatchCallBack(
+      std::unique_ptr<Batch<BatchTask>> batch,
+      std::vector<std::unique_ptr<BatchTask>> unbatched_tasks);
 
   // Emits an index tensor, which the Unbatch op will use to un-concatenate
   // the tensor and attribute the pieces to the right batch keys. The index
@@ -247,15 +346,24 @@ class BatchResourceBase : public ResourceBase {
   static Status EmitIndexTensor(OpKernelContext* context, const BatchT& batch,
                                 int output_index);
 
-  // Looks up the batcher queue for 'queue_name'. If it did't previously exist,
+  // Looks up the batcher queue for 'queue_name'. If it didn't previously exist,
   // creates it.
+  //
+  // The model_name and op_name are the names of the current model and
+  // operation, respectively.
   Status LookupOrCreateBatcherQueue(const string& queue_name,
+                                    const string& model_name,
+                                    const string& op_name,
                                     BatcherQueueT** queue);
+
+  // Returns the batch timeout for the configured scheduler, or nullopt if the
+  // scheduler does not have such a parameter.
+  std::optional<absl::Duration> GetBatchTimeout() const;
 
   SessionMetadata session_metadata_;
 
   absl::Mutex outstanding_batch_mu_;
-  int num_outstanding_batches_ = 0;
+  int num_outstanding_batched_items_ TF_GUARDED_BY(outstanding_batch_mu_) = 0;
 
   // True if user specified a batch processing function for this resource.
   const bool has_process_batch_function_;
@@ -278,9 +386,6 @@ class BatchResourceBase : public ResourceBase {
   // A concatenated string of <allowed_batch_sizes_>, separated by ",". This is
   // used to record batching parameter.
   string allowed_batch_sizes_str_;
-
-  // If true, the padding will not be appended.
-  bool disable_padding_;
 };
 
 }  // namespace serving

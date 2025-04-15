@@ -53,6 +53,46 @@ bool IsBuiltWithNvcc() {
 #endif
 }
 
+bool IsAArch32Available() {
+#if TF_LLVM_AARCH32_AVAILABLE
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool IsAArch64Available() {
+#if TF_LLVM_AARCH64_AVAILABLE
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool IsPowerPCAvailable() {
+#if TF_LLVM_POWERPC_AVAILABLE
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool IsSystemZAvailable() {
+#if TF_LLVM_S390X_AVAILABLE
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool IsX86Available() {
+#if TF_LLVM_X86_AVAILABLE
+  return true;
+#else
+  return false;
+#endif
+}
+
 bool GpuSupportsHalfMatMulAndConv() {
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -70,13 +110,17 @@ inline bool DefaultOneDnnPolicy() {
   return false;
 #elif defined(PLATFORM_GOOGLE)
   return true;
+#elif defined(PLATFORM_WINDOWS) && defined(PLATFORM_IS_X86)
+  return true;
 #elif defined(__linux__)
   return port::TestCPUFeature(port::CPUFeature::AVX512_VNNI) ||
          port::TestCPUFeature(port::CPUFeature::AVX512_BF16) ||
          port::TestCPUFeature(port::CPUFeature::AVX_VNNI) ||
          port::TestCPUFeature(port::CPUFeature::AMX_TILE) ||
          port::TestCPUFeature(port::CPUFeature::AMX_INT8) ||
-         port::TestCPUFeature(port::CPUFeature::AMX_BF16);
+         port::TestCPUFeature(port::CPUFeature::AMX_BF16) ||
+         port::TestAarch64CPU(
+             port::Aarch64CPU::ARM_NEOVERSE_V1);  // ARM NEOVERSE V1
 #else
   return false;
 #endif  // !defined(INTEL_MKL)
@@ -106,17 +150,11 @@ bool IsMklEnabled() {
                    << oneDNN_enabled;
     }
     if (oneDNN_enabled) {
-#ifndef DNNL_AARCH64_USE_ACL
       LOG(INFO) << "oneDNN custom operations are on. "
                 << "You may see slightly different numerical results due to "
                 << "floating-point round-off errors from different computation "
                 << "orders. To turn them off, set the environment variable "
                 << "`TF_ENABLE_ONEDNN_OPTS=0`.";
-#else
-      LOG(INFO) << "Experimental oneDNN custom operations are on. "
-                << "If you experience issues, please turn them off by setting "
-                << "the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.";
-#endif  // !DNNL_AARCH64_USE_ACL
     }
   });
   return oneDNN_enabled;

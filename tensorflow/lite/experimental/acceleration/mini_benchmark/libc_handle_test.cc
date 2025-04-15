@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/libc_handle.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 namespace tflite {

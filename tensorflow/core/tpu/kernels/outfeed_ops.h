@@ -20,20 +20,22 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/op.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
 
@@ -51,7 +53,7 @@ class TpuOutfeedDequeueOp : public T {
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape_, &xla_shape_));
   }
 
-  Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
+  absl::Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
     Tensor* output;
     TF_RETURN_IF_ERROR(ctx->allocate_output(0, shape_, &output));
 
@@ -68,7 +70,7 @@ class TpuOutfeedDequeueOp : public T {
 
     VLOG(1) << "TransferLiteralFromOutfeed complete.";
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -76,7 +78,6 @@ class TpuOutfeedDequeueOp : public T {
   DataType dtype_;
   xla::Shape xla_shape_;
 
-  // OutfeedDequeueOp is neither copyable nor movable.
   TpuOutfeedDequeueOp(const TpuOutfeedDequeueOp&) = delete;
   TpuOutfeedDequeueOp& operator=(const TpuOutfeedDequeueOp&) = delete;
 };
@@ -106,7 +107,7 @@ class TpuOutfeedDequeueTupleOp : public T {
     tuple_shape_ = xla::ShapeUtil::MakeTupleShape(xla_shapes_);
   }
 
-  Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
+  absl::Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
     VLOG(1) << "TransferLiteralFromOutfeed "
             << xla::ShapeUtil::HumanStringWithLayout(tuple_shape_);
 
@@ -120,7 +121,7 @@ class TpuOutfeedDequeueTupleOp : public T {
       TF_RETURN_IF_ERROR(
           T::transfer_op_->TransferLiteralFromOutfeed(device_ordinal, literal));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -129,7 +130,6 @@ class TpuOutfeedDequeueTupleOp : public T {
   std::vector<xla::Shape> xla_shapes_;
   xla::Shape tuple_shape_;
 
-  // OutfeedDequeueTupleOp is neither copyable nor movable.
   TpuOutfeedDequeueTupleOp(const TpuOutfeedDequeueTupleOp&) = delete;
   TpuOutfeedDequeueTupleOp& operator=(const TpuOutfeedDequeueTupleOp&) = delete;
 };

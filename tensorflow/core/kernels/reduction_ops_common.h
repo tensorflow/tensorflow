@@ -23,9 +23,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -72,7 +71,8 @@ class ReductionHelper {
  public:
   ReductionHelper() : reduce_first_axis_(false) {}
 
-  Status Simplify(const Tensor& data, const Tensor& axis, const bool keep_dims);
+  absl::Status Simplify(const Tensor& data, const Tensor& axis,
+                        const bool keep_dims);
 
   // We need to do roughly:
   //   tmp_out = allocate(out_reshape())
@@ -114,14 +114,15 @@ class ReductionHelper {
   TensorShape shuffled_shape();
 
   // Permutation of reduced dims needed to put reduction dimensions at the end
-  gtl::InlinedVector<int32, 8> permutation();
+  absl::InlinedVector<int32, 8> permutation();
 
  private:
   bool reduce_first_axis_;  // True if need to reduce the 0-th dimension.
-  gtl::InlinedVector<int64_t, 4>
-      data_reshape_;                          // Reshape data before reduction.
-  gtl::InlinedVector<int64_t, 4> out_shape_;  // The final output shape.
-  gtl::InlinedVector<int64_t, 4> out_reshape_;  // Reshape output for reduction.
+  absl::InlinedVector<int64_t, 4>
+      data_reshape_;                           // Reshape data before reduction.
+  absl::InlinedVector<int64_t, 4> out_shape_;  // The final output shape.
+  absl::InlinedVector<int64_t, 4>
+      out_reshape_;  // Reshape output for reduction.
 };
 
 // For operations where the output is a reduction function along some

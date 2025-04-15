@@ -29,6 +29,7 @@ namespace gpu {
 namespace cl {
 
 absl::Status LoadOpenCL();
+void LoadOpenCLFunctionExtensions(cl_platform_id platform_id);
 
 typedef cl_int(CL_API_CALL *PFN_clGetPlatformIDs)(
     cl_uint /* num_entries */, cl_platform_id * /* platforms */,
@@ -543,6 +544,18 @@ typedef cl_int(CL_API_CALL *PFN_clEnqueueCommandBufferKHR)(
     cl_uint /*num_events_in_wait_list*/, const cl_event * /*event_wait_list*/,
     cl_event * /*event*/);
 
+#if CL_KHR_COMMAND_BUFFER_EXTENSION_VERSION >= CL_MAKE_VERSION(0, 9, 5)
+typedef cl_int(CL_API_CALL *PFN_clCommandNDRangeKernelKHR)(
+    cl_command_buffer_khr /*command_buffer*/,
+    cl_command_queue /*command_queue*/,
+    const cl_command_properties_khr * /*properties*/, cl_kernel /*kernel*/,
+    cl_uint /*work_dim*/, const size_t * /*global_work_offset*/,
+    const size_t * /*global_work_size*/, const size_t * /*local_work_size*/,
+    cl_uint /*num_sync_points_in_wait_list*/,
+    const cl_sync_point_khr * /*sync_point_wait_list*/,
+    cl_sync_point_khr * /*sync_point*/,
+    cl_mutable_command_khr * /*mutable_handle*/);
+#else
 typedef cl_int(CL_API_CALL *PFN_clCommandNDRangeKernelKHR)(
     cl_command_buffer_khr /*command_buffer*/,
     cl_command_queue /*command_queue*/,
@@ -554,11 +567,18 @@ typedef cl_int(CL_API_CALL *PFN_clCommandNDRangeKernelKHR)(
     const cl_sync_point_khr * /*sync_point_wait_list*/,
     cl_sync_point_khr * /*sync_point*/,
     cl_mutable_command_khr * /*mutable_handle*/);
+#endif
 
 typedef cl_int(CL_API_CALL *PFN_clGetCommandBufferInfoKHR)(
     cl_command_buffer_khr /*command_buffer*/,
     cl_command_buffer_info_khr /*param_name*/, size_t /*param_value_size*/,
     void * /*param_value*/, size_t * /*param_value_size_ret*/);
+
+// cl_arm_import_memory extension
+typedef cl_mem(CL_API_CALL *PFN_clImportMemoryARM)(
+    cl_context /*context*/, cl_mem_flags /*flags*/,
+    const cl_import_properties_arm * /*properties*/, void * /*memory*/,
+    size_t /*size*/, cl_int * /*errcode_ret*/);
 
 extern PFN_clGetPlatformIDs clGetPlatformIDs;
 extern PFN_clGetPlatformInfo clGetPlatformInfo;
@@ -686,6 +706,9 @@ extern PFN_clFinalizeCommandBufferKHR clFinalizeCommandBufferKHR;
 extern PFN_clEnqueueCommandBufferKHR clEnqueueCommandBufferKHR;
 extern PFN_clCommandNDRangeKernelKHR clCommandNDRangeKernelKHR;
 extern PFN_clGetCommandBufferInfoKHR clGetCommandBufferInfoKHR;
+
+// cl_arm_import_memory extension
+extern PFN_clImportMemoryARM clImportMemoryARM;
 
 // For convenient image creation
 // It uses clCreateImage if it available (clCreateImage available since cl 1.2)

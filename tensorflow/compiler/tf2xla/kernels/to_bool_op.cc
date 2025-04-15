@@ -13,14 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <numeric>
+#include <cstdint>
 
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace {
@@ -34,27 +38,27 @@ class ToBoolOp : public XlaOpKernel {
   }
 
  private:
-  Status DoCompile(XlaOpKernelContext* ctx) {
+  absl::Status DoCompile(XlaOpKernelContext* ctx) {
     auto input = ctx->Input(0);
 
     // If the input is a scalar, then non-zero value returns True.
     TF_ASSIGN_OR_RETURN(auto shape, ctx->InputXlaShape(0));
-    if (shape.rank() == 0) {
+    if (shape.dimensions().empty()) {
       auto result = xla::Ne(ctx->Input(0), xla::ZerosLike(input));
       ctx->SetOutput(0, result);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Otherwise, any input tensor with elements returns True. Input tensor
     // dimensions might be dynamic with bounds so multiply all the dimensions.
     xla::XlaOp num_elements = xla::One(ctx->builder(), xla::S32);
-    for (int64_t dim = 0; dim < shape.rank(); dim++) {
+    for (int64_t dim = 0; dim < shape.dimensions().size(); dim++) {
       num_elements = xla::Mul(num_elements, xla::GetDimensionSize(input, dim));
     }
     auto result = xla::Ne(num_elements, xla::ZerosLike(num_elements));
     ctx->SetOutput(0, result);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

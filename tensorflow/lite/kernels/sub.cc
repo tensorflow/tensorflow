@@ -152,9 +152,22 @@ TfLiteStatus PrepareGeneralSubOp(TfLiteContext* context,
   tflite::QuantizeMultiplierSmallerThanOneExp(real_input2_multiplier,
                                               &op_params->input2_multiplier,
                                               &op_params->input2_shift);
-  tflite::QuantizeMultiplierSmallerThanOneExp(real_output_multiplier,
-                                              &op_params->output_multiplier,
-                                              &op_params->output_shift);
+
+  // real_output_multiplier can be > 1 and valid if the stats range is very
+  // narrow. kNearZeroTolerance == 1.0e-6 defined, we extend the range to
+  // 2.0e-6 (max - min) and with a quantized range of [-128, 127] we get an
+  // absolute difference of 255 leading to output_quantization_params.scale ==
+  // (2.0e-6/255) == 7.84314e-9. The above computation for real_output_muliplier
+  // and input scales of 1.0 produces: 2/((1 << 20) * 7.84314e-9) ~= 243
+  if (real_output_multiplier > 1) {
+    tflite::QuantizeMultiplierGreaterThanOne(real_output_multiplier,
+                                             &op_params->output_multiplier,
+                                             &op_params->output_shift);
+  } else {
+    tflite::QuantizeMultiplierSmallerThanOneExp(real_output_multiplier,
+                                                &op_params->output_multiplier,
+                                                &op_params->output_shift);
+  }
 
   TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
       context, params->activation, output, &op_params->output_activation_min,

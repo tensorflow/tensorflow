@@ -25,7 +25,7 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 namespace {
-tensorflow::Status ValidateRowPartitionTypesAndShapes(
+absl::Status ValidateRowPartitionTypesAndShapes(
     const std::vector<RowPartitionType>& row_partition_types,
     InferenceContext* c) {
   // Note: the allowed types may be extended in the future.
@@ -84,16 +84,16 @@ tensorflow::Status ValidateRowPartitionTypesAndShapes(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status RaggedTensorToSparseShapeFn(InferenceContext* c);
-Status RaggedTensorToVariantShapeFn(InferenceContext* c);
-Status RaggedTensorFromVariantShapeFn(InferenceContext* c);
-Status RaggedTensorToVariantGradientShapeFn(InferenceContext* c);
-Status RaggedTensorToTensorShapeFn(InferenceContext* c);
+absl::Status RaggedTensorToSparseShapeFn(InferenceContext* c);
+absl::Status RaggedTensorToVariantShapeFn(InferenceContext* c);
+absl::Status RaggedTensorFromVariantShapeFn(InferenceContext* c);
+absl::Status RaggedTensorToVariantGradientShapeFn(InferenceContext* c);
+absl::Status RaggedTensorToTensorShapeFn(InferenceContext* c);
 
 //==============================================================================
 // Registered Ops
@@ -157,7 +157,7 @@ REGISTER_OP("RaggedTensorToTensor")
 // Shape Functions
 //==============================================================================
 
-Status RaggedTensorToSparseShapeFn(InferenceContext* c) {
+absl::Status RaggedTensorToSparseShapeFn(InferenceContext* c) {
   int64_t num_splits;
   TF_RETURN_IF_ERROR(c->GetAttr<int64_t>("RAGGED_RANK", &num_splits));
   // TODO(b/112274756): Allow ragged_rank to be 0.
@@ -183,10 +183,10 @@ Status RaggedTensorToSparseShapeFn(InferenceContext* c) {
   c->set_output(1, c->Vector(num_values));              // values
   c->set_output(2, c->Vector(dense_dims));              // dense_shape
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RaggedTensorToVariantShapeFn(InferenceContext* c) {
+absl::Status RaggedTensorToVariantShapeFn(InferenceContext* c) {
   int64_t num_splits;
   TF_RETURN_IF_ERROR(c->GetAttr<int64_t>("RAGGED_RANK", &num_splits));
   bool batched;
@@ -205,18 +205,18 @@ Status RaggedTensorToVariantShapeFn(InferenceContext* c) {
   } else {
     c->set_output(0, c->Scalar());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RaggedTensorToVariantGradientShapeFn(InferenceContext* c) {
+absl::Status RaggedTensorToVariantGradientShapeFn(InferenceContext* c) {
   ShapeHandle shape;
   TF_RETURN_IF_ERROR(
       c->MakeShapeFromShapeTensorTreatScalarAsUnknownShape(2, &shape));
   c->set_output(0, shape);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RaggedTensorFromVariantShapeFn(InferenceContext* c) {
+absl::Status RaggedTensorFromVariantShapeFn(InferenceContext* c) {
   int64_t input_ragged_rank;
   TF_RETURN_IF_ERROR(
       c->GetAttr<int64_t>("input_ragged_rank", &input_ragged_rank));
@@ -233,10 +233,10 @@ Status RaggedTensorFromVariantShapeFn(InferenceContext* c) {
     c->set_output(i, c->UnknownShapeOfRank(1));
   }
   c->set_output(output_ragged_rank, c->UnknownShape());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-tensorflow::Status RaggedTensorToTensorShapeFn(InferenceContext* c) {
+absl::Status RaggedTensorToTensorShapeFn(InferenceContext* c) {
   TensorShapeProto shape;
   {
     ShapeHandle shape_handle;
@@ -276,7 +276,7 @@ tensorflow::Status RaggedTensorToTensorShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(
       c->MakeShapeFromShapeProto(output_shape, &output_shape_handle));
   c->set_output(0, output_shape_handle);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

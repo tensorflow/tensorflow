@@ -12,26 +12,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-::tensorflow::Status ResolveBatchNormalization::Run(Model* model,
-                                                    std::size_t op_index,
-                                                    bool* modified) {
+absl::Status ResolveBatchNormalization::Run(Model* model, std::size_t op_index,
+                                            bool* modified) {
   *modified = false;
   auto bn_it = model->operators.begin() + op_index;
   if (bn_it->get()->type != OperatorType::kBatchNormalization) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const auto* bn_op =
       static_cast<const BatchNormalizationOperator*>(bn_it->get());
@@ -44,7 +45,7 @@ namespace toco {
   // we need to exit early if these buffers don't exist yet (i.e. if the params
   // haven't yet been resolved as constants) and will process it once they have.
   if (!mean_array.buffer || !multiplier_array.buffer || !offset_array.buffer) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   CHECK(IsConstantParameterArray(*model, bn_op->inputs[1]) &&
@@ -141,7 +142,7 @@ namespace toco {
   DeleteOpAndArrays(model, bn_op);
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

@@ -12,12 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -101,14 +106,13 @@ void Transpose(Model* model, const Array& input_array,
 
 }  // namespace
 
-::tensorflow::Status ResolveConstantTranspose::Run(Model* model,
-                                                   std::size_t op_index,
-                                                   bool* modified) {
+absl::Status ResolveConstantTranspose::Run(Model* model, std::size_t op_index,
+                                           bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
   if (base_op->type != OperatorType::kTranspose) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const auto* op = static_cast<const TransposeOperator*>(base_op);
 
@@ -117,17 +121,17 @@ void Transpose(Model* model, const Array& input_array,
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (!output_array.has_shape()) {
     // Yield until the output shape has been set by PropagateFixedShapes.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // We require constant inputs.
   if (!IsConstantParameterArray(*model, op->inputs[0]) ||
       !IsConstantParameterArray(*model, op->inputs[1])) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const Array& input_array = model->GetArray(op->inputs[0]);
 
@@ -135,7 +139,7 @@ void Transpose(Model* model, const Array& input_array,
 
   if (op->perm.empty()) {
     // Yield until perm has been populated by ResolveTransposeAttributes.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // We currently only support 1-4 dimensions.
@@ -173,7 +177,7 @@ void Transpose(Model* model, const Array& input_array,
 
   DeleteOpAndArrays(model, op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

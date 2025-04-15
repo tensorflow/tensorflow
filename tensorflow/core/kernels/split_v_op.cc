@@ -29,7 +29,7 @@ limitations under the License.
 
 #include <numeric>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -493,6 +493,10 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
   REGISTER_SPLIT(type, int64_t);
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT_LEN);
+TF_CALL_float8_e5m2(REGISTER_SPLIT_LEN);
+TF_CALL_float8_e4m3fn(REGISTER_SPLIT_LEN);
+TF_CALL_int4(REGISTER_SPLIT_LEN);
+TF_CALL_uint4(REGISTER_SPLIT_LEN);
 REGISTER_SPLIT_LEN(quint8)
 
 #undef REGISTER_SPLIT_LEN

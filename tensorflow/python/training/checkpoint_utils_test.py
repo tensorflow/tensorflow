@@ -20,9 +20,6 @@ import time
 
 import numpy as np
 
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.checkpoint import checkpoint as trackable_utils
-from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
@@ -32,7 +29,6 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
@@ -131,7 +127,6 @@ class CheckpointsTest(test.TestCase):
         checkpoint_utils.list_variables(checkpoint_dir),
         [("useful_scope/var4", [9, 9]), ("var1", [1, 10]), ("var2", [10, 10]),
          ("var3", [100, 100])])
-
 
   def testInitFromCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
@@ -315,7 +310,7 @@ class CheckpointsTest(test.TestCase):
         self.assertAllEqual(my1_values, v1)
         my2_values = session.run(my2_var_list)
         # Verify we created different number of partitions.
-        self.assertNotEquals(len(my2_values), len(v1))
+        self.assertNotEqual(len(my2_values), len(v1))
         # Verify the values were correctly initialized inspite of different
         # partitions.
         full_my2_values = np.concatenate(my2_values, axis=0)
@@ -412,97 +407,6 @@ class CheckpointsTest(test.TestCase):
             op.type != "Identity")
     ]
     self.assertEqual(ops_in_init_from_checkpoint_scope, [])
-
-
-class CheckpointIteratorTest(test.TestCase):
-
-  @test_util.run_in_graph_and_eager_modes
-  def testReturnsEmptyIfNoCheckpointsFound(self):
-    checkpoint_dir = os.path.join(self.get_temp_dir(), "no_checkpoints_found")
-
-    num_found = 0
-    for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
-      num_found += 1
-    self.assertEqual(num_found, 0)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testReturnsSingleCheckpointIfOneCheckpointFound(self):
-    checkpoint_dir = os.path.join(self.get_temp_dir(), "one_checkpoint_found")
-    if not gfile.Exists(checkpoint_dir):
-      gfile.MakeDirs(checkpoint_dir)
-
-    save_path = os.path.join(checkpoint_dir, "model.ckpt")
-
-    a = resource_variable_ops.ResourceVariable(5)
-    self.evaluate(a.initializer)
-    checkpoint = trackable_utils.Checkpoint(a=a)
-    checkpoint.save(file_prefix=save_path)
-
-    num_found = 0
-    for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
-      num_found += 1
-    self.assertEqual(num_found, 1)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testWorksWithFSPath(self):
-    checkpoint_dir = pathlib.Path(self.get_temp_dir()) / "one_checkpoint_found"
-    if not gfile.Exists(checkpoint_dir):
-      gfile.MakeDirs(checkpoint_dir)
-
-    save_path = checkpoint_dir / "model.ckpt"
-
-    a = resource_variable_ops.ResourceVariable(5)
-    self.evaluate(a.initializer)
-    checkpoint = trackable_utils.Checkpoint(a=a)
-    checkpoint.save(file_prefix=save_path)
-
-    num_found = 0
-    for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
-      num_found += 1
-    self.assertEqual(num_found, 1)
-
-  @test_util.run_v1_only("Tests v1-style checkpoint sharding")
-  def testReturnsSingleCheckpointIfOneShardedCheckpoint(self):
-    checkpoint_dir = os.path.join(self.get_temp_dir(),
-                                  "one_checkpoint_found_sharded")
-    if not gfile.Exists(checkpoint_dir):
-      gfile.MakeDirs(checkpoint_dir)
-
-    global_step = variables.Variable(0, name="v0")
-
-    # This will result in 3 different checkpoint shard files.
-    with ops.device("/cpu:0"):
-      variables.Variable(10, name="v1")
-    with ops.device("/cpu:1"):
-      variables.Variable(20, name="v2")
-
-    saver = saver_lib.Saver(sharded=True)
-
-    with session_lib.Session(
-        target="",
-        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as session:
-
-      session.run(variables.global_variables_initializer())
-      save_path = os.path.join(checkpoint_dir, "model.ckpt")
-      saver.save(session, save_path, global_step=global_step)
-
-    num_found = 0
-    for _ in checkpoint_utils.checkpoints_iterator(checkpoint_dir, timeout=0):
-      num_found += 1
-    self.assertEqual(num_found, 1)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testTimeoutFn(self):
-    timeout_fn_calls = [0]
-    def timeout_fn():
-      timeout_fn_calls[0] += 1
-      return timeout_fn_calls[0] > 3
-
-    results = list(
-        checkpoint_utils.checkpoints_iterator(
-            "/non-existent-dir", timeout=0.1, timeout_fn=timeout_fn))
-    self.assertEqual([], results)
-    self.assertEqual(4, timeout_fn_calls[0])
 
 
 @test_util.run_all_in_graph_and_eager_modes

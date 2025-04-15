@@ -13,6 +13,12 @@ the name by which this variable is referred to.
 END
   }
   attr {
+    name: "debug_name"
+    description: <<END
+the user-given name, which still applies in anonymous mode.
+END
+  }
+  attr {
     name: "dtype"
     description: <<END
 the type of this variable. Must agree with the dtypes

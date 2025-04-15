@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
+#include <cassert>
 #include <deque>
 #include <iterator>
 #include <memory>
@@ -23,40 +23,54 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
+#include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
@@ -107,7 +121,7 @@ void UpdateLayoutForSkippedOps(
   llvm::SmallVector<mlir::Value, 4> skipped_values;
   TraceUseToNextTFOp(&operand, func_to_caller, &skipped_values);
   for (const mlir::Value& skipped_value : skipped_values)
-    if ((!skipped_value.isa<mlir::OpResult>() ||
+    if ((!mlir::isa<mlir::OpResult>(skipped_value) ||
          !mlir::isa<mlir::TF::DTensorLayout, mlir::tf_device::ClusterOp>(
              skipped_value.getDefiningOp())) &&
         layouts.find(skipped_value) == layouts.end())
@@ -299,7 +313,10 @@ StatusOr<Layout> MergeLayouts(
     }
   }
   FilterkAnySpecs(proposed_specs);
-  return Layout::GetLayout(proposed_specs, mesh);
+  // Parted layout is propagated from producer side to consumer side, so when
+  // merging the layout with producer layout, take the producer layout type into
+  // account.
+  return Layout::GetLayout(producer->type(), proposed_specs, mesh);
 }
 
 mlir::LogicalResult InsertLayoutsForDTensorLayout(
@@ -696,8 +713,8 @@ mlir::LogicalResult UpdateLayoutsForOp(
 
 mlir::LogicalResult InsertDTensorLayoutOps(
     mlir::OpBuilder& builder,
-    const llvm::DenseMap<mlir::Value, Layout>& merged_layouts) {
-  for (const auto& merged_layout : merged_layouts) {
+    llvm::DenseMap<mlir::Value, Layout>& merged_layouts) {
+  for (auto& merged_layout : merged_layouts) {
     // merged_layout is a pair of mlir::Value and Layout.
     // If there is only one user of the Value and that user is a DTensorLayout
     // op, then we can skip creating the op as the layout is already there. Note
@@ -708,16 +725,16 @@ mlir::LogicalResult InsertDTensorLayoutOps(
     int num_users = std::distance(users.begin(), users.end());
     if (num_users == 1 && mlir::isa<mlir::TF::DTensorLayout>(*users.begin()))
       continue;
+    auto layout_attr = mlir::dtensor::LayoutAttr::get(builder.getContext(),
+                                                      merged_layout.second);
     builder.setInsertionPointAfterValue(merged_layout.first);
     // Handles resource and variant as the real shape is embedded in the
     // resource type elements.
     mlir::Type value_type = GetSubtypeOrSelf(merged_layout.first);
 
-    if (auto type = value_type.dyn_cast<mlir::TensorType>()) {
+    if (auto type = mlir::dyn_cast<mlir::TensorType>(value_type)) {
       auto layout_op = builder.create<mlir::TF::DTensorLayout>(
-          merged_layout.first.getLoc(), merged_layout.first,
-          mlir::dtensor::LayoutAttr::get(builder.getContext(),
-                                         merged_layout.second),
+          merged_layout.first.getLoc(), merged_layout.first, layout_attr,
           mlir::TF::ShapeAttr::get(builder.getContext(), type));
       llvm::SmallPtrSet<mlir::Operation*, 4> exception{layout_op};
       merged_layout.first.replaceAllUsesExcept(layout_op.getOutput(),
@@ -725,9 +742,67 @@ mlir::LogicalResult InsertDTensorLayoutOps(
     } else {
       mlir::emitError(merged_layout.first.getLoc())
           << "value type is not TensorType as expected.";
+      return mlir::failure();
     }
   }
+  return mlir::success();
+}
 
+mlir::LogicalResult UpdateDTensorSendRecvOps(mlir::ModuleOp module,
+                                             mlir::OpBuilder& builder) {
+  llvm::SmallVector<mlir::TF::DTensorSend, 4> send_ops;
+  llvm::SmallVector<mlir::TF::DTensorRecv, 4> recv_ops;
+  module.walk([&](mlir::Operation* op) {
+    if (auto send_op = llvm::dyn_cast<mlir::TF::DTensorSend>(op))
+      send_ops.emplace_back(send_op);
+    if (auto recv_op = llvm::dyn_cast<mlir::TF::DTensorRecv>(op))
+      recv_ops.emplace_back(recv_op);
+  });
+
+  for (auto send_op : send_ops) {
+    absl::StatusOr<Layout> layout =
+        ExtractRequiredLayoutFromOperand(send_op->getOperand(0));
+    if (!layout.ok()) {
+      send_op->emitOpError()
+          << "Cannot add source layout to DTensorRecv for DTensorSend: "
+          << layout.status().message();
+      return mlir::failure();
+    }
+    absl::StatusOr<mlir::Operation*> recv_op =
+        GetCorrespondingDTensorSendRecvOp<mlir::TF::DTensorSend>(module,
+                                                                 send_op);
+    if (!recv_op.ok()) {
+      send_op->emitOpError()
+          << "Cannot add source layout to DTensorRecv for DTensorSend: "
+          << recv_op.status().message();
+      return mlir::failure();
+    }
+    auto layout_attr =
+        mlir::dtensor::LayoutAttr::get(builder.getContext(), *layout);
+    recv_op.value()->setAttr(kSourceLayoutAttr, layout_attr);
+  }
+
+  for (auto recv_op : recv_ops) {
+    absl::StatusOr<Layout> layout = ExtractRequiredSingleLayoutFromOp(recv_op);
+    if (!layout.ok()) {
+      recv_op->emitOpError()
+          << "Cannot add source layout to DTensorRecv for DTensorSend: "
+          << layout.status().message();
+      return mlir::failure();
+    }
+    absl::StatusOr<mlir::Operation*> send_op =
+        GetCorrespondingDTensorSendRecvOp<mlir::TF::DTensorRecv>(module,
+                                                                 recv_op);
+    if (!send_op.ok()) {
+      recv_op->emitOpError()
+          << "Cannot add target layout to DTensorSend for DTensorRecv: "
+          << send_op.status().message();
+      return mlir::failure();
+    }
+    auto layout_attr =
+        mlir::dtensor::LayoutAttr::get(builder.getContext(), *layout);
+    send_op.value()->setAttr(kTargetLayoutAttr, layout_attr);
+  }
   return mlir::success();
 }
 
@@ -743,7 +818,7 @@ void GetOperationsNeedingUpdate(
         if (!mlir::isa<mlir::TF::CopyToMeshOp>(use->getOwner()))
           operations.insert(use->getOwner());
     // If this is an OpResult, also add the op that produces it.
-    if (value.isa<mlir::OpResult>() &&
+    if (mlir::isa<mlir::OpResult>(value) &&
         !mlir::isa<mlir::TF::CopyToMeshOp>(value.getDefiningOp()))
       operations.insert(value.getDefiningOp());
   }
@@ -866,7 +941,7 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
   // Print an operand, this could be both the OpResult or a BlockArgument.
   // We also print the layout if it exists and the type.
   void printOperand(mlir::Value value, llvm::raw_ostream& os) override {
-    if (auto result = value.dyn_cast<mlir::OpResult>()) {
+    if (auto result = mlir::dyn_cast<mlir::OpResult>(value)) {
       // If DTensorLayout ops are already in the module, we need to skip them
       // since we aren't printing them out.
       if (mlir::isa<mlir::TF::DTensorLayout>(result.getDefiningOp())) {
@@ -879,7 +954,7 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
       os << "%" << location_[result.getDefiningOp()];
       if (result.getDefiningOp()->getNumResults() > 1)
         os << ":" << result.getResultNumber();
-    } else if (auto argument = value.dyn_cast<mlir::BlockArgument>()) {
+    } else if (auto argument = mlir::dyn_cast<mlir::BlockArgument>(value)) {
       if (arguments_.find(argument) == arguments_.end())
         arguments_[argument] = next_argument_++;
       os << "%arg" << arguments_[argument];
@@ -993,58 +1068,32 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
 // Log the current set of layouts to a file marked by the hash of the input
 // module and the stage.
 void LogLayoutsAndOps(const int stage, const int steps,
-                      const uint64_t module_hash,
                       const llvm::DenseMap<mlir::Value, Layout>& merged_layouts,
                       mlir::ModuleOp& module) {
   if (module->hasAttr(kDoNotLog) || ((ClientId() != 0) && !LogOnAllTasks()))
     return;
 
-  std::string prefix = tensorflow::GetDumpDirFromEnvVar();
-  if (prefix.empty()) return;
+  std::string tag = absl::StrFormat("stage_%04d_", stage);
 
-  auto* env = tensorflow::Env::Default();
-  auto status = env->RecursivelyCreateDir(prefix);
-  if (!status.ok()) {
-    LOG(WARNING) << "cannot create directory '" << prefix
-                 << "': " << status.message();
-    return;
-  }
-
-  absl::StrAppend(&prefix, "/layout_propagation_v2_module_", module_hash,
-                  "_stage_", stage, "_");
   if (steps >= 0) {
-    absl::StrAppend(&prefix, steps, "_");
+    absl::StrAppend(&tag, absl::StrFormat("%04d", steps));
   } else {
-    absl::StrAppend(&prefix, "end_");
-  }
-  if (!tensorflow::Env::Default()->CreateUniqueFileName(&prefix, ".mlir")) {
-    LOG(WARNING) << "cannot create unique filename, won't dump MLIR module.";
-    return;
+    absl::StrAppend(&tag, "end");
   }
 
-  std::unique_ptr<WritableFile> file_writer;
-  status = env->NewWritableFile(prefix, &file_writer);
-  if (!status.ok()) {
-    LOG(WARNING) << "cannot open file '" << prefix << "': " << status.message();
-    return;
-  }
+  std::string operation_name = GetOperationName(module);
+  std::string prefix = DEBUG_DATA_DUMPER()->GetDumpFilename(
+      "layout_propagation", kDebugGroupDTensorLayout,
+      absl::StrCat(tag, "_", operation_name));
 
-  // Print the module to a string before writing to the file.
-  std::string txt_module;
-  {
-    llvm::raw_string_ostream os(txt_module);
-    LayoutPrinter printer(os, merged_layouts);
+  std::string filepath;
+  std::unique_ptr<llvm::raw_ostream> os;
+  // CreatefileForDumping automatically adds the .mlir suffix.
+  if (tensorflow::CreateFileForDumping(prefix, &os, &filepath).ok()) {
+    LayoutPrinter printer(*os, merged_layouts);
     module.print(printer);
+    LOG(INFO) << "Dumped MLIR module to " << filepath;
   }
-
-  status = file_writer->Append(txt_module);
-  if (!status.ok()) {
-    LOG(WARNING) << "error writing to file '" << prefix
-                 << "': " << status.message();
-    return;
-  }
-  (void)file_writer->Close();
-  LOG(INFO) << "Dumped MLIR module to " << prefix;
 }
 
 // Inserts/changes DTensorLayout op after IfRegion op and results of then/else
@@ -1162,7 +1211,7 @@ mlir::LogicalResult InsertRelayoutForWhileLoops(
           mlir::cast<mlir::TF::DTensorLayout>(input_layout_op).getLayout();
 
       // Inputs to Yield should also be a DTensorLayout op.
-      if (!yield_op->getOperand(i).isa<mlir::OpResult>() ||
+      if (!mlir::isa<mlir::OpResult>(yield_op->getOperand(i)) ||
           !mlir::isa<mlir::TF::DTensorLayout>(
               yield_op->getOperand(i).getDefiningOp()))
         return yield_op->emitOpError()
@@ -1179,12 +1228,12 @@ mlir::LogicalResult InsertRelayoutForWhileLoops(
 
       // Insert the first Relayout op (in the loop body).
       builder.setInsertionPointAfter(output_layout_op);
-      if (!yield_op->getOperand(i).getType().isa<mlir::TensorType>())
+      if (!mlir::isa<mlir::TensorType>(yield_op->getOperand(i).getType()))
         return yield_op->emitOpError()
                << "operand " << i << " does not have TensorType";
       mlir::TF::ShapeAttr global_shape = mlir::TF::ShapeAttr::get(
           builder.getContext(),
-          yield_op->getOperand(i).getType().cast<mlir::TensorType>());
+          mlir::cast<mlir::TensorType>(yield_op->getOperand(i).getType()));
       mlir::TF::RelayoutOp first_relayout =
           builder.create<mlir::TF::RelayoutOp>(
               op.getLoc(), yield_op->getOperand(i).getType(),
@@ -1308,7 +1357,7 @@ void FindRootsAndEmitError(
 // Runs an iteration of layout propagation, where we merge producer and consumer
 // requests and then recompute recommended layouts on all operations that
 // are connected to an updated layout.
-Status RunOneIteration(
+absl::Status RunOneIteration(
     llvm::DenseSet<mlir::Value>& is_locked,
     llvm::DenseSet<mlir::Value>& is_updated,
     llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
@@ -1317,8 +1366,8 @@ Status RunOneIteration(
     llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     llvm::DenseMap<mlir::Value, std::vector<mlir::OpOperand*>>& consumers,
     llvm::DenseMap<mlir::Value, Layout>& merged_layouts, mlir::ModuleOp& module,
-    const uint64_t module_hash, int stage, int* steps) {
-  if (is_updated.empty()) return OkStatus();
+    int stage, int* steps) {
+  if (is_updated.empty()) return absl::OkStatus();
   // Merge any possibly updated layouts.
   if (mlir::failed(
           MergeAndGetUpdatedLayouts(is_locked, is_updated, producer_request,
@@ -1331,8 +1380,9 @@ Status RunOneIteration(
   GetOperationsNeedingUpdate(is_updated, consumers, operations_needing_update);
   is_updated.clear();
 
-  if (VLOG_IS_ON(2)) {
-    LogLayoutsAndOps(stage, *steps, module_hash, merged_layouts, module);
+  if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(
+                           "layout_propagation", kDebugGroupDTensorLayout)) {
+    LogLayoutsAndOps(stage, *steps, merged_layouts, module);
   }
 
   for (auto* op : operations_needing_update) {
@@ -1342,14 +1392,15 @@ Status RunOneIteration(
       return errors::Internal("UpdateLayoutsForOp failed to update layouts.");
   }
   ++(*steps);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Compares every value's layouts in `merged_a` with the ones in `merged_b`,
 // and store the values that differ in `changed`.
-Status CompareMergedLayouts(const llvm::DenseMap<mlir::Value, Layout>& merged_a,
-                            const llvm::DenseMap<mlir::Value, Layout>& merged_b,
-                            llvm::DenseSet<mlir::Value>& changed) {
+absl::Status CompareMergedLayouts(
+    const llvm::DenseMap<mlir::Value, Layout>& merged_a,
+    const llvm::DenseMap<mlir::Value, Layout>& merged_b,
+    llvm::DenseSet<mlir::Value>& changed) {
   if (merged_a.size() != merged_b.size())
     return errors::Internal(
         "Both merged_layouts did not have the same number of set layouts.");
@@ -1364,7 +1415,7 @@ Status CompareMergedLayouts(const llvm::DenseMap<mlir::Value, Layout>& merged_a,
       changed.insert(value);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // MLIR pass that propagates layout for all ops the module.
@@ -1439,21 +1490,19 @@ struct DLayoutPropagationPassV2
             producer_request, is_updated, is_locked)))
       return signalPassFailure();
 
-    const auto module_hash = OpHash(module);
     int stage = 0;
 
     llvm::DenseMap<mlir::Value, Layout> merged_layouts;
-    Status status;
+    absl::Status status;
 
     while (!is_updated.empty() && stage < kLayoutPropagationMaxStages) {
       ++stage;
       int steps = 0;
       // Step 1. Run the layout propagation v2 until convergence or max steps.
       while (!is_updated.empty() && steps < LayoutPropagationMaxSteps()) {
-        Status status =
-            RunOneIteration(is_locked, is_updated, producer_request,
-                            consumer_requests, producers, consumers,
-                            merged_layouts, module, module_hash, stage, &steps);
+        absl::Status status = RunOneIteration(
+            is_locked, is_updated, producer_request, consumer_requests,
+            producers, consumers, merged_layouts, module, stage, &steps);
         if (!status.ok()) {
           module.emitOpError() << "Failure running iteration.";
           return signalPassFailure();
@@ -1475,7 +1524,7 @@ struct DLayoutPropagationPassV2
       while (changed.size() > previous_change_size) {
         if (!RunOneIteration(is_locked, is_updated, producer_request,
                              consumer_requests, producers, consumers,
-                             merged_layouts, module, module_hash, stage, &steps)
+                             merged_layouts, module, stage, &steps)
                  .ok()) {
           module.emitOpError() << "Failure running iteration.";
           return signalPassFailure();
@@ -1536,8 +1585,9 @@ struct DLayoutPropagationPassV2
             CopyLayoutsForSkippedOps(module, tf_dialect, merged_layouts)))
       return signalPassFailure();
 
-    if (VLOG_IS_ON(2)) {
-      LogLayoutsAndOps(stage, -1, module_hash, merged_layouts, module);
+    if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(
+                             "layout_propagation", kDebugGroupDTensorLayout)) {
+      LogLayoutsAndOps(stage, -1, merged_layouts, module);
     }
 
     if (!AllOpResultsHaveLayouts(&module, tf_dialect, merged_layouts))
@@ -1561,6 +1611,9 @@ struct DLayoutPropagationPassV2
 
     if (mlir::failed(
             InsertDTensorLayoutForIfRegionOp(if_ops, builder.getContext())))
+      return signalPassFailure();
+
+    if (mlir::failed(UpdateDTensorSendRecvOps(module, builder)))
       return signalPassFailure();
   };
 };

@@ -41,9 +41,9 @@ struct QuantizedDepthwiseConvKernel {};
 template <>
 struct QuantizedDepthwiseConvKernel<true, 8, 2> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     uint8x8x2_t filter_u8;
     filter_u8.val[0] = vld1_u8(filter_ptr);
@@ -88,9 +88,9 @@ struct QuantizedDepthwiseConvKernel<true, 8, 2> {
 template <>
 struct QuantizedDepthwiseConvKernel<false, 8, 1> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     const uint8x8_t filter_u8 = vld1_u8(filter_ptr);
     const int16x8_t filter_s16 = vreinterpretq_s16_u16(vmovl_u8(filter_u8));
@@ -156,9 +156,9 @@ struct QuantizedDepthwiseConvKernel<false, 8, 1> {
 template <>
 struct QuantizedDepthwiseConvKernel<false, 4, 2> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     const uint8x8_t filter_u8 = vld1_u8(filter_ptr);
     const int16x8_t filter_s16 = vreinterpretq_s16_u16(vmovl_u8(filter_u8));
@@ -226,9 +226,9 @@ struct QuantizedDepthwiseConvKernel<false, 4, 2> {
 template <>
 struct QuantizedDepthwiseConvKernel<false, 2, 8> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     int16x8_t filter[2];
     for (int i = 0; i < 2; i++) {
@@ -303,9 +303,9 @@ struct QuantizedDepthwiseConvKernel<false, 2, 8> {
 template <>
 struct QuantizedDepthwiseConvKernel<false, 2, 2> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     uint8x8_t filter_u8 = vdup_n_u8(0);
     filter_u8 = vset_lane_u8(filter_ptr[0], filter_u8, 0);
@@ -369,9 +369,9 @@ struct QuantizedDepthwiseConvKernel<false, 2, 2> {
 template <>
 struct QuantizedDepthwiseConvKernel<false, 2, 1> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     uint8x8_t filter_u8 = vdup_n_u8(0);
     filter_u8 = vset_lane_u8(filter_ptr[0], filter_u8, 0);
@@ -483,9 +483,9 @@ struct QuantizedDepthwiseConvKernel<false, 2, 1> {
 template <>
 struct QuantizedDepthwiseConvKernel<false, 1, 2> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     uint8x8_t filter_u8 = vdup_n_u8(0);
     filter_u8 = vset_lane_u8(filter_ptr[0], filter_u8, 0);
@@ -529,7 +529,7 @@ struct QuantizedDepthwiseConvKernel<false, 1, 2> {
       int32x2_t acc = vld1_s32(acc_buffer_ptr);
 
       // Load the inputs, add input_offset.
-      const uint32 input = *input_ptr++ + input_offset;
+      const uint32_t input = *input_ptr++ + input_offset;
 
       // Multiply-accumulate
       acc = vget_low_s32(vmlal_n_s16(vcombine_s32(acc, acc), filter, input));
@@ -543,9 +543,9 @@ struct QuantizedDepthwiseConvKernel<false, 1, 2> {
 template <>
 struct QuantizedDepthwiseConvKernel<false, 1, 4> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     uint8x8_t filter_u8 = vdup_n_u8(0);
     filter_u8 = vset_lane_u8(filter_ptr[0], filter_u8, 0);
@@ -624,7 +624,7 @@ struct QuantizedDepthwiseConvKernel<false, 1, 4> {
       int32x4_t acc = vld1q_s32(acc_buffer_ptr);
 
       // Load the inputs, add input_offset.
-      const uint32 input = *input_ptr++ + input_offset;
+      const uint32_t input = *input_ptr++ + input_offset;
 
       // Multiply-accumulate
       acc = vmlal_n_s16(acc, filter, input);
@@ -638,9 +638,9 @@ struct QuantizedDepthwiseConvKernel<false, 1, 4> {
 template <>
 struct QuantizedDepthwiseConvKernel<false, 4, 1> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     uint8x8_t filter_u8 = vdup_n_u8(0);
     filter_u8 = vset_lane_u8(filter_ptr[0], filter_u8, 0);
@@ -708,9 +708,9 @@ struct QuantizedDepthwiseConvKernel<false, 4, 1> {
 template <>
 struct QuantizedDepthwiseConvKernel<false, 4, 4> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     int16x8_t filter[2];
     for (int i = 0; i < 2; i++) {
@@ -793,15 +793,15 @@ struct QuantizedDepthwiseConvKernel<false, 4, 4> {
 template <>
 struct QuantizedDepthwiseConvKernel<true, 0, 3> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // We will have to duplicate bytes in a NEON register, 3-fold.
     // We will do that by register-level table-look-up using VTBL instructions.
     // Here we prepare the registers containing the table-lookup indices.
-    static const uint8 dup3_indices_array[3][8] = {{0, 0, 0, 1, 1, 1, 2, 2},
-                                                   {2, 3, 3, 3, 4, 4, 4, 5},
-                                                   {5, 5, 6, 6, 6, 7, 7, 7}};
+    static const uint8_t dup3_indices_array[3][8] = {{0, 0, 0, 1, 1, 1, 2, 2},
+                                                     {2, 3, 3, 3, 4, 4, 4, 5},
+                                                     {5, 5, 6, 6, 6, 7, 7, 7}};
     uint8x8_t dup3_indices[3];
     for (int i = 0; i < 3; i++) {
       dup3_indices[i] = vld1_u8(dup3_indices_array[i]);
@@ -809,8 +809,8 @@ struct QuantizedDepthwiseConvKernel<true, 0, 3> {
 
     // Handle one output pixel at a time.
     for (int outp = 0; outp < num_output_pixels; outp++) {
-      const uint8* local_filter_ptr = filter_ptr;
-      const uint8* local_input_ptr = input_ptr;
+      const uint8_t* local_filter_ptr = filter_ptr;
+      const uint8_t* local_input_ptr = input_ptr;
       int ic = 0;
       // Handle 8 input channels at a time.
       for (; ic <= input_depth - 8; ic += 8) {
@@ -864,10 +864,10 @@ struct QuantizedDepthwiseConvKernel<true, 0, 3> {
       }
       // Handle one input channel at a time.
       for (; ic < input_depth; ic++) {
-        const int16 input_val = *local_input_ptr++ + input_offset;
+        const int16_t input_val = *local_input_ptr++ + input_offset;
         for (int i = 0; i < 3; i++) {
-          const int16 filter_val = local_filter_ptr[i] + filter_offset;
-          *acc_buffer_ptr++ += static_cast<int32>(filter_val) * input_val;
+          const int16_t filter_val = local_filter_ptr[i] + filter_offset;
+          *acc_buffer_ptr++ += static_cast<int32_t>(filter_val) * input_val;
         }
         local_filter_ptr += 3;
       }
@@ -879,13 +879,13 @@ struct QuantizedDepthwiseConvKernel<true, 0, 3> {
 template <>
 struct QuantizedDepthwiseConvKernel<true, 0, 2> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Handle one output pixel at a time.
     for (int outp = 0; outp < num_output_pixels; outp++) {
-      const uint8* local_filter_ptr = filter_ptr;
-      const uint8* local_input_ptr = input_ptr;
+      const uint8_t* local_filter_ptr = filter_ptr;
+      const uint8_t* local_input_ptr = input_ptr;
       int ic = 0;
       // Handle 8 input channels at a time.
       for (; ic <= input_depth - 8; ic += 8) {
@@ -929,10 +929,10 @@ struct QuantizedDepthwiseConvKernel<true, 0, 2> {
       // Handle one input channel at a time.
       for (; ic < input_depth; ic++) {
         // Load the inputs.
-        const int16 input_val = *local_input_ptr++ + input_offset;
+        const int16_t input_val = *local_input_ptr++ + input_offset;
         for (int i = 0; i < 2; i++) {
-          const int16 filter_val = local_filter_ptr[i] + filter_offset;
-          *acc_buffer_ptr++ += static_cast<int32>(filter_val) * input_val;
+          const int16_t filter_val = local_filter_ptr[i] + filter_offset;
+          *acc_buffer_ptr++ += static_cast<int32_t>(filter_val) * input_val;
         }
         local_filter_ptr += 2;
       }
@@ -944,13 +944,13 @@ struct QuantizedDepthwiseConvKernel<true, 0, 2> {
 template <>
 struct QuantizedDepthwiseConvKernel<true, 0, 1> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Handle one output pixel at a time.
     for (int outp = 0; outp < num_output_pixels; outp++) {
-      const uint8* local_filter_ptr = filter_ptr;
-      const uint8* local_input_ptr = input_ptr;
+      const uint8_t* local_filter_ptr = filter_ptr;
+      const uint8_t* local_input_ptr = input_ptr;
       int ic = 0;
       // Handle 16 input channels at a time.
       for (; ic <= input_depth - 16; ic += 16) {
@@ -1055,9 +1055,9 @@ struct QuantizedDepthwiseConvKernel<true, 0, 1> {
       }
       // Handle one input channel at a time.
       for (; ic < input_depth; ic++) {
-        const int16 input_val = *local_input_ptr++ + input_offset;
-        const int16 filter_val = *local_filter_ptr++ + filter_offset;
-        *acc_buffer_ptr++ += static_cast<int32>(filter_val) * input_val;
+        const int16_t input_val = *local_input_ptr++ + input_offset;
+        const int16_t filter_val = *local_filter_ptr++ + filter_offset;
+        *acc_buffer_ptr++ += static_cast<int32_t>(filter_val) * input_val;
       }
       input_ptr += input_ptr_increment;
     }
@@ -1067,9 +1067,9 @@ struct QuantizedDepthwiseConvKernel<true, 0, 1> {
 template <>
 struct QuantizedDepthwiseConvKernel<true, 16, 1> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     uint8x8_t filter_u8[2];
     for (int i = 0; i < 2; i++) {
@@ -1121,9 +1121,9 @@ struct QuantizedDepthwiseConvKernel<true, 16, 1> {
 template <>
 struct QuantizedDepthwiseConvKernel<true, 8, 1> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     const uint8x8_t filter_u8 = vld1_u8(filter_ptr);
     const int16x8_t filter_s16 = vreinterpretq_s16_u16(vmovl_u8(filter_u8));
@@ -1155,9 +1155,9 @@ struct QuantizedDepthwiseConvKernel<true, 8, 1> {
 template <>
 struct QuantizedDepthwiseConvKernel<true, 1, 16> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     uint8x8_t filter_u8[2];
     for (int i = 0; i < 2; i++) {
@@ -1172,9 +1172,9 @@ struct QuantizedDepthwiseConvKernel<true, 1, 16> {
     }
     // Handle one output pixel at a time.
     for (int outp = 0; outp < num_output_pixels; outp++) {
-      uint8 input_u8 = *input_ptr;
+      uint8_t input_u8 = *input_ptr;
       input_ptr += input_ptr_increment;
-      int16 input = static_cast<int16>(input_u8 + input_offset);
+      int16_t input = static_cast<int16_t>(input_u8 + input_offset);
       // Load the accumulators from acc_buffer
       int32x4_t acc[4];
       for (int i = 0; i < 4; i++) {
@@ -1199,9 +1199,9 @@ struct QuantizedDepthwiseConvKernel<true, 1, 16> {
 template <>
 struct QuantizedDepthwiseConvKernel<true, 1, 32> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     uint8x8_t filter_u8_0 = vld1_u8(filter_ptr + 8 * 0);
     uint8x8_t filter_u8_1 = vld1_u8(filter_ptr + 8 * 1);
@@ -1217,9 +1217,9 @@ struct QuantizedDepthwiseConvKernel<true, 1, 32> {
     filter_3 = vaddq_s16(filter_3, vdupq_n_s16(filter_offset));
     // Handle one output pixel at a time.
     for (int outp = 0; outp < num_output_pixels; outp++) {
-      uint8 input_u8 = *input_ptr;
+      uint8_t input_u8 = *input_ptr;
       input_ptr += input_ptr_increment;
-      int16 input = static_cast<int16>(input_u8 + input_offset);
+      int16_t input = static_cast<int16_t>(input_u8 + input_offset);
       // Load the accumulators from acc_buffer
       int32x4_t acc_0 = vld1q_s32(acc_buffer_ptr + 4 * 0);
       int32x4_t acc_1 = vld1q_s32(acc_buffer_ptr + 4 * 1);
@@ -1255,9 +1255,9 @@ struct QuantizedDepthwiseConvKernel<true, 1, 32> {
 template <>
 struct QuantizedDepthwiseConvKernel<true, 1, 20> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     // NEON wants to load 8 bytes at a time, but 20 is not divisible by 8.
     // We load the first 16 bytes into filter_u8_{0,1} as usual.
@@ -1275,9 +1275,9 @@ struct QuantizedDepthwiseConvKernel<true, 1, 20> {
     filter_x = vaddq_s16(filter_x, vdupq_n_s16(filter_offset));
     // Handle one output pixel at a time.
     for (int outp = 0; outp < num_output_pixels; outp++) {
-      uint8 input_u8 = *input_ptr;
+      uint8_t input_u8 = *input_ptr;
       input_ptr += input_ptr_increment;
-      int16 input = static_cast<int16>(input_u8 + input_offset);
+      int16_t input = static_cast<int16_t>(input_u8 + input_offset);
       // Load the accumulators from acc_buffer
       int32x4_t acc_0 = vld1q_s32(acc_buffer_ptr + 4 * 0);
       int32x4_t acc_1 = vld1q_s32(acc_buffer_ptr + 4 * 1);
@@ -1304,18 +1304,18 @@ struct QuantizedDepthwiseConvKernel<true, 1, 20> {
 template <>
 struct QuantizedDepthwiseConvKernel<true, 1, 8> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     const uint8x8_t filter_u8 = vld1_u8(filter_ptr);
     const int16x8_t filter = vaddq_s16(
         vreinterpretq_s16_u16(vmovl_u8(filter_u8)), vdupq_n_s16(filter_offset));
     // Handle one output pixel at a time.
     for (int outp = 0; outp < num_output_pixels; outp++) {
-      uint8 input_u8 = *input_ptr;
+      uint8_t input_u8 = *input_ptr;
       input_ptr += input_ptr_increment;
-      int16 input = static_cast<int16>(input_u8 + input_offset);
+      int16_t input = static_cast<int16_t>(input_u8 + input_offset);
       // Load the accumulators from acc_buffer
       int32x4_t acc[2];
       for (int i = 0; i < 2; i++) {
@@ -1336,9 +1336,9 @@ struct QuantizedDepthwiseConvKernel<true, 1, 8> {
 template <>
 struct QuantizedDepthwiseConvKernel<true, 2, 1> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     uint8x8_t filter_u8 = vdup_n_u8(0);
     filter_u8 = vset_lane_u8(filter_ptr[0], filter_u8, 0);
@@ -1357,11 +1357,11 @@ struct QuantizedDepthwiseConvKernel<true, 2, 1> {
       int32x4_t acc = vld1q_s32(acc_buffer_ptr);
       // Load the inputs, add input_offset.
       uint16x4_t input_u16 = vdup_n_u16(0);
-      input_u16 = vset_lane_u16((reinterpret_cast<const uint16*>(input_ptr))[0],
-                                input_u16, 0);
+      input_u16 = vset_lane_u16(
+          (reinterpret_cast<const uint16_t*>(input_ptr))[0], input_u16, 0);
       input_ptr += input_ptr_increment;
-      input_u16 = vset_lane_u16((reinterpret_cast<const uint16*>(input_ptr))[0],
-                                input_u16, 1);
+      input_u16 = vset_lane_u16(
+          (reinterpret_cast<const uint16_t*>(input_ptr))[0], input_u16, 1);
       input_ptr += input_ptr_increment;
       const int16x4_t input_s16 = vreinterpret_s16_u16(
           vget_low_u16(vmovl_u8(vreinterpret_u8_u16(input_u16))));
@@ -1399,9 +1399,9 @@ struct QuantizedDepthwiseConvKernel<true, 2, 1> {
 template <>
 struct QuantizedDepthwiseConvKernel<true, 4, 1> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     if (num_output_pixels <= 0) {
       return;
     }
@@ -1463,9 +1463,9 @@ struct QuantizedDepthwiseConvKernel<true, 4, 1> {
 template <>
 struct QuantizedDepthwiseConvKernel<false, 12, 1> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
-                  const uint8* input_ptr, int16 input_offset,
-                  int input_ptr_increment, const uint8* filter_ptr,
-                  int16 filter_offset, int32* acc_buffer_ptr) {
+                  const uint8_t* input_ptr, int16_t input_offset,
+                  int input_ptr_increment, const uint8_t* filter_ptr,
+                  int16_t filter_offset, int32_t* acc_buffer_ptr) {
     // Load the filters, add filter_offset.
     uint8x8_t filter_u8_0 = vld1_u8(filter_ptr);
     uint8x8_t filter_u8_1 = vld1_u8(filter_ptr + 4);
@@ -1512,14 +1512,12 @@ struct QuantizedDepthwiseConvKernel<false, 12, 1> {
 // Accumulates the effect of one row of the filter, on a segment of one row
 // of the output, accessing the corresponding one row of the input.
 template <bool kAllowStrided, int kFixedInputDepth, int kFixedDepthMultiplier>
-void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
-                                    int input_depth, int input_width,
-                                    const uint8* input_data, int16 input_offset,
-                                    int pad_width, int depth_multiplier,
-                                    int filter_width, const uint8* filter_data,
-                                    int16 filter_offset, int out_x_buffer_start,
-                                    int out_x_buffer_end, int output_depth,
-                                    int32* acc_buffer) {
+void QuantizedDepthwiseConvAccumRow(
+    int stride, int dilation_factor, int input_depth, int input_width,
+    const uint8_t* input_data, int16_t input_offset, int pad_width,
+    int depth_multiplier, int filter_width, const uint8_t* filter_data,
+    int16_t filter_offset, int out_x_buffer_start, int out_x_buffer_end,
+    int output_depth, int32_t* acc_buffer) {
   ruy::profiler::ScopeLabel label(TFLITE_PRETTY_FUNCTION);
   // Consistency check parameters. This is important in particular to ensure
   // that we keep the number of template instantiations minimal, so we don't
@@ -1535,7 +1533,7 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
   }
   TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   const int input_ptr_increment = stride * input_depth;
-  const uint8* filter_base_ptr = filter_data;
+  const uint8_t* filter_base_ptr = filter_data;
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     // For the current (filter_x, filter_y) point in the filter,
     // compute the boundaries of the corresponding output row segment.
@@ -1571,11 +1569,11 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
     const int out_x_loop_end =
         std::min(out_x_buffer_end, out_x_loop_end_unclamped);
 
-    int32* acc_buffer_ptr =
+    int32_t* acc_buffer_ptr =
         acc_buffer + (out_x_loop_start - out_x_buffer_start) * output_depth;
     const int in_x_origin =
         (out_x_loop_start * stride) - pad_width + dilation_factor * filter_x;
-    const uint8* input_ptr = input_data + in_x_origin * input_depth;
+    const uint8_t* input_ptr = input_data + in_x_origin * input_depth;
     const int num_output_pixels = out_x_loop_end - out_x_loop_start;
     QuantizedDepthwiseConvKernel<
         kAllowStrided, kFixedInputDepth,
@@ -1590,12 +1588,12 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
 // generic fallback of DepthwiseConvAccumRow, portable, non-templatized.
 inline void QuantizedDepthwiseConvAccumRowGeneric(
     int stride, int dilation_factor, int input_depth, int input_width,
-    const uint8* input_data, int16 input_offset, int pad_width,
-    int depth_multiplier, int filter_width, const uint8* filter_data,
-    int16 filter_offset, int out_x_buffer_start, int out_x_buffer_end,
-    int output_depth, int32* acc_buffer) {
+    const uint8_t* input_data, int16_t input_offset, int pad_width,
+    int depth_multiplier, int filter_width, const uint8_t* filter_data,
+    int16_t filter_offset, int out_x_buffer_start, int out_x_buffer_end,
+    int output_depth, int32_t* acc_buffer) {
   ruy::profiler::ScopeLabel label("DepthwiseConvAccumRowGeneric (slow)");
-  const uint8* filter_base_ptr = filter_data;
+  const uint8_t* filter_base_ptr = filter_data;
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     const int out_x_loop_start = std::max(
         out_x_buffer_start,
@@ -1605,19 +1603,19 @@ inline void QuantizedDepthwiseConvAccumRowGeneric(
         (pad_width + input_width - dilation_factor * filter_x + stride - 1) /
             stride);
 
-    int32* acc_buffer_ptr =
+    int32_t* acc_buffer_ptr =
         acc_buffer + (out_x_loop_start - out_x_buffer_start) * output_depth;
     const int in_x_origin =
         (out_x_loop_start * stride) - pad_width + dilation_factor * filter_x;
-    const uint8* input_ptr = input_data + in_x_origin * input_depth;
+    const uint8_t* input_ptr = input_data + in_x_origin * input_depth;
     const int input_ptr_increment = (stride - 1) * input_depth;
     for (int out_x = out_x_loop_start; out_x < out_x_loop_end; out_x++) {
-      const uint8* filter_ptr = filter_base_ptr;
+      const uint8_t* filter_ptr = filter_base_ptr;
       for (int ic = 0; ic < input_depth; ++ic) {
-        const int16 input_val = *input_ptr++ + input_offset;
+        const int16_t input_val = *input_ptr++ + input_offset;
         for (int m = 0; m < depth_multiplier; m++) {
-          const int16 filter_val = *filter_ptr++ + filter_offset;
-          *acc_buffer_ptr++ += static_cast<int32>(filter_val) * input_val;
+          const int16_t filter_val = *filter_ptr++ + filter_offset;
+          *acc_buffer_ptr++ += static_cast<int32_t>(filter_val) * input_val;
         }
       }
       input_ptr += input_ptr_increment;
@@ -1628,8 +1626,8 @@ inline void QuantizedDepthwiseConvAccumRowGeneric(
 
 // Initializes the accumulator buffer with bias values.
 inline void DepthwiseConvInitAccBuffer(int num_output_pixels, int output_depth,
-                                       const int32* bias_data,
-                                       int32* acc_buffer) {
+                                       const int32_t* bias_data,
+                                       int32_t* acc_buffer) {
   int i = 0;
 #ifdef USE_NEON
   if (output_depth == 1) {
@@ -1701,21 +1699,21 @@ inline void DepthwiseConvInitAccBuffer(int num_output_pixels, int output_depth,
 
 inline void DepthwiseConvGeneral(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& filter_shape,
-    const uint8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
+    const uint8_t* input_data, const RuntimeShape& filter_shape,
+    const uint8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    uint8_t* output_data, int thread_start, int thread_end, int thread_dim) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
   const int pad_height = params.padding_values.height;
   const int depth_multiplier = params.depth_multiplier;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
-  const int32 input_offset = params.input_offset;
-  const int32 filter_offset = params.weights_offset;
-  const int32 output_offset = params.output_offset;
-  const int32 output_multiplier = params.output_multiplier;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
+  const int32_t input_offset = params.input_offset;
+  const int32_t filter_offset = params.weights_offset;
+  const int32_t output_offset = params.output_offset;
+  const int32_t output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
   const int dilation_width_factor = params.dilation_width_factor;
   const int dilation_height_factor = params.dilation_height_factor;
@@ -1730,7 +1728,7 @@ inline void DepthwiseConvGeneral(
   const int output_width = output_shape.Dims(2);
 #ifdef USE_NEON
   const bool shift_left = (output_shift > 0);
-  const int32 multiplier_power_of_two = shift_left ? (1 << output_shift) : 1;
+  const int32_t multiplier_power_of_two = shift_left ? (1 << output_shift) : 1;
 #endif
 
   // The default Accbuffer size is 2048, will allocate a bigger memory if it's
@@ -1739,11 +1737,11 @@ inline void DepthwiseConvGeneral(
   // a scratch tensor.
   static const int kStackAccBufferSize = 2048;
   int acc_buffer_size = kStackAccBufferSize;
-  int32 stack_acc_buffer[kStackAccBufferSize];
-  int32* acc_buffer = stack_acc_buffer;
-  std::unique_ptr<int32[]> heap_acc_buffer;
+  int32_t stack_acc_buffer[kStackAccBufferSize];
+  int32_t* acc_buffer = stack_acc_buffer;
+  std::unique_ptr<int32_t[]> heap_acc_buffer;
   if (kStackAccBufferSize < output_depth) {
-    heap_acc_buffer.reset(new int32[output_depth]);
+    heap_acc_buffer.reset(new int32_t[output_depth]);
     acc_buffer = heap_acc_buffer.get();
     acc_buffer_size = output_depth;
   }
@@ -1846,7 +1844,7 @@ inline void DepthwiseConvGeneral(
       break;
   }
 
-  uint8* output_ptr = output_data + output_ptr_offset;
+  uint8_t* output_ptr = output_data + output_ptr_offset;
   int batch_step =
       (output_height + row_start - row_end) * output_width * output_depth;
   for (int b = batch_start; b < batch_end; ++b) {
@@ -2016,13 +2014,13 @@ inline void DepthwiseConvGeneral(
 
         // Handle leftover values, one by one. This is very slow.
         for (; i < num_output_values; i++) {
-          int32 acc = acc_buffer[i];
+          int32_t acc = acc_buffer[i];
           acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
                                               output_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
-          *output_ptr++ = static_cast<uint8>(acc);
+          *output_ptr++ = static_cast<uint8_t>(acc);
         }
       }
     }
@@ -2035,15 +2033,15 @@ inline void DepthwiseConvGeneral(
 template <DepthwiseConvOutputRounding kOutputRounding>
 inline void DepthwiseConvWithRounding(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& filter_shape,
-    const uint8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, const CpuFlags& cpu_flags, int thread_start,
+    const uint8_t* input_data, const RuntimeShape& filter_shape,
+    const uint8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    uint8_t* output_data, const CpuFlags& cpu_flags, int thread_start,
     int thread_end, int thread_dim) {
   ruy::profiler::ScopeLabel label("DepthwiseConv/8bit");
   const int depth_multiplier = params.depth_multiplier;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
   const int dilation_width_factor = params.dilation_width_factor;
   const int dilation_height_factor = params.dilation_height_factor;
   TFLITE_DCHECK_GE(dilation_width_factor, 1);
@@ -2112,10 +2110,10 @@ inline void DepthwiseConvWithRounding(
 
 inline void DepthwiseConvImpl(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& filter_shape,
-    const uint8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, const CpuFlags& cpu_flags, int thread_start,
+    const uint8_t* input_data, const RuntimeShape& filter_shape,
+    const uint8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    uint8_t* output_data, const CpuFlags& cpu_flags, int thread_start,
     int thread_end, int thread_dim) {
   return DepthwiseConvWithRounding<DepthwiseConvOutputRounding::kUpward>(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,

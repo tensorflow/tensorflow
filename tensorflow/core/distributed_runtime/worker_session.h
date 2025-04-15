@@ -90,7 +90,7 @@ class WorkerSession {
   // Update an existing worker session with new set of remote workers and
   // devices. Added devices will be owned by the worker session, and removed
   // devices will be freed by their names.
-  Status UpdateWorkerCacheAndDevices(
+  absl::Status UpdateWorkerCacheAndDevices(
       std::unique_ptr<WorkerCacheInterface> new_worker_cache,
       std::vector<std::unique_ptr<Device>> added_remote_devices,
       const std::vector<Device*>& removed_remote_devices);

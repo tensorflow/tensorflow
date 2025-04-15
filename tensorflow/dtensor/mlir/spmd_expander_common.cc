@@ -17,36 +17,45 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cassert>
+#include <cstdint>
 #include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
-#include "tensorflow/compiler/xla/mlir_hlo/utils/convert_op_folder.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
@@ -107,9 +116,10 @@ StatusOr<mlir::TensorType> GlobalTypeFromLocalType(
   return new_output_type;
 }
 
-Status CreateSplitOp(const int num_split, const int split_dimension,
-                     const mlir::Location location, mlir::Value src_input,
-                     mlir::OpBuilder* builder, mlir::TF::SplitOp* split_op) {
+absl::Status CreateSplitOp(const int num_split, const int split_dimension,
+                           const mlir::Location location, mlir::Value src_input,
+                           mlir::OpBuilder* builder,
+                           mlir::TF::SplitOp* split_op) {
   // Creates a const op to hold split dimension value.
   auto split_dim_type =
       mlir::RankedTensorType::get({}, builder->getIntegerType(32));
@@ -121,7 +131,7 @@ Status CreateSplitOp(const int num_split, const int split_dimension,
   // Correctly set output shapes of split op output if input shape is statically
   // known.
   mlir::Type output_type;
-  auto input_type = src_input.getType().cast<mlir::TensorType>();
+  auto input_type = mlir::cast<mlir::TensorType>(src_input.getType());
 
   if (input_type.hasRank()) {
     if (input_type.getShape()[split_dimension] == mlir::ShapedType::kDynamic) {
@@ -149,7 +159,7 @@ Status CreateSplitOp(const int num_split, const int split_dimension,
   llvm::SmallVector<mlir::Type, 4> output_types(num_split, output_type);
   *split_op = builder->create<mlir::TF::SplitOp>(
       location, output_types, split_dimension_op.getOutput(), src_input);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Given layouts + shapes, determines if the two are broadcasting compatible.
@@ -686,11 +696,11 @@ mlir::StringAttr GetUniqueControlflowFnName(const std::string& prefix,
       absl::StrCat(prefix, "_dtensor_function_", unique_id));
 }
 
-Status SetBuilderInsertionAfterValue(mlir::Value value,
-                                     mlir::OpBuilder& builder) {
-  if (value.isa<mlir::OpResult>()) {
+absl::Status SetBuilderInsertionAfterValue(mlir::Value value,
+                                           mlir::OpBuilder& builder) {
+  if (mlir::isa<mlir::OpResult>(value)) {
     builder.setInsertionPointAfterValue(value);
-    return OkStatus();
+    return absl::OkStatus();
   }
   mlir::tf_device::ClusterOp cluster;
   for (mlir::Operation* op : value.getUsers()) {
@@ -704,10 +714,11 @@ Status SetBuilderInsertionAfterValue(mlir::Value value,
   if (!cluster) return errors::Internal("value not used in any cluster");
 
   builder.setInsertionPointToStart(cluster.SingleBlock::getBody());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
+absl::Status PrintTensor(mlir::Value value,
+                         const std::string& format_string = "%s") {
   mlir::OpBuilder builder(value.getContext());
   builder.setInsertionPointAfterValue(value);
   TF_ASSIGN_OR_RETURN(mlir::Value device_id, DeviceId(value));
@@ -721,13 +732,13 @@ Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
   builder.create<mlir::TF::PrintV2Op>(value.getLoc(), format.getOutput(),
                                       /*output_stream=*/"log(info)",
                                       /*end=*/"\n");
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ExtractConstStringVectorFromValue(
+absl::Status ExtractConstStringVectorFromValue(
     mlir::Value value, llvm::SmallVectorImpl<std::string>& out_vector) {
   value = GetForwardedDTensorLayoutInput(value);
-  if (value.isa<mlir::BlockArgument>())
+  if (mlir::isa<mlir::BlockArgument>(value))
     return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
@@ -739,12 +750,12 @@ Status ExtractConstStringVectorFromValue(
   for (const auto& str : attr.getRawStringData()) {
     out_vector.push_back(str.str());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value) {
   value = GetForwardedDTensorLayoutInput(value);
-  if (value.isa<mlir::BlockArgument>())
+  if (mlir::isa<mlir::BlockArgument>(value))
     return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
@@ -758,54 +769,6 @@ StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value) {
   }
   return std::string(*attr.getRawStringData().begin());
 }
-
-TopologicalIterator::TopologicalIterator(mlir::func::FuncOp main_func)
-    : ops_to_visit_{&main_func.front().front()} {
-  funcs_visited_.insert(main_func.getName());
-  funcs_visited_in_call_stack_.insert(main_func.getName());
-}
-
-mlir::Operation* TopologicalIterator::next() {
-  if (!hasNext()) return nullptr;
-
-  auto* op = ops_to_visit_.pop_back_val();
-  auto* next_op = op->getNextNode();
-  if (next_op) ops_to_visit_.push_back(next_op);
-
-  // If this is a function call op, push the first op of the function body so
-  // that the function body is converted before the call site.
-  std::optional<mlir::func::FuncOp> func = MaybeFindFunction(op);
-  if (func.has_value()) {
-    mlir::StringRef func_name = func->getName();
-
-    if (funcs_visited_.contains(func_name)) return next();
-
-    ops_to_visit_.push_back(&(func->front().front()));
-    funcs_visited_.insert(func_name);
-  }
-
-  // If we have reached the end of a function body, remove the function from
-  // our active set.
-  if (!next_op && !funcs_visited_in_call_stack_.empty())
-    if (auto func = op->getParentOfType<mlir::func::FuncOp>())
-      funcs_visited_in_call_stack_.erase(func.getName());
-
-  if (auto cluster_op = mlir::dyn_cast<mlir::tf_device::ClusterOp>(op))
-    ops_to_visit_.push_back(&cluster_op.GetBody().front());
-
-  if (auto while_op = mlir::dyn_cast<mlir::TF::WhileRegionOp>(op)) {
-    ops_to_visit_.push_back(&while_op.getCond().front().front());
-    ops_to_visit_.push_back(&while_op.getBody().front().front());
-  }
-
-  if (auto if_op = mlir::dyn_cast<mlir::TF::IfRegionOp>(op)) {
-    ops_to_visit_.push_back(&if_op.getThenBranch().front().front());
-    ops_to_visit_.push_back(&if_op.getElseBranch().front().front());
-  }
-  return op;
-}
-
-bool TopologicalIterator::hasNext() { return !ops_to_visit_.empty(); }
 
 }  // namespace dtensor
 }  // namespace tensorflow

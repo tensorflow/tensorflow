@@ -12,8 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/grappler/optimizers/data/filter_fusion.h"
+
+#include <utility>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -60,10 +61,10 @@ NodeDef MakeFusedFilterNode(const NodeDef& first_filter_node,
 
 }  // namespace
 
-Status FilterFusion::OptimizeAndCollectStats(Cluster* cluster,
-                                             const GrapplerItem& item,
-                                             GraphDef* output,
-                                             OptimizationStats* stats) {
+absl::Status FilterFusion::OptimizeAndCollectStats(Cluster* cluster,
+                                                   const GrapplerItem& item,
+                                                   GraphDef* output,
+                                                   OptimizationStats* stats) {
   GraphDef sorted_old_graph = item.graph;
   TF_RETURN_IF_ERROR(TopologicalSort(&sorted_old_graph));
   *output = sorted_old_graph;
@@ -125,7 +126,7 @@ Status FilterFusion::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(FilterFusion, "filter_fusion");

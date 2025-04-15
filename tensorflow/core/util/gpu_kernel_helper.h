@@ -59,7 +59,8 @@ using gpuError_t = hipError_t;
 #if GOOGLE_CUDA
 
 #define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
-  extern __shared__ __align__(ALIGN) TYPE NAME[]
+  extern __shared__ __align__(ALIGN)                   \
+  TYPE NAME[]
 
 #elif TENSORFLOW_USE_ROCM
 
@@ -85,13 +86,12 @@ inline const char* GpuGetErrorString(hipError_t error) {
 // Returns a raw reference to the current cuda stream. Required by a
 // number of kernel calls (for which StreamInterface* does not work),
 // i.e. CUB and certain cublas primitives.
-inline const gpuStream_t& GetGpuStream(OpKernelContext* context) {
-  const gpuStream_t* ptr = CHECK_NOTNULL(
-      reinterpret_cast<const gpuStream_t*>(context->op_device_context()
-                                               ->stream()
-                                               ->implementation()
-                                               ->GpuStreamMemberHack()));
-  return *ptr;
+inline gpuStream_t GetGpuStream(OpKernelContext* context) {
+  void* opaque_stream = CHECK_NOTNULL(context->op_device_context()
+                                          ->stream()
+                                          ->platform_specific_handle()
+                                          .stream);
+  return reinterpret_cast<gpuStream_t>(opaque_stream);
 }
 
 // Launches a GPU kernel through cudaLaunchKernel in CUDA environment, or
@@ -169,6 +169,15 @@ __host__ __device__ inline float tf_max(float x, float y) {
 __host__ __device__ inline double tf_max(double x, double y) {
   return fmax(x, y);
 }
+
+#ifdef _MSC_VER
+#if _MSC_VER >= 1930
+using std::max;
+using std::min;
+__host__ __device__ inline int tf_min(int x, int y) { return min(x, y); }
+__host__ __device__ inline int tf_max(int x, int y) { return max(x, y); }
+#endif
+#endif
 
 // ROCM TODO re-enable them after adding fp16 support logic
 #if GOOGLE_CUDA

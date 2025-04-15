@@ -14,15 +14,67 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 
-#include <algorithm>
-#include <iterator>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace quant {
+
+// TODO - b/296503614: [Converter Component][TF-Quantizer] Reflect custom traits
+// from TF-Quantizer to stableHLO quantization
+bool IsOpWithDataMovementTrait(Operation* op) {
+  // Supported data movement ops. These ops do not perform any computations and
+  // has one result operand.
+  return isa<TF::IdentityOp, TF::CastOp, TF::ReshapeOp, TF::XlaShardingOp,
+             TF::GatherOp, TF::GatherV2Op, TF::XlaGatherOp, TF::ExpandDimsOp,
+             TF::SqueezeOp, TF::TransposeOp>(op);
+}
+
+bool IsOpWithQuantizableTrait(Operation* op) {
+  // Supported quantizable ops.
+  return isa<TF::XlaConvV2Op, TF::XlaDotV2Op, TF::MatMulOp, TF::Conv2DOp,
+             TF::GatherOp, TF::GatherV2Op, TF::XlaGatherOp,
+             TF::ResourceGatherOp, TF::DepthwiseConv2dNativeOp, TF::Conv3DOp,
+             TF::BatchMatMulV2Op, TF::EinsumOp>(op);
+}
+
+bool IsOpWithInt8TypeOperand(Operation* op) {
+  return (isa<TF::XlaConvV2Op, TF::XlaDotV2Op, TF::XlaGatherOp, TF::GatherOp,
+              TF::GatherV2Op>(op));
+}
+
+bool IsValueWithQuantizablePrecision(Value val) {
+  auto type = mlir::dyn_cast<ShapedType>(val.getType());
+  if (!type) return false;
+  // Supported original tensor data types.
+  if (type.getElementType().isF32() || type.getElementType().isBF16())
+    return true;
+  return false;
+}
+
+std::optional<tensorflow::quantization::QuantizationComponentSpec>
+GetWeightComponentSpec(
+    const tensorflow::quantization::QuantizationOptions& quantization_options) {
+  for (auto& cur_spec : quantization_options.quantization_method()
+                            .quantization_component_specs()) {
+    if (cur_spec.quantization_component() ==
+        tensorflow::quantization::QuantizationComponentSpec::COMPONENT_WEIGHT)
+      return cur_spec;
+  }
+  return std::nullopt;
+}
 
 // TODO(b/228928859): Improve the getter function to match attributes rather
 // than function name.
@@ -30,8 +82,8 @@ std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
   auto spec = std::make_unique<OpQuantSpec>();
   if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
     StringRef function_name =
-        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
-    if (!function_name.startswith("composite_")) {
+        mlir::cast<FlatSymbolRefAttr>(call_op.getFAttr()).getValue();
+    if (!function_name.starts_with("composite_")) {
       return spec;
     }
     if (function_name.contains("depthwise_conv2d")) {

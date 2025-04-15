@@ -14,16 +14,23 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/mlrt/interpreter/builtin_kernels.h"
 
-#include <iterator>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/function.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/async_handle.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/register_span.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace mlrt {
 
@@ -135,10 +142,8 @@ void CaseOp::Invoke() {
   mlrt::bc::Vector<uint32_t> attribute_function_indices = function_indices();
 
   if (argument_branch_idx >= attribute_function_indices.size()) {
-    execution_context().Fail(absl::InvalidArgumentError(
-        absl::StrCat("Case branch number ", argument_branch_idx,
-                     " exceeds limit ", attribute_function_indices.size())));
-    return;
+    // Consistent with the behavior of the legacy TFRT case kernel behavior.
+    argument_branch_idx = attribute_function_indices.size() - 1;
   }
 
   auto function =

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -41,13 +42,14 @@ namespace tensorflow {
 // `expected_shapes`. Returns an error if there are nodes in `expected_shapes`
 // that do not have shape information. Ignores nodes in `graph` that do not have
 // `expected_shapes` entries.
-Status ShapeAnnotationsMatch(
+absl::Status ShapeAnnotationsMatch(
     const Graph& graph, const GraphShapeInfo& shape_info,
     std::map<string, std::vector<PartialTensorShape>> expected_shapes);
 
 // A helper object to create GraphOptimizationPassOptions.
 struct GraphOptimizationPassWrapper {
-  explicit GraphOptimizationPassWrapper() : library(OpRegistry::Global(), {}) {
+  explicit GraphOptimizationPassWrapper()
+      : library(OpRegistry::Global(), FunctionDefLibrary()) {
     session_options.env = Env::Default();
   }
 
@@ -69,7 +71,9 @@ struct GraphOptimizationPassWrapper {
 // Helps set up devices for unit tests.
 class DeviceSetup {
  public:
-  void AddDevicesAndSetUp(const std::vector<std::string>& device_names);
+  void AddDevicesAndSetUp(
+      const std::vector<std::string>& device_names,
+      const std::optional<FunctionDef>& fdef = std::nullopt);
   Device* GetDevice(const string& device_name);
   FunctionLibraryRuntime* flr() { return flr_; }
 

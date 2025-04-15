@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
@@ -27,8 +28,8 @@ namespace tensorflow {
 namespace {
 constexpr char kApiDefFilePattern[] = "*.pbtxt";
 
-Status ConvertFilesFromMultiline(const string& input_dir,
-                                 const string& output_dir) {
+absl::Status ConvertFilesFromMultiline(const string& input_dir,
+                                       const string& output_dir) {
   Env* env = Env::Default();
 
   const string file_pattern = io::JoinPath(input_dir, kApiDefFilePattern);
@@ -48,7 +49,7 @@ Status ConvertFilesFromMultiline(const string& input_dir,
     TF_RETURN_IF_ERROR(
         tensorflow::WriteStringToFile(env, output_path, contents));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 }  // namespace tensorflow

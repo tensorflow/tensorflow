@@ -18,30 +18,38 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/register_span.h"
 
 namespace tensorflow {
 namespace tf_mlrt {
 
-void LaunchAsyncOpKernel(const tfrt_stub::OpKernelRunner& kernel_runner,
-                         const tfrt_stub::OpKernelRunState& run_state,
-                         const OpKernelContext::Params& params,
-                         mlrt::RegisterSpan results) {
+void LaunchAsyncOpKernel(
+    const tfrt_stub::OpKernelRunner& kernel_runner,
+    const tfrt_stub::OpKernelRunState& run_state,
+    const OpKernelContext::Params& params, mlrt::RegisterSpan results,
+    std::shared_ptr<tensorflow::DeviceBase> custom_device) {
   struct AsyncState {
     explicit AsyncState(const tfrt_stub::OpKernelRunState& rs,
-                        const OpKernelContext::Params& params, int num_outputs)
-        : run_state(rs.input_tf_tensor_values, params),
-          context(&run_state.params, num_outputs) {}
+                        const OpKernelContext::Params& params, int num_outputs,
+                        std::shared_ptr<tensorflow::DeviceBase> device)
+        : run_state(rs.input_tf_tensor_values, params, device.get()),
+          context(&run_state.params, num_outputs),
+          custom_device(std::move(device)) {}
 
     tfrt_stub::OpKernelRunState run_state;
     OpKernelContext context;
 
     std::vector<mlrt::Promise> results;
+    std::shared_ptr<tensorflow::DeviceBase> custom_device;
   };
 
   DCHECK_EQ(results.size(), kernel_runner.op_kernel()->num_outputs());
-  auto async_state =
-      std::make_shared<AsyncState>(run_state, params, results.size());
+  auto async_state = std::make_shared<AsyncState>(
+      run_state, params, results.size(), std::move(custom_device));
 
   async_state->results.reserve(results.size());
   for (int i = 0; i < results.size(); ++i) {

@@ -3,4 +3,4 @@ syntax = "proto3";
 
 package tensorflow.tfprof.pprof.dummy;
 
-import public "tensorflow/tsl/profiler/protobuf/profile.proto";
+import public "tsl/profiler/protobuf/profile.proto";

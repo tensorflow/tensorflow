@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -19,13 +21,14 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/primitive_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -97,7 +100,8 @@ class CastOp : public XlaOpKernel {
   xla::PrimitiveType src_type_, dst_type_;
   bool use_truncation_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CastOp);
+  CastOp(const CastOp&) = delete;
+  void operator=(const CastOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Cast"), CastOp);
@@ -142,7 +146,8 @@ class BitcastOp : public XlaOpKernel {
   DataType src_dtype_, dst_dtype_;
   xla::PrimitiveType src_type_, dst_type_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BitcastOp);
+  BitcastOp(const BitcastOp&) = delete;
+  void operator=(const BitcastOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Bitcast"), BitcastOp);

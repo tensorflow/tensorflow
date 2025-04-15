@@ -28,7 +28,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/stringprintf.h"
+#include "tsl/platform/stringprintf.h"
 
 namespace tensorflow {
 namespace strings {

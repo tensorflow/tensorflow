@@ -52,7 +52,7 @@ class RangeSampler {
   // If unique=true, then we re-pick each element until we get a
   // value distinct from all previously picked values in the batch.
   void SampleBatch(random::SimplePhilox* rnd, bool unique,
-                   gtl::MutableArraySlice<int64_t> batch) const;
+                   absl::Span<int64_t> batch) const;
 
   // Fill "batch" with samples from the distribution, and report
   // "expected counts".
@@ -74,29 +74,25 @@ class RangeSampler {
   // "batch_expected_count" must have size equal to 0 or to the size of "batch".
   // "extras" and "extras_expected_count" must have equal size.
   void SampleBatchGetExpectedCount(
-      random::SimplePhilox* rnd, bool unique,
-      gtl::MutableArraySlice<int64_t> batch,
-      gtl::MutableArraySlice<float> batch_expected_count,
-      gtl::ArraySlice<int64_t> extras,
-      gtl::MutableArraySlice<float> extras_expected_count) const;
+      random::SimplePhilox* rnd, bool unique, absl::Span<int64_t> batch,
+      absl::Span<float> batch_expected_count, absl::Span<const int64_t> extras,
+      absl::Span<float> extras_expected_count) const;
 
   // Same as SampleBatchGetExpectedCount (see above), but with avoided values.
   // We repick to avoid all of the values in "avoided_values".
   // "avoided_values" is only supported with unique=true.  If
   // unique=false, then avoided_values must be empty.
   virtual void SampleBatchGetExpectedCountAvoid(
-      random::SimplePhilox* rnd, bool unique,
-      gtl::MutableArraySlice<int64_t> batch,
-      gtl::MutableArraySlice<float> batch_expected_count,
-      gtl::ArraySlice<int64_t> extras,
-      gtl::MutableArraySlice<float> extras_expected_count,
-      gtl::ArraySlice<int64_t> avoided_values) const;
+      random::SimplePhilox* rnd, bool unique, absl::Span<int64_t> batch,
+      absl::Span<float> batch_expected_count, absl::Span<const int64_t> extras,
+      absl::Span<float> extras_expected_count,
+      absl::Span<const int64_t> avoided_values) const;
 
   // Does this sampler need to be updated with values, e.g. UnigramSampler
   virtual bool NeedsUpdates() const { return false; }
 
   // Updates the underlying distribution
-  virtual void Update(gtl::ArraySlice<int64_t> values) {
+  virtual void Update(absl::Span<const int64_t> values) {
     LOG(FATAL) << "Update not supported for this sampler type.";
   }
 
@@ -126,12 +122,10 @@ class AllSampler : public RangeSampler {
   }
 
   void SampleBatchGetExpectedCountAvoid(
-      random::SimplePhilox* rnd, bool unique,
-      gtl::MutableArraySlice<int64_t> batch,
-      gtl::MutableArraySlice<float> batch_expected_count,
-      gtl::ArraySlice<int64_t> extras,
-      gtl::MutableArraySlice<float> extras_expected_count,
-      gtl::ArraySlice<int64_t> avoided_values) const override;
+      random::SimplePhilox* rnd, bool unique, absl::Span<int64_t> batch,
+      absl::Span<float> batch_expected_count, absl::Span<const int64_t> extras,
+      absl::Span<float> extras_expected_count,
+      absl::Span<const int64_t> avoided_values) const override;
 };
 
 class UniformSampler : public RangeSampler {
@@ -173,7 +167,7 @@ class ThreadUnsafeUnigramSampler : public RangeSampler {
   float Probability(int64_t value) const override;
 
   bool NeedsUpdates() const override { return true; }
-  void Update(gtl::ArraySlice<int64_t> values) override;
+  void Update(absl::Span<const int64_t> values) override;
 
  private:
   random::WeightedPicker picker_;
@@ -191,15 +185,13 @@ class UnigramSampler : public RangeSampler {
 
   // Overriding at a high level results in far fewer lock acquisitions.
   void SampleBatchGetExpectedCountAvoid(
-      random::SimplePhilox* rnd, bool unique,
-      gtl::MutableArraySlice<int64_t> batch,
-      gtl::MutableArraySlice<float> batch_expected_count,
-      gtl::ArraySlice<int64_t> extras,
-      gtl::MutableArraySlice<float> extras_expected_count,
-      gtl::ArraySlice<int64_t> avoided_values) const override;
+      random::SimplePhilox* rnd, bool unique, absl::Span<int64_t> batch,
+      absl::Span<float> batch_expected_count, absl::Span<const int64_t> extras,
+      absl::Span<float> extras_expected_count,
+      absl::Span<const int64_t> avoided_values) const override;
 
   bool NeedsUpdates() const override { return true; }
-  void Update(gtl::ArraySlice<int64_t> values) override;
+  void Update(absl::Span<const int64_t> values) override;
 
  private:
   ThreadUnsafeUnigramSampler unsafe_sampler_ TF_GUARDED_BY(mu_);
@@ -216,8 +208,8 @@ class FixedUnigramSampler : public RangeSampler {
                       int32_t num_shards, int32_t shard);
   // The vocab_file is assumed to be a CSV, with the last entry of each row a
   // value representing the counts or probabilities for the corresponding ID.
-  Status SetDistributionSampler(Env* env, const string& vocab_file);
-  Status SetDistributionSampler(const std::vector<float>& unigrams);
+  absl::Status SetDistributionSampler(Env* env, const string& vocab_file);
+  absl::Status SetDistributionSampler(const std::vector<float>& unigrams);
   float Probability(int64_t value) const override;
 
   int64_t Sample(random::SimplePhilox* rnd) const override;
@@ -240,7 +232,8 @@ class FixedUnigramSampler : public RangeSampler {
   void FillReservedIds(int32_t num_reserved_ids);
   // Load IDs to sample from a CSV file. It is assumed that the last item of
   // each row contains a count or probability for the corresponding ID.
-  Status LoadFromFile(Env* env, const string& vocab_file, float distortion);
+  absl::Status LoadFromFile(Env* env, const string& vocab_file,
+                            float distortion);
   // Load from an in-memory array.
   void LoadFromUnigrams(const std::vector<float>& unigrams, float distortion);
 };

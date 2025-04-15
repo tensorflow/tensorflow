@@ -16,16 +16,17 @@ limitations under the License.
 
 namespace tensorflow {
 namespace gradients {
-Status NotDifferentiableGradientFunction::Compute(
+absl::Status NotDifferentiableGradientFunction::Compute(
     AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> grad_outputs,
     absl::Span<AbstractTensorHandle*> grad_inputs) {
   for (int i = 0; i < grad_inputs.size(); i++) {
     grad_inputs[i] = nullptr;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RegisterNotDifferentiable(GradientRegistry* registry, const string& op) {
+absl::Status RegisterNotDifferentiable(GradientRegistry* registry,
+                                       const string& op) {
   return registry->Register(op, [](const ForwardOperation& op) {
     return new NotDifferentiableGradientFunction;
   });

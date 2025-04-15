@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TileGrad"
   input_arg {
     name: "input"

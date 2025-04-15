@@ -14,11 +14,11 @@
 # ==============================================================================
 
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("//tensorflow:tensorflow.bzl", "clean_dep")
 
 # Mini benchmarking helps in validating HW acceleration across Android and iOS.
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("build_defs.bzl", "cc_library_with_forced_in_process_benchmark_variant", "embedded_binary")
 load("special_rules.bzl", "libjpeg_deps", "libjpeg_handle_deps", "libjpeg_hdrs_deps", "minibenchmark_visibility_allowlist")
 
@@ -70,8 +70,6 @@ cc_test(
 py_strict_binary(
     name = "copy_associated_files",
     srcs = ["copy_associated_files.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
 )
 
 cc_library(
@@ -150,6 +148,9 @@ cc_library(
         ":libjpeg_handle_hdr",
         "//tensorflow/lite/core/c:c_api_types",
     ] + libjpeg_deps(),
+    # Some targets only have an implicit dependency on LibjpegHandle.
+    # This avoids warnings about backwards references when linking.
+    alwayslink = True,
 )
 
 cc_library(
@@ -293,8 +294,8 @@ cc_library(
     hdrs = ["decode_jpeg_register.h"],
     copts = tflite_copts(),
     deps = [
+        ":decode_jpeg_status",
         ":libjpeg_decoder",
-        "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -691,13 +692,10 @@ cc_library(
         "mini_benchmark.cc",
     ],
     hdrs = ["mini_benchmark.h"],
-    visibility = [
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
-        "//tensorflow/lite/tools/benchmark:__subpackages__",
-        "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
-    ] + minibenchmark_visibility_allowlist(),
+    visibility = ["@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__"] + minibenchmark_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@flatbuffers",
@@ -709,11 +707,7 @@ cc_library(
     srcs = [
         "mini_benchmark_implementation.cc",
     ],
-    visibility = [
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
-        "//tensorflow/lite/tools/benchmark:__subpackages__",
-        "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
-    ] + minibenchmark_visibility_allowlist(),
+    visibility = ["@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__"] + minibenchmark_visibility_allowlist(),
     deps = [
         ":fb_storage",
         ":mini_benchmark",
@@ -749,7 +743,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite/tools:logging",
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
@@ -863,9 +857,9 @@ cc_test(
     deps = [
         ":runner",
         ":status_codes",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:stderr_reporter",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
     ] + select({
@@ -993,6 +987,7 @@ cc_test(
         ":mini_benchmark_test_helper",
         ":status_codes",
         ":validator",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/acceleration/configuration:configuration_cc_proto",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
@@ -1001,7 +996,6 @@ cc_test(
         "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:custom_validation_embedder",
-        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/tools:model_loader",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
@@ -1017,6 +1011,10 @@ cc_test(
 cc_test(
     name = "validator_runner_impl_test",
     srcs = ["validator_runner_impl_test.cc"],
+    # Disable odr violation check because of a libc++ symbol (b/337114862).
+    env = {
+        "ASAN_OPTIONS": "detect_odr_violation=0",
+    },
     deps = [
         ":benchmark_result_evaluator",
         ":embedded_mobilenet_model",
@@ -1104,6 +1102,13 @@ cc_test(
 cc_test(
     name = "validator_runner_test",
     srcs = ["validator_runner_test.cc"],
+    # Shared libraries that are built and loaded into internal Google applications are generally
+    # unsupported. One consequence of this lack of support is that AddressSanitizer's ODR checking
+    # will produce spurious failures with an upcoming Crosstool change. The workaround for this is
+    # to disable the ODR checking on affected tests.
+    env = {
+        "ASAN_OPTIONS": "detect_odr_violation=0",
+    },
     tags = [
         "no_mac",
         "no_windows",
@@ -1112,6 +1117,7 @@ cc_test(
     deps = [
         ":embedded_mobilenet_validation_model",
         ":embedded_nnapi_sl_fake_impl",
+        ":embedded_validator_runner_entrypoint",
         ":mini_benchmark_test_helper",
         ":nnapi_sl_fake_impl_client",
         ":status_codes",

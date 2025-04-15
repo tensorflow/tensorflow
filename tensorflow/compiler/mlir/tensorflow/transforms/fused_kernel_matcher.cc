@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdio>
-#include <iostream>
+#include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -330,6 +332,16 @@ class FuseMatMulBiasAdd
       });
       return false;
     }
+    // FusedMatMul kernel does not support grad_a/grad_b attrs
+    if ((matmul->hasAttr("grad_a") &&
+         mlir::cast<BoolAttr>(matmul->getAttr("grad_a")).getValue()) ||
+        (matmul->hasAttr("grad_b") &&
+         mlir::cast<BoolAttr>(matmul->getAttr("grad_b")).getValue())) {
+      (void)rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
+        diag << "FusedMatMul kernel does not support grad_a/grad_b attrs";
+      });
+      return false;
+    }
     return true;
   }
 
@@ -350,7 +362,7 @@ void FusedKernelMatcherPass::runOnOperation() {
   auto func = getOperation();
   patterns.add<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "CopyToMeshGrad"
   input_arg {
     name: "input"
@@ -11,13 +11,6 @@ op 	 {
   output_arg {
     name: "output"
     type_attr: "T"
-  }
-  attr {
-    name: "reference_layout"
-    type: "string"
-    default_value {
-      s: ""
-    }
   }
   attr {
     name: "T"

@@ -8,7 +8,7 @@ func.func @main(tensor<40x37xf32>, tensor<40x37xf32>) -> tensor<40x40xf32> {
   func.return %0 : tensor<40x40xf32>
 
 // CHECK-LABEL: func @main(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32>
-// CHECK:      %[[CONST:[0-9]+]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<40xf32>}
-// CHECK-NEXT: %[[FULL:[0-9]+]]:2 = "tfl.fully_connected"(%arg0, %arg1, %[[CONST]]) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}
+// CHECK:      %[[CONST:[0-9]+]] = "tfl.pseudo_const"() <{value = dense<1.000000e+00> : tensor<40xf32>}>
+// CHECK-NEXT: %[[FULL:[0-9]+]]:2 = "tfl.fully_connected"(%arg0, %arg1, %[[CONST]]) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}>
 // CHECK-NEXT: return %[[FULL]]#0
 }

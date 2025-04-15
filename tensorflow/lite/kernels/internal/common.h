@@ -16,6 +16,11 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_COMMON_H_
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <type_traits>
+
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #ifndef ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
 #ifdef GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
 #define ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
@@ -34,6 +39,117 @@ limitations under the License.
 namespace tflite {
 
 constexpr int kReverseShift = -1;
+
+// Reduces and compresses dimensions so that broadcast handling becomes more
+// efficient. Returns true if the output shape is broadcastable; it doesn't
+// contain any degenerate dimension, i.e. shape dimension = 0. False otherwise.
+template <int MAX_DIM = 6>
+bool ReduceDimensionsForBroadcast(const RuntimeShape& input1_shape,
+                                  const RuntimeShape& input2_shape,
+                                  size_t* compressed_input1_stride,
+                                  size_t* compressed_input2_stride,
+                                  size_t* compressed_output_shape) {
+  size_t num_compressed_dims = 0;
+  size_t compressed_input1_shape[MAX_DIM];
+  size_t compressed_input2_shape[MAX_DIM];
+  std::fill(compressed_input1_shape, compressed_input1_shape + MAX_DIM, 1);
+  std::fill(compressed_input2_shape, compressed_input2_shape + MAX_DIM, 1);
+  std::fill(compressed_output_shape, compressed_output_shape + MAX_DIM, 1);
+  bool broadcast_input1 = false;
+  bool broadcast_input2 = false;
+  bool first_nonunit = true;
+  const size_t num_input1_dims = input1_shape.DimensionsCount();
+  const size_t num_input2_dims = input2_shape.DimensionsCount();
+  const int32_t* input1_dims = input1_shape.DimsData();
+  const int32_t* input2_dims = input2_shape.DimsData();
+  const size_t num_common_dims = std::min(num_input1_dims, num_input2_dims);
+  for (size_t i = 1; i <= num_common_dims; i++) {
+    const size_t input1_dim = input1_dims[num_input1_dims - i];
+    const size_t input2_dim = input2_dims[num_input2_dims - i];
+    if (input1_dim == 0 || input2_dim == 0) {
+      return false;
+    }
+    if (input1_dim == 1 && input2_dim == 1) {
+      continue;
+    }
+    assert(!broadcast_input1 || !broadcast_input2);
+
+    if (input1_dim == 1) {
+      if (!broadcast_input1) {
+        broadcast_input1 = true;
+        broadcast_input2 = false;
+        num_compressed_dims++;
+      }
+      compressed_input2_shape[num_compressed_dims - 1] *= input2_dim;
+      compressed_output_shape[num_compressed_dims - 1] *= input2_dim;
+    } else if (input2_dim == 1) {
+      if (!broadcast_input2) {
+        broadcast_input1 = false;
+        broadcast_input2 = true;
+        num_compressed_dims++;
+      }
+      compressed_input1_shape[num_compressed_dims - 1] *= input1_dim;
+      compressed_output_shape[num_compressed_dims - 1] *= input1_dim;
+    } else {
+      TFLITE_DCHECK(input1_dim == input2_dim);
+      if (broadcast_input1 || broadcast_input2 || first_nonunit) {
+        broadcast_input1 = false;
+        broadcast_input2 = false;
+        num_compressed_dims++;
+      }
+      compressed_input1_shape[num_compressed_dims - 1] *= input1_dim;
+      compressed_input2_shape[num_compressed_dims - 1] *= input1_dim;
+      compressed_output_shape[num_compressed_dims - 1] *= input1_dim;
+    }
+    first_nonunit = false;
+  }
+  if (num_input1_dims > num_input2_dims) {
+    if (!broadcast_input2) {
+      num_compressed_dims++;
+    }
+    for (size_t i = 0; i < num_input1_dims - num_input2_dims; i++) {
+      const size_t input1_dim = input1_dims[i];
+      if (input1_dim == 0) {
+        return false;
+      }
+      compressed_input1_shape[num_compressed_dims - 1] *= input1_dim;
+      compressed_output_shape[num_compressed_dims - 1] *= input1_dim;
+    }
+  } else if (num_input2_dims > num_input1_dims) {
+    if (!broadcast_input1) {
+      num_compressed_dims++;
+    }
+    for (size_t i = 0; i < num_input2_dims - num_input1_dims; i++) {
+      const size_t input2_dim = input2_dims[i];
+      if (input2_dim == 0) {
+        return false;
+      }
+      compressed_input2_shape[num_compressed_dims - 1] *= input2_dim;
+      compressed_output_shape[num_compressed_dims - 1] *= input2_dim;
+    }
+  }
+  num_compressed_dims = (num_compressed_dims > 1) ? num_compressed_dims : 1;
+
+  int input1_stride = 1;
+  int input2_stride = 1;
+  for (int i = 0; i < MAX_DIM; ++i) {
+    compressed_input1_stride[i] = input1_stride;
+    input1_stride *= compressed_input1_shape[i];
+    compressed_input2_stride[i] = input2_stride;
+    input2_stride *= compressed_input2_shape[i];
+  }
+  for (int i = 0; i < MAX_DIM; ++i) {
+    if (compressed_input1_shape[i] != compressed_input2_shape[i]) {
+      if (compressed_input1_shape[i] == 1) {
+        compressed_input1_stride[i] = 0;
+      } else {
+        TFLITE_DCHECK_EQ(compressed_input2_shape[i], 1);
+        compressed_input2_stride[i] = 0;
+      }
+    }
+  }
+  return true;
+}
 
 inline void GetActivationMinMax(FusedActivationFunctionType ac,
                                 float* output_activation_min,
@@ -142,24 +258,14 @@ inline void BiasAndClamp(float clamp_min, float clamp_max, int bias_size,
 #endif
 }
 
+TFLITE_NOINLINE int32_t MultiplyByQuantizedMultiplier(
+    int32_t x, int32_t quantized_multiplier, int shift);
+
+TFLITE_NOINLINE int32_t MultiplyByQuantizedMultiplier(
+    int64_t x, int32_t quantized_multiplier, int shift);
+
 // Single-rounding MultiplyByQuantizedMultiplier
 #if TFLITE_SINGLE_ROUNDING
-inline int32_t MultiplyByQuantizedMultiplier(int32_t x,
-                                             int32_t quantized_multiplier,
-                                             int shift) {
-  TFLITE_DCHECK(quantized_multiplier >= 0);
-  TFLITE_DCHECK(shift >= -31 && shift <= 30);
-
-  const int64_t total_shift = 31 - shift;
-  const int64_t round = static_cast<int64_t>(1) << (total_shift - 1);
-  int64_t result = x * static_cast<int64_t>(quantized_multiplier) + round;
-  result = result >> total_shift;
-
-  TFLITE_DCHECK(result >= std::numeric_limits<int32_t>::min() &&
-                result <= std::numeric_limits<int32_t>::max());
-  return static_cast<int32_t>(result);
-}
-
 inline int32_t MultiplyByQuantizedMultiplierSmallerThanOneExp(
     int32_t x, int32_t quantized_multiplier, int shift) {
   TFLITE_DCHECK_LE(shift, 0);
@@ -170,36 +276,6 @@ inline int32_t MultiplyByQuantizedMultiplierGreaterThanOne(
     int32_t x, int32_t quantized_multiplier, int shift) {
   TFLITE_DCHECK_GE(shift, 0);
   return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
-}
-
-inline int32_t MultiplyByQuantizedMultiplier(int64_t x,
-                                             int32_t quantized_multiplier,
-                                             int shift) {
-  // Inputs:
-  // - quantized_multiplier has fixed point at bit 31
-  // - shift is -31 to +7 (negative for right shift)
-  //
-  // Assumptions: The following input ranges are assumed
-  // - quantize_scale>=0  (the usual range is (1<<30) to (1>>31)-1)
-  // - scaling is chosen so final scaled result fits in int32_t
-  // - input x is in the range -(1<<47) <= x < (1<<47)
-  TFLITE_DCHECK(quantized_multiplier >= 0);
-  TFLITE_DCHECK(shift >= -31 && shift < 8);
-  TFLITE_DCHECK(x >= -(static_cast<int64_t>(1) << 47) &&
-                x < (static_cast<int64_t>(1) << 47));
-
-  const int32_t reduced_multiplier =
-      (quantized_multiplier < 0x7FFF0000)
-          ? ((quantized_multiplier + (1 << 15)) >> 16)
-          : 0x7FFF;
-  const int64_t total_shift = 15 - shift;
-  const int64_t round = static_cast<int64_t>(1) << (total_shift - 1);
-  int64_t result = x * static_cast<int64_t>(reduced_multiplier) + round;
-  result = result >> total_shift;
-
-  TFLITE_DCHECK(result >= std::numeric_limits<int32_t>::min() &&
-                result <= std::numeric_limits<int32_t>::max());
-  return static_cast<int32_t>(result);
 }
 
 #ifdef USE_NEON
@@ -250,12 +326,6 @@ inline int32_t MultiplyByQuantizedMultiplierGreaterThanOne(
   return SaturatingRoundingDoublingHighMul(x * (1 << left_shift),
                                            quantized_multiplier);
 }
-
-TFLITE_NOINLINE int32_t MultiplyByQuantizedMultiplier(
-    int32_t x, int32_t quantized_multiplier, int shift);
-
-TFLITE_NOINLINE int32_t MultiplyByQuantizedMultiplier(
-    int64_t x, int32_t quantized_multiplier, int shift);
 
 #ifdef USE_NEON
 // Round uses ARM's rounding shift right.

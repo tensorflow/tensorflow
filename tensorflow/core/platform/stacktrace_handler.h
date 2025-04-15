@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_STACKTRACE_HANDLER_H_
 #define TENSORFLOW_CORE_PLATFORM_STACKTRACE_HANDLER_H_
 
-#include "tensorflow/tsl/platform/stacktrace_handler.h"
+#include "tsl/platform/stacktrace_handler.h"
 
 namespace tensorflow {
 namespace testing {

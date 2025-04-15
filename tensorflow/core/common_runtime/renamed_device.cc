@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/renamed_device.h"
 
 #include "absl/memory/memory.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {

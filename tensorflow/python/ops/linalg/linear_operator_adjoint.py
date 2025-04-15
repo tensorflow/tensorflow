@@ -22,7 +22,7 @@ from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util.tf_export import tf_export
 
-__all__ = []
+__all__ = ["LinearOperatorAdjoint"]
 
 
 @tf_export("linalg.LinearOperatorAdjoint")
@@ -161,6 +161,9 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
   def operator(self):
     """The operator before taking the adjoint."""
     return self._operator
+
+  def _linop_adjoint(self) -> linear_operator.LinearOperator:
+    return self.operator
 
   def _assert_non_singular(self):
     return self.operator.assert_non_singular()

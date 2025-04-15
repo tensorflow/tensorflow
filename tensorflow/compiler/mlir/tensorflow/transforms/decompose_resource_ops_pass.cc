@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
+#include <memory>
 #include <queue>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -35,7 +38,7 @@ constexpr char kBadDecompositionMessage[] =
 // converge as only a few patterns create new resource ops that can be further
 // decomposed. The rest of the iterations are enough to clean up any dead ops
 // created by decomposition.
-constexpr int kMaxIterations = 10;
+constexpr int kMaxIterations = 20;
 
 // Populates `reachable_functions` with all functions that can be reached from
 // device cluster ops.
@@ -120,7 +123,7 @@ LogicalResult ApplyPatternsInClusterAndReachableFunctions(
   // Apply patterns to reachable functions.
   for (Operation* op : reachable_functions) {
     assert(isa<func::FuncOp>(op));
-    if (failed(applyPatternsAndFoldGreedily(op, patterns))) {
+    if (failed(applyPatternsGreedily(op, patterns))) {
       return op->emitError() << kBadDecompositionMessage;
     }
   }
@@ -137,7 +140,7 @@ LogicalResult ApplyPatternsInClusterAndReachableFunctions(
 
     auto walk_result = func.walk([&](tf_device::ClusterOp cluster) {
       // Cluster ops are not isolated from above so we cannot use
-      // `applyPatternsAndFoldGreedily` utility. Instead we apply patterns
+      // `applyPatternsGreedily` utility. Instead we apply patterns
       // locally on each op within the cluster until convergence.
       if (failed(ApplyPatternsLocallyUntilConverged(cluster, patterns,
                                                     max_iterations))) {
@@ -162,8 +165,7 @@ struct DecomposeResourceOpsPass
     RewritePatternSet patterns(&getContext());
     TF::PopulateDecomposeResourceOpsPatterns(&getContext(), &patterns);
 
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       getOperation().emitError() << kBadDecompositionMessage;
       signalPassFailure();
     }

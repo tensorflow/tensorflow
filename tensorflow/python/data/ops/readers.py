@@ -16,6 +16,7 @@
 import os
 
 from tensorflow.python import tf2
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import from_tensor_slices_op
 from tensorflow.python.data.ops import structured_function
@@ -33,6 +34,9 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
+# The default TFRecordDataset buffer size is set to -1. The actual default is
+# set in the kernel when this value is detected.
+_DEFAULT_TF_RECORD_BUFFER_SIZE_BYTES = -1
 
 
 def _normalise_fspath(path):
@@ -305,7 +309,7 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
     self._buffer_size = convert.optional_param_to_tensor(
         "buffer_size",
         buffer_size,
-        argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)
+        argument_default=_DEFAULT_TF_RECORD_BUFFER_SIZE_BYTES)
     self._name = name
 
     variant_tensor = gen_dataset_ops.tf_record_dataset(
@@ -705,3 +709,18 @@ else:
   FixedLengthRecordDataset = FixedLengthRecordDatasetV1
   TFRecordDataset = TFRecordDatasetV1
   TextLineDataset = TextLineDatasetV1
+
+
+def _tf2_callback():
+  global FixedLengthRecordDataset, TFRecordDataset, TextLineDataset
+  if tf2.enabled():
+    FixedLengthRecordDataset = FixedLengthRecordDatasetV2
+    TFRecordDataset = TFRecordDatasetV2
+    TextLineDataset = TextLineDatasetV2
+  else:
+    FixedLengthRecordDataset = FixedLengthRecordDatasetV1
+    TFRecordDataset = TFRecordDatasetV1
+    TextLineDataset = TextLineDatasetV1
+
+
+v2_compat.register_data_v2_callback(_tf2_callback)

@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/cluster_ops_by_policy.h"
 
+#include <cassert>
+#include <cstddef>
+#include <functional>
 #include <optional>
+#include <string>
+#include <utility>
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
@@ -27,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 #define DEBUG_TYPE "cluster-ops-by-policy"
@@ -44,7 +50,7 @@ ValueConstraint Merge(ValueConstraint a, ValueConstraint b) {
 
 LogicalResult IsStaticallyResolved(Value value, ValueConstraint constraint) {
   // Resolve constraints inferred from the tensor type.
-  if (auto tensor = value.getType().dyn_cast<TensorType>()) {
+  if (auto tensor = mlir::dyn_cast<TensorType>(value.getType())) {
     if (constraint == ValueConstraint::kRank && tensor.hasRank())
       return success();
     if (constraint == ValueConstraint::kShape && tensor.hasStaticShape())
@@ -510,8 +516,7 @@ llvm::SmallVector<Cluster> FindClustersInTheBlock(
   llvm::DenseMap<unsigned, Cluster> root_clusters;
 
   for (Member &member : state.members) {
-    unsigned root = state.FindRoot(member.root);
-    Cluster &cluster = root_clusters.FindAndConstruct(root).getSecond();
+    Cluster &cluster = root_clusters[state.FindRoot(member.root)];
 
     // If member is a root of the cluster, copy inferred constraints.
     if (state.FindRoot(member.root) == member.root)
@@ -710,7 +715,7 @@ void EmitValueConstraintsRemarks(const ValuesConstraintSet &constraints) {
 void EmitInputsConstraintsRemarks(func::FuncOp func,
                                   const ValuesConstraintSet &constraints) {
   constraints.Walk([&](Value value, ValueConstraint constraint) {
-    if (auto arg = value.dyn_cast<BlockArgument>())
+    if (auto arg = mlir::dyn_cast<BlockArgument>(value))
       if (arg.getOwner() == &func.getBody().front())
         func.emitRemark(llvm::formatv("input #{0} constrained to: {1}",
                                       arg.getArgNumber(), constraint));

@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 
-#include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -134,10 +134,6 @@ void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
   auto cluster_func_op = builder->create<tf_device::ClusterFuncOp>(
       cluster_op.getLoc(), outlined_func.getFunctionType().getResults(),
       live_ins.getArrayRef(), cluster_op->getAttrs());
-  auto device_attr = cluster_op->getAttrOfType<StringAttr>(TF::kDeviceAttr);
-  if (device_attr && !device_attr.getValue().empty()) {
-    cluster_func_op->setAttr(TF::kDeviceAttr, device_attr);
-  }
   cluster_op.replaceAllUsesWith(cluster_func_op);
   cluster_op.erase();
 }

@@ -78,7 +78,7 @@ REGISTER_OP("CollectiveGather")
       TF_RETURN_IF_ERROR(
           c->Concatenate(output_first_dim_as_shape, in_subshape, &out));
       c->set_output(0, out);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CollectiveBcastSend")
@@ -121,7 +121,7 @@ REGISTER_OP("CollectiveAssignGroupV2")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CollectiveReduceV2")
@@ -136,6 +136,7 @@ REGISTER_OP("CollectiveReduceV2")
     .Attr("final_op: {'Id', 'Div'}")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
+    .Attr("is_stateless: bool = false")
     .Attr("Nordering_token: int >= 0 = 0")
     .Attr("max_subdivs_per_device: int = -1")
     .SetIsStateful()
@@ -154,6 +155,7 @@ REGISTER_OP("CollectiveReduceScatterV2")
     .Attr("final_op: {'Id', 'Div'}")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
+    .Attr("is_stateless: bool = false")
     .Attr("Nordering_token: int >= 0 = 0")
     .Attr("max_subdivs_per_device: int = -1")
     .SetIsStateful()
@@ -168,7 +170,7 @@ REGISTER_OP("CollectiveReduceScatterV2")
       TF_RETURN_IF_ERROR(
           c->ReplaceDim(c->input(0), /*dim_index=*/0, c->UnknownDim(), &out));
       c->set_output(0, out);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CollectiveGatherV2")
@@ -181,6 +183,7 @@ REGISTER_OP("CollectiveGatherV2")
     .Input("ordering_token: Nordering_token * resource")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
+    .Attr("is_stateless: bool = false")
     .Attr("Nordering_token: int >= 0 = 0")
     .SetIsStateful()
     .SetIsDistributedCommunication()
@@ -194,7 +197,7 @@ REGISTER_OP("CollectiveGatherV2")
       TF_RETURN_IF_ERROR(
           c->ReplaceDim(c->input(0), /*dim_index*/ 0, c->UnknownDim(), &out));
       c->set_output(0, out);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CollectiveBcastSendV2")
@@ -227,7 +230,7 @@ REGISTER_OP("CollectiveBcastRecvV2")
       shape_inference::ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(/*input_idx=*/3, &out));
       c->set_output(/*idx=*/0, out);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CollectiveInitializeCommunicator")
@@ -264,6 +267,7 @@ REGISTER_OP("CollectiveAllToAllV2")
     .Input("ordering_token: Nordering_token * resource")
     .Attr("communication_hint: string = 'auto'")
     .Attr("timeout_seconds: float = 0")
+    .Attr("is_stateless: bool = false")
     .Attr("Nordering_token: int >= 0 = 0")
     .SetIsStateful()
     .SetIsDistributedCommunication()

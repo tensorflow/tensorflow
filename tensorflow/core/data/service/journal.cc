@@ -34,15 +34,15 @@ namespace tensorflow {
 namespace data {
 
 namespace {
-constexpr StringPiece kJournal = "journal";
+constexpr absl::string_view kJournal = "journal";
 
-Status ParseSequenceNumber(const std::string& journal_file,
-                           int64_t* sequence_number) {
+absl::Status ParseSequenceNumber(const std::string& journal_file,
+                                 int64_t* sequence_number) {
   if (!RE2::FullMatch(journal_file, ".*_(\\d+)", sequence_number)) {
     return errors::InvalidArgument("Failed to parse journal file name: ",
                                    journal_file);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -55,9 +55,9 @@ std::string DataServiceJournalFile(const std::string& journal_dir,
 FileJournalWriter::FileJournalWriter(Env* env, const std::string& journal_dir)
     : env_(env), journal_dir_(journal_dir) {}
 
-Status FileJournalWriter::EnsureInitialized() {
+absl::Status FileJournalWriter::EnsureInitialized() {
   if (writer_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::vector<std::string> journal_files;
   TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(journal_dir_));
@@ -73,10 +73,10 @@ Status FileJournalWriter::EnsureInitialized() {
   TF_RETURN_IF_ERROR(env_->NewAppendableFile(journal_file, &file_));
   writer_ = std::make_unique<io::RecordWriter>(file_.get());
   VLOG(1) << "Created journal writer to write to " << journal_file;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status FileJournalWriter::Write(const Update& update) {
+absl::Status FileJournalWriter::Write(const Update& update) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   std::string s = update.SerializeAsString();
   if (s.empty()) {
@@ -89,24 +89,24 @@ Status FileJournalWriter::Write(const Update& update) {
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "Wrote journal entry: " << update.DebugString();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-FileJournalReader::FileJournalReader(Env* env, StringPiece journal_dir)
+FileJournalReader::FileJournalReader(Env* env, absl::string_view journal_dir)
     : env_(env), journal_dir_(journal_dir) {}
 
-Status FileJournalReader::EnsureInitialized() {
+absl::Status FileJournalReader::EnsureInitialized() {
   if (reader_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return UpdateFile(DataServiceJournalFile(journal_dir_, 0));
 }
 
-Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
+absl::Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   while (true) {
     tstring record;
-    Status s = reader_->ReadRecord(&record);
+    absl::Status s = reader_->ReadRecord(&record);
     if (absl::IsOutOfRange(s)) {
       sequence_number_++;
       std::string next_journal_file =
@@ -115,7 +115,7 @@ Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
         VLOG(3) << "Next journal file " << next_journal_file
                 << " does not exist. End of journal reached.";
         end_of_journal = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
       TF_RETURN_IF_ERROR(UpdateFile(next_journal_file));
       continue;
@@ -128,17 +128,17 @@ Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
       VLOG(4) << "Read journal entry: " << update.DebugString();
     }
     end_of_journal = false;
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
-Status FileJournalReader::UpdateFile(const std::string& filename) {
+absl::Status FileJournalReader::UpdateFile(const std::string& filename) {
   VLOG(1) << "Reading from journal file " << filename;
   TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(filename, &file_));
   io::RecordReaderOptions opts;
   opts.buffer_size = 2 << 20;  // 2MB
   reader_ = std::make_unique<io::SequentialRecordReader>(file_.get(), opts);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace data

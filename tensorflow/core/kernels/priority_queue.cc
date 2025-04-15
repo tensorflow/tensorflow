@@ -40,8 +40,8 @@ PriorityQueue::PriorityQueue(int32_t capacity,
                              const string& name)
     : TypedQueue(capacity, component_dtypes, component_shapes, name) {}
 
-Status PriorityQueue::Initialize() {
-  Status s = TypedQueue::Initialize();
+absl::Status PriorityQueue::Initialize() {
+  absl::Status s = TypedQueue::Initialize();
   if (!s.ok()) return s;
 
   mutex_lock lock(mu_);
@@ -57,7 +57,7 @@ Status PriorityQueue::Initialize() {
         "is: ",
         component_shapes_[0].DebugString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void PriorityQueue::DequeueLocked(OpKernelContext* ctx, Tuple* tuple) {
@@ -115,7 +115,7 @@ void PriorityQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
 }
 
 /* static */
-Status PriorityQueue::GetElementComponentFromBatch(
+absl::Status PriorityQueue::GetElementComponentFromBatch(
     const PriorityQueue::Tuple& tuple, int index, int component,
     OpKernelContext* ctx, Tensor* out_element) {
   TensorShape element_shape(tuple[component].shape());
@@ -124,7 +124,7 @@ Status PriorityQueue::GetElementComponentFromBatch(
       ctx->allocate_temp(tuple[component].dtype(), element_shape, out_element));
   TF_RETURN_IF_ERROR(
       batch_util::CopySliceToElement(tuple[component], out_element, index));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void PriorityQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
@@ -273,8 +273,8 @@ void PriorityQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       // an optimized case where the queue 'knows' what attributes to
       // use, and plumbs them through here.
       Tensor element;
-      Status status = ctx->allocate_temp(component_dtypes_[i],
-                                         ManyOutShape(i, 0), &element);
+      absl::Status status = ctx->allocate_temp(component_dtypes_[i],
+                                               ManyOutShape(i, 0), &element);
       if (!status.ok()) {
         ctx->SetStatus(status);
         callback(Tuple());
@@ -384,7 +384,7 @@ void PriorityQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
   }
 }
 
-Status PriorityQueue::MatchesNodeDef(const NodeDef& node_def) {
+absl::Status PriorityQueue::MatchesNodeDef(const NodeDef& node_def) {
   if (!MatchesNodeDefOp(node_def, "PriorityQueue").ok() &&
       !MatchesNodeDefOp(node_def, "PriorityQueueV2").ok()) {
     return errors::InvalidArgument("Expected PriorityQueue, found ",
@@ -393,10 +393,10 @@ Status PriorityQueue::MatchesNodeDef(const NodeDef& node_def) {
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
   TF_RETURN_IF_ERROR(MatchesPriorityNodeDefTypes(node_def));
   TF_RETURN_IF_ERROR(MatchesPriorityNodeDefShapes(node_def));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status PriorityQueue::MatchesPriorityNodeDefTypes(
+absl::Status PriorityQueue::MatchesPriorityNodeDefTypes(
     const NodeDef& node_def) const {
   DataTypeVector requested_dtypes;
   TF_RETURN_IF_ERROR(
@@ -409,10 +409,10 @@ Status PriorityQueue::MatchesPriorityNodeDefTypes(
                                    " but requested component types were ",
                                    DataTypeSliceString(requested_dtypes));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status PriorityQueue::MatchesPriorityNodeDefShapes(
+absl::Status PriorityQueue::MatchesPriorityNodeDefShapes(
     const NodeDef& node_def) const {
   std::vector<TensorShape> requested_shapes;
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "shapes", &requested_shapes));
@@ -424,7 +424,7 @@ Status PriorityQueue::MatchesPriorityNodeDefShapes(
                                    " but requested component shapes were ",
                                    ShapeListString(requested_shapes));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

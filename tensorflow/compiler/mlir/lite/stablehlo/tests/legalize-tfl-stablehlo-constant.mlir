@@ -9,7 +9,7 @@ module {
 
 // CHECK:  module {
 // CHECK-NEXT:    func @main() -> tensor<1xi64> {
-// CHECK-NEXT:    %0 = stablehlo.constant dense<2> : tensor<1xi64>
-// CHECK-NEXT:    return %0 : tensor<1xi64>
+// CHECK-NEXT:    %[[c0:.+]] = stablehlo.constant dense<2> : tensor<1xi64>
+// CHECK-NEXT:    return %[[c0]] : tensor<1xi64>
 // CHECK-NEXT:    }
 // CHECK-NEXT:    }

@@ -17,12 +17,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_GATHER_ND_OP_H_
 // Functor definition for GatherOp, must be compilable by nvcc.
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/bad_indices_policy.h"
 #include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
@@ -44,8 +45,10 @@ struct GatherNdSlice {
 };
 
 template <typename Device, typename T, typename Index>
-Status DoGatherNd(OpKernelContext* c, const Tensor& params,
-                  const Tensor& indices, Tensor* out) {
+absl::Status DoGatherNd(
+    OpKernelContext* c, const Tensor& params, const Tensor& indices,
+    Tensor* out,
+    BadIndicesPolicy bad_indices_policy = BadIndicesPolicy::kDefault) {
   if (!TensorShapeUtils::IsVectorOrHigher(params.shape())) {
     return errors::InvalidArgument("params must be at least a vector");
   }
@@ -150,9 +153,13 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
             "are currently supported.  Requested rank: ",
             indices_nd);
     }
+    using CPUDevice = Eigen::ThreadPoolDevice;
 
-    // bad_i will only return >= 0 on CPUs right now.
-    if (bad_i >= 0) {
+    const bool check_bad_indices =
+        ((std::is_same<Device, CPUDevice>::value &&
+          bad_indices_policy == BadIndicesPolicy::kDefault) ||
+         bad_indices_policy == BadIndicesPolicy::kError);
+    if (check_bad_indices && bad_i >= 0) {
       auto shape = indices.shape();
       shape.RemoveLastDims(1);
       return errors::InvalidArgument(
@@ -163,7 +170,7 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
           ", node name: ", c->op_kernel().name());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace functor

@@ -28,8 +28,8 @@ namespace tensorflow {
 namespace {
 using ::tensorflow::testing::FindNodeByName;
 
-Status CloneConstantsForBetterClustering(const Scope& s,
-                                         std::unique_ptr<Graph>* result) {
+absl::Status CloneConstantsForBetterClustering(const Scope& s,
+                                               std::unique_ptr<Graph>* result) {
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   SessionOptions session_options;
   session_options.config.mutable_graph_options()
@@ -55,7 +55,7 @@ Status CloneConstantsForBetterClustering(const Scope& s,
   CloneConstantsForBetterClusteringPass rewriter;
   TF_RETURN_IF_ERROR(rewriter.Run(options));
   *result = std::move(graph);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const char* kCPU = "/job:localhost/replica:0/task:0/device:CPU:0";

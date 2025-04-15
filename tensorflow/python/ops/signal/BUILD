@@ -52,6 +52,7 @@ py_strict_library(
         ":shape_ops",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
@@ -155,6 +156,7 @@ py_strict_library(
 py_strict_library(
     name = "window_ops",
     srcs = ["window_ops.py"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -163,6 +165,7 @@ py_strict_library(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:special_math_ops",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",

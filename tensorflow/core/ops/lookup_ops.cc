@@ -29,7 +29,7 @@ using shape_inference::ShapeHandle;
 // --------------------------------------------------------------------------
 
 namespace {
-Status TwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
+absl::Status TwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
   ShapeHandle handle;
   DimensionHandle unused_handle;
   for (int i = 0; i < c->num_inputs(); ++i) {
@@ -39,10 +39,11 @@ Status TwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
   for (int i = 0; i < c->num_outputs(); ++i) {
     c->set_output(i, c->Scalar());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ScalarAndTwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
+absl::Status ScalarAndTwoElementVectorInputsAndScalarOutputs(
+    InferenceContext* c) {
   ShapeHandle handle;
   DimensionHandle unused_handle;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
@@ -53,17 +54,17 @@ Status ScalarAndTwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
   for (int i = 0; i < c->num_outputs(); ++i) {
     c->set_output(i, c->Scalar());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TwoElementOutput(InferenceContext* c) {
+absl::Status TwoElementOutput(InferenceContext* c) {
   c->set_output(0, c->Vector(2));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ScalarOutput(InferenceContext* c) {
+absl::Status ScalarOutput(InferenceContext* c) {
   c->set_output(0, c->Scalar());
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -84,14 +85,14 @@ REGISTER_OP("LookupTableFind")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(2), 1, &unused));
       c->set_output(0, c->UnknownShape());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
-Status ValidateTableType(InferenceContext* c,
-                         const ShapeAndType& key_shape_and_type,
-                         const string& key_dtype_attr,
-                         const ShapeAndType& value_shape_and_type,
-                         const string& value_dtype_attr) {
+absl::Status ValidateTableType(InferenceContext* c,
+                               const ShapeAndType& key_shape_and_type,
+                               const string& key_dtype_attr,
+                               const ShapeAndType& value_shape_and_type,
+                               const string& value_dtype_attr) {
   DataType key_dtype;
   TF_RETURN_IF_ERROR(c->GetAttr(key_dtype_attr, &key_dtype));
   if (key_shape_and_type.dtype != key_dtype) {
@@ -110,13 +111,13 @@ Status ValidateTableType(InferenceContext* c,
         DataTypeString(value_shape_and_type.dtype), " got ",
         DataTypeString(value_dtype));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ValidateTableResourceHandle(InferenceContext* c, ShapeHandle keys,
-                                   const string& key_dtype_attr,
-                                   const string& value_dtype_attr,
-                                   ShapeAndType* output_shape_and_type) {
+absl::Status ValidateTableResourceHandle(InferenceContext* c, ShapeHandle keys,
+                                         const string& key_dtype_attr,
+                                         const string& value_dtype_attr,
+                                         ShapeAndType* output_shape_and_type) {
   auto* handle_data = c->input_handle_shapes_and_types(0);
   if (handle_data == nullptr || handle_data->size() != 2) {
     output_shape_and_type->shape = c->UnknownShape();
@@ -155,7 +156,7 @@ Status ValidateTableResourceHandle(InferenceContext* c, ShapeHandle keys,
       output_shape_and_type->shape = c->UnknownShape();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("LookupTableFindV2")
@@ -177,7 +178,7 @@ REGISTER_OP("LookupTableFindV2")
           /*value_dtype_attr=*/"Tout", &value_shape_and_type));
       c->set_output(0, value_shape_and_type.shape);
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableFindV2");
 // TODO(b/72710477): Update this.
@@ -195,7 +196,7 @@ REGISTER_OP("LookupTableInsert")
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
 
       // TODO(ebrevdo): Validate keys and values shape.
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("LookupTableInsertV2")
@@ -209,7 +210,7 @@ REGISTER_OP("LookupTableInsertV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
 
       // TODO: Validate keys and values shape.
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("LookupTableRemoveV2")
@@ -222,7 +223,7 @@ REGISTER_OP("LookupTableRemoveV2")
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &handle));
 
       // TODO(turboale): Validate keys shape.
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("LookupTableSize")
@@ -254,7 +255,7 @@ REGISTER_OP("LookupTableExport")
       ShapeHandle keys = c->Vector(c->Dim(values, 0));
       c->set_output(0, keys);
       c->set_output(1, values);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("LookupTableExportV2")
@@ -278,7 +279,7 @@ REGISTER_OP("LookupTableExportV2")
       // Different lookup tables have different output shapes.
       c->set_output(0, c->UnknownShape());
       c->set_output(1, c->UnknownShape());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("LookupTableImport")
@@ -294,7 +295,7 @@ REGISTER_OP("LookupTableImport")
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
 
       // TODO(ebrevdo): Validate keys and values shape.
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("LookupTableImportV2")
@@ -313,11 +314,11 @@ REGISTER_OP("LookupTableImportV2")
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &values));
       DimensionHandle unused;
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(keys, 0), c->Dim(values, 0), &unused));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
-Status MutableHashTableShape(InferenceContext* c, const ShapeHandle& key,
-                             const ShapeHandle& value) {
+absl::Status MutableHashTableShape(InferenceContext* c, const ShapeHandle& key,
+                                   const ShapeHandle& value) {
   c->set_output(0, c->Scalar());
 
   ShapeHandle key_s;
@@ -333,15 +334,15 @@ Status MutableHashTableShape(InferenceContext* c, const ShapeHandle& key,
   c->set_output_handle_shapes_and_types(
       0, std::vector<ShapeAndType>{{key_s, key_t}, {value, value_t}});
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status MutableHashTableShapeFn(InferenceContext* c) {
+absl::Status MutableHashTableShapeFn(InferenceContext* c) {
   return MutableHashTableShape(c, /*key=*/c->Scalar(),
                                /*value=*/c->Scalar());
 }
 
-Status MutableHashTableOfTensorsShapeFn(InferenceContext* c) {
+absl::Status MutableHashTableOfTensorsShapeFn(InferenceContext* c) {
   PartialTensorShape value_p;
   TF_RETURN_IF_ERROR(c->GetAttr("value_shape", &value_p));
   ShapeHandle value_s;
@@ -349,7 +350,7 @@ Status MutableHashTableOfTensorsShapeFn(InferenceContext* c) {
   return MutableHashTableShape(c, /*key=*/c->Scalar(), /*value=*/value_s);
 }
 
-Status MutableDenseHashTableShapeFn(InferenceContext* c) {
+absl::Status MutableDenseHashTableShapeFn(InferenceContext* c) {
   PartialTensorShape value_p;
   TF_RETURN_IF_ERROR(c->GetAttr("value_shape", &value_p));
   ShapeHandle value_s;
@@ -497,7 +498,7 @@ REGISTER_OP("InitializeTable")
       ShapeHandle keys;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &keys));
       TF_RETURN_IF_ERROR(c->Merge(keys, c->input(2), &keys));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("InitializeTableV2")
@@ -513,7 +514,7 @@ REGISTER_OP("InitializeTableV2")
       ShapeHandle keys;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &keys));
       TF_RETURN_IF_ERROR(c->Merge(keys, c->input(2), &keys));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("InitializeTableFromTextFile")
@@ -531,7 +532,7 @@ REGISTER_OP("InitializeTableFromTextFile")
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
 
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("InitializeTableFromTextFileV2")
@@ -547,7 +548,7 @@ REGISTER_OP("InitializeTableFromTextFileV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
 
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

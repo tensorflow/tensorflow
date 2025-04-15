@@ -18,6 +18,8 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
@@ -51,5 +53,34 @@ bool IsOnGpuDevice(mlir::Operation *op) {
   return *device == kDeviceGpu;
 }
 
+void CopyDeviceAndUnderscoredAttributesAdaptor(mlir::OpResult src,
+                                               mlir::OpResult dest) {
+  CopyDeviceAndUnderscoredAttributesAdaptor(src.getOwner(), dest.getOwner());
+}
+
+void CopyDeviceAndUnderscoredAttributesAdaptor(mlir::Operation *src,
+                                               mlir::OpResult dest) {
+  CopyDeviceAndUnderscoredAttributesAdaptor(src, dest.getOwner());
+}
+
+void CopyDeviceAndUnderscoredAttributesAdaptor(mlir::Operation *src,
+                                               mlir::Operation *dest) {
+  CopyDeviceAndUnderscoredAttributes(src, dest);
+}
+
+void CopyXlaOutsideCompilationAttributesAdaptor(mlir::OpResult src,
+                                                mlir::OpResult dest) {
+  CopyXlaOutsideCompilationAttributesAdaptor(src.getOwner(), dest.getOwner());
+}
+
+void CopyXlaOutsideCompilationAttributesAdaptor(mlir::Operation *src,
+                                                mlir::OpResult dest) {
+  CopyXlaOutsideCompilationAttributesAdaptor(src, dest.getOwner());
+}
+
+void CopyXlaOutsideCompilationAttributesAdaptor(mlir::Operation *src,
+                                                mlir::Operation *dest) {
+  CopyXlaOutsideCompilationAttributes(src, dest);
+}
 }  // namespace TF
 }  // namespace mlir

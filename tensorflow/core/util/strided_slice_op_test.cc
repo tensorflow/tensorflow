@@ -22,14 +22,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace {
@@ -348,9 +348,9 @@ TEST(StridedSliceAssignBCastTest, RemapDimensionsOutOfBoundsFails) {
   }
 }
 
-using IntVector = gtl::InlinedVector<int64_t, 4>;
+using IntVector = absl::InlinedVector<int64_t, 4UL>;
 
-TensorShape AsTensorShape(gtl::ArraySlice<int64_t> dim_sizes) {
+TensorShape AsTensorShape(absl::Span<const int64_t> dim_sizes) {
   TensorShape out;
   TF_CHECK_OK(TensorShape::BuildTensorShape(dim_sizes, &out));
   return out;

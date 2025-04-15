@@ -185,7 +185,8 @@ class InferenceContext {
   std::map<ValueId, MetalSpatialTensor> strong_shape_tensors_;
   std::map<ValueId, ValueId> graph_ids_to_strong_shape_tensors_;
 
-  id<MTLIndirectCommandBuffer> icb_ = nullptr;
+  id<MTLIndirectCommandBuffer> icb_ API_AVAILABLE(ios(13.0), macos(11.00),
+                                                  tvos(13.0)) = nullptr;
   id<MTLDevice> device_ = nullptr;
 };
 

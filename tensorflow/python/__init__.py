@@ -12,75 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Import core names of TensorFlow.
+"""TensorFlow Python init file."""
 
-Programs that want to build TensorFlow Ops and Graphs without having to import
-the constructors and utilities individually can import this file:
+# Do not add code to //third_party/tensorflow/python/__init__.py.
+# This file is imported whenever TensorFlow is imported.
+# Additional imports in this file could cause the internal
+# import time of TensorFlow to increase by multiple seconds.
 
-
-import tensorflow as tf
-"""
-
-import ctypes
-import importlib
-import sys
-import traceback
-
-# We aim to keep this file minimal and ideally remove completely.
-# If you are adding a new file with @tf_export decorators,
-# import it in modules_with_exports.py instead.
-
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
-
-from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
-
-# pylint: enable=wildcard-import
-
-# from tensorflow.python import keras
-from tensorflow.python.feature_column import feature_column_lib as feature_column
-# from tensorflow.python.layers import layers
-from tensorflow.python.module import module
-from tensorflow.python.profiler import profiler
-from tensorflow.python.profiler import profiler_client
-from tensorflow.python.profiler import profiler_v2
-from tensorflow.python.profiler import trace
-from tensorflow.python.saved_model import saved_model
-from tensorflow.python.summary import summary
-from tensorflow.python.tpu import api
-from tensorflow.python.user_ops import user_ops
-from tensorflow.python.util import compat
-
-# Import the names from python/training.py as train.Name.
-from tensorflow.python.training import training as train
-from tensorflow.python.training import quantize_training as _quantize_training
-
-# Sub-package for performing i/o directly instead of via ops in a graph.
-from tensorflow.python.lib.io import python_io
-
-# Make some application and test modules available.
-from tensorflow.python.platform import app
-from tensorflow.python.platform import flags
-from tensorflow.python.platform import gfile
-from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import sysconfig as sysconfig_lib
-from tensorflow.python.platform import test
-
-from tensorflow.python.compat import v2_compat
-
-from tensorflow.python.util.all_util import make_all
-from tensorflow.python.util.tf_export import tf_export
-
-# TensorFlow Debugger (tfdbg).
-from tensorflow.python.debug.lib import check_numerics_callback
-from tensorflow.python.debug.lib import dumping_callback
-from tensorflow.python.ops import gen_debug_ops
-
-# Update dispatch decorator docstrings to contain lists of registered APIs.
-# (This should come after any imports that register APIs.)
-from tensorflow.python.util import dispatch
-dispatch.update_docstrings_with_api_lists()
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

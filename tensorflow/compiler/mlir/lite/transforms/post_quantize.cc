@@ -15,19 +15,31 @@ limitations under the License.
 
 // This transformation pass applies some clean up steps after quantization.
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
 //===----------------------------------------------------------------------===//
 // The post-quantize Passes.
@@ -152,6 +164,92 @@ enum RemoveVolatileOpsType {
   kPreserveInputsAndOutputs,
 };
 
+// Returns a constant tensor with the given scalar/vector value and shape.
+template <typename T>
+std::optional<mlir::Value> GetConstTensor(PatternRewriter& rewriter,
+                                          Location loc, llvm::ArrayRef<T> vec,
+                                          llvm::ArrayRef<int64_t> shape) {
+  int64_t num_total_elements = 1;
+  for (int64_t a : shape) {
+    num_total_elements *= a;
+  }
+
+  if (vec.size() != num_total_elements) {
+    return std::nullopt;
+  }
+
+  auto const_type = tensorflow::GetTypeFromTFTensorShape(
+      shape, rewriter.getIntegerType(sizeof(T) * 8));
+  auto const_attr = DenseElementsAttr::get(const_type, vec);
+
+  auto const_op =
+      rewriter.create<arith::ConstantOp>(loc, const_type, const_attr);
+  return const_op.getResult();
+}
+
+// Converts a dequantize op to a (scale * (input - zeropoint)). The expectation
+// is that the qconst value will be constant folded to retain the original
+// constant value. This is essentially a constant fold of the dequantize op,
+// privided that the value, zp and scale are all constants.
+std::optional<mlir::Value> ConvertDequantizeOp(
+    PatternRewriter& rewriter, mlir::Operation* op,
+    mlir::ShapedType output_type, mlir::Value input_value,
+    llvm::ArrayRef<double> scale, llvm::ArrayRef<int64_t> zeropoint,
+    int64_t dim) {
+  RankedTensorType input_type =
+      dyn_cast<RankedTensorType>(input_value.getType());
+  if (!input_type) return std::nullopt;
+
+  std::optional<mlir::Value> zp_val;
+  if (zeropoint.size() == 1) {
+    auto const_type =
+        tensorflow::GetTypeFromTFTensorShape({}, rewriter.getF32Type());
+    auto const_attr =
+        DenseElementsAttr::get(const_type, static_cast<float>(zeropoint[0]));
+
+    auto const_op = rewriter.create<arith::ConstantOp>(op->getLoc(), const_type,
+                                                       const_attr);
+    zp_val = const_op.getResult();
+  } else {
+    SmallVector<int64_t> shape;
+    shape.resize(input_type.getRank(), 1);
+    shape[dim] = zeropoint.size();
+    zp_val = GetConstTensor(rewriter, op->getLoc(), zeropoint, shape);
+  }
+
+  std::optional<mlir::Value> scale_val;
+  if (scale.size() == 1) {
+    auto const_type =
+        tensorflow::GetTypeFromTFTensorShape({}, rewriter.getF32Type());
+    auto const_attr =
+        DenseElementsAttr::get(const_type, static_cast<float>(scale[0]));
+
+    auto const_op = rewriter.create<arith::ConstantOp>(op->getLoc(), const_type,
+                                                       const_attr);
+    scale_val = const_op.getResult();
+  } else {
+    SmallVector<int64_t> shape;
+    shape.resize(input_type.getRank(), 1);
+    shape[dim] = scale.size();
+    scale_val = GetConstTensor(rewriter, op->getLoc(), scale, shape);
+  }
+
+  if (!zp_val || !scale_val) return std::nullopt;
+
+  auto op1_cast_in =
+      rewriter.create<TFL::CastOp>(op->getLoc(), output_type, input_value);
+
+  auto op2_sub_op1 = rewriter.create<TFL::SubOp>(
+      op->getLoc(), output_type, op1_cast_in.getResult(), zp_val.value(),
+      /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
+
+  return rewriter
+      .create<TFL::MulOp>(
+          op->getLoc(), output_type, op2_sub_op1.getResult(), scale_val.value(),
+          /*fused_activation_function=*/rewriter.getStringAttr("NONE"))
+      .getResult();
+}
+
 // Remove the back-to-back quantize and dequantize ops with volatile attribute.
 template <RemoveVolatileOpsType remove_volatile_ops_type>
 struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
@@ -184,6 +282,48 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
       }
 
       op.replaceAllUsesWith(q.getInput());
+      return success();
+    } else if (auto qconst_op = llvm::dyn_cast_or_null<QConstOp>(input_op)) {
+      if (!qconst_op->getAttr(mlir::quant::kVolatileOpAttrName))
+        return failure();
+
+      auto qtype =
+          quant::QuantizedType::getQuantizedElementType(qconst_op.getType());
+      if (!qtype) return failure();
+      SmallVector<double, 1> scale;
+      SmallVector<int64_t, 1> zeropoint;
+      int64_t dim = 0;
+
+      if (auto uniform_qtype =
+              mlir::dyn_cast<quant::UniformQuantizedType>(qtype)) {
+        scale.push_back(uniform_qtype.getScale());
+        zeropoint.push_back(uniform_qtype.getZeroPoint());
+      } else if (auto per_axis_qtype =
+                     mlir::dyn_cast<quant::UniformQuantizedPerAxisType>(
+                         qtype)) {
+        scale.assign(per_axis_qtype.getScales().begin(),
+                     per_axis_qtype.getScales().end());
+        zeropoint.assign(per_axis_qtype.getZeroPoints().begin(),
+                         per_axis_qtype.getZeroPoints().end());
+        dim = per_axis_qtype.getQuantizedDimension();
+      } else {
+        return failure();
+      }
+
+      auto output_type = mlir::cast<mlir::ShapedType>(op.getOutput().getType());
+
+      auto const_type = tensorflow::GetTypeFromTFTensorShape(
+          output_type.getShape(), qtype.getStorageType());
+      auto const_op = rewriter.create<arith::ConstantOp>(
+          op->getLoc(), const_type, qconst_op.getValue());
+
+      auto new_value =
+          ConvertDequantizeOp(rewriter, op, output_type, const_op.getResult(),
+                              scale, zeropoint, dim);
+      if (!new_value) return failure();
+
+      op.replaceAllUsesWith(new_value.value());
+      op->erase();
       return success();
     }
     return failure();
@@ -233,9 +373,11 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
     DenseIntElementsAttr perm_tensor;
     if (!matchPattern(op.getPerm(), m_Constant(&perm_tensor))) return failure();
 
-    if (!(getElementTypeOrSelf(op.getOutput().getType()))
-             .isa<quant::UniformQuantizedType>())
+    auto output_element_type = getElementTypeOrSelf(op.getOutput().getType());
+    if (!mlir::isa<quant::UniformQuantizedType>(output_element_type) &&
+        !mlir::isa<quant::UniformQuantizedPerAxisType>(output_element_type)) {
       return failure();
+    }
 
     ElementsAttr input_tensor = qconst_op.getValue();
 
@@ -244,7 +386,7 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
     assert(perm_tensor.getType().getNumElements() == num_dimensions);
 
     ArrayRef<int64_t> input_shape = input_tensor.getShapedType().getShape();
-    auto output_type = op.getOutput().getType().cast<ShapedType>();
+    auto output_type = mlir::cast<ShapedType>(op.getOutput().getType());
 
     SmallVector<int32_t, 4> perm;
     SmallVector<int64_t, 4> output_shape;
@@ -264,10 +406,19 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
                        /*output_axis=*/0, &input_indices, &new_values);
     auto result_type =
         RankedTensorType::get(output_shape, output_type.getElementType());
-    auto values_type = RankedTensorType::get(
-        output_shape, output_type.getElementType()
-                          .cast<quant::UniformQuantizedType>()
-                          .getStorageType());
+    RankedTensorType values_type;
+    if (mlir::isa<quant::UniformQuantizedType>(output_element_type)) {
+      values_type = RankedTensorType::get(
+          output_shape,
+          mlir::cast<quant::UniformQuantizedType>(output_type.getElementType())
+              .getStorageType());
+    } else {
+      values_type = RankedTensorType::get(
+          output_shape, mlir::cast<quant::UniformQuantizedPerAxisType>(
+                            output_type.getElementType())
+                            .getStorageType());
+    }
+
     rewriter.replaceOpWithNewOp<QConstOp>(
         op, TypeAttr::get(result_type),
         DenseIntElementsAttr::get(values_type, new_values));
@@ -286,21 +437,22 @@ struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
                                 PatternRewriter& rewriter) const override {
     Operation* def_op = op.getInput().getDefiningOp();
     auto qconst_op = llvm::dyn_cast_or_null<QConstOp>(def_op);
-    if (qconst_op == nullptr) return failure();
+    if (qconst_op == nullptr) {
+      return rewriter.notifyMatchFailure(op, "input is not a QConstOp.");
+    }
 
     auto dense_elements =
-        qconst_op.getValue().dyn_cast_or_null<DenseElementsAttr>();
+        mlir::dyn_cast_or_null<DenseElementsAttr>(qconst_op.getValue());
     if (dense_elements == nullptr) return failure();
 
-    // Handle per tensor cases only.
-    if (!(getElementTypeOrSelf(op.getType()))
-             .isa<quant::UniformQuantizedType>()) {
-      return failure();
+    auto output_element_type = getElementTypeOrSelf(op.getType());
+    if (!mlir::isa<quant::QuantizedType>(output_element_type)) {
+      return rewriter.notifyMatchFailure(op, "output type is not quantized.");
     }
 
     // Remove identity reshape with both static result and input shape.
-    auto result_type = op.getType().cast<ShapedType>();
-    auto input_type = op.getInput().getType().cast<ShapedType>();
+    auto result_type = mlir::cast<ShapedType>(op.getType());
+    auto input_type = mlir::cast<ShapedType>(op.getInput().getType());
 
     // Constant folding
     // If the result type isn't static, tries to derive the result type from
@@ -317,10 +469,19 @@ struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
       result_type =
           RankedTensorType::get(shape_data, input_type.getElementType());
     }
-    auto values_type = RankedTensorType::get(
-        result_type.getShape(), result_type.getElementType()
-                                    .cast<quant::UniformQuantizedType>()
+    RankedTensorType values_type;
+    if (mlir::isa<quant::UniformQuantizedType>(output_element_type)) {
+      values_type = RankedTensorType::get(
+          result_type.getShape(),
+          mlir::cast<quant::UniformQuantizedType>(result_type.getElementType())
+              .getStorageType());
+    } else {
+      values_type =
+          RankedTensorType::get(result_type.getShape(),
+                                mlir::cast<quant::UniformQuantizedPerAxisType>(
+                                    result_type.getElementType())
                                     .getStorageType());
+    }
 
     DenseElementsAttr reshaped_elements = dense_elements.reshape(values_type);
     rewriter.replaceOpWithNewOp<QConstOp>(op, TypeAttr::get(result_type),
@@ -383,7 +544,7 @@ void PostQuantizePass::runOnOperation() {
   patterns.add<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
   patterns.add<PruneUnusedOpsWithSideEffect<TFL::CustomOp>>(ctx,
                                                             custom_op_map_);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {
     RemoveQuantizationAdaptorOps(getOperation());
@@ -394,7 +555,7 @@ void PostQuantizePass::runOnOperation() {
   phase_2_patterns.add<quant::FoldTrivalRequantizeOp<QuantizeOp>,
                        RemoveVolatileOps<kPreserveInputsAndOutputs>,
                        FoldTransposeOp, FoldReshapeOp>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+  (void)applyPatternsGreedily(func, std::move(phase_2_patterns));
 }
 
 void PostQuantizeRemoveQDQPass::runOnOperation() {
@@ -403,7 +564,7 @@ void PostQuantizeRemoveQDQPass::runOnOperation() {
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(patterns);
   patterns.add<RemoveVolatileOps<kPreserveNone>>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace

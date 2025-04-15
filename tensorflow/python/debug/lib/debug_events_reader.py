@@ -109,8 +109,15 @@ class DebugEventsReader:
         wall_times.append(debug_event.wall_time)
         run_ids.append(debug_event.debug_metadata.tfdbg_run_id)
         tensorflow_versions.append(
-            debug_event.debug_metadata.tensorflow_version)
+            debug_event.debug_metadata.tensorflow_version
+        )
         file_versions.append(debug_event.debug_metadata.file_version)
+      except Exception as e:
+        raise errors.DataLossError(
+            None,
+            None,
+            "Error reading tfdbg metadata from paths %s" % metadata_paths,
+        ) from e
       finally:
         reader.close()
     self._starting_wall_time = wall_times[0]
@@ -324,7 +331,7 @@ class BaseDigest:
           for the case of all digests of the same kind coming from the same
           file.
        2. A tuple of a file index and a byte offset. This applies to case
-          in which the same type of debugger data may come from multple files,
+          in which the same type of debugger data may come from multiple files,
           e.g., graph execution traces.
   """
 
@@ -1306,7 +1313,7 @@ class DebugDataReader:
     """Read the full tensor values from an Execution or ExecutionDigest.
 
     Args:
-      execution: An `ExecutionDigest` or `ExeuctionDigest` object.
+      execution: An `ExecutionDigest` or `ExecutionDigest` object.
 
     Returns:
       A list of numpy arrays representing the output tensor values of the

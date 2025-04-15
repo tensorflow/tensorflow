@@ -19,14 +19,16 @@ limitations under the License.
 #include <Python.h>
 #include <frameobject.h>
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
-#include "tensorflow/tsl/platform/fingerprint.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace tensorflow {
 

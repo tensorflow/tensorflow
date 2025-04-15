@@ -22,6 +22,9 @@ on:
   schedule:
     - cron: '0 4 * * *'
 
+permissions:
+  contents: read
+
 jobs:
   build:
     if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
@@ -29,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pyver: ['3.9', '3.10', '3.11']
+        pyver: ['3.9', '3.10', '3.11', '3.12']
     steps:
       - name: Stop old running containers (if any)
         shell: bash
@@ -48,15 +51,15 @@ jobs:
         run: find /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/. -name . -o -prune -exec sudo rm -rf -- {} + || true
       - name: Checkout repository for nightly (skipped for releases)
         if: ${{ github.event_name == 'schedule' }}
-        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3.2.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: 'nightly'
       - name: Checkout repository
         if: ${{ github.event_name == 'push' }}
-        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3.2.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Build binary and run python tests on nightly for all python versions
         shell: bash
         run: |
           is_nightly=0 && tf_project_name='tf_ci_ext' && ${{ github.event_name == 'schedule' }} && is_nightly=1 && tf_project_name='tf_nightly_ci_ext'
           CI_DOCKER_BUILD_EXTRA_PARAMS="--build-arg py_major_minor_version=${{ matrix.pyver }} --build-arg is_nightly=${is_nightly} --build-arg tf_project_name=${tf_project_name}" \
-          ./tensorflow/tools/ci_build/ci_build.sh cpu.arm64 bash tensorflow/tools/ci_build/rel/ubuntu/cpu_arm64_nonpip.sh
+          ./tensorflow/tools/ci_build/ci_build.sh cpu.arm64 bash tensorflow/tools/ci_build/rel/ubuntu/cpu_arm64_test.sh

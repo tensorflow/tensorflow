@@ -20,13 +20,14 @@ limitations under the License.
 // tensorflow/lite/nnapi:nnapi_example -- <filename>
 //
 #include <dirent.h>
+
 #include <cstdarg>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
-#include "tensorflow/lite/nnapi/nnapi_implementation.h"
+
 #include "tensorflow/lite/testing/parse_testdata.h"
 #include "tensorflow/lite/testing/tflite_driver.h"
 

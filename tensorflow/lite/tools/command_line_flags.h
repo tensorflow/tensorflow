@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_COMMAND_LINE_FLAGS_H_
 #define TENSORFLOW_LITE_TOOLS_COMMAND_LINE_FLAGS_H_
 
+#include <stdint.h>
+
 #include <functional>
 #include <string>
 #include <vector>

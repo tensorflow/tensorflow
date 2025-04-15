@@ -1,0 +1,161 @@
+ExtraArgs: [
+  "-Wno-everything",
+  "-Wno-error",
+  "-Wdeprecated-declarations",
+  "-D_LIBCPP_DISABLE_DEPRECATION_WARNINGS",
+  "-Wdeprecated-register",
+  "-Wexpansion-to-defined",
+  "-Wignored-attributes",
+  "-Wnon-pod-varargs",
+  "-Wshadow-field",
+  "-Wshift-sign-overflow",
+  "-Wtautological-undefined-compare",
+  "-Wthread-safety-analysis",
+  "-Wthread-safety-beta",
+  "-Wthread-safety-reference",
+  "-Wundefined-bool-conversion",
+  "-Wunreachable-code",
+  "-Wunused-const-variable",
+  "-Wunused-function",
+  "-Wunused-lambda-capture",
+  "-Wunused-local-typedef",
+  "-Wunused-private-field",
+  "-Wuser-defined-warnings",
+]
+Checks: "-*,
+  abseil-duration-addition,
+  abseil-duration-addition,
+  abseil-duration-comparison,
+  abseil-duration-conversion-cast,
+  abseil-duration-division,
+  abseil-duration-factory-float,
+  abseil-duration-factory-scale,
+  abseil-duration-subtraction,
+  abseil-duration-unnecessary-conversion,
+  abseil-faster-strsplit-delimiter,
+  abseil-no-internal-dependencies,
+  abseil-redundant-strcat-calls,
+  abseil-str-cat-append,
+  abseil-string-find-startswith,
+  abseil-string-find-str-contains,
+  abseil-time-comparison,
+  abseil-time-subtraction,
+  bugprone-argument-comment,
+  bugprone-assert-side-effect,
+  bugprone-bool-pointer-implicit-conversion,
+  bugprone-dangling-handle,
+  bugprone-fold-init-type,
+  bugprone-forward-declaration-namespace,
+  bugprone-inaccurate-erase,
+  bugprone-macro-repeated-side-effects,
+  bugprone-move-forwarding-reference,
+  bugprone-multiple-statement-macro,
+  bugprone-string-constructor,
+  bugprone-stringview-nullptr,
+  bugprone-suspicious-memset-usage,
+  bugprone-undefined-memory-manipulation,
+  bugprone-undelegated-constructor,
+  bugprone-unused-raii,
+  bugprone-use-after-move,
+  clang-diagnostic-deprecated-declarations,
+  clang-diagnostic-deprecated-register,
+  clang-diagnostic-expansion-to-defined,
+  clang-diagnostic-ignored-attributes,
+  clang-diagnostic-non-pod-varargs,
+  clang-diagnostic-shadow-field,
+  clang-diagnostic-shift-sign-overflow,
+  clang-diagnostic-tautological-undefined-compare,
+  clang-diagnostic-thread-safety*,
+  clang-diagnostic-undefined-bool-conversion,
+  clang-diagnostic-unreachable-code,
+  clang-diagnostic-unreachable-code-loop-increment,
+  clang-diagnostic-unused-const-variable,
+  clang-diagnostic-unused-function,
+  clang-diagnostic-unused-lambda-capture,
+  clang-diagnostic-unused-local-typedef,
+  clang-diagnostic-unused-private-field,
+  clang-diagnostic-user-defined-warnings,
+  darwin-avoid-spinlock,
+  google-build-explicit-make-pair,
+  google-build-namespaces,
+  google-build-using-namespace,
+  google-default-arguments,
+  google-explicit-constructor,
+  google-global-names-in-headers,
+  google-objc-avoid-nsobject-new,
+  google-objc-function-naming,
+  google-objc-global-variable-declaration,
+  google-readability-function-size,
+  google-readability-namespace-comments,
+  google-runtime-int,
+  google-runtime-memset,
+  google-runtime-operator,
+  misc-definitions-in-headers,
+  misc-static-assert,
+  misc-unconventional-assign-operator,
+  misc-uniqueptr-reset-release,
+  misc-unused-alias-decls,
+  misc-unused-using-decls,
+  modernize-make-unique,
+  modernize-redundant-void-arg,
+  modernize-replace-auto-ptr,
+  modernize-shrink-to-fit,
+  modernize-use-bool-literals,
+  modernize-use-equals-default,
+  modernize-use-nullptr,
+  modernize-use-override,
+  objc-avoid-nserror-init,
+  objc-dealloc-in-category,
+  objc-forbidden-subclassing,
+  objc-nsinvocation-argument-lifetime,
+  objc-property-declaration,
+  objc-super-self,
+  performance-faster-string-find,
+  performance-for-range-copy,
+  performance-implicit-conversion-in-loop,
+  performance-inefficient-algorithm,
+  performance-inefficient-vector-operation,
+  performance-move-constructor-init,
+  portability-std-allocator-const,
+  readability-avoid-const-params-in-decls,
+  readability-const-return-type,
+  readability-container-size-empty,
+  readability-deleted-default,
+  readability-inconsistent-declaration-parameter-name,
+  readability-misleading-indentation,
+  readability-redundant-control-flow,
+  readability-redundant-smartptr-get,
+  readability-string-compare,"
+CheckOptions:
+  - key: 'bugprone-assert-side-effect.AssertMacros'
+    value: assert,DCHECK
+  - key: 'bugprone-string-constructor.WarnOnLargeLength'
+    value: 0
+  - key: 'bugprone-dangling-handle.HandleClasses'
+    value: '::std::string_view;::std::experimental::string_view;::absl::string_view;::absl::Span;::absl::FunctionRef;::llvm::StringRef;::llvm::ArrayRef;::absl::BitGenRef;::mlir::BlockRange;::mlir::OperandRange;::mlir::RegionRange;::mlir::ResultRange;::mlir::SuccessorRange;::mlir::TypeRange;::mlir::ValueRange'
+  - key: 'google-readability-function-size.ParameterThreshold'
+    value: 100
+  - key: 'modernize-make-unique.IncludeStyle'
+    value: 'google'
+  - key: 'performance-inefficient-vector-operation.VectorLikeClasses'
+    value: '::std::vector;::absl::InlinedVector'
+  - key: 'performance-inefficient-vector-operation.EnableProto'
+    value: 1
+  - key: 'abseil-string-find-startswith.IncludeStyle'
+    value: 'google'
+  - key: 'abseil-string-find-startswith.AbseilStringsMatchHeader'
+    value: 'absl/strings/match.h'
+  - key: 'abseil-string-find-startswith.StringLikeClasses'
+    value: '::std::string_view;::absl::string_view;::basic_string;::std::basic_string;'
+  - key: 'abseil-string-find-str-contains.IncludeStyle'
+    value: 'google'
+  - key: 'abseil-string-find-str-contains.AbseilStringsMatchHeader'
+    value: 'absl/strings/match.h'
+  - key: 'abseil-string-find-str-contains.StringLikeClasses'
+    value: '::std::basic_string_view;::absl::string_view;::basic_string;::std::basic_string;'
+  - key: 'readability-function-cognitive-complexity.Threshold'
+    value: 15
+  - key: 'readability-function-cognitive-complexity.DescribeBasicIncrements'
+    value: false
+  - key: 'readability-function-cognitive-complexity.IgnoreMacros'
+    value: true

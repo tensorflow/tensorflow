@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ExperimentalStatsAggregatorSummary"
   input_arg {
     name: "iterator"

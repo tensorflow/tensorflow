@@ -15,33 +15,25 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_TRACEME_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_TRACEME_H_
 
-#include <new>
-#include <string>
-#include <utility>
-
-#include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/types.h"
+#include "absl/base/macros.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"  // IWYU pragma: export
-#include "tensorflow/tsl/profiler/lib/traceme.h"
-
-#if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/backends/cpu/traceme_recorder.h"
-#include "tensorflow/tsl/profiler/utils/time_utils.h"
-#endif
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::GetTFTraceMeLevel;   // NOLINT
-using tsl::profiler::kCritical;           // NOLINT
-using tsl::profiler::kInfo;               // NOLINT
-using tsl::profiler::kVerbose;            // NOLINT
-using tsl::profiler::TfOpDetailsEnabled;  // NOLINT
-using tsl::profiler::TraceMe;             // NOLINT
-using tsl::profiler::TraceMeLevel;        // NOLINT
+using tsl::profiler::kInfo;                                          // NOLINT
+using TraceMe ABSL_DEPRECATE_AND_INLINE() = tsl::profiler::TraceMe;  // NOLINT
+using TraceMeLevel ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::TraceMeLevel;  // NOLINT
+
+ABSL_DEPRECATE_AND_INLINE()
+inline int GetTFTraceMeLevel(bool is_expensive) {
+  return tsl::profiler::GetTFTraceMeLevel(is_expensive);
+}
+
+ABSL_DEPRECATE_AND_INLINE()
+inline bool TfOpDetailsEnabled() { return tsl::profiler::TfOpDetailsEnabled(); }
 
 }  // namespace profiler
 }  // namespace tensorflow

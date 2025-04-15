@@ -28,7 +28,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/broadcast_to_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -108,6 +108,8 @@ class BroadcastToOp : public OpKernel {
       BroadcastToOp<CPUDevice, type>);
 
 TF_CALL_ALL_TYPES(REGISTER_KERNEL);
+TF_CALL_float8_e5m2(REGISTER_KERNEL);
+TF_CALL_float8_e4m3fn(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
@@ -124,6 +126,8 @@ namespace functor {
 
 TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_TEMPLATE);
 TF_CALL_int64(DECLARE_GPU_TEMPLATE);
+TF_CALL_float8_e5m2(DECLARE_GPU_TEMPLATE);
+TF_CALL_float8_e4m3fn(DECLARE_GPU_TEMPLATE);
 #undef DECLARE_GPU_KERNEL
 }  // namespace functor
 
@@ -136,6 +140,8 @@ TF_CALL_int64(DECLARE_GPU_TEMPLATE);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_KERNEL);
 TF_CALL_int64(REGISTER_KERNEL);
+TF_CALL_float8_e5m2(REGISTER_KERNEL);
+TF_CALL_float8_e4m3fn(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 // A special GPU kernel for int32.

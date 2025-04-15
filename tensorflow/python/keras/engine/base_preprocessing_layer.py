@@ -35,10 +35,8 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.trackable import base as trackable
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')
 class PreprocessingLayer(Layer, metaclass=abc.ABCMeta):
   """Base class for Preprocessing Layers.
 

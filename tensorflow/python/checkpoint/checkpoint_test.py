@@ -21,6 +21,7 @@ import weakref
 
 from absl.testing import parameterized
 
+from tensorflow.python.checkpoint import async_checkpoint_helper
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options
@@ -1182,6 +1183,169 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     ckpt2 = trackable_utils.Checkpoint(model=root2)
     ckpt2.restore(save_path)
     self.assertCountEqual(called_with_cache, ["v1", "v2", "v3"])
+
+  @parameterized.named_parameters(
+      ("_enable_async_ckpt", True),
+      ("_disable_async_ckpt", False)
+    )
+  def testCallbackWithManager(self, enable_async_ckpt):
+    """Tests experimental_write_callback with a checkpoint manager."""
+    # 1. Define checkpoint and manager accordingly
+    v = variables_lib.Variable(1.)
+    if enable_async_ckpt:
+      ckpt = async_checkpoint_helper.AsyncCheckpointHelper(
+          trackable_utils.Checkpoint,
+          v=v
+      )
+    else:
+      ckpt = trackable_utils.Checkpoint(v=v)
+
+    checkpoint_manager = checkpoint_management.CheckpointManager(
+        checkpoint=ckpt,
+        directory=os.path.join(self.get_temp_dir(), "ckpt"),
+        max_to_keep=None,
+        checkpoint_name="test-callback",
+    )
+
+    # 2. Define 2 callbacks, which will be executed in order as stated in the
+    # expected behavior of `CheckpointOptions.experimental_write_callbacks`
+    testing_list = []
+    test_str = "callback 2 was here"
+    # Define callback 1 that takes in 1 argument
+    def my_callback_1(save_path):
+      testing_list.append(save_path)
+
+    # Define callback 2 that takes in 0 argument
+    def my_callback_2():
+      testing_list.append(test_str)
+
+    # 3. Save with `options`
+    options = checkpoint_options.CheckpointOptions(
+        experimental_write_callbacks=[my_callback_1, my_callback_2]
+    )
+    save_path = checkpoint_manager.save(options=options)
+
+    # 4. Assert results
+    if enable_async_ckpt:
+      checkpoint_manager.sync()  # otherwise callbacks may not have finished
+    # Ensure that user's options is not mutated by internal mechanisms. Here,
+    # we would internally register a callback `_record_and_sweep_state()`.
+    # Users should not have access to it, hence length still being 2.
+    self.assertLen(options.experimental_write_callbacks, 2)
+    # Ensure `_record_and_sweep_state()` executes and sets `_latest_checkpoint`
+    self.assertEqual(save_path, checkpoint_manager._latest_checkpoint)
+    # Ensure my_callback_1 is executed first
+    self.assertEqual(save_path, testing_list[0])
+    # Ensure my_callback_2 is executed second
+    self.assertEqual(test_str, testing_list[1])
+    # Ensure nothing else is written to `testing_list`
+    self.assertLen(testing_list, 2)
+
+  @parameterized.named_parameters(
+      ("_async_ckpt_save", True, False, True),
+      ("_async_ckpt_write", True, False, False),
+      ("_regular_ckptV1_save", False, True, True),
+      ("_regular_ckptV1_write", False, True, False),
+      ("_regular_ckptV2_save", False, False, True),
+      ("_regular_ckptV2_write", False, False, False)
+  )
+  def testCallbackWithoutManager(self, enable_async_ckpt, use_v1, use_save):
+    """Tests experimental_write_callback without using a checkpoint manager."""
+    # Note that the underlying checkpoint of `AsyncCheckpoint.save()` will call
+    # `Checkpoint.save()`.
+    # The underlying checkpoint of `AsyncCheckpoint.write()` will call
+    # `Checkpoint.write()`.
+
+    # 1. Define checkpoint instance accordingly
+    v = variables_lib.Variable(1.)
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+
+    if enable_async_ckpt:
+      ckpt = async_checkpoint_helper.AsyncCheckpointHelper(
+          trackable_utils.Checkpoint,
+          v=v
+      )
+    else:
+      if use_v1:
+        ckpt = trackable_utils.CheckpointV1(v=v)
+      else:
+        ckpt = trackable_utils.Checkpoint(v=v)
+
+    # 2. Define 2 callbacks, which will be executed in order as stated in the
+    # expected behavior of `CheckpointOptions.experimental_write_callbacks`
+    testing_list = []
+    test_str = "callback 2 was here"
+    # Define callback 1 that takes in 1 argument
+    def my_callback_1(save_path):
+      testing_list.append(save_path)
+
+    # Define callback 2 that takes in 0 argument
+    def my_callback_2():
+      testing_list.append(test_str)
+
+    # 3. Save with `options`
+    options = checkpoint_options.CheckpointOptions(
+        experimental_write_callbacks=[my_callback_1, my_callback_2]
+    )
+    if use_save:
+      save_path = ckpt.save(prefix, options=options)
+    else:
+      save_path = ckpt.write(prefix, options=options)
+
+    # 4. Assert results
+    if enable_async_ckpt:
+      ckpt.sync()  # otherwise callbacks may not have finished
+    # Ensure that user's options is not mutated by internal mechanisms. Here,
+    # if we are using regular checkpoint's save(), we would internally register
+    # a callback `_update_checkpoint_state_internal()`. Users should not have
+    # access to it, hence length still being 2.
+    self.assertLen(options.experimental_write_callbacks, 2)
+    # Ensure my_callback_1 is executed first
+    self.assertEqual(save_path, testing_list[0])
+    # Ensure my_callback_2 is executed second
+    self.assertEqual(test_str, testing_list[1])
+    # Ensure nothing else is written to `testing_list`
+    self.assertLen(testing_list, 2)
+
+  def test_callback_argument_error(self):
+    """Ensure passing in a callback with more than 1 argument raises error."""
+    # Define callback 1 that takes in 1 argument
+    def my_callback_1(save_path):
+      return save_path
+
+    # Define callback 2 that takes in 2 arguments (would raise error)
+    def my_callback_2(save_path, another_argument):
+      return save_path, another_argument
+
+    with self.assertRaises(AssertionError):
+      _ = checkpoint_options.CheckpointOptions(
+          experimental_write_callbacks=[my_callback_1, my_callback_2]
+      )
+
+  def test_checkpoint_options_copyable(self):
+    """Ensure that `CheckpointOptions` can be copied with `copy.deepcopy()`."""
+    def my_callback(save_path):
+      return save_path
+
+    def my_callback_2(save_path):
+      return save_path + "some string"
+
+    options_original = checkpoint_options.CheckpointOptions(
+        experimental_io_device="CPU:0",
+        enable_async=True,
+        experimental_write_callbacks=[my_callback]
+    )
+
+    options_copy = copy.copy(options_original)
+
+    options_copy.enable_async = False
+    options_copy.experimental_io_device = "CPU:1"
+    options_copy.experimental_write_callbacks.append(my_callback_2)
+
+    # Check that the original options instance is not affected
+    self.assertEqual(options_original.experimental_io_device, "CPU:0")
+    self.assertEqual(options_original.enable_async, True)
+    self.assertLen(options_original.experimental_write_callbacks, 1)
 
 
 class SerializeToTensorTest(test.TestCase):

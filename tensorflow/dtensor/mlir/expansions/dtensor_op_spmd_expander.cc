@@ -19,15 +19,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
-#include "tensorflow/core/platform/errors.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -40,6 +42,8 @@ namespace tensorflow {
 namespace dtensor {
 namespace {
 
+// FIXME(feyu): This function should take layouts as arguments. It doesn't need
+// the ops.
 // Validates send/recv layout and mesh configurations. Among other things, this
 // checks for below constraints.
 // 1. Src/target layouts have non empty mesh.
@@ -47,11 +51,11 @@ namespace {
 // 3. Src/target layouts are from different mesh.
 // 4. One of scr/target layout is from host mesh cluster.
 // 5. CPU host cluster mesh has 1 device.
-Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
-                                           mlir::TF::DTensorRecv dtensor_recv) {
+absl::Status ValidateSendRecvLayoutConfiguration(
+    mlir::TF::DTensorSend dtensor_send, mlir::TF::DTensorRecv dtensor_recv) {
   // If either one of the send/recv ops has already been lowered, then send/recv
   // configuration has already been verified.
-  if (!dtensor_send || !dtensor_recv) return OkStatus();
+  if (!dtensor_send || !dtensor_recv) return absl::OkStatus();
 
   TF_ASSIGN_OR_RETURN(const absl::optional<Layout> send_layout_or_null,
                       ExtractLayoutFromOperand(dtensor_send.getInput()));
@@ -60,11 +64,14 @@ Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
     return absl::InvalidArgumentError(
         "Input to DTensorSend must have specified layout.");
 
+  TF_ASSIGN_OR_RETURN(const Layout output_layout,
+                      ExtractRequiredSingleLayoutFromOp(dtensor_recv));
+
   const Layout& send_layout = send_layout_or_null.value();
-  const Layout recv_layout = dtensor_recv.getLayout();
+  const Layout& recv_layout = output_layout;
+  const Mesh& recv_mesh = dtensor_recv.getMesh();
 
   const Mesh& send_mesh = send_layout.mesh();
-  const Mesh& recv_mesh = recv_layout.mesh();
 
   // If any one of send/recv mesh are empty, return error.
   if (send_mesh.IsEmpty() || recv_mesh.IsEmpty())
@@ -105,7 +112,7 @@ Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
     return absl::InvalidArgumentError(
         "tf.CopyToMesh op must be used to send data from/to host mesh.");
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename RelayoutOp>
@@ -322,7 +329,7 @@ DTensorRecvSPMDExpander::ComputeLayoutForward(
     return absl::InvalidArgumentError(
         llvm::formatv("Expecting DTensorRecvOp but got {0}", OpName(op)).str());
   }
-  return llvm::DenseMap<int, Layout>({{0, dtensor_recv.getLayout()}});
+  return llvm::DenseMap<int, Layout>();
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>

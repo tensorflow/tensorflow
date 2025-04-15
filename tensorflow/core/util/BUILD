@@ -1,15 +1,13 @@
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-)
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
 )
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
     "tf_cc_test",
+    "tf_cc_test_mkl",
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
@@ -19,13 +17,16 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable", "tf_version_info_genrule")
 load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
+load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
 )
 
 default_package_visibility = [
@@ -36,7 +37,6 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_package_visibility,
     features = [
-        "-layering_check",
         "-parse_headers",
     ],
     licenses = ["notice"],
@@ -45,6 +45,8 @@ package(
 # List of exported source files.
 exports_files(
     srcs = [
+        "bad_indices_policy.cc",
+        "bad_indices_policy.h",
         "event.proto",
         "example_proto_fast_parsing_test.proto",
         "image_resizer_state.h",
@@ -66,7 +68,7 @@ filegroup(
         "padding.h",
         "tensor_format.cc",
         "tensor_format.h",
-        "//tensorflow/tsl/util:mobile_srcs_no_runtime",
+        "@local_xla//xla/tsl/util:mobile_srcs_no_runtime",
     ],
 )
 
@@ -130,10 +132,9 @@ filegroup(
         "util.h",
         "work_sharder.cc",
         "work_sharder.h",
-        "//tensorflow/core/config:flag_defs",
-        "//tensorflow/core/config:flags",
+        "//tensorflow/core/config:mobile_srcs_only_runtime",
         "//tensorflow/core/util/quantization:mobile_srcs_only_runtime",
-        "//tensorflow/tsl/util:mobile_srcs_only_runtime",
+        "@local_xla//xla/tsl/util:mobile_srcs_only_runtime",
     ],
 )
 
@@ -163,7 +164,7 @@ filegroup(
         "matmul_autotune.h",
         "matmul_bcast.h",
         "mirror_pad_mode.h",
-        "mkl_threadpool.h",
+        "mkl_heuristics.h",
         "mkl_util.h",
         "onednn_env_vars.h",
         "overflow.h",
@@ -190,8 +191,7 @@ filegroup(
         "util.h",
         "work_sharder.h",
         "xla_config_registry.h",
-        "zen_util.h",
-        "//tensorflow/tsl/util:framework_internal_private_hdrs",
+        "@local_xla//xla/tsl/util:framework_internal_private_hdrs",
     ],
 )
 
@@ -233,7 +233,7 @@ filegroup(
         "util.cc",
         "work_sharder.cc",
         "xla_config_registry.cc",
-        "//tensorflow/tsl/util:framework_internal_impl_srcs",
+        "@local_xla//xla/tsl/util:framework_internal_impl_srcs",
     ],
 )
 
@@ -242,7 +242,7 @@ filegroup(
     srcs = [
         "env_var.h",
         "use_cudnn.h",
-        "//tensorflow/tsl/util:lib_internal_public_hdrs",
+        "@local_xla//xla/tsl/util:lib_internal_public_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -278,7 +278,6 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
 )
@@ -288,7 +287,7 @@ filegroup(
     testonly = 1,
     srcs = [
         "reporter.h",
-        "//tensorflow/tsl/util:test_hdrs",
+        "@local_xla//xla/tsl/util:test_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -296,9 +295,10 @@ filegroup(
 filegroup(
     name = "mkl_util_hdrs",
     srcs = [
-        "mkl_threadpool.h",
+        "mkl_heuristics.h",
         "mkl_util.h",
         "onednn_env_vars.h",
+        "@local_xla//xla/tsl/util:onednn_util_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -317,7 +317,7 @@ filegroup(
     testonly = 1,
     srcs = [
         "reporter.h",
-        "//tensorflow/tsl/util:android_test_hdrs",
+        "@local_xla//xla/tsl/util:android_test_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -327,7 +327,7 @@ filegroup(
     testonly = 1,
     srcs = [
         ":android_test_hdrs",
-        "//tensorflow/tsl/util:android_test_srcs",
+        "@local_xla//xla/tsl/util:android_test_srcs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -368,7 +368,7 @@ filegroup(
         "use_cudnn.h",
         "util.h",
         "work_sharder.h",
-        "//tensorflow/tsl/util:framework_srcs",
+        "@local_xla//xla/tsl/util:framework_srcs",
     ],
 )
 
@@ -419,11 +419,9 @@ cc_library(
         "stats_calculator.h",
     ],
     copts = tf_copts(),
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/tsl/util:stats_calculator_portable",
+        "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 
@@ -452,6 +450,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/base",
     ],
 )
 
@@ -510,7 +509,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/util:reporter",
+        "@local_xla//xla/tsl/util:reporter",
     ],
 )
 
@@ -542,8 +541,6 @@ cc_library(
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
         "//tensorflow/core/framework:__pkg__",
-        "//tensorflow/core/platform:__pkg__",
-        "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
@@ -565,7 +562,7 @@ tf_cuda_library(
     deps = [
         ":gpu_cuda_alias",
         "//tensorflow/core/platform:types",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -641,7 +638,7 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/util:env_var",
+        "@local_xla//xla/tsl/util:env_var",
     ],
 )
 
@@ -649,7 +646,7 @@ cc_library(
     name = "incremental_barrier",
     srcs = ["incremental_barrier.cc"],
     hdrs = ["incremental_barrier.h"],
-    visibility = default_package_visibility + ["//tensorflow_serving:__subpackages__"],
+    visibility = default_package_visibility,
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/functional:bind_front",
@@ -666,7 +663,7 @@ cc_library(
     deps = [
         ":env_var",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/tsl/util:determinism",
+        "@local_xla//xla/tsl/util:determinism",
     ],
     alwayslink = 1,
 )
@@ -675,7 +672,7 @@ filegroup(
     name = "determinism_hdr",
     srcs = [
         "determinism.h",
-        "//tensorflow/tsl/util:determinism_hdr",
+        "@local_xla//xla/tsl/util:determinism_hdr",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow:__subpackages__"],
@@ -685,7 +682,11 @@ cc_library(
     name = "determinism_hdr_lib",
     hdrs = [":determinism_hdr"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:private"],
+    # TODO(b/298501506): narrow this in a way that won't break TFRT
+    visibility = ["//visibility:public"],
+    deps = [
+        "@local_xla//xla/tsl/util:determinism_hdr_lib",
+    ],
 )
 
 # This alias should be used as a dependency for kernels which use determinism,
@@ -721,21 +722,13 @@ tf_kernel_library(
     srcs = ["cuda_solvers.cc"],
     hdrs = ["gpu_solvers.h"],
     compatible_with = [],
-    # @local_config_cuda//cuda:cusolver_static, //third_party/eigen3:blas,
-    # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
-    # and f2c helper functions in global namespace. Tell the compiler to
-    # allow multiple definitions when linking this.
-    linkopts = select({
-        "//tensorflow:macos": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-Wl,-z,muldefs"],
-    }),
+    features = ["-layering_check"],
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cusolver_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@local_xla//xla/stream_executor/cuda:cublas_plugin",
+        "@local_xla//xla/tsl/cuda:cusolver",
     ],
 )
 
@@ -746,15 +739,14 @@ tf_kernel_library(
     compatible_with = [],
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
-        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
-        "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
-        "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
-        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor",
-        "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "@local_xla//xla/stream_executor/rocm:hipsolver_wrapper",
+        "@local_xla//xla/stream_executor/rocm:rocblas_plugin",
+        "@local_xla//xla/stream_executor/rocm:rocblas_wrapper",
+        "@local_xla//xla/stream_executor/rocm:rocm_executor",
+        "@local_xla//xla/stream_executor/rocm:rocsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -768,19 +760,20 @@ tf_kernel_library(
         "gpu_solvers.h",
     ],
     compatible_with = [],
+    features = ["-layering_check"],
     deps = [
         ":cuda_solvers",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ] + if_cuda([
-        "//tensorflow/compiler/xla/stream_executor/cuda:cusparse_lib",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_blas_utils",
-        "//tensorflow/compiler/xla/stream_executor:data_type",
+        "@local_xla//xla/stream_executor/cuda:cuda_blas_utils",
+        "@local_xla//xla/stream_executor:dnn",
+        "@local_xla//xla/tsl/cuda:cusparse",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
-        "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
-        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
-        "//tensorflow/compiler/xla/stream_executor/rocm:hipsparse_wrapper",
+        "@local_xla//xla/stream_executor/rocm:rocsolver_wrapper",
+        "@local_xla//xla/stream_executor/rocm:hipsolver_wrapper",
+        "@local_xla//xla/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )
 
@@ -791,29 +784,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
-        "//third_party/eigen3",
-    ],
-)
-
-# For a more maintainable build this target should not exist and the headers
-# should  be split into the existing cc_library targets, but this change was
-# automatically  done so that we can remove long standing issues and complexity
-# in the build system. It's up to the OWNERS of this package to get rid of it or
-# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
-# Here it is used to avoid header parsing errors in packages where the feature
-# parse_headers was enabled since loose headers were not being parsed. See
-# go/loose-lsc-one-target-approach for more details.
-cc_library(
-    name = "loose_headers",
-    tags = ["avoid_dep"],
-    textual_hdrs = [
-        "cuda_sparse.h",
-        "gpu_solvers.h",
-    ],
-    visibility = [
-        "//tensorflow/core/kernels:__pkg__",
-        "//tensorflow/core/kernels/linalg:__pkg__",
-        "//tensorflow/core/kernels/sparse:__pkg__",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -847,13 +818,14 @@ tf_cuda_only_cc_test(
     srcs = [
         "gpu_kernel_helper_test.cu.cc",
     ],
+    features = ["-layering_check"],
     tags = [
         "no_cuda_asan",  # TODO(b/171342366): re-enable.
     ],
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -885,6 +857,7 @@ tf_cc_tests(
         "tensor_slice_writer_test.cc",
         "work_sharder_test.cc",
     ],
+    features = ["-layering_check"],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -917,11 +890,12 @@ tf_cc_tests(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:status_matchers",
-        "//third_party/eigen3",
+        "//tensorflow/core/public:release_version",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -958,21 +932,35 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test_mkl(
+    name = "mkl_heuristics_test",
+    size = "small",
+    srcs = ["mkl_heuristics_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
+)
+
 # Proto libraries.
 tf_proto_library(
     name = "test_log_proto",
     srcs = ["test_log.proto"],
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/tsl/protobuf:test_log_proto"],
+    protodeps = ["@local_xla//xla/tsl/protobuf:test_log_proto"],
     # Not to be used outside of tensorflow/core.
     visibility = ["//tensorflow/core:__pkg__"],
-    exports = ["//tensorflow/tsl/protobuf:test_log_proto"],
+    exports = ["@local_xla//xla/tsl/protobuf:test_log_proto"],
 )
 
 tf_proto_library(
     name = "protos_test",
     srcs = ["example_proto_fast_parsing_test.proto"],
-    cc_api_version = 2,
     protodeps = ["//tensorflow/core:protos_all"],
     visibility = ["//visibility:public"],
 )
@@ -980,7 +968,6 @@ tf_proto_library(
 tf_proto_library(
     name = "event_proto",
     srcs = ["event.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core/framework:summary_proto",
@@ -995,7 +982,6 @@ tf_proto_library(
 tf_proto_library(
     name = "saved_tensor_slice_proto",
     srcs = ["saved_tensor_slice.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core/framework:resource_handle_proto",
@@ -1011,14 +997,12 @@ tf_proto_library(
 tf_proto_library(
     name = "memmapped_file_system_proto",
     srcs = ["memmapped_file_system.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
     name = "protos_all",
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":event_proto",
@@ -1029,8 +1013,31 @@ tf_proto_library(
     tags = [
         "alt_dep=//third_party/tensorflow/core:protos_all",
     ],
-    visibility = [
-        "//tensorflow/core:__subpackages__",
-        "//tensorflow/tsl:__subpackages__",
+    visibility = ["//tensorflow/core:__subpackages__"],
+)
+
+cc_library(
+    name = "bad_indices_policy",
+    srcs = ["bad_indices_policy.cc"],
+    hdrs = ["bad_indices_policy.h"],
+    deps = [
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+tf_cc_test(
+    name = "bad_indices_policy_test",
+    srcs = ["bad_indices_policy_test.cc"],
+    deps = [
+        ":bad_indices_policy",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )

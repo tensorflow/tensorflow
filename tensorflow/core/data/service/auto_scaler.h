@@ -16,21 +16,24 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_AUTO_SCALER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_AUTO_SCALER_H_
 
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/time/time.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "xla/tsl/platform/status.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
 
-// Exports a metric (/tensorflow/data/service/optimal_number_of_workers) with
-// the current estimated optimal number of tf.data service workers, according to
-// the observed cluster workload.
+// Estimates the optimal number of tf.data service workers for an Iteration
+// based on the current workload.
+// Note: It is assumed that all reported times correspond to the same Iteration.
 //
 // Glossary:
 // * Consumer: A client that consumes elements from tf.data service.
@@ -66,35 +69,32 @@ namespace data {
 class AutoScaler {
  public:
   AutoScaler() = default;
-  // Updates the metric value with the current estimated optimal number of
-  // workers. Returns an error if there are no previously reported processing
-  // and target processing times.
-  tsl::Status UpdateOptimalNumberOfWorkersMetric();
   // Returns the estimated optimal number of workers according to the current
   // observed workload. If there are no previously reported processing and
   // target processing times, returns nullopt.
-  std::optional<int64_t> GetOptimalNumberOfWorkers() TF_LOCKS_EXCLUDED(mu_);
+  std::optional<int64_t> GetOptimalNumberOfWorkers() const
+      TF_LOCKS_EXCLUDED(mu_);
   // Reports the latest observed processing time from the worker with
   // `worker_address`. Returns an error if `processing_time` is ZeroDuration or
   // negative.
-  tsl::Status ReportProcessingTime(const std::string& worker_address,
-                                   absl::Duration processing_time)
+  absl::Status ReportProcessingTime(const std::string& worker_address,
+                                    absl::Duration processing_time)
       TF_LOCKS_EXCLUDED(mu_);
   // Reports the latest observed target processing time from the consumer
   // identified by `consumer_id`. Returns an error if `target_processing_time`
   // is ZeroDuration or negative.
-  tsl::Status ReportTargetProcessingTime(int64_t consumer_id,
-                                         absl::Duration target_processing_time)
+  absl::Status ReportTargetProcessingTime(int64_t consumer_id,
+                                          absl::Duration target_processing_time)
       TF_LOCKS_EXCLUDED(mu_);
   // Unregisters the worker with `worker_address`, removing its reported
   // processing time from consideration of the current workload estimation.
   // Returns an error if the specified worker does not exist.
-  tsl::Status RemoveWorker(const std::string& worker_address)
+  absl::Status RemoveWorker(const std::string& worker_address)
       TF_LOCKS_EXCLUDED(mu_);
   // Unregisters the consumer identified by `consumer_id`, removing its reported
   // target processing time from consideration of the current workload
   // estimation. Returns an error if the specified consumer does not exist.
-  tsl::Status RemoveConsumer(int64_t consumer_id) TF_LOCKS_EXCLUDED(mu_);
+  absl::Status RemoveConsumer(int64_t consumer_id) TF_LOCKS_EXCLUDED(mu_);
 
  private:
   mutable tsl::mutex mu_;
@@ -103,6 +103,75 @@ class AutoScaler {
       TF_GUARDED_BY(mu_);
   // Map from consumer id to consumption rate.
   absl::flat_hash_map<int64_t, double> consumption_rates_ TF_GUARDED_BY(mu_);
+};
+
+// Exports a metric (/tensorflow/data/service/optimal_number_of_workers) with
+// the estimated optimal number of tf.data service workers, according to
+// the observed cluster workload.
+//
+// It estimates the number of workers as the maximum of the estimated optimal
+// number of workers for all Iterations running in the tf.data service cluster.
+//
+// MultipleIterationsAutoScaler is thread-safe.
+class MultipleIterationsAutoScaler {
+ public:
+  MultipleIterationsAutoScaler() = default;
+  // Unregisters iteration with `iteration_id`, removing its reported
+  // times from consideration of the current workload estimation.
+  // Returns an error if the specified iteration does not exist.
+  absl::Status UnregisterIteration(int64_t iteration_id) TF_LOCKS_EXCLUDED(mu_);
+  // Updates the metric value with the current estimated optimal number of
+  // workers. The estimate is limited to min(4 * `current_number_of_workers`,
+  // `current_number_of_workers` + 500). Returns an error if there are no
+  // previously reported processing and target processing times for at least one
+  // iteration, or `current_number_of_workers` is not positive.
+  absl::Status UpdateOptimalNumberOfWorkersMetric(
+      int64_t current_number_of_workers) TF_LOCKS_EXCLUDED(mu_);
+  // Returns the estimated optimal number of workers according to the current
+  // observed workload. If there are no previously reported processing and
+  // target processing times for at least one iteration, returns nullopt.
+  std::optional<int64_t> GetOptimalNumberOfWorkers() const
+      TF_LOCKS_EXCLUDED(mu_);
+  // Reports the latest observed processing time from the worker with
+  // `worker_address` for iteration with `iteration_id`. Returns an error if
+  // `processing_time` is ZeroDuration or negative.
+  absl::Status ReportProcessingTime(int64_t iteration_id,
+                                    const std::string& worker_address,
+                                    absl::Duration processing_time)
+      TF_LOCKS_EXCLUDED(mu_);
+  // Reports the latest observed target processing time from the consumer
+  // identified by `consumer_id` for iteration with `iteration_id`. Returns an
+  // error if `target_processing_time` is ZeroDuration or negative.
+  absl::Status ReportTargetProcessingTime(int64_t iteration_id,
+                                          int64_t consumer_id,
+                                          absl::Duration target_processing_time)
+      TF_LOCKS_EXCLUDED(mu_);
+  // Unregisters the worker with `worker_address` for iteration with
+  // `iteration_id`, removing its reported processing time from consideration of
+  // the current workload estimation. Returns an error if there are no
+  // previously reported processing times for iteration with `iteration_id` and
+  // the specified worker.
+  absl::Status RemoveWorker(int64_t iteration_id,
+                            const std::string& worker_address)
+      TF_LOCKS_EXCLUDED(mu_);
+  // Unregisters the consumer identified by `consumer_id` for iteration with
+  // `iteration_id`, removing its reported target processing time from
+  // consideration of the current workload estimation. Returns an error if there
+  // are no previously reported processing times for iteration with
+  // `iteration_id` and the specified consumer.
+  absl::Status RemoveConsumer(int64_t iteration_id, int64_t consumer_id)
+      TF_LOCKS_EXCLUDED(mu_);
+
+ private:
+  // Registers iteration with `iteration_id` if it does not exist already,
+  // allowing its future reported times to be considered for the current
+  // workload estimation.
+  void EnsureIterationIsRegistered(int64_t iteration_id)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  mutable tsl::mutex mu_;
+  // Map from iteration id to AutoScaler.
+  absl::flat_hash_map<int64_t, std::unique_ptr<AutoScaler>> auto_scalers_
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace data

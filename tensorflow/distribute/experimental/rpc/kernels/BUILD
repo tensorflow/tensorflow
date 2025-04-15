@@ -1,7 +1,7 @@
+load("@local_xla//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load("//tensorflow/distribute/experimental/rpc/kernels/oss:defs.bzl", "grpc_credentials_dependency")
 
 package(
@@ -17,7 +17,6 @@ cc_library(
     srcs = ["grpc_rpc_service.h"],
     hdrs = ["grpc_rpc_service.h"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_cc_grpc_proto",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_cc",
         "@com_github_grpc_grpc//:grpc++",
@@ -51,7 +50,6 @@ tf_kernel_library(
         ":grpc_credentials",
         ":grpc_rpc_service",
         ":rpc_ops_metadata",
-        "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -64,6 +62,8 @@ tf_kernel_library(
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_cc_grpc_proto",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_cc",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+load("//tensorflow/lite:build_def.bzl", "CXX17_BAZEL_ONLY_COPTS")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -28,13 +30,12 @@ objc_library(
     name = "coreml_executor",
     srcs = ["coreml_executor.mm"],
     hdrs = ["coreml_executor.h"],
-    copts = ["-std=c++17"],
-    features = ["-layering_check"],
+    copts = CXX17_BAZEL_ONLY_COPTS,
     sdk_frameworks = [
         "CoreML",
         "Foundation",
     ],
-    deps = [":mlmodel_proto_cc"],
+    deps = ["@coremltools//:mlmodel_cc_proto"],
 )
 
 cc_library(
@@ -48,7 +49,7 @@ objc_library(
     name = "coreml_delegate",
     srcs = ["coreml_delegate.mm"],
     hdrs = ["coreml_delegate.h"],
-    copts = ["-std=c++17"],
+    copts = CXX17_BAZEL_ONLY_COPTS,
     defines = select({
         "//tensorflow/lite/delegates:tflite_debug_delegate": ["TFLITE_DEBUG_DELEGATE"],
         "//conditions:default": [],
@@ -77,7 +78,7 @@ objc_library(
     hdrs = [
         "coreml_delegate_kernel.h",
     ],
-    copts = ["-std=c++17"],
+    copts = CXX17_BAZEL_ONLY_COPTS,
     deps = [
         ":coreml_executor",
         ":mlmodel_proto_cc",

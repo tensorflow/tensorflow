@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
+#include "xla/client/client_library.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -64,7 +64,7 @@ TEST(DeviceCompilerTest, TestDisabledXlaCompilation) {
   core::ScopedUnref profiler_ref(profiler);
 
   // Check that strict compilation is disallowed.
-  Status status = xla_device_compiler->CompileIfNeeded(
+  absl::Status status = xla_device_compiler->CompileIfNeeded(
       XlaCompiler::Options{}, fn, args, XlaCompiler::CompileOptions{},
       DeviceCompileMode::kStrict, profiler, &compilation_result, &executable);
   EXPECT_FALSE(status.ok());

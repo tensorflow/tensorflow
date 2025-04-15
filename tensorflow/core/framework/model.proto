@@ -28,6 +28,9 @@ enum AutotuneAlgorithm {
 // Protocol buffer representing the data used by the autotuning modeling
 // framework.
 message ModelProto {
+  // User-defined name for the dataset. Empty if no name was set.
+  string dataset_name = 7;
+
   // General representation of a node in the model.
   message Node {
     // Unique node ID.

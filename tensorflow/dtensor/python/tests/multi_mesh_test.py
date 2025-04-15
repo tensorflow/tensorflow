@@ -756,6 +756,45 @@ class MultiMeshTest(test_util.DTensorBaseTest):
     self.assertDTensorEqual(-0.5 * 0.5 * 0.5 * (1 / numpy_a)**1.5, host_layout,
                             a_grad_grad)
 
+  def testMultiMeshMultipleCopyToMesh(self):
+    self.skipForDeviceType(
+        ['CPU'],
+        'Skipping test as only CPU mesh is available for multi-meshtest.',
+    )
+
+    sharded_layout_on_tpu = Layout([_MESH_DIM_X], self.second_mesh)
+    host_layout = Layout(
+        sharded_layout_on_tpu.sharding_specs,
+        sharded_layout_on_tpu.mesh.host_mesh(),
+    )
+
+    source_layout = host_layout
+    target_layout = sharded_layout_on_tpu
+
+    numpy_a = constant_op.constant([1, 2, 3, 4], dtype=dtypes.int32)
+    numpy_b = constant_op.constant([2, 2, 3, 4], dtype=dtypes.int32)
+
+    # TODO(b/193443769): switch to a single copy_to_mesh when this is supported.
+    replicated_layout = Layout.replicated(
+        source_layout.mesh, source_layout.rank
+    )
+    a = api.copy_to_mesh(numpy_a, replicated_layout)
+    b = api.copy_to_mesh(numpy_b, replicated_layout)
+    a = api.relayout(a, source_layout)
+    b = api.relayout(b, source_layout)
+
+    @polymorphic_function.function
+    def func(a, b):
+      a = api.copy_to_mesh(a, target_layout)
+      b = api.copy_to_mesh(b, target_layout)
+      return array_ops.identity(a), array_ops.identity(b)
+
+    with ops.device_v2(api.device_name()):
+      dtensor_a, dtensor_b = func(a, b)
+
+    self.assertDTensorEqual(numpy_a, target_layout, dtensor_a)
+    self.assertDTensorEqual(numpy_b, target_layout, dtensor_b)
+
   def testDVariableDefaultMesh(self):
     other_layout = Layout.replicated(_OTHER_CPU_MESH, rank=0)
     first_layout = Layout.replicated(_ONE_D_CPU_MESH, rank=0)

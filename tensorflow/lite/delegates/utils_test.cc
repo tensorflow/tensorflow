@@ -16,12 +16,10 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 
@@ -205,7 +203,7 @@ class MockTfLiteContext : public TfLiteContext {
   // For simplicity, the mocked graph has only type of node and one
   // registration.
   TfLiteNode node_;
-  TfLiteRegistration registration_;
+  TfLiteRegistration registration_{};
 
   // The TfLiteDelegateParams object that's manually populated inside the mocked
   // TfLiteContext::PreviewDelegatePartitioning.

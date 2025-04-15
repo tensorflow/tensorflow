@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/kernel.h"
 
+#include <inttypes.h>
+
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <set>
@@ -22,23 +26,38 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/core/public/version.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/flex/buffer_map.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/util.h"
 
 // Note: this is part of TF Lite's Flex delegation code which is to be
 // completed soon.
@@ -66,6 +85,7 @@ namespace tflite {
 namespace flex {
 
 constexpr char kReadVariableOp[] = "ReadVariableOp";
+constexpr char kInterOpParallelismAttrName[] = "use_inter_op_parallelism";
 
 struct OpNode;
 
@@ -85,7 +105,7 @@ class OpInputs {
     }
     forwardable_.resize(inputs_.size());
   }
-  ~OpInputs() {}
+  ~OpInputs() = default;
 
   int Size() const { return inputs_.size(); }
 
@@ -155,14 +175,14 @@ class OpOutputs {
 
   int TfLiteIndex(int i) const { return outputs_[i]; }
 
-  tensorflow::gtl::InlinedVector<tensorflow::Tensor, 2>* GetTensors() {
+  absl::InlinedVector<tensorflow::Tensor, 2UL>* GetTensors() {
     return &vector_;
   }
 
  private:
   std::vector<int> outputs_;
   std::vector<bool> subgraph_outputs_;
-  tensorflow::gtl::InlinedVector<tensorflow::Tensor, 2> vector_;
+  absl::InlinedVector<tensorflow::Tensor, 2UL> vector_;
 };
 
 // This struct holds information such as tensor lifecycle and BufferMap which
@@ -211,8 +231,8 @@ class OpNode {
     return op_kernel_runner_;
   }
 
-  tensorflow::Status InitializeNodeDef(const void* custom_initial_data,
-                                       int custom_initial_data_size) {
+  absl::Status InitializeNodeDef(const void* custom_initial_data,
+                                 int custom_initial_data_size) {
     if (!custom_initial_data) {
       return tensorflow::errors::Internal(
           "Cannot convert empty data into a valid NodeDef");
@@ -237,26 +257,41 @@ class OpNode {
         tensorflow::OpRegistry::Global()->LookUp(nodedef_.op(), &op_reg_data_));
     AddDefaultsToNodeDef(op_reg_data_->op_def, &nodedef_);
 
-    return ::tensorflow::OkStatus();
+    // Force disable the use of inter op parallelism to prevent deadlocks in
+    // Tensorflow Function Library Runtime when only one thread is allowed.
+    // This changes the threadpool that is used by TF's data ops by passing it
+    // to the CapturedFunction instantiate function.
+    //
+    // It should be ok to remove this when/if the tensorflow::Executor::Run
+    // function is changed not to call the RunAsync function and wait on its
+    // completion. See b/304799442 for more context.
+    const auto& op_def = op_reg_data_->op_def;
+    for (const auto& attr : op_def.attr()) {
+      if (attr.name() == kInterOpParallelismAttrName) {
+        (*nodedef_.mutable_attr())[kInterOpParallelismAttrName].set_b(false);
+        break;
+      }
+    }
+
+    return absl::OkStatus();
   }
 
-  tensorflow::Status BuildOpKernelRunner(
-      tensorflow::EagerContext* eager_context) {
+  absl::Status BuildOpKernelRunner(tensorflow::EagerContext* eager_context) {
     // Create tensorflow::OpKernel on host CPU.
     TF_ASSIGN_OR_RETURN(op_kernel_runner_,
                         tensorflow::tfrt_stub::OpKernelRunner::Create(
                             name_, inputs_.Size(), /*attr_builder=*/
                             [this](tensorflow::AttrValueMap* attr_value_map) {
                               *attr_value_map = nodedef_.attr();
-                              return ::tensorflow::OkStatus();
+                              return absl::OkStatus();
                             },
                             *eager_context->pflr(),
                             eager_context->local_device_mgr()->HostCPU()));
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
-  tensorflow::Status BuildOpKernelInputs(
+  absl::Status BuildOpKernelInputs(
       const BufferMap* buffer_map,
       tensorflow::tfrt_stub::OpKernelRunState* run_state) {
     run_state->input_tf_tensors.resize(inputs_.Size());
@@ -288,7 +323,7 @@ class OpNode {
       run_state->input_tf_tensor_values[i].tensor =
           &run_state->input_tf_tensors[i];
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns whether an output tensor should be preserved in the buffer map by
@@ -322,12 +357,12 @@ class OpNode {
       // the Tensorflow tensor.
       CopyShapeAndType(context, *tf_tensor, tensor);
     }
-    tensorflow::StringPiece t_data = tf_tensor->tensor_data();
+    absl::string_view t_data = tf_tensor->tensor_data();
     if (tf_tensor->NumElements() != NumElements(tensor) ||
         tf_tensor->TotalBytes() != tensor->bytes) {
       TF_LITE_KERNEL_LOG(context,
                          "FlexDelegate: Tensor %s(%d) buffer size mismatch "
-                         "%zu(%lld) != %ld(%ld)",
+                         "%zu(%" PRId64 ") != %zu(%" PRId64 ")",
                          tensor->name, tensor_index, tf_tensor->TotalBytes(),
                          tf_tensor->NumElements(), tensor->bytes,
                          NumElements(tensor));
@@ -342,9 +377,9 @@ class OpNode {
 
   // TODO(b/204479285): Release tensors from BufferMap if it has no future
   // uses.
-  tensorflow::Status MaybePersistTensorflowOutputs(TfLiteContext* context,
-                                                   OpDataInfo* shared_info,
-                                                   int node_index) {
+  absl::Status MaybePersistTensorflowOutputs(TfLiteContext* context,
+                                             OpDataInfo* shared_info,
+                                             int node_index) {
     auto* tensors = outputs_.GetTensors();
 
     for (int i = 0; i < outputs_.Size(); ++i) {
@@ -356,8 +391,8 @@ class OpNode {
                                            node_index)) {
           if (CopyToTfLiteTensor(context, shared_info, tensor, &tf_tensor,
                                  tflite_index) != kTfLiteOk) {
-            return tensorflow::Status(absl::StatusCode::kInternal,
-                                      "failed to copy data from TF tensor");
+            return absl::Status(absl::StatusCode::kInternal,
+                                "failed to copy data from TF tensor");
           }
         } else {
           shared_info->buffer_map->SetFromTensorFlow(outputs_.TfLiteIndex(i),
@@ -365,7 +400,7 @@ class OpNode {
         }
       }
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -402,7 +437,7 @@ struct OpData {
   OpDataInfo shared_info;
 };
 
-tensorflow::Status DelegateKernel::ExecuteOpKernelRunner(
+absl::Status DelegateKernel::ExecuteOpKernelRunner(
     tensorflow::tfrt_stub::OpKernelRunState* run_state, TfLiteContext* context,
     OpNode* node_data) {
   const auto& op_kernel_runner = node_data->op_kernel_runner();
@@ -438,7 +473,7 @@ tensorflow::Status DelegateKernel::ExecuteOpKernelRunner(
 }
 
 DelegateKernel::DelegateKernel() : op_data_(new OpData) {}
-DelegateKernel::~DelegateKernel() {}
+DelegateKernel::~DelegateKernel() = default;
 
 TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
                                   const TfLiteDelegateParams* params) {
@@ -450,14 +485,14 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
   op_data_->shared_info.tensor_release_map =
       flex_delegate_data->GetTensorReleaseMap(context);
 
-  CHECK(params->output_tensors);
+  TF_LITE_ENSURE(context, params->output_tensors != nullptr);
   std::set<int> output_set;
   for (auto tensor_index : TfLiteIntArrayView(params->output_tensors)) {
     op_data_->subgraph_outputs.push_back(tensor_index);
     output_set.insert(tensor_index);
   }
 
-  CHECK(params->input_tensors);
+  TF_LITE_ENSURE(context, params->input_tensors != nullptr);
   for (auto tensor_index : TfLiteIntArrayView(params->input_tensors)) {
     op_data_->subgraph_inputs.push_back(tensor_index);
   }
@@ -466,8 +501,8 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
 
   op_data_->nodes.reserve(params->nodes_to_replace->size);
 
-  CHECK(params->nodes_to_replace);
-  tensorflow::Status status;
+  TF_LITE_ENSURE(context, params->nodes_to_replace != nullptr);
+  absl::Status status;
 
   // Now we explicitly disable reusing TFLite tensor buffers for certain TF ops,
   // since those ops might produce results which keep reference of the input
@@ -572,20 +607,24 @@ TfLiteStatus DelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* node) {
     tensor_ref_count[tensor_index] += 2;
   }
 
-  const bool shapes_are_valid =
-      (ValidateOutputTensorShapeConsistency(context) == kTfLiteOk);
-  if (shapes_are_valid) {
-    TFLITE_LOG(tflite::TFLITE_LOG_INFO,
-               "FlexDelegate: All tensor shapes are consistent.");
-  } else {
-    TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
-               "FlexDelegate: Some tensor shapes are inconsistent.");
+  // Output shapes which may have initially been inferable may no longer be
+  // after ResizeInputTensor has been called, so it must be checked again.
+  if (shapes_are_valid_) {
+    shapes_are_valid_ =
+        (ValidateOutputTensorShapeConsistency(context) == kTfLiteOk);
+    if (shapes_are_valid_) {
+      TFLITE_LOG(tflite::TFLITE_LOG_INFO,
+                 "FlexDelegate: All tensor shapes are consistent.");
+    } else {
+      TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
+                 "FlexDelegate: Some tensor shapes are inconsistent.");
+    }
   }
 
   // All output tensors are allocated by TensorFlow, so we mark them as
   // kTfLiteDynamic.
   for (auto tensor_index : op_data_->subgraph_outputs) {
-    if (!shapes_are_valid) {
+    if (!shapes_are_valid_) {
       SetTensorToDynamic(&context->tensors[tensor_index]);
     }
     ++tensor_ref_count[tensor_index];
@@ -650,7 +689,7 @@ TfLiteStatus DelegateKernel::ValidateOutputTensorShapeConsistency(
     }
     c.set_input_tensors(input_tensors_vector);
 
-    tensorflow::Status status = c.construction_status();
+    absl::Status status = c.construction_status();
     if (!status.ok()) {
       TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
                  "Shape construction failed for op '%s'", op_name);
@@ -793,13 +832,13 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
         tf_tensor.TotalBytes() != tensor->bytes) {
       TF_LITE_KERNEL_LOG(context,
                          "FlexDelegate: Tensor %s(%d) buffer size mismatch "
-                         "%zu(%lld) != %ld(%ld)",
+                         "%zu(%" PRId64 ") != %zu(%" PRId64 ")",
                          tensor->name, tensor_index, tf_tensor.TotalBytes(),
                          tf_tensor.NumElements(), tensor->bytes,
                          NumElements(tensor));
       return kTfLiteError;
     }
-    tensorflow::StringPiece t_data = tf_tensor.tensor_data();
+    absl::string_view t_data = tf_tensor.tensor_data();
     memcpy(tensor->data.raw, t_data.data(), t_data.size());
   }
 

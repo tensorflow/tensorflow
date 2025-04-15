@@ -26,13 +26,13 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-Status OptionalZerosLike(OpKernelContext* ctx, const OptionalVariant& x,
-                         OptionalVariant* y,
-                         std::function<Status(OpKernelContext* ctx,
-                                              const Tensor& input, Tensor* out)>
-                             zeros_like_func) {
+absl::Status OptionalZerosLike(
+    OpKernelContext* ctx, const OptionalVariant& x, OptionalVariant* y,
+    std::function<absl::Status(OpKernelContext* ctx, const Tensor& input,
+                               Tensor* out)>
+        zeros_like_func) {
   if (!x.has_value()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::vector<Tensor> zero_tensors;
   for (const Tensor& tensor : x.get_values()) {
@@ -41,14 +41,14 @@ Status OptionalZerosLike(OpKernelContext* ctx, const OptionalVariant& x,
     zero_tensors.push_back(std::move(zero_t));
   }
   *y = OptionalVariant(zero_tensors);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status OptionalBinaryAdd(
+absl::Status OptionalBinaryAdd(
     OpKernelContext* ctx, const OptionalVariant& a, const OptionalVariant& b,
     OptionalVariant* out,
-    std::function<Status(OpKernelContext* ctx, const Tensor& a, const Tensor& b,
-                         Tensor* out)>
+    std::function<absl::Status(OpKernelContext* ctx, const Tensor& a,
+                               const Tensor& b, Tensor* out)>
         binary_add_func) {
   // TODO(skyewm): should adding a value to a non-value be a no-op instead?
   if (a.has_value() != b.has_value()) {
@@ -56,7 +56,7 @@ Status OptionalBinaryAdd(
         "Cannot add optionals because one has a value and the other doesn't.");
   }
   if (!a.has_value()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (a.get_values().size() != b.get_values().size()) {
     return errors::InvalidArgument(
@@ -73,7 +73,7 @@ Status OptionalBinaryAdd(
     out_tensors.push_back(std::move(out_tensor));
   }
   *out = OptionalVariant(out_tensors);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace data

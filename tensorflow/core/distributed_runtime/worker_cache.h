@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-typedef std::function<void(const Status&)> StatusCallback;
+typedef std::function<void(const absl::Status&)> StatusCallback;
 
 class ChannelCache;
 class StepStats;
@@ -75,11 +75,11 @@ class WorkerCacheInterface {
   // construct client cache of different types sharing the same underling RPC
   // channels, to replace the eager and coordination cache function.
   // Build and return a EagerClientCache object wrapping that channel.
-  virtual Status GetEagerClientCache(
+  virtual absl::Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) = 0;
 
   // Build and return a CoordinationClientCache object wrapping that channel.
-  virtual Status GetCoordinationClientCache(
+  virtual absl::Status GetCoordinationClientCache(
       std::unique_ptr<CoordinationClientCache>* coordination_client_cache) = 0;
 
   // Start/stop logging activity.

@@ -15,14 +15,21 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/broadcast_to_spmd_expander.h"
 
+#include <cstdint>
 #include <string>
-#include <utility>
+#include <vector>
 
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
-#include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -191,19 +198,17 @@ BroadcastToSPMDExpander::ComputeLayoutBackward(
   const int input_shape_rank = input_shape.size();
   const int broadcasted_dimensions = output_shape_rank - input_shape_rank;
 
-  LayoutProto layout_proto;
-  TF_ASSIGN_OR_RETURN(*layout_proto.mutable_mesh_config(), mesh.ToProto());
+  std::vector<std::string> sharding_specs;
   for (int i = 0; i < input_shape_rank; ++i) {
     if (input_shape[i] == 1) {
-      layout_proto.add_sharding_specs()->set_sharding_spec(
-          Layout::kUnshardedDim);
+      sharding_specs.push_back(Layout::kUnshardedDim);
     } else {
-      layout_proto.add_sharding_specs()->set_sharding_spec(
+      sharding_specs.push_back(
           output_layout.sharding_spec(i + broadcasted_dimensions));
     }
   }
   TF_ASSIGN_OR_RETURN(Layout inferred_operand_layout,
-                      Layout::FromProto(layout_proto));
+                      Layout::GetLayout(sharding_specs, mesh));
   // `shape` input of BroadcastTo is always set as replicated.
   return llvm::DenseMap<int, Layout>(
       {{0, inferred_operand_layout},

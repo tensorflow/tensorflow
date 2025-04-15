@@ -19,8 +19,10 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "xla/shape.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
@@ -36,14 +38,13 @@ class TpuInfeedEnqueueOp : public TpuTransferAsyncOpKernel {
   explicit TpuInfeedEnqueueOp(
       OpKernelConstruction* ctx,
       std::unique_ptr<TpuTransferOpInterface> transfer_op);
-  Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
+  absl::Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
 
  private:
   TensorShape shape_;
   DataType dtype_;
   xla::Shape xla_shape_;
 
-  // TpuInfeedEnqueueOp is neither copyable nor movable.
   TpuInfeedEnqueueOp(const TpuInfeedEnqueueOp&) = delete;
   TpuInfeedEnqueueOp& operator=(const TpuInfeedEnqueueOp&) = delete;
 };
@@ -55,14 +56,13 @@ class TpuInfeedEnqueueTupleOp : public TpuTransferAsyncOpKernel {
   explicit TpuInfeedEnqueueTupleOp(
       OpKernelConstruction* ctx,
       std::unique_ptr<TpuTransferOpInterface> transfer_op);
-  Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
+  absl::Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
 
  private:
   std::vector<TensorShape> shapes_;
   DataTypeVector dtypes_;
   xla::Shape tuple_shape_;
 
-  // TpuInfeedEnqueueTupleOp is neither copyable nor movable.
   TpuInfeedEnqueueTupleOp(const TpuInfeedEnqueueTupleOp&) = delete;
   TpuInfeedEnqueueTupleOp& operator=(const TpuInfeedEnqueueTupleOp&) = delete;
 };
@@ -75,15 +75,15 @@ class InfeedEnqueuePrelinearizedBufferOp : public TpuTransferAsyncOpKernel {
       OpKernelConstruction* ctx,
       std::unique_ptr<TpuTransferOpInterface> transfer_op);
 
-  Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
+  absl::Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
 
  private:
-  // InfeedEnqueuePrelinearizedBufferOp is neither copyable nor movable.
   InfeedEnqueuePrelinearizedBufferOp(
       const InfeedEnqueuePrelinearizedBufferOp&) = delete;
   InfeedEnqueuePrelinearizedBufferOp& operator=(
       const InfeedEnqueuePrelinearizedBufferOp&) = delete;
 };
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_INFEED_OPS_H_

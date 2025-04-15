@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/inputs/file_input_yielder.h"
 
+#include <cstddef>
 #include <memory>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
@@ -26,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
@@ -71,13 +76,13 @@ bool FileInputYielder::NextItem(GrapplerItem* item) {
   LOG(INFO) << "Loading model from " << filename;
 
   MetaGraphDef metagraph;
-  Status s = ReadBinaryProto(Env::Default(), filename, &metagraph);
+  absl::Status s = ReadBinaryProto(Env::Default(), filename, &metagraph);
   if (!s.ok()) {
     s = ReadTextProto(Env::Default(), filename, &metagraph);
   }
   if (!s.ok()) {
     LOG(WARNING) << "Failed to read MetaGraphDef from " << filename << ": "
-                 << s.ToString();
+                 << s;
     // Attempt to process the next item on the list
     bad_inputs_ += 1;
     return NextItem(item);

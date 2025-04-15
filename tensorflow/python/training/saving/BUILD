@@ -15,7 +15,6 @@ package(
 py_strict_library(
     name = "checkpoint_options",
     srcs = ["checkpoint_options.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/util:deprecation",
@@ -25,7 +24,6 @@ py_strict_library(
 py_strict_library(
     name = "functional_saver",
     srcs = ["functional_saver.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/checkpoint:functional_saver",
         "//tensorflow/python/util:deprecation",
@@ -35,13 +33,11 @@ py_strict_library(
 py_strict_library(
     name = "saveable_object",
     srcs = ["saveable_object.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "saveable_object_util",
     srcs = ["saveable_object_util.py"],
-    srcs_version = "PY3",
     deps = [
         ":saveable_object",
         "//tensorflow/python/checkpoint:saveable_compat",
@@ -51,6 +47,7 @@ py_strict_library(
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops_gen",
@@ -60,6 +57,7 @@ py_strict_library(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:base_delegate",
         "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/types:core",

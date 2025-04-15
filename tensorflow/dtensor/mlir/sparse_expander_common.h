@@ -18,8 +18,12 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/status/statusor.h"
 #include "absl/types/optional.h"
+#include "mlir/Bytecode/BytecodeOpInterface.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace tensorflow {
@@ -32,7 +36,7 @@ namespace dtensor {
 // SparseToDenseOp. If this value is eventually an output of a SparseToDenseOp,
 // there should only be DTensor related ops between the actual SparseToDenseOp,
 // e.g. DTensorRelayout ops or DTensorLayout op.
-StatusOr<mlir::TF::SparseToDenseOp> GetSparseToDenseOp(mlir::Value value);
+absl::StatusOr<mlir::TF::SparseToDenseOp> GetSparseToDenseOp(mlir::Value value);
 
 // Checks whether `value is an output of a SparseToDenseOp value.
 bool IsSparseValue(mlir::Value value);
@@ -45,15 +49,15 @@ bool AllSparseInput(mlir::Operation* op);
 
 // Returns the indices component dense tensor from `value`. `value` represents
 // a SparseTensor value.
-StatusOr<mlir::Value> GetIndicesFromSparseTensor(mlir::Value value);
+absl::StatusOr<mlir::Value> GetIndicesFromSparseTensor(mlir::Value value);
 
 // Returns the values component dense tensor from `value`.`value` represents
 // a SparseTensor value.
-StatusOr<mlir::Value> GetValuesFromSparseTensor(mlir::Value value);
+absl::StatusOr<mlir::Value> GetValuesFromSparseTensor(mlir::Value value);
 
 // Returns the dense shape component dense tensor from `value`. `value`
 // represents a SparseTensor value.
-StatusOr<mlir::Value> GetDenseShapesFromSparseTensor(mlir::Value value);
+absl::StatusOr<mlir::Value> GetDenseShapesFromSparseTensor(mlir::Value value);
 
 }  // namespace dtensor
 }  // namespace tensorflow

@@ -1,6 +1,6 @@
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -13,12 +13,7 @@ package(
 
 gentbl_cc_library(
     name = "MklPDLLPatternsIncGen",
-    tbl_outs = [
-        (
-            ["-x=cpp"],
-            "pdll/MklPDLLPatterns.h.inc",
-        ),
-    ],
+    tbl_outs = {"pdll/MklPDLLPatterns.h.inc": ["-x=cpp"]},
     tblgen = "@llvm-project//mlir:mlir-pdll",
     td_file = "pdll/mkl_patterns.pdll",
     deps = [
@@ -43,12 +38,15 @@ cc_library(
         "//tensorflow/core/transforms:op_cat_helper",
         "//tensorflow/core/transforms:pdll_utils",
         "//tensorflow/core/transforms:utils",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:PDLDialect",
         "@llvm-project//mlir:PDLInterpDialect",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:Rewrite",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 

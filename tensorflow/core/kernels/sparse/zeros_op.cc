@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse/zeros_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -65,9 +65,9 @@ class CSRZerosOp : public OpKernel {
 namespace {
 
 template <typename Device>
-Status CSRSparseMatrixZerosLikeHelper(OpKernelContext* ctx,
-                                      const CSRSparseMatrix& x,
-                                      CSRSparseMatrix* y) {
+absl::Status CSRSparseMatrixZerosLikeHelper(OpKernelContext* ctx,
+                                            const CSRSparseMatrix& x,
+                                            CSRSparseMatrix* y) {
   functor::CSRSparseMatrixZeros<Device> csr_sparse_matrix_zeros;
   return csr_sparse_matrix_zeros(ctx, x.dtype(), x.dense_shape(), y);
 }

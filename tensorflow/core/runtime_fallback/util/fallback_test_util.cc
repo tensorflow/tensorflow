@@ -18,7 +18,6 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
@@ -54,7 +53,7 @@ tfrt::ExecutionContext CreateFallbackTestExecutionContext(
       /*return values=*/{},
       /*attr def=*/{},
       /*node_def=*/{});
-  tensorflow::Status status = eager_context->AddFunctionDef(dummy_function_def);
+  absl::Status status = eager_context->AddFunctionDef(dummy_function_def);
   TF_DCHECK_OK(status);
 
   auto request_id = id.fetch_add(1);
@@ -73,10 +72,10 @@ tfrt::ExecutionContext CreateFallbackTestExecutionContext(
       user_intra_op_threadpool, /*model_metadata=*/std::nullopt,
       /*runner=*/nullptr, /*cost_recorder=*/nullptr,
       /*client_graph_resource_context=*/resource_context,
-      /*cancellation_manager=*/nullptr);
+      /*cancellation_manager=*/nullptr,
+      /*runtime_config=*/nullptr);
   TF_DCHECK_OK(status);
 
-  status = SetUpTfJitRtRequestContext(&request_context_builder);
   TF_DCHECK_OK(status);
 
   auto request_context = std::move(request_context_builder).build();

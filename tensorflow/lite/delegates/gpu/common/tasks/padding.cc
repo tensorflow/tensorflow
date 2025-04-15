@@ -75,7 +75,7 @@ std::string GetPaddingCode(const OperationDef& op_def,
     c += "  s_x = reflect_coord(s_x, args.src_tensor.Width());\n";
     c += "  s_y = reflect_coord(s_y, args.src_tensor.Height());\n";
     if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
-      c += "  int s_b = reflect_coord(s_b, args.src_tensor.Batch());\n";
+      c += "  s_b = reflect_coord(s_b, args.src_tensor.Batch());\n";
     }
     if (attr.prepended.c == 0 && attr.appended.c == 0) {
       // optimized case

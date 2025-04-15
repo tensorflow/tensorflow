@@ -16,14 +16,23 @@ limitations under the License.
 #ifndef TENSORFLOW_C_KERNELS_H_
 #define TENSORFLOW_C_KERNELS_H_
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
+
+// Required for IS_MOBILE_PLATFORM definition
+#include "tsl/platform/platform.h"  // IWYU pragma: keep
+
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -106,8 +115,8 @@ TF_CAPI_EXPORT extern TF_KernelBuilder* TF_NewAsyncKernelBuilder(
 
 // Specifies that this kernel's attribute only supports the given type.
 TF_CAPI_EXPORT extern void TF_KernelBuilder_TypeConstraint(
-    TF_KernelBuilder* kernel_builder, const char* attr_name,
-    const TF_DataType type, TF_Status* status);
+    TF_KernelBuilder* kernel_builder, const char* attr_name, TF_DataType type,
+    TF_Status* status);
 
 // Specify that this kernel requires/provides an input/output arg
 // in host memory (instead of the default, device memory).
@@ -268,9 +277,20 @@ TF_CAPI_EXPORT extern int64_t TF_GetStepId(TF_OpKernelContext* ctx);
 // Returns the Device ID of the device that the context possesses. Returns the
 // PlatformDeviceId if a mapping between between TfDeviceId and PlatformDeviceId
 // is set; otherwise returns the id in the device name. Please refer to
-// tensorflow/tsl/framework/device_id.h for more details.
+// tensorflow/compiler/xla/tsl/framework/device_id.h for more details.
 // For mobile or slim build, returns the id in the device name.
 TF_CAPI_EXPORT extern int TF_GetDeviceId(TF_OpKernelContext* ctx);
+
+// Returns the Device Name of the device that the context possesses.
+//
+// The returned TF_StringView's underlying string is owned by the OpKernel and
+// has the same lifetime as the OpKernel.
+TF_CAPI_EXPORT TF_StringView TF_GetDeviceName(TF_OpKernelContext* ctx);
+
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
+// Returns the rendezvous in the context. Not supported on mobile.
+TF_CAPI_EXPORT TF_RendezvousThunk TF_GetRendezvous(TF_OpKernelContext* ctx);
+#endif
 
 // Returns the graph def version of the given context.
 TF_CAPI_EXPORT extern int TF_GetGraphDefVersion(TF_OpKernelContext* ctx);
@@ -440,7 +460,7 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBoolList(
 // TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
 // total_size).
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
-    TF_OpKernelConstruction* ctx, const char* attr_name, char** vals,
+    TF_OpKernelConstruction* ctx, const char* attr_name, char** values,
     size_t* lengths, int max_values, void* storage, size_t storage_size,
     TF_Status* status);
 
@@ -501,6 +521,20 @@ TF_CAPI_EXPORT TF_Tensor* TF_ForwardInputOrAllocateOutput(
 TF_CAPI_EXPORT extern TF_Tensor* TF_AllocateTemp(
     TF_OpKernelContext* context, TF_DataType dtype, const int64_t* dims,
     int num_dims, TF_AllocatorAttributes* alloc_attrs, TF_Status* status);
+
+// Used by OpKernel implementations to track actively running deferred ops.
+//
+// A deferred op is one whose Compute method returns (or whose ComputeAsync
+// method invokes the callback) when work is scheduled onto a device. At that
+// point, we don't know when the work will actually complete (or if it has
+// already completed) on the device. These functions allow the executor to
+// track the status of deferred ops and act accordingly.
+//
+// Deferred OpKernel implementations must use these methods to get two
+// functions. It then must call these two functions in pairs, before and after
+// device execution, respectively.
+TF_CAPI_EXPORT extern void TF_IncNumDeferredOps(TF_OpKernelContext* context);
+TF_CAPI_EXPORT extern void TF_DecNumDeferredOps(TF_OpKernelContext* context);
 
 #ifdef __cplusplus
 } /* end extern "C" */

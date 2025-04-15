@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
@@ -34,7 +35,7 @@ class ClipByValueOp : public XlaOpKernel {
     auto min = ctx->Input(1);
     auto max = ctx->Input(2);
 
-    auto shape_error = [&]() -> tensorflow::Status {
+    auto shape_error = [&]() -> absl::Status {
       return errors::InvalidArgument(
           "clip_value_min and clip_value_max must be either of "
           "the same shape as input, or a scalar. ",

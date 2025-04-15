@@ -45,49 +45,16 @@ def LegalizeTF : Pass<"xla-legalize-tf", "ModuleOp"> {
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFPass()";
-  let dependentDialects = ["arith::ArithDialect, chlo::ChloDialect",
-                           "mhlo::MhloDialect",
-                           "quant::QuantizationDialect",
-                           "shape::ShapeDialect",
-                           "func::FuncDialect",
-                           "sparse_tensor::SparseTensorDialect"];
-}
-
-def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::FuncOp"> {
-  let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
-
-  let description = [{
-    Legalizes from TF dialect to HLO dialect. When allow_partial_conversion is
-    false, emits an error if there is any operation that can't be legalized.
-  }];
-  let options = [
-    Option<"allow_partial_conversion_", "allow-partial-conversion", "bool",
-        /*default=*/"false",
-        "Allow operations that can't be legalized.">
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "chlo::ChloDialect",
+    "func::FuncDialect",
+    "mhlo::MhloDialect",
+    "quant::QuantDialect",
+    "shape::ShapeDialect",
+    "sparse_tensor::SparseTensorDialect",
+    "stablehlo::StablehloDialect"
   ];
-
-  let constructor = "mlir::mhlo::createLegalizeTFNoFallbackPass()";
-  let dependentDialects = ["arith::ArithDialect", "chlo::ChloDialect",
-                           "mhlo::MhloDialect",
-                           "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
-}
-
-def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {
-  let summary = "Replace TensorFlow types with types that are legal in the MHLO dialect";
-
-  let description = [{
-    The TF dialect uses some TF types that are illegal in the MHLO dialect and
-    some generic types that are legal in MHLO. This pass legalizes TF types into
-    types that are legal in MHLO. Rewrites here should run before TF to MHLO op
-    legalizations are run.
-
-    Specifically, this pass replaces each quantized integer type with the
-    corresponding ordinary types. For example, `TF::Qint8Type` is replaced with
-    `i8` everywhere it occurs. Types that are replaced are `TF::Qint8Type`,
-    `TF::Qint16Type`, `TF::Qint32Type`, `TF::Quint8Type`, and `TF::Quint16Type`.
-  }];
-
-  let constructor = "::mlir::mhlo::CreateLegalizeTfTypesPass()";
 }
 
 def LegalizeTFCollective : Pass<"xla-legalize-tf-collective", "ModuleOp"> {

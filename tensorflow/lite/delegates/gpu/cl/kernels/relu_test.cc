@@ -46,6 +46,26 @@ TEST_F(OpenCLOperationTest, ReLUAlphaClip) {
   ASSERT_TRUE(status.ok()) << status.message();
 }
 
+TEST_F(OpenCLOperationTest, ReLULN1NoClipNoAlpha) {
+  auto status = ReLUN1NoClipNoAlphaTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status;
+}
+
+TEST_F(OpenCLOperationTest, ReLUN1Clip) {
+  auto status = ReLUN1ClipTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status;
+}
+
+TEST_F(OpenCLOperationTest, ReLULN1Alpha) {
+  auto status = ReLUN1AlphaTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status;
+}
+
+TEST_F(OpenCLOperationTest, ReLUN1AlphaClip) {
+  auto status = ReLUN1AlphaClipTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status;
+}
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

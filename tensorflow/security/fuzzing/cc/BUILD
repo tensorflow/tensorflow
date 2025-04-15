@@ -21,6 +21,7 @@ tf_cc_fuzz_test(
     deps = [
         ":fuzz_domains",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -42,6 +43,7 @@ tf_cc_fuzz_test(
         "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -50,7 +52,7 @@ tf_cc_fuzz_test(
     srcs = ["bfloat16_fuzz.cc"],
     tags = ["no_oss"],  # b/175698644
     deps = [
-        "//tensorflow/core:test",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/framework:bfloat16",
     ],
 )
@@ -63,20 +65,20 @@ tf_cc_fuzz_test(
     deps = [
         ":checkpoint_reader_fuzz_input_proto_cc",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core/util:saved_tensor_slice_proto_cc",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
 tf_proto_library(
     name = "checkpoint_reader_fuzz_input_proto",
     srcs = ["checkpoint_reader_fuzz_input.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core/util:saved_tensor_slice_proto",
@@ -98,6 +100,7 @@ tf_cc_fuzz_test(
     srcs = ["consume_leading_digits_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
     ],
@@ -120,6 +123,7 @@ tf_cc_fuzz_test(
     deps = [
         ":fuzz_domains",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -178,6 +182,7 @@ tf_cc_fuzz_test(
     deps = [
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:attr_value_util",
+        "//tensorflow/core/platform:stringpiece",
     ],
 )
 
@@ -220,11 +225,17 @@ tf_cc_fuzz_test(
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:tag_constants",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/platform:status",
         "//tensorflow/security/fuzzing/cc/core/framework:datatype_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
+        "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -232,11 +243,8 @@ tf_cc_fuzz_test(
     name = "text_literal_reader_fuzz",
     srcs = ["text_literal_reader_fuzz.cc"],
     deps = [
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:text_literal_reader",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/tsl/platform:env",
+        "@local_xla//xla:text_literal_reader",
+        "@local_xla//xla/hlo/parser:hlo_parser",
+        "@local_xla//xla/tsl/platform:env",
     ],
 )

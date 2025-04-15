@@ -15,10 +15,12 @@
 """Contains AutoCastVariable, a variable which automatically casts itself."""
 
 import threading
+
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_conversion_registry
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -343,7 +345,7 @@ class AutoCastVariable(variables.Variable, core.Tensor):
   def shape(self):
     return self._variable.shape
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     return self._variable.get_shape()
 
   def _gather_saveables_for_checkpoint(self):

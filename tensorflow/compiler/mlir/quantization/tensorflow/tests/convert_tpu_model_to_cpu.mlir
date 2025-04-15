@@ -26,8 +26,8 @@ func.func private @tpu_func_0_optim0(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x2
 }
 
 // CHECK: func @tpu_conv(%[[ARG0:.*]]: tensor<1x3x4x3xf32>)
-// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {device = "", value = dense_resource<__elided__> : tensor<2x3x3x2xbf16>} : () -> tensor<2x3x3x2xbf16>
-// CHECK: %[[cast:.*]] = "tf.Cast"(%[[cst]]) {Truncate = false} : (tensor<2x3x3x2xbf16>) -> tensor<2x3x3x2xf32>
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() <{value = dense_resource<__elided__> : tensor<2x3x3x2xbf16>}> {device = ""} : () -> tensor<2x3x3x2xbf16>
+// CHECK: %[[cast:.*]] = "tf.Cast"(%[[cst]]) <{Truncate = false}> : (tensor<2x3x3x2xbf16>) -> tensor<2x3x3x2xf32>
 // CHECK: %[[conv:.*]] = "tf.Conv2D"(%[[ARG0]], %[[cast]])
 // CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[conv]]) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
 // CHECK: return %[[identity]] : tensor<1x3x2x2xf32>
@@ -37,7 +37,7 @@ func.func private @tpu_func_0_optim0(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x2
 // Tests that `tf.BatchFunction` is inlined.
 
 func.func @serving_default(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
-  %0 = "tf.BatchFunction"(%arg0, %arg1) {f = @batched_func, num_batch_threads = 1 : i64, max_batch_size = 2 : i64, batch_timeout_micros = 10000 : i64, operand_segment_sizes = array<i32: 1, 1>} : (tensor<1xf32>, tensor<1xf32>) -> (tensor<1xf32>)
+  %0 = "tf.BatchFunction"(%arg0, %arg1) {f = @batched_func, num_batch_threads = 1 : i64, max_batch_size = 2 : i64, batch_timeout_micros = 10000 : i64, operandSegmentSizes = array<i32: 1, 1>} : (tensor<1xf32>, tensor<1xf32>) -> (tensor<1xf32>)
   return %0 : tensor<1xf32>
 }
 // The contents of `@serving_default` should have been inlined to `@batch_func`.

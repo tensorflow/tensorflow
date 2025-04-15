@@ -810,7 +810,7 @@ class ParseExampleTest(test.TestCase):
             }
         },
         # TODO(mrry): Consider matching the `io.parse_example()` error message.
-        expected_err=(errors_impl.OpError, "Key: b."))
+        expected_err=(errors_impl.OpError, "key b:"))
 
     self._test(
         {

@@ -49,7 +49,7 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.util import numpy_compat
 
 
 class DataAdapter(object, metaclass=abc.ABCMeta):
@@ -662,11 +662,11 @@ class ListsOfScalarsDataAdapter(DataAdapter):
                shuffle=False,
                **kwargs):
     super(ListsOfScalarsDataAdapter, self).__init__(x, y, **kwargs)
-    x = np.asarray(x)
+    x = numpy_compat.np_asarray(x)
     if y is not None:
-      y = np.asarray(y)
+      y = numpy_compat.np_asarray(y)
     if sample_weights is not None:
-      sample_weights = np.asarray(sample_weights)
+      sample_weights = numpy_compat.np_asarray(sample_weights)
     sample_weight_modes = broadcast_sample_weight_modes(
         sample_weights, sample_weight_modes)
 
@@ -1528,7 +1528,6 @@ def train_validation_split(arrays, validation_split):
   return train_arrays, val_arrays
 
 
-@keras_export("keras.utils.unpack_x_y_sample_weight", v1=[])
 def unpack_x_y_sample_weight(data):
   """Unpacks user-provided data tuple.
 
@@ -1590,7 +1589,6 @@ def unpack_x_y_sample_weight(data):
     raise ValueError(error_msg)
 
 
-@keras_export("keras.utils.pack_x_y_sample_weight", v1=[])
 def pack_x_y_sample_weight(x, y=None, sample_weight=None):
   """Packs user-provided data into a tuple.
 
@@ -1621,7 +1619,7 @@ def pack_x_y_sample_weight(x, y=None, sample_weight=None):
     # For single x-input, we do no tuple wrapping since in this case
     # there is no ambiguity. This also makes NumPy and Dataset
     # consistent in that the user does not have to wrap their Dataset
-    # data in an unecessary tuple
+    # data in an unnecessary tuple
     if not nest.is_nested(x):
       return x
     else:

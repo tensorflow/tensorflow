@@ -16,6 +16,7 @@
 # pylint: disable=invalid-name
 """Checkpoint Manager and other utilities for managing checkpoints."""
 import collections
+import copy
 import os.path
 import re
 import time
@@ -23,6 +24,7 @@ import time
 from google.protobuf import text_format
 
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -609,7 +611,7 @@ class CheckpointManager(object):
         counter value, in case users want to save checkpoints every N steps.
       checkpoint_interval: An integer, indicates the minimum step interval
         between two checkpoints.
-      init_fn: Callable. A function to do customized intialization if no
+      init_fn: Callable. A function to do customized initialization if no
         checkpoints are in the directory.
 
     Raises:
@@ -832,13 +834,21 @@ class CheckpointManager(object):
       # checkpoints.
       self._record_state()
 
+    # Register `_record_and_sweep_state` as a callback in `CheckpointOptions`
     if options is None:
-      save_path = self._checkpoint._write(  # pylint: disable=protected-access
-          prefix, write_done_callback=_record_and_sweep_state)
+      options = checkpoint_options.CheckpointOptions(
+          experimental_write_callbacks=[_record_and_sweep_state]
+      )
     else:
-      save_path = self._checkpoint._write(  # pylint: disable=protected-access
-          prefix, options=options, write_done_callback=_record_and_sweep_state)
+      # We create a copy so that user's `options` instance would not be mutated
+      # by internal mechanisms.
+      options = copy.copy(options)
+      if options.experimental_write_callbacks is None:
+        options.experimental_write_callbacks = [_record_and_sweep_state]
+      else:
+        options.experimental_write_callbacks.append(_record_and_sweep_state)
 
+    save_path = self._checkpoint._write(prefix, options=options)  # pylint: disable=protected-access
     return save_path
 
   def restore_or_initialize(self):
@@ -856,7 +866,7 @@ class CheckpointManager(object):
     `tf.train.Checkpoint.restore()` method.
 
     Returns:
-      The restored checkpoint path if the lastest checkpoint is found and
+      The restored checkpoint path if the latest checkpoint is found and
       restored. Otherwise None.
     """
     # TODO(chienchunh): When AsyncCheckpoint is used, we may need to force to

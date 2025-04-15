@@ -10,8 +10,8 @@ func.func @cast_bf16_conv_to_fp32(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x2x2
 }
 
 // CHECK: func @cast_bf16_conv_to_fp32
-// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {device = "", value = dense_resource<__elided__> : tensor<2x3x3x2xbf16>} : () -> tensor<2x3x3x2xbf16>
-// CHECK: %[[cast:.*]] = "tf.Cast"(%[[cst]]) {Truncate = false} : (tensor<2x3x3x2xbf16>) -> tensor<2x3x3x2xf32>
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() <{value = dense_resource<__elided__> : tensor<2x3x3x2xbf16>}> {device = ""} : () -> tensor<2x3x3x2xbf16>
+// CHECK: %[[cast:.*]] = "tf.Cast"(%[[cst]]) <{Truncate = false}> : (tensor<2x3x3x2xbf16>) -> tensor<2x3x3x2xf32>
 // CHECK: %[[conv:.*]] = "tf.Conv2D"(%arg0, %[[cast]])
 // CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[conv]]) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
 // CHECK: return %[[identity]] : tensor<1x3x2x2xf32>
@@ -28,8 +28,8 @@ func.func @cast_bf16_conv_with_bias_to_fp32(%arg0: tensor<1x3x4x3xf32>) -> (tens
 }
 
 // CHECK: func @cast_bf16_conv_with_bias_to_fp32
-// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
-// CHECK-DAG: %[[cst_0:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<2x3x3x2xf32>}> : () -> tensor<2x3x3x2xf32>
+// CHECK-DAG: %[[cst_0:.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<2xf32>}> : () -> tensor<2xf32>
 // CHECK: %[[conv:.*]] = "tf.Conv2D"(%arg0, %[[cst]])
 // CHECK: %[[bias_add:.*]] = "tf.BiasAdd"(%[[conv]], %[[cst_0]])
 // CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[bias_add]]) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
@@ -46,7 +46,7 @@ func.func @cast_bf16_avg_pool_to_fp32(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3
 }
 
 // CHECK: func @cast_bf16_avg_pool_to_fp32
-// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() <{value = dense<{{.*}}> : tensor<2x3x3x2xf32>}> : () -> tensor<2x3x3x2xf32>
 // CHECK: %[[conv:.*]] = "tf.Conv2D"(%arg0, %[[cst]])
 // CHECK: %[[avg_pool:.*]] = "tf.AvgPool"(%[[conv]])
 // CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[avg_pool]]) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
@@ -62,7 +62,7 @@ func.func @cast_bf16_matmul_to_fp32(%arg0: tensor<1x10xf32>) -> (tensor<1x2xf32>
 }
 
 // CHECK: func @cast_bf16_matmul_to_fp32
-// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<10x2xf32>} : () -> tensor<10x2xf32>
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() <{value = dense<{{.*}}> : tensor<10x2xf32>}> : () -> tensor<10x2xf32>
 // CHECK: %[[matmul:.*]] = "tf.MatMul"(%arg0, %[[cst]])
 // CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[matmul]])
 // CHECK: return %[[identity]] : tensor<1x2xf32>
@@ -77,7 +77,7 @@ func.func @cast_bf16_depthwise_conv_to_fp32(%arg0: tensor<1x3x4x3xf32>) -> (tens
 }
 
 // CHECK: func @cast_bf16_depthwise_conv_to_fp32
-// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() <{value = dense<{{.*}}> : tensor<2x3x3x2xf32>}> : () -> tensor<2x3x3x2xf32>
 // CHECK: %[[depthwise_conv:.*]] = "tf.DepthwiseConv2dNative"(%arg0, %[[cst]])
 // CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[depthwise_conv]]) {device = ""} : (tensor<1x2x2x6xf32>) -> tensor<1x2x2x6xf32>
 // CHECK: return %[[identity]] : tensor<1x2x2x6xf32>
@@ -92,7 +92,7 @@ func.func @cast_bf16_batch_matmul_v2_to_fp32(%arg0: tensor<1x1x10xf32>) -> (tens
 }
 
 // CHECK: func @cast_bf16_batch_matmul_v2_to_fp32
-// CHECK-DAG: %[[cst:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<10x2xf32>} : () -> tensor<10x2xf32>
+// CHECK-DAG: %[[cst:.*]] = "tf.Const"() <{value = dense<{{.*}}> : tensor<10x2xf32>}> : () -> tensor<10x2xf32>
 // CHECK: %[[batch_matmul:.*]] = "tf.BatchMatMulV2"(%arg0, %[[cst]])
 // CHECK: %[[identity:.*]] = "tf.IdentityN"(%[[batch_matmul]]) {device = ""} : (tensor<1x1x2xf32>) -> tensor<1x1x2xf32>
 // CHECK: return %[[identity]] : tensor<1x1x2xf32>
@@ -108,7 +108,7 @@ func.func @cast_bf16_add_v2_to_fp32(%arg0: tensor<2xbf16>, %arg1: tensor<2xbf16>
 // CHECK: func @cast_bf16_add_v2_to_fp32(%[[ARG_0:.*]]: tensor<2xbf16>, %[[ARG_1:.*]]: tensor<2xbf16>) -> tensor<2xf32>
 
 // bfloat16 operands are cast to f32 operands.
-// CHECK-DAG: %[[CAST_0:.*]] = "tf.Cast"(%[[ARG_0]]) {Truncate = false} : (tensor<2xbf16>) -> tensor<2xf32>
-// CHECK-DAG: %[[CAST_1:.*]] = "tf.Cast"(%[[ARG_1]]) {Truncate = false} : (tensor<2xbf16>) -> tensor<2xf32>
+// CHECK-DAG: %[[CAST_0:.*]] = "tf.Cast"(%[[ARG_0]]) <{Truncate = false}> : (tensor<2xbf16>) -> tensor<2xf32>
+// CHECK-DAG: %[[CAST_1:.*]] = "tf.Cast"(%[[ARG_1]]) <{Truncate = false}> : (tensor<2xbf16>) -> tensor<2xf32>
 // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[CAST_0]], %[[CAST_1]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
 // CHECK: return %[[ADD]] : tensor<2xf32>

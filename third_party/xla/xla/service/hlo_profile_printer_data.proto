@@ -1,0 +1,67 @@
+/* Copyright 2018 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla;
+
+option cc_enable_arenas = true;
+
+// Describes how to pretty-print a profile counter array gathered for a specific
+// HloModule.
+message HloProfilePrinterData {
+  // Pretty-printer information about an HloInstruction.
+  message HloInstructionInfo {
+    string long_name = 1;
+    string short_name = 2;
+    string category = 3;
+
+    // Metrics computed by HloCostAnalysis.
+    float flop_count = 4;
+    float transcendental_count = 5;
+    reserved 6;  // bytes_accessed used to erroneously be a float
+    int64 bytes_accessed = 9;
+    float optimal_seconds = 7;
+
+    // The index into the profile counters array for the HloInstruction
+    // corresponding to this HloInstructionInfo.
+    int64 profile_index = 8;
+  }
+
+  // Pretty-printer information about an HloComputation.
+  message HloComputationInfo {
+    string name = 1;
+
+    // The index into the profile counters array for the HloComputation
+    // corresponding to this HloComputationInfo.
+    int64 profile_index = 2;
+
+    // HloInstructionInfos for every HloInstruction in the HloComputation for
+    // corresponding to this HloComputattionInfo.
+    repeated HloInstructionInfo instruction_infos = 3;
+  }
+
+  // HloComputationInfos for every HloComputation in the HloModule.
+  repeated HloComputationInfo computation_infos = 1;
+
+  // The size of the profile counters array we will pretty-print.
+  int64 profile_counters_size = 2;
+
+  // Maps extra metric name to the index into the profile counters array.
+  map<string, int64> extra_metrics = 3;
+
+  // Name of the entry computation.
+  string entry_computation = 4;
+}

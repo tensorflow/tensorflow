@@ -1,11 +1,24 @@
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "op_resolver_internal_visibility_allowlist")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
+)
+
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        ":error_reporter.h",
+        ":op_resolver.h",
+        ":op_resolver_internal.h",
+        ":verifier.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
 )
 
 cc_library(
@@ -33,7 +46,6 @@ cc_library(
         # central location.
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
     ],
 )
 
@@ -54,32 +66,41 @@ cc_library(
     ],
     deps = [
         ":error_reporter",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_utils",
-        "@flatbuffers//:runtime_cc",
     ],
 )
 
 cc_library(
     name = "error_reporter",
-    srcs = ["error_reporter.cc"],
-    hdrs = ["error_reporter.h"],
+    hdrs = [
+        "error_reporter.h",
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
         "//visibility:public",
     ],
-    deps = [],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+    ],
 )
 
 cc_library(
     name = "verifier",
-    hdrs = ["verifier.h"],
+    hdrs = [
+        "verifier.h",
+        "//tensorflow/compiler/mlir/lite/core/api:verifier.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = ["//visibility:public"],
-    deps = [":error_reporter"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+        "//tensorflow/compiler/mlir/lite/core/api:verifier",
+    ],
 )
 
 cc_library(
@@ -95,23 +116,18 @@ cc_library(
 )
 
 cc_test(
-    name = "error_reporter_test",
-    size = "small",
-    srcs = ["error_reporter_test.cc"],
-    deps = [
-        ":api",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "op_resolver_test",
     size = "small",
     srcs = ["op_resolver_test.cc"],
     deps = [
         ":api",
-        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+        "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -122,7 +138,6 @@ cc_test(
     deps = [
         ":op_resolver",
         ":op_resolver_internal",
-        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -137,8 +152,13 @@ cc_test(
     srcs = ["flatbuffer_conversions_test.cc"],
     deps = [
         ":api",
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
     ],
 )

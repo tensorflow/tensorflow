@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_CLIENT_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_CLIENT_H_
 
+#include <cstdint>
+
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
@@ -41,6 +43,15 @@ class EagerClient : public core::RefCounted {
   CLIENT_METHOD(CloseContext);
 
 #undef CLIENT_METHOD
+
+#define CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(method)                        \
+  virtual void method##Async(const method##Request* request,                  \
+                             method##Response* response, StatusCallback done, \
+                             int64_t init_timeout_in_ms, int retries) = 0;
+
+  CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(CreateContext);
+
+#undef CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES
 
 #define CLIENT_CANCELABLE_METHOD(method)                      \
   virtual void method##Async(                                 \
@@ -81,8 +92,8 @@ class EagerClientCache {
   // increment the refcount of the client. The reference ownership is
   // transferred to the caller, and the unref should automatically happen when
   // destructing the RefCountPtr object from the caller's side.
-  virtual Status GetClient(const string& target,
-                           core::RefCountPtr<EagerClient>* client) = 0;
+  virtual absl::Status GetClient(const string& target,
+                                 core::RefCountPtr<EagerClient>* client) = 0;
 };
 
 }  // namespace eager

@@ -55,8 +55,8 @@ constexpr int kBatchSize = 1;
 constexpr int kNumDetectionsPerClass = 100;
 
 // Object Detection model produces axis-aligned boxes in two formats:
-// BoxCorner represents the lower left corner (xmin, ymin) and
-// the upper right corner (xmax, ymax).
+// BoxCorner represents the upper left corner (xmin, ymin) and
+// the lower right corner (xmax, ymax).
 // CenterSize represents the center (xcenter, ycenter), height and width.
 // BoxCornerEncoding and CenterSizeEncoding are related as follows:
 // ycenter = y / y_scale * anchor.h + anchor.y;
@@ -517,7 +517,7 @@ void InplaceMergeBoxInfo(std::vector<BoxInfo>& boxes, int mid_index,
                          int end_index) {
   std::inplace_merge(
       boxes.begin(), boxes.begin() + mid_index, boxes.begin() + end_index,
-      [](const BoxInfo& a, const BoxInfo& b) { return a.score >= b.score; });
+      [](const BoxInfo& a, const BoxInfo& b) { return a.score > b.score; });
 }
 
 TfLiteStatus ComputeNMSResult(const NMSTaskParam& nms_task_param, int col_begin,

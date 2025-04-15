@@ -16,14 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_GRAPH_REWRITE_HOST_TRAINING_LOOP_OPTIMIZATION_UTIL_H_
 #define TENSORFLOW_CORE_TPU_GRAPH_REWRITE_HOST_TRAINING_LOOP_OPTIMIZATION_UTIL_H_
 
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
-#include "absl/types/optional.h"
-#include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -31,7 +33,7 @@ namespace tpu {
 struct LoopArgInfo {
   std::string enter_node_name;
   // Exit nodes are optional for loop invariant while loop args.
-  absl::optional<std::string> exit_node_name;
+  std::optional<std::string> exit_node_name;
 };
 
 struct HostTrainingLoopInfo {
@@ -39,8 +41,8 @@ struct HostTrainingLoopInfo {
   // host training loop is included. If host training loop is not
   // inside a function call, then `function_name` and `function_attrs`
   // are nullopt.
-  absl::optional<std::string> encapsulating_function_name;
-  absl::optional<AttrValueMap> encapsulating_function_attrs;
+  std::optional<std::string> encapsulating_function_name;
+  std::optional<AttrValueMap> encapsulating_function_attrs;
 
   // TPU Compile node as within a host training loop.
   std::string compile_node_name;
@@ -60,9 +62,9 @@ struct HostTrainingLoopInfo {
 // Walks through the `graph`, recursively if functional nodes exist, and
 // identifies all host training loops. Host training loops are the inner
 // most while loops that encapsulates TPUCompileOp node. This would be
-// later used/analyzed to inroduce host loop specific optimizations such
+// later used/analyzed to introduce host loop specific optimizations such
 // as adding sharded weight update.
-Status DetectHostTrainingLoop(
+absl::Status DetectHostTrainingLoop(
     const std::string* current_function_name,
     const AttrValueMap* current_function_attr,
     const FunctionLibraryDefinition* library, Graph* graph,
@@ -72,7 +74,8 @@ Status DetectHostTrainingLoop(
 // Injects VariableReshardOps to before and after TPUExecute op inside
 // host training loop body. This effectively applies sharded weight update
 // on model weight variables.
-Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info);
+absl::Status AddReshardOp(Graph* graph,
+                          const HostTrainingLoopInfo& host_loop_info);
 
 }  // namespace tpu
 }  // namespace tensorflow

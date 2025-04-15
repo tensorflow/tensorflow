@@ -40,7 +40,6 @@ from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import lookup_ops
 
 _sixteen_worker_pool = strategy_combinations._deferred_pool_runner(
@@ -116,14 +115,14 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
   # function on a single device, and the distributed variables are saved as
   # single variables.
   #
-  # Curently references to components of a distributed variable are mapped to
+  # Currently references to components of a distributed variable are mapped to
   # the single variable that is saved. This means that if the saved tf.functions
   # access components of a distributed variable, for example if it triggers
   # variable aggregation, the outputs are likely incorrect.
   #
   # Note that distributed variables have different behavior in the replica
   # context and the cross-replica context. Saving happens in the cross replica
-  # context or the default startegy's replica context.
+  # context or the default strategy's replica context.
 
   def test_read_sync_on_read_variable(self, strategy):
     # synchronizaiton=ON_READ variables are typically used in Keras metrics and
@@ -518,7 +517,7 @@ class SaveAndLoadForTrainingTest(test.TestCase, parameterized.TestCase):
     # under tf.distribute.Strategy.
     #
     # Although the error is the same models with TF2 SavedModel, the cause is
-    # different. TF1 models loaded in API contain an intializer, which is
+    # different. TF1 models loaded in API contain an initializer, which is
     # invoked upon loading. Since loading is in the cross-replica context, that
     # fails.
     #
@@ -684,16 +683,15 @@ class PSStrategySaveAndLoadTest(test.TestCase):
 
     self.assertAllEqual(self.load_and_run_v1(model_dir, {"x": 1}), [6, 6, 6, 6])
 
-  def test_load_with_partitioner_raises_error(self):
+  def test_load_with_partitioner_works(self):
     model = self.Model()
     model_dir = self.get_temp_dir()
     tf.saved_model.save(model, model_dir)
 
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver, tf1.fixed_size_partitioner(2))
-    with self.assertRaises(errors_impl.InvalidArgumentError):
-      with strategy.scope():
-        tf.saved_model.load(model_dir)
+    with strategy.scope():
+      tf.saved_model.load(model_dir)
 
 
 if __name__ == "__main__":

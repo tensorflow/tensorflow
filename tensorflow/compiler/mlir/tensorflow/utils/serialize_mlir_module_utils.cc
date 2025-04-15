@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -36,9 +36,9 @@ std::string SerializeMlirModule(mlir::ModuleOp module_op) {
   return std::move(os.str());
 }
 
-Status DeserializeMlirModule(llvm::StringRef serialized_mlir_module,
-                             mlir::MLIRContext* mlir_context,
-                             mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
+absl::Status DeserializeMlirModule(
+    llvm::StringRef serialized_mlir_module, mlir::MLIRContext* mlir_context,
+    mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   TF_RET_CHECK(!serialized_mlir_module.empty())
       << "unexpected empty serialized MLIR module string";
   TF_RET_CHECK(mlir_module) << "unexpected null MLIR module pointer";
@@ -54,7 +54,7 @@ Status DeserializeMlirModule(llvm::StringRef serialized_mlir_module,
     return error_handler.Combine(
         errors::InvalidArgument("could not parse MLIR module"));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

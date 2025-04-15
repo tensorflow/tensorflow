@@ -20,7 +20,7 @@ from tensorflow.python.util import lazy_loader
 
 normalization = lazy_loader.LazyLoader(
     'normalization', globals(),
-    'keras.legacy_tf_layers.normalization')
+    'tf_keras.legacy_tf_layers.normalization')
 
 
 # pylint: disable=invalid-name

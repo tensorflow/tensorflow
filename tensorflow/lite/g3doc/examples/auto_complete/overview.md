@@ -61,11 +61,11 @@ For this demonstration, we will use KerasNLP to get the GPT-2 model. KerasNLP is
 a library that contains state-of-the-art pretrained models for natural language
 processing tasks, and can support users through their entire development cycle.
 You can see the list of models available in the
-[KerasNLP repository](https://github.com/keras-team/keras-nlp/tree/master/keras_nlp/models).
-The workflows are built from modular components that have state-of-the-art
-preset weights and architectures when used out-of-the-box and are easily
-customizable when more control is needed. Creating the GPT-2 model can be done
-with the following steps:
+[KerasNLP repository](https://keras.io/api/keras_hub/models/). The workflows are
+built from modular components that have state-of-the-art preset weights and
+architectures when used out-of-the-box and are easily customizable when more
+control is needed. Creating the GPT-2 model can be done with the following
+steps:
 
 ```python
 gpt2_tokenizer = keras_nlp.models.GPT2Tokenizer.from_preset("gpt2_base_en")

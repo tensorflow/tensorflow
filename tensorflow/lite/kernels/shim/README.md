@@ -35,7 +35,7 @@ This folder contains two pieces:
 ### TensorView
 
 This class is a *view* over an already allocated tensor in TF or TFLite without
-taking any ownership. In that sense it is similar to `std::string_view` but with
+taking any ownership. In that sense it is similar to `absl::string_view` but with
 the difference that the underlying buffer can be mutable.
 
 Example Usage:

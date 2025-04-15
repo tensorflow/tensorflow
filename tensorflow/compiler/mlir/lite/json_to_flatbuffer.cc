@@ -22,7 +22,6 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/idl.h"  // from @flatbuffers
 #include "flatbuffers/util.h"  // from @flatbuffers
-#include "tensorflow/lite/schema/schema_generated.h"
 
 int main(int argc, char** argv) {
   // load FlatBuffer schema (.fbs) and JSON from disk

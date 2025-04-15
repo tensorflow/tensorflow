@@ -15,7 +15,6 @@
 """Tests for asynchronous compilation on the CPU and GPU devices."""
 
 import os
-import unittest
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
@@ -51,8 +50,7 @@ def MetadataHasXlaRunOp(run_metadata):
 class AsyncCompilationTest(test.TestCase):
 
   # Asynchrobnous compilation uses the existing fallback path and existing
-  # compiler. This test only tests that asynchronus compilation is performed.
-  @unittest.skip("b/263146341 - flaky Kokoro build.")
+  # compiler. This test only tests that asynchronous compilation is performed.
   def testAsyncCompilationJit(self):
 
     @function.Defun(compiled=True)
@@ -72,7 +70,7 @@ class AsyncCompilationTest(test.TestCase):
               trace_level=config_pb2.RunOptions.FULL_TRACE))
       # For The first iteration, the fall back path is chosen.
       hasXlaRunOp = MetadataHasXlaRunOp(run_metadata)
-      self.assert_(not hasXlaRunOp)
+      self.assertFalse(hasXlaRunOp)
 
       # Execute the session until after asynchronous compilation is finished
       # and the compiled cluster has been executed once.

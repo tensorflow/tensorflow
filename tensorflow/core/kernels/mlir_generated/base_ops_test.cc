@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
 
+#include <cstdint>
+
 namespace tensorflow {
 namespace test {
 

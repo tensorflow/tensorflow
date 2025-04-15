@@ -17,7 +17,7 @@
 import dataclasses
 import traceback
 import typing
-from typing import Any, Dict, List, Sequence, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
@@ -39,6 +39,7 @@ from tensorflow.python.ops import handle_data_util
 from tensorflow.python.types import core
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
+from tensorflow.python.util import tf_stack
 
 
 # TODO(fmuham): Should be lowered to FunctionDef/FunctionRecord.
@@ -54,7 +55,7 @@ class CallOptions:
   # Used by ACD to list Ops/Tensors/Callables that must be called in advance.
   control_captures: List[Any] = dataclasses.field(default_factory=list)
 
-  # Determines what kind of partitoned call is used for this function.
+  # Determines what kind of partitioned call is used for this function.
   is_stateful: bool = False
 
 
@@ -62,7 +63,7 @@ class CallOptions:
 RUNTIME_FUNCTION_REFS = {}
 
 
-class AtomicFunction:
+class AtomicFunction(core.AtomicFunction):
   """A Python callable for functions in the TF Runtime.
 
   Provides core functionality for tf.function including:
@@ -71,7 +72,6 @@ class AtomicFunction:
     - calls from both eager and graph mode
     - dependency tracking of children functions
     - runtime error interpolation to identify user code stack traces
-    - compatibility with gradient infrastructure
     - control dependencies (including automatic)
   """
 
@@ -202,21 +202,21 @@ class AtomicFunction:
 
     return self._generated_graph
 
-  def structured_call(
+  def call_with_captures(
       self, args: Sequence[Any], kwargs: Dict[str, Any], captures: Sequence[Any]
   ) -> Any:
-    """Calls with structured tensor inputs and returns structured output."""
+    """Calls with args, kwargs, captures and returns structured output."""
     bound_parameters = self.function_type.bind(*args, **kwargs)
     tensor_inputs = self.function_type.unpack_inputs(bound_parameters)
     capture_inputs = self.function_type.unpack_captures(captures)
-    return self.flat_call(tensor_inputs + capture_inputs)
+    return self.call_preflattened(tensor_inputs + capture_inputs)
 
-  def flat_call(self, args: Sequence[core.Tensor]) -> Any:
-    """Calls with tensor inputs and returns the structured output."""
-    flat_outputs = self(*args)
+  def call_preflattened(self, args: Sequence[core.Tensor]) -> Any:
+    """Calls with flattened tensor inputs and returns the structured output."""
+    flat_outputs = self.call_flat(*args)
     return self.function_type.pack_output(flat_outputs)
 
-  def __call__(self, *args: core.Tensor) -> Sequence[core.Tensor]:
+  def call_flat(self, *args: core.Tensor) -> Sequence[core.Tensor]:
     """Calls with flat tensor inputs and returns flat tensor outputs.
 
     Args:
@@ -234,6 +234,9 @@ class AtomicFunction:
     if len(args) != expected_len:
       raise ValueError(
           f"Signature specifies {expected_len} arguments, got: {len(args)}."
+          f" Expected inputs: {self.cached_definition.signature.input_arg}."
+          f" Received inputs: {args}."
+          f" Function Type: {self.function_type!r}"
       )
 
     with InterpolateRuntimeError(self):
@@ -258,7 +261,7 @@ class AtomicFunction:
             )
 
     for i, output_type in enumerate(self.function_type.flat_outputs):
-      handle_data = output_type.dtype._handle_data
+      handle_data = output_type.dtype._handle_data  # pylint: disable=protected-access
       if handle_data:
         handle_data_util.set_handle_data(
             outputs[i], handle_data.shape_inference
@@ -271,9 +274,21 @@ class AtomicFunction:
 
     return outputs
 
+  def __call__(self, *args, **kwargs) -> Any:
+    if self.function_type.captures:
+      raise ValueError(
+          "The FunctionType defines captured inputs. Use call_with_captures"
+          " instead."
+      )
+
+    return self.call_with_captures(args, kwargs, [])
+
   def __del__(self):
     if self._generated_graph:
       func_graph_module.dismantle_func_graph(self._generated_graph)
+
+    if RUNTIME_FUNCTION_REFS is None:
+      return
 
     key = (self._bound_context.function_scope_id, self.name)
     RUNTIME_FUNCTION_REFS[key] -= 1
@@ -414,7 +429,7 @@ def make_call_op_in_graph(
   graph = ops.get_default_graph()
   graph._add_function_recursive(atomic)  # pylint: disable=protected-access
 
-  op = partitioned_call_op(
+  op = partitioned_call_op(  # pytype: disable=wrong-arg-types  # always-use-property-annotation
       name=atomic.name,
       args=tensor_inputs,
       is_stateful=atomic.call_options.is_stateful,
@@ -632,24 +647,17 @@ class InterpolateRuntimeError(object):
   def interpolate(self, message, node_names, graph_debug_info):
     """Uses the GraphDebugInfo to generate an error message."""
     error_message = ["Graph execution error:", ""]
+    traces = tf_stack.LoadTracesFromDebugInfo(graph_debug_info)
+
     for node_name in node_names:
       error_message.append(
           f"Detected at node {node_name} defined at (most recent call last):"
       )
-      if node_name in graph_debug_info.traces:
-        stack_trace = graph_debug_info.traces[node_name]
-        tb_frames = []
-        for frame in stack_trace.file_line_cols:
-          tb_frames.append(
-              traceback.FrameSummary(
-                  graph_debug_info.files[frame.file_index],
-                  frame.line,
-                  frame.func,
-              )
-          )
-          for formatted_frame in traceback.format_list(tb_frames):
-            if not any(p in formatted_frame for p in self.DENY_LIST_PHRASES):
-              error_message.append(formatted_frame)
+      if node_name in traces:
+        stack_trace = traces[node_name]
+        for formatted_frame in traceback.format_list(stack_trace):
+          if not any(p in formatted_frame for p in self.DENY_LIST_PHRASES):
+            error_message.append(formatted_frame)
       else:
         error_message.append("<stack traces unavailable>")
 

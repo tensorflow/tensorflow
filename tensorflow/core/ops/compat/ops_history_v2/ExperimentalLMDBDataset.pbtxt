@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ExperimentalLMDBDataset"
   input_arg {
     name: "filenames"

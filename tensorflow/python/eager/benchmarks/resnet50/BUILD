@@ -10,7 +10,6 @@ package(
 py_strict_library(
     name = "resnet50",
     srcs = ["resnet50.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py_no_contrib",
     ],
@@ -19,19 +18,17 @@ py_strict_library(
 py_strict_library(
     name = "resnet50_test_util",
     srcs = ["resnet50_test_util.py"],
-    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py_no_contrib"],
 )
 
 py_strict_library(
     name = "resnet50_test_lib",
     srcs = ["resnet50_test.py"],
-    srcs_version = "PY3",
     deps = [
         ":resnet50",
         ":resnet50_test_util",
         "//tensorflow:tensorflow_py_no_contrib",
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:test_lib",
@@ -54,7 +51,7 @@ cuda_py_strict_test(
         ":resnet50",
         ":resnet50_test_util",
         "//tensorflow:tensorflow_py_no_contrib",
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:test_lib",

@@ -16,21 +16,24 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_PLUGIN_COORDINATION_SERVICE_AGENT_HELPER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_PLUGIN_COORDINATION_SERVICE_AGENT_HELPER_H_
 
+#include <memory>
+
+#include "absl/flags/flag.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_coordination_service_agent.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_coordination_service_agent.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_c_api_flag.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/flags.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
 
 namespace tensorflow {
 
-inline PluginCoordinationServiceAgent* CreatePluginCoordinationServiceAgent(
-    void* agent) {
-  if (!tensorflow::npd::kTfNextPluggableDeviceUseCApi) {
-    return new DirectPluginCoordinationServiceAgent(agent);
+inline std::unique_ptr<PluginCoordinationServiceAgent>
+CreatePluginCoordinationServiceAgent(void* agent) {
+  if (!absl::GetFlag(FLAGS_next_pluggable_device_use_c_api)) {
+    return std::make_unique<DirectPluginCoordinationServiceAgent>(agent);
   } else {
-    return new CPluginCoordinationServiceAgent(agent);
+    return std::make_unique<CPluginCoordinationServiceAgent>(agent);
   }
 }
 

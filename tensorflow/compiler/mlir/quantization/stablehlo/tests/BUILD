@@ -1,6 +1,6 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -41,8 +41,8 @@ tf_cc_test(
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:fill_quantization_options",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_cc",
-        "//tensorflow/tsl/platform:protobuf",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )

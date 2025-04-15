@@ -58,6 +58,32 @@ func.func @aliasing_reads_writes(%arg0: tensor<32xf32>) -> () {
 }
 
 // -----
+// Tests handling of Cast, Identity, and IdentityN
+
+!tf_res = tensor<*x!tf_type.resource<tensor<32xf32>>>
+// CHECK-LABEL: func @aliasing_identities
+func.func @aliasing_identities(%arg0: tensor<32xf32>) -> () {
+  tf_executor.graph {
+    // CHECK: tf_executor.island
+    %island = tf_executor.island {
+      // expected-remark@below {{Result #0, ID 0 : 0, 1, 2, 3, 4}}
+      %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
+      // expected-remark@below {{Result #0, ID 1 : 0, 1, 2, 3, 4}}
+      %vh1 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
+      // expected-remark@below {{Result #0, ID 2 : 0, 1, 2, 3, 4}}
+      %vh1_id1 = "tf.Identity"(%vh1) : (!tf_res) -> !tf_res
+      // expected-remark@below {{Result #0, ID 3 : 0, 1, 2, 3, 4}}
+      %vh1_id2:2 = "tf.IdentityN"(%vh1, %arg0) : (!tf_res, tensor<32xf32>) -> (!tf_res, tensor<32xf32>)
+      // expected-remark@below {{Result #0, ID 4 : 0, 1, 2, 3, 4}}
+      %vh1_cast = "tf.Cast"(%vh1) : (!tf_res) -> (!tf_res)
+      tf_executor.yield
+    }
+    tf_executor.fetch %island : !tf_executor.control
+  }
+  func.return
+}
+
+// -----
 // Test an unknown op that has a resource result is marked unknown
 
 !tf_res = tensor<*x!tf_type.resource<tensor<32xf32>>>

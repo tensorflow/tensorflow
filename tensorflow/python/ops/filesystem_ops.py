@@ -15,11 +15,9 @@
 """Filesystem related operations."""
 
 from tensorflow.python.ops import gen_filesystem_ops as _gen_filesystem_ops
-from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=protected-access
-@tf_export('experimental.filesystem_set_configuration')
 def filesystem_set_configuration(scheme, key, value, name=None):
   """Set configuration of the file system.
 

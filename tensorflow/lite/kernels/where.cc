@@ -101,8 +101,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_KERNEL_LOG(context,
                          "Condition tensor has unsupported type: '%s'.",
                          TfLiteTypeGetName(cond_tensor->type));
+      return kTfLiteError;
   }
-  return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -147,6 +147,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_KERNEL_LOG(context,
                            "Condition tensor has unsupported type: '%s'.",
                            TfLiteTypeGetName(cond_tensor->type));
+        return kTfLiteError;
     }
   }
 
@@ -197,6 +198,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_KERNEL_LOG(context,
                          "Condition tensor has unsupported type: '%s'.",
                          TfLiteTypeGetName(cond_tensor->type));
+      return kTfLiteError;
   }
   return kTfLiteOk;
 }

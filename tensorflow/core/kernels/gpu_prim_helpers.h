@@ -19,7 +19,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
@@ -65,18 +65,14 @@ Status GpuRadixSortImpl(OpKernelContext* context, int size, const Tkey* keys_in,
       size_t num_bytes = size * sizeof(Tkey);
       se::DeviceMemoryBase src(const_cast<Tkey*>(keys_in), num_bytes);
       se::DeviceMemoryBase dst(keys_out, num_bytes);
-      if (!stream->ThenMemcpy(&dst, src, num_bytes).ok()) {
-        return errors::Internal("Failed to copy keys_in to keys_out");
-      }
+      TF_RETURN_IF_ERROR(stream->Memcpy(&dst, src, num_bytes));
     }
     if (indices_in) {
       // Copy indices_in to indices_out.
       size_t num_bytes = size * sizeof(Tindex);
       se::DeviceMemoryBase src(const_cast<Tindex*>(indices_in), num_bytes);
       se::DeviceMemoryBase dst(indices_out, num_bytes);
-      if (!stream->ThenMemcpy(&dst, src, num_bytes).ok()) {
-        return errors::Internal("Failed to copy indices_in to indices_out");
-      }
+      TF_RETURN_IF_ERROR(stream->Memcpy(&dst, src, num_bytes));
     } else {
       // Set output indices to range.
       const Eigen::GpuDevice& device =

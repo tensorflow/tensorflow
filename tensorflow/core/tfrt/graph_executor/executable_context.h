@@ -45,7 +45,7 @@ struct ExecutableContext {
 
   // For the MLRT path.
   mlrt::bc::Buffer bytecode_buffer;
-  std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable = nullptr;
+  std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable;
 
   // For the TFRT path.
   tfrt::BefBuffer bef;

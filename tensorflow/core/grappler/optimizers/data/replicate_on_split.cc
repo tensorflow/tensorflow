@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/replicate_on_split.h"
 
+#include "absl/log/log.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -25,11 +26,10 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-Status ReplicateOnSplit::OptimizeAndCollectStats(Cluster* cluster,
-                                                 const GrapplerItem& item,
-                                                 GraphDef* output,
-                                                 OptimizationStats* stats) {
-  LOG(INFO) << "Running replicate on split optimization";
+absl::Status ReplicateOnSplit::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
+  VLOG(1) << "Running replicate on split optimization";
   *output = item.graph;
   MutableGraphView graph(output);
 
@@ -39,7 +39,7 @@ Status ReplicateOnSplit::OptimizeAndCollectStats(Cluster* cluster,
       stats->num_changes++;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(ReplicateOnSplit, "replicate_on_split");

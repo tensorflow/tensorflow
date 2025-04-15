@@ -213,7 +213,7 @@ if __name__ == '__main__':
     os.environ['TEST_TOTAL_SHARDS'] = saved_total_shards
   maybe_define_flags()
   # Parse remaining flags.
-  FLAGS(unparsed)
+  FLAGS(unparsed, known_only=True)
   set_random_test_dir()
 
   move_test_classes_into_scope(user_module)

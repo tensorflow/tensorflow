@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/utils/utils.h"
 
+#include <cassert>
+#include <cstdint>
+#include <numeric>
 #include <optional>
 #include <string>
 
@@ -46,7 +49,7 @@ bool OpHasDevice(Operation *op, const char *device_name) {
 void EraseRegularNodeAttributes(NamedAttrList &attr_list) {
   NamedAttrList new_attr_list;
   for (NamedAttribute attr : attr_list) {
-    if (attr.getName().strref().startswith("_")) new_attr_list.append(attr);
+    if (attr.getName().strref().starts_with("_")) new_attr_list.append(attr);
   }
   attr_list = new_attr_list;
 }

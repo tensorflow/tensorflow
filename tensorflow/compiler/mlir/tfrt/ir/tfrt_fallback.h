@@ -40,6 +40,7 @@ class FallbackDialect : public Dialect {
 class TFTensorType : public Type::TypeBase<TFTensorType, Type, TypeStorage> {
  public:
   using Base::Base;
+  static constexpr StringLiteral name = "tfrt.tf_tensor";
 };
 
 // The MLIR type represents a tensorflow::Allocator.
@@ -47,6 +48,7 @@ class TFAllocatorType
     : public Type::TypeBase<TFAllocatorType, Type, TypeStorage> {
  public:
   using Base::Base;
+  static constexpr StringLiteral name = "tfrt.tf_allocator";
 };
 
 }  // namespace fallback

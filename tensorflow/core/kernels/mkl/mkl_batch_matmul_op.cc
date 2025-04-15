@@ -25,7 +25,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL)
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -49,7 +49,9 @@ template <typename Device, typename Tlhs, typename Trhs, typename Toutput,
 class BatchMatMulMkl : public OpKernel {
  public:
   explicit BatchMatMulMkl(OpKernelConstruction* context) : OpKernel(context) {
-    if (context && context->HasAttr("transpose_a")) {
+    if (!context) return;
+
+    if (context->HasAttr("transpose_a")) {
       // This is needed for using BatchMatMulMkl as the super class of
       // MklMatMulOp (below) whose context has a transpose_a attribute which is
       // effectively the same as adj_x_
@@ -58,7 +60,7 @@ class BatchMatMulMkl : public OpKernel {
       OP_REQUIRES_OK(context, context->GetAttr("adj_x", &adj_x_));
     }
 
-    if (context && context->HasAttr("transpose_b")) {
+    if (context->HasAttr("transpose_b")) {
       // This is needed for using BatchMatMulMkl as the super class of
       // MklMatMulOp (below) whose context has a transpose_b attribute which is
       // effectively the same as adj_y_
@@ -160,54 +162,36 @@ class BatchMatMulMkl : public OpKernel {
                                          out_shape, adj_x_, adj_y_);
 
     this->ExtendMklMatMulParams(ctx, *params);
-    MklDnnThreadPool eigen_tp(ctx);
+    // Create the oneDNN wrapper over Eigen threadpool and set max threads
+    // in oneDNN.
+    Eigen::ThreadPoolInterface* eigen_interface =
+        EigenThreadPoolFromTfContext(ctx);
+    tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                   ThreadPoolUseCallerThread());
     // Create or retrieve matmul primitive from cache.
     MklMatMulPrimitive<Tlhs, Trhs, Toutput>* matmul_prim =
         MklMatMulPrimitiveFactory<float, Tlhs, Trhs, Toutput>::Get(
             *params, false /* value for do_not_cache */);
 
     Trhs* weight_data = const_cast<Trhs*>(rhs.flat<Trhs>().data());
-
 // TODO(Arm, Intel): Reach agreement on whether this block should be deleted.
 // https://github.com/tensorflow/tensorflow/pull/57987#discussion_r993731524
 #ifdef DNNL_AARCH64_USE_ACL
-    memory::format_tag weight_format;
-    switch (params->b_dims.size()) {
-      case 2:
-        weight_format =
-            adj_y_ ? memory::format_tag::ba : memory::format_tag::ab;
-        break;
-      case 3:
-        weight_format =
-            adj_y_ ? memory::format_tag::acb : memory::format_tag::abc;
-        break;
-      case 4:
-        weight_format =
-            adj_y_ ? memory::format_tag::abdc : memory::format_tag::abcd;
-        break;
-      case 5:
-        weight_format =
-            adj_y_ ? memory::format_tag::abced : memory::format_tag::abcde;
-        break;
-      default:
-        weight_format = memory::format_tag::undef;
-    }
     MklDnnData<Trhs> weights_mkl(&(this->cpu_engine_));
-    if (weight_format != memory::format_tag::undef) {
-      auto weight_md =
-          memory::desc(params->b_dims, MklDnnType<Trhs>(), weight_format);
-      std::shared_ptr<dnnl::matmul::primitive_desc> matmul_pd =
-          matmul_prim->GetPrimitiveDesc();
-      // Reorder weights if necessary.
-      // Check whether we need to do reorder.
-      if (weight_md != matmul_pd->weights_desc()) {
-        weights_mkl.SetUsrMem(weight_md, weight_data);
-        weights_mkl.CheckReorderToOpMem(matmul_pd.get()->weights_desc(),
-                                        this->cpu_engine_, ctx);
-        weight_data =
-            reinterpret_cast<Trhs*>(weights_mkl.GetOpMem().get_data_handle());
-      }
+    auto weight_md =
+        memory::desc(params->b_dims, MklDnnType<Trhs>(), params->b_strides);
+    std::shared_ptr<dnnl::matmul::primitive_desc> matmul_pd =
+        matmul_prim->GetPrimitiveDesc();
+    // Reorder weights if necessary.
+    // Check whether we need to do reorder.
+    if (weight_md != matmul_pd->weights_desc()) {
+      weights_mkl.SetUsrMem(weight_md, weight_data);
+      weights_mkl.CheckReorderToOpMem(matmul_pd.get()->weights_desc(),
+                                      this->cpu_engine_, ctx);
+      weight_data =
+          reinterpret_cast<Trhs*>(weights_mkl.GetOpMem().get_data_handle());
     }
+
 #endif  // DNNL_AARCH64_USE_ACL
 
     UserScratchPad<unsigned char> scratch_pad;
@@ -312,6 +296,10 @@ class FusedBatchMatMulMkl
       }
       if (this->fused_ops_.size() > 1 && this->fused_ops_.at(1) == "Add") {
         auto add_shape = ctx->input(3).shape();
+        OP_REQUIRES(ctx, add_shape.dims() == 4,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Add fusion expects add shape to have 4 dims, but got ",
+                        add_shape.dims())));
         memory::dims add_dims = {add_shape.dim_size(0), add_shape.dim_size(1),
                                  add_shape.dim_size(2), add_shape.dim_size(3)};
         params.post_op_params.push_back(
@@ -376,6 +364,9 @@ TF_CALL_float(REGISTER_FUSED_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_bfloat16(REGISTER_FUSED_BATCH_MATMUL_MKL);
+TF_CALL_half(REGISTER_BATCH_MATMUL_MKL);
+TF_CALL_half(REGISTER_BATCH_MATMUL_MKL_V2);
+TF_CALL_half(REGISTER_FUSED_BATCH_MATMUL_MKL);
 
 #ifdef DNNL_AARCH64_USE_ACL
 TF_CALL_float(REGISTER_MATMUL_MKL);

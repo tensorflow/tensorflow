@@ -16,11 +16,12 @@ limitations under the License.
 // This transformation pass takes TensorFlow executor dialect IslandOps and
 // merges the one that contains operation marked to run on TPU.
 
-#include <algorithm>
-#include <iterator>
+#include <cassert>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <tuple>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -395,7 +396,7 @@ bool is_valid_special_tpu_op(
 
     bool op_has_inconsistent_cluster_name =
         wrapped_op_cluster_name.has_value() &&
-        !wrapped_op_cluster_name.value().equals(cluster_name);
+        wrapped_op_cluster_name.value() != cluster_name;
 
     if (op_has_inconsistent_cluster_name) {
       return false;
@@ -624,7 +625,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
     assert(!funcs_for_cluster->second.empty());
     if (funcs_for_cluster->second.size() == 1) return false;
     for (NamedAttribute attr : op->getAttrs()) {
-      auto symbol_ref = attr.getValue().dyn_cast<FlatSymbolRefAttr>();
+      auto symbol_ref = mlir::dyn_cast<FlatSymbolRefAttr>(attr.getValue());
       if (!symbol_ref) continue;
       func::FuncOp callee =
           symbol_table.lookup<func::FuncOp>(symbol_ref.getValue());

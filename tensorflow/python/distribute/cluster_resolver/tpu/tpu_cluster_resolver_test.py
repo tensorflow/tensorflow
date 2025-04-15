@@ -719,6 +719,10 @@ class TPUClusterResolverTest(test.TestCase):
     self.assertIsInstance(cluster_resolver.tpu_hardware_feature,
                           topology_pb2.TPUHardwareFeature)
 
+  def testEnvironment(self):
+    cluster_resolver = resolver.TPUClusterResolver(tpu='local')
+    self.assertEqual(cluster_resolver.environment, '')
+
 
 if __name__ == '__main__':
   test.main()

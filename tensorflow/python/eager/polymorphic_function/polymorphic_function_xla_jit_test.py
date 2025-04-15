@@ -47,7 +47,7 @@ from tensorflow.python.util import nest
 class FunctionTest(xla_test.XLATestCase):
 
   def _compareTwoMethodsCompilerIROutput(self, f, args, kwargs):
-    """Assert the two differnet methods (tensor_spec inputs or tensor inputs) experimental_get_compiler give same HLO text."""
+    """Assert the two different methods (tensor_spec inputs or tensor inputs) experimental_get_compiler give same HLO text."""
     flat_args = list(args) + list(kwargs.values())
     if not all([isinstance(x, tensor.Tensor) for x in flat_args]):
       self.skipTest('It only support args and kwargs are all tf.Tensor types.')
@@ -175,8 +175,8 @@ class FunctionTest(xla_test.XLATestCase):
       func = polymorphic_function.function(fn2, jit_compile=False)
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       with self.assertRaisesRegex(
-          errors.InvalidArgumentError, 'legalization failed'
-          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
+          errors.InvalidArgumentError, 'unsupported operations'
+      ):
         func(inputs)
 
   def testUnsupportedOps(self):
@@ -189,8 +189,8 @@ class FunctionTest(xla_test.XLATestCase):
       xla_func = polymorphic_function.function(fn, jit_compile=True)
 
       with self.assertRaisesRegex(
-          errors.InvalidArgumentError, 'legalization failed'
-          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
+          errors.InvalidArgumentError, 'unsupported operations'
+      ):
         xla_func(constant_op.constant([3.1, 3.2]))
 
   def testCollectiveReduceChannelId(self):
@@ -213,10 +213,22 @@ class FunctionTest(xla_test.XLATestCase):
       self.assertNotEqual(matches[0], matches[1])
       self._compareTwoMethodsCompilerIROutput(fn, [inputs, inputs], {})
 
-  def testCollectiveReduceGroupAssignment(self):
-    if not test_util.is_mlir_bridge_enabled():
-      self.skipTest('AssignGroup is only supported in the MLIR bridge.')
+  def testCollectiveReduceReplicaGroups(self):
+    with ops.device('device:{}:0'.format(self.device)):
 
+      @polymorphic_function.function(jit_compile=True)
+      def fn(x):
+        t0 = collective_ops.all_reduce_v2(
+            t=x, group_size=2, group_key=1, instance_key=1)
+        return t0
+
+      inputs = constant_op.constant([1.0, 2.0, 3.0])
+      # Make sure replica groups are assigned
+      hlo_str = fn.experimental_get_compiler_ir(inputs)()
+      self.assertIn('replica_groups={{', hlo_str)
+      self._compareTwoMethodsCompilerIROutput(fn, [inputs], {})
+
+  def testCollectiveReduceGroupAssignment(self):
     with ops.device('device:{}:0'.format(self.device)):
 
       @polymorphic_function.function(jit_compile=True)
@@ -488,8 +500,8 @@ class FunctionTest(xla_test.XLATestCase):
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       c = C()
       with self.assertRaisesRegex(
-          errors.InvalidArgumentError, 'legalization failed'
-          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
+          errors.InvalidArgumentError, 'unsupported operations'
+      ):
         c.f1(inputs)
 
   def testMustBeConstantPropagation(self):
@@ -943,8 +955,16 @@ class FunctionTest(xla_test.XLATestCase):
       def f(a, b):
         return math_ops.matmul(a, b)
 
-      self.assertRegex(f.experimental_get_compiler_ir(a, b)('optimized_hlo'),
-                       '(dot)|(convolution)')
+      if not test_util.IsMklEnabled():
+        self.assertRegex(
+            f.experimental_get_compiler_ir(a, b)('optimized_hlo'),
+            '(dot)|(convolution)',
+        )
+      else:
+        self.assertRegex(
+            f.experimental_get_compiler_ir(a, b)('optimized_hlo'),
+            '(dot)|(convolution)|(custom-call)',
+        )
 
   def testConstantOnWrongDevice(self):
     with ops.device('device:{}:0'.format(self.device)):
@@ -999,7 +1019,7 @@ class FunctionTest(xla_test.XLATestCase):
       val1 = constant_op.constant(2)
       val2 = constant_op.constant(50)
 
-      # Returns an error, since the value known at compile time was overriden.
+      # Returns an error, since the value known at compile time was overridden.
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   'concrete values at compile time'):
         f(random_ops.random_normal([10, 10]), val1, val2)

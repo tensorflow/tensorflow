@@ -18,6 +18,7 @@ import builtins
 import dataclasses
 from typing import Type, Sequence, Optional
 
+import ml_dtypes
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
@@ -32,11 +33,6 @@ from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.types import trace
 from tensorflow.core.function import trace_type
 from tensorflow.tools.docs import doc_controls
-from tensorflow.tsl.python.lib.core import pywrap_ml_dtypes
-
-_np_bfloat16 = pywrap_ml_dtypes.bfloat16()
-_np_float8_e4m3fn = pywrap_ml_dtypes.float8_e4m3fn()
-_np_float8_e5m2 = pywrap_ml_dtypes.float8_e5m2()
 
 
 class DTypeMeta(type(_dtypes.DType), abc.ABCMeta):
@@ -141,20 +137,14 @@ class DType(
                       f"{'quantized type' if self.is_quantized else 'type'} "
                       f"{self.base_dtype}.")
 
-    # there is no simple way to get the min value of a dtype, we have to check
-    # float and int types separately
+    # There is no simple way to get the min value of a dtype, we have to check
+    # float and int types separately.
     try:
-      return np.finfo(self.as_numpy_dtype).min
+      return ml_dtypes.finfo(self.as_numpy_dtype).min
     except:  # bare except as possible raises by finfo not documented
       try:
-        return np.iinfo(self.as_numpy_dtype).min
+        return ml_dtypes.iinfo(self.as_numpy_dtype).min
       except:
-        if self.base_dtype == bfloat16:
-          return _np_bfloat16(float.fromhex("-0x1.FEp127"))
-        elif self.base_dtype == float8_e5m2:
-          return _np_float8_e5m2(float.fromhex("-0x1.Cp15"))
-        elif self.base_dtype == float8_e4m3fn:
-          return _np_float8_e4m3fn(float.fromhex("-0x1.Cp8"))
         raise TypeError(f"Cannot find minimum value of {self}.")
 
   @property
@@ -174,17 +164,11 @@ class DType(
     # there is no simple way to get the max value of a dtype, we have to check
     # float and int types separately
     try:
-      return np.finfo(self.as_numpy_dtype).max
+      return ml_dtypes.finfo(self.as_numpy_dtype).max
     except:  # bare except as possible raises by finfo not documented
       try:
-        return np.iinfo(self.as_numpy_dtype).max
+        return ml_dtypes.iinfo(self.as_numpy_dtype).max
       except:
-        if self.base_dtype == bfloat16:
-          return _np_bfloat16(float.fromhex("0x1.FEp127"))
-        elif self.base_dtype == float8_e5m2:
-          return _np_float8_e5m2(float.fromhex("0x1.Cp15"))
-        elif self.base_dtype == float8_e4m3fn:
-          return _np_float8_e4m3fn(float.fromhex("0x1.Cp8"))
         raise TypeError(f"Cannot find maximum value of {self}.")
 
   @property
@@ -240,8 +224,28 @@ class DType(
 
   @doc_controls.do_not_doc_inheritable
   def placeholder_value(self, placeholder_context):
-    """TensorShape does not support placeholder values."""
-    raise NotImplementedError
+    """See tf.types.experimental.TraceType base class."""
+    return super().placeholder_value(placeholder_context)
+
+  @doc_controls.do_not_doc_inheritable
+  def from_tensors(self, tensors):
+    """See tf.types.experimental.TraceType base class."""
+    return super().from_tensors(tensors)
+
+  @doc_controls.do_not_doc_inheritable
+  def to_tensors(self, value):
+    """See tf.types.experimental.TraceType base class."""
+    return super().to_tensors(value)
+
+  @doc_controls.do_not_doc_inheritable
+  def flatten(self):
+    """See tf.types.experimental.TraceType base class."""
+    return super().flatten()
+
+  @doc_controls.do_not_doc_inheritable
+  def cast(self, value, cast_context):
+    """See tf.types.experimental.TraceType base class."""
+    return super().cast(value, cast_context)
 
   @classmethod
   def experimental_type_proto(cls) -> Type[types_pb2.SerializedDType]:
@@ -292,175 +296,200 @@ dtype_range = {
     np.uint16: (0, 65535),
     np.int8: (-128, 127),
     np.int16: (-32768, 32767),
-    np.int64: (-2**63, 2**63 - 1),
+    np.int64: (-(2**63), 2**63 - 1),
     np.uint64: (0, 2**64 - 1),
-    np.int32: (-2**31, 2**31 - 1),
+    np.int32: (-(2**31), 2**31 - 1),
     np.uint32: (0, 2**32 - 1),
     np.float32: (-1, 1),
-    np.float64: (-1, 1)
+    np.float64: (-1, 1),
 }
 
 # Define standard wrappers for the types_pb2.DataType enum.
 resource = DType(types_pb2.DT_RESOURCE)
 doc_typealias.document(
-    obj=resource,
-    doc="Handle to a mutable, dynamically allocated resource.")
+    obj=resource, doc="Handle to a mutable, dynamically allocated resource."
+)
 tf_export("dtypes.resource", "resource").export_constant(__name__, "resource")
 
 variant = DType(types_pb2.DT_VARIANT)
 doc_typealias.document(
-    obj=variant,
-    doc="Data of arbitrary type (known at runtime).")
+    obj=variant, doc="Data of arbitrary type (known at runtime)."
+)
 tf_export("dtypes.variant", "variant").export_constant(__name__, "variant")
 
 uint8 = DType(types_pb2.DT_UINT8)
-doc_typealias.document(
-    obj=uint8,
-    doc="Unsigned 8-bit (byte) integer.")
+doc_typealias.document(obj=uint8, doc="Unsigned 8-bit (byte) integer.")
 tf_export("dtypes.uint8", "uint8").export_constant(__name__, "uint8")
 
 uint16 = DType(types_pb2.DT_UINT16)
-doc_typealias.document(
-    obj=uint16,
-    doc="Unsigned 16-bit (word) integer.")
+doc_typealias.document(obj=uint16, doc="Unsigned 16-bit (word) integer.")
 tf_export("dtypes.uint16", "uint16").export_constant(__name__, "uint16")
 
 uint32 = DType(types_pb2.DT_UINT32)
-doc_typealias.document(
-    obj=uint32,
-    doc="Unsigned 32-bit (dword) integer.")
+doc_typealias.document(obj=uint32, doc="Unsigned 32-bit (dword) integer.")
 tf_export("dtypes.uint32", "uint32").export_constant(__name__, "uint32")
 
 uint64 = DType(types_pb2.DT_UINT64)
-doc_typealias.document(
-    obj=uint64,
-    doc="Unsigned 64-bit (qword) integer.")
+doc_typealias.document(obj=uint64, doc="Unsigned 64-bit (qword) integer.")
 tf_export("dtypes.uint64", "uint64").export_constant(__name__, "uint64")
 
 int8 = DType(types_pb2.DT_INT8)
-doc_typealias.document(
-    obj=int8,
-    doc="Signed 8-bit integer.")
+doc_typealias.document(obj=int8, doc="Signed 8-bit integer.")
 tf_export("dtypes.int8", "int8").export_constant(__name__, "int8")
 
 int16 = DType(types_pb2.DT_INT16)
-doc_typealias.document(
-    obj=int16,
-    doc="Signed 16-bit integer.")
+doc_typealias.document(obj=int16, doc="Signed 16-bit integer.")
 tf_export("dtypes.int16", "int16").export_constant(__name__, "int16")
 
 int32 = DType(types_pb2.DT_INT32)
-doc_typealias.document(
-    obj=int32,
-    doc="Signed 32-bit integer.")
+doc_typealias.document(obj=int32, doc="Signed 32-bit integer.")
 tf_export("dtypes.int32", "int32").export_constant(__name__, "int32")
 
 int64 = DType(types_pb2.DT_INT64)
-doc_typealias.document(
-    obj=int64,
-    doc="Signed 64-bit integer.")
+doc_typealias.document(obj=int64, doc="Signed 64-bit integer.")
 tf_export("dtypes.int64", "int64").export_constant(__name__, "int64")
 
 float16 = DType(types_pb2.DT_HALF)
 half = float16
 doc_typealias.document(
-    obj=float16,
-    doc="16-bit (half precision) floating-point.")
+    obj=float16, doc="16-bit (half precision) floating-point."
+)
 tf_export("dtypes.float16", "float16").export_constant(__name__, "float16")
 tf_export("dtypes.half", "half").export_constant(__name__, "half")
 
 float32 = DType(types_pb2.DT_FLOAT)
 doc_typealias.document(
-    obj=float32,
-    doc="32-bit (single precision) floating-point.")
+    obj=float32, doc="32-bit (single precision) floating-point."
+)
 tf_export("dtypes.float32", "float32").export_constant(__name__, "float32")
 
 float64 = DType(types_pb2.DT_DOUBLE)
 doc_typealias.document(
-    obj=float64,
-    doc="64-bit (double precision) floating-point.")
+    obj=float64, doc="64-bit (double precision) floating-point."
+)
 tf_export("dtypes.float64", "float64").export_constant(__name__, "float64")
 double = float64
 tf_export("dtypes.double", "double").export_constant(__name__, "double")
 
 complex64 = DType(types_pb2.DT_COMPLEX64)
-doc_typealias.document(
-    obj=complex64,
-    doc="64-bit complex.")
-tf_export("dtypes.complex64",
-          "complex64").export_constant(__name__, "complex64")
+doc_typealias.document(obj=complex64, doc="64-bit complex.")
+tf_export("dtypes.complex64", "complex64").export_constant(
+    __name__, "complex64"
+)
 
 complex128 = DType(types_pb2.DT_COMPLEX128)
-doc_typealias.document(
-    obj=complex128,
-    doc="128-bit complex.")
-tf_export("dtypes.complex128",
-          "complex128").export_constant(__name__, "complex128")
+doc_typealias.document(obj=complex128, doc="128-bit complex.")
+tf_export("dtypes.complex128", "complex128").export_constant(
+    __name__, "complex128"
+)
 
 string = DType(types_pb2.DT_STRING)
 doc_typealias.document(
-    obj=string,
-    doc="Variable-length string, represented as byte array.")
+    obj=string, doc="Variable-length string, represented as byte array."
+)
 tf_export("dtypes.string", "string").export_constant(__name__, "string")
 
 bool = DType(types_pb2.DT_BOOL)  # pylint: disable=redefined-builtin
-doc_typealias.document(
-    obj=bool,
-    doc="Boolean.")
+doc_typealias.document(obj=bool, doc="Boolean.")
 tf_export("dtypes.bool", "bool").export_constant(__name__, "bool")
 
 qint8 = DType(types_pb2.DT_QINT8)
-doc_typealias.document(
-    obj=qint8,
-    doc="Signed quantized 8-bit integer.")
+doc_typealias.document(obj=qint8, doc="Signed quantized 8-bit integer.")
 tf_export("dtypes.qint8", "qint8").export_constant(__name__, "qint8")
 
 qint16 = DType(types_pb2.DT_QINT16)
-doc_typealias.document(
-    obj=qint16,
-    doc="Signed quantized 16-bit integer.")
+doc_typealias.document(obj=qint16, doc="Signed quantized 16-bit integer.")
 tf_export("dtypes.qint16", "qint16").export_constant(__name__, "qint16")
 
 qint32 = DType(types_pb2.DT_QINT32)
-doc_typealias.document(
-    obj=qint32,
-    doc="signed quantized 32-bit integer.")
+doc_typealias.document(obj=qint32, doc="signed quantized 32-bit integer.")
 tf_export("dtypes.qint32", "qint32").export_constant(__name__, "qint32")
 
 quint8 = DType(types_pb2.DT_QUINT8)
-doc_typealias.document(
-    obj=quint8,
-    doc="Unsigned quantized 8-bit integer.")
+doc_typealias.document(obj=quint8, doc="Unsigned quantized 8-bit integer.")
 tf_export("dtypes.quint8", "quint8").export_constant(__name__, "quint8")
 
 quint16 = DType(types_pb2.DT_QUINT16)
-doc_typealias.document(
-    obj=quint16,
-    doc="Unsigned quantized 16-bit integer.")
+doc_typealias.document(obj=quint16, doc="Unsigned quantized 16-bit integer.")
 tf_export("dtypes.quint16", "quint16").export_constant(__name__, "quint16")
 
 bfloat16 = DType(types_pb2.DT_BFLOAT16)
 doc_typealias.document(
-    obj=bfloat16,
-    doc="16-bit bfloat (brain floating point).")
+    obj=bfloat16, doc="16-bit bfloat (brain floating point)."
+)
 tf_export("dtypes.bfloat16", "bfloat16").export_constant(__name__, "bfloat16")
 
 float8_e5m2 = DType(types_pb2.DT_FLOAT8_E5M2)
 doc_typealias.document(
-    obj=float8_e5m2,
-    doc="8-bit float with 5 exponent bits and 2 mantissa bits.")
-tf_export("dtypes.experimental.float8_e5m2",
-          "experimental.float8_e5m2").export_constant(__name__, "float8_e5m2")
+    obj=float8_e5m2, doc="8-bit float with 5 exponent bits and 2 mantissa bits."
+)
+tf_export(
+    "dtypes.experimental.float8_e5m2", "experimental.float8_e5m2"
+).export_constant(__name__, "float8_e5m2")
 
 float8_e4m3fn = DType(types_pb2.DT_FLOAT8_E4M3FN)
 doc_typealias.document(
     obj=float8_e4m3fn,
-    doc="8-bit float with 4 exponent bits and 3 mantissa bits, with extended "
-    "finite range.  This type has no representation for inf, and only two NaN "
-    "values: 0xFF for negative NaN, and 0x7F for positive NaN.")
-tf_export("dtypes.experimental.float8_e4m3fn",
-          "experimental.float8_e4m3fn").export_constant(__name__,
-                                                        "float8_e4m3fn")
+    doc=(
+        "8-bit float with 4 exponent bits and 3 mantissa bits, with extended"
+        " finite range.  This type has no representation for inf, and only two"
+        " NaN values: 0xFF for negative NaN, and 0x7F for positive NaN."
+    ),
+)
+tf_export(
+    "dtypes.experimental.float8_e4m3fn", "experimental.float8_e4m3fn"
+).export_constant(__name__, "float8_e4m3fn")
+
+float8_e4m3fnuz = DType(types_pb2.DT_FLOAT8_E4M3FNUZ)
+doc_typealias.document(
+    obj=float8_e4m3fnuz,
+    doc=(
+        "8-bit float with 4 exponent bits and 3 mantissa bits, with extended"
+        " finite range.  This type has no representation for inf, and only one"
+        " NaN value: 0x80."
+    ),
+)
+tf_export(
+    "dtypes.experimental.float8_e4m3fnuz", "experimental.float8_e4m3fnuz"
+).export_constant(__name__, "float8_e4m3fnuz")
+
+float8_e4m3b11fnuz = DType(types_pb2.DT_FLOAT8_E4M3B11FNUZ)
+doc_typealias.document(
+    obj=float8_e4m3b11fnuz,
+    doc=(
+        "8-bit float with 4 exponent bits and 3 mantissa bits, with extended "
+        "finite range and 11 bits of bias.  This type has no representation "
+        "for inf, and only one NaN value: 0x80."
+    ),
+)
+tf_export(
+    "dtypes.experimental.float8_e4m3b11fnuz", "experimental.float8_e4m3b11fnuz"
+).export_constant(__name__, "float8_e4m3b11fnuz")
+
+float8_e5m2fnuz = DType(types_pb2.DT_FLOAT8_E5M2FNUZ)
+doc_typealias.document(
+    obj=float8_e5m2fnuz,
+    doc=(
+        "8-bit float with 5 exponent bits and 2 mantissa bits, with extended "
+        "finite range.  This type has no representation for inf, and only one "
+        "NaN value: 0x80."
+    ),
+)
+tf_export(
+    "dtypes.experimental.float8_e5m2fnuz", "experimental.float8_e5m2fnuz"
+).export_constant(__name__, "float8_e5m2fnuz")
+
+int4 = DType(types_pb2.DT_INT4)
+doc_typealias.document(obj=int4, doc="Signed 4-bit integer.")
+tf_export("dtypes.experimental.int4", "experimental.int4").export_constant(
+    __name__, "int4"
+)
+
+uint4 = DType(types_pb2.DT_UINT4)
+doc_typealias.document(obj=uint4, doc="Unsigned 4-bit integer.")
+tf_export("dtypes.experimental.uint4", "experimental.uint4").export_constant(
+    __name__, "uint4"
+)
 
 resource_ref = DType(types_pb2.DT_RESOURCE_REF)
 variant_ref = DType(types_pb2.DT_VARIANT_REF)
@@ -489,6 +518,11 @@ qint32_ref = DType(types_pb2.DT_QINT32_REF)
 bfloat16_ref = DType(types_pb2.DT_BFLOAT16_REF)
 float8_e5m2_ref = DType(types_pb2.DT_FLOAT8_E5M2_REF)
 float8_e4m3fn_ref = DType(types_pb2.DT_FLOAT8_E4M3FN_REF)
+float8_e4m3fnuz_ref = DType(types_pb2.DT_FLOAT8_E4M3FNUZ_REF)
+float8_e4m3b11fnuz_ref = DType(types_pb2.DT_FLOAT8_E4M3B11FNUZ_REF)
+float8_e5m2fnuz_ref = DType(types_pb2.DT_FLOAT8_E5M2FNUZ_REF)
+int4_ref = DType(types_pb2.DT_INT4_REF)
+uint4_ref = DType(types_pb2.DT_UINT4_REF)
 
 # Maintain an intern table so that we don't have to create a large
 # number of small objects.
@@ -516,6 +550,11 @@ _INTERN_TABLE = {
     types_pb2.DT_BFLOAT16: bfloat16,
     types_pb2.DT_FLOAT8_E5M2: float8_e5m2,
     types_pb2.DT_FLOAT8_E4M3FN: float8_e4m3fn,
+    types_pb2.DT_FLOAT8_E4M3FNUZ: float8_e4m3fnuz,
+    types_pb2.DT_FLOAT8_E4M3B11FNUZ: float8_e4m3b11fnuz,
+    types_pb2.DT_FLOAT8_E5M2FNUZ: float8_e5m2fnuz,
+    types_pb2.DT_INT4: int4,
+    types_pb2.DT_UINT4: uint4,
     types_pb2.DT_RESOURCE: resource,
     types_pb2.DT_VARIANT: variant,
     types_pb2.DT_HALF_REF: float16_ref,
@@ -541,6 +580,11 @@ _INTERN_TABLE = {
     types_pb2.DT_BFLOAT16_REF: bfloat16_ref,
     types_pb2.DT_FLOAT8_E5M2_REF: float8_e5m2_ref,
     types_pb2.DT_FLOAT8_E4M3FN_REF: float8_e4m3fn_ref,
+    types_pb2.DT_FLOAT8_E4M3FNUZ_REF: float8_e4m3fnuz_ref,
+    types_pb2.DT_FLOAT8_E4M3B11FNUZ_REF: float8_e4m3b11fnuz_ref,
+    types_pb2.DT_FLOAT8_E5M2FNUZ_REF: float8_e5m2fnuz_ref,
+    types_pb2.DT_INT4_REF: int4_ref,
+    types_pb2.DT_UINT4_REF: uint4_ref,
     types_pb2.DT_RESOURCE_REF: resource_ref,
     types_pb2.DT_VARIANT_REF: variant_ref,
 }
@@ -570,6 +614,11 @@ _TYPE_TO_STRING = {
     types_pb2.DT_BFLOAT16: "bfloat16",
     types_pb2.DT_FLOAT8_E5M2: "float8_e5m2",
     types_pb2.DT_FLOAT8_E4M3FN: "float8_e4m3fn",
+    types_pb2.DT_FLOAT8_E4M3FNUZ: "float8_e4m3fnuz",
+    types_pb2.DT_FLOAT8_E4M3B11FNUZ: "float8_e4m3b11fnuz",
+    types_pb2.DT_FLOAT8_E5M2FNUZ: "float8_e5m2fnuz",
+    types_pb2.DT_INT4: "int4",
+    types_pb2.DT_UINT4: "uint4",
     types_pb2.DT_RESOURCE: "resource",
     types_pb2.DT_VARIANT: "variant",
     types_pb2.DT_HALF_REF: "float16_ref",
@@ -595,6 +644,11 @@ _TYPE_TO_STRING = {
     types_pb2.DT_BFLOAT16_REF: "bfloat16_ref",
     types_pb2.DT_FLOAT8_E5M2_REF: "float8_e5m2_ref",
     types_pb2.DT_FLOAT8_E4M3FN_REF: "float8_e4m3fn_ref",
+    types_pb2.DT_FLOAT8_E4M3FNUZ_REF: "float8_e4m3fnuz_ref",
+    types_pb2.DT_FLOAT8_E4M3B11FNUZ_REF: "float8_e4m3b11fnuz_ref",
+    types_pb2.DT_FLOAT8_E5M2FNUZ_REF: "float8_e5m2fnuz_ref",
+    types_pb2.DT_INT4_REF: "int4_ref",
+    types_pb2.DT_UINT4_REF: "uint4_ref",
     types_pb2.DT_RESOURCE_REF: "resource_ref",
     types_pb2.DT_VARIANT_REF: "variant_ref",
 }
@@ -621,7 +675,15 @@ _np_qint16 = np.dtype([("qint16", np.int16)])
 _np_quint16 = np.dtype([("quint16", np.uint16)])
 _np_qint32 = np.dtype([("qint32", np.int32)])
 
-# _np_bfloat16, _np_float8* are defined by module imports.
+# _np_bfloat16, _np_float8*, _np_(u)int4 are defined by module imports.
+_np_bfloat16 = ml_dtypes.bfloat16
+_np_float8_e4m3fn = ml_dtypes.float8_e4m3fn
+_np_float8_e4m3fnuz = ml_dtypes.float8_e4m3fnuz
+_np_float8_e4m3b11fnuz = ml_dtypes.float8_e4m3b11fnuz
+_np_float8_e5m2 = ml_dtypes.float8_e5m2
+_np_float8_e5m2fnuz = ml_dtypes.float8_e5m2fnuz
+_np_int4 = ml_dtypes.int4
+_np_uint4 = ml_dtypes.uint4
 
 # Custom struct dtype for directly-fed ResourceHandles of supported type(s).
 np_resource = np.dtype([("resource", np.ubyte)])
@@ -653,6 +715,11 @@ _NP_TO_TF = {
     _np_bfloat16: bfloat16,
     _np_float8_e5m2: float8_e5m2,
     _np_float8_e4m3fn: float8_e4m3fn,
+    _np_float8_e4m3fnuz: float8_e4m3fnuz,
+    _np_float8_e4m3b11fnuz: float8_e4m3b11fnuz,
+    _np_float8_e5m2fnuz: float8_e5m2fnuz,
+    _np_int4: int4,
+    _np_uint4: uint4,
 }
 
 # Map (some) NumPy platform dtypes to TF ones using their fixed-width
@@ -673,101 +740,65 @@ for pdt in [
 TF_VALUE_DTYPES = set(_NP_TO_TF.values())
 
 _TF_TO_NP = {
-    types_pb2.DT_HALF:
-        np.float16,
-    types_pb2.DT_FLOAT:
-        np.float32,
-    types_pb2.DT_DOUBLE:
-        np.float64,
-    types_pb2.DT_INT32:
-        np.int32,
-    types_pb2.DT_UINT8:
-        np.uint8,
-    types_pb2.DT_UINT16:
-        np.uint16,
-    types_pb2.DT_UINT32:
-        np.uint32,
-    types_pb2.DT_UINT64:
-        np.uint64,
-    types_pb2.DT_INT16:
-        np.int16,
-    types_pb2.DT_INT8:
-        np.int8,
+    types_pb2.DT_HALF: np.float16,
+    types_pb2.DT_FLOAT: np.float32,
+    types_pb2.DT_DOUBLE: np.float64,
+    types_pb2.DT_INT32: np.int32,
+    types_pb2.DT_UINT8: np.uint8,
+    types_pb2.DT_UINT16: np.uint16,
+    types_pb2.DT_UINT32: np.uint32,
+    types_pb2.DT_UINT64: np.uint64,
+    types_pb2.DT_INT16: np.int16,
+    types_pb2.DT_INT8: np.int8,
     # NOTE(touts): For strings we use object as it supports variable length
     # strings.
-    types_pb2.DT_STRING:
-        object,
-    types_pb2.DT_COMPLEX64:
-        np.complex64,
-    types_pb2.DT_COMPLEX128:
-        np.complex128,
-    types_pb2.DT_INT64:
-        np.int64,
-    types_pb2.DT_BOOL:
-        np.bool_,
-    types_pb2.DT_QINT8:
-        _np_qint8,
-    types_pb2.DT_QUINT8:
-        _np_quint8,
-    types_pb2.DT_QINT16:
-        _np_qint16,
-    types_pb2.DT_QUINT16:
-        _np_quint16,
-    types_pb2.DT_QINT32:
-        _np_qint32,
-    types_pb2.DT_BFLOAT16:
-        _np_bfloat16,
-    types_pb2.DT_FLOAT8_E5M2:
-        _np_float8_e5m2,
-    types_pb2.DT_FLOAT8_E4M3FN:
-        _np_float8_e4m3fn,
+    types_pb2.DT_STRING: object,
+    types_pb2.DT_COMPLEX64: np.complex64,
+    types_pb2.DT_COMPLEX128: np.complex128,
+    types_pb2.DT_INT64: np.int64,
+    types_pb2.DT_BOOL: np.bool_,
+    types_pb2.DT_QINT8: _np_qint8,
+    types_pb2.DT_QUINT8: _np_quint8,
+    types_pb2.DT_QINT16: _np_qint16,
+    types_pb2.DT_QUINT16: _np_quint16,
+    types_pb2.DT_QINT32: _np_qint32,
+    types_pb2.DT_BFLOAT16: _np_bfloat16,
+    types_pb2.DT_FLOAT8_E5M2: _np_float8_e5m2,
+    types_pb2.DT_FLOAT8_E4M3FN: _np_float8_e4m3fn,
+    types_pb2.DT_FLOAT8_E4M3FNUZ: _np_float8_e4m3fnuz,
+    types_pb2.DT_FLOAT8_E4M3B11FNUZ: _np_float8_e4m3b11fnuz,
+    types_pb2.DT_FLOAT8_E5M2FNUZ: _np_float8_e5m2fnuz,
+    types_pb2.DT_INT4: _np_int4,
+    types_pb2.DT_UINT4: _np_uint4,
     # Ref types
-    types_pb2.DT_HALF_REF:
-        np.float16,
-    types_pb2.DT_FLOAT_REF:
-        np.float32,
-    types_pb2.DT_DOUBLE_REF:
-        np.float64,
-    types_pb2.DT_INT32_REF:
-        np.int32,
-    types_pb2.DT_UINT32_REF:
-        np.uint32,
-    types_pb2.DT_UINT8_REF:
-        np.uint8,
-    types_pb2.DT_UINT16_REF:
-        np.uint16,
-    types_pb2.DT_INT16_REF:
-        np.int16,
-    types_pb2.DT_INT8_REF:
-        np.int8,
-    types_pb2.DT_STRING_REF:
-        np.object_,
-    types_pb2.DT_COMPLEX64_REF:
-        np.complex64,
-    types_pb2.DT_COMPLEX128_REF:
-        np.complex128,
-    types_pb2.DT_INT64_REF:
-        np.int64,
-    types_pb2.DT_UINT64_REF:
-        np.uint64,
-    types_pb2.DT_BOOL_REF:
-        np.bool_,
-    types_pb2.DT_QINT8_REF:
-        _np_qint8,
-    types_pb2.DT_QUINT8_REF:
-        _np_quint8,
-    types_pb2.DT_QINT16_REF:
-        _np_qint16,
-    types_pb2.DT_QUINT16_REF:
-        _np_quint16,
-    types_pb2.DT_QINT32_REF:
-        _np_qint32,
-    types_pb2.DT_BFLOAT16_REF:
-        _np_bfloat16,
-    types_pb2.DT_FLOAT8_E5M2_REF:
-        _np_float8_e5m2,
-    types_pb2.DT_FLOAT8_E4M3FN_REF:
-        _np_float8_e4m3fn,
+    types_pb2.DT_HALF_REF: np.float16,
+    types_pb2.DT_FLOAT_REF: np.float32,
+    types_pb2.DT_DOUBLE_REF: np.float64,
+    types_pb2.DT_INT32_REF: np.int32,
+    types_pb2.DT_UINT32_REF: np.uint32,
+    types_pb2.DT_UINT8_REF: np.uint8,
+    types_pb2.DT_UINT16_REF: np.uint16,
+    types_pb2.DT_INT16_REF: np.int16,
+    types_pb2.DT_INT8_REF: np.int8,
+    types_pb2.DT_STRING_REF: np.object_,
+    types_pb2.DT_COMPLEX64_REF: np.complex64,
+    types_pb2.DT_COMPLEX128_REF: np.complex128,
+    types_pb2.DT_INT64_REF: np.int64,
+    types_pb2.DT_UINT64_REF: np.uint64,
+    types_pb2.DT_BOOL_REF: np.bool_,
+    types_pb2.DT_QINT8_REF: _np_qint8,
+    types_pb2.DT_QUINT8_REF: _np_quint8,
+    types_pb2.DT_QINT16_REF: _np_qint16,
+    types_pb2.DT_QUINT16_REF: _np_quint16,
+    types_pb2.DT_QINT32_REF: _np_qint32,
+    types_pb2.DT_BFLOAT16_REF: _np_bfloat16,
+    types_pb2.DT_FLOAT8_E5M2_REF: _np_float8_e5m2,
+    types_pb2.DT_FLOAT8_E4M3FN_REF: _np_float8_e4m3fn,
+    types_pb2.DT_FLOAT8_E4M3FNUZ_REF: _np_float8_e4m3fnuz,
+    types_pb2.DT_FLOAT8_E4M3B11FNUZ_REF: _np_float8_e4m3b11fnuz,
+    types_pb2.DT_FLOAT8_E5M2FNUZ_REF: _np_float8_e5m2fnuz,
+    types_pb2.DT_INT4_REF: _np_int4,
+    types_pb2.DT_UINT4_REF: _np_uint4,
 }
 
 _QUANTIZED_DTYPES_NO_REF = frozenset([qint8, quint8, qint16, quint16, qint32])

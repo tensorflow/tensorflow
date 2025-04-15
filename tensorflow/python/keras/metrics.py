@@ -68,11 +68,9 @@ from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 
-@keras_export('keras.metrics.Metric')
 class Metric(base_layer.Layer, metaclass=abc.ABCMeta):
   """Encapsulates metric logic and state.
 
@@ -451,7 +449,6 @@ class Reduce(Metric):
           'reduction [%s] not implemented' % self.reduction)
 
 
-@keras_export('keras.metrics.Sum')
 class Sum(Reduce):
   """Computes the (weighted) sum of the given values.
 
@@ -488,7 +485,6 @@ class Sum(Reduce):
                               name=name, dtype=dtype)
 
 
-@keras_export('keras.metrics.Mean')
 class Mean(Reduce):
   """Computes the (weighted) mean of the given values.
 
@@ -530,7 +526,6 @@ class Mean(Reduce):
         reduction=metrics_utils.Reduction.WEIGHTED_MEAN, name=name, dtype=dtype)
 
 
-@keras_export('keras.metrics.MeanRelativeError')
 class MeanRelativeError(Mean):
   """Computes the mean relative error by normalizing with the given values.
 
@@ -610,7 +605,6 @@ class MeanRelativeError(Mean):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.metrics.MeanMetricWrapper')
 class MeanMetricWrapper(Mean):
   """Wraps a stateless metric function with the Mean metric.
 
@@ -700,7 +694,6 @@ class MeanMetricWrapper(Mean):
     return super(MeanMetricWrapper, cls).from_config(config)
 
 
-@keras_export('keras.metrics.Accuracy')
 class Accuracy(MeanMetricWrapper):
   """Calculates how often predictions equal labels.
 
@@ -742,7 +735,6 @@ class Accuracy(MeanMetricWrapper):
     super(Accuracy, self).__init__(accuracy, name, dtype=dtype)
 
 
-@keras_export('keras.metrics.BinaryAccuracy')
 class BinaryAccuracy(MeanMetricWrapper):
   """Calculates how often predictions match binary labels.
 
@@ -787,7 +779,6 @@ class BinaryAccuracy(MeanMetricWrapper):
         binary_accuracy, name, dtype=dtype, threshold=threshold)
 
 
-@keras_export('keras.metrics.CategoricalAccuracy')
 class CategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions match one-hot labels.
 
@@ -839,7 +830,6 @@ class CategoricalAccuracy(MeanMetricWrapper):
         categorical_accuracy, name, dtype=dtype)
 
 
-@keras_export('keras.metrics.SparseCategoricalAccuracy')
 class SparseCategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions match integer labels.
 
@@ -890,7 +880,6 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
         sparse_categorical_accuracy, name, dtype=dtype)
 
 
-@keras_export('keras.metrics.TopKCategoricalAccuracy')
 class TopKCategoricalAccuracy(MeanMetricWrapper):
   """Computes how often targets are in the top `K` predictions.
 
@@ -929,7 +918,6 @@ class TopKCategoricalAccuracy(MeanMetricWrapper):
         top_k_categorical_accuracy, name, dtype=dtype, k=k)
 
 
-@keras_export('keras.metrics.SparseTopKCategoricalAccuracy')
 class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
   """Computes how often integer targets are in the top `K` predictions.
 
@@ -1037,7 +1025,6 @@ class _ConfusionMatrixConditionCount(Metric):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.metrics.FalsePositives')
 class FalsePositives(_ConfusionMatrixConditionCount):
   """Calculates the number of false positives.
 
@@ -1086,7 +1073,6 @@ class FalsePositives(_ConfusionMatrixConditionCount):
         dtype=dtype)
 
 
-@keras_export('keras.metrics.FalseNegatives')
 class FalseNegatives(_ConfusionMatrixConditionCount):
   """Calculates the number of false negatives.
 
@@ -1135,7 +1121,6 @@ class FalseNegatives(_ConfusionMatrixConditionCount):
         dtype=dtype)
 
 
-@keras_export('keras.metrics.TrueNegatives')
 class TrueNegatives(_ConfusionMatrixConditionCount):
   """Calculates the number of true negatives.
 
@@ -1184,7 +1169,6 @@ class TrueNegatives(_ConfusionMatrixConditionCount):
         dtype=dtype)
 
 
-@keras_export('keras.metrics.TruePositives')
 class TruePositives(_ConfusionMatrixConditionCount):
   """Calculates the number of true positives.
 
@@ -1233,7 +1217,6 @@ class TruePositives(_ConfusionMatrixConditionCount):
         dtype=dtype)
 
 
-@keras_export('keras.metrics.Precision')
 class Precision(Metric):
   """Computes the precision of the predictions with respect to the labels.
 
@@ -1375,7 +1358,6 @@ class Precision(Metric):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.metrics.Recall')
 class Recall(Metric):
   """Computes the recall of the predictions with respect to the labels.
 
@@ -1611,7 +1593,6 @@ class SensitivitySpecificityBase(Metric, metaclass=abc.ABCMeta):
     return array_ops.where_v2(feasible_exists, max_dependent, 0.0)
 
 
-@keras_export('keras.metrics.SensitivityAtSpecificity')
 class SensitivityAtSpecificity(SensitivitySpecificityBase):
   """Computes best sensitivity where specificity is >= specified value.
 
@@ -1705,7 +1686,6 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.metrics.SpecificityAtSensitivity')
 class SpecificityAtSensitivity(SensitivitySpecificityBase):
   """Computes best specificity where sensitivity is >= specified value.
 
@@ -1797,7 +1777,6 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.metrics.PrecisionAtRecall')
 class PrecisionAtRecall(SensitivitySpecificityBase):
   """Computes best precision where recall is >= specified value.
 
@@ -1878,7 +1857,6 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.metrics.RecallAtPrecision')
 class RecallAtPrecision(SensitivitySpecificityBase):
   """Computes best recall where precision is >= specified value.
 
@@ -1963,7 +1941,6 @@ class RecallAtPrecision(SensitivitySpecificityBase):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.metrics.AUC')
 class AUC(Metric):
   """Approximates the AUC (Area under the curve) of the ROC or PR curves.
 
@@ -2003,46 +1980,44 @@ class AUC(Metric):
   Use `sample_weight` of 0 to mask values.
 
   Args:
-    num_thresholds: (Optional) Defaults to 200. The number of thresholds to
-      use when discretizing the roc curve. Values must be > 1.
+    num_thresholds: (Optional) Defaults to 200. The number of thresholds to use
+      when discretizing the roc curve. Values must be > 1.
     curve: (Optional) Specifies the name of the curve to be computed, 'ROC'
       [default] or 'PR' for the Precision-Recall-curve.
     summation_method: (Optional) Specifies the [Riemann summation method](
-        https://en.wikipedia.org/wiki/Riemann_sum) used.
-        'interpolation' (default) applies mid-point summation scheme for `ROC`.
-        For PR-AUC, interpolates (true/false) positives but not the ratio that
-        is precision (see Davis & Goadrich 2006 for details);
-        'minoring' applies left summation
-        for increasing intervals and right summation for decreasing intervals;
-        'majoring' does the opposite.
+        https://en.wikipedia.org/wiki/Riemann_sum) used. 'interpolation'
+          (default) applies mid-point summation scheme for `ROC`. For PR-AUC,
+          interpolates (true/false) positives but not the ratio that is
+          precision (see Davis & Goadrich 2006 for details); 'minoring' applies
+          left summation for increasing intervals and right summation for
+          decreasing intervals; 'majoring' does the opposite.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
     thresholds: (Optional) A list of floating point values to use as the
       thresholds for discretizing the curve. If set, the `num_thresholds`
       parameter is ignored. Values should be in [0, 1]. Endpoint thresholds
-      equal to {-epsilon, 1+epsilon} for a small positive epsilon value will
-      be automatically included with these to correctly handle predictions
-      equal to exactly 0 or 1.
-    multi_label: boolean indicating whether multilabel data should be
-      treated as such, wherein AUC is computed separately for each label and
-      then averaged across labels, or (when False) if the data should be
-      flattened into a single label before AUC computation. In the latter
-      case, when multilabel data is passed to AUC, each label-prediction pair
-      is treated as an individual data point. Should be set to False for
-      multi-class data.
+      equal to {-epsilon, 1+epsilon} for a small positive epsilon value will be
+      automatically included with these to correctly handle predictions equal to
+      exactly 0 or 1.
+    multi_label: boolean indicating whether multilabel data should be treated as
+      such, wherein AUC is computed separately for each label and then averaged
+      across labels, or (when False) if the data should be flattened into a
+      single label before AUC computation. In the latter case, when multilabel
+      data is passed to AUC, each label-prediction pair is treated as an
+      individual data point. Should be set to False for multi-class data.
     num_labels: (Optional) The number of labels, used when `multi_label` is
       True. If `num_labels` is not specified, then state variables get created
       on the first call to `update_state`.
     label_weights: (Optional) list, array, or tensor of non-negative weights
-      used to compute AUCs for multilabel data. When `multi_label` is True,
-      the weights are applied to the individual label AUCs when they are
-      averaged to produce the multi-label AUC. When it's False, they are used
-      to weight the individual label predictions in computing the confusion
-      matrix on the flattened data. Note that this is unlike class_weights in
-      that class_weights weights the example depending on the value of its
-      label, whereas label_weights depends only on the index of that label
-      before flattening; therefore `label_weights` should not be used for
-      multi-class data.
+      used to compute AUCs for multilabel data. When `multi_label` is True, the
+      weights are applied to the individual label AUCs when they are averaged to
+      produce the multi-label AUC. When it's False, they are used to weight the
+      individual label predictions in computing the confusion matrix on the
+      flattened data. Note that this is unlike class_weights in that
+      class_weights weights the example depending on the value of its label,
+      whereas label_weights depends only on the index of that label before
+      flattening; therefore `label_weights` should not be used for multi-class
+      data.
     from_logits: boolean indicating whether the predictions (`y_pred` in
       `update_state`) are probabilities or sigmoid logits. As a rule of thumb,
       when using a keras loss, the `from_logits` constructor argument of the
@@ -2068,12 +2043,12 @@ class AUC(Metric):
   Usage with `compile()` API:
 
   ```python
-  # Reports the AUC of a model outputing a probability.
+  # Reports the AUC of a model outputting a probability.
   model.compile(optimizer='sgd',
                 loss=tf.keras.losses.BinaryCrossentropy(),
                 metrics=[tf.keras.metrics.AUC()])
 
-  # Reports the AUC of a model outputing a logit.
+  # Reports the AUC of a model outputting a logit.
   model.compile(optimizer='sgd',
                 loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
                 metrics=[tf.keras.metrics.AUC(from_logits=True)])
@@ -2444,7 +2419,6 @@ class AUC(Metric):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.metrics.CosineSimilarity')
 class CosineSimilarity(MeanMetricWrapper):
   """Computes the cosine similarity between the labels and predictions.
 
@@ -2494,7 +2468,6 @@ class CosineSimilarity(MeanMetricWrapper):
         cosine_similarity, name, dtype=dtype, axis=axis)
 
 
-@keras_export('keras.metrics.MeanAbsoluteError')
 class MeanAbsoluteError(MeanMetricWrapper):
   """Computes the mean absolute error between the labels and predictions.
 
@@ -2530,7 +2503,6 @@ class MeanAbsoluteError(MeanMetricWrapper):
         mean_absolute_error, name, dtype=dtype)
 
 
-@keras_export('keras.metrics.MeanAbsolutePercentageError')
 class MeanAbsolutePercentageError(MeanMetricWrapper):
   """Computes the mean absolute percentage error between `y_true` and `y_pred`.
 
@@ -2566,7 +2538,6 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
         mean_absolute_percentage_error, name, dtype=dtype)
 
 
-@keras_export('keras.metrics.MeanSquaredError')
 class MeanSquaredError(MeanMetricWrapper):
   """Computes the mean squared error between `y_true` and `y_pred`.
 
@@ -2602,7 +2573,6 @@ class MeanSquaredError(MeanMetricWrapper):
         mean_squared_error, name, dtype=dtype)
 
 
-@keras_export('keras.metrics.MeanSquaredLogarithmicError')
 class MeanSquaredLogarithmicError(MeanMetricWrapper):
   """Computes the mean squared logarithmic error between `y_true` and `y_pred`.
 
@@ -2638,7 +2608,6 @@ class MeanSquaredLogarithmicError(MeanMetricWrapper):
         mean_squared_logarithmic_error, name, dtype=dtype)
 
 
-@keras_export('keras.metrics.Hinge')
 class Hinge(MeanMetricWrapper):
   """Computes the hinge metric between `y_true` and `y_pred`.
 
@@ -2673,7 +2642,6 @@ class Hinge(MeanMetricWrapper):
     super(Hinge, self).__init__(hinge, name, dtype=dtype)
 
 
-@keras_export('keras.metrics.SquaredHinge')
 class SquaredHinge(MeanMetricWrapper):
   """Computes the squared hinge metric between `y_true` and `y_pred`.
 
@@ -2711,7 +2679,6 @@ class SquaredHinge(MeanMetricWrapper):
     super(SquaredHinge, self).__init__(squared_hinge, name, dtype=dtype)
 
 
-@keras_export('keras.metrics.CategoricalHinge')
 class CategoricalHinge(MeanMetricWrapper):
   """Computes the categorical hinge metric between `y_true` and `y_pred`.
 
@@ -2746,7 +2713,6 @@ class CategoricalHinge(MeanMetricWrapper):
     super(CategoricalHinge, self).__init__(categorical_hinge, name, dtype=dtype)
 
 
-@keras_export('keras.metrics.RootMeanSquaredError')
 class RootMeanSquaredError(Mean):
   """Computes root mean squared error metric between `y_true` and `y_pred`.
 
@@ -2801,7 +2767,6 @@ class RootMeanSquaredError(Mean):
     return math_ops.sqrt(math_ops.div_no_nan(self.total, self.count))
 
 
-@keras_export('keras.metrics.LogCoshError')
 class LogCoshError(MeanMetricWrapper):
   """Computes the logarithm of the hyperbolic cosine of the prediction error.
 
@@ -2837,7 +2802,6 @@ class LogCoshError(MeanMetricWrapper):
     super(LogCoshError, self).__init__(logcosh, name, dtype=dtype)
 
 
-@keras_export('keras.metrics.Poisson')
 class Poisson(MeanMetricWrapper):
   """Computes the Poisson metric between `y_true` and `y_pred`.
 
@@ -2873,7 +2837,6 @@ class Poisson(MeanMetricWrapper):
     super(Poisson, self).__init__(poisson, name, dtype=dtype)
 
 
-@keras_export('keras.metrics.KLDivergence')
 class KLDivergence(MeanMetricWrapper):
   """Computes Kullback-Leibler divergence metric between `y_true` and `y_pred`.
 
@@ -2910,7 +2873,6 @@ class KLDivergence(MeanMetricWrapper):
         kullback_leibler_divergence, name, dtype=dtype)
 
 
-@keras_export('keras.metrics.MeanIoU')
 class MeanIoU(Metric):
   """Computes the mean Intersection-Over-Union metric.
 
@@ -3041,7 +3003,6 @@ class MeanIoU(Metric):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.metrics.MeanTensor')
 class MeanTensor(Metric):
   """Computes the element-wise (weighted) mean of the given tensors.
 
@@ -3165,7 +3126,6 @@ class MeanTensor(Metric):
           [(v, np.zeros(self._shape.as_list())) for v in self.variables])
 
 
-@keras_export('keras.metrics.BinaryCrossentropy')
 class BinaryCrossentropy(MeanMetricWrapper):
   """Computes the crossentropy metric between the labels and predictions.
 
@@ -3218,7 +3178,6 @@ class BinaryCrossentropy(MeanMetricWrapper):
         label_smoothing=label_smoothing)
 
 
-@keras_export('keras.metrics.CategoricalCrossentropy')
 class CategoricalCrossentropy(MeanMetricWrapper):
   """Computes the crossentropy metric between the labels and predictions.
 
@@ -3282,7 +3241,6 @@ class CategoricalCrossentropy(MeanMetricWrapper):
         label_smoothing=label_smoothing)
 
 
-@keras_export('keras.metrics.SparseCategoricalCrossentropy')
 class SparseCategoricalCrossentropy(MeanMetricWrapper):
   """Computes the crossentropy metric between the labels and predictions.
 
@@ -3421,7 +3379,6 @@ def accuracy(y_true, y_pred):
   return math_ops.cast(math_ops.equal(y_true, y_pred), backend.floatx())
 
 
-@keras_export('keras.metrics.binary_accuracy')
 @dispatch.add_dispatch_support
 def binary_accuracy(y_true, y_pred, threshold=0.5):
   """Calculates how often predictions match binary labels.
@@ -3449,7 +3406,6 @@ def binary_accuracy(y_true, y_pred, threshold=0.5):
   return backend.mean(math_ops.equal(y_true, y_pred), axis=-1)
 
 
-@keras_export('keras.metrics.categorical_accuracy')
 @dispatch.add_dispatch_support
 def categorical_accuracy(y_true, y_pred):
   """Calculates how often predictions match one-hot labels.
@@ -3478,7 +3434,6 @@ def categorical_accuracy(y_true, y_pred):
       backend.floatx())
 
 
-@keras_export('keras.metrics.sparse_categorical_accuracy')
 @dispatch.add_dispatch_support
 def sparse_categorical_accuracy(y_true, y_pred):
   """Calculates how often predictions match integer labels.
@@ -3519,7 +3474,6 @@ def sparse_categorical_accuracy(y_true, y_pred):
   return math_ops.cast(math_ops.equal(y_true, y_pred), backend.floatx())
 
 
-@keras_export('keras.metrics.top_k_categorical_accuracy')
 @dispatch.add_dispatch_support
 def top_k_categorical_accuracy(y_true, y_pred, k=5):
   """Computes how often targets are in the top `K` predictions.
@@ -3546,7 +3500,6 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
           y_pred, math_ops.argmax(y_true, axis=-1), k), backend.floatx())
 
 
-@keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
 @dispatch.add_dispatch_support
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   """Computes how often integer targets are in the top `K` predictions.
@@ -3627,7 +3580,6 @@ def clone_metrics(metrics):
   return nest.map_structure(clone_metric, metrics)
 
 
-@keras_export('keras.metrics.serialize')
 def serialize(metric):
   """Serializes metric function or `Metric` instance.
 
@@ -3640,7 +3592,6 @@ def serialize(metric):
   return serialize_keras_object(metric)
 
 
-@keras_export('keras.metrics.deserialize')
 def deserialize(config, custom_objects=None):
   """Deserializes a serialized metric class/function instance.
 
@@ -3659,7 +3610,6 @@ def deserialize(config, custom_objects=None):
       printable_module_name='metric function')
 
 
-@keras_export('keras.metrics.get')
 def get(identifier):
   """Retrieves a Keras metric as a `function`/`Metric` class instance.
 

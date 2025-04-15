@@ -22,6 +22,7 @@ from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -58,7 +59,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
     with ops.Graph().as_default():
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q")
-    self.assertTrue(isinstance(q.accumulator_ref, ops.Tensor))
+    self.assertTrue(isinstance(q.accumulator_ref, tensor.Tensor))
     self.assertProtoEquals(
         """
       name:'Q' op:'SparseConditionalAccumulator'
@@ -81,7 +82,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
           dtypes_lib.float32,
           name="Q",
           shape=tensor_shape.TensorShape([1, 5, 2, 8]))
-    self.assertTrue(isinstance(q.accumulator_ref, ops.Tensor))
+    self.assertTrue(isinstance(q.accumulator_ref, tensor.Tensor))
     self.assertProtoEquals(
         """
       name:'Q' op:'SparseConditionalAccumulator'

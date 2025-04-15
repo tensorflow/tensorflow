@@ -30,9 +30,9 @@ def smoketest():
     }
   """
   target = stablehlo.get_current_version()
-  artifact = stablehlo.serialize_portable_artifact(assembly, target)
-  deserialized = stablehlo.deserialize_portable_artifact(artifact)
-  rountrip = stablehlo.serialize_portable_artifact(deserialized, target)
+  artifact = stablehlo.serialize_portable_artifact_str(assembly, target)
+  deserialized = stablehlo.deserialize_portable_artifact_str(artifact)
+  rountrip = stablehlo.serialize_portable_artifact_str(deserialized, target)
   assert artifact == rountrip
 
 

@@ -38,8 +38,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status FillServerDef(const string& cluster_spec, const string& job_name,
-                     int task_index, ServerDef* options) {
+absl::Status FillServerDef(const string& cluster_spec, const string& job_name,
+                           int task_index, ServerDef* options) {
   options->set_protocol("grpc");
   options->set_job_name(job_name);
   options->set_task_index(task_index);
@@ -56,7 +56,7 @@ Status FillServerDef(const string& cluster_spec, const string& job_name,
     const string& job_name = job_pieces[0];
     job_def->set_name(job_name);
     // Does a bit more validation of the tasks_per_replica.
-    const StringPiece spec = job_pieces[1];
+    const absl::string_view spec = job_pieces[1];
     // job_str is of form <job_name>|<host_ports>.
     const std::vector<string> host_ports = str_util::Split(spec, ';');
     for (size_t i = 0; i < host_ports.size(); ++i) {
@@ -78,7 +78,7 @@ Status FillServerDef(const string& cluster_spec, const string& job_name,
                                    " is invalid (job \"", options->job_name(),
                                    "\" contains ", my_num_tasks, " tasks");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -113,8 +113,8 @@ int main(int argc, char* argv[]) {
     return -1;
   }
   tensorflow::ServerDef server_def;
-  tensorflow::Status s = tensorflow::FillServerDef(cluster_spec, job_name,
-                                                   task_index, &server_def);
+  absl::Status s = tensorflow::FillServerDef(cluster_spec, job_name, task_index,
+                                             &server_def);
   if (!s.ok()) {
     std::cerr << "ERROR: " << s.message() << std::endl;
     Usage(argv[0]);

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/tsl/framework/allocator.h"
+#include "xla/tsl/framework/allocator.h"
 
 namespace tensorflow {
 

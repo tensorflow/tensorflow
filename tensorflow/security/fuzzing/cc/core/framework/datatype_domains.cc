@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/security/fuzzing/cc/core/framework/datatype_domains.h"
 
+#include "fuzztest/fuzztest.h"
+#include "tensorflow/core/framework/types.pb.h"
+
 namespace tensorflow::fuzzing {
 
 fuzztest::Domain<DataType> AnyValidDataType() {

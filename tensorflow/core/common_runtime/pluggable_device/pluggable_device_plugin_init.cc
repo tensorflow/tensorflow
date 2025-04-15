@@ -13,41 +13,45 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <memory>
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
 #include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/pjrt_device_context.h"
 #include "tensorflow/compiler/jit/xla_device.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/pjrt_api.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/pjrt_compile_on_demand_op.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-static Status InitDeviceModule(void* dso_handle) {
+static absl::Status InitDeviceModule(void* dso_handle) {
   void* dso_symbol;
   tensorflow::Env* env = tensorflow::Env::Default();
-  Status status =
+  absl::Status status =
       env->GetSymbolFromLibrary(dso_handle, "SE_InitPlugin", &dso_symbol);
 
   if (absl::IsNotFound(status)) {
     VLOG(1) << "Device module not found.";
-    return OkStatus();
-  } else if (status != OkStatus()) {
+    return absl::OkStatus();
+  } else if (status != absl::OkStatus()) {
     return status;
   }
   auto init_fn = reinterpret_cast<stream_executor::SEInitPluginFn>(dso_symbol);
@@ -67,20 +71,21 @@ static Status InitDeviceModule(void* dso_handle) {
       /*is_pluggable_device=*/true));  // Register the Copy tensor.
 
   VLOG(1) << "Successfully initialized Device module.";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-static Status InitNextPluggableDeviceModule(void* dso_handle) {
+typedef const PJRT_Api* (*PjrtApiInitFn)();
+static absl::Status InitNextPluggableDeviceModule(void* dso_handle) {
   void* dso_symbol;
   tensorflow::Env* env = tensorflow::Env::Default();
 
   // Loads the next pluggable device.
-  Status status =
+  absl::Status status =
       env->GetSymbolFromLibrary(dso_handle, "TFNPD_InitPlugin", &dso_symbol);
   if (absl::IsNotFound(status)) {
     VLOG(1) << "Next pluggable device module not found.";
-    return OkStatus();
-  } else if (status != OkStatus()) {
+    return absl::OkStatus();
+  } else if (status != absl::OkStatus()) {
     return status;
   }
   auto init_fn = reinterpret_cast<TFNPDInitPluginFn>(dso_symbol);
@@ -96,12 +101,17 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
   if (absl::IsNotFound(status)) {
     VLOG(1) << "Loading PJRT plugin failed for " << device_type << ": "
             << status.message();
-    return OkStatus();
+    return absl::OkStatus();
   } else if (!status.ok()) {
     return status;
   }
-  auto init_pjrt_fn = reinterpret_cast<pjrt::PjrtApiInitFn>(dso_symbol);
-  TF_RETURN_IF_ERROR(pjrt::InitPjrtPlugin(init_pjrt_fn, device_type));
+  auto init_pjrt_fn = reinterpret_cast<PjrtApiInitFn>(dso_symbol);
+  TF_RETURN_IF_ERROR(pjrt::SetPjrtApi(device_type, init_pjrt_fn()));
+  TF_ASSIGN_OR_RETURN(bool is_pjrt_plugin_initialized,
+                      pjrt::IsPjrtPluginInitialized(device_type));
+  if (!is_pjrt_plugin_initialized) {
+    TF_RETURN_IF_ERROR(pjrt::InitializePjrtPlugin(device_type));
+  }
 
   DeviceFactory::Register(device_type,
                           std::make_unique<NextPluggableDeviceFactory>(
@@ -128,40 +138,44 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
             << device_type;
   }
 
+  TF_RETURN_IF_ERROR(CopyTensor::Register(
+      DeviceType(device_type), DeviceType(device_type), PjRtDeviceToDeviceCopy,
+      /*is_pluggable_device=*/true));  // Register the Copy tensor.
+
   VLOG(1) << "Successfully initialized NextPluggableDevice module.";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-static Status InitGraphModule(void* dso_handle) {
+static absl::Status InitGraphModule(void* dso_handle) {
   void* dso_symbol;
   tensorflow::Env* env = tensorflow::Env::Default();
-  Status status =
+  absl::Status status =
       env->GetSymbolFromLibrary(dso_handle, "TF_InitGraph", &dso_symbol);
 
   if (absl::IsNotFound(status)) {
     VLOG(1) << "Graph module not found.";
-    return OkStatus();
-  } else if (status != OkStatus()) {
+    return absl::OkStatus();
+  } else if (status != absl::OkStatus()) {
     return status;
   }
   auto init_fn = reinterpret_cast<grappler::TFInitGraphPluginFn>(dso_symbol);
   TF_RETURN_IF_ERROR(grappler::InitGraphPlugin(init_fn));
 
   VLOG(1) << "Successfully initialized Graph module.";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 typedef void (*TFKernelInitFn)();
-static Status InitKernelModule(void* dso_handle) {
+static absl::Status InitKernelModule(void* dso_handle) {
   void* dso_symbol;
   tensorflow::Env* env = tensorflow::Env::Default();
-  Status status =
+  absl::Status status =
       env->GetSymbolFromLibrary(dso_handle, "TF_InitKernel", &dso_symbol);
 
   if (absl::IsNotFound(status)) {
     VLOG(1) << "Kernel module not found.";
-    return OkStatus();
-  } else if (status != OkStatus()) {
+    return absl::OkStatus();
+  } else if (status != absl::OkStatus()) {
     return status;
   }
 
@@ -169,20 +183,20 @@ static Status InitKernelModule(void* dso_handle) {
   init_fn();
 
   VLOG(1) << "Successfully initialized Kernel module.";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-static Status InitProfilerModule(void* dso_handle) {
+static absl::Status InitProfilerModule(void* dso_handle) {
   void* dso_symbol;
   tensorflow::Env* env = tensorflow::Env::Default();
 
-  Status status =
+  absl::Status status =
       env->GetSymbolFromLibrary(dso_handle, "TF_InitProfiler", &dso_symbol);
 
   if (absl::IsNotFound(status)) {
     VLOG(1) << "Profiler module not found.";
-    return OkStatus();
-  } else if (status != OkStatus()) {
+    return absl::OkStatus();
+  } else if (status != absl::OkStatus()) {
     return status;
   }
 
@@ -190,10 +204,10 @@ static Status InitProfilerModule(void* dso_handle) {
   TF_RETURN_IF_ERROR(profiler::InitPluginProfiler(init_fn));
 
   VLOG(1) << "Successfully initialized Profiler module";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RegisterPluggableDevicePlugin(void* dso_handle) {
+absl::Status RegisterPluggableDevicePlugin(void* dso_handle) {
   // All modules are optional. Only return an error when a module is found but
   // has issues in loading / initializing.
   // Step 1 Init Device Module.
@@ -209,7 +223,7 @@ Status RegisterPluggableDevicePlugin(void* dso_handle) {
   // Step 4 Init Profiler Module.
   TF_RETURN_IF_ERROR(InitProfilerModule(dso_handle));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Cast"
   input_arg {
     name: "x"

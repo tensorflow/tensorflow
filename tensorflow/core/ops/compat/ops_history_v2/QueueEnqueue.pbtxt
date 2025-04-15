@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "QueueEnqueue"
   input_arg {
     name: "handle"

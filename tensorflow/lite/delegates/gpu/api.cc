@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/api.h"
 
+#include <cstdint>
 #include <variant>
 
 namespace tflite {

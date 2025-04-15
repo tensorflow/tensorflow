@@ -242,12 +242,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     return hash(self.as_proto().SerializeToString(deterministic=True))
 
   def __repr__(self) -> str:
-    dims = [tuple(self[dim_name]) for dim_name in self.dim_names]
-    return (
-        f'<Mesh object with dims={dims}, device_type="{self.device_type()}", '
-        f'num_local_devices={self.num_local_devices()}), '
-        f'size={self.size}>'
-    )
+    return f'Mesh.from_string({self.to_string()})'
 
   # TODO(panzf): change to pybind11 pickle implementation in the last step
   def __reduce__(self):
@@ -349,6 +344,9 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     return mapping
 
 
+LayoutType = _pywrap_dtensor_device.LayoutType
+
+
 # TODO(hthu): Consider making this class immutable.
 @tf_export('experimental.dtensor.Layout', v1=[])
 class Layout(_pywrap_dtensor_device.Layout):
@@ -431,7 +429,9 @@ class Layout(_pywrap_dtensor_device.Layout):
              'valid mesh dimension or UNSHARDED.').format(
                  dim_sharding=dim_sharding))
 
-    super().__init__(sharding_specs=sharding_specs, mesh=mesh)
+    super().__init__(
+        type=LayoutType.STATIC, sharding_specs=sharding_specs, mesh=mesh
+    )
 
   @classmethod
   def _new_object(cls, *args, **kwargs):
@@ -442,7 +442,7 @@ class Layout(_pywrap_dtensor_device.Layout):
     return self
 
   def __repr__(self) -> str:
-    return f'Layout(sharding_specs={self.sharding_specs}, mesh={self.mesh})'
+    return f'Layout.from_string({self.to_string()})'
 
   def __hash__(self):
     return hash(self.as_proto().SerializeToString(deterministic=True))
@@ -491,6 +491,16 @@ class Layout(_pywrap_dtensor_device.Layout):
   def from_string(cls, layout_str: str) -> 'Layout':
     """Creates an instance from a human-readable string."""
     return cls._new_object(layout_str=layout_str)
+
+  def to_parted(self) -> 'Layout':
+    """Returns a "parted" layout from a static layout.
+
+    A parted layout contains axes that are treated as independent by most of
+    SPMD expanders.
+
+    FIXME(b/285905569): The exact semantics is still being investigated.
+    """
+    return Layout._new_object(layout=super().to_parted())
 
   @classmethod
   def inner_sharded(cls, mesh: Mesh, inner_dim: str, rank: int) -> 'Layout':

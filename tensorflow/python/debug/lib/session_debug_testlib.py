@@ -309,8 +309,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertIn(results.v.op.type, results.dump.node_op_type(results.v_name))
     self.assertIn(results.w.op.type, results.dump.node_op_type(results.w_name))
 
-    with self.assertRaisesRegexp(
-        ValueError, r"None of the .* device\(s\) has a node named "):
+    with self.assertRaisesRegex(
+        ValueError, r"None of the .* device\(s\) has a node named "
+    ):
       results.dump.node_op_type("foo_bar")
 
   def testDumpStringTensorsWorks(self):
@@ -742,8 +743,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     # Test node_device().
     self.assertEqual(self._main_device, dump.node_device(u_name))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "does not exist in partition graphs"):
+    with self.assertRaisesRegex(
+        ValueError, "does not exist in partition graphs"
+    ):
       dump.node_device(u_name + "foo")
 
     # Test node_exists().
@@ -771,8 +773,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(u_attr["shape"].shape.dim))
     self.assertEqual(2, u_attr["shape"].shape.dim[0].size)
 
-    with self.assertRaisesRegexp(
-        ValueError, r"None of the .* device\(s\) has a node named "):
+    with self.assertRaisesRegex(
+        ValueError, r"None of the .* device\(s\) has a node named "
+    ):
       dump.node_attributes("foo")
 
   def testGraphStructureLookupGivesDebugWatchKeys(self):
@@ -825,11 +828,13 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual([], dump.node_recipients(w_name, is_control=True))
 
     # Test errors raised on invalid node names.
-    with self.assertRaisesRegexp(
-        ValueError, r"None of the .* device\(s\) has a node named "):
+    with self.assertRaisesRegex(
+        ValueError, r"None of the .* device\(s\) has a node named "
+    ):
       dump.node_inputs(u_name + "foo")
-    with self.assertRaisesRegexp(
-        ValueError, r"None of the .* device\(s\) has a node named "):
+    with self.assertRaisesRegex(
+        ValueError, r"None of the .* device\(s\) has a node named "
+    ):
       dump.node_recipients(u_name + "foo")
 
     # Test transitive_inputs().
@@ -840,8 +845,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(
         set([u_name, u_read_name, v_name]), set(dump.transitive_inputs(w_name)))
 
-    with self.assertRaisesRegexp(
-        ValueError, r"None of the .* device\(s\) has a node named "):
+    with self.assertRaisesRegex(
+        ValueError, r"None of the .* device\(s\) has a node named "
+    ):
       dump.transitive_inputs(u_name + "foo")
 
   def testGraphStructureLookupWithoutPartitionGraphsDoesNotErrorOut(self):
@@ -945,7 +951,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       # Load the dump directory again. Now a ValueError is expected to be
       # raised due to the timestamp swap.
-      with self.assertRaisesRegexp(ValueError, "Causality violated"):
+      with self.assertRaisesRegex(ValueError, "Causality violated"):
         dump = debug_data.DebugDumpDir(
             self._dump_root, partition_graphs=run_metadata.partition_graphs)
 
@@ -1325,10 +1331,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
           sess.graph,
           debug_ops=["DebugNumericSummary(foo=1.0)"],
           debug_urls=self._debug_urls())
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.FailedPreconditionError,
           r"1 attribute key\(s\) were not valid for debug node "
-          r"__dbg_.:0_0_DebugNumericSummary: foo"):
+          r"__dbg_.:0_0_DebugNumericSummary: foo",
+      ):
         sess.run(y, options=run_options, run_metadata=run_metadata)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -1337,10 +1344,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
           sess.graph,
           debug_ops=["DebugNumericSummary(foo=1.0; bar=false)"],
           debug_urls=self._debug_urls())
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.FailedPreconditionError,
           r"2 attribute key\(s\) were not valid for debug node "
-          r"__dbg_.:0_0_DebugNumericSummary:"):
+          r"__dbg_.:0_0_DebugNumericSummary:",
+      ):
         sess.run(y, options=run_options, run_metadata=run_metadata)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -1349,10 +1357,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
           sess.graph,
           debug_ops=["DebugNumericSummary(foo=1.0; mute_if_healthy=true)"],
           debug_urls=self._debug_urls())
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.FailedPreconditionError,
           r"1 attribute key\(s\) were not valid for debug node "
-          r"__dbg_.:0_0_DebugNumericSummary: foo"):
+          r"__dbg_.:0_0_DebugNumericSummary: foo",
+      ):
         sess.run(y, options=run_options, run_metadata=run_metadata)
 
   def testDebugNumericSummaryMuteOnHealthyMutesOnlyHealthyTensorDumps(self):
@@ -1443,16 +1452,18 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       # Prior to setting the Python graph, attempts to do traceback lookup
       # should lead to exceptions.
-      with self.assertRaisesRegexp(
-          LookupError, "Python graph is not available for traceback lookup"):
+      with self.assertRaisesRegex(
+          LookupError, "Python graph is not available for traceback lookup"
+      ):
         dump.node_traceback("traceback/w")
 
       dump.set_python_graph(sess.graph)
 
       # After setting the Python graph, attempts to look up nonexistent nodes
       # should lead to exceptions.
-      with self.assertRaisesRegexp(KeyError,
-                                   r"Cannot find node \"foo\" in Python graph"):
+      with self.assertRaisesRegex(
+          KeyError, r"Cannot find node \"foo\" in Python graph"
+      ):
         dump.node_traceback("foo")
 
       # Lookup should work with node name input.
@@ -1546,8 +1557,9 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
         executor_step_indices = sorted(
             executor_step_indices, key=lambda x: x[0])
         for i in range(len(executor_step_indices) - 1):
-          self.assertEquals(executor_step_indices[i][1] + 1,
-                            executor_step_indices[i + 1][1])
+          self.assertEqual(
+              executor_step_indices[i][1] + 1, executor_step_indices[i + 1][1]
+          )
 
         # Assert that session_run_index increase monotonically.
         session_run_indices = zip(timestamps, session_run_indices)

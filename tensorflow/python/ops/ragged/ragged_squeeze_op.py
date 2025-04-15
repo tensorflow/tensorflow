@@ -17,6 +17,7 @@
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
@@ -51,7 +52,7 @@ def squeeze(input: ragged_tensor.Ragged, axis=None, name=None):  # pylint: disab
   """
   with ops.name_scope(name, 'RaggedSqueeze', [input]):
     input = ragged_tensor.convert_to_tensor_or_ragged_tensor(input)
-    if isinstance(input, ops.Tensor):
+    if isinstance(input, tensor.Tensor):
       return array_ops.squeeze(input, axis, name)
 
     if axis is None:

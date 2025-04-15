@@ -13,22 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/java/src/gen/cc/op_generator.h"
+
 #include <list>
 #include <map>
 #include <memory>
 #include <set>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "xla/tsl/platform/status.h"
+#include "tensorflow/core/framework/api_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/java/src/gen/cc/java_defs.h"
-#include "tensorflow/java/src/gen/cc/op_generator.h"
 #include "tensorflow/java/src/gen/cc/op_specs.h"
 #include "tensorflow/java/src/gen/cc/source_writer.h"
 
@@ -528,8 +536,8 @@ bool CanGenerateOp(const OpDef& op_def, const ApiDef& api_def) {
 
 }  // namespace
 
-Status OpGenerator::Run(const OpList& op_list, const string& base_package,
-                        const string& output_dir) {
+absl::Status OpGenerator::Run(const OpList& op_list, const string& base_package,
+                              const string& output_dir) {
   ApiDefMap api_map(op_list);
   if (!api_dirs_.empty()) {
     // Only load api files that correspond to the requested "op_list"
@@ -554,7 +562,7 @@ Status OpGenerator::Run(const OpList& op_list, const string& base_package,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace java

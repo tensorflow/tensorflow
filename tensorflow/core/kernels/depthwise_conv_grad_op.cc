@@ -121,12 +121,14 @@ typedef Eigen::GpuDevice GPUDevice;
     GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'W', &pad_left, \
                              &pad_right);                                      \
   }                                                                            \
-  OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(                        \
-                              input_rows, filter_rows, stride_, padding_,      \
-                              &out_rows, &pad_top, &pad_bottom));              \
-  OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(                        \
-                              input_cols, filter_cols, stride_, padding_,      \
-                              &out_cols, &pad_left, &pad_right));              \
+  OP_REQUIRES_OK(context,                                                      \
+                 GetWindowedOutputSizeVerbose(                                 \
+                     input_rows, filter_rows, /*dilation_rate=*/1, stride_,    \
+                     padding_, &out_rows, &pad_top, &pad_bottom));             \
+  OP_REQUIRES_OK(context,                                                      \
+                 GetWindowedOutputSizeVerbose(                                 \
+                     input_cols, filter_cols, /*dilation_rate=*/1, stride_,    \
+                     padding_, &out_cols, &pad_left, &pad_right));             \
   OP_REQUIRES(                                                                 \
       context, output_rows == out_rows,                                        \
       errors::InvalidArgument(                                                 \
@@ -704,7 +706,9 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
   bool cudnn_use_autotune_;
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeBackpropInputOp);
+  DepthwiseConv2dNativeBackpropInputOp(
+      const DepthwiseConv2dNativeBackpropInputOp&) = delete;
+  void operator=(const DepthwiseConv2dNativeBackpropInputOp&) = delete;
 };
 
 #define REGISTER_CPU_KERNEL(T)                                       \
@@ -1256,7 +1260,9 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
   bool cudnn_use_autotune_;
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeBackpropFilterOp);
+  DepthwiseConv2dNativeBackpropFilterOp(
+      const DepthwiseConv2dNativeBackpropFilterOp&) = delete;
+  void operator=(const DepthwiseConv2dNativeBackpropFilterOp&) = delete;
 };
 
 #define REGISTER_CPU_KERNEL(T)                    \

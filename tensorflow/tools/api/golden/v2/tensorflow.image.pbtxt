@@ -22,7 +22,7 @@ tf_module {
   }
   member_method {
     name: "adjust_jpeg_quality"
-    argspec: "args=[\'image\', \'jpeg_quality\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'image\', \'jpeg_quality\', \'dct_method\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "adjust_saturation"
@@ -70,6 +70,10 @@ tf_module {
   }
   member_method {
     name: "decode_png"
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \"<dtype: \'uint8\'>\", \'None\'], "
+  }
+  member_method {
+    name: "decode_webp"
     argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \"<dtype: \'uint8\'>\", \'None\'], "
   }
   member_method {

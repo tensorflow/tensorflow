@@ -21,10 +21,8 @@ import weakref
 import numpy as np
 
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.utils.get_source_inputs')
 def get_source_inputs(tensor, layer=None, node_index=None):
   """Returns the list of input tensors necessary to compute `tensor`.
 

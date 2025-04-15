@@ -17,8 +17,6 @@ limitations under the License.
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -82,7 +80,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Check conditions for different types.
   switch (input->type) {
     case kTfLiteFloat32:
+    case kTfLiteFloat16:
+    case kTfLiteBFloat16:
     case kTfLiteUInt8:
+    case kTfLiteInt4:
     case kTfLiteInt8:
     case kTfLiteInt16:
     case kTfLiteInt64:
@@ -164,7 +165,8 @@ TfLiteStatus Gather(TfLiteContext* context, const TfLiteGatherParams& params,
   return optimized_ops::Gather(
       op_params, GetTensorShape(input), GetTensorData<InputT>(input),
       GetTensorShape(positions), GetTensorData<PositionsT>(positions),
-      GetTensorShape(output), GetTensorData<InputT>(output));
+      GetTensorShape(output), GetTensorData<InputT>(output),
+      (input->type == kTfLiteInt4));
 }
 
 template <typename PositionT>
@@ -215,8 +217,16 @@ TfLiteStatus DispatchEvalInputType(TfLiteContext* const context,
   switch (input->type) {
     case kTfLiteFloat32:
       return Gather<float, PosT>(context, *params, input, positions, output);
+    case kTfLiteFloat16:
+      return Gather<Eigen::half, PosT>(context, *params, input, positions,
+                                       output);
+    case kTfLiteBFloat16:
+      return Gather<Eigen::bfloat16, PosT>(context, *params, input, positions,
+                                           output);
     case kTfLiteUInt8:
       return Gather<uint8_t, PosT>(context, *params, input, positions, output);
+    case kTfLiteInt4:
+      // fallthrough
     case kTfLiteInt8:
       return Gather<int8_t, PosT>(context, *params, input, positions, output);
     case kTfLiteInt16:

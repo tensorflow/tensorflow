@@ -16,11 +16,11 @@
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import optimizer
-from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -103,13 +103,16 @@ class AdamOptimizer(optimizer.Optimizer):
   @end_compatibility
   """
 
-  def __init__(self,
-               learning_rate=0.001,
-               beta1=0.9,
-               beta2=0.999,
-               epsilon=1e-8,
-               use_locking=False,
-               name="Adam"):
+  def __init__(
+      self,
+      learning_rate=0.001,
+      beta1=0.9,
+      beta2=0.999,
+      epsilon=1e-8,
+      use_locking=False,
+      name="Adam",
+      use_own_namescope_for_non_slot_vars=False,
+  ):
     r"""Construct a new Adam optimizer.
 
     Initialization:
@@ -158,11 +161,11 @@ class AdamOptimizer(optimizer.Optimizer):
       use_locking: If True use locks for update operations.
       name: Optional name for the operations created when applying gradients.
         Defaults to "Adam".
-
-
+      use_own_namescope_for_non_slot_vars: If True, use a root namescope for
+        non-slot variables.
     """
 
-    super(AdamOptimizer, self).__init__(use_locking, name)
+    super().__init__(use_locking, name, use_own_namescope_for_non_slot_vars)
     self._lr = learning_rate
     self._beta1 = beta1
     self._beta2 = beta2
@@ -214,7 +217,7 @@ class AdamOptimizer(optimizer.Optimizer):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
     beta1_power, beta2_power = self._get_beta_accumulators()
-    return training_ops.apply_adam(
+    return gen_training_ops.apply_adam(
         var,
         m,
         v,
@@ -231,7 +234,7 @@ class AdamOptimizer(optimizer.Optimizer):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
     beta1_power, beta2_power = self._get_beta_accumulators()
-    return training_ops.resource_apply_adam(
+    return gen_training_ops.resource_apply_adam(
         var.handle,
         m.handle,
         v.handle,

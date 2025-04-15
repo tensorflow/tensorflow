@@ -15,12 +15,29 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 
+#include <cstdarg>
+#include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <tuple>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
+
+using testing::AllOf;
+using testing::Each;
+using testing::ElementsAre;
+using testing::Eq;
+using testing::HasSubstr;
+using testing::StrEq;
 
 namespace tflite {
 namespace {
@@ -29,13 +46,15 @@ class MockErrorReporter : public ErrorReporter {
  public:
   MockErrorReporter() : buffer_size_(0) {}
   int Report(const char* format, va_list args) override {
-    buffer_size_ = vsnprintf(buffer_, kBufferSize, format, args);
+    buffer_size_ += vsnprintf(buffer_ + buffer_size_,
+                              kBufferSize - buffer_size_, format, args);
     return buffer_size_;
   }
-  char* GetBuffer() { return buffer_; }
-  int GetBufferSize() { return buffer_size_; }
+  const char* GetBuffer() const { return buffer_; }
+  int GetBufferSize() const { return buffer_size_; }
+  bool IsEmpty() const { return !buffer_size_; }
 
-  string GetAsString() const { return string(buffer_, buffer_size_); }
+  string GetString() const { return string(buffer_, buffer_size_); }
 
  private:
   static constexpr int kBufferSize = 256;
@@ -71,6 +90,22 @@ class FlatbufferConversionsTest : public ::testing::Test {
     flatbuffers::Offset<Operator> offset =
         CreateOperatorDirect(builder_, 0, nullptr, nullptr, op_type, options,
                              nullptr, CustomOptionsFormat_FLEXBUFFERS, nullptr);
+    builder_.Finish(offset);
+    void* pointer = builder_.GetBufferPointer();
+    return flatbuffers::GetRoot<Operator>(pointer);
+  }
+
+  const Operator* BuildTestOperator(BuiltinOptions2 op_type,
+                                    flatbuffers::Offset<void> options) {
+    flatbuffers::Offset<Operator> offset = CreateOperatorDirect(
+        builder_, /*opcode_index=*/0, /*inputs=*/nullptr, /*outputs=*/nullptr,
+        /*builtin_options_type=*/tflite::BuiltinOptions_NONE,
+        /*builtin_options=*/0, /*custom_options=*/nullptr,
+        /*custom_options_format=*/tflite::CustomOptionsFormat_FLEXBUFFERS,
+        /*mutating_variable_inputs=*/nullptr, /*intermediates=*/nullptr,
+        /*large_custom_options_offset=*/0, /*large_custom_options_size=*/0,
+        /*builtin_options_2_type=*/op_type,
+        /*builtin_options_2=*/options);
     builder_.Finish(offset);
     void* pointer = builder_.GetBufferPointer();
     return flatbuffers::GetRoot<Operator>(pointer);
@@ -155,11 +190,689 @@ TEST_F(FlatbufferConversionsTest, TestConvertTensorTypeFloat16) {
   EXPECT_EQ(kTfLiteFloat16, type);
 }
 
+TEST_F(FlatbufferConversionsTest, TestConvertTensorTypeBFloat16) {
+  TfLiteType type;
+  EXPECT_EQ(kTfLiteOk,
+            ConvertTensorType(TensorType_BFLOAT16, &type, &mock_reporter_));
+  EXPECT_EQ(kTfLiteBFloat16, type);
+}
+
 TEST_F(FlatbufferConversionsTest, TestConvertTensorTypeInt4) {
   TfLiteType type;
   EXPECT_EQ(kTfLiteOk,
             ConvertTensorType(TensorType_INT4, &type, &mock_reporter_));
   EXPECT_EQ(kTfLiteInt4, type);
+}
+
+class StablehloReduceWindowFlatbufferConversionsTest
+    : public FlatbufferConversionsTest {
+ public:
+  static constexpr int kMaxDims =
+      TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT;
+  static constexpr int64_t kValidValue = 5;
+
+  auto ValidAttr() {
+    return builder_.CreateVector(std::vector<int64_t>(kMaxDims, kValidValue));
+  }
+
+  auto InvalidAttr() {
+    return builder_.CreateVector(
+        std::vector<int64_t>(kMaxDims + 1, kValidValue));
+  }
+
+  auto ValidPaddingAttr() {
+    return builder_.CreateVector(
+        std::vector<int64_t>(2 * kMaxDims, kValidValue));
+  }
+
+  auto InvalidPaddingAttr() {
+    return builder_.CreateVector(
+        std::vector<int64_t>(2 * kMaxDims + 1, kValidValue));
+  }
+
+  auto EmptyAttr() { return builder_.CreateVector<int64_t>({}); }
+};
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest, Succeeds) {
+  const Operator* stablehlo_reduce_window_op = BuildTestOperator(
+      BuiltinOptions2_StablehloReduceWindowOptions,
+      CreateStablehloReduceWindowOptions(
+          builder_,
+          /*window_dimensions=*/builder_.CreateVector<int64_t>({1, 2}),
+          /*window_strides=*/builder_.CreateVector<int64_t>({3, 4}),
+          /*base_dilations=*/builder_.CreateVector<int64_t>({5, 6}),
+          /*window_dilations=*/builder_.CreateVector<int64_t>({7, 8}),
+          /*padding=*/builder_.CreateVector<int64_t>({9, 10, 11, 12}),
+          /*body_subgraph_index=*/13)
+          .Union());
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_reduce_window_op,
+                  BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                  &mock_allocator_, (void**)&output_data),
+      kTfLiteOk);
+
+  EXPECT_THAT(std::make_tuple(output_data->window_dimensions, 2),
+              ElementsAre(1, 2));
+  EXPECT_THAT(std::make_tuple(output_data->window_strides, 2),
+              ElementsAre(3, 4));
+  EXPECT_THAT(std::make_tuple(output_data->base_dilations, 2),
+              ElementsAre(5, 6));
+  EXPECT_THAT(std::make_tuple(output_data->window_dilations, 2),
+              ElementsAre(7, 8));
+  EXPECT_THAT(std::make_tuple(output_data->padding, 4),
+              ElementsAre(9, 10, 11, 12));
+  EXPECT_THAT(output_data->body_subgraph_index, Eq(13));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       FailsWithNoWindowDimensions) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/0,
+                                      /*window_strides=*/ValidAttr(),
+                                      /*base_dilations=*/ValidAttr(),
+                                      /*window_dilations=*/ValidAttr(),
+                                      /*padding=*/ValidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteError);
+  EXPECT_THAT(mock_reporter_.GetString(),
+              HasSubstr("'window_dimensions' attribute is not optional for "
+                        "'stablehlo.reduce_window' and cannot be empty."));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       SucceedsWithNoWindowStrides) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/ValidAttr(),
+                                      /*window_strides=*/0,
+                                      /*base_dilations=*/ValidAttr(),
+                                      /*window_dilations=*/ValidAttr(),
+                                      /*padding=*/ValidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteOk);
+  EXPECT_THAT(mock_reporter_.GetString(), StrEq(""));
+  EXPECT_THAT(std::make_tuple(output_data->window_dimensions, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_strides, kMaxDims), Each(1));
+  EXPECT_THAT(std::make_tuple(output_data->base_dilations, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_dilations, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->padding, 2 * kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(output_data->body_subgraph_index, Eq(13));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       SucceedsWithNoBaseDilations) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/ValidAttr(),
+                                      /*window_strides=*/ValidAttr(),
+                                      /*base_dilations=*/0,
+                                      /*window_dilations=*/ValidAttr(),
+                                      /*padding=*/ValidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteOk);
+  EXPECT_THAT(mock_reporter_.GetString(), StrEq(""));
+  EXPECT_THAT(std::make_tuple(output_data->window_dimensions, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_strides, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->base_dilations, kMaxDims), Each(1));
+  EXPECT_THAT(std::make_tuple(output_data->window_dilations, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->padding, 2 * kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(output_data->body_subgraph_index, Eq(13));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       SucceedsWithNoWindowDilations) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/ValidAttr(),
+                                      /*window_strides=*/ValidAttr(),
+                                      /*base_dilations=*/ValidAttr(),
+                                      /*window_dilations=*/0,
+                                      /*padding=*/ValidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteOk);
+  EXPECT_THAT(mock_reporter_.GetString(), StrEq(""));
+  EXPECT_THAT(std::make_tuple(output_data->window_dimensions, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_strides, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->base_dilations, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_dilations, kMaxDims),
+              Each(1));
+  EXPECT_THAT(std::make_tuple(output_data->padding, 2 * kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(output_data->body_subgraph_index, Eq(13));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest, SucceedsWithNoPadding) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/ValidAttr(),
+                                      /*window_strides=*/ValidAttr(),
+                                      /*base_dilations=*/ValidAttr(),
+                                      /*window_dilations=*/ValidAttr(),
+                                      /*padding=*/0,
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteOk);
+  EXPECT_THAT(mock_reporter_.GetString(), StrEq(""));
+  EXPECT_THAT(std::make_tuple(output_data->window_dimensions, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_strides, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->base_dilations, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_dilations, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->padding, 2 * kMaxDims), Each(0));
+  EXPECT_THAT(output_data->body_subgraph_index, Eq(13));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       FailsWithEmptyWindowDimensions) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/EmptyAttr(),
+                                      /*window_strides=*/ValidAttr(),
+                                      /*base_dilations=*/ValidAttr(),
+                                      /*window_dilations=*/ValidAttr(),
+                                      /*padding=*/ValidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteError);
+  EXPECT_THAT(mock_reporter_.GetString(),
+              HasSubstr("'window_dimensions' attribute is not optional for "
+                        "'stablehlo.reduce_window' and cannot be empty."));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       SucceedsWithEmptyWindowStrides) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/ValidAttr(),
+                                      /*window_strides=*/EmptyAttr(),
+                                      /*base_dilations=*/ValidAttr(),
+                                      /*window_dilations=*/ValidAttr(),
+                                      /*padding=*/ValidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteOk);
+  EXPECT_THAT(mock_reporter_.GetString(), StrEq(""));
+  EXPECT_THAT(std::make_tuple(output_data->window_dimensions, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_strides, kMaxDims), Each(1));
+  EXPECT_THAT(std::make_tuple(output_data->base_dilations, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_dilations, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->padding, 2 * kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(output_data->body_subgraph_index, Eq(13));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       SucceedsWithEmptyBaseDilations) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/ValidAttr(),
+                                      /*window_strides=*/ValidAttr(),
+                                      /*base_dilations=*/EmptyAttr(),
+                                      /*window_dilations=*/ValidAttr(),
+                                      /*padding=*/ValidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteOk);
+  EXPECT_THAT(mock_reporter_.GetString(), StrEq(""));
+  EXPECT_THAT(std::make_tuple(output_data->window_dimensions, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_strides, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->base_dilations, kMaxDims), Each(1));
+  EXPECT_THAT(std::make_tuple(output_data->window_dilations, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->padding, 2 * kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(output_data->body_subgraph_index, Eq(13));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       SucceedsWithEmptyWindowDilations) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/ValidAttr(),
+                                      /*window_strides=*/ValidAttr(),
+                                      /*base_dilations=*/ValidAttr(),
+                                      /*window_dilations=*/EmptyAttr(),
+                                      /*padding=*/ValidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteOk);
+  EXPECT_THAT(mock_reporter_.GetString(), StrEq(""));
+  EXPECT_THAT(std::make_tuple(output_data->window_dimensions, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_strides, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->base_dilations, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_dilations, kMaxDims),
+              Each(1));
+  EXPECT_THAT(std::make_tuple(output_data->padding, 2 * kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(output_data->body_subgraph_index, Eq(13));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       SucceedsWithEmptyPadding) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/ValidAttr(),
+                                      /*window_strides=*/ValidAttr(),
+                                      /*base_dilations=*/ValidAttr(),
+                                      /*window_dilations=*/ValidAttr(),
+                                      /*padding=*/EmptyAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteOk);
+  EXPECT_THAT(mock_reporter_.GetString(), StrEq(""));
+  EXPECT_THAT(std::make_tuple(output_data->window_dimensions, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_strides, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->base_dilations, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->window_dilations, kMaxDims),
+              Each(kValidValue));
+  EXPECT_THAT(std::make_tuple(output_data->padding, 2 * kMaxDims), Each(0));
+  EXPECT_THAT(output_data->body_subgraph_index, Eq(13));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       SucceedsWithParamsAtMaxDims) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/ValidAttr(),
+                                      /*window_strides=*/ValidAttr(),
+                                      /*base_dilations=*/ValidAttr(),
+                                      /*window_dilations=*/ValidAttr(),
+                                      /*padding=*/ValidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteOk);
+  EXPECT_THAT(mock_reporter_.GetString(), StrEq(""));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       FailsWhenWindowDimensionsHasMoreThanMaxDims) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/InvalidAttr(),
+                                      /*window_strides=*/ValidAttr(),
+                                      /*base_dilations=*/ValidAttr(),
+                                      /*window_dilations=*/ValidAttr(),
+                                      /*padding=*/ValidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteError);
+  EXPECT_THAT(mock_reporter_.GetString(),
+              AllOf(HasSubstr("Found too many dimensions in the input array of "
+                              "operation 'stablehlo.reduce_window'."),
+                    HasSubstr("Check the 'window_dimensions' attribute.")));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       FailsWhenWindowStridesHasWrongDimCount) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/ValidAttr(),
+                                      /*window_strides=*/InvalidAttr(),
+                                      /*base_dilations=*/ValidAttr(),
+                                      /*window_dilations=*/ValidAttr(),
+                                      /*padding=*/ValidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteError);
+  EXPECT_THAT(
+      mock_reporter_.GetString(),
+      HasSubstr("'window_strides' attribute of 'stablehlo.reduce_window' does "
+                "not have the expected size"));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       FailsWhenBaseDilationsHasWrongDimCount) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/ValidAttr(),
+                                      /*window_strides=*/ValidAttr(),
+                                      /*base_dilations=*/InvalidAttr(),
+                                      /*window_dilations=*/ValidAttr(),
+                                      /*padding=*/ValidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteError);
+  EXPECT_THAT(
+      mock_reporter_.GetString(),
+      HasSubstr("'base_dilations' attribute of 'stablehlo.reduce_window' does "
+                "not have the expected size"));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       FailsWhenWindowDilationsHasWrongDimCount) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/ValidAttr(),
+                                      /*window_strides=*/ValidAttr(),
+                                      /*base_dilations=*/ValidAttr(),
+                                      /*window_dilations=*/InvalidAttr(),
+                                      /*padding=*/ValidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteError);
+  EXPECT_THAT(
+      mock_reporter_.GetString(),
+      HasSubstr(
+          "'window_dilations' attribute of 'stablehlo.reduce_window' does "
+          "not have the expected size"));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest,
+       FailsWhenPaddingHasWrongDimCount) {
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(ParseOpData(
+                BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions,
+                                  CreateStablehloReduceWindowOptions(
+                                      builder_,
+                                      /*window_dimensions=*/ValidAttr(),
+                                      /*window_strides=*/ValidAttr(),
+                                      /*base_dilations=*/ValidAttr(),
+                                      /*window_dilations=*/ValidAttr(),
+                                      /*padding=*/InvalidPaddingAttr(),
+                                      /*body_subgraph_index=*/13)
+                                      .Union()),
+                BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                &mock_allocator_, (void**)&output_data),
+            kTfLiteError);
+  EXPECT_THAT(mock_reporter_.GetString(),
+              HasSubstr("'padding' attribute of 'stablehlo.reduce_window' does "
+                        "not have the expected size"));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest, FailsWithWrongOptions) {
+  const Operator* stablehlo_reduce_window_op =
+      BuildTestOperator(BuiltinOptions2_StablehloReduceWindowOptions, 0);
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_reduce_window_op,
+                  BuiltinOperator_STABLEHLO_REDUCE_WINDOW, &mock_reporter_,
+                  &mock_allocator_, (void**)&output_data),
+      kTfLiteError);
+  EXPECT_THAT(
+      mock_reporter_.GetString(),
+      HasSubstr(
+          "Could not get 'stablehlo.reduce_window' operation parameters."));
+}
+
+TEST_F(StablehloReduceWindowFlatbufferConversionsTest, DeathTests) {
+  const Operator* stablehlo_reduce_window_op = BuildTestOperator(
+      BuiltinOptions2_StablehloReduceWindowOptions,
+      CreateStablehloReduceWindowOptions(
+          builder_, /*window_dimensions=*/ValidAttr(),
+          /*window_strides=*/ValidAttr(),
+          /*base_dilations=*/ValidAttr(),
+          /*window_dilations=*/ValidAttr(),
+          /*padding=*/ValidPaddingAttr(), /*body_subgraph_index=*/13)
+          .Union());
+  TfLiteStablehloReduceWindowParams* output_data = nullptr;
+#ifdef NDEBUG
+  GTEST_SKIP();
+#endif
+  EXPECT_DEATH(
+      ParseOpData(nullptr, BuiltinOperator_STABLEHLO_REDUCE_WINDOW,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      "");
+  EXPECT_DEATH(ParseOpData(stablehlo_reduce_window_op,
+                           BuiltinOperator_STABLEHLO_REDUCE_WINDOW, nullptr,
+                           &mock_allocator_, (void**)&output_data),
+               "");
+  EXPECT_DEATH(ParseOpData(stablehlo_reduce_window_op,
+                           BuiltinOperator_STABLEHLO_REDUCE_WINDOW,
+                           &mock_reporter_, nullptr, (void**)&output_data),
+               "");
+  EXPECT_DEATH(ParseOpData(stablehlo_reduce_window_op,
+                           BuiltinOperator_STABLEHLO_REDUCE_WINDOW,
+                           &mock_reporter_, &mock_allocator_, nullptr),
+               "");
+}
+
+class StablehloPadFlatbufferConversionsTest : public FlatbufferConversionsTest {
+ public:
+  static constexpr int kMaxDims =
+      TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT;
+  static constexpr int64_t kValidValue = 5;
+};
+
+TEST_F(StablehloPadFlatbufferConversionsTest, Succeeds) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(
+      BuiltinOptions2_StablehloPadOptions,
+      CreateStablehloPadOptions(
+          builder_,
+          /*edge_padding_low=*/builder_.CreateVector<int64_t>({1, 0, -1}),
+          /*edge_padding_high=*/builder_.CreateVector<int64_t>({2, 0, -2}),
+          /*interior_padding=*/builder_.CreateVector<int64_t>({3, 0, 3}))
+          .Union());
+  TfLiteStablehloPadParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteOk);
+  EXPECT_THAT(std::make_tuple(output_data->edge_padding_low, 3),
+              ElementsAre(1, 0, -1));
+  EXPECT_THAT(std::make_tuple(output_data->edge_padding_high, 3),
+              ElementsAre(2, 0, -2));
+  EXPECT_THAT(std::make_tuple(output_data->interior_padding, 3),
+              ElementsAre(3, 0, 3));
+}
+
+TEST_F(StablehloPadFlatbufferConversionsTest, FailsWithMissingLowPadding) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(
+      BuiltinOptions2_StablehloPadOptions,
+      CreateStablehloPadOptions(
+          builder_,
+          /*edge_padding_low=*/0,
+          /*edge_padding_high=*/builder_.CreateVector<int64_t>({2, 0, -2}),
+          /*interior_padding=*/builder_.CreateVector<int64_t>({3, 0, 3}))
+          .Union());
+  TfLiteStablehloPadParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteError);
+  EXPECT_THAT(
+      mock_reporter_.GetString(),
+      AllOf(
+          HasSubstr("Input array not provided for operation 'stablehlo.pad'."),
+          HasSubstr("Check the 'edge_padding_low' attribute.")));
+}
+
+TEST_F(StablehloPadFlatbufferConversionsTest, FailsWithMissingHighPadding) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(
+      BuiltinOptions2_StablehloPadOptions,
+      CreateStablehloPadOptions(
+          builder_,
+          /*edge_padding_low=*/builder_.CreateVector<int64_t>({1, 0, -1}),
+          /*edge_padding_high=*/0,
+          /*interior_padding=*/builder_.CreateVector<int64_t>({3, 0, 3}))
+          .Union());
+  TfLiteStablehloPadParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteError);
+  EXPECT_THAT(
+      mock_reporter_.GetString(),
+      AllOf(
+          HasSubstr("Input array not provided for operation 'stablehlo.pad'."),
+          HasSubstr("Check the 'edge_padding_high' attribute.")));
+}
+
+TEST_F(StablehloPadFlatbufferConversionsTest, FailsWithMissingInteriorPadding) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(
+      BuiltinOptions2_StablehloPadOptions,
+      CreateStablehloPadOptions(
+          builder_,
+          /*edge_padding_low=*/builder_.CreateVector<int64_t>({1, 0, -1}),
+          /*edge_padding_high=*/builder_.CreateVector<int64_t>({2, 0, -2}),
+          /*interior_padding=*/0)
+          .Union());
+  TfLiteStablehloPadParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteError);
+  EXPECT_THAT(
+      mock_reporter_.GetString(),
+      AllOf(
+          HasSubstr("Input array not provided for operation 'stablehlo.pad'."),
+          HasSubstr("Check the 'interior_padding' attribute.")));
+}
+
+TEST_F(StablehloPadFlatbufferConversionsTest, FailsInconsistentSizes) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(
+      BuiltinOptions2_StablehloPadOptions,
+      CreateStablehloPadOptions(
+          builder_,
+          /*edge_padding_low=*/builder_.CreateVector<int64_t>({1, 0, -1}),
+          /*edge_padding_high=*/builder_.CreateVector<int64_t>({2, 0, -2}),
+          /*interior_padding=*/builder_.CreateVector<int64_t>({3, 0, -3, 5}))
+          .Union());
+  TfLiteStablehloPadParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteError);
+  EXPECT_THAT(mock_reporter_.GetString(),
+              HasSubstr("'stablehlo.pad' operation parameter array sizes are "
+                        "not consistent."));
+}
+
+TEST_F(StablehloPadFlatbufferConversionsTest, FailsWithWrongOptions) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(BuiltinOptions_NONE, 0);
+  TfLiteStablehloPadParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteError);
+  EXPECT_THAT(mock_reporter_.GetString(),
+              HasSubstr("Could not get 'stablehlo.pad' operation parameters."));
+}
+
+TEST_F(StablehloPadFlatbufferConversionsTest, DeathTests) {
+  const Operator* stablehlo_pad_op = BuildTestOperator(BuiltinOptions_NONE, 0);
+  TfLiteStablehloPadParams* output_data = nullptr;
+#ifdef NDEBUG
+  GTEST_SKIP();
+#endif
+  EXPECT_DEATH(
+      ParseOpData(nullptr, BuiltinOperator_STABLEHLO_PAD, &mock_reporter_,
+                  &mock_allocator_, (void**)&output_data),
+      "");
+  EXPECT_DEATH(ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                           nullptr, &mock_allocator_, (void**)&output_data),
+               "");
+  EXPECT_DEATH(ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                           &mock_reporter_, nullptr, (void**)&output_data),
+               "");
+  EXPECT_DEATH(ParseOpData(stablehlo_pad_op, BuiltinOperator_STABLEHLO_PAD,
+                           &mock_reporter_, &mock_allocator_, nullptr),
+               "");
 }
 
 }  // namespace tflite

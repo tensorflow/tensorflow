@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/acceleration/configuration/proto_to_flatbuffer.h"
 
 #include <cstdint>
+#include <vector>
 
+#include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/acceleration/configuration/configuration.pb.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
@@ -65,6 +67,8 @@ Delegate ConvertDelegate(proto::Delegate delegate) {
       return Delegate_CORE_ML;
     case proto::Delegate::ARMNN:
       return Delegate_ARMNN;
+    case proto::Delegate::MTK_NEURON:
+      return Delegate_MTK_NEURON;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
@@ -296,6 +300,43 @@ Offset<tflite::EdgeTpuDeviceSpec> ConvertEdgeTpuDeviceSpec(
       device_spec.num_chips(), device_paths_fb, device_spec.chip_family());
 }
 
+Offset<GoogleEdgeTpuSettings> ConvertGoogleEdgeTpuSettings(
+    const proto::GoogleEdgeTpuSettings& settings, FlatBufferBuilder& builder) {
+  Offset<String> model_identifier = 0;
+  if (settings.has_model_identifier()) {
+    model_identifier = builder.CreateString(settings.model_identifier());
+  }
+
+  Offset<Vector<uint8_t>> extension_data = 0;
+  if (settings.has_extension_data()) {
+    extension_data = builder.CreateVector(
+        reinterpret_cast<const uint8_t*>(settings.extension_data().data()),
+        settings.extension_data().size());
+  }
+
+  GoogleEdgeTpuSettingsBuilder builder_(builder);
+  builder_.add_log_verbosity(settings.log_verbosity());
+  builder_.add_enable_tracing(settings.enable_tracing());
+  builder_.add_priority(static_cast<tflite::GoogleEdgeTpuSettings_::Priority>(
+      settings.priority()));
+  builder_.add_model_identifier(model_identifier);
+  builder_.add_use_async_api(settings.use_async_api());
+  builder_.add_delegate_should_manage_cache_for_inputs(
+      settings.delegate_should_manage_cache_for_inputs());
+  builder_.add_delegate_should_manage_cache_for_outputs(
+      settings.delegate_should_manage_cache_for_outputs());
+  builder_.add_prefer_cache_coherency_for_inputs(
+      static_cast<tflite::GoogleEdgeTpuSettings_::TriState>(
+          settings.prefer_cache_coherency_for_inputs()));
+  builder_.add_prefer_cache_coherency_for_outputs(
+      static_cast<tflite::GoogleEdgeTpuSettings_::TriState>(
+          settings.prefer_cache_coherency_for_outputs()));
+  builder_.add_allow_fp16_precision_for_fp32(
+      settings.allow_fp16_precision_for_fp32());
+  builder_.add_extension_data(extension_data);
+  return builder_.Finish();
+}
+
 Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
     const proto::EdgeTpuSettings& settings, FlatBufferBuilder& builder) {
   Offset<Vector<Offset<tflite::EdgeTpuInactivePowerConfig>>>
@@ -350,7 +391,46 @@ Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
       static_cast<tflite::EdgeTpuSettings_::FloatTruncationType>(
           settings.float_truncation_type()),
       static_cast<tflite::EdgeTpuSettings_::QosClass>(settings.qos_class()),
-      hardware_cluster_ids_fb, public_model_id);
+      hardware_cluster_ids_fb, public_model_id,
+      static_cast<tflite::EdgeTpuSettings_::UseLayerIrTgcBackend>(
+          settings.use_layer_ir_tgc_backend()));
+}
+
+Offset<CompilationCachingSettings> ConvertCompilationCachingSettings(
+    const proto::CompilationCachingSettings& settings,
+    FlatBufferBuilder& builder) {
+  return CreateCompilationCachingSettings(
+      builder, builder.CreateString(settings.cache_dir()),
+      builder.CreateString(settings.model_token()));
+}
+
+Offset<ArmNNSettings> ConvertArmNNSettings(const proto::ArmNNSettings& settings,
+                                           FlatBufferBuilder& builder) {
+  return CreateArmNNSettings(
+      builder, builder.CreateString(settings.backends()), settings.fastmath(),
+      builder.CreateString(settings.additional_parameters()));
+}
+
+Offset<MtkNeuronSettings> ConvertMtkNeuronSettings(
+    const proto::MtkNeuronSettings& settings, FlatBufferBuilder& builder) {
+  return CreateMtkNeuronSettings(
+      builder,
+      static_cast<MtkNeuronSettings_::ExecutionPreference>(
+          settings.execution_preference()),
+      static_cast<MtkNeuronSettings_::ExecutionPriority>(
+          settings.execution_priority()),
+      builder.CreateVector(settings.optimization_hints().data(),
+                           settings.optimization_hints().size()),
+      static_cast<MtkNeuronSettings_::OperationCheckMode>(
+          settings.operation_check_mode()),
+      settings.allow_fp16_precision_for_fp32(), settings.use_ahwb(),
+      settings.use_cacheable_buffer(),
+      builder.CreateVectorOfStrings(settings.compile_options().begin(),
+                                    settings.compile_options().end()),
+      builder.CreateVectorOfStrings(settings.accelerator_names().begin(),
+                                    settings.accelerator_names().end()),
+      builder.CreateString(settings.neuron_config_path()),
+      settings.inference_deadline_ms(), settings.inference_abort_time_ms());
 }
 
 Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,
@@ -377,7 +457,12 @@ Offset<TFLiteSettings> ConvertTfliteSettings(
       ConvertFallbackSettings(settings.fallback_settings(), builder),
       settings.disable_default_delegates(),
       ConvertStableDelegateLoaderSettings(
-          settings.stable_delegate_loader_settings(), builder));
+          settings.stable_delegate_loader_settings(), builder),
+      ConvertGoogleEdgeTpuSettings(settings.google_edgetpu_settings(), builder),
+      ConvertCompilationCachingSettings(settings.compilation_caching_settings(),
+                                        builder),
+      ConvertArmNNSettings(settings.armnn_settings(), builder),
+      ConvertMtkNeuronSettings(settings.mtk_neuron_settings(), builder));
 }
 
 Offset<ModelFile> ConvertModelFile(const proto::ModelFile& model_file,

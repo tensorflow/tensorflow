@@ -26,12 +26,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-mlir::LogicalResult LowerToMlProgramAndHlo(mlir::ModuleOp module) {
-  mlir::PassManager pm(module.getContext());
-  tensorflow::PopulateLowerToMlProgramAndHloPipeline(pm);
-  return pm.run(module);
-}
-
 void RegisterMlProgramPasses() {
   mlir::registerPassPipeline(
       "tf-lower-to-mlprogram-and-hlo", "Lower TF to ml_program + mhlo",

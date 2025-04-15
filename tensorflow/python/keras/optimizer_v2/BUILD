@@ -1,6 +1,8 @@
 # Description:
 #   Contains the Keras OptimizerV2 API (internal TensorFlow version).
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove non-keras deps from TF.
@@ -71,7 +73,8 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/ops:array_ops",

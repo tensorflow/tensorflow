@@ -25,7 +25,7 @@ namespace config {
 // Note: this class is not thread safe.
 class Flag {
  public:
-  explicit Flag(StringPiece flag_name, bool default_value);
+  explicit Flag(absl::string_view flag_name, bool default_value);
   bool value() { return value_; }
   void reset(bool value) { value_ = value; }
 

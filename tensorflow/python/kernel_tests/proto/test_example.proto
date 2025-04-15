@@ -100,7 +100,7 @@ message PackedTestValue {
   repeated sint32 sint32_value = 17 [packed = true];
   repeated sint64 sint64_value = 18 [packed = true];
   repeated PrimitiveValue message_value = 19;
-  repeated Color enum_value = 35;
+  repeated Color enum_value = 35 [packed = true];
 
   optional double double_value_with_default = 20 [default = 1.0];
   optional float float_value_with_default = 21 [default = 2.0];

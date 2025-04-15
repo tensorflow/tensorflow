@@ -1,8 +1,0 @@
-syntax = "proto3";
-
-package xla;
-
-// A proto used to serialize GpuTopology instances.
-message GpuTopologyProto {
-  repeated int32 device_ids = 1;
-}

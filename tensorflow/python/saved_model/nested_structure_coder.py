@@ -186,7 +186,7 @@ class _DictCodec:
   """Codec for dicts."""
 
   def can_encode(self, pyobj):
-    return isinstance(pyobj, dict)
+    return isinstance(pyobj, collections_abc.Mapping)
 
   def do_encode(self, dict_value, encode_fn):
     encoded_dict = struct_pb2.StructuredValue()

@@ -318,8 +318,6 @@ class TFETest(test_util.TensorFlowTestCase):
         bool(np_a == np_c)
       self.assertAllEqual(np_a == np_c, [[True, True], [True, True]])
       self.assertAllEqual(np_a == np_d, [[True, False], [True, False]])
-      self.assertFalse(bool(np_a == np_e))
-      self.assertTrue(bool(np_a != np_e))
       self.assertNotAllEqual(np_a, np_e)
     finally:
       if default:

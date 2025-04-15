@@ -18,21 +18,31 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/jit/device_compiler_client.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/util.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
+
+// Returns the persisted compilation cache file name for the given key.
+std::string XlaSerializedCacheKeyToFileName(const XlaSerializedCacheKey& key);
 
 // Offers a way to persist and/or load compiled `ExecutableType`s along with the
 // corresponding HLO (`CompilationResult`) to/from `persistent_cache_directory`
@@ -43,6 +53,16 @@ class DeviceExecutablePersistor {
   // Configuration for setting up persistence (directory, filename prefix, etc).
   struct Config {
     Config() = default;
+    explicit Config(absl::string_view persistent_cache_directory,
+                    bool disable_strict_signature_checks,
+                    absl::string_view persistence_prefix,
+                    bool persistent_cache_directory_read_only)
+        : persistent_cache_directory(persistent_cache_directory),
+          disable_strict_signature_checks(disable_strict_signature_checks),
+          persistence_prefix(persistence_prefix),
+          persistent_cache_directory_read_only(
+              persistent_cache_directory_read_only) {}
+
     explicit Config(absl::string_view persistent_cache_directory,
                     bool disable_strict_signature_checks,
                     absl::string_view persistence_prefix)
@@ -60,6 +80,9 @@ class DeviceExecutablePersistor {
 
     // The cache persistence prefix to use if serializing/deserialzing entries.
     std::string persistence_prefix;
+
+    // Cache is read-only if set to true.
+    bool persistent_cache_directory_read_only = false;
   };
 
   DeviceExecutablePersistor(const Config& config,
@@ -83,7 +106,7 @@ class DeviceExecutablePersistor {
   // pipeline and persists that to disk.
   // TODO(b/255826209): Take in Signature instead hash and string once cache
   // is refactored.
-  virtual Status TryToPersistExecutable(
+  virtual absl::Status TryToPersistExecutable(
       uint64 signature_hash, const std::string& signature_str,
       const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& compilation_result,
@@ -107,7 +130,7 @@ class DeviceExecutablePersistor {
       bool compiled_using_pjrt) const;
 
   // Serializes the signature and its corresponding entry to a proto message.
-  StatusOr<XlaSerializedCacheEntry> SerializeEntry(
+  absl::StatusOr<XlaSerializedCacheEntry> SerializeEntry(
       uint64 signature_hash, const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& compilation_result,
       const ExecutableType& executable,
@@ -115,21 +138,19 @@ class DeviceExecutablePersistor {
 
   // Saves the cache entry in the file directory supplied during the
   // construction of this class. Overwrites existing entries.
-  Status SaveSerializedEntry(const XlaSerializedCacheEntry& entry) const;
+  absl::Status SaveSerializedEntry(const XlaSerializedCacheEntry& entry) const;
 
   // Tries to read a cache entry given a `key` by searching the file directory
   // supplied during the construction of this class. Returns std::nullopt if no
   // cache entry is found.
-  StatusOr<std::optional<XlaSerializedCacheEntry>> TryToReadSerializedEntry(
-      const XlaSerializedCacheKey& key) const;
+  absl::StatusOr<std::optional<XlaSerializedCacheEntry>>
+  TryToReadSerializedEntry(const XlaSerializedCacheKey& key) const;
 
   // Checks if the loaded `entry` matches the expected `key` and `hlo_module`.
-  Status VerifyLoadedCacheEntry(const XlaSerializedCacheKey& key,
-                                const xla::HloModuleProto& hlo_module,
-                                const XlaSerializedCacheEntry& entry) const;
+  absl::Status VerifyLoadedCacheEntry(
+      const XlaSerializedCacheKey& key, const xla::HloModuleProto& hlo_module,
+      const XlaSerializedCacheEntry& entry) const;
 
-  std::string XlaSerializedCacheKeyToString(
-      const XlaSerializedCacheKey& key) const;
   std::string GetFilePath(const XlaSerializedCacheKey& key) const;
 
   const DeviceType device_type_;
@@ -140,7 +161,11 @@ class DeviceExecutablePersistor {
   // specified file system directory path.
   const std::string persistent_cache_directory_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceExecutablePersistor);
+  // Cache is read-only if set to true.
+  const bool persistent_cache_directory_read_only_;
+
+  DeviceExecutablePersistor(const DeviceExecutablePersistor&) = delete;
+  void operator=(const DeviceExecutablePersistor&) = delete;
 };
 
 template <typename ExecutableType, typename ClientType>
@@ -150,27 +175,14 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::
     : device_type_(device_type),
       disable_strict_signature_checks_(config.disable_strict_signature_checks),
       persistence_prefix_(config.persistence_prefix),
-      persistent_cache_directory_(config.persistent_cache_directory) {}
-
-template <typename ExecutableType, typename ClientType>
-std::string DeviceExecutablePersistor<ExecutableType, ClientType>::
-    XlaSerializedCacheKeyToString(const XlaSerializedCacheKey& key) const {
-  static constexpr char kXlaSerializedCacheKeySeparator[] = "__";
-  return absl::StrCat(
-      key.prefix(), key.prefix().empty() ? "" : kXlaSerializedCacheKeySeparator,
-      key.signature_fingerprint(), kXlaSerializedCacheKeySeparator,
-      key.cluster_fingerprint(), kXlaSerializedCacheKeySeparator,
-      key.device_type(),
-      key.compiled_using_pjrt()
-          ? absl::StrCat(kXlaSerializedCacheKeySeparator, "pjrt")
-          : "");
-}
+      persistent_cache_directory_(config.persistent_cache_directory),
+      persistent_cache_directory_read_only_(
+          config.persistent_cache_directory_read_only) {}
 
 template <typename ExecutableType, typename ClientType>
 std::string DeviceExecutablePersistor<ExecutableType, ClientType>::GetFilePath(
     const XlaSerializedCacheKey& key) const {
-  const std::string file_name =
-      absl::StrCat(XlaSerializedCacheKeyToString(key), ".pb");
+  const std::string file_name = XlaSerializedCacheKeyToFileName(key);
   return io::JoinPath(persistent_cache_directory_, file_name);
 }
 
@@ -206,13 +218,13 @@ DeviceExecutablePersistor<xla::PjRtLoadedExecutable, xla::PjRtClient>::
 }
 
 template <typename ExecutableType, typename ClientType>
-StatusOr<std::optional<XlaSerializedCacheEntry>>
+absl::StatusOr<std::optional<XlaSerializedCacheEntry>>
 DeviceExecutablePersistor<ExecutableType, ClientType>::TryToReadSerializedEntry(
     const XlaSerializedCacheKey& key) const {
   Env* env = Env::Default();
   const std::string file_path = GetFilePath(key);
   if (!env->FileExists(file_path).ok()) {
-    return StatusOr<std::optional<XlaSerializedCacheEntry>>(std::nullopt);
+    return absl::StatusOr<std::optional<XlaSerializedCacheEntry>>(std::nullopt);
   }
 
   XlaSerializedCacheEntry entry;
@@ -221,7 +233,7 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::TryToReadSerializedEntry(
 }
 
 template <typename ExecutableType, typename ClientType>
-Status
+absl::Status
 DeviceExecutablePersistor<ExecutableType, ClientType>::VerifyLoadedCacheEntry(
     const XlaSerializedCacheKey& key, const xla::HloModuleProto& hlo_module,
     const XlaSerializedCacheEntry& entry) const {
@@ -251,21 +263,47 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::VerifyLoadedCacheEntry(
   if (entry.executable().empty()) {
     return errors::InvalidArgument("No binary found in serialized entry.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename ExecutableType, typename ClientType>
-Status
+absl::Status
 DeviceExecutablePersistor<ExecutableType, ClientType>::SaveSerializedEntry(
     const XlaSerializedCacheEntry& entry) const {
   Env* env = Env::Default();
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(persistent_cache_directory_));
-  const std::string file_path = GetFilePath(entry.key());
-  return WriteBinaryProto(env, file_path, entry);
+
+  // The cache on the filesystem can be read while we're writing out the proto.
+  // To prevent reads of partially-written files, we write the proto to a temp
+  // file, then move it into place once we're done writing.  And we warn the
+  // user if these moves are not known to be atomic.
+  bool has_atomic_move = false;
+  env->HasAtomicMove(persistent_cache_directory_, &has_atomic_move)
+      .IgnoreError();
+  if (!has_atomic_move) {
+    LOG_EVERY_POW_2(WARNING)
+        << "Filesystem for XLA persistent cache at "
+        << persistent_cache_directory_
+        << " does not support atomic moves.  Therefore the persistent cache is "
+           "racy if you have multiple XLA compilations occurring "
+           "simultaneously!  You have been warned. :)";
+  }
+
+  // Write to temp location, then when that completes, atomically move into the
+  // final location.
+  std::string temp_path =
+      io::JoinPath(persistent_cache_directory_,
+                   XlaSerializedCacheKeyToFileName(entry.key()));
+  if (!env->CreateUniqueFileName(&temp_path, ".tmp")) {
+    return absl::UnavailableError(absl::StrCat(
+        "Could not create a unique file inside ", persistent_cache_directory_));
+  }
+  TF_RETURN_IF_ERROR(WriteBinaryProto(env, temp_path, entry));
+  return env->RenameFile(temp_path, GetFilePath(entry.key()));
 }
 
 template <typename ExecutableType, typename ClientType>
-StatusOr<XlaSerializedCacheEntry>
+absl::StatusOr<XlaSerializedCacheEntry>
 DeviceExecutablePersistor<ExecutableType, ClientType>::SerializeEntry(
     uint64 signature_hash, const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& compilation_result,
@@ -336,17 +374,18 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::TryToLoadExecutable(
 }
 
 template <typename ExecutableType, typename ClientType>
-Status
+absl::Status
 DeviceExecutablePersistor<ExecutableType, ClientType>::TryToPersistExecutable(
     uint64 signature_hash, const std::string& signature_str,
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& compilation_result,
     const ExecutableType& executable,
     DeviceCompilerClient<ExecutableType, ClientType>* client) const {
-  if (persistent_cache_directory_.empty()) {
+  if (persistent_cache_directory_.empty() ||
+      persistent_cache_directory_read_only_) {
     VLOG(1) << "Not persisting executable. No `persistent_cache_directory` "
-               "provided.";
-    return OkStatus();
+               "provided or cache is read-only.";
+    return absl::OkStatus();
   }
 
   XLA_SCOPED_LOGGING_TIMER(
@@ -355,7 +394,9 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::TryToPersistExecutable(
                       SerializeEntry(signature_hash, options,
                                      compilation_result, executable, client));
   TF_RETURN_IF_ERROR(SaveSerializedEntry(std::move(serialized_entry)));
-  return OkStatus();
+  VLOG(2) << "XlaSerializedCacheEntry saved for signature: [" << signature_str
+          << "] with signature hash: " << signature_hash;
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

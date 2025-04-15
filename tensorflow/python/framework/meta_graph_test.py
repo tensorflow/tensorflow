@@ -24,7 +24,6 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import function
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
@@ -747,29 +746,6 @@ class ScopedMetaGraphTest(test.TestCase):
     test_util.assert_meta_graph_protos_equal(self, orig_meta_graph,
                                              new_meta_graph)
 
-  def testExportDebugInfo(self):
-    graph1 = ops.Graph()
-    with graph1.as_default():
-      with ops.name_scope("hidden1/hidden2/hidden3"):
-        images = constant_op.constant(
-            1.0, dtypes.float32, shape=[3, 2], name="images")
-        weights1 = variables.Variable([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-                                      name="weights")
-        biases1 = resource_variable_ops.ResourceVariable(
-            [0.1] * 3, name="biases")
-        nn_ops.relu(math_ops.matmul(images, weights1) + biases1, name="relu")
-    func_named_operations = []
-    for op in graph1.get_operations():
-      func_named_operations.append(("", op))
-    debug_info_def = error_interpolation.create_graph_debug_info_def(
-        func_named_operations)
-
-    # The unique file names in all the stack traces should be larger or equal
-    # than 1.
-    self.assertTrue(len(debug_info_def.files) >= 1)
-    # All the nodes from the exported graphdef are included.
-    self.assertEqual(len(debug_info_def.traces), len(graph1.get_operations()))
-
   # Verifies that we can export a subgraph in a nested name scope containing a
   # "hidden1/hidden2" and import it into "new_hidden1/new_hidden2" in a new
   # graph.
@@ -1026,15 +1002,15 @@ class ExportImportAcrossScopesTest(test.TestCase):
     expected = meta_graph.export_scoped_meta_graph(graph=expected_graph)[0]
 
     if use_resource:
-      # Clear all shared_name attributes before comparing, since they are
-      # orthogonal to scopes and are not updated on export/import.
+      # Clear all shared_name and debug_name attributes before comparing, since
+      # they are orthogonal to scopes and are not updated on export/import.
       for meta_graph_def in [result, expected]:
         for node in meta_graph_def.graph_def.node:
-          shared_name_attr = "shared_name"
-          shared_name_value = node.attr.get(shared_name_attr, None)
-          if shared_name_value and shared_name_value.HasField("s"):
-            if shared_name_value.s:
-              node.attr[shared_name_attr].s = b""
+          for attr_to_remove in ["shared_name", "debug_name"]:
+            attr_value = node.attr.get(attr_to_remove, None)
+            if attr_value and attr_value.HasField("s"):
+              if attr_value.s:
+                node.attr[attr_to_remove].s = b""
 
     test_util.assert_meta_graph_protos_equal(self, expected, result)
 

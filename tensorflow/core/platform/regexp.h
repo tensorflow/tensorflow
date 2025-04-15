@@ -15,6 +15,6 @@ limitations under the License.
 
 #ifndef TENSORFLOW_CORE_PLATFORM_REGEXP_H_
 #define TENSORFLOW_CORE_PLATFORM_REGEXP_H_
-#include "tensorflow/tsl/platform/regexp.h"
+#include "tsl/platform/regexp.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_REGEXP_H_

@@ -115,8 +115,8 @@ TEST_F(AllToAllTest, Failure) {
       Device* device = nullptr;
       TF_CHECK_OK(test_env_->device_mgr->LookupDevice(
           col_params->group.members[i].device.name(), &device));
-      Status status = RunCollective(test_env_.get(), col_params.get(), device,
-                                    &tensors[i], &tensors[i]);
+      absl::Status status = RunCollective(test_env_.get(), col_params.get(),
+                                          device, &tensors[i], &tensors[i]);
       if (!status.ok()) {
         mutex_lock l(mu);
         ++num_failures;
@@ -147,8 +147,8 @@ TEST_F(AllToAllTest, WrongFirstDimensionSize) {
       Device* device = nullptr;
       TF_CHECK_OK(test_env_->device_mgr->LookupDevice(
           col_params->group.members[i].device.name(), &device));
-      Status status = RunCollective(test_env_.get(), col_params.get(), device,
-                                    &tensors[i], &tensors[i]);
+      absl::Status status = RunCollective(test_env_.get(), col_params.get(),
+                                          device, &tensors[i], &tensors[i]);
       counter.DecrementCount();
       EXPECT_TRUE(errors::IsInvalidArgument(status));
     });

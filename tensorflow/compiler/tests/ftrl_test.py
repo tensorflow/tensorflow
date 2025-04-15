@@ -320,7 +320,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
   # When variables are initialized with Zero, FTRL-Proximal has two properties:
   # 1. Without L1&L2 but with fixed learning rate, FTRL-Proximal is identical
   # with GradientDescent.
-  # 2. Without L1&L2 but with adaptive learning rate, FTRL-Proximal is idential
+  # 2. Without L1&L2 but with adaptive learning rate, FTRL-Proximal is identical
   # with Adagrad.
   # So, basing on these two properties, we test if our implementation of
   # FTRL-Proximal performs same updates as Adagrad or GradientDescent.

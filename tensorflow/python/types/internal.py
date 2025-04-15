@@ -45,3 +45,17 @@ class IndexedSlices(object):
 
   This helps to avoid circular dependencies.
   """
+
+
+class RaggedTensor(object):
+  """Interface for internal isinstance checks to ops/ragged/ragged_tensor.py.
+
+  This helps to avoid circular dependencies.
+  """
+
+
+class RaggedTensorSpec(object):
+  """Interface for internal isinstance checks to ops/ragged/ragged_tensor.py.
+
+  This helps to avoid circular dependencies.
+  """

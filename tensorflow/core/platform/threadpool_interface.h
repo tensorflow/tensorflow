@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_THREADPOOL_INTERFACE_H_
 #define TENSORFLOW_CORE_PLATFORM_THREADPOOL_INTERFACE_H_
 
-#include "tensorflow/tsl/platform/threadpool_interface.h"
+#include "tsl/platform/threadpool_interface.h"
 
 namespace tensorflow {
 namespace thread {

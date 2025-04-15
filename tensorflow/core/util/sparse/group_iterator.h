@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_SPARSE_GROUP_ITERATOR_H_
 
 #include <vector>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -76,7 +76,7 @@ class Group {
 // Forward declaration of SparseTensor
 class GroupIterable {
  public:
-  typedef gtl::ArraySlice<int64_t> VarDimArray;
+  typedef absl::Span<const int64_t> VarDimArray;
 
   GroupIterable(Tensor ix, Tensor vals, int dims, const VarDimArray& group_dims)
       : ix_(ix),
@@ -132,7 +132,7 @@ class GroupIterable {
   const TTypes<int64_t>::ConstMatrix ix_matrix_;
   Tensor vals_;
   const int dims_;
-  const gtl::InlinedVector<int64_t, 8> group_dims_;
+  const absl::InlinedVector<int64_t, 8UL> group_dims_;
 };
 
 inline int64_t Group::group_at(size_t index) const {

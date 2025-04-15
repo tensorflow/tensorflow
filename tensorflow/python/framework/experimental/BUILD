@@ -2,6 +2,11 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_python_pybind_extension")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,14 +16,25 @@ package(
 tf_python_pybind_extension(
     name = "_unified_api",
     srcs = ["unified_api.cc"],
+    enable_stub_generation = True,
     features = ["-layering_check"],
+    pytype_srcs = [
+        "_unified_api.pyi",
+    ],
+    starlark_only = True,
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
 )
@@ -27,6 +43,10 @@ tf_python_pybind_extension(
     name = "_tape",
     srcs = ["tape.cc"],
     features = ["-layering_check"],
+    starlark_only = True,
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:lib",
@@ -34,13 +54,29 @@ tf_python_pybind_extension(
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
-    ],
+    ] + if_pywrap(
+        if_true = [
+            "//tensorflow/c/experimental/gradients/tape:tape_context",
+            "//tensorflow/c/experimental/gradients:math_grad",
+            "//tensorflow/c/experimental/gradients:nn_grad",
+        ],
+    ),
 )
 
 tf_python_pybind_extension(
     name = "_math_ops",
     srcs = ["math_ops.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_math_ops.pyi",
+    ],
+    starlark_only = True,
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
@@ -51,12 +87,24 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/types:span",
         "@pybind11",
-    ],
+    ] + if_pywrap(
+        if_true = [
+            "//tensorflow/c/experimental/ops:math_ops",
+        ],
+    ),
 )
 
 tf_python_pybind_extension(
     name = "_nn_ops",
     srcs = ["nn_ops.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_nn_ops.pyi",
+    ],
+    starlark_only = True,
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
@@ -67,20 +115,22 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/types:span",
         "@pybind11",
-    ],
+    ] + if_pywrap(
+        if_true = [
+            "//tensorflow/c/experimental/ops:nn_ops",
+        ],
+    ),
 )
 
 py_strict_library(
     name = "gradient_registry",
     srcs = ["gradient_registry.py"],
-    srcs_version = "PY3",
     deps = [":_tape"],
 )
 
 py_strict_library(
     name = "math_ops",
     srcs = ["math_ops.py"],
-    srcs_version = "PY3",
     deps = [
         ":_math_ops",
         ":context_stack",
@@ -90,7 +140,6 @@ py_strict_library(
 py_strict_library(
     name = "nn_ops",
     srcs = ["nn_ops.py"],
-    srcs_version = "PY3",
     deps = [
         ":_nn_ops",
         ":context_stack",
@@ -100,7 +149,6 @@ py_strict_library(
 py_strict_library(
     name = "tape",
     srcs = ["tape.py"],
-    srcs_version = "PY3",
     deps = [
         ":_tape",
         ":context_stack",
@@ -112,7 +160,6 @@ py_strict_library(
 py_strict_library(
     name = "def_function",
     srcs = ["def_function.py"],
-    srcs_version = "PY3",
     deps = [
         ":_unified_api",
         ":context_stack",
@@ -123,13 +170,11 @@ py_strict_library(
 py_strict_library(
     name = "thread_local_stack",
     srcs = ["thread_local_stack.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "context_stack",
     srcs = ["context_stack.py"],
-    srcs_version = "PY3",
     deps = [":thread_local_stack"],
 )
 
@@ -166,7 +211,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "graph_building_test",
     size = "small",
     srcs = ["graph_building_test.py"],

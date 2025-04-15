@@ -15,7 +15,8 @@ limitations under the License.
 
 // clang-format off
 // Must be included first.
-#include "tensorflow/tsl/python/lib/core/numpy.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "xla/tsl/python/lib/core/numpy.h"
 // clang-format on
 
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
@@ -23,10 +24,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/c_api.h"
+#include "xla/tsl/python/lib/core/ml_dtypes.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/python/lib/core/py_util.h"
-#include "tensorflow/tsl/python/lib/core/ml_dtypes.h"
 
 namespace tensorflow {
 
@@ -117,8 +118,10 @@ PyTypeObject TensorReleaserType = {
 };
 // clang-format on
 
-Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
-                                   int* out_pyarray_type) {
+absl::Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
+                                         int* out_pyarray_type) {
+  const tsl::ml_dtypes::NumpyDtypes& custom_dtypes =
+      tsl::ml_dtypes::GetNumpyDtypes();
   switch (tf_datatype) {
     case TF_HALF:
       *out_pyarray_type = NPY_FLOAT16;
@@ -187,30 +190,46 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       *out_pyarray_type = NPY_INT32;
       break;
     case TF_BFLOAT16:
-      *out_pyarray_type = tsl::ml_dtypes::GetBfloat16TypeNum();
+      *out_pyarray_type = custom_dtypes.bfloat16;
       break;
     case TF_FLOAT8_E5M2:
-      *out_pyarray_type = tsl::ml_dtypes::GetFloat8E5m2TypeNum();
+      *out_pyarray_type = custom_dtypes.float8_e5m2;
       break;
     case TF_FLOAT8_E4M3FN:
-      *out_pyarray_type = tsl::ml_dtypes::GetFloat8E4m3fnTypeNum();
+      *out_pyarray_type = custom_dtypes.float8_e4m3fn;
+      break;
+    case TF_FLOAT8_E4M3FNUZ:
+      *out_pyarray_type = custom_dtypes.float8_e4m3fnuz;
+      break;
+    case TF_FLOAT8_E4M3B11FNUZ:
+      *out_pyarray_type = custom_dtypes.float8_e4m3b11fnuz;
+      break;
+    case TF_FLOAT8_E5M2FNUZ:
+      *out_pyarray_type = custom_dtypes.float8_e5m2fnuz;
+      break;
+    case TF_INT4:
+      *out_pyarray_type = custom_dtypes.int4;
+      break;
+    case TF_UINT4:
+      *out_pyarray_type = custom_dtypes.uint4;
       break;
     default:
       return errors::Internal("Tensorflow type ", tf_datatype,
                               " not convertible to numpy dtype.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
-                       std::function<void()> destructor, PyObject** result) {
+absl::Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data,
+                             DataType dtype, std::function<void()> destructor,
+                             PyObject** result) {
   if (dtype == DT_STRING || dtype == DT_RESOURCE) {
     return errors::FailedPrecondition(
         "Cannot convert string or resource Tensors.");
   }
 
   int type_num = -1;
-  Status s =
+  absl::Status s =
       TF_DataType_to_PyArray_TYPE(static_cast<TF_DataType>(dtype), &type_num);
   if (!s.ok()) {
     return s;
@@ -251,7 +270,7 @@ Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
     return errors::Unknown("Python array refused to use memory.");
   }
   *result = reinterpret_cast<PyObject*>(np_array);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

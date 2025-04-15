@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -35,12 +36,14 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/layout_util.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/memory_viewer_preprocess.pb.h"
 
 namespace tensorflow {
@@ -56,12 +59,15 @@ using ::xla::LogicalBufferProto;
 using ::xla::Shape;
 using ::xla::ShapeUtil;
 
-const Shape* ResolveShapeIndex(const Shape* shape,
-                               absl::Span<const int64_t> shape_index) {
-  for (int64_t value : shape_index) {
-    shape = &shape->tuple_shapes(value);
+Shape ResolveShapeIndex(const xla::ShapeProto& shape_proto,
+                        absl::Span<const int64_t> shape_index) {
+  if (shape_index.empty()) return Shape(shape_proto);
+  // Choosing the last subshape to maintain historical behavior.
+  int64_t i = shape_index.back();
+  if (i >= shape_proto.tuple_shapes_size()) {
+    return Shape(shape_proto);
   }
-  return shape;
+  return Shape(shape_proto.tuple_shapes(i));
 }
 
 std::string ShapeDescription(const Shape& shape) {
@@ -131,12 +137,12 @@ struct LogicalBufferStruct {
   LogicalBufferStruct(const LogicalBufferProto& p,
                       const BufferAllocationStruct& b,
                       const ::xla::HloInstructionProto& i, uint64_t offset)
-      : proto(p), buffer_allocation(b), hlo_instruction(i), offset(offset) {
-    // Get shape of logical buffer.
-    const Shape top_level_shape(hlo_instruction.shape());
-    shape =
-        *ResolveShapeIndex(&top_level_shape, proto.defined_at().shape_index());
-  }
+      : proto(p),
+        buffer_allocation(b),
+        hlo_instruction(i),
+        offset(offset),
+        shape(ResolveShapeIndex(hlo_instruction.shape(),
+                                proto.defined_at().shape_index())) {}
 
   absl::string_view instruction_name() const { return hlo_instruction.name(); }
 
@@ -214,11 +220,6 @@ class HloProtoBufferWrapper {
   // Get the raw HLO proto.
   const ::xla::HloProto& GetHloProto() const { return hlo_proto_; }
 
-  const BufferAllocationStruct& GetBufferAllocation(
-      int64_t buffer_allocation_id) const {
-    return *id_to_buffer_allocation_.at(buffer_allocation_id);
-  }
-
   std::vector<const BufferAllocationStruct*> GetBufferAllocations(
       int64_t memory_color) const {
     std::vector<const BufferAllocationStruct*> buffer_allocations;
@@ -229,8 +230,12 @@ class HloProtoBufferWrapper {
     return buffer_allocations;
   }
 
-  LogicalBufferStruct& GetLogicalBuffer(int64_t logical_buffer_id) const {
-    return *id_to_logical_buffer_.at(logical_buffer_id);
+  LogicalBufferStruct* GetLogicalBuffer(int64_t logical_buffer_id) const {
+    if (!id_to_logical_buffer_.contains(logical_buffer_id)) {
+      LOG(DFATAL) << "logical_buffer_id " << logical_buffer_id << "not found.";
+      return nullptr;
+    }
+    return id_to_logical_buffer_.at(logical_buffer_id).get();
   }
 
   // Get the logical buffers with indefinite lifetime (excluding thread_local).
@@ -249,11 +254,12 @@ class HloProtoBufferWrapper {
       const LogicalBufferStruct* best_logical_buffer = nullptr;
       size_t best_size = 0;
       for (const auto& assigned : buffer_assignment->proto().assigned()) {
-        const auto& logical_buffer_struct =
+        const LogicalBufferStruct* logical_buffer_struct =
             GetLogicalBuffer(assigned.logical_buffer_id());
-        if (logical_buffer_struct.size() > best_size) {
-          best_size = logical_buffer_struct.size();
-          best_logical_buffer = &logical_buffer_struct;
+        if (logical_buffer_struct == nullptr) continue;
+        if (logical_buffer_struct->size() > best_size) {
+          best_size = logical_buffer_struct->size();
+          best_logical_buffer = logical_buffer_struct;
         }
       }
       if (best_logical_buffer) {
@@ -294,14 +300,17 @@ class HloProtoBufferWrapper {
           std::make_unique<BufferAllocationStruct>(buffer_allocation);
       for (const auto& assigned : buffer_allocation.assigned()) {
         const auto id = assigned.logical_buffer_id();
+        if (!id_to_logical_buffer_proto.contains(id)) {
+          LOG(DFATAL) << "logical_buffer_id " << id << " not found.";
+          continue;
+        }
         const auto* logical_buffer = id_to_logical_buffer_proto.at(id);
-        const auto& instruction_name =
-            logical_buffer->defined_at().instruction_name();
-        const auto* instruction =
-            instruction_name.empty()
-                ? unique_id_to_hlo.at(
-                      logical_buffer->defined_at().instruction_id())
-                : name_to_hlo.at(instruction_name);
+        int64_t inst_id = logical_buffer->defined_at().instruction_id();
+        if (!unique_id_to_hlo.contains(inst_id)) {
+          LOG(DFATAL) << "instruction_id " << inst_id << " not found.";
+          continue;
+        }
+        const auto* instruction = unique_id_to_hlo.at(inst_id);
         id_to_logical_buffer_[id] = std::make_unique<LogicalBufferStruct>(
             *logical_buffer, *buffer_allocation_s, *instruction,
             assigned.offset());
@@ -315,6 +324,7 @@ class HloProtoBufferWrapper {
       // to obtain the buffer allocation index ourselves.
       if (heap_simulator_traces[i].events().empty()) continue;
       int logical_buffer_id = heap_simulator_traces[i].events(0).buffer_id();
+      if (!id_to_logical_buffer_.contains(logical_buffer_id)) continue;
       auto* logical_buffer = id_to_logical_buffer_[logical_buffer_id].get();
       auto buffer_allocation_index = logical_buffer->buffer_allocation.index();
       id_to_buffer_allocation_[buffer_allocation_index]
@@ -333,6 +343,10 @@ class HloProtoBufferWrapper {
           hlo_proto_.buffer_assignment().heap_simulator_traces(i);
       int64_t event_count = 0;
       for (const auto& event : heap_simulator_trace.events()) {
+        if (!id_to_logical_buffer_.contains(event.buffer_id())) {
+          LOG(DFATAL) << "buffer_id " << event.buffer_id() << "not found.";
+          continue;
+        }
         const auto& logical_buffer =
             id_to_logical_buffer_.at(event.buffer_id());
         if (logical_buffer->color() == memory_color) {
@@ -421,12 +435,13 @@ void Convert(const xla::BufferAllocationProto_Assigned& assigned,
              const HloProtoBufferWrapper& wrapper, LogicalBuffer* result) {
   result->set_id(assigned.logical_buffer_id()),
       result->set_size_mib(BytesToMiB(assigned.size()));
-  const auto& logical_buffer =
+  const LogicalBufferStruct* logical_buffer =
       wrapper.GetLogicalBuffer(assigned.logical_buffer_id());
-  result->set_hlo_name(std::string(logical_buffer.instruction_name()));
+  if (logical_buffer == nullptr) return;
+  result->set_hlo_name(std::string(logical_buffer->instruction_name()));
   result->mutable_shape_index()->CopyFrom(
-      logical_buffer.proto.defined_at().shape_index());
-  result->set_shape(ShapeDescription(logical_buffer.shape));
+      logical_buffer->proto.defined_at().shape_index());
+  result->set_shape(ShapeDescription(logical_buffer->shape));
 }
 
 bool IsReusable(const BufferAllocationProto& buffer_allocation) {
@@ -466,13 +481,16 @@ void Convert(const BufferAllocationProto& proto,
 }
 
 void NoteSpecialAllocations(const HloProtoBufferWrapper& wrapper,
-                            int64_t small_buffer_size,
+                            int64_t memory_color, int64_t small_buffer_size,
                             PreprocessResult* result) {
   int64_t entry_parameters_bytes = 0;
   int64_t non_reusable_bytes = 0;
   int64_t maybe_live_out_bytes = 0;
-  for (const BufferAllocationProto& buffer_allocation :
-       wrapper.GetHloProto().buffer_assignment().buffer_allocations()) {
+  int64_t total_buffer_allocation_bytes = 0;
+  int64_t indefinite_buffer_allocation_bytes = 0;
+  for (const auto* buffer_allocation_struct :
+       wrapper.GetBufferAllocations(memory_color)) {
+    const auto& buffer_allocation = buffer_allocation_struct->proto();
     if (buffer_allocation.is_entry_computation_parameter()) {
       entry_parameters_bytes += buffer_allocation.size();
     }
@@ -487,13 +505,21 @@ void NoteSpecialAllocations(const HloProtoBufferWrapper& wrapper,
       }
       maybe_live_out_bytes += buffer_allocation.size();
     }
-    Convert(buffer_allocation, wrapper, result->add_indefinite_lifetimes());
+    if (buffer_allocation_struct->IsIndefinite()) {
+      indefinite_buffer_allocation_bytes += buffer_allocation.size();
+      Convert(buffer_allocation, wrapper, result->add_indefinite_lifetimes());
+    }
+    total_buffer_allocation_bytes += buffer_allocation.size();
   }
 
   result->set_entry_computation_parameters_mib(
       BytesToMiB(entry_parameters_bytes));
   result->set_non_reusable_mib(BytesToMiB(non_reusable_bytes));
   result->set_maybe_live_out_mib(BytesToMiB(maybe_live_out_bytes));
+  result->set_total_buffer_allocation_mib(
+      BytesToMiB(total_buffer_allocation_bytes));
+  result->set_indefinite_buffer_allocation_mib(
+      BytesToMiB(indefinite_buffer_allocation_bytes));
 }
 
 // Memory usage statistics collected from heap simulator trace.
@@ -510,9 +536,12 @@ struct HeapSimulatorStats {
     // Update memory timelines and seen buffers.
     heap_size_bytes_timeline.push_back(heap_size_bytes);
     unpadded_heap_size_bytes_timeline.push_back(unpadded_heap_size_bytes);
-    const auto& logical_buffer = wrapper.GetLogicalBuffer(event.buffer_id());
-    seen_logical_buffers.insert(&logical_buffer);
-    seen_buffer_allocations.insert(&logical_buffer.buffer_allocation.proto());
+    hlo_instruction_name_timeline.push_back(event.instruction_name());
+    const LogicalBufferStruct* logical_buffer =
+        wrapper.GetLogicalBuffer(event.buffer_id());
+    if (logical_buffer == nullptr) return;
+    seen_logical_buffers.insert(logical_buffer);
+    seen_buffer_allocations.insert(&logical_buffer->buffer_allocation.proto());
   }
 
   // Update stats when memory usage increase.
@@ -542,7 +571,8 @@ struct HeapSimulatorStats {
   }
 
   // Update stats when memory usage decrease.
-  Status DecreaseMemoryUsage(LogicalBufferStruct* canonical_logical_buffer) {
+  absl::Status DecreaseMemoryUsage(
+      LogicalBufferStruct* canonical_logical_buffer) {
     int64_t canonical_buffer_id = canonical_logical_buffer->proto.id();
     logical_buffers.remove(canonical_buffer_id);
     heap_size_bytes -= canonical_logical_buffer->size();
@@ -556,14 +586,17 @@ struct HeapSimulatorStats {
       canonical_logical_buffer->span->second =
           heap_size_bytes_timeline.size() - 1;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Finalize the memory usage stats from heap simulator trace.
-  Status FinalizeMemoryUsage() {
+  absl::Status FinalizeMemoryUsage() {
     // Add the final heap size after simulating the entire heap trace.
     heap_size_bytes_timeline.push_back(heap_size_bytes);
     unpadded_heap_size_bytes_timeline.push_back(unpadded_heap_size_bytes);
+    // Add an empty instruction name just so that this array is the same size as
+    // the other two.
+    hlo_instruction_name_timeline.push_back("");
 
     if (seen_buffer_allocations.size() != 1) {
       return errors::InvalidArgument(
@@ -579,7 +612,7 @@ struct HeapSimulatorStats {
     VLOG(1) << "Peak logical buffers: ["
             << absl::StrJoin(peak_logical_buffers, ", ") << "]";
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Keep track of memory usage when iterating through heap simulator trace
@@ -600,6 +633,7 @@ struct HeapSimulatorStats {
   // Heap size timeline.
   std::vector<int64_t> heap_size_bytes_timeline;
   std::vector<int64_t> unpadded_heap_size_bytes_timeline;
+  std::vector<std::string> hlo_instruction_name_timeline;
 
   // Position of peak memory usage in the timeline.
   int64_t peak_heap_size_position = 0;
@@ -613,9 +647,9 @@ struct HeapSimulatorStats {
   int64_t simulator_trace_event_size;
 };
 
-Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
-                                 const int64_t memory_color,
-                                 HeapSimulatorStats* stats) {
+absl::Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
+                                       const int64_t memory_color,
+                                       HeapSimulatorStats* stats) {
   int64_t heap_simulator_trace_id =
       wrapper.GetHeapSimulatorTraceId(memory_color);
 
@@ -625,7 +659,7 @@ Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
       heap_simulator_trace_id >= wrapper.GetHloProto()
                                      .buffer_assignment()
                                      .heap_simulator_traces_size()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Run through all the simulator events in the given trace, and simulate the
@@ -638,36 +672,44 @@ Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
   stats->SetSimulatorTraceEventSize(trace.events_size());
   for (const auto& event : trace.events()) {
     stats->UpdateOnSimulatorEvent(event);
-    auto& logical_buffer = wrapper.GetLogicalBuffer(event.buffer_id());
+    LogicalBufferStruct* logical_buffer =
+        wrapper.GetLogicalBuffer(event.buffer_id());
+    if (logical_buffer == nullptr) {
+      continue;
+    }
     if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
       // ALLOC event increases memory usage and initializes the buffer lifetime
       // span.
-      logical_buffer.inc();
-      stats->IncreaseMemoryUsage(&logical_buffer,
+      logical_buffer->inc();
+      stats->IncreaseMemoryUsage(logical_buffer,
                                  /*init_buffer_span=*/true);
     } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
-      auto ref_count = logical_buffer.dec();
+      auto ref_count = logical_buffer->dec();
       if (ref_count < 0) {
         return errors::InvalidArgument(absl::StrCat(
-            "Buffer ", logical_buffer.proto.id(), "is freed multiple times."));
+            "Buffer ", logical_buffer->proto.id(), "is freed multiple times."));
       }
       if (ref_count == 0) {
         // There is no more reference to the canonical buffer, the canonical
         // buffer is finally freed. Update memory usage and memory timespan
         // using the metadata of canonical buffer.
-        auto& canonical_buffer = *logical_buffer.get_canonical_buffer();
+        auto& canonical_buffer = *logical_buffer->get_canonical_buffer();
         TF_RETURN_IF_ERROR(stats->DecreaseMemoryUsage(&canonical_buffer));
       }
     } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
       int64_t canonical_buffer_id = event.share_with_canonical_id();
-      auto& canonical_buffer = wrapper.GetLogicalBuffer(canonical_buffer_id);
-      auto ref_count = logical_buffer.share_with(&canonical_buffer);
+      LogicalBufferStruct* canonical_buffer =
+          wrapper.GetLogicalBuffer(canonical_buffer_id);
+      if (canonical_buffer == nullptr) {
+        continue;
+      }
+      auto ref_count = logical_buffer->share_with(canonical_buffer);
 
       if (ref_count == 1) {
         // SHARE_WITH happens after the FREE of a canonical buffer.
         // SHARE_WITH event does not initialize buffer lifetime span, it was
         // initialized by ALLOC event using the canonical logical buffer.
-        stats->IncreaseMemoryUsage(&canonical_buffer,
+        stats->IncreaseMemoryUsage(canonical_buffer,
                                    /*init_buffer_span=*/false);
       }
     } else {
@@ -676,7 +718,7 @@ Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
     }
   }
   TF_RETURN_IF_ERROR(stats->FinalizeMemoryUsage());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // The stats when processing buffer allocations and logical buffers.
@@ -703,8 +745,10 @@ struct PeakUsageSnapshot {
     // Buffers from HeapSimulatorTrace.
     for (const int64_t logical_buffer_id :
          simulator_stats.peak_logical_buffers) {
-      const auto& logical_buffer = wrapper.GetLogicalBuffer(logical_buffer_id);
-      AddHeapObject(logical_buffer);
+      const LogicalBufferStruct* logical_buffer =
+          wrapper.GetLogicalBuffer(logical_buffer_id);
+      if (logical_buffer == nullptr) return;
+      AddHeapObject(*logical_buffer);
     }
 
     // Make a single HeapObject out of all the small buffers.
@@ -832,7 +876,7 @@ void ConvertAllocationTimeline(const HloProtoBufferWrapper& wrapper,
       "orange",
       "orangered",
       "orchid",
-      "palegoldenrod"
+      "palegoldenrod",
       "palegreen",
       "paleturquoise",
       "palevioletred",
@@ -889,6 +933,11 @@ void ConvertAllocationTimeline(const HloProtoBufferWrapper& wrapper,
     if (!heap_simulator_trace_id) continue;
     buffer_allocation_offsets.push_back(total_y_size);
     total_y_size += buffer_allocation->size();
+    if (*heap_simulator_trace_id >= heap_simulator_traces.size()) {
+      LOG(DFATAL) << "heap_simulator_trace_id " << *heap_simulator_trace_id
+                  << " out of bounds.";
+      continue;
+    }
     total_x_size = std::max<size_t>(
         total_x_size,
         heap_simulator_traces.at(*heap_simulator_trace_id).events_size());
@@ -926,14 +975,15 @@ void ConvertAllocationTimeline(const HloProtoBufferWrapper& wrapper,
              ba_colors[buffer_id % num_ba_colors]);
 
     for (const auto& assigned : buffer_allocation->proto().assigned()) {
-      const LogicalBufferStruct& logical_buffer =
+      const LogicalBufferStruct* logical_buffer =
           wrapper.GetLogicalBuffer(assigned.logical_buffer_id());
+      if (logical_buffer == nullptr) continue;
       // Exclude non-canonical logical buffers.
-      if (!logical_buffer.span || logical_buffer.canonical_buffer) continue;
-      size_t width = logical_buffer.span->second - logical_buffer.span->first;
-      size_t height = buffer_allocation_offset + logical_buffer.size();
-      add_rect(logical_buffer.span->first, logical_buffer.offset, width, height,
-               logical_buffer.description(),
+      if (!logical_buffer->span || logical_buffer->canonical_buffer) continue;
+      size_t width = logical_buffer->span->second - logical_buffer->span->first;
+      size_t height = buffer_allocation_offset + logical_buffer->size();
+      add_rect(logical_buffer->span->first, logical_buffer->offset, width,
+               height, logical_buffer->description(),
                lb_colors[node_id % num_lb_colors]);
     }
   }
@@ -1004,6 +1054,8 @@ void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
     result->add_unpadded_heap_sizes(
         BytesToMiB(simulator_stats.unpadded_heap_size_bytes_timeline[i]) +
         add_mib);
+    result->add_hlo_instruction_names(
+        simulator_stats.hlo_instruction_name_timeline[i]);
   }
 
   result->set_peak_heap_mib(BytesToMiB(simulator_stats.peak_heap_size_bytes) +
@@ -1020,7 +1072,8 @@ void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
                        logical_buffer->span->second);
   }
 
-  NoteSpecialAllocations(wrapper, peak_snapshot.small_buffer_size, result);
+  NoteSpecialAllocations(wrapper, memory_color, peak_snapshot.small_buffer_size,
+                         result);
 
   ConvertAllocationTimeline(wrapper, simulator_stats, memory_color, result);
 }

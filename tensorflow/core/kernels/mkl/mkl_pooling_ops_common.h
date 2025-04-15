@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -131,7 +131,6 @@ class MklPoolingFwdPrimitive : public MklPrimitive {
     memory::format_tag ws_fmt;
 
     // Workspace shape.
-    memory::dims ws_dims;
     memory::data_type ws_dt;
     size_t ws_size;
 
@@ -161,6 +160,8 @@ class MklPoolingFwdPrimitive : public MklPrimitive {
         : src_fmt(memory::format_tag::any),
           dst_fmt(memory::format_tag::any),
           ws_fmt(memory::format_tag::any),
+          ws_dt(memory::data_type::u8),
+          ws_size(0),
           ws_mem(nullptr),
           src_mem(nullptr),
           dst_mem(nullptr),
@@ -176,7 +177,7 @@ class MklPoolingFwdPrimitive : public MklPrimitive {
 
   struct PoolingFwdContext context_;
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };
@@ -225,6 +226,7 @@ class MklPoolingFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 #endif  // ENABLE_ONEDNN_V3
     key_creator.AddAsKey(fwdParams.padding_left);
     key_creator.AddAsKey(fwdParams.padding_right);
+    key_creator.AddAsKey(fwdParams.src_format);
     key_creator.AddAsKey<int>(static_cast<int>(fwdParams.alg_kind));
     key_creator.AddAsKey<int>(static_cast<int>(fwdParams.prop_kind));
     return key_creator.GetKey();
@@ -284,7 +286,6 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
     memory::format_tag ws_fmt;
 
     // Workspace attribute.
-    dnnl::memory::dims ws_dims;
     dnnl::memory::data_type ws_dt;
 
     // oneDNN memory.
@@ -315,6 +316,7 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
         : diff_src_fmt(memory::format_tag::any),
           diff_dst_fmt(memory::format_tag::any),
           ws_fmt(memory::format_tag::any),
+          ws_dt(memory::data_type::u8),
           ws_mem(nullptr),
           diff_src_mem(nullptr),
           diff_dst_mem(nullptr),
@@ -331,7 +333,7 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
   };
 
   struct PoolingBwdContext context_;
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };
@@ -381,6 +383,7 @@ class MklPoolingBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 #endif  // ENABLE_ONEDNN_V3
     key_creator.AddAsKey(bwdParams.padding_left);
     key_creator.AddAsKey(bwdParams.padding_right);
+    key_creator.AddAsKey(bwdParams.src_format);
     key_creator.AddAsKey<int>(static_cast<int>(bwdParams.alg_kind));
     return key_creator.GetKey();
   }
@@ -504,8 +507,10 @@ class MklPoolingOpBase : public OpKernel {
                                            "specify 4 or 5 dimensions"));
     for (int i = 0; i < this->ksize_.size(); ++i) {
       OP_REQUIRES(context, this->ksize_[i] > 0,
-                  absl::InvalidArgumentError(absl::StrCat(
-                      "Sliding window ksize for dimension ", i, " was zero.")));
+                  errors::InvalidArgument(
+                      absl::StrCat("Sliding window ksize must be positive. The "
+                                   "specified or inferred ksize is: ",
+                                   absl::StrJoin(ksize_, ","))));
     }
 
     OP_REQUIRES_OK(context, context->GetAttr("strides", &this->stride_));

@@ -36,16 +36,19 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/lite/allocation.h"
+#include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/async/async_signature_runner.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/async/async_signature_runner.h"
 #include "tensorflow/lite/core/c/common.h"  // IWYU pragma: export
+#include "tensorflow/lite/core/signature_runner.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
@@ -54,7 +57,6 @@ limitations under the License.
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/profiling/root_profiler.h"
 #include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
-#include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
@@ -75,6 +77,10 @@ class TestDelegation;  // Class for friend declarations.
 namespace interpreter_wrapper {
 class InterpreterWrapper;  // Class for friend declarations.
 }  // namespace interpreter_wrapper
+
+namespace model_builder {
+class ModelBuilder;
+}  // namespace model_builder
 #endif  // DOXYGEN_SKIP
 
 /// An interpreter for a graph of nodes that input and output from tensors.
@@ -120,6 +126,8 @@ class InterpreterBuilder;  // Class for friend declarations.
 
 class Interpreter {
  public:
+  using Ptr = std::unique_ptr<Interpreter>;
+
   // Instantiate an interpreter. All errors associated with reading and
   // processing this model will be forwarded to the error_reporter object.
   //
@@ -190,7 +198,7 @@ class Interpreter {
   }
 
   TfLiteStatus SetTensorParametersReadOnly(
-      int tensor_index, TfLiteType type, const char* name, const size_t rank,
+      int tensor_index, TfLiteType type, const char* name, size_t rank,
       const int* dims, TfLiteQuantizationParams quantization,
       const char* buffer, size_t bytes, const Allocation* allocation = nullptr);
 
@@ -221,9 +229,9 @@ class Interpreter {
         is_variable, rank_dims_signature, dims_signature_pointer);
   }
   TfLiteStatus SetTensorParametersReadWrite(
-      int tensor_index, TfLiteType type, const char* name, const size_t rank,
+      int tensor_index, TfLiteType type, const char* name, size_t rank,
       const int* dims, TfLiteQuantizationParams quantization,
-      bool is_variable = false, const size_t rank_dims_signature = 0,
+      bool is_variable = false, size_t rank_dims_signature = 0,
       const int* dims_signature = nullptr);
 
   /// Enables application to cancel in flight invocation with `Cancel`.
@@ -302,7 +310,7 @@ class Interpreter {
   template <class T>
   T* typed_tensor(int tensor_index) {
     if (TfLiteTensor* tensor_ptr = tensor(tensor_index)) {
-      if (tensor_ptr->type == typeToTfLiteType<T>()) {
+      if (tensor_ptr->type == typeToTfLiteType<std::decay_t<T>>()) {
         return reinterpret_cast<T*>(tensor_ptr->data.raw);
       }
     }
@@ -314,14 +322,13 @@ class Interpreter {
   template <class T>
   const T* typed_tensor(int tensor_index) const {
     if (const TfLiteTensor* tensor_ptr = tensor(tensor_index)) {
-      if (tensor_ptr->type == typeToTfLiteType<T>()) {
+      if (tensor_ptr->type == typeToTfLiteType<std::decay_t<T>>()) {
         return reinterpret_cast<const T*>(tensor_ptr->data.raw);
       }
     }
     return nullptr;
   }
 
-  /// \warning Experimental interface, subject to change. \n
   /// \brief Returns list of all keys of different method signatures defined
   /// in the model.
   /// Note, pointers returned have lifetime same as the Interpreter object.
@@ -334,23 +341,30 @@ class Interpreter {
     return signature_keys;
   }
 
-  /// \warning Experimental interface, subject to change. \n
   /// \brief Returns a pointer to the SignatureRunner instance to run the part
-  /// of the graph identified by a SignatureDef. The nullptr is returned if the
-  /// given signature key is not valid.
+  /// of the graph identified by a SignatureDef.  If the model does not have any
+  /// signature defs, passing nullptr as signature_key will also default to
+  /// creating runner for primary subgraph.  A nullptr is returned if the given
+  /// signature_key is not valid.
+  /// NOTE: The returned SignatureRunner instance is owned by and has the same
+  /// lifetime as the Interpreter object; additionally, class SignatureRunner is
+  /// *not* thread-safe.
   /// If you need to specify delegates, you have to do that before calling this
   /// function. This function will additionally apply default delegates. Thus,
   /// applying delegates after that might lead to undesirable behaviors.
-  /// Note, the pointed instance has lifetime same as the Interpreter object
-  /// and the SignatureRunner class is *not* thread-safe.
+  /// If you need `SignatureRunner` without applying default delegates,
+  /// use `BuiltinOpResolverWithoutDefaultDelegates`.
   SignatureRunner* GetSignatureRunner(const char* signature_key);
 
-  /// \warning Experimental interface, subject to change. \n
+  /// \warning Experimental interface, subject to change.
   /// \brief Returns a pointer to the AsyncSignatureRunner instance to run the
-  /// part of the graph identified by a SignatureDef. The nullptr is returned if
-  /// the given signature key is not valid.
-  /// if the model does not have signature def, pass nullptr to signature_key
-  /// and AsyncSignatureRunner will be created using primary subgraph (0).
+  /// part of the graph identified by a SignatureDef.  If the model does not
+  /// have any signature defs, passing nullptr as signature_key will also
+  /// default to creating runner for primary subgraph.  A nullptr is returned if
+  /// the given signature_key is not valid.
+  /// NOTE: The returned AsyncSignatureRunner instance is owned by and has the
+  /// same lifetime as the Interpreter object; additionally, class
+  /// AsyncSignatureRunner is *not* thread-safe.
   /// The async delegate should be applied before calling this function.
   async::AsyncSignatureRunner* GetAsyncSignatureRunner(
       const char* signature_key);
@@ -368,7 +382,6 @@ class Interpreter {
     return -1;
   }
 
-  /// \warning Experimental interface, subject to change. \n
   /// \brief Returns the mapping of inputs to tensor index in the signature
   /// specified through 'signature_key'.
   /// If invalid name passed, an empty list will be returned.
@@ -382,7 +395,6 @@ class Interpreter {
     return *default_empty_list;
   }
 
-  /// \warning Experimental interface, subject to change. \n
   /// \brief Returns the mapping of outputs to tensor index in the signature
   /// specified through 'signature_key'.
   /// If invalid name passed, an empty list will be returned.
@@ -396,7 +408,6 @@ class Interpreter {
     return *default_empty_list;
   }
 
-  /// \warning Experimental interface, subject to change. \n
   /// \brief Returns the input tensor identified by 'signature_input_name' in
   /// the signature identified by 'signature_key'.
   /// Returns nullptr if not found.
@@ -410,7 +421,6 @@ class Interpreter {
     return subgraph(subgraph_index)->tensor(tensor_index);
   }
 
-  /// \warning Experimental interface, subject to change. \n
   /// \brief Returns the output tensor identified by 'signature_output_name' in
   /// the signature identified by 'signature_key'.
   /// Returns nullptr if not found.
@@ -560,7 +570,7 @@ class Interpreter {
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief  Attempts to cancel in flight invocation if any.
-  /// This will not affect `Invoke`s that happends after the cancellation.
+  /// This will not affect `Invoke`s that happen after the cancellation.
   /// Non blocking. Thread safe.
   /// Returns kTfLiteError if cancellation is not enabled, otherwise returns
   /// kTfLiteOk.
@@ -586,6 +596,7 @@ class Interpreter {
   /// 5. kTfLiteError: Unexpected/runtime failure. \n
   /// \warning This is an experimental API and subject to change. \n
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteOpaqueDelegateStruct* delegate);
 
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
@@ -617,9 +628,12 @@ class Interpreter {
       std::unique_ptr<TfLiteDelegate> delegate) = delete;
 
   /// \warning This is an experimental API and subject to change. \n
-  /// \brief Ensure the data in `tensor.data` is readable. In case delegate is
-  /// used, it might require to copy the data from delegate buffer to raw
-  /// memory.
+  /// \brief Ensure the data in `tensor.data` is readable. If a
+  /// delegate has been used, and `SetAllowBufferHandleOutput(true)` has been
+  /// called, tensor outputs may be stored as delegate buffer handles whose data
+  /// is not directly readable until this method has been called.
+  /// In such cases, this method will copy the data from the delegate buffer
+  /// handle to CPU memory.
   TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
     return primary_subgraph().EnsureTensorDataIsReadable(tensor_index);
   }
@@ -688,13 +702,14 @@ class Interpreter {
   /// \brief Gets the profiler used for op tracing.
   Profiler* GetProfiler();
 
-  // The default capacity of `tensors_` vector.
-  static constexpr int kTensorsReservedCapacity = 128;
-  /// The capacity headroom of `tensors_` vector before calling ops'
-  /// `prepare` and `invoke` function. In these functions, it's guaranteed
-  /// allocating up to `kTensorsCapacityHeadroom` more tensors won't invalidate
+  /// The default capacity of the tensors vector.
+  static const int& kTensorsReservedCapacity;
+
+  /// The capacity headroom of the tensors vector before calling ops'
+  /// `prepare` and `invoke` function. In those functions, it's guaranteed
+  /// allocating up to this many more tensors won't invalidate
   /// pointers to existing tensors.
-  static constexpr int kTensorsCapacityHeadroom = 16;
+  static const int& kTensorsCapacityHeadroom;
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Set if buffer handle output is allowed.
@@ -702,7 +717,7 @@ class Interpreter {
   /// When using hardware delegation, Interpreter will make the data of output
   /// tensors available in `tensor->data` by default. If the application can
   /// consume the buffer handle directly (e.g. reading output from OpenGL
-  /// texture), it can set this flag to false, so Interpreter won't copy the
+  /// texture), it can set this flag to true, so Interpreter won't copy the
   /// data from buffer handle to CPU memory.
   void SetAllowBufferHandleOutput(bool allow_buffer_handle_output) {
     allow_buffer_handle_output_ = allow_buffer_handle_output;
@@ -797,6 +812,8 @@ class Interpreter {
   friend class tflite::impl::InterpreterBuilder;
 #ifndef DOXYGEN_SKIP
   friend class tflite::InterpreterTest;
+  friend class tflite::model_builder::ModelBuilder;
+  friend class tflite::SingleOpModel;
   friend class tflite::delegates::InterpreterUtils;
   friend class tflite::delegates::test_utils::TestDelegation;
   friend class tflite::interpreter_wrapper::InterpreterWrapper;
@@ -905,6 +922,13 @@ class Interpreter {
 
   TfLiteStatus ApplyOptionsImpl(InterpreterOptions* options);
 
+  std::unique_ptr<internal::SignatureDef> CreatePlaceholderSignatureDef();
+  // Given an input signature key, return a pair where the first field is a
+  // possibly replaced signature key and the second field indicates if the
+  // returned signature key was replaced.
+  std::pair<const char*, bool> ReplaceWithPlaceholderSignatureKeyIfNeeded(
+      const char* signature_key);
+
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
@@ -964,6 +988,13 @@ class Interpreter {
   // List of SignatureDefs obtained from the model.
   std::vector<internal::SignatureDef> signature_defs_;
 
+  // Default signature key to use when the model has no signatures.
+  static constexpr char kPlaceholderSignatureDefKey[] =
+      "<placeholder signature>";
+
+  // Placeholder SignatureDef for legacy models with no signatures.
+  std::unique_ptr<internal::SignatureDef> placeholder_signature_def_;
+
   // Map of signature key to its corresponding SignatureRunner object.
   // A SignatureRunner is basically a wrapper of the Subgraph corresponding to
   // its SignatureDef.
@@ -999,7 +1030,7 @@ class Interpreter {
   // The flag is shared across all subgraphs in the interpreter.
   // When the application calls `Cancel`, the flag will be set to false.
   // It "resets" to true at the beginning of each `Invoke`.
-  std::atomic_flag continue_invocation_{false};
+  std::atomic_flag continue_invocation_ = ATOMIC_FLAG_INIT;
   bool cancellation_enabled_ = false;
 };
 

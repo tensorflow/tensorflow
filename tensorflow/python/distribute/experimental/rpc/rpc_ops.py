@@ -18,13 +18,13 @@ from typing import Optional, Sequence, Union
 
 import tensorflow.distribute.experimental.rpc.kernels.gen_rpc_ops as gen_rpc_ops
 from tensorflow.distribute.experimental.rpc.proto import tf_rpc_service_pb2 as rpc_pb2
-from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as tf_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import none_tensor
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -329,7 +329,7 @@ class GrpcClient(Client):
     client.add(a, b) or client.add_async(a, b) can be used instead of
     client.call(args=[a,b], output_specs=[..])
 
-  Prerequiste for using list_registered_methods=True:
+  Prerequisite for using list_registered_methods=True:
    1. Server should be already started with the registered methods.
    2. Client must be created in Eager mode.
   """
@@ -491,7 +491,7 @@ class StatusOrResult(object):
 
     self._check_status()
     if self._output_specs is None or isinstance(self._output_specs,
-                                                structure.NoneTensorSpec):
+                                                none_tensor.NoneTensorSpec):
       flat_output_dtypes = []
       return_none = True
     else:

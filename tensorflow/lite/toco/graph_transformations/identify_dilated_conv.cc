@@ -12,13 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -166,9 +171,8 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
   return true;
 }
 
-::tensorflow::Status IdentifyDilatedConv::Run(Model* model,
-                                              std::size_t op_index,
-                                              bool* modified) {
+absl::Status IdentifyDilatedConv::Run(Model* model, std::size_t op_index,
+                                      bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   auto* stb_op = it->get();
@@ -177,17 +181,17 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
   // ***************************************************************************
   // SpaceToBatch Op.
   if (stb_op->type != OperatorType::kSpaceToBatchND) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (stb_op->inputs.size() != 3) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   CHECK_EQ(stb_op->outputs.size(), 1);
   // Extract the dilation factor from Input[1] of SpaceToBatch
   // TODO(mjmatthews): Support 2D dilation factors.
   const auto& block_shape_array = model->GetArray(stb_op->inputs[1]);
   if (!block_shape_array.buffer) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   CHECK_EQ(block_shape_array.shape().dimensions_count(), 1);
   int dilation_factor =
@@ -196,7 +200,7 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
   // Expand Op
   auto* post_stb_op = GetOpWithInput(*model, stb_op->outputs[0]);
   if (!post_stb_op) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   bool has_expand_op = false;
   if (post_stb_op->type == OperatorType::kExpandDims) {
@@ -231,7 +235,7 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
   }
 
   *modified = changed;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

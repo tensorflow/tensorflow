@@ -27,14 +27,14 @@ void FunctionOptimizationPassRegistry::Init(
   pass_ = std::move(pass);
 }
 
-Status FunctionOptimizationPassRegistry::Run(
+absl::Status FunctionOptimizationPassRegistry::Run(
     const std::string& function_name, const DeviceSet& device_set,
     const ConfigProto& config_proto,
     const FunctionOptimizationPass::FunctionOptions& function_options,
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
     std::vector<std::string>* control_ret_node_names,
     bool* control_rets_updated) {
-  if (!pass_) return OkStatus();
+  if (!pass_) return absl::OkStatus();
 
   tensorflow::metrics::ScopedCounter<2> timings(
       tensorflow::metrics::GetGraphOptimizationCounter(),

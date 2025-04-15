@@ -25,7 +25,7 @@ from tensorflow.python.platform import test
 
 
 class CastInt32ToFp32Test(trt_test.TfTrtIntegrationTestBase):
-  """Tests cast to FP32 are splitted in FP16 mode."""
+  """Tests cast to FP32 are split in FP16 mode."""
 
   def _ConstOp(self, shape, dtype):
     return constant_op.constant(np.random.randn(*shape), dtype=dtype)

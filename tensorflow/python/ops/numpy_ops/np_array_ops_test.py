@@ -296,7 +296,7 @@ class ArrayCreationTest(test.TestCase):
                                                    [True, False]):
       self.match(
           np_array_ops.array(a, dtype=dtype, ndmin=ndmin, copy=copy),
-          np.array(a, dtype=dtype, ndmin=ndmin, copy=copy))
+          np.array(a, dtype=dtype, ndmin=ndmin))
 
     zeros_list = np_array_ops.zeros(5)
 
@@ -546,6 +546,11 @@ class ArrayCreationTest(test.TestCase):
                                     array_ops.ones([2, 3], dtype=dtype),
                                     [10, 3])
     self.assertAllEqual(expected, a)
+
+  def testVander(self):
+    tf_res = np_array_ops.vander([-1.0, 1.0], N=0, increasing=False)
+    np_res = np.vander(np.array([-1.0, 1.0]), N=0)
+    self.assertAllEqual(tf_res, np_res)
 
 
 class ArrayMethodsTest(test.TestCase):

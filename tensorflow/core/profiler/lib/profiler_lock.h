@@ -15,13 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_PROFILER_LOCK_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_LOCK_H_
 
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/profiler/lib/profiler_lock.h"
+#include "absl/base/macros.h"
+#include "tsl/profiler/lib/profiler_lock.h"
 
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::ProfilerLock;  // NOLINT
+using ProfilerLock ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::ProfilerLock;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

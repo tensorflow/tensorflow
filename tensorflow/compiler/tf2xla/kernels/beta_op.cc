@@ -13,18 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <limits>
-
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/loops.h"
-#include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/loops.h"
+#include "xla/hlo/builder/lib/math.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/status_macros.h"
 
 namespace tensorflow {
 namespace {
@@ -62,7 +61,7 @@ class BetaincOp : public XlaOpKernel {
 
     auto builder = ctx->builder();
     auto result =
-        builder->ReportErrorOrReturn([&]() -> StatusOr<xla::XlaOp> {
+        builder->ReportErrorOrReturn([&]() -> absl::StatusOr<xla::XlaOp> {
           TF_ASSIGN_OR_RETURN(
               auto a, BroadcastTo(ctx->Input(0), merged_shape.dim_sizes()));
           TF_ASSIGN_OR_RETURN(

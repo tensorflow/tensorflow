@@ -16,22 +16,24 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_TF2XLA_REWRITER_H_
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_TF2XLA_REWRITER_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -56,12 +58,12 @@ class Tf2XlaRewriter {
 
   // Compiles the given Operation with XlaBuilder and imports the generated HLO
   // via the HLO -> MHLO importer.
-  tsl::StatusOr<mhlo::TupleOp> CompileWithHloImporter(
+  absl::StatusOr<stablehlo::TupleOp> CompileWithHloImporter(
       tensorflow::OpKernelContext& op_context);
 
   // Import the given XlaComputation into the parent module. Returns the given
   // generated function.
-  tsl::StatusOr<mhlo::TupleOp> ImportXlaComputation(
+  absl::StatusOr<stablehlo::TupleOp> ImportXlaComputation(
       xla::XlaComputation& computation);
 
   // Prepares OpKernelContext params common to all the ops.
@@ -81,12 +83,12 @@ class Tf2XlaRewriter {
 
   mlir::LogicalResult VerifyOpResults(tensorflow::OpKernelContext& op_context);
   mlir::LogicalResult GetKernelOutputs(tensorflow::OpKernelContext& op_context,
-                                       mhlo::TupleOp tuple_results,
+                                       stablehlo::TupleOp tuple_results,
                                        llvm::SmallVector<Value>& outputs);
 
   // Given a translated function with a single return value, unpack the tuple
   // results.
-  mlir::LogicalResult UnpackTupleResults(mhlo::TupleOp tuple_result,
+  mlir::LogicalResult UnpackTupleResults(stablehlo::TupleOp tuple_result,
                                          llvm::SmallVector<Value>& outputs);
 
   // Tries to legalize the specified TensorFlow op, if supported.
@@ -106,7 +108,7 @@ class Tf2XlaRewriter {
   std::string device_type_;
 
   mlir::PatternRewriter& rewriter_;
-  tensorflow::OpOrArgLocNameMapper name_mapper_;
+  std::unique_ptr<tensorflow::OpOrArgLocNameMapper> name_mapper_;
 
   tensorflow::XlaContext* context_;  // Ref-counted.
 

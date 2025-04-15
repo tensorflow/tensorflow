@@ -18,7 +18,7 @@
 # pylint: disable=wildcard-import,unused-import
 from tensorflow.core.profiler.profiler_analysis_pb2 import *
 from tensorflow.python.util.all_util import remove_undocumented
-from tensorflow.tsl.profiler.protobuf.trace_events_pb2 import *
+from tsl.profiler.protobuf.trace_events_pb2 import *
 # pylint: enable=wildcard-import,unused-import
 
 

@@ -14,27 +14,31 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/tf2xla/literal_util.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/comparators.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/comparators.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/dynamic_shaped_ops.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/ops_util.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
 namespace {
@@ -46,11 +50,11 @@ using xla::XlaOp;
 // beginning and cutting off the last element of the array.
 //
 // That is, transforms [x0, x1, ..., xn] into [0, x0, ..., xn-1].
-StatusOr<XlaOp> ShiftElemsRight(XlaOp x) {
+absl::StatusOr<XlaOp> ShiftElemsRight(XlaOp x) {
   xla::XlaBuilder* b = x.builder();
-  StatusOr<xla::Shape> shape = b->GetShape(x);
+  absl::StatusOr<xla::Shape> shape = b->GetShape(x);
   TF_RETURN_IF_ERROR(shape.status());
-  TF_RET_CHECK(shape->dimensions_size() == 1);
+  TF_RET_CHECK(shape->dimensions().size() == 1);
   int64_t n = shape->dimensions(0);
 
   XlaOp padded = xla::PadInDim(x, xla::Zero(b, shape->element_type()),
@@ -85,12 +89,12 @@ StatusOr<XlaOp> ShiftElemsRight(XlaOp x) {
 //
 // Nonetheless, this is much simpler than the algorithm in the paper above, but
 // also much faster than implementing tf.where by sorting the input.
-StatusOr<XlaOp> PrefixSum(XlaOp arr) {
+absl::StatusOr<XlaOp> PrefixSum(XlaOp arr) {
   xla::XlaBuilder* b = arr.builder();
-  StatusOr<xla::Shape> input_shape = b->GetShape(arr);
+  absl::StatusOr<xla::Shape> input_shape = b->GetShape(arr);
   TF_RETURN_IF_ERROR(input_shape.status());
 
-  TF_RET_CHECK(input_shape->dimensions_size() == 1);
+  TF_RET_CHECK(input_shape->dimensions().size() == 1);
   int64_t n = input_shape->dimensions(0);
 
   // The original input length must be a power of 2, but we recursively divide
@@ -153,12 +157,12 @@ bool ShouldUsePrefixSumImpl(const DeviceType& dt) {
          t == DEVICE_XLA_CPU || t == DEVICE_XLA_GPU;
 }
 
-StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
+absl::StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
   XlaOp condition = ctx->Input(0);
   TF_ASSIGN_OR_RETURN(xla::Shape input_shape,
                       ctx->builder()->GetShape(condition));
-  auto iota_shape = input_shape;
-  iota_shape.set_element_type(xla::S32);
+  auto iota_shape =
+      xla::ShapeUtil::MakeShape(xla::S32, input_shape.dimensions());
 
   int64_t flattened_size = xla::Product(iota_shape.dimensions());
   XlaOp reshaped_condition = xla::Reshape(condition, {flattened_size});
@@ -169,7 +173,7 @@ StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
   std::vector<xla::PrimitiveType> types_to_sort = {xla::PRED};
   // Generate iota for each dimension, which after combining becomes
   // indices of each element.
-  for (int64_t axis = 0; axis < iota_shape.rank(); ++axis) {
+  for (int64_t axis = 0; axis < iota_shape.dimensions_size(); ++axis) {
     XlaOp iota = xla::Iota(ctx->builder(), iota_shape, axis);
     XlaOp reshaped = xla::Reshape(iota, {flattened_size});
     to_sort.push_back(reshaped);
@@ -180,7 +184,7 @@ StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
       to_sort, xla::CreateScalarGtComputation(types_to_sort, ctx->builder()),
       /*dimension=*/0, /*is_stable=*/true);
   std::vector<XlaOp> to_concat;
-  for (int64_t i = 0; i < iota_shape.rank(); ++i) {
+  for (int64_t i = 0; i < iota_shape.dimensions_size(); ++i) {
     XlaOp index_single_dim = xla::GetTupleElement(sorted, i + 1);
     to_concat.push_back(xla::Reshape(index_single_dim, {flattened_size, 1}));
   }
@@ -193,7 +197,7 @@ StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
   XlaOp length =
       xla::ReduceAll(compared_int, xla::Zero(ctx->builder(), xla::S32),
                      xla::CreateScalarAddComputation(xla::S32, ctx->builder()));
-  StatusOr<XlaOp> rebounded_result = xla::SetDimensionSizeWithRebound(
+  absl::StatusOr<XlaOp> rebounded_result = xla::SetDimensionSizeWithRebound(
       &ctx->value_inference(), result, length, 0);
   if (rebounded_result.ok()) {
     return rebounded_result;
@@ -203,7 +207,7 @@ StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
   return xla::SetDimensionSize(result, length, 0);
 }
 
-StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
+absl::StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
   xla::XlaBuilder* b = ctx->builder();
   XlaOp condition = ctx->Input(0);
 
@@ -272,9 +276,9 @@ StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
   //
   // and then scatter iotas[out_idxs] into the output.
   std::vector<XlaOp> iotas_to_concat;
-  auto iota_shape = input_shape;
-  iota_shape.set_element_type(S32);
-  for (int64_t axis = 0; axis < iota_shape.rank(); ++axis) {
+  auto iota_shape = xla::ShapeUtil::MakeShape(S32, input_shape.dimensions());
+  iotas_to_concat.reserve(iota_shape.dimensions_size());
+  for (int64_t axis = 0; axis < iota_shape.dimensions_size(); ++axis) {
     iotas_to_concat.push_back(
         xla::Reshape(xla::Iota(b, iota_shape, axis), {flattened_size, 1}));
   }
@@ -299,8 +303,9 @@ StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
   scatter_dnums.add_scatter_dims_to_operand_dims(0);
   scatter_dnums.add_update_window_dims(1);
   XlaOp scattered = xla::Scatter(
-      /*input=*/xla::Zeros(b, /*shape=*/xla::ShapeUtil::MakeShape(
-                               S32, {flattened_size, iota_shape.rank()})),
+      /*input=*/xla::Zeros(
+          b, /*shape=*/xla::ShapeUtil::MakeShape(
+              S32, {flattened_size, iota_shape.dimensions_size()})),
       /*scatter_indices=*/out_idxs, /*updates=*/iotas,
       /*update_computation=*/assn_computation, scatter_dnums,
       /*indices_are_sorted=*/true, /*unique_indices=*/true);
@@ -311,7 +316,7 @@ StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
   XlaOp num_valid =
       xla::ReduceAll(xla::ConvertElementType(preds, S32), xla::Zero(b, S32),
                      xla::CreateScalarAddComputation(S32, b));
-  StatusOr<XlaOp> rebounded_result = xla::SetDimensionSizeWithRebound(
+  absl::StatusOr<XlaOp> rebounded_result = xla::SetDimensionSizeWithRebound(
       &ctx->value_inference(), scattered, num_valid, 0);
   if (rebounded_result.ok()) {
     return *rebounded_result;
@@ -328,7 +333,7 @@ class WhereOp : public XlaOpKernel {
         use_prefix_sum_(ShouldUsePrefixSumImpl(ctx->device_type())) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    StatusOr<XlaOp> ret;
+    absl::StatusOr<XlaOp> ret;
     if (use_prefix_sum_) {
       ret = CompileWhereWithPrefixSum(ctx);
     } else {

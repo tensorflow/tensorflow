@@ -16,12 +16,14 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/selectors/special_selector.h"
 
 #include <map>
-#include <memory>
 #include <set>
 #include <string>
-#include <utility>
 
-#include "absl/types/any.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_hints.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization.h"
@@ -60,7 +62,6 @@ absl::Status GPUSubgraphFromGraph(
   if (TryFusedPointwiseConv(graph, first_node_id, precision, tensor_descriptors,
                             consumed_nodes, gpu_subgraph)
           .ok()) {
-    // TODO(b/278745183) Add tests for slice_mul_reduce_concat
     gpu_subgraph->operations[0].name = "slice_mul_reduce_concat";
     return absl::OkStatus();
   }

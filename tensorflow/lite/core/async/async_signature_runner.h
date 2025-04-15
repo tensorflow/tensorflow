@@ -122,6 +122,17 @@ class AsyncSignatureRunner {
   // Returns true if all backends accept the `attrs`.
   TfLiteStatus SetAttributes(int tensor_index, const TfLiteAttributeMap* attrs);
 
+  // Set the attributes of a specific buffer. Returns
+  // kTfLiteDelegateError if the buffer is not registered.
+  TfLiteStatus SetBufferAttributes(const TfLiteBackendBuffer* buffer,
+                                   const TfLiteAttributeMap* attrs);
+
+  // Get the attributes from a specific buffer. Returns
+  // kTfLiteDelegateError if the buffer has not been found in the
+  // backends.
+  TfLiteStatus GetBufferAttributes(const TfLiteBackendBuffer* buffer,
+                                   TfLiteAttributeMap* attrs);
+
   // Prepares delegate backends for execution.
   // Must be called after calling `SetAttributes`.
   TfLiteStatus PrepareBackends();

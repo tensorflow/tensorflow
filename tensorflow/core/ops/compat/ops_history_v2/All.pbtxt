@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "All"
   input_arg {
     name: "input"

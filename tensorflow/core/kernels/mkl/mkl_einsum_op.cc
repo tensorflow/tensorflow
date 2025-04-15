@@ -112,8 +112,13 @@ struct MklEinsumHelper {
     auto params = bmm.CreateMatMulParams(prefix, lhs.shape(), rhs.shape(),
                                          out_shape, trans_x, trans_y);
 
+    // Create the oneDNN wrapper over Eigen threadpool and set max threads
+    // in oneDNN.
+    Eigen::ThreadPoolInterface* eigen_interface =
+        EigenThreadPoolFromTfContext(ctx);
+    tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                   ThreadPoolUseCallerThread());
     // Create or retrieve matmul primitive from cache.
-    MklDnnThreadPool eigen_tp(ctx);
     MklMatMulPrimitive<T, T, T>* matmul_prim =
         MklMatMulPrimitiveFactory<T, T, T, T>::Get(
             *params, false /* value for do_not_cache */);
@@ -195,7 +200,7 @@ class MklEinsum : public OpKernel {
   virtual ~MklEinsum() {}
 
   void Compute(OpKernelContext* ctx) override {
-    OpInputList inputs;
+    OpInputList inputs(ctx, 0, 0);
     OP_REQUIRES_OK(ctx, ctx->input_list("inputs", &inputs));
 
     if (std::is_same<T, float>::value) {
@@ -330,5 +335,7 @@ class MklEinsum : public OpKernel {
                           MklEinsum<CPUDevice, TYPE>)
 TF_CALL_float(REGISTER_EINSUM_MKL);
 TF_CALL_bfloat16(REGISTER_EINSUM_MKL);
+TF_CALL_half(REGISTER_EINSUM_MKL);
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL

@@ -239,7 +239,7 @@ Node* Binary(Graph* g, const string& func, Node* in0, Node* in1) {
   return ret;
 }
 
-Node* Multi(Graph* g, const string& func, gtl::ArraySlice<Node*> ins) {
+Node* Multi(Graph* g, const string& func, absl::Span<Node* const> ins) {
   Node* ret;
   auto b = NodeBuilder(g->NewName("n"), func, g->op_registry());
   for (Node* n : ins) b = b.Input(n);
@@ -341,7 +341,7 @@ Node* Merge(Graph* g, Node* in0, Node* in1) {
   return ret;
 }
 
-Node* Merge(Graph* g, Node* in0, gtl::ArraySlice<string> remaining_in) {
+Node* Merge(Graph* g, Node* in0, absl::Span<const string> remaining_in) {
   std::vector<NodeBuilder::NodeOut> inputs;
   inputs.reserve(remaining_in.size() + 1);
   inputs.emplace_back(in0);
@@ -355,7 +355,7 @@ Node* Merge(Graph* g, Node* in0, gtl::ArraySlice<string> remaining_in) {
   return ret;
 }
 
-Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors) {
+Node* Concat(Graph* g, Node* concat_dim, absl::Span<Node* const> tensors) {
   std::vector<NodeBuilder::NodeOut> nodeouts;
   nodeouts.reserve(tensors.size());
   for (auto const t : tensors) {
@@ -369,7 +369,7 @@ Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors) {
   return ret;
 }
 
-Node* ConcatV2(Graph* g, gtl::ArraySlice<Node*> tensors, Node* concat_dim) {
+Node* ConcatV2(Graph* g, absl::Span<Node* const> tensors, Node* concat_dim) {
   std::vector<NodeBuilder::NodeOut> nodeouts;
   nodeouts.reserve(tensors.size());
   for (auto const t : tensors) {

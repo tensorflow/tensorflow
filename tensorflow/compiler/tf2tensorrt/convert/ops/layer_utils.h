@@ -89,7 +89,7 @@ class TRTNetworkBuilder {
   };
 
   // Adds an absolute value operation to the network. Note that this unary
-  // operation will do an implict float conversion. For int32 tensors, use
+  // operation will do an implicit float conversion. For int32 tensors, use
   // "AbsInt".
   StatusOr<nvinfer1::IUnaryLayer*> AbsFloat(nvinfer1::ITensor* input) noexcept {
     TRT_ENSURE(input);
@@ -101,7 +101,7 @@ class TRTNetworkBuilder {
     return layer;
   }
 
-  // Performs Abs without implict float conversion. The input should be of type
+  // Performs Abs without implicit float conversion. The input should be of type
   // kInt32. For float datatypes, use "Abs".
   StatusOr<nvinfer1::IElementWiseLayer*> AbsInt(
       nvinfer1::ITensor* input) noexcept {
@@ -312,8 +312,8 @@ class TRTNetworkBuilder {
   // The tensor has "nb_dims" dimensions and each dimension has only one
   // element. The data type of the tensor is determined by the data type of
   // "scalar".
-  template <typename T,
-            typename std::enable_if<std::is_pod<T>::value>::type* = nullptr>
+  template <typename T, typename std::enable_if<std::is_trivially_copyable<
+                            T>::value>::type* = nullptr>
   StatusOr<nvinfer1::IConstantLayer*> Constant(const T scalar,
                                                const int nb_dims) noexcept {
     TRT_ENSURE(nb_dims <= nvinfer1::Dims::MAX_DIMS);
@@ -355,8 +355,8 @@ class TRTNetworkBuilder {
   }
 
   // Creates a nvinfer1::Weights object containing a single scalar.
-  template <typename T,
-            typename std::enable_if<std::is_pod<T>::value>::type* = nullptr>
+  template <typename T, typename std::enable_if<std::is_trivially_copyable<
+                            T>::value>::type* = nullptr>
   StatusOr<nvinfer1::Weights> ScalarWeights(const T scalar,
                                             const int nb_dims) noexcept {
     TRT_ENSURE(nb_dims <= nvinfer1::Dims::MAX_DIMS);

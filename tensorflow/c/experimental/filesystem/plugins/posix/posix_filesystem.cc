@@ -26,7 +26,9 @@ limitations under the License.
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/experimental/filesystem/plugins/posix/posix_filesystem_helper.h"
+#include "tensorflow/c/tf_file_statistics.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for POSIX environments.

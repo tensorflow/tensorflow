@@ -27,7 +27,7 @@ DeviceResolverDistributed::DeviceResolverDistributed(const DeviceMgr* dev_mgr) {
   }
 }
 
-Status DeviceResolverDistributed::GetDeviceAttributes(
+absl::Status DeviceResolverDistributed::GetDeviceAttributes(
     const string& device, DeviceAttributes* attributes) {
   mutex_lock l(mu_);
   auto it = attr_table_.find(device);
@@ -35,10 +35,10 @@ Status DeviceResolverDistributed::GetDeviceAttributes(
     return errors::NotFound(device, " not found");
   }
   *attributes = it->second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DeviceResolverDistributed::GetAllDeviceAttributes(
+absl::Status DeviceResolverDistributed::GetAllDeviceAttributes(
     const string& task, std::vector<DeviceAttributes>* attributes) {
   mutex_lock l(mu_);
   attributes->clear();
@@ -51,10 +51,10 @@ Status DeviceResolverDistributed::GetAllDeviceAttributes(
   if (attributes->empty()) {
     return errors::NotFound(task, " not found in the cache");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DeviceResolverDistributed::UpdateDeviceAttributes(
+absl::Status DeviceResolverDistributed::UpdateDeviceAttributes(
     const std::vector<DeviceAttributes>& attributes) {
   mutex_lock l(mu_);
   for (const DeviceAttributes& attr : attributes) {
@@ -70,7 +70,7 @@ Status DeviceResolverDistributed::UpdateDeviceAttributes(
           "This usually means the remote worker has restarted");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

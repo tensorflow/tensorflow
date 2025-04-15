@@ -25,7 +25,7 @@ module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantic
     func.return %1 : tensor<1xf32>
   }
 // CHECK: func private @mul2(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> attributes {tf.entry_function = {inputs = "mul2_y:0,mul2_x:0", outputs = "PartitionedCall_1:0"}} {
-// CHECK:   %[[CONST_0:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK:   %[[CONST_0:.*]] = "tf.Const"() <{value = dense<2.000000e+00> : tensor<f32>}> : () -> tensor<f32>
 // CHECK:   %[[MUL_1:.*]] = "tf.Mul"(%arg1, %arg0) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
 // CHECK:   %[[MUL_2:.*]] = "tf.Mul"(%[[MUL_1]], %[[CONST_0]]) : (tensor<1xf32>, tensor<f32>) -> tensor<1xf32>
 // CHECK:   return %[[MUL_2]] : tensor<1xf32>
@@ -33,8 +33,8 @@ module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantic
 
 // CHECK: func @main(%arg0: tensor<1xf32> {tf_saved_model.index_path = ["mul1_y:0"]}, %arg1: tensor<1xf32> {tf_saved_model.index_path = ["mul1_x:0"]}, %arg2: tensor<1xf32> {tf_saved_model.index_path = ["mul2_y:0"]}, %arg3: tensor<1xf32> {tf_saved_model.index_path = ["mul2_x:0"]}) -> (tensor<1xf32> {tf_saved_model.index_path = ["PartitionedCall:0"]}, tensor<1xf32> {tf_saved_model.index_path = ["PartitionedCall_1:0"]}) attributes {tf.entry_function = {inputs = "mul1_y:0,mul1_x:0,mul2_y:0,mul2_x:0", outputs = "PartitionedCall:0,PartitionedCall_1:0"}, tf_saved_model.exported_names = ["main"]} {
 // CHECK-NOT: f = @NoOp
-// CHECK:   %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @mul1} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-// CHECK:   %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg2, %arg3) {config = "", config_proto = "", executor_type = "", f = @mul2} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+// CHECK:   %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1) <{config = "", config_proto = "", executor_type = "", f = @mul1}> : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+// CHECK:   %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg2, %arg3) <{config = "", config_proto = "", executor_type = "", f = @mul2}> : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
 // CHECK-DAG:   %[[IDENTITY_0:.*]] = "tf.Identity"(%[[PARTITIONEDCALL_0]])
 // CHECK-DAG:   %[[IDENTITY_1:.*]] = "tf.Identity"(%[[PARTITIONEDCALL_1]])
 // CHECK:   return %[[IDENTITY_0]], %[[IDENTITY_1]] : tensor<1xf32>, tensor<1xf32>
@@ -49,8 +49,8 @@ module attributes {tf.versions = {producer = 1132 : i32}, tf_saved_model.semanti
   "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
   "tf_saved_model.asset"() {filename = "assets/mydata.txt", sym_name = "__tf_saved_model_asset0_mydata.txt"} : () -> ()
 // Session initializer ops and asset ops untouched.
-// CHECK: "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
-// CHECK: "tf_saved_model.asset"() {filename = "assets/mydata.txt", sym_name = "__tf_saved_model_asset0_mydata.txt"} : () -> ()
+// CHECK: "tf_saved_model.session_initializer"() <{initializers = [@NoOp]}> : () -> ()
+// CHECK: "tf_saved_model.asset"() <{filename = "assets/mydata.txt", sym_name = "__tf_saved_model_asset0_mydata.txt"}> : () -> ()
 
   func.func @NoOp(%arg0: tensor<!tf_type.string> {tf_saved_model.bound_input = @__tf_saved_model_asset0_mydata.txt}) attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"]} {
     %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
@@ -82,10 +82,10 @@ module attributes {tf.versions = {producer = 1132 : i32}, tf_saved_model.semanti
 // CHECK-SAME: tf_saved_model.exported_names = ["main"]
 
 // Check that the function call to @add exists and not to @NoOp.
-// CHECK: %[[CALL0:.*]] = "tf.PartitionedCall"(%[[ARG0]], %[[ARG1]]) {
+// CHECK: %[[CALL0:.*]] = "tf.PartitionedCall"(%[[ARG0]], %[[ARG1]]) <{
 // CHECK-NOT: f = @NoOp
 // CHECK-SAME: f = @add
-// CHECK-SAME: }
+// CHECK-SAME: }>
 // CHECK-SAME: : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
 // CHECK: %[[IDENTITY:.*]] = "tf.Identity"(%[[CALL0]])
 // CHECK: return %[[IDENTITY]] : tensor<1xf32>
@@ -111,7 +111,7 @@ module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantic
 // CHECK: func.func @main(%arg0: tensor<16xf32> {tf_saved_model.index_path = ["input:0"]}, %arg1: tensor<i32> {tf_saved_model.index_path = ["k:0"]})
 // CHECK-SAME: -> (tensor<?xf32> {tf_saved_model.index_path = ["TopK:0"]}, tensor<?xi32> {tf_saved_model.index_path = ["TopK:1"]})
 // CHECK-SAME: attributes {tf.entry_function = {inputs = "input:0,k:0", outputs = "TopK:0,TopK:1"}, tf_saved_model.exported_names = ["main"]}
-// CHECK: %[[CALL0:.*]]:2 = "tf.PartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @topk}
+// CHECK: %[[CALL0:.*]]:2 = "tf.PartitionedCall"(%arg0, %arg1) <{config = "", config_proto = "", executor_type = "", f = @topk}>
 // Expects an IdentityN op to be created.
 // CHECK: %[[IDENTITY:.*]]:2 = "tf.IdentityN"(%[[CALL0]]#0, %[[CALL0]]#1) : (tensor<?xf32>, tensor<?xi32>) -> (tensor<?xf32>, tensor<?xi32>)
 // CHECK: return %[[IDENTITY]]#0, %[[IDENTITY]]#1 : tensor<?xf32>, tensor<?xi32>

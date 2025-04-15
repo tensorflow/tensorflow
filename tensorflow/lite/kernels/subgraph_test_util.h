@@ -28,6 +28,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter_test_util.h"
@@ -66,6 +68,9 @@ class SubgraphBuilder {
   // Build a subgraph whose output is not consumed by the parent subgraph.
   void BuildOutputNotConsumedSubgraph(Subgraph& subgraph);
 
+  // Build an if subgraph with float inputs and outputs.
+  void BuildFloatIfSubgraph(Subgraph* subgraph, int num_inputs);
+
   // Build a while subgraph with float inputs and outputs.
   void BuildFloatWhileSubgraph(Subgraph* subgraph, int num_inputs);
 
@@ -88,13 +93,66 @@ class SubgraphBuilder {
   // Build a body subgraph with only a counter.
   void BuildCounterOnlySubgraph(Subgraph* subgraph);
 
+  // Build a subgraph with a single binary op.
+  //
+  // The op must take in two inputs and have one output.
+  void BuildBinaryOpSubgraph(Subgraph* subgraph,
+                             TfLiteRegistration* (*Register_OP)(),
+                             TfLiteBuiltinOperator builtin_code, void* params,
+                             TfLiteType input1_type, TfLiteType input2_type,
+                             TfLiteType output_type);
+
   // Build a subgraph with a single Add op.
   // 2 inputs. 1 output.
-  void BuildAddSubgraph(Subgraph* subgraph);
+  void BuildAddSubgraph(Subgraph* subgraph,
+                        TfLiteType operand_type = kTfLiteInt32);
+
+  // Build a subgraph with a single stablehlo Add op.
+  // 2 inputs. 1 output.
+  void BuildStablehloAddSubgraph(Subgraph* subgraph,
+                                 TfLiteType operand_type = kTfLiteInt32);
+
+  // Build a subgraph with a single Maximum op.
+  // 2 inputs. 1 output.
+  void BuildMaximumSubgraph(Subgraph* subgraph,
+                            TfLiteType operand_type = kTfLiteInt32);
+
+  // Build a subgraph with a single stablehlo Maximum op.
+  // 2 inputs. 1 output.
+  void BuildStablehloMaximumSubgraph(Subgraph* subgraph,
+                                     TfLiteType operand_type = kTfLiteInt32);
+
+  // Build a subgraph with a single Minimum op.
+  // 2 inputs. 1 output.
+  void BuildMinimumSubgraph(Subgraph* subgraph,
+                            TfLiteType operand_type = kTfLiteInt32);
+
+  // Build a subgraph with a single stablehlo Minimum op.
+  // 2 inputs. 1 output.
+  void BuildStablehloMinimumSubgraph(Subgraph* subgraph,
+                                     TfLiteType operand_type = kTfLiteInt32);
+
+  // Build a subgraph with a single LogicalOr op.
+  // 2 inputs. 1 output.
+  void BuildLogicalOrSubgraph(Subgraph* subgraph);
+
+  // Build a subgraph with a single LogicalAnd op.
+  // 2 inputs. 1 output.
+  void BuildLogicalAndSubgraph(Subgraph* subgraph);
+
+  // Build a subgraph with no ops inside.
+  // 2 inputs. 1 output. Routes the second input to the output.
+  void BuildOutputIsSecondInputSubgraph(Subgraph* subgraph);
 
   // Build a subgraph with a single Mul op.
   // 2 inputs. 1 output.
-  void BuildMulSubgraph(Subgraph* subgraph);
+  void BuildMulSubgraph(Subgraph* subgraph,
+                        TfLiteType operand_type = kTfLiteInt32);
+
+  // Build a subgraph with a single stablehlo Multiply op.
+  // 2 inputs. 1 output.
+  void BuildStablehloMulSubgraph(Subgraph* subgraph,
+                                 TfLiteType operand_type = kTfLiteInt32);
 
   // Build a subgraph with a single Pad op.
   // 2 inputs. 1 output.
@@ -106,6 +164,10 @@ class SubgraphBuilder {
   //   The 2nd and 3rd inputs are feed input the branch subgraphs.
   // 1 output.
   void BuildIfSubgraph(Subgraph* subgraph);
+
+  // Build a subgraph with a single StableHLO Composite op.
+  void BuildCompositeSubgraph(Subgraph* subgraph,
+                              const Subgraph* decomposition);
 
   // Build a subgraph which triggers the reallocation of an inplace output
   // tensor whose corresponding input has not been consumed yet. This tests that
@@ -123,12 +185,24 @@ class SubgraphBuilder {
   //   Equivalent to (input < rhs).
   void BuildLessEqualCondSubgraph(Subgraph* subgraph, int rhs);
 
+  // Build an if subgraph which does not consume an output of ifs body
+  // subgraph.
+  void BuildOutputNotConsumedIfSubgraph(Subgraph* subgraph);
+
   // Build a while subgraph which does not consume an output of ifs body
   // subgraph.
   void BuildOutputNotConsumedWhileSubgraph(Subgraph* subgraph);
 
+  // Build a if subgraph with multiple inputs.
+  void BuildMultiInputIfSubgraph(Subgraph* subgraph, int num_inputs);
+
   // Build a while subgraph with multiple inputs.
   void BuildMultiInputWhileSubgraph(Subgraph* subgraph, int num_inputs);
+
+  // Build an if subgraph with multiple inputs and one output which is not
+  // consumed.
+  void BuildMultiInputIfSubgraphWithUnconsumedOutput(Subgraph* subgraph,
+                                                     int num_inputs);
 
   // Build a while subgraph with multiple inputs and one output which is not
   // consumed.
@@ -201,6 +275,10 @@ class SubgraphBuilder {
   //                 (str1, Fill(str1, int_val + 1), int_val + 1).
   void BuildBodySubgraphWithDynamicTensor(Subgraph* subgraph);
 
+  // Build a subgraph with a single If op, that contains 4 inputs and 3
+  // outputs (str1, str2, int_val).
+  void BuildIfSubgraphWithDynamicTensor(Subgraph* subgraph);
+
   // Build a subgraph with a single While op, that contains 3 inputs and 3
   // outputs (str1, str2, int_val).
   void BuildWhileSubgraphWithDynamicTensor(Subgraph* subgraph);
@@ -231,9 +309,7 @@ class ControlFlowOpTest : public InterpreterTest {
  public:
   ControlFlowOpTest() : builder_(new SubgraphBuilder) {}
 
-  ~ControlFlowOpTest() override {
-    builder_.reset();
-  }
+  ~ControlFlowOpTest() override { builder_.reset(); }
 
  protected:
   std::unique_ptr<SubgraphBuilder> builder_;

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ResourceApplyProximalAdagrad"
   input_arg {
     name: "var"

@@ -52,13 +52,14 @@ class FunctionalizeCondTest : public ::testing::Test {
     return fc_->state_map_.CondStateToString(id);
   }
 
-  StatusOr<StateMap::CondId> JoinCondStatesNonMerge(StateMap::CondId src,
-                                                    StateMap::CondId dst) {
+  absl::StatusOr<StateMap::CondId> JoinCondStatesNonMerge(
+      StateMap::CondId src, StateMap::CondId dst) {
     return fc_->JoinCondStatesNonMerge(src, dst);
   }
 
-  StatusOr<StateMap::CondId> JoinCondStatesMerge(Node* n, StateMap::CondId src,
-                                                 StateMap::CondId dst) {
+  absl::StatusOr<StateMap::CondId> JoinCondStatesMerge(Node* n,
+                                                       StateMap::CondId src,
+                                                       StateMap::CondId dst) {
     return fc_->JoinCondStatesMerge(n, src, dst);
   }
 
@@ -93,7 +94,8 @@ TEST_F(FunctionalizeCondTest, JoinCondStates) {
   }
 
   // An non-merge op with inputs from then and else branch.
-  Status status = JoinCondStatesNonMerge(then_branch, else_branch).status();
+  absl::Status status =
+      JoinCondStatesNonMerge(then_branch, else_branch).status();
   EXPECT_TRUE(errors::IsInvalidArgument(status));
 
   // Merge between then and else branch.

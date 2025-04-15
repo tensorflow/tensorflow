@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_FUNCTIONALIZE_CONTROL_FLOW_UTIL_H_
 
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/graph.h"
 
@@ -74,13 +74,13 @@ struct WhileLoopFrame {
 // If `node_filter` is defined, then we keep track of frames that should be
 // functionalized according to the filter (see comment for
 // `FunctionalizeControlFlow` for more details about node filters).
-Status ExtractWhileLoopFrames(
+absl::Status ExtractWhileLoopFrames(
     const std::vector<ControlFlowInfo>& cf_info, const Graph* graph,
     std::unordered_map<string, WhileLoopFrame>* frames,
     const NodeFilter& node_filter = {});
 
 // Check that the graph has no cycle containing the given node.
-Status CheckNodeNotInCycle(const Node* node, const int num_nodes);
+absl::Status CheckNodeNotInCycle(const Node* node, const int num_nodes);
 
 // Comparison function used for sorting nodes consistently.
 // a) resource variables are last, and
@@ -90,10 +90,10 @@ struct NodeCmpByNameResourcesLast {
 };
 
 // Returns the Node* created from the NodeDef in the Graph.
-StatusOr<Node*> AddNodeDefToGraph(const NodeDef& node_def, Graph* graph);
+absl::StatusOr<Node*> AddNodeDefToGraph(const NodeDef& node_def, Graph* graph);
 
 // Build a retval node of given type and index.
-StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index);
+absl::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index);
 
 // Returns a textual representation of the names of the nodes in the input.
 template <typename T>

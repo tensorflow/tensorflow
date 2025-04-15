@@ -32,17 +32,17 @@ namespace mlrt_compiler {
 // until (including) AssignOpKeyPass have run will be cloned to it.
 //
 // This is for initial conversion.
-StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
-    const TfrtCompileOptions& options,
-    const tfrt_stub::FallbackState& fallback_state, mlir::ModuleOp module,
-    tfrt_stub::ModelRuntimeContext& model_context,
-    mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys = nullptr);
+absl::StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
+    const TfrtCompileOptions& options, tfrt_stub::FallbackState& fallback_state,
+    mlir::ModuleOp module, tfrt_stub::ModelRuntimeContext& model_context,
+    mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys = nullptr,
+    std::vector<std::string>* added_xla_function_names = nullptr);
 
 // Converts an MLIR `module_with_op_keys` in TF dialect to MLRT's bytecode
 // format, with op costs from `cost_recorder`.
 //
 // This is for re-conversion.
-StatusOr<mlrt::bc::Buffer> ConvertTfMlirWithOpKeysToBytecode(
+absl::StatusOr<mlrt::bc::Buffer> ConvertTfMlirWithOpKeysToBytecode(
     const TfrtCompileOptions& options,
     const tfrt_stub::FallbackState& fallback_state,
     mlir::ModuleOp module_with_op_keys,

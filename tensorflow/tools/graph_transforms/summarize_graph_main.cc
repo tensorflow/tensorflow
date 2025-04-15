@@ -44,7 +44,7 @@ void PrintNodeInfo(const NodeDef* node) {
   string shape_description = "None";
   if (node->attr().count("shape")) {
     TensorShapeProto shape_proto = node->attr().at("shape").shape();
-    Status shape_status = PartialTensorShape::IsValidShape(shape_proto);
+    absl::Status shape_status = PartialTensorShape::IsValidShape(shape_proto);
     if (shape_status.ok()) {
       shape_description = PartialTensorShape(shape_proto).DebugString();
     } else {
@@ -121,7 +121,7 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
   std::cout << std::endl;
 }
 
-Status PrintStructure(const GraphDef& graph) {
+absl::Status PrintStructure(const GraphDef& graph) {
   GraphDef sorted_graph;
   TF_RETURN_IF_ERROR(SortByExecutionOrder(graph, &sorted_graph));
   for (const NodeDef& node : sorted_graph.node()) {
@@ -138,11 +138,11 @@ Status PrintStructure(const GraphDef& graph) {
     }
     std::cout << std::endl;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
-                      bool print_structure) {
+absl::Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
+                            bool print_structure) {
   std::vector<const NodeDef*> placeholders;
   std::vector<const NodeDef*> variables;
   for (const NodeDef& node : graph.node()) {
@@ -284,7 +284,7 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
     TF_RETURN_IF_ERROR(PrintStructure(graph));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {
@@ -315,7 +315,7 @@ int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {
   }
 
   GraphDef graph_def;
-  Status load_status = LoadTextOrBinaryGraphFile(in_graph, &graph_def);
+  absl::Status load_status = LoadTextOrBinaryGraphFile(in_graph, &graph_def);
   if (!load_status.ok()) {
     LOG(ERROR) << "Loading graph '" << in_graph << "' failed with "
                << load_status.message();
@@ -323,7 +323,7 @@ int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {
     return -1;
   }
 
-  Status summarize_result =
+  absl::Status summarize_result =
       SummarizeGraph(graph_def, in_graph, print_structure);
   if (!summarize_result.ok()) {
     LOG(ERROR) << summarize_result.message() << "\n" << usage;

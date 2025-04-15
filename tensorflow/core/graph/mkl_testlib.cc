@@ -23,19 +23,6 @@ namespace tensorflow {
 namespace test {
 namespace graph {
 
-Node* oneDNNMatmul(Graph* g, Node* in0, Node* in1, bool transpose_a,
-                   bool transpose_b) {
-  Node* ret = nullptr;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_MklMatMul")
-                  .Input(in0)
-                  .Input(in1)
-                  .Attr("transpose_a", transpose_a)
-                  .Attr("transpose_b", transpose_b)
-                  .Attr("_kernel", mkl_op_registry::kMklNameChangeOpLabel)
-                  .Finalize(g, &ret));
-  return ret;
-}
-
 Node* oneDNNSoftmax(Graph* g, Node* input) {
   Node* ret = nullptr;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_MklSoftmax")
@@ -44,6 +31,19 @@ Node* oneDNNSoftmax(Graph* g, Node* input) {
                   .Finalize(g, &ret));
   return ret;
 }
+
+#ifdef ENABLE_ONEDNN_V3
+Node* oneDNNSparseCSRMatmul(Graph* g, Node* csr_matrix_t, Node* b) {
+  Node* ret = nullptr;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_MklNativeSparseMatrixMatMul")
+                  .Input(csr_matrix_t)
+                  .Input(b)
+                  .Attr("T", DT_FLOAT)
+                  .Attr("_kernel", mkl_op_registry::kMklNameChangeOpLabel)
+                  .Finalize(g, &ret));
+  return ret;
+}
+#endif  // ENABLE_ONEDNN_V3
 
 }  // namespace graph
 }  // namespace test

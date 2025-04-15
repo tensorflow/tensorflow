@@ -18,10 +18,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter_test_util.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/kernels/variants/list_ops_subgraph_test_util.h"
 #include "tensorflow/lite/kernels/variants/tensor_array.h"
@@ -286,6 +290,40 @@ TEST_F(WhileIncrementListOpsTest,
                 ElementsAreArray({2, 2}));
   }
 }
+
+class ListReserveLengthSubgraphTest
+    : public ListOpsSubgraphTest,
+      public ::testing::WithParamInterface<int> {};
+
+TEST_P(ListReserveLengthSubgraphTest, InterpreterOutputsListLength) {
+  const int length = GetParam();
+
+  builder_.BuildReserveLengthSubgraph(&interpreter_.primary_subgraph());
+
+  ASSERT_EQ(interpreter_.ResizeInputTensor(0, {1}), kTfLiteOk);
+  ASSERT_EQ(interpreter_.ResizeInputTensor(1, {}), kTfLiteOk);
+  ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
+
+  TfLiteTensor* element_shape = interpreter_.input_tensor(0);
+  element_shape->data.i32[0] = 2;
+
+  TfLiteTensor* num_elements = interpreter_.input_tensor(1);
+  num_elements->data.i32[0] = length;
+
+  ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
+
+  TfLiteTensor* output = interpreter_.output_tensor(0);
+  ASSERT_EQ(output->type, kTfLiteInt32);
+  ASSERT_EQ(output->allocation_type, kTfLiteArenaRw);
+  ASSERT_THAT(output, DimsAre({}));
+  ASSERT_TRUE(output->data.data != nullptr);
+
+  ASSERT_EQ(output->data.i32[0], length);
+}
+
+INSTANTIATE_TEST_SUITE_P(ListOpsSubgraphParamTests,
+                         ListReserveLengthSubgraphTest,
+                         testing::Values(0, 1, 2, 5, 10));
 
 }  // namespace
 }  // namespace tflite

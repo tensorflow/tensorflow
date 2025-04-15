@@ -13,10 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrappers for Datasets."""
+
 import abc
 import functools
 import queue
 import threading
+from typing import Union
 import warnings
 
 import numpy as np
@@ -26,6 +28,7 @@ from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_autograph
 from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.data.ops import iterator_ops
@@ -43,6 +46,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
+from tensorflow.python.framework import none_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed as core_random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -73,6 +77,7 @@ from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest as tf_nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
+
 
 # Symbols forwarded for legacy access through dataset_ops.py. These forwarded
 # symbols can be removed once all internal uses are updated.
@@ -183,7 +188,7 @@ class DatasetV2(
 
   >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
   >>> dataset = dataset.map(lambda x: x*2)
-  >>> list(dataset.as_numpy_iterator())
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [2, 4, 6]
 
   Common Terms:
@@ -422,7 +427,7 @@ class DatasetV2(
 
   # TODO(jsimsa): Change this to be the transitive closure of functions used
   # by this dataset and its inputs.
-  def _functions(self):
+  def _functions(self) -> list[StructuredFunctionWrapper]:
     """Returns a list of functions associated with this dataset.
 
     Returns:
@@ -480,7 +485,7 @@ class DatasetV2(
 
     return dataset
 
-  def __iter__(self):
+  def __iter__(self) -> iterator_ops.OwnedIterator:
     """Creates an iterator for elements of this dataset.
 
     The returned iterator implements the Python Iterator protocol.
@@ -588,7 +593,7 @@ class DatasetV2(
     3
 
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
-    >>> print(list(dataset.as_numpy_iterator()))
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 2, 3]
 
     `as_numpy_iterator()` will preserve the nested structure of dataset
@@ -615,7 +620,7 @@ class DatasetV2(
       if not isinstance(
           component_spec,
           (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec,
-           sparse_tensor_lib.SparseTensorSpec, structure.NoneTensorSpec)):
+           sparse_tensor_lib.SparseTensorSpec, none_tensor.NoneTensorSpec)):
         raise TypeError(
             f"`tf.data.Dataset.as_numpy_iterator()` is not supported for "
             f"datasets that produce values of type {component_spec.value_type}")
@@ -693,7 +698,7 @@ class DatasetV2(
     return DatasetSpec(self.element_spec)
 
   @staticmethod
-  def from_tensors(tensors, name=None):
+  def from_tensors(tensors, name=None) -> "DatasetV2":
     """Creates a `Dataset` with a single element, comprising the given tensors.
 
     `from_tensors` produces a dataset containing only a single element. To slice
@@ -737,7 +742,7 @@ class DatasetV2(
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
-  def from_tensor_slices(tensors, name=None):
+  def from_tensor_slices(tensors, name=None) -> "DatasetV2":
     """Creates a `Dataset` whose elements are slices of the given tensors.
 
     The given tensors are sliced along their first dimension. This operation
@@ -747,7 +752,7 @@ class DatasetV2(
 
     >>> # Slicing a 1D tensor produces scalar tensor elements.
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 2, 3]
 
     >>> # Slicing a 2D tensor produces 1D tensor elements.
@@ -758,7 +763,8 @@ class DatasetV2(
     >>> # Slicing a tuple of 1D tensors produces tuple elements containing
     >>> # scalar tensors.
     >>> dataset = tf.data.Dataset.from_tensor_slices(([1, 2], [3, 4], [5, 6]))
-    >>> list(dataset.as_numpy_iterator())
+    >>> [(n0.item(), n1.item(), n2.item()) for n0, n1, n2 in
+    ...        dataset.as_numpy_iterator()]
     [(1, 3, 5), (2, 4, 6)]
 
     >>> # Dictionary structure is also preserved.
@@ -868,12 +874,14 @@ class DatasetV2(
   @staticmethod
   @deprecation.deprecated_args(None, "Use output_signature instead",
                                "output_types", "output_shapes")
-  def from_generator(generator,
-                     output_types=None,
-                     output_shapes=None,
-                     args=None,
-                     output_signature=None,
-                     name=None):
+  def from_generator(
+      generator,
+      output_types=None,
+      output_shapes=None,
+      args=None,
+      output_signature=None,
+      name=None,
+  ) -> "DatasetV2":
     """Creates a `Dataset` whose elements are generated by `generator`.
 
     Note: The current implementation of `Dataset.from_generator()` uses
@@ -964,24 +972,32 @@ class DatasetV2(
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
-  def range(*args, **kwargs):
+  def range(*args, **kwargs) -> "DatasetV2":
     """Creates a `Dataset` of a step-separated range of values.
 
-    >>> list(Dataset.range(5).as_numpy_iterator())
+    >>> ds = Dataset.range(5)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [0, 1, 2, 3, 4]
-    >>> list(Dataset.range(2, 5).as_numpy_iterator())
+    >>> ds = Dataset.range(2, 5)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [2, 3, 4]
-    >>> list(Dataset.range(1, 5, 2).as_numpy_iterator())
+    >>> ds = Dataset.range(1, 5, 2)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [1, 3]
-    >>> list(Dataset.range(1, 5, -2).as_numpy_iterator())
+    >>> ds = Dataset.range(1, 5, -2)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     []
-    >>> list(Dataset.range(5, 1).as_numpy_iterator())
+    >>> ds = Dataset.range(5, 1)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     []
-    >>> list(Dataset.range(5, 1, -2).as_numpy_iterator())
+    >>> ds = Dataset.range(5, 1, -2)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [5, 3]
-    >>> list(Dataset.range(2, 5, output_type=tf.int32).as_numpy_iterator())
+    >>> ds = Dataset.range(2, 5, output_type=tf.int32)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [2, 3, 4]
-    >>> list(Dataset.range(1, 5, 2, output_type=tf.float32).as_numpy_iterator())
+    >>> ds = Dataset.range(1, 5, 2, output_type=tf.float32)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [1.0, 3.0]
 
     Args:
@@ -1007,7 +1023,7 @@ class DatasetV2(
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
-  def zip(*args, datasets=None, name=None):
+  def zip(*args, datasets=None, name=None) -> "DatasetV2":
     """Creates a `Dataset` by zipping together the given datasets.
 
     This method has similar semantics to the built-in `zip()` function
@@ -1021,10 +1037,10 @@ class DatasetV2(
     >>> a = tf.data.Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
     >>> b = tf.data.Dataset.range(4, 7)  # ==> [ 4, 5, 6 ]
     >>> ds = tf.data.Dataset.zip(a, b)
-    >>> list(ds.as_numpy_iterator())
+    >>> [(i.item(), j.item()) for i, j in ds.as_numpy_iterator()]
     [(1, 4), (2, 5), (3, 6)]
     >>> ds = tf.data.Dataset.zip(b, a)
-    >>> list(ds.as_numpy_iterator())
+    >>> [(i.item(), j.item()) for i, j in ds.as_numpy_iterator()]
     [(4, 1), (5, 2), (6, 3)]
     >>>
     >>> # The `datasets` argument may contain an arbitrary number of datasets.
@@ -1032,17 +1048,17 @@ class DatasetV2(
     ...                                            #       [9, 10],
     ...                                            #       [11, 12] ]
     >>> ds = tf.data.Dataset.zip(a, b, c)
-    >>> for element in ds.as_numpy_iterator():
-    ...   print(element)
-    (1, 4, array([7, 8]))
-    (2, 5, array([ 9, 10]))
-    (3, 6, array([11, 12]))
+    >>> for i, j, k in ds.as_numpy_iterator():
+    ...   print(i.item(), j.item(), k)
+    1 4 [7 8]
+    2 5 [ 9 10]
+    3 6 [11 12]
     >>>
     >>> # The number of elements in the resulting dataset is the same as
     >>> # the size of the smallest dataset in `datasets`.
     >>> d = tf.data.Dataset.range(13, 15)  # ==> [ 13, 14 ]
     >>> ds = tf.data.Dataset.zip(a, d)
-    >>> list(ds.as_numpy_iterator())
+    >>> [(i.item(), j.item()) for i, j in ds.as_numpy_iterator()]
     [(1, 13), (2, 14)]
 
     Args:
@@ -1072,13 +1088,13 @@ class DatasetV2(
     return zip_op._zip(datasets, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def concatenate(self, dataset, name=None):
+  def concatenate(self, dataset, name=None) -> "DatasetV2":
     """Creates a `Dataset` by concatenating the given dataset with this dataset.
 
     >>> a = tf.data.Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
     >>> b = tf.data.Dataset.range(4, 8)  # ==> [ 4, 5, 6, 7 ]
     >>> ds = a.concatenate(b)
-    >>> list(ds.as_numpy_iterator())
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [1, 2, 3, 4, 5, 6, 7]
     >>> # The input dataset and dataset to be concatenated should have
     >>> # compatible element specs.
@@ -1108,14 +1124,14 @@ class DatasetV2(
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
-  def counter(start=0, step=1, dtype=dtypes.int64, name=None):
+  def counter(start=0, step=1, dtype=dtypes.int64, name=None) -> "DatasetV2":
     """Creates a `Dataset` that counts from `start` in steps of size `step`.
 
     Unlike `tf.data.Dataset.range`, which stops at some ending number,
     `tf.data.Dataset.counter` produces elements indefinitely.
 
     >>> dataset = tf.data.experimental.Counter().take(5)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 2, 3, 4]
     >>> dataset.element_spec
     TensorSpec(shape=(), dtype=tf.int64, name=None)
@@ -1123,13 +1139,13 @@ class DatasetV2(
     >>> dataset.element_spec
     TensorSpec(shape=(), dtype=tf.int32, name=None)
     >>> dataset = tf.data.experimental.Counter(start=2).take(5)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [2, 3, 4, 5, 6]
     >>> dataset = tf.data.experimental.Counter(start=2, step=5).take(5)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [2, 7, 12, 17, 22]
     >>> dataset = tf.data.experimental.Counter(start=10, step=-1).take(5)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [10, 9, 8, 7, 6]
 
     Args:
@@ -1149,7 +1165,25 @@ class DatasetV2(
     return counter_op._counter(start, step, dtype, name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def rebatch(self, batch_size, drop_remainder=False, name=None):
+  def fingerprint(self):
+    """Computes the fingerprint of this `Dataset`.
+
+    If two datasets have the same fingerprint, it is guaranteed that they
+    would produce identical elements as long as the content of the upstream
+    input files does not change and they produce data deterministically.
+
+    However, two datasets producing identical values does not always mean they
+    would have the same fingerprint due to different graph constructs.
+
+    In other words, if two datasets have different fingerprints, they could
+    still produce identical values.
+
+    Returns:
+      A scalar `tf.Tensor` of type `tf.uint64`.
+    """
+    return gen_dataset_ops.dataset_fingerprint(self._variant_tensor)
+
+  def rebatch(self, batch_size, drop_remainder=False, name=None) -> "DatasetV2":
     """Creates a `Dataset` that rebatches the elements from this dataset.
 
     `rebatch(N)` is functionally equivalent to `unbatch().batch(N)`, but is
@@ -1203,7 +1237,7 @@ class DatasetV2(
     return rebatch_op._rebatch(self, batch_size, drop_remainder, name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def prefetch(self, buffer_size, name=None):
+  def prefetch(self, buffer_size, name=None) -> "DatasetV2":
     """Creates a `Dataset` that prefetches elements from this dataset.
 
     Most dataset input pipelines should end with a call to `prefetch`. This
@@ -1219,7 +1253,7 @@ class DatasetV2(
 
     >>> dataset = tf.data.Dataset.range(3)
     >>> dataset = dataset.prefetch(2)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 2]
 
     Args:
@@ -1235,7 +1269,9 @@ class DatasetV2(
         self, buffer_size, name=name)
 
   @staticmethod
-  def list_files(file_pattern, shuffle=None, seed=None, name=None):
+  def list_files(
+      file_pattern, shuffle=None, seed=None, name=None
+  ) -> "DatasetV2":
     """A dataset of all files matching one or more glob patterns.
 
     The `file_pattern` argument should be a small number of glob patterns.
@@ -1313,12 +1349,12 @@ class DatasetV2(
         dataset = dataset.shuffle(buffer_size, seed=seed, name=name)
       return dataset
 
-  def repeat(self, count=None, name=None):
+  def repeat(self, count=None, name=None) -> "DatasetV2":
     """Repeats this dataset so each original value is seen `count` times.
 
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
     >>> dataset = dataset.repeat(3)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 2, 3, 1, 2, 3, 1, 2, 3]
 
     Note: If the input dataset depends on global state (e.g. a random number
@@ -1341,15 +1377,15 @@ class DatasetV2(
     return repeat_op._repeat(self, count, name)
     # pylint: enable=g-import-not-at-top,protected-access,redefined-outer-name
 
-  def enumerate(self, start=0, name=None):
+  def enumerate(self, start=0, name=None) -> "DatasetV2":
     """Enumerates the elements of this dataset.
 
     It is similar to python's `enumerate`.
 
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
     >>> dataset = dataset.enumerate(start=5)
-    >>> for element in dataset.as_numpy_iterator():
-    ...   print(element)
+    >>> for pos, element in dataset.as_numpy_iterator():
+    ...   print(tuple((pos.item(), element.item())))
     (5, 1)
     (6, 2)
     (7, 3)
@@ -1358,8 +1394,8 @@ class DatasetV2(
     >>> # structure of elements in the resulting dataset.
     >>> dataset = tf.data.Dataset.from_tensor_slices([(7, 8), (9, 10)])
     >>> dataset = dataset.enumerate()
-    >>> for element in dataset.as_numpy_iterator():
-    ...   print(element)
+    >>> for pos, element in dataset.as_numpy_iterator():
+    ...   print(tuple((pos.item(), element)))
     (0, array([7, 8], dtype=int32))
     (1, array([ 9, 10], dtype=int32))
 
@@ -1380,11 +1416,9 @@ class DatasetV2(
     range_dataset = _apply_rewrite(range_dataset, "replicate_on_split")
     return Dataset.zip((range_dataset, self), name=name)
 
-  def shuffle(self,
-              buffer_size,
-              seed=None,
-              reshuffle_each_iteration=None,
-              name=None):
+  def shuffle(
+      self, buffer_size, seed=None, reshuffle_each_iteration=True, name=None
+  ) -> "DatasetV2":
     """Randomly shuffles the elements of this dataset.
 
     This dataset fills a buffer with `buffer_size` elements, then randomly
@@ -1399,8 +1433,12 @@ class DatasetV2(
     maintaining the 1,000 element buffer.
 
     `reshuffle_each_iteration` controls whether the shuffle order should be
-    different for each epoch. In TF 1.X, the idiomatic way to create epochs
-    was through the `repeat` transformation:
+    different for each epoch. However you should avoid using
+    `shuffle(reshuffle_each_iteration=True)`, then `take` and `skip` to split
+    a dataset into training and test sets, which would lead to data leakage (as
+    the entire dataset would be re-shuffled then re-split after each epoch).
+    Please use the `tf.keras.utils.split_dataset` method instead. In TF 1.X,
+    the idiomatic way to create epochs was through the `repeat` transformation:
 
     ```python
     dataset = tf.data.Dataset.range(3)
@@ -1435,9 +1473,9 @@ class DatasetV2(
     # [1, 0, 2]
     ```
 
-    ### Fully shuffling all the data
+    #### Fully shuffling all the data
 
-    To shuffle an entire dataset, set `buffer_size=dataset.cardinality(). This
+    To shuffle an entire dataset, set `buffer_size=dataset.cardinality()`. This
     is equivalent to setting the `buffer_size` equal to the number of elements
     in the dataset, resulting in uniform shuffle.
 
@@ -1454,12 +1492,12 @@ class DatasetV2(
     ```
 
     Args:
-      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        elements from this dataset from which the new dataset will sample. To
-        uniformly shuffle the entire dataset, use
+      buffer_size: An int or `tf.int64` scalar `tf.Tensor`, representing the
+        number of elements from this dataset from which the new dataset will
+        sample. To uniformly shuffle the entire dataset, use
         `buffer_size=dataset.cardinality()`.
-      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
-        seed that will be used to create the distribution. See
+      seed: (Optional.) An int or `tf.int64` scalar `tf.Tensor`, representing
+        the random seed that will be used to create the distribution. See
         `tf.random.set_seed` for behavior.
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is
@@ -1472,7 +1510,7 @@ class DatasetV2(
     return shuffle_op._shuffle(  # pylint: disable=protected-access
         self, buffer_size, seed, reshuffle_each_iteration, name=name)
 
-  def cache(self, filename="", name=None):
+  def cache(self, filename="", name=None) -> "DatasetV2":
     """Caches the elements in this dataset.
 
     The first time the dataset is iterated over, its elements will be cached
@@ -1488,10 +1526,10 @@ class DatasetV2(
     >>> dataset = dataset.cache()
     >>> # The first time reading through the data will generate the data using
     >>> # `range` and `map`.
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 4, 9, 16]
     >>> # Subsequent iterations read from the cache.
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 4, 9, 16]
 
     When caching to a file, the cached data will persist across runs. Even the
@@ -1530,12 +1568,12 @@ class DatasetV2(
     return cache_op._cache(self, filename, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def take(self, count, name=None):
+  def take(self, count, name=None) -> "DatasetV2":
     """Creates a `Dataset` with at most `count` elements from this dataset.
 
     >>> dataset = tf.data.Dataset.range(10)
     >>> dataset = dataset.take(3)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 2]
 
     Args:
@@ -1555,12 +1593,12 @@ class DatasetV2(
     return take_op._take(self, count, name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def skip(self, count, name=None):
+  def skip(self, count, name=None) -> "DatasetV2":
     """Creates a `Dataset` that skips `count` elements from this dataset.
 
     >>> dataset = tf.data.Dataset.range(10)
     >>> dataset = dataset.skip(7)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [7, 8, 9]
 
     Args:
@@ -1580,7 +1618,7 @@ class DatasetV2(
     return skip_op._skip(self, count, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def shard(self, num_shards, index, name=None):
+  def shard(self, num_shards, index, name=None) -> "DatasetV2":
     """Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
 
     `shard` is deterministic. The Dataset produced by `A.shard(n, i)` will
@@ -1588,13 +1626,13 @@ class DatasetV2(
 
     >>> A = tf.data.Dataset.range(10)
     >>> B = A.shard(num_shards=3, index=0)
-    >>> list(B.as_numpy_iterator())
+    >>> [a.item() for a in B.as_numpy_iterator()]
     [0, 3, 6, 9]
     >>> C = A.shard(num_shards=3, index=1)
-    >>> list(C.as_numpy_iterator())
+    >>> [a.item() for a in C.as_numpy_iterator()]
     [1, 4, 7]
     >>> D = A.shard(num_shards=3, index=2)
-    >>> list(D.as_numpy_iterator())
+    >>> [a.item() for a in D.as_numpy_iterator()]
     [2, 5, 8]
 
     This dataset operator is very useful when running distributed training, as
@@ -1737,7 +1775,9 @@ class DatasetV2(
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
-  def load(path, element_spec=None, compression=None, reader_func=None):
+  def load(
+      path, element_spec=None, compression=None, reader_func=None, wait=False,
+  ) -> "DatasetV2":
     """Loads a previously saved dataset.
 
     Example usage:
@@ -1784,6 +1824,11 @@ class DatasetV2(
       reader_func: Optional. A function to control how to read data from shards.
         If present, the function will be traced and executed as graph
         computation.
+      wait: If `True`, for snapshots written with `distributed_save`, it reads
+        the snapshot while it is being written. For snapshots written with
+        regular `save`, it waits for the snapshot until it's finished. The
+        default is `False` for backward compatibility. Users of
+        `distributed_save` are recommended to set it to `True`.
 
     Returns:
       A `tf.data.Dataset` instance.
@@ -1802,15 +1847,18 @@ class DatasetV2(
         path=path,
         element_spec=element_spec,
         compression=compression,
-        reader_func=reader_func)
+        reader_func=reader_func,
+        wait=wait)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def batch(self,
-            batch_size,
-            drop_remainder=False,
-            num_parallel_calls=None,
-            deterministic=None,
-            name=None):
+  def batch(
+      self,
+      batch_size,
+      drop_remainder=False,
+      num_parallel_calls=None,
+      deterministic=None,
+      name=None,
+  ) -> "DatasetV2":
     """Combines consecutive elements of this dataset into batches.
 
     >>> dataset = tf.data.Dataset.range(8)
@@ -1868,12 +1916,14 @@ class DatasetV2(
                            deterministic, name)
     # pylint: enable=g-import-not-at-top,protected-access,redefined-outer-name
 
-  def padded_batch(self,
-                   batch_size,
-                   padded_shapes=None,
-                   padding_values=None,
-                   drop_remainder=False,
-                   name=None):
+  def padded_batch(
+      self,
+      batch_size,
+      padded_shapes=None,
+      padding_values=None,
+      drop_remainder=False,
+      name=None,
+  ) -> "DatasetV2":
     """Combines consecutive elements of this dataset into padded batches.
 
     This transformation combines multiple consecutive elements of the input
@@ -1996,11 +2046,13 @@ class DatasetV2(
                                          padding_values, drop_remainder, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def ragged_batch(self,
-                   batch_size,
-                   drop_remainder=False,
-                   row_splits_dtype=dtypes.int64,
-                   name=None):
+  def ragged_batch(
+      self,
+      batch_size,
+      drop_remainder=False,
+      row_splits_dtype=dtypes.int64,
+      name=None,
+  ) -> "DatasetV2":
     """Combines consecutive elements of this dataset into `tf.RaggedTensor`s.
 
     Like `tf.data.Dataset.batch`, the components of the resulting element will
@@ -2059,7 +2111,7 @@ class DatasetV2(
                                          row_splits_dtype, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def sparse_batch(self, batch_size, row_shape, name=None):
+  def sparse_batch(self, batch_size, row_shape, name=None) -> "DatasetV2":
     """Combines consecutive elements into `tf.sparse.SparseTensor`s.
 
     Like `Dataset.padded_batch()`, this transformation combines multiple
@@ -2108,11 +2160,15 @@ class DatasetV2(
     return sparse_batch_op._sparse_batch(self, batch_size, row_shape, name)
     # pylint: disable=g-import-not-at-top,protected-access
 
-  def map(self,
-          map_func,
-          num_parallel_calls=None,
-          deterministic=None,
-          name=None):
+  def map(
+      self,
+      map_func,
+      num_parallel_calls=None,
+      deterministic=None,
+      synchronous=None,
+      use_unbounded_threadpool=False,
+      name=None,
+  ) -> "DatasetV2":
     """Maps `map_func` across the elements of this dataset.
 
     This transformation applies `map_func` to each element of this dataset, and
@@ -2127,7 +2183,7 @@ class DatasetV2(
 
     >>> dataset = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
     >>> dataset = dataset.map(lambda x: x + 1)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [2, 3, 4, 5, 6]
 
     The input signature of `map_func` is determined by the structure of each
@@ -2145,7 +2201,7 @@ class DatasetV2(
     >>> # `map_func` takes two arguments of type `tf.Tensor`. This function
     >>> # projects out just the first component.
     >>> result = dataset.map(lambda x_int, y_str: x_int)
-    >>> list(result.as_numpy_iterator())
+    >>> [a.item() for a in result.as_numpy_iterator()]
     [1, 2, 3]
 
     >>> # Each element is a dictionary mapping strings to `tf.Tensor` objects.
@@ -2246,9 +2302,11 @@ name=None))
       map_func: A function mapping a dataset element to another dataset element.
       num_parallel_calls: (Optional.) A `tf.int64` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
-        If not specified, elements will be processed sequentially. If the value
-        `tf.data.AUTOTUNE` is used, then the number of parallel
-        calls is set dynamically based on available CPU.
+        If the value `tf.data.AUTOTUNE` is used, then the number of parallel
+        calls is set dynamically based on available CPU. If not specified, the
+        `tf.data.Options.experimental_optimization.map_parallelization` option
+        (`True` by default) controls whether the map will run as with
+        `tf.data.AUTOTUNE` or run sequentially.
       deterministic: (Optional.) When `num_parallel_calls` is specified, if this
         boolean is specified (`True` or `False`), it controls the order in which
         the transformation produces elements. If set to `False`, the
@@ -2256,6 +2314,20 @@ name=None))
         determinism for performance. If not specified, the
         `tf.data.Options.deterministic` option (`True` by default) controls the
         behavior.
+      synchronous: (Optional.) Whether to force the map transformation to run
+        synchronously. This only matters when
+        `options.experimental_optimization.map_parallelization=True`. That
+        option would normally change the map to run with
+        `num_parallel_calls=tf.data.AUTOTUNE`, but if `synchronous=True` is
+        specified, the map will not be parallelized at all. This is useful for
+        saving memory, since even setting `num_parallel_calls=1` will cause one
+        batch to be buffered, while with `synchronous=True` the map
+        transformation doesn't buffer anything.
+      use_unbounded_threadpool: (Optional.) By default, map functions run in a
+        limited threadpool based on the number of cores on the machine. This
+        efficient for CPU-heavy processing, but if the map function performs IO
+        it is better to use an unbounded threadpool by setting it to `True`. It
+        is `False` by default.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
@@ -2265,15 +2337,19 @@ name=None))
     # dataset_ops).
     # pylint: disable=g-import-not-at-top,protected-access
     from tensorflow.python.data.ops import map_op
+
     return map_op._map_v2(
         self,
         map_func,
         num_parallel_calls=num_parallel_calls,
         deterministic=deterministic,
-        name=name)
+        synchronous=synchronous,
+        use_unbounded_threadpool=use_unbounded_threadpool,
+        name=name,
+    )
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def flat_map(self, map_func, name=None):
+  def flat_map(self, map_func, name=None) -> "DatasetV2":
     """Maps `map_func` across this dataset and flattens the result.
 
     The type signature is:
@@ -2292,7 +2368,7 @@ name=None))
     >>> dataset = tf.data.Dataset.from_tensor_slices(
     ...     [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
     >>> dataset = dataset.flat_map(tf.data.Dataset.from_tensor_slices)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
     `tf.data.Dataset.interleave()` is a generalization of `flat_map`, since
@@ -2313,7 +2389,7 @@ name=None))
     return flat_map_op._flat_map(self, map_func, name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def ignore_errors(self, log_warning=False, name=None):
+  def ignore_errors(self, log_warning=False, name=None) -> "DatasetV2":
     """Drops elements that cause errors.
 
     >>> dataset = tf.data.Dataset.from_tensor_slices([1., 2., 0., 4.])
@@ -2341,13 +2417,15 @@ name=None))
     return ignore_errors_op._ignore_errors(self, log_warning, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def interleave(self,
-                 map_func,
-                 cycle_length=None,
-                 block_length=None,
-                 num_parallel_calls=None,
-                 deterministic=None,
-                 name=None):
+  def interleave(
+      self,
+      map_func,
+      cycle_length=None,
+      block_length=None,
+      num_parallel_calls=None,
+      deterministic=None,
+      name=None,
+  ) -> "DatasetV2":
     """Maps `map_func` across this dataset, and interleaves the results.
 
     The type signature is:
@@ -2391,7 +2469,7 @@ name=None))
     >>> dataset = dataset.interleave(
     ...     lambda x: Dataset.from_tensors(x).repeat(6),
     ...     cycle_length=2, block_length=4)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 1, 1, 1,
      2, 2, 2, 2,
      1, 1,
@@ -2457,18 +2535,18 @@ name=None))
                                      num_parallel_calls, deterministic, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def filter(self, predicate, name=None):
+  def filter(self, predicate, name=None) -> "DatasetV2":
     """Filters this dataset according to `predicate`.
 
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
     >>> dataset = dataset.filter(lambda x: x < 3)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 2]
     >>> # `tf.math.equal(x, y)` is required for equality comparison
     >>> def filter_fn(x):
     ...   return tf.math.equal(x, 1)
     >>> dataset = dataset.filter(filter_fn)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1]
 
     Args:
@@ -2485,7 +2563,7 @@ name=None))
     return filter_op._filter(self, predicate, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def apply(self, transformation_func):
+  def apply(self, transformation_func) -> "DatasetV2":
     """Applies a transformation function to this dataset.
 
     `apply` enables chaining of custom `Dataset` transformations, which are
@@ -2496,7 +2574,7 @@ name=None))
     >>> def dataset_fn(ds):
     ...   return ds.filter(lambda x: x < 5)
     >>> dataset = dataset.apply(dataset_fn)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 2, 3, 4]
 
     Args:
@@ -2514,7 +2592,9 @@ name=None))
     dataset._input_datasets = [self]  # pylint: disable=protected-access
     return dataset
 
-  def window(self, size, shift=None, stride=1, drop_remainder=False, name=None):
+  def window(
+      self, size, shift=None, stride=1, drop_remainder=False, name=None
+  ) -> "DatasetV2":
     """Returns a dataset of "windows".
 
     Each "window" is a dataset that contains a subset of elements of the
@@ -2534,7 +2614,7 @@ name=None))
     Since windows are datasets, they can be iterated over:
 
     >>> for window in dataset:
-    ...   print(list(window.as_numpy_iterator()))
+    ...   print([a.item() for a in window.as_numpy_iterator()])
     [0, 1, 2]
     [3, 4, 5]
     [6]
@@ -2550,7 +2630,7 @@ name=None))
     >>> dataset = tf.data.Dataset.range(7).window(3, shift=1,
     ...                                           drop_remainder=True)
     >>> for window in dataset:
-    ...   print(list(window.as_numpy_iterator()))
+    ...   print([a.item() for a in window.as_numpy_iterator()])
     [0, 1, 2]
     [1, 2, 3]
     [2, 3, 4]
@@ -2565,14 +2645,14 @@ name=None))
     >>> dataset = tf.data.Dataset.range(7).window(3, shift=1, stride=2,
     ...                                           drop_remainder=True)
     >>> for window in dataset:
-    ...   print(list(window.as_numpy_iterator()))
+    ...   print([a.item() for a in window.as_numpy_iterator()])
     [0, 2, 4]
     [1, 3, 5]
     [2, 4, 6]
 
     #### Nested elements
 
-    When the `window` transformation is applied to a dataset whos elements are
+    When the `window` transformation is applied to a dataset whose elements are
     nested structures, it produces a dataset where the elements have the same
     nested structure but each leaf is replaced by a window. In other words,
     the nesting is applied outside of the windows as opposed inside of them.
@@ -2596,7 +2676,7 @@ name=None))
      <...Dataset element_spec=TensorSpec(shape=(), dtype=tf.int32, name=None)>)
 
     >>> def to_numpy(ds):
-    ...   return list(ds.as_numpy_iterator())
+    ...   return [a.item() for a in ds.as_numpy_iterator()]
     >>>
     >>> for windows in dataset:
     ...   print(to_numpy(windows[0]), to_numpy(windows[1]))
@@ -2612,7 +2692,7 @@ name=None))
     ...                                               'c': [7, 8, 9]})
     >>> dataset = dataset.window(2)
     >>> def to_numpy(ds):
-    ...   return list(ds.as_numpy_iterator())
+    ...   return [a.item() for a in ds.as_numpy_iterator()]
     >>>
     >>> for windows in dataset:
     ...   print(tf.nest.map_structure(to_numpy, windows))
@@ -2673,23 +2753,23 @@ name=None))
     its internal state. The `initial_state` argument is used for the initial
     state and the final state is returned as the result.
 
-    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, _: x + 1).numpy()
+    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, _: x +
+    ...   1).numpy().item()
     5
-    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, y: x + y).numpy()
+    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, y: x +
+    ...   y).numpy().item()
     10
 
     Args:
       initial_state: An element representing the initial state of the
         transformation.
       reduce_func: A function that maps `(old_state, input_element)` to
-        `new_state`. It must take two arguments and return a new element
-        The structure of `new_state` must match the structure of
-        `initial_state`.
+        `new_state`. It must take two arguments and return a new element The
+        structure of `new_state` must match the structure of `initial_state`.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
       A dataset element corresponding to the final state of the transformation.
-
     """
 
     with ops.name_scope("initial_state"):
@@ -2850,44 +2930,6 @@ name=None))
                   )
     ```
 
-    #### Estimator
-
-    In the case of estimators, you need to generally define a `serving_input_fn`
-    which would require the features to be processed by the model while
-    inferencing.
-
-    ```python
-    def serving_input_fn():
-
-      raw_feature_spec = ... # Spec for the raw_features
-      input_fn = tf.estimator.export.build_parsing_serving_input_receiver_fn(
-          raw_feature_spec, default_batch_size=None)
-      )
-      serving_input_receiver = input_fn()
-      raw_features = serving_input_receiver.features
-
-      def preprocessing_fn(raw_feature):
-        # ... the raw_feature is preprocessed as per the use-case
-        return feature
-
-      dataset = (tf.data.Dataset.from_tensor_slices(raw_features)
-                .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
-                .batch(BATCH_SIZE))
-
-      processed_features = dataset.get_single_element()
-
-      # Please note that the value of `BATCH_SIZE` should be equal to
-      # the size of the leading dimension of `raw_features`. This ensures
-      # that `dataset` has only element, which is a pre-requisite for
-      # using `dataset.get_single_element()`.
-
-      return tf.estimator.export.ServingInputReceiver(
-          processed_features, serving_input_receiver.receiver_tensors)
-
-    estimator = ... # A pre-built or custom estimator
-    estimator.export_saved_model(your_exported_model_dir, serving_input_fn)
-    ```
-
     Args:
       name: (Optional.) A name for the tf.data operation.
 
@@ -2910,7 +2952,7 @@ name=None))
             metadata=metadata.SerializeToString(),
             **self._flat_structure))  # pylint: disable=protected-access
 
-  def unbatch(self, name=None):
+  def unbatch(self, name=None) -> "DatasetV2":
     """Splits elements of a dataset into multiple elements.
 
     For example, if elements of the dataset are shaped `[B, a0, a1, ...]`,
@@ -2921,7 +2963,7 @@ name=None))
     >>> elements = [ [1, 2, 3], [1, 2], [1, 2, 3, 4] ]
     >>> dataset = tf.data.Dataset.from_generator(lambda: elements, tf.int64)
     >>> dataset = dataset.unbatch()
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 2, 3, 1, 2, 1, 2, 3, 4]
 
     Note: `unbatch` requires a data copy to slice up the batched tensor into
@@ -2941,7 +2983,7 @@ name=None))
     return unbatch_op._unbatch(self, name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def with_options(self, options, name=None):
+  def with_options(self, options, name=None) -> "DatasetV2":
     """Returns a new `tf.data.Dataset` with the given options set.
 
     The options are "global" in the sense they apply to the entire dataset.
@@ -2997,12 +3039,14 @@ name=None))
     """
     return gen_dataset_ops.dataset_cardinality(self._variant_tensor)
 
-  def group_by_window(self,
-                      key_func,
-                      reduce_func,
-                      window_size=None,
-                      window_size_func=None,
-                      name=None):
+  def group_by_window(
+      self,
+      key_func,
+      reduce_func,
+      window_size=None,
+      window_size_func=None,
+      name=None,
+  ) -> "DatasetV2":
     """Groups windows of elements by key and reduces them.
 
     This transformation maps each consecutive element in a dataset to a key
@@ -3058,16 +3102,18 @@ name=None))
         self, key_func, reduce_func, window_size, window_size_func, name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def bucket_by_sequence_length(self,
-                                element_length_func,
-                                bucket_boundaries,
-                                bucket_batch_sizes,
-                                padded_shapes=None,
-                                padding_values=None,
-                                pad_to_bucket_boundary=False,
-                                no_padding=False,
-                                drop_remainder=False,
-                                name=None):
+  def bucket_by_sequence_length(
+      self,
+      element_length_func,
+      bucket_boundaries,
+      bucket_batch_sizes,
+      padded_shapes=None,
+      padding_values=None,
+      pad_to_bucket_boundary=False,
+      no_padding=False,
+      drop_remainder=False,
+      name=None,
+  ) -> "DatasetV2":
     """A transformation that buckets elements in a `Dataset` by length.
 
     Elements of the `Dataset` are grouped together by length and then are padded
@@ -3206,7 +3252,9 @@ name=None))
         name=name)
 
   @staticmethod
-  def random(seed=None, rerandomize_each_iteration=None, name=None):
+  def random(
+      seed=None, rerandomize_each_iteration=None, name=None
+  ) -> "DatasetV2":
     """Creates a `Dataset` of pseudorandom values.
 
     The dataset generates a sequence of uniformly distributed integer values.
@@ -3256,12 +3304,14 @@ name=None))
         name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def snapshot(self,
-               path,
-               compression="AUTO",
-               reader_func=None,
-               shard_func=None,
-               name=None):
+  def snapshot(
+      self,
+      path,
+      compression="AUTO",
+      reader_func=None,
+      shard_func=None,
+      name=None,
+  ) -> "DatasetV2":
     """API to persist the output of the input dataset.
 
     The snapshot API allows users to transparently persist the output of their
@@ -3345,7 +3395,7 @@ name=None))
         self, path, compression, reader_func, shard_func, name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def scan(self, initial_state, scan_func, name=None):
+  def scan(self, initial_state, scan_func, name=None) -> "DatasetV2":
     """A transformation that scans a function across an input dataset.
 
     This transformation is a stateful relative of `tf.data.Dataset.map`.
@@ -3357,7 +3407,7 @@ name=None))
     >>> initial_state = tf.constant(0, dtype=tf.int64)
     >>> scan_func = lambda state, i: (state + i, state + i)
     >>> dataset = dataset.scan(initial_state=initial_state, scan_func=scan_func)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 3, 6, 10, 15, 21, 28, 36, 45]
 
     Args:
@@ -3380,12 +3430,12 @@ name=None))
     return scan_op._scan(self, initial_state, scan_func, name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def take_while(self, predicate, name=None):
+  def take_while(self, predicate, name=None) -> "DatasetV2":
     """A transformation that stops dataset iteration based on a `predicate`.
 
     >>> dataset = tf.data.Dataset.range(10)
     >>> dataset = dataset.take_while(lambda x: x < 5)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 2, 3, 4]
 
     Args:
@@ -3404,7 +3454,7 @@ name=None))
     return take_while_op._take_while(self, predicate, name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def unique(self, name=None):
+  def unique(self, name=None) -> "DatasetV2":
     """A transformation that discards duplicate elements of a `Dataset`.
 
     Use this transformation to produce a dataset that contains one instance of
@@ -3412,7 +3462,7 @@ name=None))
 
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 37, 2, 37, 2, 1])
     >>> dataset = dataset.unique()
-    >>> sorted(list(dataset.as_numpy_iterator()))
+    >>> sorted([a.item() for a in dataset.as_numpy_iterator()])
     [1, 2, 37]
 
     Note: This transformation only supports datasets which fit into memory
@@ -3431,12 +3481,9 @@ name=None))
     return unique_op._unique(self, name)
     # pylint: enable=g-import-not-at-top,protected-access
 
-  def rejection_resample(self,
-                         class_func,
-                         target_dist,
-                         initial_dist=None,
-                         seed=None,
-                         name=None):
+  def rejection_resample(
+      self, class_func, target_dist, initial_dist=None, seed=None, name=None
+  ) -> "DatasetV2":
     """Resamples elements to reach a target distribution.
 
     Note: This implementation can reject **or repeat** elements in order to
@@ -3530,11 +3577,13 @@ name=None))
           stop_on_empty_dataset=True)
 
   @staticmethod
-  def sample_from_datasets(datasets,
-                           weights=None,
-                           seed=None,
-                           stop_on_empty_dataset=False,
-                           rerandomize_each_iteration=None):
+  def sample_from_datasets(
+      datasets,
+      weights=None,
+      seed=None,
+      stop_on_empty_dataset=False,
+      rerandomize_each_iteration=None,
+  ) -> "DatasetV2":
     """Samples elements at random from the datasets in `datasets`.
 
     Creates a dataset by interleaving elements of `datasets` with `weight[i]`
@@ -3606,9 +3655,9 @@ name=None))
     # pylint: enable=g-import-not-at-top,protected-access
 
   @staticmethod
-  def choose_from_datasets(datasets,
-                           choice_dataset,
-                           stop_on_empty_dataset=True):
+  def choose_from_datasets(
+      datasets, choice_dataset, stop_on_empty_dataset=True
+  ) -> "DatasetV2":
     """Creates a dataset that deterministically chooses elements from `datasets`.
 
     For example, given the following datasets:
@@ -3706,7 +3755,9 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
       "through TF 2 APIs. Note that this should be a transient state of your "
       "code base as there are in general no guarantees about the "
       "interoperability of TF 1 and TF 2 code.")
-  def make_one_shot_iterator(self):
+  def make_one_shot_iterator(
+      self,
+  ) -> Union[iterator_ops.Iterator, iterator_ops.OwnedIterator]:
     """Creates an iterator for elements of this dataset.
 
     Note: The returned iterator will be initialized automatically.
@@ -3734,13 +3785,15 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
     """
     return self._make_one_shot_iterator()
 
-  def _make_one_shot_iterator(self):  # pylint: disable=missing-docstring
+  def _make_one_shot_iterator(
+      self,
+  ) -> Union[iterator_ops.Iterator, iterator_ops.OwnedIterator]:  # pylint: disable=missing-docstring
     if context.executing_eagerly():
       with ops.colocate_with(self._variant_tensor):
         return iterator_ops.OwnedIterator(self)
 
     _ensure_same_dataset_graph(self)
-    # Some ops (e.g. dataset ops) are marked as stateful but are stil safe to
+    # Some ops (e.g. dataset ops) are marked as stateful but are still safe to
     # to capture by value. We must allowlist these ops so that the capturing
     # logic captures the ops instead of raising an exception.
     allowlisted_stateful_ops = traverse.obtain_capture_by_value_ops(self)
@@ -3799,7 +3852,9 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
       "Note that this should be a transient state of your code base as there "
       "are in general no guarantees about the interoperability of TF 1 and TF "
       "2 code.")
-  def make_initializable_iterator(self, shared_name=None):
+  def make_initializable_iterator(
+      self, shared_name=None
+  ) -> iterator_ops.Iterator:
     """Creates an iterator for elements of this dataset.
 
     Note: The returned iterator will be in an uninitialized state,
@@ -3834,7 +3889,9 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
     """
     return self._make_initializable_iterator(shared_name)
 
-  def _make_initializable_iterator(self, shared_name=None):  # pylint: disable=missing-docstring
+  def _make_initializable_iterator(
+      self, shared_name=None
+  ) -> iterator_ops.Iterator:  # pylint: disable=missing-docstring
     if context.executing_eagerly():
       raise RuntimeError("`make_initializable_iterator()` is not supported in "
                          "eager mode. Use Python-style iteration instead.")
@@ -4045,27 +4102,38 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
             name=name))
 
   @functools.wraps(DatasetV2.map)
-  def map(self,
-          map_func,
-          num_parallel_calls=None,
-          deterministic=None,
-          name=None):
+  def map(
+      self,
+      map_func,
+      num_parallel_calls=None,
+      deterministic=None,
+      synchronous=None,
+      use_unbounded_threadpool=False,
+      name=None,
+  ):
     # Loaded lazily due to a circular dependency (dataset_ops -> map_op ->
     # dataset_ops).
     # pylint: disable=g-import-not-at-top,protected-access
     from tensorflow.python.data.ops import map_op
+
     return map_op._map_v1(
         self,
         map_func,
         num_parallel_calls=num_parallel_calls,
-        deterministic=deterministic)
+        deterministic=deterministic,
+        synchronous=synchronous,
+        use_unbounded_threadpool=use_unbounded_threadpool,
+    )
     # pylint: enable=g-import-not-at-top,protected-access
 
   @deprecation.deprecated(None, "Use `tf.data.Dataset.map()")
-  def map_with_legacy_function(self,
-                               map_func,
-                               num_parallel_calls=None,
-                               deterministic=None):
+  def map_with_legacy_function(
+      self,
+      map_func,
+      num_parallel_calls=None,
+      deterministic=None,
+      use_unbounded_threadpool=False,
+  ) -> "DatasetV1Adapter":
     """Maps `map_func` across the elements of this dataset.
 
     Note: This is an escape hatch for existing uses of `map` that do not work
@@ -4087,6 +4155,11 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
         elements out of order to trade determinism for performance. If not
         specified, the `tf.data.Options.deterministic` option (`True` by
         default) controls the behavior.
+      use_unbounded_threadpool: (Optional.) By default, map functions run in a
+        limited threadpool based on the number of cores on the machine. This
+        efficient for CPU-heavy processing, but if the map function performs IO
+        it is better to use an unbounded threadpool by setting it to `True`. It
+        is `False` by default.
 
     Returns:
       Dataset: A `Dataset`.
@@ -4103,18 +4176,20 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
     # pylint: enable=g-import-not-at-top,protected-access
 
   @functools.wraps(DatasetV2.flat_map)
-  def flat_map(self, map_func, name=None):
+  def flat_map(self, map_func, name=None) -> "DatasetV1Adapter":
     return DatasetV1Adapter(
         super(DatasetV1, self).flat_map(map_func, name=name))
 
   @functools.wraps(DatasetV2.interleave)
-  def interleave(self,
-                 map_func,
-                 cycle_length=None,
-                 block_length=None,
-                 num_parallel_calls=None,
-                 deterministic=None,
-                 name=None):
+  def interleave(
+      self,
+      map_func,
+      cycle_length=None,
+      block_length=None,
+      num_parallel_calls=None,
+      deterministic=None,
+      name=None,
+  ) -> "DatasetV1Adapter":
     return DatasetV1Adapter(
         super(DatasetV1, self).interleave(
             map_func,
@@ -4125,11 +4200,11 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
             name=name))
 
   @functools.wraps(DatasetV2.filter)
-  def filter(self, predicate, name=None):
+  def filter(self, predicate, name=None) -> "DatasetV1Adapter":
     return DatasetV1Adapter(super(DatasetV1, self).filter(predicate, name=name))
 
   @deprecation.deprecated(None, "Use `tf.data.Dataset.filter()")
-  def filter_with_legacy_function(self, predicate):
+  def filter_with_legacy_function(self, predicate) -> "DatasetV2":
     """Filters this dataset according to `predicate`.
 
     Note: This is an escape hatch for existing uses of `filter` that do not work
@@ -4153,21 +4228,23 @@ class DatasetV1(DatasetV2, data_types.DatasetV1):
     # pylint: enable=g-import-not-at-top,protected-access
 
   @functools.wraps(DatasetV2.apply)
-  def apply(self, transformation_func):
+  def apply(self, transformation_func) -> "DatasetV1Adapter":
     return DatasetV1Adapter(super(DatasetV1, self).apply(transformation_func))
 
   @functools.wraps(DatasetV2.window)
-  def window(self, size, shift=None, stride=1, drop_remainder=False, name=None):
+  def window(
+      self, size, shift=None, stride=1, drop_remainder=False, name=None
+  ) -> "DatasetV1Adapter":
     return DatasetV1Adapter(
         super(DatasetV1,
               self).window(size, shift, stride, drop_remainder, name=name))
 
   @functools.wraps(DatasetV2.unbatch)
-  def unbatch(self, name=None):
+  def unbatch(self, name=None) -> "DatasetV1Adapter":
     return DatasetV1Adapter(super(DatasetV1, self).unbatch(name=name))
 
   @functools.wraps(DatasetV2.with_options)
-  def with_options(self, options, name=None):
+  def with_options(self, options, name=None) -> "DatasetV1Adapter":
     return DatasetV1Adapter(
         super(DatasetV1, self).with_options(options, name=name))
 
@@ -4178,10 +4255,21 @@ else:
   Dataset = DatasetV1
 
 
+def _tf2_callback():
+  global Dataset
+  if tf2.enabled():
+    Dataset = DatasetV2
+  else:
+    Dataset = DatasetV1
+
+
+v2_compat.register_data_v2_callback(_tf2_callback)
+
+
 class DatasetV1Adapter(DatasetV1):
   """Wraps a V2 `Dataset` object in the `tf.compat.v1.data.Dataset` API."""
 
-  def __init__(self, dataset):
+  def __init__(self, dataset: DatasetV2):
     self._dataset = dataset
     super(DatasetV1Adapter, self).__init__()
 
@@ -4191,7 +4279,7 @@ class DatasetV1Adapter(DatasetV1):
   def _inputs(self):
     return self._dataset._inputs()  # pylint: disable=protected-access
 
-  def _functions(self):
+  def _functions(self) -> list[StructuredFunctionWrapper]:
     return self._dataset._functions()  # pylint: disable=protected-access
 
   def options(self):
@@ -4220,17 +4308,17 @@ def _ensure_same_dataset_graph(dataset):
       raise ValueError(
           f"The graph {current_graph} of the iterator is different from the "
           f"graph {ds_graph} the dataset: {ds._variant_tensor} was created in. "
-          f"If you are using the Estimator API, make sure that no part of the "
-          f"dataset returned by the `input_fn` function is defined outside the "
-          f"`input_fn` function. Otherwise, make sure that the dataset is "
-          f"created in the same graph as the iterator.")
+          f"Make sure that the dataset is created in the same graph as the "
+          f"iterator.")
     for input_ds in ds._inputs():
       if input_ds not in visited:
         bfs_q.put(input_ds)
 
 
 @tf_export(v1=["data.make_one_shot_iterator"])
-def make_one_shot_iterator(dataset):
+def make_one_shot_iterator(
+    dataset: DatasetV1,
+) -> Union[iterator_ops.Iterator, iterator_ops.OwnedIterator]:
   """Creates an iterator for elements of `dataset`.
 
   Note: The returned iterator will be initialized automatically.
@@ -4263,7 +4351,9 @@ def make_one_shot_iterator(dataset):
 
 
 @tf_export(v1=["data.make_initializable_iterator"])
-def make_initializable_iterator(dataset, shared_name=None):
+def make_initializable_iterator(
+    dataset: DatasetV1, shared_name=None
+) -> iterator_ops.Iterator:
   """Creates an iterator for elements of `dataset`.
 
   Note: The returned iterator will be in an uninitialized state,
@@ -4425,7 +4515,7 @@ class DatasetSource(DatasetV2):
 class UnaryDataset(DatasetV2):
   """Abstract class representing a dataset with one input."""
 
-  def __init__(self, input_dataset, variant_tensor):
+  def __init__(self, input_dataset: DatasetV2, variant_tensor):
     self._input_dataset = input_dataset
     super(UnaryDataset, self).__init__(variant_tensor)
 
@@ -4436,7 +4526,7 @@ class UnaryDataset(DatasetV2):
 class UnaryUnchangedStructureDataset(UnaryDataset):
   """Represents a unary dataset with the same input and output structure."""
 
-  def __init__(self, input_dataset, variant_tensor):
+  def __init__(self, input_dataset: DatasetV2, variant_tensor):
     self._input_dataset = input_dataset
     super(UnaryUnchangedStructureDataset, self).__init__(
         input_dataset, variant_tensor)
@@ -4489,7 +4579,7 @@ def from_variant(variant, structure):
 
 
 @tf_export("data.experimental.to_variant")
-def to_variant(dataset):
+def to_variant(dataset: DatasetV2):
   """Returns a variant representing the given dataset.
 
   Args:
@@ -4674,6 +4764,10 @@ class NumpyIterator(tracking_base.Trackable):
 
   def __init__(self, dataset):
     self._iterator = iter(dataset)
+    self._dataset = dataset
+
+  def __repr__(self):
+    return f"NumpyIterator(iterator={self._iterator})"
 
   def __iter__(self):
     return self
@@ -4681,7 +4775,10 @@ class NumpyIterator(tracking_base.Trackable):
   def __next__(self):
 
     def to_numpy(x):
-      numpy = x._numpy()  # pylint: disable=protected-access
+      if hasattr(x, "_numpy"):
+        numpy = x._numpy()  # pylint: disable=protected-access
+      else:
+        numpy = x.numpy()
       if isinstance(numpy, np.ndarray):
         # `numpy` shares the same underlying buffer as the `x` Tensor.
         # Tensors are expected to be immutable, so we disable writes.
@@ -4702,6 +4799,16 @@ class NumpyIterator(tracking_base.Trackable):
   def _restore_from_tensors(self, restored_tensors):
     # pylint: disable=protected-access
     return self._iterator._restore_from_tensors(restored_tensors)
+
+  # override
+  def _copy_trackable_to_cpu(self, object_map):
+    if self not in object_map:
+      # If self is not populated in object_map yet, instantiate the copy
+      object_map[self] = NumpyIterator(self._dataset)
+
+    # Copy values from `self` to copy of `self`
+    serialized = self._serialize_to_tensors()
+    object_map[self]._restore_from_tensors(serialized)  # pylint: disable=protected-access
 
   # TODO(b/284309865): Remove once `_save` is no longer used anywhere.
   def _save(self):
@@ -4810,7 +4917,7 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
     self._options_attr._set_mutable(False)
 
 
-def normalize_to_dense(dataset):
+def normalize_to_dense(dataset: Dataset):
   """Normalizes non-tensor components in a dataset to dense representations.
 
   This is necessary for dataset transformations that slice along the batch
@@ -4886,7 +4993,7 @@ def _filter_ds(dataset,
                initial_dist_ds,
                class_func,
                seed,
-               name=None):
+               name=None) -> DatasetV2:
   """Filters a dataset based on per-class acceptance probabilities.
 
   Args:

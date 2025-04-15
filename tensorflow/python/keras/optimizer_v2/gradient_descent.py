@@ -19,11 +19,9 @@ from tensorflow.python.framework import tensor
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
-from tensorflow.python.training import gen_training_ops
-from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.ops import gen_training_ops
 
 
-@keras_export("keras.optimizers.SGD")
 class SGD(optimizer_v2.OptimizerV2):
   r"""Gradient descent (with momentum) optimizer.
 

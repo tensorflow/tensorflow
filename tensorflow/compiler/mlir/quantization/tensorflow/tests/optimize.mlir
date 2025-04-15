@@ -56,11 +56,11 @@ func.func @remove_redundant_cast(%arg0: tensor<1x100x100x1xf32>) -> (tensor<1x96
 
 // CHECK: %[[CLIPBYVALUE_0:.*]] = "tf.ClipByValue"
 // CHECK-SAME: (tensor<1x100x100x1xi32>, tensor<i32>, tensor<i32>) -> tensor<1x100x100x1xi32>
-// CHECK: %[[CAST_1:.*]] = "tf.Cast"(%[[CLIPBYVALUE_0]]) {Truncate = false} : (tensor<1x100x100x1xi32>) -> tensor<1x100x100x1xf32>
+// CHECK: %[[CAST_1:.*]] = "tf.Cast"(%[[CLIPBYVALUE_0]]) <{Truncate = false}> : (tensor<1x100x100x1xi32>) -> tensor<1x100x100x1xf32>
 
 // CHECK: %[[CLIPBYVALUE_1:.*]] = "tf.ClipByValue"
 // CHECK-SAME: (tensor<1x98x98x1xi32>, tensor<i32>, tensor<i32>) -> tensor<1x98x98x1xi32>
-// CHECK: %[[CAST_3:.*]] = "tf.Cast"(%[[CLIPBYVALUE_1]]) {Truncate = false} : (tensor<1x98x98x1xi32>) -> tensor<1x98x98x1xf32>
+// CHECK: %[[CAST_3:.*]] = "tf.Cast"(%[[CLIPBYVALUE_1]]) <{Truncate = false}> : (tensor<1x98x98x1xi32>) -> tensor<1x98x98x1xf32>
 
 // CHECK: %[[CLIPBYVALUE_2:.*]] = "tf.ClipByValue"
 // CHECK-SAME: (tensor<1x96x96x1xi32>, tensor<i32>, tensor<i32>) -> tensor<1x96x96x1xi32>
@@ -76,7 +76,7 @@ func.func @consecutive_add_add(%arg0: tensor<i32>) -> (tensor<i32>) {
 
 // CHECK-LABEL: func.func @consecutive_add_add
 
-// CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<-30> : tensor<i32>} : () -> tensor<i32>
+// CHECK: %[[CST:.*]] = "tf.Const"() <{value = dense<-30> : tensor<i32>}> : () -> tensor<i32>
 // CHECK: %[[ADD:.*]] = "tf.AddV2"(%arg0, %[[CST]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
 // CHECK: return %[[ADD]] : tensor<i32>
 }
@@ -90,7 +90,7 @@ func.func @consecutive_add_sub(%arg0: tensor<i32>) -> (tensor<i32>) {
 
 // CHECK-LABEL: func.func @consecutive_add_sub
 
-// CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
+// CHECK: %[[CST:.*]] = "tf.Const"() <{value = dense<6> : tensor<i32>}> : () -> tensor<i32>
 // CHECK: %[[SUB:.*]] = "tf.Sub"(%arg0, %[[CST]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
 // CHECK: return %[[SUB]] : tensor<i32>
 }
@@ -104,7 +104,7 @@ func.func @consecutive_sub_add(%arg0: tensor<i32>) -> (tensor<i32>) {
 
 // CHECK-LABEL: func.func @consecutive_sub_add
 
-// CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
+// CHECK: %[[CST:.*]] = "tf.Const"() <{value = dense<6> : tensor<i32>}> : () -> tensor<i32>
 // CHECK: %[[ADD:.*]] = "tf.AddV2"(%arg0, %[[CST]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
 // CHECK: return %[[ADD]] : tensor<i32>
 }
@@ -118,7 +118,7 @@ func.func @consecutive_sub_sub(%arg0: tensor<i32>) -> (tensor<i32>) {
 
 // CHECK-LABEL: func.func @consecutive_sub_sub
 
-// CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<-30> : tensor<i32>} : () -> tensor<i32>
+// CHECK: %[[CST:.*]] = "tf.Const"() <{value = dense<-30> : tensor<i32>}> : () -> tensor<i32>
 // CHECK: %[[SUB:.*]] = "tf.Sub"(%arg0, %[[CST]]) : (tensor<i32>, tensor<i32>) -> tensor<i32>
 // CHECK: return %[[SUB]] : tensor<i32>
 }

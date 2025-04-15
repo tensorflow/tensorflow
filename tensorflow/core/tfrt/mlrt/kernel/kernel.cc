@@ -23,37 +23,355 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/protobuf/text_format.h"
-#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
-#include "tensorflow/core/tfrt/fallback/device_with_custom_allocator.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/function.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/async_handle.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/attribute_span.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/builtin_kernels.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/register_span.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel_runner_utils.h"
+#include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
-#include "tfrt/concurrency/chain.h"  // from @tf_runtime
+#include "tsl/profiler/lib/traceme.h"
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tf_mlrt {
 namespace {
 
+// AsyncWhileOp dispatch the body function repeatedly until the body function
+// returns a predicate value of false. Each invocation of the body function
+// corresponds to an iteration in a while loop. The body function is expected to
+// have the following input signature (predicate_promise,
+// mutable_tensor0_future, mutable_tensor0_promise, mutable_tensor1_future,
+// mutable_tensor1_promise, ...., immutable_tensors). AsyncWhileOp dispatch the
+// next iteraion as soon as the previous iteration has set the
+// predicate_promise. Hence, in the case that the body function set
+// predicate_promise earlier than setting any other promises, multiple
+// iterations can run parallelly via this op.
+class AsyncWhileOp : mlrt::KernelFrame {
+ public:
+  using KernelFrame::KernelFrame;
+
+  static constexpr char kName[] = "tf_mlrt.async_while";
+
+  mlrt::bc::Function body_function() const {
+    uint32_t func_idx = attributes().GetAs<uint32_t>(0);
+    return execution_context()
+        .loaded_executable()
+        .executable()
+        .functions()[func_idx];
+  }
+
+  // Arguments that remains unchanged between iterations are called
+  // immutable(invariants). Immutables are all at the bottom of the argument
+  // list. Immutable_size reflects the number of immutables.
+  uint32_t immutable_size() const { return attributes().GetAs<uint32_t>(1); }
+
+  void Invoke();
+
+ private:
+  // This utility function is used when an iteration has set its
+  // predicate_promise. If predicate is true, it dispatches the next iteration.
+  // If predicate is false, it set ups the AsyncOp's return futures via
+  // final_promises.
+  static void OnPredicateReady(
+      tensorflow::tfrt_stub::FallbackTensor predicate,
+      std::vector<mlrt::AsyncHandle> async_handles,
+      std::vector<mlrt::Future> mutable_tensor_futures,
+      std::vector<tensorflow::tfrt_stub::FallbackTensor> immutable_tensors,
+      std::vector<mlrt::Promise> final_promises, mlrt::bc::Function body_fn,
+      std::pair<mlrt::AsyncHandle::Promise, mlrt::AsyncHandle>
+          preallocated_handle_promise,
+      uint32_t counter);
+
+  // A utility function to populate the results in final_promises.
+  static void PopulateFinalPromise(
+      std::vector<mlrt::Promise>& final_promises,
+      const std::vector<mlrt::Future>& mutable_tensor_futures,
+      const std::vector<tensorflow::tfrt_stub::FallbackTensor>&
+          immutable_tensors);
+};
+
+void AsyncWhileOp::OnPredicateReady(
+    tensorflow::tfrt_stub::FallbackTensor predicate,
+    std::vector<mlrt::AsyncHandle> async_handles,
+    std::vector<mlrt::Future> mutable_tensor_futures,
+    std::vector<tensorflow::tfrt_stub::FallbackTensor> immutable_tensors,
+    std::vector<mlrt::Promise> final_promises, mlrt::bc::Function body_fn,
+    std::pair<mlrt::AsyncHandle::Promise, mlrt::AsyncHandle>
+        preallocated_handle_promise,
+    uint32_t counter) {
+  // final_promises[0] contains the final predicate and serves something similar
+  // as async_handle that the caller can wait and know the program is complete.
+  DCHECK_EQ(final_promises.size(),
+            mutable_tensor_futures.size() + immutable_tensors.size() + 1);
+
+  // [predicate_promise; arg0_future, arg0_promise, arg1_future, arg1_promise,
+  // ..., immutable_args]
+  const uint32_t body_argument_size =
+      1 + 2 * mutable_tensor_futures.size() + immutable_tensors.size();
+  DCHECK_EQ(body_fn.input_regs().size(), body_argument_size);
+
+  tsl::profiler::TraceMe trace_me([&]() {
+    return tsl::profiler::TraceMeEncode(
+        "tf_mlrt.AsyncWhileOp.OnPredicateReady",
+        {{"counter", counter}, {"name", body_fn.name().Get()}});
+  });
+
+  bool predicate_value = predicate.tensor().scalar<bool>()();
+  if (!predicate_value) {
+    // No more iterations.
+    // Fake done for the preallocated promise and handle.
+    auto& [promise, async_handle] = preallocated_handle_promise;
+    std::move(promise).Finish(absl::OkStatus());
+    if (async_handles.empty()) {
+      // Initial predicate is false
+      PopulateFinalPromise(final_promises, mutable_tensor_futures,
+                           immutable_tensors);
+    } else {
+      // Iterations ends. Wait for all futures to be ready.
+      mlrt::Future await_all = mlrt::AwaitAll(absl::MakeSpan(async_handles));
+      std::move(await_all).Then(
+          [final_promises = std::move(final_promises),
+           variant_tensor_futures = std::move(mutable_tensor_futures),
+           async_handles = std::move(async_handles),
+           immutable_tensors](absl::Status status) mutable {
+            if (status.ok()) {
+              PopulateFinalPromise(final_promises, variant_tensor_futures,
+                                   immutable_tensors);
+              return;
+            } else {
+              for (auto& final_promise : final_promises) {
+                std::move(final_promise).SetError(status);
+              }
+            }
+          });
+    }
+    return;
+  }
+  // proceed to schedule the next iteration n+1.
+  // Creates arguments for dispatching the next iteration.
+  std::vector<mlrt::Value> body_args;
+  body_args.resize(body_argument_size);
+
+  // Set predicate_promise
+  auto arg_iter = body_args.begin();
+  auto predicate_promise =
+      mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
+  auto predicate_future = predicate_promise.GetFuture();
+  arg_iter->Set(std::move(predicate_promise));
+  ++arg_iter;
+
+  // Current iteration n receives mutable tensor values in future from
+  // iteration n-1 and creates promises to return those mutable tensors after
+  // updating them from the current iteration.
+  std::vector<mlrt::Future> next_futures;
+  next_futures.reserve(mutable_tensor_futures.size());
+
+  for (auto& mutable_tensor : mutable_tensor_futures) {
+    // Future from the previous iteration as input to the current iteration.
+    arg_iter->Set(std::move(mutable_tensor));
+    ++arg_iter;
+
+    // Promise to return values from the current iteration.
+    auto next_promise =
+        mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
+    next_futures.push_back(next_promise.GetFuture());
+    arg_iter->Set(std::move(next_promise));
+    ++arg_iter;
+  }
+
+  // Tensors that remains unchanged across iterations are copied over due to
+  // asynchronous execution between iterations.
+  for (auto& immutable_tensor : immutable_tensors) {
+    arg_iter->Set(immutable_tensor);
+    arg_iter++;
+  }
+
+  // Launch this iteration.
+  auto& [promise, async_handle] = preallocated_handle_promise;
+  auto& thread_execution_context = async_handle.execution_context();
+  thread_execution_context.set_exit_handler(
+      [&execution_context = thread_execution_context,
+       promise = std::move(promise)]() mutable {
+        std::move(promise).Finish(execution_context.status());
+      });
+
+  // Preallocated context for the next iteration. This is to avoid data race
+  // on params copy.
+  auto next_handle_promise =
+      mlrt::AsyncHandle::Allocate(thread_execution_context);
+
+  thread_execution_context.CallByMove(body_fn, absl::MakeSpan(body_args),
+                                      absl::Span<mlrt::Value>());
+
+  // save handles
+  async_handles.push_back(std::move(async_handle));
+
+  std::move(predicate_future)
+      .Then([futures = std::move(next_futures),
+             immutable_tensors = std::move(immutable_tensors),
+             final_promises = std::move(final_promises),
+             body_args = std::move(body_args),
+             async_handles = std::move(async_handles), body_fn, counter,
+             preallocated_handle_promise = std::move(next_handle_promise)](
+                absl::StatusOr<tensorflow::tfrt_stub::FallbackTensor>
+                    predicate_result) mutable {
+        if (!predicate_result.ok()) {
+          // Fake done for the preallocated promise and handle.
+          auto& [promise, async_handle] = preallocated_handle_promise;
+          std::move(promise).Finish(predicate_result.status());
+
+          auto status = predicate_result.status();
+          mlrt::Future await_all =
+              mlrt::AwaitAll(absl::MakeSpan(async_handles));
+          std::move(await_all).Then([final_promises = std::move(final_promises),
+                                     async_handles = std::move(async_handles),
+                                     status]() mutable {
+            for (auto& final_promise : final_promises) {
+              std::move(final_promise).SetError(status);
+            }
+          });
+          return;
+        }
+
+        // Keep body_args alive for thread execution.
+        OnPredicateReady(*predicate_result, std::move(async_handles),
+                         std::move(futures), immutable_tensors,
+                         std::move(final_promises), body_fn,
+                         std::move(preallocated_handle_promise), ++counter);
+      });
+  thread_execution_context.work_queue()->AddTask(
+      [&execution_context = thread_execution_context]() {
+        mlrt::Execute(execution_context);
+      });
+}
+
+void AsyncWhileOp::PopulateFinalPromise(
+    std::vector<mlrt::Promise>& final_promises,
+    const std::vector<mlrt::Future>& mutable_tensor_futures,
+    const std::vector<tensorflow::tfrt_stub::FallbackTensor>&
+        immutable_tensors) {
+  // The final predicate needs to be a tensor, not bool so that await_all
+  // can be used.
+  tensorflow::Tensor final_predicate_tensor(false);
+
+  auto final_promise_iter = final_promises.begin();
+  std::move(*final_promise_iter)
+      .Set<tensorflow::tfrt_stub::FallbackTensor>(
+          tensorflow::tfrt_stub::FallbackTensor(
+              std::move(final_predicate_tensor)));
+  final_promise_iter++;
+  for (auto& mutable_tensor_future : mutable_tensor_futures) {
+    DCHECK(mutable_tensor_future.IsReady());
+    std::move(*final_promise_iter)
+        .Set<tensorflow::tfrt_stub::FallbackTensor>(
+            std::move(mutable_tensor_future
+                          .Get<tensorflow::tfrt_stub::FallbackTensor>()));
+    final_promise_iter++;
+  }
+  for (auto& immutable_tensor : immutable_tensors) {
+    std::move(*final_promise_iter)
+        .Set<tensorflow::tfrt_stub::FallbackTensor>(immutable_tensor);
+    final_promise_iter++;
+  }
+}
+
+void AsyncWhileOp::Invoke() {
+  mlrt::bc::Function body_fn = body_function();
+
+  // Argument:  [final_predicate, %variant0, %variant1, ..., %invariant0,...]
+  //
+  // Results: [final_predicate, %variant0, %variant1, ..., %invariant0,...]
+  //
+  DCHECK_EQ(arguments().size(), results().size());
+
+  // [predicate_promise; arg0_future, arg0_promise, arg1_future, arg1_promise,
+  // ..., invariant_args]
+  // minus 1 b/c predicate is not a tensor
+  const uint32_t immutable_tensor_size = immutable_size();
+  const uint32_t mutable_tensor_size =
+      arguments().size() - immutable_tensor_size - 1;
+
+  const uint32_t body_argument_size =
+      1 + (2 * mutable_tensor_size) + immutable_tensor_size;
+  DCHECK_EQ(body_fn.input_regs().size(), body_argument_size);
+  DCHECK_EQ(body_fn.output_regs().size(), 0);
+
+  tsl::profiler::TraceMe trace_me([&]() {
+    return tsl::profiler::TraceMeEncode("tf_mlrt.async_while",
+                                        {{"name", body_fn.name().Get()}});
+  });
+
+  // Save the future of final results. The last iteration will set the promises.
+  std::vector<mlrt::Promise> final_promises;
+  final_promises.reserve(arguments().size());
+  for (int i = 0; i < arguments().size(); ++i) {
+    final_promises.push_back(
+        mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>());
+    results()[i] = final_promises.back().GetFuture();
+  }
+
+  // Populate input arguments into a list of dummy futures to bootstrap the
+  // first iteration.
+  std::vector<mlrt::Future> mutable_tensor_futures;
+  mutable_tensor_futures.reserve(mutable_tensor_size);
+
+  // Plus 1 because the very first argument is a boolean predicate .
+  auto arg_iter = arguments().begin() + 1;
+  for (int i = 0; i < mutable_tensor_size; ++i) {
+    auto tensor_promise =
+        mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
+    mutable_tensor_futures.push_back(tensor_promise.GetFuture());
+    std::move(tensor_promise)
+        .Set<tensorflow::tfrt_stub::FallbackTensor>(
+            arg_iter->Get<tensorflow::tfrt_stub::FallbackTensor>());
+    arg_iter++;
+  }
+
+  std::vector<tensorflow::tfrt_stub::FallbackTensor> immutable_tensors;
+  immutable_tensors.reserve(immutable_tensor_size);
+  for (int i = 0; i < immutable_tensor_size; ++i) {
+    immutable_tensors.push_back(
+        arg_iter->Get<tensorflow::tfrt_stub::FallbackTensor>());
+    arg_iter++;
+  }
+  std::pair<mlrt::AsyncHandle::Promise, mlrt::AsyncHandle>
+      preallocated_handle_promise =
+          mlrt::AsyncHandle::Allocate(execution_context());
+  OnPredicateReady(arguments()[0].Get<tensorflow::tfrt_stub::FallbackTensor>(),
+                   /*async_handles=*/{}, std::move(mutable_tensor_futures),
+                   immutable_tensors, std::move(final_promises), body_fn,
+                   std::move(preallocated_handle_promise),
+                   /*counter=*/0);
+}
+
 struct MapFnOp : mlrt::KernelFrame {
   using KernelFrame::KernelFrame;
 
   static constexpr char kName[] = "tf_mlrt.map_fn";
+
+  // The order of arguments is [max_iterations, tensor_lists_or_flows,
+  // other_args(invariant)].
+  // The size of tensor_lists_or_flows is num_tensor_list_or_flow_in attribute.
+
   // Tensor list or flow in inputs starts after max_iteration
   static constexpr int kTensorListFlowInStartIndex = 1;
 
@@ -126,6 +444,18 @@ void MapFnOp::Invoke() {
   std::vector<mlrt::Promise> initializer_promises;
   initializer_promises.reserve(num_tensor_list_or_flow_in());
 
+  // Each iteration invoke a map_fn_body that has an input signature of
+  // (in_tensor_list_future, out_tensor_list_promise, loop_counter,
+  // tensor_list_index, other_args). The in_tensor_list_future is the output
+  // of the previous iteration and input of the current iteration. The
+  // out_tensor_list_promise is the output of the current iteration and input
+  // of the next iteration. The loop_counter is the loop index. The
+  // tensor_list_index is the index of the tensor list. The other_args are the
+  // invariant arguments.
+  //
+  // Here last_iter_futures is the in_tensor_list_future for the very first
+  // iteration and the initializer_promises are used to set
+  // last_iter_futures to bootstrap the first iteration.
   std::vector<mlrt::Future> last_iter_futures;
   last_iter_futures.reserve(num_tensor_list_or_flow_in());
   for (int i = 0; i < num_tensor_list_or_flow_in(); ++i) {
@@ -142,7 +472,7 @@ void MapFnOp::Invoke() {
             body_arg_last_uses.begin() + 2 * num_tensor_list_or_flow_in() + 2,
             true);
 
-  // Copy the invairant arguments (after max_iteration +
+  // Copy the invariant arguments (after max_iteration +
   // tensor_list_or_flow_ins)
   auto arg_iter = body_args.begin() + 2 * num_tensor_list_or_flow_in() + 2;
   for (int j = num_tensor_list_or_flow_in() + 1; j < arguments().size();
@@ -166,6 +496,8 @@ void MapFnOp::Invoke() {
           std::move(promise).Finish(execution_context.status());
         });
 
+    // First populate the in_tensor_list_future and out_tensor_list_promise
+    // arguments.
     auto arg_iter = body_args.begin();
     for (int j = 0; j < last_iter_futures.size(); ++j) {
       *arg_iter = std::move(last_iter_futures[j]);
@@ -187,12 +519,15 @@ void MapFnOp::Invoke() {
         tensorflow::tfrt_stub::FallbackTensor(std::move(loop_counter_tensor));
     ++arg_iter;
 
+    // The current tensor list index is the next argument.
     tensorflow::Tensor element_index_tensor(DT_INT32, {});
     element_index_tensor.scalar<int32_t>()() = i;
     *arg_iter =
         tensorflow::tfrt_stub::FallbackTensor(std::move(element_index_tensor));
     ++arg_iter;
 
+    // The rest of the arguments are the invariant arguments and are already
+    // populated outside the loop.
     thread_execution_context.Call(function, body_arg_last_uses,
                                   absl::MakeSpan(body_args),
                                   absl::Span<mlrt::Value>());
@@ -281,12 +616,17 @@ void MapFnOp::Invoke() {
               /*msg=*/
               absl::StrCat(last_iter_futures[j].GetError().message(),
                            ". First Error Index=", j, " of ",
-                           last_iter_futures.size()),
+                           last_iter_futures.size())
+#if defined(PLATFORM_GOOGLE)
+                  ,
               absl::SourceLocation());
           for (const auto& location :
                last_iter_futures[j].GetError().GetSourceLocations()) {
             status.AddSourceLocation(location);
           }
+#else
+          );
+#endif  // PLATFORM_GOOGLE
         }
       } else {
         results[j].Set(
@@ -315,6 +655,42 @@ void CancelOp::Invoke() {
   }
 }
 
+struct ConstOp : mlrt::KernelFrame {
+  using KernelFrame::KernelFrame;
+
+  static constexpr char kName[] = "tf_mlrt.constop";
+
+  absl::string_view tensor_proto() const {
+    return attributes().GetAs<mlrt::bc::String>(0).Get();
+  }
+
+  Context& context() { return execution_context().GetUserContext<Context>(); }
+
+  void Invoke();
+};
+
+void ConstOp::Invoke() {
+  tensorflow::TensorProto proto;
+  // TODO(b/330806453): Remove the std::string conversion once ParseFromString()
+  // in OSS accepets absl::string_view.
+  // NOLINTNEXTLINE: readability-redundant-string-conversions
+  if (!proto.ParseFromString(std::string(tensor_proto()))) {
+    execution_context().Fail(
+        absl::InternalError("Failed to parse const tensor proto"));
+    return;
+  }
+
+  tensorflow::Tensor tensor;
+  if (!tensor.FromProto(proto)) {
+    execution_context().Fail(
+        absl::InternalError("Failed to create tensor from tensor proto"));
+    return;
+  }
+
+  results()[0].Emplace<tensorflow::tfrt_stub::FallbackTensor>(
+      std::move(tensor));
+}
+
 struct CreateOp : mlrt::KernelFrame {
   using KernelFrame::KernelFrame;
 
@@ -335,25 +711,40 @@ void CreateOp::Invoke() {
   auto& fallback_request_state = context().fallback_request_state();
 
   tensorflow::NodeDef node_def;
-  if (!proto2::TextFormat::ParseFromString(node_def_text(), &node_def)) {
+  // TODO(182876485): Remove the conditional selection after protobuf version
+  // is bumped up.
+  if (!google::protobuf::TextFormat::ParseFromString(
+#if defined(PLATFORM_GOOGLE)
+          node_def_text(),
+#else
+          std::string(node_def_text()),
+#endif
+          &node_def)) {
     execution_context().Fail(absl::InternalError(
         absl::StrCat("CreateOp: failed to parse NodeDef: ", node_def_text())));
     return;
   }
 
-  auto runner = tfrt_stub::OpKernelRunner::Create(
-                    node_def.op(), node_def.name(), node_def.device(),
-                    node_def.input().size(),
-                    [&](tensorflow::AttrValueMap* attr_value_map) {
-                      *attr_value_map = node_def.attr();
-                      return OkStatus();
-                    },
-                    fallback_request_state.device_manager(),
-                    fallback_request_state.process_function_library_runtime())
-                    .value();
+  absl::StatusOr<tfrt_stub::OpKernelRunner> runner =
+      tfrt_stub::OpKernelRunner::Create(
+          node_def.op(), node_def.name(), node_def.device(),
+          node_def.input().size(),
+          [&](tensorflow::AttrValueMap* attr_value_map) {
+            *attr_value_map = node_def.attr();
+            return absl::OkStatus();
+          },
+          fallback_request_state.device_manager(),
+          fallback_request_state.process_function_library_runtime());
+
+  if (!runner.ok()) {
+    LOG(WARNING) << "Fail to create OpKernelRunner for " << node_def_text()
+                 << ",  model= "
+                 << fallback_request_state.session_metadata().name()
+                 << " with error: " << runner.status();
+  }
 
   if (!fallback_request_state.runner_table()->Insert(op_key(),
-                                                     std::move(runner))) {
+                                                     *std::move(runner))) {
     execution_context().Fail(absl::InternalError(absl::StrCat(
         "CreateOp: OpKernelRunner already exists: ", node_def.op())));
   }
@@ -373,7 +764,13 @@ void ExecuteOpInternal(Frame& frame) {
 
   auto* kernel_runner =
       fallback_request_state.runner_table()->GetUnsafe(op_key);
-  DCHECK(kernel_runner);
+  if (kernel_runner->op_kernel() == nullptr) {
+    frame.execution_context().Fail(absl::InternalError(absl::StrCat(
+        "ExecuteOp: OpKernel not found: op_Key= ", op_key,
+        " , node_def= ", frame.node_def_text(),
+        " , model= ", fallback_request_state.session_metadata().name())));
+    return;
+  }
 
   ExecuteKernelRunner<IsAsync>(frame, context, fallback_request_state,
                                *kernel_runner);
@@ -449,8 +846,8 @@ struct ExecuteOpDevice : ExecuteOp {
     return Base::last_uses().drop_front();
   }
 
-  tensorflow::Device* device() const {
-    return arguments()[0].Get<std::unique_ptr<tensorflow::Device>>().get();
+  const std::shared_ptr<tensorflow::Device>& device() const {
+    return arguments()[0].Get<std::shared_ptr<tensorflow::Device>>();
   }
 
   void Invoke() { ExecuteOpInternal</*IsAsync=*/false>(*this); }
@@ -666,11 +1063,13 @@ void RegisterTfMlrtKernels(mlrt::KernelRegistry& registry) {
   // TODO(chky,rohitju): These kernels should be unified with the corresponding
   // tfrt_fallback_sync kernels, e.g. tfrt_fallback_sync.executeop.
   registry.Register<CancelOp>();
+  registry.Register<ConstOp>();
   registry.Register<CreateOp>();
   registry.Register<CreateOp>("tfrt_fallback_sync.createop");
   registry.Register<ExecuteOp>();
   registry.Register<ExecuteOp>("tfrt_fallback_sync.executeop");
   registry.Register<AsyncExecuteOp>();
+  registry.Register<AsyncWhileOp>();
   registry.Register<ExecuteOpDevice>();
   registry.Register<AsyncExecuteOpDevice>();
   registry.Register("tf_mlrt.set_resource", &SetResource);

@@ -34,7 +34,9 @@ message ResourceHandleProto {
 
   // Protocol buffer representing a pair of (data type, tensor shape).
   message DtypeAndShape {
+    // Data type of the tensor.
     DataType dtype = 1;
+    // Shape of the tensor.
     TensorShapeProto shape = 2;
   }
 

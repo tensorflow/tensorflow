@@ -20,7 +20,7 @@ import os
 if not os.path.splitext(__file__)[0].endswith(
     os.path.join("tflite_runtime", "analyzer")):
   # This file is part of tensorflow package.
-  from tensorflow.lite.python import wrap_toco
+  from tensorflow.compiler.mlir.lite.python import wrap_converter
   from tensorflow.lite.python.analyzer_wrapper import _pywrap_analyzer_wrapper as _analyzer_wrapper
   from tensorflow.python.util.tf_export import tf_export as _tf_export
 else:
@@ -97,8 +97,10 @@ class ModelAnalyzer():
 
     if kwargs.get("experimental_use_mlir", False):
       print(
-          wrap_toco.wrapped_flat_buffer_file_to_mlir(tflite_model,
-                                                     input_is_filepath))
+          wrap_converter.wrapped_flat_buffer_file_to_mlir(
+              tflite_model, input_is_filepath
+          )
+      )
     else:
       print(
           _analyzer_wrapper.ModelAnalyzer(tflite_model, input_is_filepath,

@@ -38,12 +38,13 @@ class EagerOpRewriteTest : public ::testing::Test {
         std::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
             "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
     bool async = false;
-    tensorflow::Rendezvous* rendezvous =
-        new tensorflow::IntraProcessRendezvous(device_mgr.get());
+    auto rendezvous =
+        tsl::core::RefCountPtr<tensorflow::IntraProcessRendezvous>(
+            new tensorflow::IntraProcessRendezvous(device_mgr.get()));
     eager_ctx_ = new tensorflow::EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-        async, device_mgr.get(), false, rendezvous, nullptr, nullptr,
+        async, device_mgr.get(), false, std::move(rendezvous), nullptr, nullptr,
         /*run_eager_op_as_function=*/true);
 
     EagerExecutor executor_(false);

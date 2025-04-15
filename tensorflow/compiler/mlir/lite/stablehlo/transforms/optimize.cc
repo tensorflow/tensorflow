@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -26,9 +28,10 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -36,8 +39,8 @@ namespace odml {
 // Convert mhlo.dot to mhlo.dot_general.
 LogicalResult ConvertDotToDotGeneral(mhlo::DotOp op,
                                      PatternRewriter &rewriter) {
-  auto lhs_type = op.getLhs().getType().cast<ShapedType>();
-  auto rhs_type = op.getRhs().getType().cast<ShapedType>();
+  auto lhs_type = mlir::cast<ShapedType>(op.getLhs().getType());
+  auto rhs_type = mlir::cast<ShapedType>(op.getRhs().getType());
   if (!lhs_type.hasRank() || !rhs_type.hasRank()) {
     return rewriter.notifyMatchFailure(op, "unsupported unranked input type");
   }
@@ -56,7 +59,7 @@ LogicalResult ConvertDotToDotGeneral(mhlo::DotOp op,
           /*rhsBatchingDimensions=*/{},
           /*lhsContractingDimensions=*/{lhs_type.getRank() - 1},
           /*rhsContractingDimensions=*/{0}),
-      op.getPrecisionConfigAttr());
+      op.getPrecisionConfigAttr(), mhlo::DotAlgorithmAttr{});
   return success();
 }
 
@@ -159,7 +162,7 @@ LogicalResult RemoveReshapeAroundDotGeneral(mhlo::ReshapeOp reshape_after,
           range(batch_dims_count + shape_y1.size(), contracting_dims_count),
           /*rhsContractingDimensions=*/
           range(batch_dims_count, contracting_dims_count)),
-      dot.getPrecisionConfigAttr());
+      dot.getPrecisionConfigAttr(), dot.getAlgorithmAttr());
   return success();
 }
 
@@ -263,7 +266,7 @@ LogicalResult LiftDotConcatLHS(mhlo::ConcatenateOp concat,
   new_concat_shape[new_concat_dim] = 0;
   for (auto v : all_dot_lhs) {
     new_concat_shape[new_concat_dim] +=
-        v.getType().dyn_cast<ShapedType>().getShape()[new_concat_dim];
+        mlir::dyn_cast<ShapedType>(v.getType()).getShape()[new_concat_dim];
   }
 
   auto new_concat = rewriter.create<mhlo::ConcatenateOp>(
@@ -271,7 +274,8 @@ LogicalResult LiftDotConcatLHS(mhlo::ConcatenateOp concat,
       rewriter.getI64IntegerAttr(new_concat_dim));
   rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
       concat, concat.getType(), new_concat, first_dot.getRhs(),
-      first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr());
+      first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr(),
+      first_dot.getAlgorithmAttr());
   return success();
 }
 
@@ -352,7 +356,7 @@ LogicalResult LiftDotConcatLHSAndRHS(mhlo::ConcatenateOp concat,
   lhs_new_concat_shape[lhs_batch_dim] = 0;
   for (auto v : all_dot_lhs) {
     lhs_new_concat_shape[lhs_batch_dim] +=
-        v.getType().dyn_cast<ShapedType>().getShape()[lhs_batch_dim];
+        mlir::dyn_cast<ShapedType>(v.getType()).getShape()[lhs_batch_dim];
   }
   const int64_t rhs_batch_dim =
       first_dot.getDotDimensionNumbers().getRhsBatchingDimensions()[0];
@@ -361,7 +365,7 @@ LogicalResult LiftDotConcatLHSAndRHS(mhlo::ConcatenateOp concat,
   rhs_new_concat_shape[rhs_batch_dim] = 0;
   for (auto v : all_dot_rhs) {
     rhs_new_concat_shape[rhs_batch_dim] +=
-        v.getType().dyn_cast<ShapedType>().getShape()[rhs_batch_dim];
+        mlir::dyn_cast<ShapedType>(v.getType()).getShape()[rhs_batch_dim];
   }
 
   auto lhs_new_concat = rewriter.create<mhlo::ConcatenateOp>(
@@ -372,7 +376,8 @@ LogicalResult LiftDotConcatLHSAndRHS(mhlo::ConcatenateOp concat,
       all_dot_rhs, rewriter.getI64IntegerAttr(rhs_batch_dim));
   rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
       concat, concat.getType(), lhs_new_concat, rhs_new_concat,
-      first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr());
+      first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr(),
+      first_dot.getAlgorithmAttr());
   return success();
 }
 
@@ -451,6 +456,105 @@ LogicalResult FuseSliceConcat(mhlo::ConcatenateOp concat,
   return success();
 }
 
+// TODO(b/296267494): Move this provided constfolding runs prior to it
+// Converts:
+//  %y1 = pad(%x, pad_val, (p1_1,p1_2,p1_3, ...))
+//  %y2 = pad(%y1, pad_val, (p2_1,p2_2,p2_3, ...))
+// To:
+//  %z = pad(%x, pad_val, (p1_1 + p2_1, p1_2 + p2_2, p1_3 + p2_3, ...))
+LogicalResult MergeConsecutivePad(mhlo::PadOp pad_op,
+                                  PatternRewriter &rewriter) {
+  // Fail for non-static shapes
+  if (!pad_op.getOperand().getType().hasStaticShape() ||
+      !pad_op.getResult().getType().hasStaticShape() ||
+      !pad_op.getPaddingValue().getType().hasStaticShape()) {
+    return rewriter.notifyMatchFailure(pad_op, "dynamic shapes not supported");
+  }
+
+  // Check if the operand is also a Pad op
+  auto parent_pad =
+      dyn_cast_or_null<mhlo::PadOp>(pad_op.getOperand().getDefiningOp());
+  if (!parent_pad) {
+    return rewriter.notifyMatchFailure(pad_op, "parent is not a pad operator");
+  }
+
+  // We need the parent pad to have exactly one use (which is the child pad),
+  // otherwise merging the two pads will create wrong shapes for the other
+  // users.
+  if (!parent_pad->hasOneUse()) {
+    return rewriter.notifyMatchFailure(pad_op,
+                                       "parent pad has more than one use");
+  }
+
+  // Fail for non-static shapes
+  if (!parent_pad.getOperand().getType().hasStaticShape() ||
+      !parent_pad.getResult().getType().hasStaticShape() ||
+      !parent_pad.getPaddingValue().getType().hasStaticShape()) {
+    return rewriter.notifyMatchFailure(parent_pad,
+                                       "dynamic shapes not supported");
+  }
+
+  // Check if the padding values are equal (otherwise merging is illegal)
+  // Because we are using the greedy pattern rewrite driver
+  // (applyPatternsGreedily), all different constant operators with the
+  // same value will be replaced by a single constant operator of that value.
+  // Due to this, if the padding values in the input are equal, they will become
+  // the same constant operator and the following check (which compares memory
+  // addresses) works.
+  if (pad_op.getPaddingValue() != parent_pad.getPaddingValue()) {
+    return rewriter.notifyMatchFailure(
+        pad_op, "parent and child pad have different padding values");
+  }
+
+  // NOTE: Because negative paddings are allowed, we assert that if
+  // `parent_pad < 0` then `child_pad <= 0` The effect of the negative pad is to
+  // remove values, so for example if we have parent_pad = - 1, child_pad = 1
+  // the merged pad will not change anything, while the un-merged will remove a
+  // value, then insert a 0 at its place. This only holds for low and high pads,
+  // the spec does not allow negative interior pads, so we don't check there.
+  auto low_pads = pad_op.getEdgePaddingLow().getValues<IntegerAttr>();
+  auto parent_low_pads =
+      parent_pad.getEdgePaddingLow().getValues<IntegerAttr>();
+  auto high_pads = pad_op.getEdgePaddingHigh().getValues<IntegerAttr>();
+  auto parent_high_pads =
+      parent_pad.getEdgePaddingHigh().getValues<IntegerAttr>();
+  auto interior_pads = pad_op.getInteriorPadding().getValues<IntegerAttr>();
+  auto parent_interior_pads =
+      parent_pad.getInteriorPadding().getValues<IntegerAttr>();
+
+  // NOTE: Low/High/Interior pads have the same size
+  for (int i = 0; i < low_pads.size(); ++i) {
+    if (parent_low_pads[i].getInt() < 0 && low_pads[i].getInt() > 0) {
+      return rewriter.notifyMatchFailure(
+          pad_op, "can't merge consecutive negative and positive low pads");
+    }
+    if (parent_high_pads[i].getInt() < 0 && high_pads[i].getInt() > 0) {
+      return rewriter.notifyMatchFailure(
+          pad_op, "can't merge consecutive negative and positive high pads");
+    }
+  }
+
+  std::vector<int64_t> new_low_pads(low_pads.size(), 0);
+  std::vector<int64_t> new_high_pads(high_pads.size(), 0);
+  std::vector<int64_t> new_interior_pads(interior_pads.size(), 0);
+
+  for (int i = 0; i < low_pads.size(); ++i) {
+    new_low_pads[i] = low_pads[i].getInt() + parent_low_pads[i].getInt();
+    new_high_pads[i] = high_pads[i].getInt() + parent_high_pads[i].getInt();
+    new_interior_pads[i] =
+        interior_pads[i].getInt() + parent_interior_pads[i].getInt();
+  }
+
+  // Replace pad_op with a new pad having new attributes, taking the
+  // parent_pad's operand. (After this parent_pad has no users and is removed).
+  rewriter.replaceOpWithNewOp<mhlo::PadOp>(
+      pad_op, pad_op.getType(), parent_pad.getOperand(),
+      parent_pad.getPaddingValue(), rewriter.getI64TensorAttr(new_low_pads),
+      rewriter.getI64TensorAttr(new_high_pads),
+      rewriter.getI64TensorAttr(new_interior_pads));
+  return success();
+}
+
 // Convert:
 //   %input : 1xYxC
 //   %1 = mhlo.reshape %param : (1xCxZ) -> CxZ
@@ -510,9 +614,133 @@ LogicalResult ConvertReshapeDotRhsToBatchedDot(mhlo::DotGeneralOp dot,
           /*rhsBatchingDimensions=*/{0},
           /*lhsContractingDimensions=*/dim_nums.getLhsContractingDimensions(),
           /*rhsContractingDimensions=*/new_rhs_contracting_dims),
-      dot.getPrecisionConfigAttr());
+      dot.getPrecisionConfigAttr(), dot.getAlgorithmAttr());
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// BroadcastInDimsOp
+//===----------------------------------------------------------------------===//
+
+// Minimizing unit dimensions in reshape(broadcast(X)).
+//
+// There are situations where X, or broadcast(X) have some number of `1` (unit)
+// sized dimensions which are not meaningful to the computation. E.g.
+//
+// ```
+// x = [1x1x1x3]
+// b = broadast(x) : [1x2x1x3]
+// r = reshape(b) : [2x3]
+// ```
+//
+// Provided the relative broadcast dims are preserved, removing any number
+// of unit dims from the input or output shape of a broadcast has no effect on
+// the semantic of the computation.
+//
+// Assume a reshape(broadcast(x)) where the shape of the broadcast and reshape
+// have the same non-unit dims in the same order. In this case we can
+// change the broadcast shape into the reshape shape simply by adding or
+// removing unit-dims, and the reshape can be replaced with the broadcast.
+//
+// When removing unit dims from the broadcast in this way, we may also need
+// to remove the corresponding unit dim from the input shape. This pattern takes
+// the approach of removing all unit dims for the broadcast input
+// rather than explicitly checking each.
+//
+// The result on the above example:
+//
+// ```
+// x = [1x1x1x3]
+// r = reshape(x) : [3]
+// b = broadast(r) : [2x3]
+// ```
+//
+// Note that the ability of removing unit dims from the input or output shape of
+// a broascast is not contingent on matching and replacing a reshaped output. We
+// require however for this pattern to not increase the net number of reshapes.
+// Additionally, we want to minimize the rank of broadcasts so only considered
+// are cases where rank(reshape) < rank(broadcast).
+class SimplifyBroadcastInDimsReshape
+    : public OpRewritePattern<mhlo::BroadcastInDimOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(mhlo::BroadcastInDimOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!op->hasOneUse()) {
+      return rewriter.notifyMatchFailure(op, "has more than one use.");
+    }
+
+    auto reshape = mlir::dyn_cast<mhlo::ReshapeOp>(*op->getUsers().begin());
+    if (!reshape) {
+      return rewriter.notifyMatchFailure(op, "user not reshape.");
+    }
+
+    auto broadcast_type = mlir::cast<ShapedType>(op.getType());
+    auto broadcast_input_type =
+        mlir::cast<ShapedType>(op.getOperand().getType());
+    auto reshape_type = mlir::cast<ShapedType>(reshape.getType());
+
+    // Reshape must be squeezing unit dimensions.
+    if (!(reshape_type.getRank() < broadcast_type.getRank())) {
+      return rewriter.notifyMatchFailure(op, "reshape doesn't reduce rank.");
+    }
+
+    // Reshape and broadcast must have the same non-unit dims in the
+    // same order.
+    llvm::SmallVector<int64_t> broadcast_dim_to_reshape_dim(
+        broadcast_type.getRank());
+    int64_t reshape_dim_idx = -1;
+    for (auto [idx, dim] : llvm::enumerate(broadcast_type.getShape())) {
+      if (dim == 1) {
+        continue;
+      }
+
+      int64_t reshape_dim_size = 1;
+      while (reshape_dim_idx < reshape_type.getRank() - 1) {
+        reshape_dim_size = reshape_type.getDimSize(++reshape_dim_idx);
+        if (reshape_dim_size != 1) {
+          break;
+        }
+      }
+
+      if (dim != reshape_dim_size) {
+        return rewriter.notifyMatchFailure(
+            op, "reshape and broadcast have different non-unit dim sizes.");
+      }
+
+      // Maps index of non-unit broadcast dims to corresponding reshape dim.
+      broadcast_dim_to_reshape_dim[idx] = reshape_dim_idx;
+    }
+    // Unchecked reshape dim sizes are guaranteed to be unit at this point.
+
+    llvm::SmallVector<int64_t> current_broadcast_dims(
+        op.getBroadcastDimensions().getValues<int64_t>());
+    llvm::SmallVector<int64_t> new_broadcast_dims;
+    llvm::SmallVector<int64_t> new_broadcast_input_shape;
+
+    for (auto [idx, dim] : llvm::enumerate(broadcast_input_type.getShape())) {
+      if (dim == 1) {
+        continue;
+      }
+      // If dim != 1 then it must be broadcasted to a non-unit dimension
+      // and must have a corresponding reshape dimension in our vectors.
+      new_broadcast_dims.push_back(
+          broadcast_dim_to_reshape_dim[current_broadcast_dims[idx]]);
+      new_broadcast_input_shape.push_back(dim);
+    }
+
+    auto new_broadcast_input_type = RankedTensorType::get(
+        new_broadcast_input_shape, broadcast_type.getElementType());
+    auto new_broadcast_input = rewriter.create<mhlo::ReshapeOp>(
+        op->getLoc(), new_broadcast_input_type, op.getOperand());
+    auto new_broadcast_dims_attr =
+        rewriter.getI64TensorAttr(new_broadcast_dims);
+
+    rewriter.replaceOpWithNewOp<mhlo::BroadcastInDimOp>(
+        reshape, reshape_type, new_broadcast_input, new_broadcast_dims_attr);
+
+    return success();
+  }
+};
 
 class OptimizePass
     : public PassWrapper<OptimizePass, OperationPass<func::FuncOp>> {
@@ -530,8 +758,9 @@ class OptimizePass
     patterns.add(LiftDotConcatLHSAndRHS);
     patterns.add(FuseSliceConcat);
     patterns.add(ConvertReshapeDotRhsToBatchedDot);
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    patterns.add(MergeConsecutivePad);
+    patterns.add<SimplifyBroadcastInDimsReshape>(&getContext());
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }
   }

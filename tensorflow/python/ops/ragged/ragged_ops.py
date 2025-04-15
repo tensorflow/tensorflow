@@ -25,6 +25,7 @@ circular dependencies.
 
 # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_autograph
 from tensorflow.python.ops.ragged import ragged_batch_gather_ops
 from tensorflow.python.ops.ragged import ragged_batch_gather_with_default_op
 from tensorflow.python.ops.ragged import ragged_bincount_ops

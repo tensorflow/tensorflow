@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/variants/list_kernels/test_util.h"
 #include "tensorflow/lite/kernels/variants/list_ops_lib.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/util.h"
 
 using ::testing::ElementsAreArray;
 using ::tflite::variants::ops::Register_LIST_STACK;

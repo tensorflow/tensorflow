@@ -83,7 +83,12 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
     out.SetUsrMem(in_dims, out_strides, out_tensor);
 
     std::vector<primitive> net;
-    MklDnnThreadPool eigen_tp(context);
+    // Create the oneDNN wrapper over Eigen threadpool and set max threads
+    // in oneDNN.
+    Eigen::ThreadPoolInterface* eigen_interface =
+        EigenThreadPoolFromTfContext(context);
+    tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                   ThreadPoolUseCallerThread());
     auto* prim = FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem());
     transpose_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
     in.SetUsrMemDataHandle(&in_tensor, transpose_stream);

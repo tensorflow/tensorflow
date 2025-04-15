@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SerializeSparse"
   input_arg {
     name: "sparse_indices"

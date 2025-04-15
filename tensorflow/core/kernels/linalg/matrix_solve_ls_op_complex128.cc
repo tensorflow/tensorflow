@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <complex>
+
 #include "tensorflow/core/kernels/linalg/matrix_solve_ls_op_impl.h"
 
 namespace tensorflow {

@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
@@ -38,9 +41,9 @@ REGISTER_NO_GRADIENT_OP("Size");
 REGISTER_NO_GRADIENT_OP("BroadcastGradientArgs");
 REGISTER_NO_GRADIENT_OP("OneHot");
 
-Status PackGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status PackGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   int N;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "N", &N));
   int axis;
@@ -55,9 +58,9 @@ Status PackGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Pack", PackGrad);
 
-Status UnpackGrad(const Scope& scope, const Operation& op,
-                  const std::vector<Output>& grad_inputs,
-                  std::vector<Output>* grad_outputs) {
+absl::Status UnpackGrad(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs) {
   int axis;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "axis", &axis));
   grad_outputs->push_back(Stack(scope, grad_inputs, Stack::Axis(axis)));
@@ -65,34 +68,33 @@ Status UnpackGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Unpack", UnpackGrad);
 
-Status IdentityGrad(const Scope& scope, const Operation& op,
-                    const std::vector<Output>& grad_inputs,
-                    std::vector<Output>* grad_outputs) {
+absl::Status IdentityGrad(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(Identity(scope, grad_inputs[0]));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Identity", IdentityGrad);
 
-Status RefIdentityGrad(const Scope& scope, const Operation& op,
-                       const std::vector<Output>& grad_inputs,
-                       std::vector<Output>* grad_outputs) {
+absl::Status RefIdentityGrad(const Scope& scope, const Operation& op,
+                             const std::vector<Output>& grad_inputs,
+                             std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(Identity(scope, grad_inputs[0]));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("RefIdentity", RefIdentityGrad);
 
-Status QuantizeAndDequantizeGrad(const Scope& scope, const Operation& op,
-                                 const std::vector<Output>& grad_inputs,
-                                 std::vector<Output>* grad_outputs) {
+absl::Status QuantizeAndDequantizeGrad(const Scope& scope, const Operation& op,
+                                       const std::vector<Output>& grad_inputs,
+                                       std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(Identity(scope, grad_inputs[0]));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("QuantizeAndDequantize", QuantizeAndDequantizeGrad);
 
-Status QuantizeAndDequantizeV4GradHelper(const Scope& scope,
-                                         const Operation& op,
-                                         const std::vector<Output>& grad_inputs,
-                                         std::vector<Output>* grad_outputs) {
+absl::Status QuantizeAndDequantizeV4GradHelper(
+    const Scope& scope, const Operation& op,
+    const std::vector<Output>& grad_inputs, std::vector<Output>* grad_outputs) {
   Input input = Shape(scope, op.input(0));
   Input input_min = op.input(1);
   Input input_max = op.input(2);
@@ -109,9 +111,10 @@ Status QuantizeAndDequantizeV4GradHelper(const Scope& scope,
 REGISTER_GRADIENT_OP("QuantizeAndDequantizeV4",
                      QuantizeAndDequantizeV4GradHelper);
 
-Status QuantizeAndDequantizeV3Grad(const Scope& scope, const Operation& op,
-                                   const std::vector<Output>& grad_inputs,
-                                   std::vector<Output>* grad_outputs) {
+absl::Status QuantizeAndDequantizeV3Grad(const Scope& scope,
+                                         const Operation& op,
+                                         const std::vector<Output>& grad_inputs,
+                                         std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(Identity(scope, grad_inputs[0]));
   grad_outputs->push_back(NoGradient());
   grad_outputs->push_back(NoGradient());
@@ -120,18 +123,18 @@ Status QuantizeAndDequantizeV3Grad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("QuantizeAndDequantizeV3", QuantizeAndDequantizeV3Grad);
 
-Status SplitGrad(const Scope& scope, const Operation& op,
-                 const std::vector<Output>& grad_inputs,
-                 std::vector<Output>* grad_outputs) {
+absl::Status SplitGrad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(NoGradient());
   grad_outputs->push_back(Concat(scope, grad_inputs, op.input(0)));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Split", SplitGrad);
 
-Status SplitVGrad(const Scope& scope, const Operation& op,
-                  const std::vector<Output>& grad_inputs,
-                  std::vector<Output>* grad_outputs) {
+absl::Status SplitVGrad(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs) {
   if (op.num_inputs() < 3) {
     return errors::InvalidArgument("SplitV requires 3 arguments");
   }
@@ -143,9 +146,9 @@ Status SplitVGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("SplitV", SplitVGrad);
 
-Status FillGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status FillGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   // y = fill(fill_shape, x)
   // No gradient returned for the fill_shape argument.
   grad_outputs->push_back(NoGradient());
@@ -161,33 +164,33 @@ Status FillGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Fill", FillGrad);
 
-Status DiagGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status DiagGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(DiagPart(scope, grad_inputs[0]));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Diag", DiagGrad);
 
-Status DiagPartGrad(const Scope& scope, const Operation& op,
-                    const std::vector<Output>& grad_inputs,
-                    std::vector<Output>* grad_outputs) {
+absl::Status DiagPartGrad(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(Diag(scope, grad_inputs[0]));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("DiagPart", DiagPartGrad);
 
-Status MatrixDiagGrad(const Scope& scope, const Operation& op,
-                      const std::vector<Output>& grad_inputs,
-                      std::vector<Output>* grad_outputs) {
+absl::Status MatrixDiagGrad(const Scope& scope, const Operation& op,
+                            const std::vector<Output>& grad_inputs,
+                            std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(MatrixDiagPart(scope, grad_inputs[0]));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("MatrixDiag", MatrixDiagGrad);
 
-Status MatrixBandPartGrad(const Scope& scope, const Operation& op,
-                          const std::vector<Output>& grad_inputs,
-                          std::vector<Output>* grad_outputs) {
+absl::Status MatrixBandPartGrad(const Scope& scope, const Operation& op,
+                                const std::vector<Output>& grad_inputs,
+                                std::vector<Output>* grad_outputs) {
   auto num_lower = op.input(1);
   auto num_upper = op.input(2);
   grad_outputs->push_back(
@@ -198,21 +201,23 @@ Status MatrixBandPartGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("MatrixBandPart", MatrixBandPartGrad);
 
-Status GatherNdGrad(const Scope& scope, const Operation& op,
-                    const std::vector<Output>& grad_inputs,
-                    std::vector<Output>* grad_outputs) {
+absl::Status GatherNdGrad(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
   auto ref = op.input(0);
-  auto ref_shape = Shape(scope, ref);
   auto indices = op.input(1);
+  Shape::Attrs shape_attrs;
+  shape_attrs.out_type_ = indices.type();
+  auto ref_shape = Shape(scope, ref, shape_attrs);
   grad_outputs->push_back(ScatterNd(scope, indices, grad_inputs[0], ref_shape));
   grad_outputs->push_back(NoGradient());
   return scope.status();
 }
 REGISTER_GRADIENT_OP("GatherNd", GatherNdGrad);
 
-Status CheckNumericsGrad(const Scope& scope, const Operation& op,
-                         const std::vector<Output>& grad_inputs,
-                         std::vector<Output>* grad_outputs) {
+absl::Status CheckNumericsGrad(const Scope& scope, const Operation& op,
+                               const std::vector<Output>& grad_inputs,
+                               std::vector<Output>* grad_outputs) {
   string message;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "message", &message));
   string err_msg = strings::StrCat(
@@ -223,9 +228,9 @@ Status CheckNumericsGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("CheckNumerics", CheckNumericsGrad);
 
-Status ReshapeGrad(const Scope& scope, const Operation& op,
-                   const std::vector<Output>& grad_inputs,
-                   std::vector<Output>* grad_outputs) {
+absl::Status ReshapeGrad(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
   auto input_shape = Shape(scope, op.input(0));
   grad_outputs->push_back(Reshape(scope, grad_inputs[0], input_shape));
   grad_outputs->push_back(NoGradient());
@@ -233,9 +238,9 @@ Status ReshapeGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Reshape", ReshapeGrad);
 
-Status ExpandDimsGrad(const Scope& scope, const Operation& op,
-                      const std::vector<Output>& grad_inputs,
-                      std::vector<Output>* grad_outputs) {
+absl::Status ExpandDimsGrad(const Scope& scope, const Operation& op,
+                            const std::vector<Output>& grad_inputs,
+                            std::vector<Output>* grad_outputs) {
   auto input_shape = Shape(scope, op.input(0));
   grad_outputs->push_back(Reshape(scope, grad_inputs[0], input_shape));
   grad_outputs->push_back(NoGradient());
@@ -243,18 +248,18 @@ Status ExpandDimsGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("ExpandDims", ExpandDimsGrad);
 
-Status SqueezeGrad(const Scope& scope, const Operation& op,
-                   const std::vector<Output>& grad_inputs,
-                   std::vector<Output>* grad_outputs) {
+absl::Status SqueezeGrad(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
   auto input_shape = Shape(scope, op.input(0));
   grad_outputs->push_back(Reshape(scope, grad_inputs[0], input_shape));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Squeeze", SqueezeGrad);
 
-Status TransposeGrad(const Scope& scope, const Operation& op,
-                     const std::vector<Output>& grad_inputs,
-                     std::vector<Output>* grad_outputs) {
+absl::Status TransposeGrad(const Scope& scope, const Operation& op,
+                           const std::vector<Output>& grad_inputs,
+                           std::vector<Output>* grad_outputs) {
   auto inverted_perm = InvertPermutation(scope, op.input(1));
   grad_outputs->push_back(Transpose(scope, grad_inputs[0], inverted_perm));
   grad_outputs->push_back(NoGradient());
@@ -262,9 +267,9 @@ Status TransposeGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Transpose", TransposeGrad);
 
-Status ReverseSequenceGrad(const Scope& scope, const Operation& op,
-                           const std::vector<Output>& grad_inputs,
-                           std::vector<Output>* grad_outputs) {
+absl::Status ReverseSequenceGrad(const Scope& scope, const Operation& op,
+                                 const std::vector<Output>& grad_inputs,
+                                 std::vector<Output>* grad_outputs) {
   auto seq_lengths = op.input(1);
   int batch_dim;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "batch_dim", &batch_dim));
@@ -278,9 +283,9 @@ Status ReverseSequenceGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("ReverseSequence", ReverseSequenceGrad);
 
-Status ReverseGrad(const Scope& scope, const Operation& op,
-                   const std::vector<Output>& grad_inputs,
-                   std::vector<Output>* grad_outputs) {
+absl::Status ReverseGrad(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
   auto reverse_dims = op.input(1);
   grad_outputs->push_back(Reverse(scope, grad_inputs[0], reverse_dims));
   grad_outputs->push_back(NoGradient());
@@ -288,9 +293,9 @@ Status ReverseGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("ReverseV2", ReverseGrad);
 
-Status ScatterNdGrad(const Scope& scope, const Operation& op,
-                     const std::vector<Output>& grad_inputs,
-                     std::vector<Output>* grad_outputs) {
+absl::Status ScatterNdGrad(const Scope& scope, const Operation& op,
+                           const std::vector<Output>& grad_inputs,
+                           std::vector<Output>* grad_outputs) {
   auto indices = op.input(0);
   grad_outputs->push_back(NoGradient());
   grad_outputs->push_back(GatherNd(scope, grad_inputs[0], indices));
@@ -299,9 +304,10 @@ Status ScatterNdGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("ScatterNd", ScatterNdGrad);
 
-Status ScatterNdNonAliasingAddGrad(const Scope& scope, const Operation& op,
-                                   const std::vector<Output>& grad_inputs,
-                                   std::vector<Output>* grad_outputs) {
+absl::Status ScatterNdNonAliasingAddGrad(const Scope& scope,
+                                         const Operation& op,
+                                         const std::vector<Output>& grad_inputs,
+                                         std::vector<Output>* grad_outputs) {
   auto indices = op.input(1);
   grad_outputs->push_back(Identity(scope, grad_inputs[0]));
   grad_outputs->push_back(NoGradient());
@@ -311,9 +317,9 @@ Status ScatterNdNonAliasingAddGrad(const Scope& scope, const Operation& op,
 REGISTER_GRADIENT_OP("ScatterNdNonAliasingAdd", ScatterNdNonAliasingAddGrad);
 
 template <bool IsPadV2>
-Status PadGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status PadGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   auto x = op.input(0);
   auto a = op.input(1);  // [Rank(x), 2]
   // Takes a slice of a. The 1st column. [Rank(x), 1].
@@ -332,9 +338,9 @@ Status PadGrad(const Scope& scope, const Operation& op,
 REGISTER_GRADIENT_OP("Pad", PadGrad<false>);
 REGISTER_GRADIENT_OP("PadV2", PadGrad<true>);
 
-Status SpaceToBatchGrad(const Scope& scope, const Operation& op,
-                        const std::vector<Output>& grad_inputs,
-                        std::vector<Output>* grad_outputs) {
+absl::Status SpaceToBatchGrad(const Scope& scope, const Operation& op,
+                              const std::vector<Output>& grad_inputs,
+                              std::vector<Output>* grad_outputs) {
   int block_size;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "block_size", &block_size));
@@ -345,9 +351,9 @@ Status SpaceToBatchGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("SpaceToBatch", SpaceToBatchGrad);
 
-Status SpaceToBatchNDGrad(const Scope& scope, const Operation& op,
-                          const std::vector<Output>& grad_inputs,
-                          std::vector<Output>* grad_outputs) {
+absl::Status SpaceToBatchNDGrad(const Scope& scope, const Operation& op,
+                                const std::vector<Output>& grad_inputs,
+                                std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(
       BatchToSpaceND(scope, grad_inputs[0], op.input(1), op.input(2)));
   grad_outputs->push_back(NoGradient());
@@ -356,9 +362,9 @@ Status SpaceToBatchNDGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("SpaceToBatchND", SpaceToBatchNDGrad);
 
-Status BatchToSpaceGrad(const Scope& scope, const Operation& op,
-                        const std::vector<Output>& grad_inputs,
-                        std::vector<Output>* grad_outputs) {
+absl::Status BatchToSpaceGrad(const Scope& scope, const Operation& op,
+                              const std::vector<Output>& grad_inputs,
+                              std::vector<Output>* grad_outputs) {
   int block_size;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "block_size", &block_size));
@@ -369,9 +375,9 @@ Status BatchToSpaceGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("BatchToSpace", BatchToSpaceGrad);
 
-Status BatchToSpaceNDGrad(const Scope& scope, const Operation& op,
-                          const std::vector<Output>& grad_inputs,
-                          std::vector<Output>* grad_outputs) {
+absl::Status BatchToSpaceNDGrad(const Scope& scope, const Operation& op,
+                                const std::vector<Output>& grad_inputs,
+                                std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(
       SpaceToBatchND(scope, grad_inputs[0], op.input(1), op.input(2)));
   grad_outputs->push_back(NoGradient());
@@ -380,9 +386,9 @@ Status BatchToSpaceNDGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("BatchToSpaceND", BatchToSpaceNDGrad);
 
-Status SpaceToDepthGrad(const Scope& scope, const Operation& op,
-                        const std::vector<Output>& grad_inputs,
-                        std::vector<Output>* grad_outputs) {
+absl::Status SpaceToDepthGrad(const Scope& scope, const Operation& op,
+                              const std::vector<Output>& grad_inputs,
+                              std::vector<Output>* grad_outputs) {
   int block_size;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "block_size", &block_size));
@@ -391,9 +397,9 @@ Status SpaceToDepthGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("SpaceToDepth", SpaceToDepthGrad);
 
-Status DepthToSpaceGrad(const Scope& scope, const Operation& op,
-                        const std::vector<Output>& grad_inputs,
-                        std::vector<Output>* grad_outputs) {
+absl::Status DepthToSpaceGrad(const Scope& scope, const Operation& op,
+                              const std::vector<Output>& grad_inputs,
+                              std::vector<Output>* grad_outputs) {
   int block_size;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "block_size", &block_size));
@@ -402,9 +408,9 @@ Status DepthToSpaceGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("DepthToSpace", DepthToSpaceGrad);
 
-Status MirrorPadGrad(const Scope& scope, const Operation& op,
-                     const std::vector<Output>& grad_inputs,
-                     std::vector<Output>* grad_outputs) {
+absl::Status MirrorPadGrad(const Scope& scope, const Operation& op,
+                           const std::vector<Output>& grad_inputs,
+                           std::vector<Output>* grad_outputs) {
   string mode;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "mode", &mode));
   grad_outputs->push_back(tensorflow::ops::internal::MirrorPadGrad(
@@ -415,9 +421,9 @@ Status MirrorPadGrad(const Scope& scope, const Operation& op,
 REGISTER_GRADIENT_OP("MirrorPad", MirrorPadGrad);
 
 // TODO(suharshs): b/34770860. This gradient was within 1e-3 but not 1e-4.
-Status MirrorPadGradGrad(const Scope& scope, const Operation& op,
-                         const std::vector<Output>& grad_inputs,
-                         std::vector<Output>* grad_outputs) {
+absl::Status MirrorPadGradGrad(const Scope& scope, const Operation& op,
+                               const std::vector<Output>& grad_inputs,
+                               std::vector<Output>* grad_outputs) {
   string mode;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "mode", &mode));
   grad_outputs->push_back(MirrorPad(scope, grad_inputs[0], op.input(1), mode));
@@ -426,9 +432,9 @@ Status MirrorPadGradGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("MirrorPadGrad", MirrorPadGradGrad);
 
-Status StridedSliceGradHelper(const Scope& scope, const Operation& op,
-                              const std::vector<Output>& grad_inputs,
-                              std::vector<Output>* grad_outputs) {
+absl::Status StridedSliceGradHelper(const Scope& scope, const Operation& op,
+                                    const std::vector<Output>& grad_inputs,
+                                    std::vector<Output>* grad_outputs) {
   Input x = Shape(scope, op.input(0));
   Input begin = op.input(1);
   Input end = op.input(2);
@@ -462,9 +468,9 @@ Status StridedSliceGradHelper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("StridedSlice", StridedSliceGradHelper);
 
-Status SliceGrad(const Scope& scope, const Operation& op,
-                 const std::vector<Output>& grad_inputs,
-                 std::vector<Output>* grad_outputs) {
+absl::Status SliceGrad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
   // Propagate the incoming gradient along all the selected values,
   // and zero everywhere else. Use the Pad operator for this.
   //
@@ -514,11 +520,11 @@ Status SliceGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Slice", SliceGrad);
 
-Status ConcatGradHelper(const Scope& scope, const Operation& op,
-                        const std::vector<Output>& grad_inputs,
-                        std::vector<Output>* grad_outputs,
-                        int start_value_index, int end_value_index,
-                        int dim_index) {
+absl::Status ConcatGradHelper(const Scope& scope, const Operation& op,
+                              const std::vector<Output>& grad_inputs,
+                              std::vector<Output>* grad_outputs,
+                              int start_value_index, int end_value_index,
+                              int dim_index) {
   if (end_value_index >= op.num_inputs()) {
     return errors::Internal("Invalid input index");
   }
@@ -558,9 +564,9 @@ Status ConcatGradHelper(const Scope& scope, const Operation& op,
   return scope.status();
 }
 
-Status ConcatV2Grad(const Scope& scope, const Operation& op,
-                    const std::vector<Output>& grad_inputs,
-                    std::vector<Output>* grad_outputs) {
+absl::Status ConcatV2Grad(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
   return ConcatGradHelper(scope, op, grad_inputs, grad_outputs,
                           /*start_value_index=*/0,
                           /*end_value_index=*/op.num_inputs() - 1,
@@ -569,9 +575,9 @@ Status ConcatV2Grad(const Scope& scope, const Operation& op,
 
 REGISTER_GRADIENT_OP("ConcatV2", ConcatV2Grad);
 
-Status BroadcastToGrad(const Scope& scope, const Operation& op,
-                       const std::vector<Output>& grad_inputs,
-                       std::vector<Output>* grad_outputs) {
+absl::Status BroadcastToGrad(const Scope& scope, const Operation& op,
+                             const std::vector<Output>& grad_inputs,
+                             std::vector<Output>* grad_outputs) {
   if (grad_inputs.size() != 1) {
     return errors::InvalidArgument("BroadcastTo grad should have 1 grad input");
   }
@@ -589,9 +595,9 @@ Status BroadcastToGrad(const Scope& scope, const Operation& op,
 
 REGISTER_GRADIENT_OP("BroadcastTo", BroadcastToGrad);
 
-Status TileGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status TileGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 2) {
     return errors::InvalidArgument("Tile requires 2 inputs");
   }
@@ -685,9 +691,9 @@ Output BatchGatherGrad(const Scope& scope, Output params_shape, Output values,
   return params_grad;
 }
 
-Status GatherV2Grad(const Scope& scope, const Operation& op,
-                    const std::vector<Output>& grad_inputs,
-                    std::vector<Output>* grad_outputs) {
+absl::Status GatherV2Grad(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 3) {
     return errors::InvalidArgument("Gather requires 3 inputs");
   }

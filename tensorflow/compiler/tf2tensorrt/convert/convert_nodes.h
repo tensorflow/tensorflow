@@ -466,7 +466,7 @@ class Converter {
   const bool use_calibration_;
 
   // If this is false, all dimensions including the batch dimension are
-  // set explicitely.
+  // set explicitly.
   const bool use_implicit_batch_;
 
   // Batch size of inputs to trt_network_ added by AddInputTensor(). During

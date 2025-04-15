@@ -90,7 +90,7 @@ template <typename T, int NUM_BLOCK_DIMS, bool B2S>
 struct SpaceToBatchFunctor<CPUDevice, T, NUM_BLOCK_DIMS, B2S> {
   using SpaceT = typename std::conditional<B2S, T, const T>::type;
   using BatchT = typename std::conditional<B2S, const T, T>::type;
-  Status operator()(
+  absl::Status operator()(
       const CPUDevice& d,
       typename TTypes<SpaceT, NUM_BLOCK_DIMS + 2>::Tensor space_tensor,
       const int64_t block_shape_tensor[NUM_BLOCK_DIMS],
@@ -148,7 +148,7 @@ struct SpaceToBatchFunctor<CPUDevice, T, NUM_BLOCK_DIMS, B2S> {
           block_offsets, batch_tensor_shape, &batch_tensor_strides[1],
           batch_tensor_ptr + batch_tensor_b * batch_tensor_strides[0]);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

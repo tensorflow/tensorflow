@@ -1079,7 +1079,10 @@ MatrixVectorData SetupMatrixVectorData(int rows, int cols, int batch,
     if ((i % 5) == 0 && negative) sign = -1;
     data.vectors.push_back(sign * (i % 50));
   }
-  data.scale_factors = {1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8};
+  for (int i = 0; i < batch; i++) {
+    data.scale_factors.insert(data.scale_factors.end(),
+                              {1, 2, 3, 4, 5, 6, 7, 8});
+  }
   data.results.resize(rows * batch, init_to_one ? 1 : 0);
 
   data.zeroed_matrix = data.matrix;
@@ -2182,7 +2185,13 @@ BENCHMARK(BM_DotprodBatchOneMultiply)
     ->Args({640, 2048, 8, 8})
     ->Args({2048, 2048, 1, 1})
     ->Args({2048, 2048, 1, 8})
-    ->Args({2048, 2048, 8, 1});
+    ->Args({2048, 2048, 8, 1})
+    ->Args({4096, 4096, 8, 1})
+    ->Args({4096, 4096, 1, 8})
+    ->Args({8192, 8192, 8, 1})
+    ->Args({8192, 8192, 1, 8})
+    ->Args({16384, 16384, 8, 1})
+    ->Args({16384, 16384, 1, 8});
 
 void BM_DotprodBatchFourMultiply(benchmark::State& state) {
   const int rows = state.range(0);
@@ -2239,7 +2248,14 @@ BENCHMARK(BM_DotprodBatchFourMultiply)
     ->Args({2048, 2048, 4, 1})
     ->Args({2048, 2048, 4, 8})
     ->Args({2048, 2048, 5, 1})
-    ->Args({2048, 2048, 8, 1});
+    ->Args({2048, 2048, 8, 1})
+    ->Args({2048, 2048, 64, 1})
+    ->Args({2048, 2048, 1024, 1})
+    ->Args({4096, 4096, 1024, 1})
+    ->Args({8192, 8192, 1024, 1})
+    ->Args({8192, 8192, 1024, 8})
+    ->Args({16384, 16384, 1024, 1})
+    ->Args({16384, 8192, 1024, 1});
 
 void BM_DotprodSparseMultiply(benchmark::State& state) {
   const int rows = state.range(0);

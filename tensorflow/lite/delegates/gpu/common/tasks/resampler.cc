@@ -29,6 +29,8 @@ std::string GetResamplerCode(const GpuInfo& gpu_info,
     c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+    c += "  args.warp_tensor.SetBatchRef(B);\n";
     c += "  args.dst_tensor.SetBatchRef(B);\n";
   } else {
     c += "  int X = GLOBAL_ID_0;\n";

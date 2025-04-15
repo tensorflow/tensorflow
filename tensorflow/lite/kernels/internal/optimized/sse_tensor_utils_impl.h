@@ -74,7 +74,7 @@ void SseSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result);
+    float* __restrict__ result, const float* per_channel_scale);
 
 void SseReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                            const int output_size, const int reduction_size);

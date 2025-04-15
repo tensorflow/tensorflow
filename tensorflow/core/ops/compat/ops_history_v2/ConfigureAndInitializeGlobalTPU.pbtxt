@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ConfigureAndInitializeGlobalTPU"
   output_arg {
     name: "output"

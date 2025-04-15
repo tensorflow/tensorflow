@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "LoadTPUEmbeddingStochasticGradientDescentParameters"
   input_arg {
     name: "parameters"

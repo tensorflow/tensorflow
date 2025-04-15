@@ -21,22 +21,27 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
-#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/tests/test_macros.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/tsl/framework/device_id.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 #ifdef TF_GPU_USE_PJRT
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #endif  // TF_GPU_USE_PJRT
+
+#if GOOGLE_CUDA
+// Needed for CUDA_VERSION preprocessor directive
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
 
 namespace tensorflow {
 namespace {
@@ -46,9 +51,8 @@ using ::testing::SizeIs;
 const char* kDeviceNamePrefix = "/job:localhost/replica:0/task:0";
 
 int64_t GetTotalGPUMemory(tsl::PlatformDeviceId gpu_id) {
-  se::StreamExecutor* se = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                               se::GPUMachineManager(), gpu_id)
-                               .value();
+  se::StreamExecutor* se =
+      se::GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value();
 
   int64_t total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
@@ -56,11 +60,20 @@ int64_t GetTotalGPUMemory(tsl::PlatformDeviceId gpu_id) {
 }
 
 se::CudaComputeCapability GetComputeCapability() {
-  return se::DeviceIdUtil::ExecutorForPlatformDeviceId(se::GPUMachineManager(),
-                                                       tsl::PlatformDeviceId(0))
+  return se::GPUMachineManager()
+      ->ExecutorForDevice(0)
       .value()
       ->GetDeviceDescription()
       .cuda_compute_capability();
+}
+
+bool IsRocm() {
+  return std::holds_alternative<se::RocmComputeCapability>(
+      se::GPUMachineManager()
+          ->ExecutorForDevice(0)
+          .value()
+          ->GetDeviceDescription()
+          .gpu_compute_capability());
 }
 
 void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {
@@ -84,6 +97,7 @@ class GPUDeviceTest : public ::testing::Test {
       const std::vector<std::vector<float>>& memory_limit_mb = {},
       const std::vector<std::vector<int32>>& priority = {},
       const std::vector<std::vector<int32>>& device_ordinal = {},
+      const int32 num_virtual_devices = 0,
       const bool use_cuda_malloc_async = false) {
     SessionOptions options;
     ConfigProto* config = &options.config;
@@ -94,22 +108,27 @@ class GPUDeviceTest : public ::testing::Test {
         per_process_gpu_memory_fraction);
     gpu_options->mutable_experimental()->set_use_cuda_malloc_async(
         use_cuda_malloc_async);
-    for (int i = 0; i < memory_limit_mb.size(); ++i) {
-      auto virtual_devices =
-          gpu_options->mutable_experimental()->add_virtual_devices();
-      for (float mb : memory_limit_mb[i]) {
-        virtual_devices->add_memory_limit_mb(mb);
-      }
-      if (i < device_ordinal.size()) {
-        for (int o : device_ordinal[i]) {
-          virtual_devices->add_device_ordinal(o);
+    if (!memory_limit_mb.empty()) {
+      for (int i = 0; i < memory_limit_mb.size(); ++i) {
+        auto virtual_devices =
+            gpu_options->mutable_experimental()->add_virtual_devices();
+        for (float mb : memory_limit_mb[i]) {
+          virtual_devices->add_memory_limit_mb(mb);
+        }
+        if (i < device_ordinal.size()) {
+          for (int o : device_ordinal[i]) {
+            virtual_devices->add_device_ordinal(o);
+          }
+        }
+        if (i < priority.size()) {
+          for (int p : priority[i]) {
+            virtual_devices->add_priority(p);
+          }
         }
       }
-      if (i < priority.size()) {
-        for (int p : priority[i]) {
-          virtual_devices->add_priority(p);
-        }
-      }
+    } else if (num_virtual_devices > 0) {
+      gpu_options->mutable_experimental()->set_num_virtual_devices_per_gpu(
+          num_virtual_devices);
     }
     return options;
   }
@@ -134,7 +153,10 @@ class GPUDeviceTest : public ::testing::Test {
   }
 };
 
-TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
+TEST_F(GPUDeviceTest, CudaMallocAsync) {
+  if (IsRocm()) {
+    GTEST_SKIP();
+  }
   // cudaMallocAsync supported only when cuda toolkit and driver supporting
   // CUDA 11.2+
 #ifndef GOOGLE_CUDA
@@ -153,7 +175,7 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
   }
 #endif
 
-  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {},
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {}, 0,
                                            /*use_cuda_malloc_async=*/true);
   std::vector<std::unique_ptr<Device>> devices;
   Status status;
@@ -179,8 +201,11 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
   EXPECT_EQ(status.code(), error::OK);
 }
 
-TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsyncPreallocate)) {
-  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {},
+TEST_F(GPUDeviceTest, CudaMallocAsyncPreallocate) {
+  if (IsRocm()) {
+    GTEST_SKIP();
+  }
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {}, 0,
                                            /*use_cuda_malloc_async=*/true);
   setenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC", "2048", 1);
   std::vector<std::unique_ptr<Device>> devices;
@@ -486,10 +511,33 @@ TEST_F(GPUDeviceTest,
   EXPECT_EQ(devices[3]->attributes().memory_limit(), 4 << 20);
 }
 
+TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithSpecifiedNumber) {
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {}, 2);
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      opts, kDeviceNamePrefix, &devices));
+  EXPECT_THAT(devices, SizeIs(2));
+  // The two virtual devices have the same memory size.
+  EXPECT_EQ(devices[0]->attributes().memory_limit(),
+            devices[1]->attributes().memory_limit());
+  ASSERT_EQ(devices[0]->attributes().locality().links().link_size(), 1);
+  ASSERT_EQ(devices[1]->attributes().locality().links().link_size(), 1);
+  EXPECT_EQ(devices[0]->attributes().locality().links().link(0).device_id(), 1);
+  EXPECT_EQ(devices[0]->attributes().locality().links().link(0).type(),
+            "SAME_DEVICE");
+  EXPECT_EQ(BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength,
+            devices[0]->attributes().locality().links().link(0).strength());
+  EXPECT_EQ(devices[1]->attributes().locality().links().link(0).device_id(), 0);
+  EXPECT_EQ(devices[1]->attributes().locality().links().link(0).type(),
+            "SAME_DEVICE");
+  EXPECT_EQ(BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength,
+            devices[1]->attributes().locality().links().link(0).strength());
+}
+
 // Enabling unified memory on pre-Pascal GPUs results in an initialization
 // error.
 TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
-  if (GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
+  if (GetComputeCapability().IsAtLeast(se::CudaComputeCapability::kPascal)) {
     return;
   }
 
@@ -511,7 +559,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   static constexpr tsl::PlatformDeviceId kPlatformDeviceId(0);
 
   // Exit early if running on pre-Pascal GPUs.
-  if (!GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
+  if (!GetComputeCapability().IsAtLeast(se::CudaComputeCapability::kPascal)) {
     LOG(INFO)
         << "Unified memory allocation is not supported with pre-Pascal GPUs.";
     return;

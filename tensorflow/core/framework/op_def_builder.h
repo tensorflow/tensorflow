@@ -33,15 +33,15 @@ limitations under the License.
 namespace tensorflow {
 
 // TODO(b/62899350): Refactor without proto dependencies.
-typedef std::function<Status(OpDef* c)> OpTypeConstructor;
+typedef std::function<absl::Status(OpDef* c)> OpTypeConstructor;
 
 typedef std::vector<std::reference_wrapper<const FullTypeDef>> TypeRefVector;
 
 // A callback into the type inference process, allowing type inference functions
 // to request inferring the type of some function (assumed to exist in the
 // runtime). The function is specified by name.
-typedef std::function<StatusOr<FullTypeDef>(const string&,
-                                            const TypeRefVector&)>
+typedef std::function<absl::StatusOr<FullTypeDef>(const string&,
+                                                  const TypeRefVector&)>
     FunctionTypeInferrer;
 
 // A type inference function, called for each node during type inference
@@ -52,8 +52,8 @@ typedef std::function<StatusOr<FullTypeDef>(const string&,
 // in the node's corresponding op definition.
 //
 // TODO(mdan): Consider a vector-in, vector-out contract.
-typedef std::function<StatusOr<FullTypeDef>(const TypeRefVector&,
-                                            const FunctionTypeInferrer&)>
+typedef std::function<absl::StatusOr<FullTypeDef>(const TypeRefVector&,
+                                                  const FunctionTypeInferrer&)>
     TypeInferenceFn;
 
 class FunctionDefHelper;
@@ -61,7 +61,7 @@ class FunctionDefHelper;
 namespace shape_inference {
 class InferenceContext;
 }
-typedef std::function<Status(shape_inference::InferenceContext* c)>
+typedef std::function<absl::Status(shape_inference::InferenceContext* c)>
     OpShapeInferenceFn;
 
 struct OpRegistrationData {
@@ -253,7 +253,7 @@ class OpDefBuilder {
   //
   // Note that OpDefBuilder only reports parsing errors.  You should also
   // call ValidateOpDef() to detect other problems.
-  Status Finalize(OpRegistrationData* op_reg_data) const;
+  absl::Status Finalize(OpRegistrationData* op_reg_data) const;
 
  private:
   friend class FunctionDefHelper;

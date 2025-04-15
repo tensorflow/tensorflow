@@ -17,18 +17,24 @@ limitations under the License.
 // --output_file_path=/tmp/output.pbtxt
 // --optimization_pass=NameOfGraphOptimizationPass
 
-#include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/core/framework/types.h"
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/optimization/optimization_pass_runner.h"
 
 namespace tensorflow {
 namespace {
-Status RealMain(int argc, char** argv) {
+absl::Status RealMain(int argc, char** argv) {
   string input_file_path;
   string output_file_path;
   string optimization_pass;

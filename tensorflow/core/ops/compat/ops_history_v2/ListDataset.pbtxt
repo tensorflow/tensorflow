@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ListDataset"
   input_arg {
     name: "tensors"

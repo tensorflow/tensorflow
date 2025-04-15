@@ -12,16 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <iterator>
+#include <cstdint>
+#include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -85,21 +91,21 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
       return kUnknownCardinality;
     }
 
-    Status InputDatasets(
+    absl::Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status CheckExternalState() const override {
+    absl::Status CheckExternalState() const override {
       TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
       return input_->CheckExternalState();
     }
 
    protected:
-    Status AsGraphDefInternal(SerializationContext* ctx,
-                              DatasetGraphDefBuilder* b,
-                              Node** output) const override {
+    absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                    DatasetGraphDefBuilder* b,
+                                    Node** output) const override {
       Node* input_node;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
 
@@ -119,7 +125,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           {std::make_pair("predicate", f_attr),
            std::make_pair("Targuments", other_arguments_types_attr)},
           output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -130,21 +136,21 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
 
       bool SymbolicCheckpointCompatible() const override { return true; }
 
-      Status Initialize(IteratorContext* ctx) override {
+      absl::Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
         return dataset()->captured_func_->Instantiate(
             ctx, &instantiated_captured_func_);
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+      absl::Status GetNextInternal(IteratorContext* ctx,
+                                   std::vector<Tensor>* out_tensors,
+                                   bool* end_of_sequence) override {
         {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
-            return OkStatus();
+            return absl::OkStatus();
           }
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -152,7 +158,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         if (*end_of_sequence) {
           mutex_lock l(mu_);
           input_impl_.reset();
-          return OkStatus();
+          return absl::OkStatus();
         }
         std::vector<Tensor> result;
         TF_RETURN_IF_ERROR(instantiated_captured_func_->RunWithBorrowedArgs(
@@ -169,7 +175,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           input_impl_.reset();
           out_tensors->clear();
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      protected:
@@ -179,8 +185,8 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(SerializationContext* ctx,
-                          IteratorStateWriter* writer) override {
+      absl::Status SaveInternal(SerializationContext* ctx,
+                                IteratorStateWriter* writer) override {
         TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
             dataset()->captured_func_->CheckExternalState()));
         mutex_lock l(mu_);
@@ -189,11 +195,11 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         if (input_impl_) {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
-      Status RestoreInternal(IteratorContext* ctx,
-                             IteratorStateReader* reader) override {
+      absl::Status RestoreInternal(IteratorContext* ctx,
+                                   IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         int64_t input_empty;
         TF_RETURN_IF_ERROR(
@@ -203,7 +209,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         } else {
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:

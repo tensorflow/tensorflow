@@ -28,7 +28,7 @@ limitations under the License.
 
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/interpreter.h"
@@ -413,6 +413,15 @@ void TfLiteDriver::SetInput(const std::string& name,
       SetTensorData(values, tensor->data.raw);
       break;
     }
+    case kTfLiteBFloat16: {
+      const auto& values = testing::Split<Eigen::bfloat16>(csv_values, ",");
+      for (auto k : values) {
+        TFLITE_LOG(INFO) << "input" << k;
+      }
+      if (!CheckSizes<Eigen::bfloat16>(tensor->bytes, values.size())) return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
     default:
       Invalidate(absl::StrCat("Unsupported tensor type ",
                               TfLiteTypeGetName(tensor->type),
@@ -492,6 +501,9 @@ void TfLiteDriver::SetExpectation(const std::string& name,
       break;
     case kTfLiteFloat16:
       expected_output_[id]->SetData<Eigen::half>(csv_values);
+      break;
+    case kTfLiteBFloat16:
+      expected_output_[id]->SetData<Eigen::bfloat16>(csv_values);
       break;
     default:
       Invalidate(absl::StrCat("Unsupported tensor type ",

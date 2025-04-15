@@ -18,15 +18,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/context.h"
-#include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/profiling/buffered_profiler.h"
-#include "tensorflow/lite/version.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace profiling {
@@ -183,7 +183,7 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfTrue) {
   subgraph_test_util::CheckIntTensor(output, {1, 2}, {6, 9});
 
   auto events = profiler.GetProfileEvents();
-  EXPECT_EQ(4, events.size());
+  EXPECT_EQ(5, events.size());
   int event_count_of_subgraph_zero = std::count_if(
       events.begin(), events.end(),
       [](auto event) { return event->extra_event_metadata == 0; });
@@ -194,7 +194,7 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfTrue) {
       events.begin(), events.end(),
       [](auto event) { return event->extra_event_metadata == 2; });
   EXPECT_EQ(2, event_count_of_subgraph_zero);
-  EXPECT_EQ(2, event_count_of_subgraph_one);
+  EXPECT_EQ(3, event_count_of_subgraph_one);
   EXPECT_EQ(0, event_count_of_subgraph_two);
 }
 
@@ -210,7 +210,7 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfFalse) {
   subgraph_test_util::CheckIntTensor(output, {1, 2}, {5, 14});
 
   auto events = profiler.GetProfileEvents();
-  EXPECT_EQ(4, events.size());
+  EXPECT_EQ(5, events.size());
   int event_count_of_subgraph_zero = std::count_if(
       events.begin(), events.end(),
       [](auto event) { return event->extra_event_metadata == 0; });
@@ -222,7 +222,7 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfFalse) {
       [](auto event) { return event->extra_event_metadata == 2; });
   EXPECT_EQ(2, event_count_of_subgraph_zero);
   EXPECT_EQ(0, event_count_of_subgraph_one);
-  EXPECT_EQ(2, event_count_of_subgraph_two);
+  EXPECT_EQ(3, event_count_of_subgraph_two);
 }
 
 }  // namespace

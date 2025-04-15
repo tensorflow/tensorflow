@@ -1,0 +1,17 @@
+Add patch to use tf build rules to prevent 'protobuf_python_genproto' error
+
+
+diff --git a/python/riegeli/records/BUILD b/python/riegeli/records/BUILD
+index cde6d546..7fe18a93 100644
+--- a/python/riegeli/records/BUILD
++++ b/python/riegeli/records/BUILD
+@@ -1,5 +1,5 @@
+-load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
++load("@local_xla//xla/tsl/platform/default:build_config.bzl", "py_proto_library")
+ load("//python/riegeli:py_extension.bzl", "py_extension")
+
+ package(
+     default_visibility = ["//python/riegeli:__subpackages__"],
+--
+2.25.1
+

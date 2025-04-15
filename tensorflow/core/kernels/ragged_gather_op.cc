@@ -100,8 +100,8 @@ class RaggedGatherOpBase : public OpKernel {
   using ConstFlatType = typename TTypes<SPLITS_TYPE>::ConstFlat;
 
   // Check if any indices are out-of-bounds.
-  ::tensorflow::Status ValidateIndices(const Tensor& indices_in,
-                                       SPLITS_TYPE num_params) {
+  absl::Status ValidateIndices(const Tensor& indices_in,
+                               SPLITS_TYPE num_params) {
     const auto& indices = indices_in.flat<INDEX_TYPE>();
     for (SPLITS_TYPE i = 0; i < indices.size(); ++i) {
       SPLITS_TYPE index = indices(i);
@@ -111,14 +111,14 @@ class RaggedGatherOpBase : public OpKernel {
             " is not in [0, ", num_params, ")");
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Construct the `splits` output tensors, encoded using a nested vector.
   // Also find the slices of values that need to be copied, and store them
   // in `value_slices`.  The total number of values that will be copied (which
   // we need for allocating the output values tensor) is stored in `num_values`.
-  ::tensorflow::Status MakeSplits(
+  absl::Status MakeSplits(
       const Tensor& indices_in, const OpInputList& params_nested_splits_in,
       SPLITS_TYPE num_params_dense_values,
       std::vector<std::vector<SPLITS_TYPE>>* out_splits,
@@ -188,10 +188,10 @@ class RaggedGatherOpBase : public OpKernel {
         *num_values += limit - start;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  ::tensorflow::Status ValidateSplits(
+  absl::Status ValidateSplits(
       const std::vector<ConstFlatType>& params_nested_splits,
       SPLITS_TYPE num_params_dense_values) {
     // Validate
@@ -216,10 +216,10 @@ class RaggedGatherOpBase : public OpKernel {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  ::tensorflow::Status WriteSplits(
+  absl::Status WriteSplits(
       const std::vector<std::vector<SPLITS_TYPE>>& out_splits,
       OpKernelContext* context) {
     OpOutputList splits_out;
@@ -234,10 +234,10 @@ class RaggedGatherOpBase : public OpKernel {
       std::copy_n(out_splits[i].data(), out_splits[i].size(),
                   splits_flat.data());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  ::tensorflow::Status WriteValues(
+  absl::Status WriteValues(
       const Tensor& params_dense_values_in,
       const std::vector<std::pair<SPLITS_TYPE, SPLITS_TYPE>>& value_slices,
       int values_index, SPLITS_TYPE num_values,
@@ -253,7 +253,7 @@ class RaggedGatherOpBase : public OpKernel {
                           : (num_elements / params_dense_values_in.dim_size(0));
     CallWriteValueSlices(params_dense_values_in, value_slices, value_size,
                          values_out);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:

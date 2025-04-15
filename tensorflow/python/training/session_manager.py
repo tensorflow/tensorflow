@@ -13,19 +13,23 @@
 # limitations under the License.
 # ==============================================================================
 """Training helper that checkpoints models and creates session."""
+
 import time
+from typing import Optional, Tuple
 
 import numpy as np
+
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.util.tf_export import tf_export
 
 
-def _maybe_name(obj):
+def _maybe_name(obj) -> str:
   """Returns object name if it has one, or a message otherwise.
 
   This is useful for names that apper in error messages.
@@ -43,7 +47,8 @@ def _maybe_name(obj):
 
 
 def _restore_checkpoint_and_maybe_run_saved_model_initializers(
-    sess, saver, path):
+    sess: session.Session, saver: saver_lib.Saver, path: str
+):
   """Restores checkpoint values and SavedModel initializers if found."""
   # NOTE: All references to SavedModel refer to SavedModels loaded from the
   # load_v2 API (which does not require the `sess` argument).
@@ -111,14 +116,16 @@ class SessionManager:
 
   """
 
-  def __init__(self,
-               local_init_op=None,
-               ready_op=None,
-               ready_for_local_init_op=None,
-               graph=None,
-               recovery_wait_secs=30,
-               local_init_run_options=None,
-               local_init_feed_dict=None):
+  def __init__(
+      self,
+      local_init_op: ops.Operation = None,
+      ready_op: ops.Operation = None,
+      ready_for_local_init_op: ops.Operation = None,
+      graph: ops.Graph = None,
+      recovery_wait_secs=30,
+      local_init_run_options: "distribute_lib.RunOptions" = None,
+      local_init_feed_dict=None,
+  ):
     """Creates a SessionManager.
 
     The `local_init_op` is an `Operation` that is run always after a new session
@@ -176,14 +183,16 @@ class SessionManager:
                        ", ready_for_local_init_op [%s]" %
                        ready_for_local_init_op)
 
-  def _restore_checkpoint(self,
-                          master,
-                          saver=None,
-                          checkpoint_dir=None,
-                          checkpoint_filename_with_path=None,
-                          wait_for_checkpoint=False,
-                          max_wait_secs=7200,
-                          config=None):
+  def _restore_checkpoint(
+      self,
+      master: str,
+      saver: saver_lib.Saver = None,
+      checkpoint_dir: str = None,
+      checkpoint_filename_with_path: str = None,
+      wait_for_checkpoint=False,
+      max_wait_secs=7200,
+      config=None,
+  ) -> Tuple[session.Session, bool]:
     """Creates a `Session`, and tries to restore a checkpoint.
 
 
@@ -247,17 +256,19 @@ class SessionManager:
     saver.recover_last_checkpoints(ckpt.all_model_checkpoint_paths)
     return sess, True
 
-  def prepare_session(self,
-                      master,
-                      init_op=None,
-                      saver=None,
-                      checkpoint_dir=None,
-                      checkpoint_filename_with_path=None,
-                      wait_for_checkpoint=False,
-                      max_wait_secs=7200,
-                      config=None,
-                      init_feed_dict=None,
-                      init_fn=None):
+  def prepare_session(
+      self,
+      master: str,
+      init_op: ops.Operation = None,
+      saver: saver_lib.Saver = None,
+      checkpoint_dir: str = None,
+      checkpoint_filename_with_path: str = None,
+      wait_for_checkpoint=False,
+      max_wait_secs=7200,
+      config=None,
+      init_feed_dict=None,
+      init_fn=None,
+  ) -> session.Session:
     """Creates a `Session`. Makes sure the model is ready to be used.
 
     Creates a `Session` on 'master'. If a `saver` object is passed in, and
@@ -339,14 +350,16 @@ class SessionManager:
           (_maybe_name(init_op), init_fn, self._local_init_op, msg))
     return sess
 
-  def recover_session(self,
-                      master,
-                      saver=None,
-                      checkpoint_dir=None,
-                      checkpoint_filename_with_path=None,
-                      wait_for_checkpoint=False,
-                      max_wait_secs=7200,
-                      config=None):
+  def recover_session(
+      self,
+      master: str,
+      saver: saver_lib.Saver = None,
+      checkpoint_dir: str = None,
+      checkpoint_filename_with_path: str = None,
+      wait_for_checkpoint=False,
+      max_wait_secs=7200,
+      config=None,
+  ) -> Tuple[session.Session, bool]:
     """Creates a `Session`, recovering if possible.
 
     Creates a new session on 'master'.  If the session is not initialized
@@ -403,7 +416,9 @@ class SessionManager:
     logging.info("Restored model from %s", restoring_file)
     return sess, is_loaded_from_checkpoint
 
-  def wait_for_session(self, master, config=None, max_wait_secs=float("Inf")):
+  def wait_for_session(
+      self, master: str, config=None, max_wait_secs=float("Inf")
+  ) -> Optional[session.Session]:
     """Creates a new `Session` and waits for model to be ready.
 
     Creates a new `Session` on 'master'.  Waits for the model to be
@@ -462,7 +477,7 @@ class SessionManager:
                    not_ready_local_msg, not_ready_msg)
       time.sleep(self._recovery_wait_secs)
 
-  def _safe_close(self, sess):
+  def _safe_close(self, sess: session.Session):
     """Closes a session without raising an exception.
 
     Just like sess.close() but ignores exceptions.
@@ -480,7 +495,7 @@ class SessionManager:
       pass
     # pylint: enable=broad-except
 
-  def _model_ready(self, sess):
+  def _model_ready(self, sess: session.Session) -> Tuple[bool, Optional[str]]:
     """Checks if the model is ready or not.
 
     Args:
@@ -493,7 +508,9 @@ class SessionManager:
     """
     return _ready(self._ready_op, sess, "Model not ready")
 
-  def _model_ready_for_local_init(self, sess):
+  def _model_ready_for_local_init(
+      self, sess: session.Session
+  ) -> Tuple[bool, Optional[str]]:
     """Checks if the model is ready to run local_init_op.
 
     Args:
@@ -508,7 +525,9 @@ class SessionManager:
     return _ready(self._ready_for_local_init_op, sess,
                   "Model not ready for local init")
 
-  def _try_run_local_init_op(self, sess):
+  def _try_run_local_init_op(
+      self, sess: session.Session
+  ) -> Tuple[bool, Optional[str]]:
     """Tries to run _local_init_op, if not None, and is ready for local init.
 
     Args:
@@ -533,7 +552,9 @@ class SessionManager:
     return True, None
 
 
-def _ready(op, sess, msg):
+def _ready(
+    op: ops.Operation, sess: session.Session, msg
+) -> Tuple[bool, Optional[str]]:
   """Checks if the model is ready or not, as determined by op.
 
   Args:

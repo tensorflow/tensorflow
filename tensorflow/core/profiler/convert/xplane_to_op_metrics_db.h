@@ -18,13 +18,14 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/op_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/op_metrics.pb.h"  // from @org_xprof
+#include "xprof/utils/op_utils.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
@@ -47,7 +48,10 @@ void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst);
 
 OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace);
 
-OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace);
+// Converts GPU device trace to OpMetricsDb.
+// Will use HloModuleMap to source performance info for cost analysis.
+OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
+    const XPlane& device_trace, const HloModuleMap& hlo_module_map);
 
 // Convert TPU DeviceTrace XPlane to OpMetricDb
 OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(

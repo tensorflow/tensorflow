@@ -15,8 +15,10 @@ limitations under the License.
 #include "tensorflow/lite/array.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <initializer_list>
 #include <type_traits>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

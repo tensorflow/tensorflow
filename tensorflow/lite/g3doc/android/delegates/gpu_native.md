@@ -1,20 +1,20 @@
 # GPU acceleration delegate with C/C++ API
 
 Using graphics processing units (GPUs) to run your machine learning (ML) models
-can dramatically improve the performance and the user experience
-of your ML-enabled applications. On Android devices, you can enable
-GPU-accelerated execution of your models using a
-[*delegate*](../../performance/delegates) and one of the following APIs:
+can dramatically improve the performance and the user experience of your
+ML-enabled applications. On Android devices, you can enable GPU-accelerated
+execution of your models using a
+[*delegate*](https://ai.google.dev/edge/litert/performance/delegates) and one of
+the following APIs:
 
-- Interpreter API - [guide](./gpu)
-- Task library API - [guide](./gpu_task)
-- Native (C/C++) API - this guide
+-   Interpreter API - [guide](./gpu)
+-   Task library API - [guide](./gpu_task.md)
+-   Native (C/C++) API - this guide
 
-This guide covers advanced
-uses of the GPU delegate for the C API, C++ API, and use of quantized models.
-For more information about using the GPU delegate for TensorFlow Lite,
-including best practices and advanced techniques, see the
-[GPU delegates](../../performance/gpu) page.
+This guide covers advanced uses of the GPU delegate for the C API, C++ API, and
+use of quantized models. For more information about using the GPU delegate for
+TensorFlow Lite, including best practices and advanced techniques, see the
+[GPU delegates](https://ai.google.dev/edge/litert/performance/gpu) page.
 
 ## Enable GPU acceleration
 
@@ -63,6 +63,88 @@ an `EGLContext` does not exist, the delegate creates one internally, but then
 you must ensure that `Interpreter::Invoke()` is always called from the same
 thread in which `Interpreter::ModifyGraphWithDelegate()` was called.
 
+#### With TensorFlow Lite in Google Play Services:
+
+If you are using TensorFlow Lite in Google Play Services
+[C API](https://ai.google.dev/edge/litert/android/native), you’ll need to use
+the Java/Kotlin API to check if a GPU delegate is available for your device
+before initializing the TensorFlow Lite runtime.
+
+Add the GPU delegate gradle dependencies to your application:
+
+```
+implementation 'com.google.android.gms:play-services-tflite-gpu:16.2.0'
+```
+
+Then, check the GPU availability and initialize TfLiteNative if the check is
+successful:
+
+<div>
+  <devsite-selector>
+    <section>
+      <h3>Java</h3>
+      <pre class="prettyprint">
+Task<Void> tfLiteHandleTask =
+TfLiteGpu.isGpuDelegateAvailable(this)
+   .onSuccessTask(gpuAvailable -> {
+      TfLiteInitializationOptions options =
+        TfLiteInitializationOptions.builder()
+          .setEnableGpuDelegateSupport(gpuAvailable).build();
+        return TfLiteNative.initialize(this, options);
+      }
+    );
+      </pre>
+      </section>
+      <section>
+      <h3>Kotlin</h3>
+        <pre class="prettyprint">
+val tfLiteHandleTask = TfLiteGpu.isGpuDelegateAvailable(this)
+    .onSuccessTask { gpuAvailable ->
+        val options = TfLiteInitializationOptions.Builder()
+            .setEnableGpuDelegateSupport(gpuAvailable)
+            .build()
+        TfLiteNative.initialize(this, options)
+    }
+        </pre>
+      </section>
+  </devsite-selector>
+</div>
+
+You also need to update your CMake configuration to include the
+`TFLITE_USE_OPAQUE_DELEGATE` compiler flag:
+
+```
+add_compile_definitions(TFLITE_USE_OPAQUE_DELEGATE)
+```
+
+The [FlatBuffers](https://flatbuffers.dev/) library is used to configure
+delegate plugins, so you need to add it to the dependencies of your native code.
+You can use the official `CMake` project configuration as follow:
+
+```
+target_include_directories(tflite-jni PUBLIC
+        third_party/headers # flatbuffers
+     ...)
+```
+
+You can also just bundle the headers to your app.
+
+Finally to use GPU inference in your C code, create the GPU delegate using
+`TFLiteSettings`:
+
+```
+#include "flatbuffers/flatbuffers.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
+
+flatbuffers::FlatBufferBuilder fbb;
+tflite::TFLiteSettingsBuilder builder(fbb);
+const tflite::TFLiteSettings* tflite_settings =
+    flatbuffers::GetTemporaryPointer(fbb, builder.Finish());
+
+const TfLiteOpaqueDelegatePlugin* pluginCApi = TfLiteGpuDelegatePluginCApi();
+TfLiteOpaqueDelegate* gpu_delegate = pluginCApi->create(tflite_settings);
+```
+
 ## Quantized models {:#quantized-models}
 
 Android GPU delegate libraries support quantized models by default. You do not
@@ -89,5 +171,6 @@ if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
   </devsite-selector>
 </div>
 
-For more information about running quantized models with GPU acceleration,
-see [GPU delegate](../../performance/gpu#quantized-models) overview.
+For more information about running quantized models with GPU acceleration, see
+[GPU delegate](https://ai.google.dev/edge/litert/performance/gpu#quantized_models)
+overview.

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_UTILS_TFRT_GRAPH_EXECUTION_STATE_H_
 #define TENSORFLOW_CORE_TFRT_UTILS_TFRT_GRAPH_EXECUTION_STATE_H_
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
@@ -24,12 +25,14 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/mlir_bridge_config_v1.pb.h"
 #include "tensorflow/core/common_runtime/graph_execution_state.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/graph_executor/config.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -52,17 +55,14 @@ class TfrtGraphExecutionState {
 
   struct Options {
     bool run_placer_grappler_on_functions = false;
-    // TODO(b/262826012): Remove the flag after we switch to using bridge.
-    bool enable_tfrt_gpu = false;
-    // TODO(b/260915352): Remove the flag and default to using bridge.
-    bool use_bridge_for_gpu = false;
     bool run_placer_on_graph = true;
   };
 
   // Creates a `GraphExecutionState` given `graph_def` and `fallback_state`.
-  static StatusOr<std::unique_ptr<TfrtGraphExecutionState>> Create(
+  static absl::StatusOr<std::unique_ptr<TfrtGraphExecutionState>> Create(
       const Options& options, tensorflow::GraphDef graph_def,
-      const FallbackState& fallback_state);
+      const FallbackState& fallback_state,
+      tensorflow::tfrt_stub::RuntimeConfig* runtime_config = nullptr);
 
   // Ctor. Do not use directly. Public only for `std::make_unique<>()`.
   TfrtGraphExecutionState(
@@ -77,11 +77,11 @@ class TfrtGraphExecutionState {
 
   // Creates an optimized graph by pruning with `graph_import_config` and
   // best-effort Grappler run.
-  StatusOr<OptimizationResult> CreateOptimizedGraph(
+  absl::StatusOr<OptimizationResult> CreateOptimizedGraph(
       tensorflow::GraphImportConfig& graph_import_config);
 
   // Extends the current graph by `graph`.
-  Status Extend(const GraphDef& graph);
+  absl::Status Extend(const GraphDef& graph);
 
   // Return the preprocessed full graph. Note that it does not contain the
   // function library in the original graph.
@@ -97,14 +97,14 @@ class TfrtGraphExecutionState {
     return graph_execution_state_->original_graph_def();
   }
 
- private:
   // Return the function library in the original graph.
   const FunctionLibraryDefinition& flib_def() const {
     absl::MutexLock lock(&graph_execution_state_mu_);
     return graph_execution_state_->flib_def();
   }
 
-  StatusOr<std::unique_ptr<tensorflow::Graph>> OptimizeGraph(
+ private:
+  absl::StatusOr<std::unique_ptr<tensorflow::Graph>> OptimizeGraph(
       const tensorflow::Graph& graph,
       const tensorflow::BuildGraphOptions& build_graph_options);
 
@@ -118,7 +118,8 @@ class TfrtGraphExecutionState {
 
   const FallbackState& fallback_state_;
   // Only valid if `options_.run_placer_grappler_on_functions` is true.
-  absl::flat_hash_set<std::string> functions_to_optimize_;
+  absl::flat_hash_set<std::string> functions_to_optimize_
+      ABSL_GUARDED_BY(graph_execution_state_mu_);
 };
 
 // Prunes the `graph_def` using the feed/fetch nodes specified in
@@ -126,23 +127,17 @@ class TfrtGraphExecutionState {
 // pruning (e.g., prunes the input edges to the feed nodes) than
 // `ComputeTransitiveFanin()` so that the graph can be functionalized properly
 // later.
-Status PruneGraphDef(GraphDef& graph_def,
-                     const CallableOptions& callable_options);
+absl::Status PruneGraphDef(GraphDef& graph_def,
+                           const CallableOptions& callable_options);
 
 // Eliminates ref variables in V1 control flow, which is required for
 // functionalization. Current strategy is to insert an identity node between
 // each ref node and its ref input and in-place update the ref node to its
 // non-ref counterpart.
-Status EliminateRefVariablesFromV1ControlFlow(GraphDef& graph_def);
+absl::Status EliminateRefVariablesFromV1ControlFlow(GraphDef& graph_def);
 
 // Removes the "_input_shapes" attribute of functions in the graph.
 void RemoveInputShapesInFunctions(tensorflow::GraphDef& graph_def);
-
-// Replaces partitioned calls in the graph that have _XlaMustCompile attribute
-// set to true with XlaLaunch op.
-// TODO(b/239089915): Clean this up after the logic is implemented in TFXLA
-// bridge.
-Status BuildXlaLaunchOps(Graph* graph);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

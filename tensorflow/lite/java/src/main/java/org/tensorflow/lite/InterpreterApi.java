@@ -431,7 +431,7 @@ public interface InterpreterApi extends AutoCloseable {
    *
    * Note that boolean types are only supported as arrays, not {@code Buffer}s, or as scalar inputs.
    *
-   * <p>Note: {@code null} values for invididual elements of {@code inputs} and {@code outputs} is
+   * <p>Note: {@code null} values for individual elements of {@code inputs} and {@code outputs} is
    * allowed only if the caller is using a {@link Delegate} that allows buffer handle interop, and
    * such a buffer has been bound to the corresponding input or output {@link Tensor}(s).
    *
@@ -488,7 +488,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code idx} is negative or is not smaller than the number
    *     of model inputs; or if error occurs when resizing the idx-th input.
    */
-  void resizeInput(int idx, @NonNull int[] dims);
+  void resizeInput(int idx, int @NonNull [] dims);
 
   /**
    * Resizes idx-th input of the native model to the given dims.
@@ -500,7 +500,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     of model inputs; or if error occurs when resizing the idx-th input. Additionally, the error
    *     occurs when attempting to resize a tensor with fixed dimensions when `strict` is True.
    */
-  void resizeInput(int idx, @NonNull int[] dims, boolean strict);
+  void resizeInput(int idx, int @NonNull [] dims, boolean strict);
 
   /** Gets the number of input tensors. */
   int getInputTensorCount();
@@ -546,6 +546,71 @@ public interface InterpreterApi extends AutoCloseable {
    *     number of model outputs.
    */
   Tensor getOutputTensor(int outputIndex);
+
+  /**
+   * Runs model inference based on SignatureDef provided through {@code signatureKey}.
+   *
+   * <p>See {@link Interpreter#run(Object, Object)} for more details on the allowed input and output
+   * data types.
+   *
+   * @param inputs A map from input name in the SignatureDef to an input object.
+   * @param outputs A map from output name in SignatureDef to output data. This may be empty if the
+   *     caller wishes to query the {@link Tensor} data directly after inference (e.g., if the
+   *     output shape is dynamic, or output buffer handles are used).
+   * @param signatureKey Signature key identifying the SignatureDef.
+   * @throws IllegalArgumentException if {@code inputs} is null or empty, if {@code outputs} or
+   *     {@code signatureKey} is null, or if an error occurs when running inference.
+   */
+  public void runSignature(
+      @NonNull Map<String, Object> inputs,
+      @NonNull Map<String, Object> outputs,
+      String signatureKey);
+
+  /**
+   * Same as {@link #runSignature(Map, Map, String)} but doesn't require passing a signatureKey,
+   * assuming the model has one SignatureDef. If the model has more than one SignatureDef it will
+   * throw an exception.
+   */
+  public void runSignature(
+      @NonNull Map<String, Object> inputs, @NonNull Map<String, Object> outputs);
+
+  /**
+   * Gets the Tensor associated with the provided input name and signature method name.
+   *
+   * @param inputName Input name in the signature.
+   * @param signatureKey Signature key identifying the SignatureDef, can be null if the model has
+   *     one signature.
+   * @throws IllegalArgumentException if {@code inputName} or {@code signatureKey} is null or empty,
+   *     or invalid name provided.
+   */
+  public Tensor getInputTensorFromSignature(String inputName, String signatureKey);
+
+  /** Gets the list of SignatureDef exported method names available in the model. */
+  public String[] getSignatureKeys();
+
+  /** Gets the list of SignatureDefs inputs for method {@code signatureKey}. */
+  public String[] getSignatureInputs(String signatureKey);
+
+  /** Gets the list of SignatureDefs outputs for method {@code signatureKey}. */
+  public String[] getSignatureOutputs(String signatureKey);
+
+  /**
+   * Gets the Tensor associated with the provided output name in specific signature method.
+   *
+   * <p>Note: Output tensor details (e.g., shape) may not be fully populated until after inference
+   * is executed. If you need updated details *before* running inference (e.g., after resizing an
+   * input tensor, which may invalidate output tensor shapes), use {@link #allocateTensors()} to
+   * explicitly trigger allocation and shape propagation. Note that, for graphs with output shapes
+   * that are dependent on input *values*, the output shape may not be fully determined until
+   * running inference.
+   *
+   * @param outputName Output name in the signature.
+   * @param signatureKey Signature key identifying the SignatureDef, can be null if the model has
+   *     one signature.
+   * @throws IllegalArgumentException if {@code outputName} or {@code signatureKey} is null or
+   *     empty, or invalid name provided.
+   */
+  public Tensor getOutputTensorFromSignature(String outputName, String signatureKey);
 
   /**
    * Returns native inference timing.

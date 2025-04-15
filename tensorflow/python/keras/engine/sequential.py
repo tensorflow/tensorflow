@@ -36,7 +36,6 @@ from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 
 SINGLE_LAYER_OUTPUT_ERROR_MSG = ('All layers in a Sequential model should have '
@@ -44,7 +43,6 @@ SINGLE_LAYER_OUTPUT_ERROR_MSG = ('All layers in a Sequential model should have '
                                  'layers, use the functional API.')
 
 
-@keras_export('keras.Sequential', 'keras.models.Sequential')
 class Sequential(functional.Functional):
   """`Sequential` groups a linear stack of layers into a `tf.keras.Model`.
 
@@ -360,7 +358,7 @@ class Sequential(functional.Functional):
     if not self._has_explicit_input_shape:
       if not tensor_util.is_tf_type(inputs) and not isinstance(
           inputs, np_arrays.ndarray):
-        # This is a Sequential with mutiple inputs. This is technically an
+        # This is a Sequential with multiple inputs. This is technically an
         # invalid use case of Sequential, but we tolerate it for backwards
         # compatibility.
         self._use_legacy_deferred_behavior = True

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_TENSOR_FLOAT_32_UTILS_H_
 #define TENSORFLOW_CORE_PLATFORM_TENSOR_FLOAT_32_UTILS_H_
 
-#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

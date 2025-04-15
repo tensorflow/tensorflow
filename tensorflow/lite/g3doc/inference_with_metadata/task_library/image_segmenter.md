@@ -196,7 +196,7 @@ from tflite_support.task import processor
 # Initialization
 base_options = core.BaseOptions(file_name=model_path)
 segmentation_options = processor.SegmentationOptions(
-    output_type=processor.SegmentationOptions.OutputType.CATEGORY_MASK)
+    output_type=processor.SegmentationOptions.output_type.CATEGORY_MASK)
 options = vision.ImageSegmenterOptions(base_options=base_options, segmentation_options=segmentation_options)
 segmenter = vision.ImageSegmenter.create_from_options(options)
 

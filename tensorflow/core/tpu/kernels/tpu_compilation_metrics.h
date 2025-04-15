@@ -15,8 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_METRICS_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_METRICS_H_
 
+#include <cstdint>
+
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace tpu {

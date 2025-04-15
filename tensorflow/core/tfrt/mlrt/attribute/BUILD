@@ -10,7 +10,6 @@ package(
         # copybara:uncomment "//smartass/brain/ops/tfrt_kernels:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt/transforms/mlrt:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt/translate/mlrt:__subpackages__",
-        "//tensorflow/core/tfrt:__subpackages__",
     ],
 )
 
@@ -23,11 +22,14 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tfrt/translate/mlrt:mlir_to_bytecode",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/mlrt/bytecode",
-        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -41,7 +43,13 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tfrt/translate/mlrt:mlir_to_bytecode",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/tfrt/mlrt/bytecode",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@local_xla//xla/tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )

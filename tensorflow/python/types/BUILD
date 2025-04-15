@@ -13,23 +13,22 @@ pytype_strict_library(
         "__init__.py",
         "core.py",
     ],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:types_allowlist",
     ],
     deps = [
         ":doc_typealias",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@typing_extensions_archive//:typing_extensions",
+        "@pypi_typing_extensions//:pkg",
     ],
 )
 
 pytype_strict_library(
     name = "data",
     srcs = ["data.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
     ],
@@ -39,7 +38,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "distribute",
     srcs = ["distribute.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
     ],
@@ -52,7 +50,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "internal",
     srcs = ["internal.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
     ],
@@ -61,7 +58,6 @@ pytype_strict_library(
 pytype_strict_library(
     name = "trace",
     srcs = ["trace.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
     ],
@@ -69,7 +65,7 @@ pytype_strict_library(
         ":core",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
-        "@typing_extensions_archive//:typing_extensions",
+        "@pypi_typing_extensions//:pkg",
     ],
 )
 
@@ -78,7 +74,6 @@ pytype_strict_library(
     srcs = [
         "doc_typealias.py",
     ],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
     ],

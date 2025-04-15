@@ -14,7 +14,6 @@
 # ==============================================================================
 """DTensor variable and saveable."""
 
-import contextlib
 import functools
 
 from tensorflow.dtensor.python import api
@@ -22,7 +21,7 @@ from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -214,18 +213,34 @@ class DVariable(resource_variable_ops.ResourceVariable):
     with ops.device(variable_device):
       # If initial tensor assigned to DVariable is DTensor, record the layout of
       # the resource so that this can be queried.
-      self.layout = None
       if context.executing_eagerly():
-        try:
-          self.layout = api.fetch_layout(initial_value)
-        except (errors.InvalidArgumentError, errors.NotFoundError):
-          # For Non-DTensor tensors, fetch layout results in expected
-          # InvalidArgument or NotFoundError depending on whether the API
-          # is called within DTensor device scope or not.
-          self.layout = None
-          pass
-      mesh = self.layout.mesh if self.layout else None
-      with api.default_mesh(mesh) if mesh else contextlib.nullcontext():
+        if api.is_dtensor(initial_value):
+          value_layout = api.fetch_layout(initial_value)
+          if layout is not None and layout != value_layout:
+            raise errors_impl.InvalidArgumentError(
+                None,
+                None,
+                'Conflicting layout are provided for initial '
+                f'value layout ({value_layout}) and variable ({layout}).',
+            )
+          layout = value_layout
+        elif layout is not None:
+          initial_value = api.relayout(initial_value, layout)
+        else:
+          raise errors_impl.InvalidArgumentError(
+              None,
+              None,
+              'Neither layout nor DTensor initial value are provided.',
+          )
+        self.layout = layout
+        with api.default_mesh(layout.mesh):
+          super(DVariable, self).__init__(
+              initial_value, *args, dtype=dtype, **kwargs
+          )
+      else:
+        # FIXME(175928457): Record value layout in graph mode.
+        if layout is not None:
+          initial_value = api.relayout(initial_value, layout)
         super(DVariable, self).__init__(
             initial_value, *args, dtype=dtype, **kwargs)
 

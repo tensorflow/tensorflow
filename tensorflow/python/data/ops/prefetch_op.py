@@ -47,5 +47,6 @@ class _PrefetchDataset(dataset_ops.UnaryUnchangedStructureDataset):
           input_dataset._variant_tensor,
           buffer_size=self._buffer_size,
           slack_period=slack_period,
+          legacy_autotune=(buffer_size == dataset_ops.AUTOTUNE),
           **self._common_args)
     super().__init__(input_dataset, variant_tensor)

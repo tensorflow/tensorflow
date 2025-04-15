@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StageSize"
   output_arg {
     name: "size"

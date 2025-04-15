@@ -114,6 +114,9 @@ SmallVector<func::FuncOp, 2> GetInitializerFunctions(ModuleOp module_op);
 func::FuncOp GetInitializerFunction(ModuleOp module_op,
                                     StringRef initializer_type);
 
+// Checks if the module restores variables from a Checkpoint.
+bool IsRestoreGraph(ModuleOp module);
+
 }  // namespace tf_saved_model
 }  // namespace mlir
 

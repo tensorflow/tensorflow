@@ -89,6 +89,10 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
     if (range_given_) {
       input_min_tensor = ctx->input(1);
       input_max_tensor = ctx->input(2);
+      OP_REQUIRES(ctx, input_min_tensor.dims() == 0,
+                  InvalidArgument("input_min must be a scalar."));
+      OP_REQUIRES(ctx, input_max_tensor.dims() == 0,
+                  InvalidArgument("input_max must be a scalar."));
       if (axis_ == -1) {
         auto min_val = input_min_tensor.scalar<T>()();
         auto max_val = input_max_tensor.scalar<T>()();

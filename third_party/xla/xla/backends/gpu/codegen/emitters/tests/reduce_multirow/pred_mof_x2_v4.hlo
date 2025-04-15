@@ -1,0 +1,29 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize \
+// RUN:   -xla-gpu-test-transform-loops | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=tmp_5:0 \
+// RUN:   --bijection_inputs=tmp_8:0 --bijection_outputs=tmp_5 \
+// RUN:   --bijection_outputs=tmp_8
+
+or {
+  tmp_0 = pred[] parameter(0)
+  tmp_1 = pred[] parameter(1)
+  ROOT tmp_2 = pred[] or(tmp_0, tmp_1)
+}
+
+fusion {
+  tmp_0 = f32[7680,16] parameter(0)
+  tmp_1 = f32[] constant(-1.70141173e+38)
+  tmp_2 = f32[7680,16] broadcast(tmp_1), dimensions={}
+  tmp_3 = pred[7680,16] compare(tmp_0, tmp_2), direction=GT
+  tmp_4 = pred[] constant(false)
+  tmp_5 = pred[7680] reduce(tmp_3, tmp_4), dimensions={1}, to_apply=or
+  tmp_6 = f32[7680,16] parameter(1)
+  tmp_7 = pred[7680,16] compare(tmp_6, tmp_2), direction=GT
+  tmp_8 = pred[7680] reduce(tmp_7, tmp_4), dimensions={1}, to_apply=or
+  ROOT tmp_9 = (pred[7680], pred[7680]) tuple(tmp_5, tmp_8)
+}
+
+// CHECK: vector.transfer_read {{.*}} vector<4xf32>
+// CHECK: gpu.shuffle down
+// CHECK: vector.transfer_read {{.*}} vector<4xf32>
+// CHECK: gpu.shuffle down

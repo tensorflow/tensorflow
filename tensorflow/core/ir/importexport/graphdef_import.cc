@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
@@ -72,6 +73,7 @@ using tensorflow::NodeDef;
 using tensorflow::OpDef;
 using tensorflow::OpRegistrationData;
 using tensorflow::OpRegistry;
+using tensorflow::StackTracesMap;
 using tensorflow::Status;
 using tensorflow::StatusOr;
 using tensorflow::StringPiece;
@@ -97,10 +99,11 @@ class GraphDefImporter {
         unknown_loc_(UnknownLoc::get(ctx_)),
         placeholder_state_(unknown_loc_, "tfg._mlir_placeholder") {
     placeholder_state_.addTypes(dialect_->getControlType());
+    stack_traces_ = LoadTracesFromDebugInfo(debug_info);
   }
 
   // Convert a GraphDef to MLIR module.
-  StatusOr<OwningOpRef<ModuleOp>> ConvertGraphDef(const GraphDef &graph);
+  absl::StatusOr<OwningOpRef<ModuleOp>> ConvertGraphDef(const GraphDef &graph);
 
  private:
   // Convert a function. This function must be thread-safe.
@@ -182,8 +185,8 @@ class GraphDefImporter {
   Status ConvertNodeDef(OpBuilder &builder, ConversionState &s,
                         const NodeDef &node);
   // Resolve a data result reference.
-  static StatusOr<Value> ResolveDataResult(const ResultId &id,
-                                           ResultInfo *info);
+  static absl::StatusOr<Value> ResolveDataResult(const ResultId &id,
+                                                 ResultInfo *info);
 
   // Get a named result.
   struct Result {
@@ -192,7 +195,7 @@ class GraphDefImporter {
     ResultId id;
     ResultInfo *info = nullptr;
   };
-  StatusOr<Result> GetResult(ConversionState &s, StringPiece name);
+  absl::StatusOr<Result> GetResult(ConversionState &s, StringPiece name);
 
   // Convert TF datatypes to unranked MLIR tensor types.
   Status ConvertDataTypesToUnrankedTensorTypes(const DataTypeVector &dtypes,
@@ -204,9 +207,9 @@ class GraphDefImporter {
   // TODO(jeffniu): This is a re-implementation of `ArgNumType` in
   // `core/framework/function.cc` on `NamedAttrList` because the default
   // attributes need to be added. Find a way to do this in one pass.
-  StatusOr<unsigned> ArgNumType(const NamedAttrList &attrs,
-                                const OpDef::ArgDef &arg_def,
-                                SmallVectorImpl<Type> &types);
+  absl::StatusOr<unsigned int> ArgNumType(const NamedAttrList &attrs,
+                                          const OpDef::ArgDef &arg_def,
+                                          SmallVectorImpl<Type> &types);
   // Convert function attributes to MLIR attributes.
   Status ConvertFunctionAttributes(
       const absl::flat_hash_map<StringPiece, StringPiece> &gradient_map,
@@ -234,6 +237,8 @@ class GraphDefImporter {
   Location unknown_loc_;
   // Operation state for creating placeholder ops.
   OperationState placeholder_state_;
+
+  StackTracesMap stack_traces_;
 
   // Map of function OpDefs.
   absl::flat_hash_map<StringPiece, const OpDef *> function_op_defs_;
@@ -265,7 +270,7 @@ static bool IsGenericFunction(const FunctionDef &fdef) {
   return false;
 }
 
-StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
+absl::StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
     const GraphDef &graph) {
   // Create the module.
   OwningOpRef<ModuleOp> module = ModuleOp::create(unknown_loc_);
@@ -309,7 +314,7 @@ StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
           ConvertFunctionDef(func_op, gradient_map, function),
           "While importing function: ", function.signature().name());
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   };
 
   // TODO(jeffniu): Don't import functions in parallel if there are too few (how
@@ -409,7 +414,7 @@ Status GraphDefImporter::ConvertFunctionAttributes(
     attrs.append(op.getResourceArgUniqueIdsValuesAttrName(),
                  b_.getI32TensorAttr(resource_arg_unique_ids_values));
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphDefImporter::ConvertArgumentAttributes(const OpDef::ArgDef &def,
@@ -432,7 +437,7 @@ Status GraphDefImporter::ConvertArgumentAttributes(const OpDef::ArgDef &def,
                         ConvertAttribute(def.experimental_full_type(), b_));
     attrs.append(dialect_->getTfgFullTypeAttrIdentifier(), full_type);
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Location GraphDefImporter::ConvertLocation(const NodeDef &node) {
@@ -463,15 +468,19 @@ Location GraphDefImporter::ConvertLocation(StringRef node_name,
   auto name_loc_id = b_.getStringAttr(name_loc);
 
   SmallVector<Location> locs;
-  const auto &traces = debug_info_.traces();
+
   // Try to find a stack trace to convert to locations.
-  auto it = traces.find(debug_info_key);
-  if (it != traces.end()) {
-    const auto &trace = it->second;
-    locs.reserve(trace.file_line_cols_size());
-    for (const auto &loc : trace.file_line_cols()) {
-      auto file_name = b_.getStringAttr(debug_info_.files(loc.file_index()));
-      locs.push_back(FileLineColLoc::get(file_name, loc.line(), loc.col()));
+  auto it = stack_traces_.find(name_loc);
+  if (it == stack_traces_.end()) {
+    it = stack_traces_.find(debug_info_key);
+  }
+  if (it != stack_traces_.end()) {
+    std::shared_ptr<tensorflow::AbstractStackTrace> trace = it->second;
+    auto frames = trace->ToFrames();
+    locs.reserve(frames.size());
+    for (const auto &frame : frames) {
+      auto file_attr = b_.getStringAttr(frame.file_name);
+      locs.push_back(FileLineColLoc::get(file_attr, frame.line_number, 1));
     }
   }
 
@@ -485,8 +494,8 @@ Location GraphDefImporter::ConvertLocation(StringRef node_name,
                                : CallSiteLoc::get(node_name_loc, callsite_locs);
 }
 
-StatusOr<Value> GraphDefImporter::ResolveDataResult(const ResultId &id,
-                                                    ResultInfo *info) {
+absl::StatusOr<Value> GraphDefImporter::ResolveDataResult(const ResultId &id,
+                                                          ResultInfo *info) {
   if (id.output.empty()) {
     if (id.index >= info->data.size()) {
       return InvalidArgument("Result #", id.index, " of node '", id.node.str(),
@@ -507,7 +516,7 @@ StatusOr<Value> GraphDefImporter::ResolveDataResult(const ResultId &id,
   return it->second[id.index];
 }
 
-StatusOr<GraphDefImporter::Result> GraphDefImporter::GetResult(
+absl::StatusOr<GraphDefImporter::Result> GraphDefImporter::GetResult(
     ConversionState &s, StringPiece name) {
   TensorId tensor_id = tensorflow::ParseTensorName(name);
   ResultId id{tensor_id.index()};
@@ -640,7 +649,7 @@ Status GraphDefImporter::ConvertFunctionDef(
                     TypeAttr::get(b_.getFunctionType(arg_types, res_types)));
   func_op->setAttrs(func_attrs.getDictionary(ctx_));
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphDefImporter::ConvertNodes(
@@ -693,18 +702,18 @@ Status GraphDefImporter::ConvertNodes(
   // delete it from the IR.
   s.Finalize();
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
-                                                const OpDef::ArgDef &arg_def,
-                                                SmallVectorImpl<Type> &types) {
+absl::StatusOr<unsigned int> GraphDefImporter::ArgNumType(
+    const NamedAttrList &attrs, const OpDef::ArgDef &arg_def,
+    SmallVectorImpl<Type> &types) {
   // Check whether a type list attribute is specified.
   if (!arg_def.type_list_attr().empty()) {
-    if (auto v =
-            attrs.get(arg_def.type_list_attr()).dyn_cast_or_null<ArrayAttr>()) {
+    if (auto v = mlir::dyn_cast_or_null<ArrayAttr>(
+            attrs.get(arg_def.type_list_attr()))) {
       for (Attribute attr : v) {
-        if (auto dtype = attr.dyn_cast<TypeAttr>()) {
+        if (auto dtype = mlir::dyn_cast<TypeAttr>(attr)) {
           types.push_back(UnrankedTensorType::get(dtype.getValue()));
         } else {
           return InvalidArgument("Expected '", arg_def.type_list_attr(),
@@ -719,8 +728,8 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
   unsigned num = 1;
   // Check whether a number attribute is specified.
   if (!arg_def.number_attr().empty()) {
-    if (auto v =
-            attrs.get(arg_def.number_attr()).dyn_cast_or_null<IntegerAttr>()) {
+    if (auto v = mlir::dyn_cast_or_null<IntegerAttr>(
+            attrs.get(arg_def.number_attr()))) {
       num = v.getValue().getZExtValue();
     } else {
       return NotFound("Type attr not found: ", arg_def.number_attr());
@@ -735,7 +744,8 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
     return InvalidArgument("Arg '", arg_def.name(),
                            "' has invalid type and no type attribute");
   } else {
-    if (auto v = attrs.get(arg_def.type_attr()).dyn_cast_or_null<TypeAttr>()) {
+    if (auto v =
+            mlir::dyn_cast_or_null<TypeAttr>(attrs.get(arg_def.type_attr()))) {
       dtype = v.getValue();
     } else {
       return NotFound("Type attr not found: ", arg_def.type_attr());
@@ -782,7 +792,7 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
     TF_ASSIGN_OR_RETURN(tf_type::FullTypeAttr full_type,
                         ConvertAttribute(full_type_def, b_));
     state.addAttribute(dialect_->getFullTypeAttrIdentifier(), full_type);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   };
   if (node.has_experimental_type()) {
     TF_RETURN_IF_ERROR(add_full_type(node.experimental_type()));
@@ -814,6 +824,9 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
   // Get the result types. Ops can have multiple named results. Track the
   // segment sizes.
   SmallVector<std::pair<unsigned, unsigned>> result_segments;
+
+  if (op_def->output_arg_size() < 0)
+    return InvalidArgument("Node ", node.name(), " output arg size < 0");
   result_segments.reserve(op_def->output_arg_size());
   state.types.reserve(op_def->output_arg_size() + 1);
   for (const OpDef::ArgDef &def : op_def->output_arg()) {
@@ -890,7 +903,7 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
   }
   info->backedges.clear();
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphDefImporter::ConvertDataTypesToUnrankedTensorTypes(
@@ -900,18 +913,18 @@ Status GraphDefImporter::ConvertDataTypesToUnrankedTensorTypes(
     TF_RETURN_IF_ERROR(ConvertDataType(tf_dtype, b_, &dtype));
     results.push_back(UnrankedTensorType::get(dtype));
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(MLIRContext *context,
-                                               const GraphDebugInfo &debug_info,
-                                               const GraphDef &graph_def) {
+absl::StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(
+    MLIRContext *context, const GraphDebugInfo &debug_info,
+    const GraphDef &graph_def) {
   GraphDefImporter importer(context->getOrLoadDialect<TFGraphDialect>(),
                             *OpRegistry::Global(), debug_info);
   return importer.ConvertGraphDef(graph_def);
 }
 
-StatusOr<OwningOpRef<ModuleOp>> ImportGraphAndFunctionsToMlir(
+absl::StatusOr<OwningOpRef<ModuleOp>> ImportGraphAndFunctionsToMlir(
     MLIRContext *context, const GraphDebugInfo &debug_info, const Graph &graph,
     const FunctionLibraryDefinition &flib_def) {
   // TODO(b/231723721): This conversion path is slow because both the graph and

@@ -55,8 +55,8 @@ ResourceHandle::ResourceHandle(const ResourceHandleProto& proto) {
   TF_CHECK_OK(FromProto(proto));
 }
 
-Status ResourceHandle::BuildResourceHandle(const ResourceHandleProto& proto,
-                                           ResourceHandle* out) {
+absl::Status ResourceHandle::BuildResourceHandle(
+    const ResourceHandleProto& proto, ResourceHandle* out) {
   if (out == nullptr)
     return errors::Internal(
         "BuildResourceHandle() was called with nullptr for the output");
@@ -78,7 +78,7 @@ void ResourceHandle::AsProto(ResourceHandleProto* proto) const {
   }
 }
 
-Status ResourceHandle::FromProto(const ResourceHandleProto& proto) {
+absl::Status ResourceHandle::FromProto(const ResourceHandleProto& proto) {
   set_device(proto.device());
   set_container(proto.container());
   set_name(proto.name());
@@ -88,7 +88,7 @@ Status ResourceHandle::FromProto(const ResourceHandleProto& proto) {
   for (const auto& dtype_and_shape : proto.dtypes_and_shapes()) {
     DataType dtype = dtype_and_shape.dtype();
     PartialTensorShape shape;
-    Status s = PartialTensorShape::BuildPartialTensorShape(
+    absl::Status s = PartialTensorShape::BuildPartialTensorShape(
         dtype_and_shape.shape(), &shape);
     if (!s.ok()) {
       return s;
@@ -96,7 +96,7 @@ Status ResourceHandle::FromProto(const ResourceHandleProto& proto) {
     dtypes_and_shapes.push_back(DtypeAndPartialTensorShape{dtype, shape});
   }
   dtypes_and_shapes_ = std::move(dtypes_and_shapes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string ResourceHandle::SerializeAsString() const {
@@ -138,15 +138,16 @@ ResourceHandle ResourceHandle::MakeRefCountingHandle(
   // and they get process-unique handle names.
   result.set_container("Anonymous");
   result.set_definition_stack_trace(definition_stack_trace);
-  result.set_name(
-      absl::StrFormat("Resource-%d-at-%p", GenerateUniqueId(), resource));
+  auto resource_id = GenerateUniqueId();
+  std::string handle_name = resource->MakeRefCountingHandleName(resource_id);
+  result.set_name(handle_name);
   result.set_hash_code(type_index.hash_code());
   result.set_maybe_type_name(type_index.name());
   result.set_dtypes_and_shapes(dtypes_and_shapes);
   return result;
 }
 
-Status ResourceHandle::ValidateType(const TypeIndex& type_index) const {
+absl::Status ResourceHandle::ValidateType(const TypeIndex& type_index) const {
   if (type_index.hash_code() != hash_code()) {
     return errors::InvalidArgument(
         "Trying to access a handle's resource using the wrong type. ",
@@ -156,7 +157,7 @@ Status ResourceHandle::ValidateType(const TypeIndex& type_index) const {
         port::Demangle(type_index.name()), "' (hash code ",
         type_index.hash_code(), ")");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::atomic<int64_t> ResourceHandle::current_id_;

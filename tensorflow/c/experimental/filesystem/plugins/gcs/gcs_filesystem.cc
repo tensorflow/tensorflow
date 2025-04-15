@@ -17,8 +17,21 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <functional>
+#include <ios>
+#include <memory>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "absl/base/thread_annotations.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/variant.h"
 #include "google/cloud/storage/client.h"
 #include "tensorflow/c/env.h"
@@ -771,9 +784,9 @@ static std::vector<std::string> GetChildrenBounded(
       return result;
     }
     auto value = *std::move(item);
-    std::string children = absl::holds_alternative<std::string>(value)
-                               ? absl::get<std::string>(value)
-                               : absl::get<gcs::ObjectMetadata>(value).name();
+    std::string children = std::holds_alternative<std::string>(value)
+                               ? std::get<std::string>(value)
+                               : std::get<gcs::ObjectMetadata>(value).name();
     auto pos = children.find(prefix);
     if (pos != 0) {
       TF_SetStatus(status, TF_INTERNAL,

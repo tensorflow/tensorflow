@@ -57,7 +57,7 @@ class EvaluateConstantTensorTest : public ::testing::Test {
     return *this;
   }
 
-  StatusOr<std::optional<Tensor>> Run(const Output& output) {
+  absl::StatusOr<std::optional<Tensor>> Run(const Output& output) {
     TF_RETURN_IF_ERROR(scope_.status());
     const auto& graph = *scope_.graph();
     ShapeRefiner refiner(graph.versions(), graph.op_registry());

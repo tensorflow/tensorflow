@@ -81,7 +81,7 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
 
   def test_mesh(self):
     strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
-    self.assertEqual(strategy._mesh, self.mesh)
+    self.assertEqual(strategy.mesh, self.mesh)
 
   def test_strategy_extension(self):
     strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
@@ -513,7 +513,7 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
   def test_explicit_device_list(self):
     device_list = [f'/{self.device_type}:{i}' for i in range(2)]
     strategy = mirrored_strategy.MirroredStrategy(devices=device_list)
-    mesh = strategy._mesh
+    mesh = strategy.mesh
     self.assertEqual(mesh.num_local_devices(), 2)
     self.assertEqual(mesh.shape(), [2,])
     self.assertEqual(mesh.dim_names, ['batch'])
@@ -528,7 +528,7 @@ class StrategyCreationTest(test_util.DTensorBaseTest):
 
   def test_implicit_device_list(self):
     strategy = mirrored_strategy.MirroredStrategy()
-    mesh = strategy._mesh
+    mesh = strategy.mesh
     self.assertEqual(mesh.num_local_devices(), 2)
     self.assertEqual(mesh.shape(), [2,])
     self.assertIn(

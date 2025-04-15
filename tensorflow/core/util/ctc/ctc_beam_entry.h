@@ -21,7 +21,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -107,7 +107,8 @@ struct BeamEntry {
   BeamEntry(BeamEntry* p, int l, BeamRoot<T, CTCBeamState>* beam_root)
       : parent(p), label(l), beam_root(beam_root) {}
   BeamRoot<T, CTCBeamState>* beam_root;
-  TF_DISALLOW_COPY_AND_ASSIGN(BeamEntry);
+  BeamEntry(const BeamEntry&) = delete;
+  void operator=(const BeamEntry&) = delete;
 };
 
 // This class owns all instances of BeamEntry.  This is used to avoid recursive

@@ -31,7 +31,7 @@ class BCastArgsOp : public OpKernel {
     OP_REQUIRES(
         ctx, ctx->num_inputs() == 2,
         errors::Unimplemented("Broadcast for n-ary operations (n > 2)"));
-    gtl::InlinedVector<BCast::Vec, 4> shapes;
+    absl::InlinedVector<BCast::Vec, 4UL> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const Tensor& in = ctx->input(i);
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in.shape()),
@@ -63,7 +63,8 @@ class BCastArgsOp : public OpKernel {
     }
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BCastArgsOp);
+  BCastArgsOp(const BCastArgsOp&) = delete;
+  void operator=(const BCastArgsOp&) = delete;
 };
 
 // Given shapes of two tensors, computes the reduction indices for the
@@ -80,7 +81,7 @@ class BCastGradArgsOp : public OpKernel {
     OP_REQUIRES(
         ctx, ctx->num_inputs() == 2,
         errors::Unimplemented("Broadcast for n-ary operations (n > 2)"));
-    gtl::InlinedVector<BCast::Vec, 4> shapes;
+    absl::InlinedVector<BCast::Vec, 4UL> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const Tensor& in = ctx->input(i);
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in.shape()),
@@ -113,7 +114,8 @@ class BCastGradArgsOp : public OpKernel {
     }
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BCastGradArgsOp);
+  BCastGradArgsOp(const BCastGradArgsOp&) = delete;
+  void operator=(const BCastGradArgsOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseSlice"
   input_arg {
     name: "indices"

@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_CONVERT_TYPE_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_CONVERT_TYPE_H_
 
+#include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {
 class Builder;
@@ -39,7 +39,7 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder);
 tensorflow::DataType TflTypeToTfType(tflite::TensorType type);
 
 // Convert the Tensorflow scalar type to the corresponding TFLite type
-xla::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type);
+absl::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type);
 
 // Returns element type from attribute Type 'type_attr'.
 mlir::Type GetShapeStrippedType(mlir::TypeAttr type_attr);

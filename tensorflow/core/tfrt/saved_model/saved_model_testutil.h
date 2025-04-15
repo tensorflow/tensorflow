@@ -29,8 +29,10 @@ limitations under the License.
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
+#if defined(PLATFORM_GOOGLE)
 ABSL_DECLARE_FLAG(bool, enable_optimizer);
 ABSL_DECLARE_FLAG(std::string, force_data_format);
+#endif
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -38,8 +40,16 @@ namespace tfrt_stub {
 std::unique_ptr<tensorflow::tfrt_stub::Runtime> DefaultTfrtRuntime(
     int num_threads);
 
+struct UserSavedModelOptions {
+  bool enable_mlrt = false;
+  bool enable_optimizer = false;
+  bool enable_grappler = false;
+  std::string force_data_format = "";
+};
+
 SavedModel::Options DefaultSavedModelOptions(
-    tensorflow::tfrt_stub::Runtime* runtime);
+    tensorflow::tfrt_stub::Runtime* runtime,
+    std::optional<UserSavedModelOptions> user_options = std::nullopt);
 
 class TFRTSavedModelTest {
  public:

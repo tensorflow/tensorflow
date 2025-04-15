@@ -19,10 +19,13 @@ import os
 import re
 import sys
 import traceback
+from typing import Any, Callable, Dict, List, Tuple
 
 from absl import logging
 
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
@@ -36,11 +39,11 @@ from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
+from tensorflow.python.eager.polymorphic_function import concrete_function as cf
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import saved_model_exported_concrete
 from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as framework_fn
 from tensorflow.python.framework import meta_graph
@@ -76,6 +79,7 @@ from tensorflow.python.training.saving import trace_saveable_util
 from tensorflow.python.types import core as types_core
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
+from tensorflow.python.util import tf_stack
 from tensorflow.python.util.tf_export import tf_export
 # Placeholder for protosplitter import.
 
@@ -124,7 +128,11 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
 
     self.untraced_functions = []
 
-  def set_signature(self, signature_map, wrapped_functions):
+  def set_signature(
+      self,
+      signature_map: signature_serialization._SignatureMap,
+      wrapped_functions: Dict[Callable[..., Any], Callable[..., Any]],
+  ):
     """Attach signature to the root object.
 
     Args:
@@ -194,17 +202,20 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
     for name, child in self._children_cache[obj].items():
       yield base.TrackableReference(name, child)
 
-  def get_child(self, obj, name):
+  def get_child(self, obj, name: str):
     return self._children_cache[obj][name]
 
-  def _maybe_uncache_variable_captures(self, concrete_function):
+  def _maybe_uncache_variable_captures(
+      self, concrete_function: cf.ConcreteFunction
+  ):
     if concrete_function in self._wrapped_functions:
       return self._wrapped_functions[concrete_function]
     for capture in concrete_function.captured_inputs:
       if hasattr(capture, "_cached_variable"):
         if concrete_function not in self._wrapped_functions:
           wrapped = self._wrapped_functions[concrete_function] = (
-              function_serialization.wrap_cached_variables(concrete_function))
+              function_serialization.wrap_cached_variables(concrete_function)
+          )
           return wrapped
     return concrete_function
 
@@ -255,16 +266,19 @@ class _SaveableView(object):
   ignored.
   """
 
-  def __init__(self, augmented_graph_view, options):
+  def __init__(
+      self,
+      augmented_graph_view: _AugmentedGraphView,
+      options: save_options.SaveOptions,
+  ):
     """Initializes a SaveableView.
 
     Args:
       augmented_graph_view: A GraphView object.
       options: A SaveOptions instance.
     """
-
     self.augmented_graph_view = augmented_graph_view
-    self._options = options
+    self.options = options
 
     (self._trackable_objects, self.node_paths, self.node_ids,
      self._slot_variables, self.object_names) = (
@@ -341,7 +355,9 @@ class _SaveableView(object):
   def root(self):
     return self.nodes[0]
 
-  def fill_object_graph_proto(self, proto):
+  def fill_object_graph_proto(
+      self, proto: saved_object_graph_pb2.SavedObjectGraph
+  ):
     """Populate the nodes, children and slot_variables of a SavedObjectGraph."""
     for node_id, node in enumerate(self.nodes):
       assert self.node_ids[node] == node_id
@@ -403,9 +419,8 @@ class _SaveableView(object):
     for node_id in _dependency_sorted_node_ids(self):
       obj = self.nodes[node_id]
       tensors = obj._export_to_saved_model_graph(  # pylint: disable=protected-access
-          object_map=object_map,
-          tensor_map=tensor_map,
-          options=self._options)
+          object_map=object_map, tensor_map=tensor_map, options=self.options
+      )
       if isinstance(obj, asset.Asset):
         _add_asset_info(obj, asset_info, tensor_map[obj.asset_path])
       if tensors:
@@ -432,7 +447,9 @@ class _SaveableView(object):
     return concrete_initializers
 
 
-def _gen_save_and_restore_functions(checkpoint_factory_map):
+def _gen_save_and_restore_functions(
+    checkpoint_factory_map: object_identity.ObjectIdentityDictionary,
+) -> object_identity.ObjectIdentityDictionary:
   """Generates global and individual save/restore concrete functions.
 
   The global functions records the ops to save and restore the entire object to
@@ -481,7 +498,7 @@ def _tensor_dict_to_tensorinfo(tensor_dict):
   }
 
 
-def _to_safe_name_scope(signature_key, user_input_name):
+def _to_safe_name_scope(signature_key: str, user_input_name: str):
   """Creates a sanitized name scope from user signature and input names.
 
   Concatenates signature and input names, sanitizing as needed to be a valid
@@ -502,7 +519,10 @@ def _to_safe_name_scope(signature_key, user_input_name):
 
 
 def _map_function_arguments_to_created_inputs(
-    function_arguments, signature_key, function_name, defaults=None
+    function_arguments: List[Any],
+    signature_key: str,
+    function_name: bytes,
+    defaults=None,
 ):
   """Creates exterior placeholders in the exported graph for function arguments.
 
@@ -585,7 +605,11 @@ def _map_function_arguments_to_created_inputs(
   return mapped_inputs, exterior_argument_placeholders
 
 
-def _generate_signatures(signature_functions, object_map, defaults=None):
+def _generate_signatures(
+    signature_functions: dict[str, Callable[..., Any]],
+    object_map: object_identity.ObjectIdentityDictionary,
+    defaults=None,
+):
   """Validates and calls `signature_functions` in the exported graph.
 
   Args:
@@ -650,11 +674,16 @@ _AssetInfo = collections.namedtuple(
         # Map from base asset filenames to full paths
         "asset_filename_map",
         # Map from Asset to index of corresponding AssetFileDef
-        "asset_index"
-    ])
+        "asset_index",
+    ],
+)
 
 
-def _add_asset_info(trackable_asset, asset_info, mapped_path_variable):
+def _add_asset_info(
+    trackable_asset,
+    asset_info: _AssetInfo,
+    mapped_path_variable: resource_variable_ops.ResourceVariable,
+):
   """Add `trackable_asset` to `asset_info`."""
   original_path_tensor = trackable_asset.asset_path
   original_path = tensor_util.constant_value(original_path_tensor)
@@ -677,7 +706,7 @@ def _add_asset_info(trackable_asset, asset_info, mapped_path_variable):
   asset_info.asset_index[trackable_asset] = len(asset_info.asset_defs) - 1
 
 
-def _iterate_op_types(fn):
+def _iterate_op_types(fn: Callable[..., Any]):
   """Iterates through each op in the function and returns the op type and op."""
   if isinstance(fn, framework_fn._DefinedFunction):  # pylint: disable=protected-access
     for node in fn.definition.node_def:
@@ -697,7 +726,11 @@ def _iterate_op_types(fn):
       yield op_type, op
 
 
-def _get_outer_most_capture(fn, capture, func_graph_map):
+def _get_outer_most_capture(
+    fn: Callable[..., Any],
+    capture: _CapturedTensor,
+    func_graph_map: Dict[ops.Graph, Callable[..., Any]],
+):
   """Tries to find the original captured tensor if capture more than once."""
   outer_fn = fn
   while outer_fn is not None and not isinstance(capture, ops.EagerTensor):
@@ -714,7 +747,7 @@ def _get_outer_most_capture(fn, capture, func_graph_map):
   return outer_fn, capture
 
 
-def _trace_gradient_functions(graph, saveable_view):
+def _trace_gradient_functions(graph: ops.Graph, saveable_view: _SaveableView):
   """Traces gradient functions and records them in the SaveableView."""
   functions = list(graph._functions.values())  # pylint: disable=protected-access
   func_graph_map = {f.graph: f for f in functions if hasattr(f, "graph")}
@@ -810,14 +843,105 @@ def _trace_gradient_functions(graph, saveable_view):
       saveable_view.gradient_defs.append(grad_def)
 
 
+def _strip_debug_nodes(meta_graph_def: meta_graph_pb2.MetaGraphDef) -> None:
+  """An experimental function to remove debug nodes from the final graph.
+
+  This function removes all Assert and CheckNumerics nodes from the meta_graph.
+  It strips the operators in both the nodes and in all of the function defs,
+  with the Assert ops being replaced by `NoOp`s and the CheckNumerics ops being
+  transformed into `Identity` ops. In addition to this, it creates control
+  inputs for the nodes that are not relevant for the op. For more information
+  about control inputs please see go/how-tensors-flow#control-dependencies.
+
+  Args:
+   meta_graph_def: The meta_graph that will be exported.
+  """
+
+  def erase_regular_node_attributes(node: node_def_pb2.NodeDef) -> None:
+    """Erases regular node attributes."""
+    attributes_to_remove = [
+        attribute
+        for attribute in node.attr.keys()
+        if not attribute.startswith("_")
+    ]
+    for attribute in attributes_to_remove:
+      node.attr.pop(attribute)
+
+  def prune_all_non_t_attributes(node: node_def_pb2.NodeDef) -> None:
+    """Prunes all attributes that are not `T`."""
+    if "T" in node.attr:
+      t_value = node.attr["T"]
+      node.ClearField("attr")
+      node.attr["T"].CopyFrom(t_value)
+    else:
+      node.ClearField("attr")
+
+  def is_control_input(name: str) -> str:
+    """Returns whether or not the input is a control input."""
+    return name and name[0] == "^"
+
+  def as_control_dep(name: str) -> str:
+    """Returns the input as a control dependency."""
+    return "^" + name.split(":")[0]
+
+  def maybe_do_strip(node: node_def_pb2.NodeDef) -> None:
+    """Strips the graph from Assert and CheckNumerics ops.
+
+    For Assert ops, this function also rewrites all of the inputs to the nodes
+    that were transformed by making them into control dependencies. It also
+    removes all of the regular node attributes, that is all node attributes
+    that do not start with `_`.
+
+    For CheckNumerics ops, this function turns the op into an Identity op,
+    which will be pruned later (according to the original implementation in
+    grappler's `debug_stripper.cc`. Then, since Identity ops only take one
+    input, it leaves the first input as is while transforming the other ones
+    into control dependencies.
+
+    Args:
+      node: The node to potentally strip.
+    """
+    if node.op == "Assert" or node.op == "PrintV2":
+      node.op = "NoOp"
+      erase_regular_node_attributes(node)
+      new_inputs = []
+      for inp in node.input:
+        if not is_control_input(inp):
+          new_inputs.append(as_control_dep(inp))
+        else:
+          new_inputs.append(inp)
+      node.ClearField("input")
+      node.input.extend(new_inputs)
+    elif node.op == "CheckNumerics" or node.op == "Print":
+      # The identity op will be pruned later.
+      node.op = "Identity"
+      prune_all_non_t_attributes(node)
+      # As Identity op only takes one input, mark redundant inputs as control
+      # inputs.
+      for i in range(1, len(node.input)):
+        if not is_control_input(node.input[i]):
+          node.input[i] = as_control_dep(node.input[i])
+
+  # First, we strip the assert nodes from the graph.
+  for node in meta_graph_def.graph_def.node:
+    maybe_do_strip(node)
+
+  # Then, we strip the assert nodes from all of the function defs.
+  for func in meta_graph_def.graph_def.library.function:
+    for node in func.node_def:
+      maybe_do_strip(node)
+
+
 def _fill_meta_graph_def(
-    meta_graph_def,
-    saveable_view,
-    signature_functions,
-    namespace_whitelist,
-    save_custom_gradients,
+    meta_graph_def: meta_graph_pb2.MetaGraphDef,
+    saveable_view: _SaveableView,
+    signature_functions: Dict[str, Callable[..., Any]],
+    namespace_whitelist: List[str],
+    save_custom_gradients: bool,
+    create_saver: bool,
+    enable_debug_stripper: bool,
     defaults=None,
-):
+) -> Tuple[_AssetInfo, ops.Graph]:
   """Generates a MetaGraph which calls `signature_functions`.
 
   Args:
@@ -827,6 +951,8 @@ def _fill_meta_graph_def(
       functions containing signatures to add to the MetaGraph.
     namespace_whitelist: List of strings containing whitelisted op namespaces.
     save_custom_gradients: Whether to save custom gradients.
+    create_saver: Whether to add SavedModel's native save and restore ops.
+    enable_debug_stripper: Whether to strip the debug nodes from the graph.
     defaults: A dictionary mapping signature_key to dictionary of
       user_specified_name to Tensor representing default values.
 
@@ -891,12 +1017,15 @@ def _fill_meta_graph_def(
           object_map=object_map,
           to_graph=exported_graph,
           call_with_mapped_captures=call_with_mapped_captures))
-  saver = functional_saver.MultiDeviceSaver.from_saveables(
-      named_saveable_objects, registered_savers, call_with_mapped_captures)
 
-  with exported_graph.as_default():
-    saver_def = saver.to_proto()
-    meta_graph_def.saver_def.CopyFrom(saver_def)
+  if create_saver:
+    saver = functional_saver.MultiDeviceSaver.from_saveables(
+        named_saveable_objects, registered_savers, call_with_mapped_captures
+    )
+
+    with exported_graph.as_default():
+      saver_def = saver.to_proto()
+      meta_graph_def.saver_def.CopyFrom(saver_def)
 
   # At this point all nodes that can be added to the SavedObjectGraph have been
   # added, so run the following to validate deserialization dependencies.
@@ -909,13 +1038,14 @@ def _fill_meta_graph_def(
 
   meta_graph_def.graph_def.CopyFrom(graph_def)
   meta_graph_def.meta_info_def.tags.append(tag_constants.SERVING)
+  if saveable_view.options.extra_tags:
+    for tag in saveable_view.options.extra_tags:
+      meta_graph_def.meta_info_def.tags.append(tag)
   meta_graph_def.meta_info_def.tensorflow_version = versions.__version__
   meta_graph_def.meta_info_def.tensorflow_git_version = (
       versions.__git_version__)
   # We currently always strip default attributes.
   meta_graph_def.meta_info_def.stripped_default_attrs = True
-  meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
-      meta_graph.stripped_op_list_for_graph(meta_graph_def.graph_def))
   meta_graph_def.asset_file_def.extend(asset_info.asset_defs)
   for signature_key, signature in signatures.items():
     meta_graph_def.signature_def[signature_key].CopyFrom(signature)
@@ -923,10 +1053,14 @@ def _fill_meta_graph_def(
   # store tensor_content in litle endian format
   if sys.byteorder == "big":
     utils_impl.swap_function_tensor_content(meta_graph_def, "big", "little")
+  if enable_debug_stripper:
+    _strip_debug_nodes(meta_graph_def)
+  meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
+      meta_graph.stripped_op_list_for_graph(meta_graph_def.graph_def))
   return asset_info, exported_graph
 
 
-def _verify_ops(graph_def, namespace_whitelist):
+def _verify_ops(graph_def: graph_pb2.GraphDef, namespace_whitelist):
   """Verifies that all namespaced ops in the graph are whitelisted.
 
   Args:
@@ -967,7 +1101,7 @@ def _verify_ops(graph_def, namespace_whitelist):
         f"argument in tf.saved_model.SaveOptions: {invalid_namespaces}.")
 
 
-def _dependency_sorted_node_ids(saveable_view):
+def _dependency_sorted_node_ids(saveable_view: _SaveableView):
   """Returns topologically sorted nodes, sorted by dependencies."""
   dependency_map = {}
   for node in saveable_view.nodes:
@@ -1007,7 +1141,9 @@ def _dependency_sorted_node_ids(saveable_view):
         f"\n>> Unresolved cyclic dependencies:\n{pretty_printed_dependencies}")
 
 
-def _serialize_object_graph(saveable_view, asset_file_def_index):
+def _serialize_object_graph(
+    saveable_view: _SaveableView, asset_file_def_index
+):
   """Save a SavedObjectGraph proto for `root`."""
   # SavedObjectGraph is similar to the TrackableObjectGraph proto in the
   # checkpoint. It will eventually go into the SavedModel.
@@ -1017,17 +1153,27 @@ def _serialize_object_graph(saveable_view, asset_file_def_index):
   for concrete_function in saveable_view.concrete_and_gradient_functions:
     name = compat.as_text(concrete_function.name)
     serialized = function_serialization.serialize_concrete_function(
-        concrete_function, saveable_view.captured_tensor_node_ids)
+        concrete_function, saveable_view.captured_tensor_node_ids
+    )
     if serialized is not None:
       proto.concrete_functions[name].CopyFrom(serialized)
 
   for obj, obj_proto in zip(saveable_view.nodes, proto.nodes):
-    _write_object_proto(obj, obj_proto, asset_file_def_index,
-                        saveable_view.augmented_graph_view.list_children)
+    _write_object_proto(
+        obj,
+        obj_proto,
+        asset_file_def_index,
+        saveable_view.augmented_graph_view.list_children,
+    )
   return proto
 
 
-def _write_object_proto(obj, proto, asset_file_def_index, list_children_fn):
+def _write_object_proto(
+    obj,
+    proto: saved_object_graph_pb2.SavedObject,
+    asset_file_def_index,
+    list_children_fn,
+):
   """Saves an object into SavedObject proto."""
   if isinstance(obj, asset.Asset):
     proto.asset.SetInParent()
@@ -1067,7 +1213,7 @@ def _write_object_proto(obj, proto, asset_file_def_index, list_children_fn):
       proto.serialized_user_proto.Pack(serialized_user_proto)
 
 
-def _export_debug_info(exported_graph, export_dir):
+def _export_debug_info(exported_graph: ops.Graph, export_dir: str):
   """Exports debug information from graph to file.
 
   Creates and writes GraphDebugInfo with traces for ops in all functions of the
@@ -1077,16 +1223,14 @@ def _export_debug_info(exported_graph, export_dir):
     exported_graph: A Graph that has been created by tracing a saveable view.
     export_dir: SavedModel directory in which to write the debug info.
   """
-  per_fn_info = []
+  debug_builder = tf_stack.GraphDebugInfoBuilder()
   for fn_name in exported_graph._functions:  # pylint: disable=protected-access
     fn = exported_graph._get_function(fn_name)  # pylint: disable=protected-access
     if not isinstance(fn, defun.AtomicFunction):  # pylint: disable=protected-access
       continue
+    debug_builder.AppendGraphDebugInfo(fn_name, fn.graph_debug_info)
 
-    per_fn_info.append((fn_name, fn.graph_debug_info))
-
-  graph_debug_info = error_interpolation.merge_graph_debug_info_def(
-      per_fn_info)
+  graph_debug_info = debug_builder.Build()
   file_io.atomic_write_string_to_file(
       file_io.join(
           path_helpers.get_or_create_debug_dir(export_dir),
@@ -1097,7 +1241,12 @@ def _export_debug_info(exported_graph, export_dir):
 @tf_export(
     "saved_model.save",
     v1=["saved_model.save", "saved_model.experimental.save"])
-def save(obj, export_dir, signatures=None, options=None):
+def save(
+    obj,
+    export_dir: str,
+    signatures=None,
+    options: save_options.SaveOptions = None,
+):
   # pylint: disable=line-too-long
   """Exports a [tf.Module](https://www.tensorflow.org/api_docs/python/tf/Module) (and subclasses) `obj` to [SavedModel format](https://www.tensorflow.org/guide/saved_model#the_savedmodel_format_on_disk).
 
@@ -1285,11 +1434,13 @@ def save(obj, export_dir, signatures=None, options=None):
   metrics.IncrementWrite(write_version="2")
 
 
-def save_and_return_nodes(obj,
-                          export_dir,
-                          signatures=None,
-                          options=None,
-                          experimental_skip_checkpoint=False):
+def save_and_return_nodes(
+    obj,
+    export_dir,
+    signatures=None,
+    options: save_options.SaveOptions = None,
+    experimental_skip_checkpoint=False,
+):
   """Saves a SavedModel while returning all saved nodes and their paths.
 
   Please see `tf.saved_model.save` for details.
@@ -1322,7 +1473,8 @@ def save_and_return_nodes(obj,
   if not experimental_skip_checkpoint:
     path_helpers.get_or_create_variables_dir(export_dir)
     ckpt_options = checkpoint_options.CheckpointOptions(
-        experimental_io_device=options.experimental_io_device)
+        experimental_io_device=options.experimental_io_device,
+        experimental_sharding_callback=options.experimental_sharding_callback)
     object_saver.save(
         path_helpers.get_variables_path(export_dir), options=ckpt_options)
   builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
@@ -1355,7 +1507,7 @@ def save_and_return_nodes(obj,
         compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
     file_io.atomic_write_string_to_file(
         path, saved_model.SerializeToString(deterministic=True))
-    fingerprinting_utils.write_fingerprint(export_dir)
+  fingerprinting_utils.write_fingerprint(export_dir)
 
   # Save debug info, if requested.
   if options.save_debug_info:
@@ -1371,7 +1523,12 @@ def save_and_return_nodes(obj,
   return saved_nodes, node_paths
 
 
-def export_meta_graph(obj, filename, signatures=None, options=None):
+def export_meta_graph(
+    obj,
+    filename: str,
+    signatures=None,
+    options: save_options.SaveOptions = None,
+):
   """Exports the MetaGraph proto of the `obj` to a file.
 
   This function goes through the same procedures saved_model.save goes to
@@ -1412,24 +1569,29 @@ def export_meta_graph(obj, filename, signatures=None, options=None):
   ops.dismantle_graph(exported_graph)
 
 
-def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
+def _build_meta_graph_impl(
+    obj, signatures, options: save_options.SaveOptions, meta_graph_def=None
+):
   """Creates a MetaGraph containing the resources and functions of an object."""
   if ops.inside_function():
     raise AssertionError(
         "`tf.saved_model.save` is not supported inside a traced @tf.function. "
-        "Move the call to the outer eagerly-executed context.")
+        "Move the call to the outer eagerly-executed context."
+    )
   # pylint: enable=line-too-long
   if not isinstance(obj, base.Trackable):
     raise ValueError(
         "Expected an object of type `Trackable`, such as `tf.Module` or a "
         f"subclass of the `Trackable` class, for export. Got {obj} "
-        f"with type {type(obj)}.")
+        f"with type {type(obj)}."
+    )
   meta_graph_def = meta_graph_def or meta_graph_pb2.MetaGraphDef()
 
   augmented_graph_view = _AugmentedGraphView(obj)
   if signatures is None:
     signatures = signature_serialization.find_function_to_export(
-        augmented_graph_view)
+        augmented_graph_view
+    )
 
   signatures, wrapped_functions, defaults = (
       signature_serialization.canonicalize_signatures(signatures)
@@ -1442,12 +1604,14 @@ def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
   saveable_view = _SaveableView(augmented_graph_view, options)
   object_saver = checkpoint.TrackableSaver(augmented_graph_view)
   asset_info, exported_graph = _fill_meta_graph_def(
-      meta_graph_def,
-      saveable_view,
-      signatures,
-      options.namespace_whitelist,
-      options.experimental_custom_gradients,
-      defaults,
+      meta_graph_def=meta_graph_def,
+      saveable_view=saveable_view,
+      signature_functions=signatures,
+      namespace_whitelist=options.namespace_whitelist,
+      save_custom_gradients=options.experimental_custom_gradients,
+      create_saver=not options.experimental_skip_saver,
+      enable_debug_stripper=options.experimental_debug_stripper,
+      defaults=defaults,
   )
   if options.function_aliases:
     function_aliases = meta_graph_def.meta_info_def.function_aliases
@@ -1468,14 +1632,26 @@ def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
             " should be created by tf.function, or concrete functions, or"
             " collections of concrete functions."
         )
-  object_graph_proto = _serialize_object_graph(saveable_view,
-                                               asset_info.asset_index)
+  object_graph_proto = _serialize_object_graph(
+      saveable_view, asset_info.asset_index
+  )
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
-  return (meta_graph_def, exported_graph, object_saver, asset_info,
-          saveable_view.nodes, saveable_view.node_paths)
+  return (
+      meta_graph_def,
+      exported_graph,
+      object_saver,
+      asset_info,
+      saveable_view.nodes,
+      saveable_view.node_paths,
+  )
 
 
-def _build_meta_graph(obj, signatures, options, meta_graph_def=None):
+def _build_meta_graph(
+    obj,
+    signatures,
+    options: save_options.SaveOptions,
+    meta_graph_def: meta_graph_pb2.MetaGraphDef = None,
+):
   """Creates a MetaGraph under a save context.
 
   Args:

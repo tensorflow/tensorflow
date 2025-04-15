@@ -12,8 +12,11 @@ cc_library(
     srcs = ["calibration_wrapper.cc"],
     hdrs = ["calibration_wrapper.h"],
     deps = [
+        "//tensorflow/compiler/mlir/lite:offset_buffer",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:shared_library",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -25,7 +28,8 @@ cc_library(
         "//tensorflow/lite/tools/optimize/calibration:calibration_reader",
         "//tensorflow/lite/tools/optimize/calibration:calibrator_lib",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
     ],
@@ -37,7 +41,14 @@ pybind_extension(
         "calibration_wrapper_pybind11.cc",
     ],
     hdrs = ["calibration_wrapper.h"],
+    additional_stubgen_deps = [
+        "//third_party/py/numpy:numpy",
+    ],
+    enable_stub_generation = True,
     link_in_framework = True,
+    pytype_srcs = [
+        "_pywrap_tensorflow_lite_calibration_wrapper.pyi",
+    ],
     deps = [
         ":calibration_wrapper_lib",
         "//tensorflow/lite:framework",
@@ -53,7 +64,6 @@ py_strict_library(
     srcs = [
         "calibrator.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tensorflow_lite_calibration_wrapper",  # buildcleaner: keep
@@ -72,16 +82,19 @@ py_strict_test(
         ":test_data",
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = ["no_oss"],
     deps = [
         ":calibrator",
+        "@absl_py//absl/testing:parameterized",
+        #internal proto upb dep
+        "//third_party/py/numpy",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python:schema_py",
+        "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

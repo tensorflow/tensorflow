@@ -14,18 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/model_utils.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <fstream>
+#include <ios>
 #include <memory>
 #include <string>
+#include <vector>
 
-#include "absl/memory/memory.h"
+#include "tensorflow/compiler/mlir/lite/tools/optimize/operator_property.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
-#include "tensorflow/lite/tools/optimize/operator_property.h"
 
 namespace tflite {
 namespace optimize {
@@ -33,6 +36,7 @@ namespace utils {
 
 namespace {
 
+// LINT.IfChange(GetOrInsertOpCodeIndex)
 // Returns the index of the OpCode.
 // If a OpCode doesn't exist, adds it and returns its index.
 int32_t GetOrInsertOpCodeIndex(ModelT* model, const BuiltinOperator& op_code,
@@ -53,9 +57,11 @@ int32_t GetOrInsertOpCodeIndex(ModelT* model, const BuiltinOperator& op_code,
   // Return the index of the newly placed OperatorCodeT.
   return op_code_idx;
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/model_utils.cc:GetOrInsertOpCodeIndex)
 
 }  // namespace
 
+// LINT.IfChange(MakeDequantizeOperator)
 // Creates a Dequantize OperatorT object.
 void MakeDequantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
                             int32_t input, int32_t output) {
@@ -68,6 +74,7 @@ void MakeDequantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
 
   op->reset(op_raw);
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/model_utils.cc:MakeDequantizeOperator)
 
 // Creates a Quantize OperatorT object.
 void MakeQuantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
@@ -81,6 +88,7 @@ void MakeQuantizeOperator(ModelT* model, std::unique_ptr<OperatorT>* op,
   op->reset(op_raw);
 }
 
+// LINT.IfChange(MakeTensor)
 // Create a new TensorT object without quantization parameters.
 void MakeTensor(const string& name, const std::vector<int32_t>& shape,
                 const std::vector<int32_t>& shape_signature,
@@ -95,6 +103,7 @@ void MakeTensor(const string& name, const std::vector<int32_t>& shape,
 
   tensor->reset(tensor_raw);
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/model_utils.cc:MakeTensor)
 
 // Create a new TensorT object with quantization parameters.
 void MakeTensorWithQuantParam(const string& name,
@@ -125,10 +134,12 @@ bool HasBuffer(const ModelT* model, const SubGraphT* subgraph,
   return true;
 }
 
+// LINT.IfChange(HasMinMax)
 bool HasMinMax(const TensorT* tensor) {
   return tensor->quantization && !tensor->quantization->min.empty() &&
          !tensor->quantization->max.empty();
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/model_utils.cc:HasMinMax)
 
 void SetOperatorCodeVersion(ModelT* model) {
   for (int subgraph_idx = 0, end = model->subgraphs.size(); subgraph_idx < end;

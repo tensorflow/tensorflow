@@ -121,7 +121,7 @@ class JitLaunchTest(test.TestCase):
       print("Compiled Result {}".format(compiled))
 
       if require_kernel_launch:
-        self.assert_(MetadataHasXlaRunOp(run_metadata))
+        self.assertTrue(MetadataHasXlaRunOp(run_metadata))
 
         direct = sess.run(direct_op, feeds)
         print("Direct Result {}".format(direct))
@@ -268,7 +268,7 @@ class JitLaunchTest(test.TestCase):
         # TODO(phawkins): really we would like to test that there were exactly
         # two kernel launches. However, we have no reliable way to determine
         # that.
-        self.assert_(MetadataHasXlaRunOp(run_metadata))
+        self.assertTrue(MetadataHasXlaRunOp(run_metadata))
 
         expected = np.square(np.dot(dx, dw) + db)
         self.assertAllClose(expected, output, rtol=1e-1)
@@ -301,7 +301,7 @@ class XlaCompilationTest(test.TestCase):
           run_metadata=run_metadata,
           options=config_pb2.RunOptions(
               trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assert_(MetadataHasXlaRunOp(run_metadata))
+      self.assertTrue(MetadataHasXlaRunOp(run_metadata))
       self.assertAllClose(np.array([[1, 2, 3], [4, 5, 6]], np.float32), out)
 
   def testIgnoredArguments(self):
@@ -329,7 +329,7 @@ class XlaCompilationTest(test.TestCase):
           run_metadata=run_metadata,
           options=config_pb2.RunOptions(
               trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assert_(MetadataHasXlaRunOp(run_metadata))
+      self.assertTrue(MetadataHasXlaRunOp(run_metadata))
       self.assertAllClose(28, out)
 
   def testLoops(self):
@@ -347,7 +347,7 @@ class XlaCompilationTest(test.TestCase):
                            run_metadata=run_metadata,
                            options=config_pb2.RunOptions(
                                trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assert_(MetadataHasXlaRunOp(run_metadata))
+      self.assertTrue(MetadataHasXlaRunOp(run_metadata))
       self.assertAllClose(result, np.float32(95), rtol=1e-1)
 
   def testCond(self):
@@ -376,7 +376,7 @@ class XlaCompilationTest(test.TestCase):
           run_metadata=run_metadata,
           options=config_pb2.RunOptions(
               trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assert_(MetadataHasXlaRunOp(run_metadata))
+      self.assertTrue(MetadataHasXlaRunOp(run_metadata))
       self.assertAllClose(result, np.float32(6), rtol=1e-1)
 
   def testNestedFunction(self):

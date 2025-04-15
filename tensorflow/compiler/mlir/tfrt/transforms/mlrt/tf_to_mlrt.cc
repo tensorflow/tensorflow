@@ -16,34 +16,49 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <cstddef>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "google/protobuf/text_format.h"
+#include "absl/log/log.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "third_party/protobuf/text_format.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h.inc"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_tpu_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/execute_op_registry.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/mlrt_device_constants.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/tpu_conversion_patterns.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
+#include "xla/tsl/platform/status.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
 
@@ -51,7 +66,8 @@ namespace tensorflow {
 namespace mlrt_compiler {
 namespace {
 
-// TODO(chky): Add registration interface for custom device
+constexpr char kXlaLaunchOp[] = "XlaLaunch";
+
 mlir::Value CreateCustomDevice(mlir::Location loc, llvm::StringRef device_name,
                                mlir::ConversionPatternRewriter &rewriter) {
   if (device_name == kTpuHostDevice) {
@@ -92,14 +108,14 @@ class FuncOpSignatureConversion final
     }
 
     // Update the function signature in-place.
-    rewriter.updateRootInPlace(func_op, [&] {
+    rewriter.modifyOpInPlace(func_op, [&] {
       func_op.setType(mlir::FunctionType::get(
           func_op.getContext(), converted_signature.getConvertedTypes(),
           func_type.getResults()));
     });
 
     // Update the entry block
-    if (rewriter.applySignatureConversion(&func_op.getBody(),
+    if (rewriter.applySignatureConversion(&func_op.getBody().front(),
                                           converted_signature,
                                           &type_converter_) == nullptr) {
       return mlir::failure();
@@ -112,6 +128,23 @@ class FuncOpSignatureConversion final
   mlir::TypeConverter &type_converter_;
   const llvm::DenseMap<llvm::StringRef, llvm::SmallVector<mlir::Type>>
       &function_call_site_input_types_;
+};
+
+// Convert tf_mlrt::AsyncWhile's signature to tf_mlrt::TFTensorType
+class TFAsyncWhileOpConversion
+    : public mlir::OpConversionPattern<tf_mlrt::TFAsyncWhileOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      tf_mlrt::TFAsyncWhileOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter &rewriter) const override {
+    auto new_op = rewriter.create<tf_mlrt::AsyncWhileOp>(
+        op.getLoc(), op.getResultTypes(), adaptor.getOperands(),
+        op->getAttrs());
+    rewriter.replaceOp(op, new_op.getResults());
+    return mlir::success();
+  }
 };
 
 class TFAwaitOpConversion final
@@ -299,12 +332,62 @@ class GetResourceOpConversion final
   }
 };
 
+// Convert tf_mlrt.TFIfrtLoadVariableOp to tf_mlrt.IfrtLoadVariableOp
+class TFIfrtLoadVariableOpConversion
+    : public mlir::OpConversionPattern<tf_mlrt::TFIfrtLoadVariableOp> {
+ public:
+  TFIfrtLoadVariableOpConversion(mlir::MLIRContext *context,
+                                 mlir::TypeConverter *type_converter)
+      : mlir::OpConversionPattern<tf_mlrt::TFIfrtLoadVariableOp>(context),
+        type_converter_(*type_converter) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      tf_mlrt::TFIfrtLoadVariableOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter &rewriter) const override {
+    llvm::SmallVector<mlir::Type, 4> result_types;
+    for (auto type : op->getResultTypes()) {
+      if (failed(type_converter_.convertType(type, result_types)))
+        return mlir::failure();
+    }
+
+    auto new_op = rewriter.create<tf_mlrt::IfrtLoadVariableOp>(
+        op.getLoc(), result_types, adaptor.getOperands()[0],
+        op.getUsedByHostAttr());
+    rewriter.replaceOp(op, new_op);
+
+    return mlir::success();
+  }
+
+ private:
+  mlir::TypeConverter &type_converter_;
+};
+
+// Convert tf.IfrtRestoreVariableOp to tf_mlrt.IfrtRestoreVariableOp
+class IfrtRestoreVariableOpConversion
+    : public mlir::OpConversionPattern<mlir::TF::IfrtRestoreVariableOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::TF::IfrtRestoreVariableOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter &rewriter) const override {
+    auto new_op = rewriter.create<tf_mlrt::IfrtRestoreVariableOp>(
+        op.getLoc(), adaptor.getOperands()[0], adaptor.getOperands()[1],
+        adaptor.getOperands()[2],
+        adaptor.getOperands().slice(3, adaptor.getOperands().size() - 3),
+        op.getRestoredDtypes(), op.getTruncateInCast());
+    rewriter.replaceOp(op, new_op);
+
+    return mlir::success();
+  }
+};
+
 std::optional<std::string> DecodeLongName(mlir::Location loc) {
-  if (auto name_loc = loc.dyn_cast<mlir::NameLoc>()) {
+  if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
     return name_loc.getName().str();
   }
 
-  if (auto fused_loc = loc.dyn_cast<mlir::FusedLoc>()) {
+  if (auto fused_loc = mlir::dyn_cast<mlir::FusedLoc>(loc)) {
     std::string fused_name;
     for (auto l : fused_loc.getLocations()) {
       if (auto n = DecodeLongName(l)) {
@@ -378,6 +461,18 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
     // TODO(b/173017701): Avoid fallback for ops within XLA GPU clusters.
     if (!UseFallback(op)) return mlir::failure();
 
+    if (auto const_op = llvm::dyn_cast<mlir::TF::ConstOp>(op)) {
+      tensorflow::TensorProto tensor_proto;
+      auto status = ConvertToTensorProto(const_op.getValue(), &tensor_proto);
+      if (!status.ok())
+        return const_op.emitError(absl::StatusMessageAsCStr(status));
+
+      rewriter.replaceOpWithNewOp<tf_mlrt::ConstOp>(
+          op, rewriter.getType<tf_mlrt::TFTensorType>(),
+          tensor_proto.SerializeAsString());
+      return mlir::success();
+    }
+
     // The assign_op_key pass should have ran.
     if (!op->hasAttr(tensorflow::tfrt_compiler::kOpKeyAttrName))
       return op->emitError("does not have op_key defined");
@@ -399,18 +494,7 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
     CanonicalizeFunctionNameInNodeDef(symbol_table_, node_def);
 
     std::string node_def_text;
-    proto2::TextFormat::PrintToString(node_def, &node_def_text);
-
-    auto op_kernel_runner = op_kernel_cache_.GetOrCreate(
-        tfrt::Location(nullptr, execute_key), node_def.op(), node_def.device(),
-        op->getNumOperands(),
-        [&](tensorflow::AttrValueMap *attr_value_map) {
-          *attr_value_map = node_def.attr();
-          return OkStatus();
-        },
-        fallback_state_.device_manager(),
-        fallback_state_.process_function_library_runtime());
-    LOG_IF(ERROR, !op_kernel_runner.ok()) << op_kernel_runner.status();
+    google::protobuf::TextFormat::PrintToString(node_def, &node_def_text);
 
     mlir::Value device;
     if (auto custom_device =
@@ -421,11 +505,8 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
     }
 
     mlir::Operation *new_op = nullptr;
-    if (op_kernel_runner.ok() && (*op_kernel_runner)->IsAsync()) {
-      // If it is an AsyncOpKernel, we lower it to tf_mlrt.async_executeop,
-      // which return !mlrt.futures. These results will be converted as
-      // necessary through the target materialization hook in the type
-      // converter.
+
+    auto create_async_execute_ops = [&]() -> mlir::LogicalResult {
       llvm::SmallVector<mlir::Type, 4> result_types(
           op->getNumResults(), rewriter.getType<mlrt::compiler::FutureType>());
       if (device) {
@@ -439,25 +520,64 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
               execute_op_registry_.RegisterExecuteOp(new_op, execute_key))) {
         return op->emitWarning("Fail to register async op");
       }
+      return mlir::success();
+    };
+
+    // TODO(b/300999257): check whether to clean up for AoT mockGpu case later
+
+    if (node_def.op() == kXlaLaunchOp) {
+      // XlaLaunch Op an AsyncOpKernel, we lower it to tf_mlrt.async_executeop,
+      // which return !mlrt.futures. These results will be converted as
+      // necessary through the target materialization hook in the type
+      // converter.
+      if (mlir::failed(create_async_execute_ops())) {
+        return mlir::failure();
+      }
     } else {
-      // Otherwise, lower to tf_mlrt.executeop.
-      llvm::SmallVector<mlir::Type, 4> result_types(
-          op->getNumResults(), rewriter.getType<tf_mlrt::TFTensorType>());
-      if (device) {
-        new_op = rewriter.replaceOpWithNewOp<tf_mlrt::ExecuteOpWithDevice>(
-            op, result_types, device, operands, node_def_text, execute_key);
-      } else {
-        new_op = rewriter.replaceOpWithNewOp<tf_mlrt::ExecuteOp>(
-            op, result_types, operands, node_def_text, execute_key);
+      auto op_kernel_runner = op_kernel_cache_.GetOrCreate(
+          tfrt::Location(nullptr, execute_key), node_def.op(),
+          node_def.device(), op->getNumOperands(),
+          [&](tensorflow::AttrValueMap *attr_value_map) {
+            *attr_value_map = node_def.attr();
+            return absl::OkStatus();
+          },
+          fallback_state_.device_manager(),
+          fallback_state_.process_function_library_runtime());
+      // TODO(290630314): Use LOG_IF when absl logging is available
+      if (!op_kernel_runner.ok()) {
+        LOG(WARNING) << "Failed to create op_kernel_runner for "
+                     << node_def_text
+                     << " with error: " << op_kernel_runner.status();
       }
 
-      if (op_kernel_runner.ok()) {
-        // Only register this executeop if its opkernel can be created.
-        // Otherwise, it is an unused op so we don't need to create them at
-        // runtime.
-        if (mlir::failed(
-                execute_op_registry_.RegisterExecuteOp(new_op, execute_key))) {
-          return op->emitWarning("Fail to register sync op");
+      if (op_kernel_runner.ok() && (*op_kernel_runner)->IsAsync()) {
+        // If it is an AsyncOpKernel, we lower it to tf_mlrt.async_executeop,
+        // which return !mlrt.futures. These results will be converted as
+        // necessary through the target materialization hook in the type
+        // converter.
+        if (mlir::failed(create_async_execute_ops())) {
+          return mlir::failure();
+        }
+      } else {
+        // Otherwise, lower to tf_mlrt.executeop.
+        llvm::SmallVector<mlir::Type, 4> result_types(
+            op->getNumResults(), rewriter.getType<tf_mlrt::TFTensorType>());
+        if (device) {
+          new_op = rewriter.replaceOpWithNewOp<tf_mlrt::ExecuteOpWithDevice>(
+              op, result_types, device, operands, node_def_text, execute_key);
+        } else {
+          new_op = rewriter.replaceOpWithNewOp<tf_mlrt::ExecuteOp>(
+              op, result_types, operands, node_def_text, execute_key);
+        }
+
+        if (op_kernel_runner.ok()) {
+          // Only register this executeop if its opkernel can be created.
+          // Otherwise, it is an unused op so we don't need to create them at
+          // runtime.
+          if (mlir::failed(execute_op_registry_.RegisterExecuteOp(
+                  new_op, execute_key))) {
+            return op->emitWarning("Fail to register sync op");
+          }
         }
       }
     }
@@ -717,7 +837,7 @@ class BatchFunctionOpConversion
     const auto &node_def = **statusor_node_def;
 
     std::string node_def_text;
-    proto2::TextFormat::PrintToString(node_def, &node_def_text);
+    google::protobuf::TextFormat::PrintToString(node_def, &node_def_text);
 
     llvm::SmallVector<mlir::Type, 4> result_types(
         op->getNumResults(), rewriter.getType<mlrt::compiler::FutureType>());
@@ -752,6 +872,10 @@ void CreateFallbackInitializationFunction(
       builder.create<tf_mlrt::CreateOp>(
           func_op.getLoc(), /*resultTypes=*/mlir::TypeRange{},
           /*operands=*/mlir::ValueRange{}, op->getAttrs());
+    } else {
+      // TODO: b/381849919 - Remove this log once the bug is fixed.
+      LOG_FIRST_N(WARNING, 100)
+          << "Skip creation of fallback kernel for op index " << op_index;
     }
   }
 
@@ -912,7 +1036,7 @@ class TfToMlrtConversionPass
     type_converter_.addConversion(
         [=](mlir::TensorType type) -> std::optional<mlir::Type> {
           // Ref types are not supported in both compiler and runtime.
-          if (type.getElementType().isa<mlir::TF::TensorFlowRefType>())
+          if (mlir::isa<mlir::TF::TensorFlowRefType>(type.getElementType()))
             return std::nullopt;
           return tf_mlrt::TFTensorType::get(context);
         });
@@ -922,8 +1046,8 @@ class TfToMlrtConversionPass
            mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
       if (inputs.size() != 1) return mlir::Value();
 
-      if (inputs[0].getType().isa<mlrt::compiler::FutureType>()) {
-        if (desired_type.isa<tf_mlrt::TFTensorType>()) {
+      if (mlir::isa<mlrt::compiler::FutureType>(inputs[0].getType())) {
+        if (mlir::isa<tf_mlrt::TFTensorType>(desired_type)) {
           return builder.create<tf_mlrt::AwaitOp>(loc, desired_type, inputs[0]);
         }
 
@@ -934,17 +1058,9 @@ class TfToMlrtConversionPass
     };
 
     type_converter_.addTargetMaterialization(future_to_tensor_materialization);
+    type_converter_.addSourceMaterialization(future_to_tensor_materialization);
     type_converter_.addArgumentMaterialization(
         future_to_tensor_materialization);
-    type_converter_.addSourceMaterialization(
-        [](mlir::OpBuilder &builder, mlir::Type result_type,
-           mlir::ValueRange inputs,
-           mlir::Location loc) -> std::optional<mlir::Value> {
-          return builder
-              .create<mlir::UnrealizedConversionCastOp>(loc, result_type,
-                                                        inputs)
-              .getResult(0);
-        });
 
     if (use_tpu_host_allocator_for_inputs_.hasValue()) {
       options_.use_tpu_host_allocator_for_inputs =
@@ -992,6 +1108,40 @@ class TfToMlrtConversionPass
       op->replaceAllUsesWith(op->getOperands());
       op->erase();
     });
+
+    AddAwaitOpToUnusedFutures(module);
+  }
+
+  void AddAwaitOpToUnusedFutures(mlir::ModuleOp module) {
+    for (auto func : module.getOps<mlir::func::FuncOp>()) {
+      llvm::SmallVector<mlir::Value> unused_futures;
+
+      auto is_unused_future = [](mlir::Value result) {
+        return llvm::isa<::mlrt::compiler::FutureType>(result.getType()) &&
+               result.use_empty();
+      };
+
+      for (auto arg : func.getArguments()) {
+        if (is_unused_future(arg)) {
+          unused_futures.push_back(arg);
+        }
+      }
+
+      for (auto &op : func.getBody().front()) {
+        for (mlir::Value result : op.getResults()) {
+          if (is_unused_future(result)) {
+            unused_futures.push_back(result);
+          }
+        }
+      }
+
+      if (!unused_futures.empty()) {
+        auto builder =
+            mlir::OpBuilder::atBlockTerminator(&func.getBody().front());
+        builder.create<::mlrt::compiler::AwaitAllControlOp>(func.getLoc(),
+                                                            unused_futures);
+      }
+    }
   }
 
   mlir::LogicalResult PostProcessFunctionSignature(
@@ -1049,6 +1199,9 @@ class TfToMlrtConversionPass
     target.addLegalDialect<mlrt::compiler::MlrtDialect,
                            tensorflow::tf_mlrt::TensorflowMlrtDialect>();
     target.addIllegalDialect<mlir::TF::TensorFlowDialect>();
+
+    target.addIllegalOp<tf_mlrt::TFAsyncWhileOp>();
+    target.addIllegalOp<tf_mlrt::TFIfrtLoadVariableOp>();
     target.addIllegalOp<tf_mlrt::TFAwaitOp>();
     target.addIllegalOp<tf_mlrt::TFPromiseOp>();
     target.addIllegalOp<tf_mlrt::TFMapFnOp>();
@@ -1074,27 +1227,31 @@ class TfToMlrtConversionPass
     target.addDynamicallyLegalOp<mlir::func::CallOp>(
         [this](mlir::func::CallOp op) {
           for (auto operand : op.getOperands()) {
-            if (!type_converter_.isLegal(operand.getType())) return false;
+            if (!type_converter_.isLegal(operand.getType())) {
+              return false;
+            }
           }
           return true;
         });
 
-    // LINT.IfChange(fallback_allow_list)
+    // LINT.IfChange
     // Order the list of added ops alphabetically.
     patterns.add<WhileOpConversion>(&context, &type_converter_, &symbol_table);
     patterns.add<AsyncOpConversion, GetResourceOpConversion,
-                 SetResourceOpConversion, TFAwaitOpConversion,
-                 TFPromiseOpConversion>(&context);
+                 SetResourceOpConversion, IfrtRestoreVariableOpConversion,
+                 TFAwaitOpConversion, TFPromiseOpConversion>(&context);
     patterns.add<BatchFunctionOpConversion, CaseOpConversion, CondOpConversion,
-                 TFMapFnOpConversion>(type_converter_, &context);
+                 TFAsyncWhileOpConversion, TFMapFnOpConversion>(type_converter_,
+                                                                &context);
     patterns.add<ExecuteOpConversion>(&context, &symbol_table, &type_converter_,
                                       &execute_op_registry_, &op_kernel_cache_,
                                       &fallback_state_);
-    patterns.add<TFCallOpConversion<mlir::TF::PartitionedCallOp>,
+    patterns.add<TFIfrtLoadVariableOpConversion,
+                 TFCallOpConversion<mlir::TF::PartitionedCallOp>,
                  TFCallOpConversion<mlir::TF::StatefulPartitionedCallOp>,
                  TFCallOpConversion<mlir::TF::LegacyCallOp>>(&context,
                                                              &type_converter_);
-    // LINT.ThenChange(util.cc:fallback_allow_list)
+    // LINT.ThenChange(util.cc)
 
     mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
         patterns, type_converter_);

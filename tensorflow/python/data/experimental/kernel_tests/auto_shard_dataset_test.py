@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for the private `_AutoShardDataset` transformation."""
 import os
+from typing import Optional
 
 from absl.testing import parameterized
 
@@ -21,6 +22,7 @@ from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import distribute
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.experimental.ops import testing
@@ -711,6 +713,49 @@ class AutoShardDatasetCheckpointTest(tf_record_test_base.TFRecordTestBase,
       return dataset
 
     verify_fn(self, build_dataset, num_outputs=20)
+
+
+class AutoShardGlobalShuffleTest(
+    test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[100],
+              num_shards=[1, 3, 5],
+              shard_index=[0, 1, 2, 4],
+              seed=[None, 42],
+              reshuffle_each_iteration=[True, False])))
+  def test(
+      self,
+      dataset_range: int,
+      num_shards: int,
+      shard_index: int,
+      seed: Optional[int],
+      reshuffle_each_iteration: bool):
+    if shard_index >= num_shards:
+      return
+
+    dataset = dataset_ops.Dataset.range(dataset_range)
+    dataset = distribute._AutoShardDataset(dataset, num_shards, shard_index)
+    dataset = global_shuffle_op._global_shuffle(
+        dataset, seed=seed, reshuffle_each_iteration=reshuffle_each_iteration)
+
+    expected = list(range(shard_index, dataset_range, num_shards))
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNotSufficientInput(self):
+    dataset = dataset_ops.Dataset.range(1)
+    dataset = distribute._AutoShardDataset(dataset, 5, 4)
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = global_shuffle_op._global_shuffle(dataset)
+      self.getDatasetOutput(dataset, requires_initialization=True)
 
 
 if __name__ == "__main__":

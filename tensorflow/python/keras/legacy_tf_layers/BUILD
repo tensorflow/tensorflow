@@ -1,6 +1,8 @@
 # Description:
 #   Contains the legacy TF layers (internal TensorFlow version).
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -35,7 +37,7 @@ py_library(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
     ],
 )

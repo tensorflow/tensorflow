@@ -53,6 +53,7 @@ cc_library_with_tflite(
 cc_test(
     name = "sample_stable_delegate_test",
     srcs = ["sample_stable_delegate_test.cc"],
+    copts = tflite_copts(),
     data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/sub.bin",
@@ -169,9 +170,9 @@ cc_binary(
     ],
     deps = [
         "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
 )

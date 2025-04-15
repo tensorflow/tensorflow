@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/repository.h"
@@ -29,7 +30,7 @@ namespace profiler {
 // Convert XSpace protos to a tool specific data.
 // Return the serialized string of tool specific data when the conversion is
 // successful, else return error status.
-StatusOr<std::string> ConvertMultiXSpacesToToolData(
+absl::StatusOr<std::string> ConvertMultiXSpacesToToolData(
     const SessionSnapshot& session_snapshot, absl::string_view tool_name,
     const ToolOptions& options);
 

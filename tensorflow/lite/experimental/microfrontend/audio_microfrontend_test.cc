@@ -16,15 +16,15 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/microfrontend/audio_microfrontend.h"
 
-#include <memory>
+#include <cstdint>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace ops {

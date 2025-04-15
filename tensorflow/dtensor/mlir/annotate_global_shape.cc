@@ -27,11 +27,13 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/dtensor/cc/constants.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
+#include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
+#include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -49,8 +51,8 @@ void AnnotateFunctionArgRetvalGlobalShapes(mlir::func::FuncOp function,
     const auto& argument_type = argument_type_and_index.value();
     // Extract TensorType from element of resource type to allow setting proper
     // global shape of resource types.
-    if (auto resource_type = mlir::getElementTypeOrSelf(argument_type)
-                                 .dyn_cast<mlir::TF::ResourceType>()) {
+    if (auto resource_type = mlir::dyn_cast<mlir::TF::ResourceType>(
+            mlir::getElementTypeOrSelf(argument_type))) {
       auto subtype = resource_type.getSubtypes();
       if (subtype.size() == 1) {
         // subtype returns a Array of TensorType -- if it contains more than one
@@ -84,7 +86,17 @@ void AnnotateOperationGlobalShape(mlir::Operation* op,
   for (const auto& result_type : op->getResultTypes())
     op_global_shape.emplace_back(ConvertTypeToTensorShapeAttr(result_type));
 
-  op->setAttr(kGlobalShape, builder->getArrayAttr(op_global_shape));
+  if (auto layout_op = mlir::dyn_cast<mlir::TF::DTensorLayout>(op)) {
+    // Shape of Resource type is incorrect when it is a variable.
+    // The global shape is undefined in this case; and usually we are supposed
+    // to propagate the value shape due to how resource variable layout is
+    // currently represented in DTensor.
+    if (!IsResourceType(op->getResult(0))) {
+      layout_op.setGlobalShapeAttr(op_global_shape[0]);
+    }
+  } else {
+    op->setAttr(kGlobalShape, builder->getArrayAttr(op_global_shape));
+  }
 }
 
 // Pass that annotates function argument/return values and all operation with

@@ -144,7 +144,7 @@ class TPUClusterResolver(cluster_resolver_lib.ClusterResolver):
     """
     resolver = TPUClusterResolver(tpu, zone, project)
     remote.connect_to_cluster(resolver)
-    tpu_strategy_util.initialize_tpu_system_impl(resolver)
+    tpu_strategy_util.initialize_tpu_system_impl(resolver, TPUClusterResolver)
     return resolver
 
   @staticmethod
@@ -458,7 +458,7 @@ class TPUClusterResolver(cluster_resolver_lib.ClusterResolver):
   @property
   def environment(self):
     """Returns the current environment which TensorFlow is running in."""
-    return self._environment
+    return ''
 
   def _start_local_server(self):
     address = compat.as_text(self._cloud_tpu_client.get_local_ip())

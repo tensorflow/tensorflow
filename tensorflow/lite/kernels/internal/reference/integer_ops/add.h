@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_ADD_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <limits>
 
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -35,7 +36,30 @@ inline void CheckArithmeticParams(const ArithmeticParams& params) {
   TFLITE_DCHECK_LE(-params.input2_offset, std::numeric_limits<int8_t>::max());
 }
 
-// TODO(b/270589088): move to a more appropriate file (b/270589088#comment2)
+// TODO: b/270589088 - move to a more appropriate file (b/270589088#comment2)
+template <typename T>
+void BroadcastInput1(int size, const ArithmeticParams& params,
+                     const T* input1_data, const T* input2_data, T* output_data,
+                     void (*check_arithmetic_params)(const ArithmeticParams&),
+                     T (*binary_func)(T, T, const ArithmeticParams&)) {
+  CheckArithmeticParams(params);
+  for (int i = 0; i < size; ++i) {
+    output_data[i] = binary_func(input1_data[0], input2_data[i], params);
+  }
+}
+
+template <typename T>
+void BroadcastInput2(int size, const ArithmeticParams& params,
+                     const T* input1_data, const T* input2_data, T* output_data,
+                     void (*check_arithmetic_params)(const ArithmeticParams&),
+                     T (*binary_func)(T, T, const ArithmeticParams&)) {
+  CheckArithmeticParams(params);
+  for (int i = 0; i < size; ++i) {
+    output_data[i] = binary_func(input1_data[i], input2_data[0], params);
+  }
+}
+
+// TODO: b/270589088 - move to a more appropriate file (b/270589088#comment2)
 template <typename T>
 void ElementWise(int size, const ArithmeticParams& params, const T* input1_data,
                  const T* input2_data, T* output_data,
@@ -46,7 +70,60 @@ void ElementWise(int size, const ArithmeticParams& params, const T* input1_data,
     output_data[i] = binary_func(input1_data[i], input2_data[i], params);
   }
 }
-// TODO(b/270589088): move to a more appropriate file. (b/270589088#comment2)
+
+template <typename T>
+inline void BroadcastAddRecursiveDimensions(
+    const ArithmeticParams& params, int dimension, size_t* input1_offset_p,
+    size_t* input2_offset_p, size_t* output_offset,
+    size_t* compressed_input1_stride, size_t* compressed_input2_stride,
+    size_t* compressed_output_shape, const T* input1_data, const T* input2_data,
+    T* output_data, void (*check_arithmetic_params)(const ArithmeticParams&),
+    T (*binary_func)(T, T, const ArithmeticParams&)) {
+  if (dimension > 0) {
+    for (size_t c = 0; c < compressed_output_shape[dimension]; ++c) {
+      size_t input1_offset_c = *input1_offset_p;
+      size_t input2_offset_c = *input2_offset_p;
+      BroadcastAddRecursiveDimensions(
+          params, dimension - 1, &input1_offset_c, &input2_offset_c,
+          output_offset, compressed_input1_stride, compressed_input2_stride,
+          compressed_output_shape, input1_data, input2_data, output_data,
+          check_arithmetic_params, binary_func);
+      *input1_offset_p += compressed_input1_stride[dimension];
+      *input2_offset_p += compressed_input2_stride[dimension];
+    }
+  } else {
+    TFLITE_DCHECK(dimension == 0);
+    bool input1_is_broadcast = compressed_input1_stride[dimension] == 0;
+    bool input2_is_broadcast = compressed_input2_stride[dimension] == 0;
+    TFLITE_DCHECK(!(input1_is_broadcast && input2_is_broadcast));
+    const T* input1_data_ptr = input1_data + *input1_offset_p;
+    const T* input2_data_ptr = input2_data + *input2_offset_p;
+    T* output_data_ptr = output_data + *output_offset;
+    if (input1_is_broadcast) {
+      // input1 is broadcast.
+      BroadcastInput1<T>(compressed_output_shape[dimension], params,
+                         input1_data_ptr, input2_data_ptr, output_data_ptr,
+                         check_arithmetic_params, binary_func);
+      *input2_offset_p += compressed_output_shape[dimension];
+    } else if (input2_is_broadcast) {
+      // input2 is broadcast.
+      BroadcastInput2<T>(compressed_output_shape[dimension], params,
+                         input1_data_ptr, input2_data_ptr, output_data_ptr,
+                         check_arithmetic_params, binary_func);
+      *input1_offset_p += compressed_output_shape[dimension];
+    } else {
+      // Add element-wise.
+      ElementWise<T>(compressed_output_shape[dimension], params,
+                     input1_data_ptr, input2_data_ptr, output_data_ptr,
+                     check_arithmetic_params, binary_func);
+      *input1_offset_p += compressed_output_shape[dimension];
+      *input2_offset_p += compressed_output_shape[dimension];
+    }
+    *output_offset += compressed_output_shape[dimension];
+  }
+}
+
+// TODO: b/270589088 - move to a more appropriate file. (b/270589088#comment2)
 template <typename T>
 void BroadcastBinaryFunction6DSlow(
     const ArithmeticParams& params, const RuntimeShape& input1_shape,
@@ -54,12 +131,7 @@ void BroadcastBinaryFunction6DSlow(
     const T* input2_data, const RuntimeShape& output_shape, T* output_data,
     void (*check_arithmetic_params)(const ArithmeticParams&),
     T (*binary_func)(T, T, const ArithmeticParams&)) {
-  NdArrayDesc<6> desc1;
-  NdArrayDesc<6> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(6, output_shape);
+  constexpr int kMaxBroadcastDim = 6;
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
   // col, channel), with extents (batches, height, width, depth), with the
@@ -72,65 +144,25 @@ void BroadcastBinaryFunction6DSlow(
   // We name our variables by their Tensorflow convention, but generate C code
   // nesting loops such that the innermost loop has the smallest stride for the
   // best cache behavior.
-  size_t input1_offset_a = 0;
-  size_t input2_offset_a = 0;
-  size_t output_offset_a = 0;
-  for (int a = 0; a < extended_output_shape.Dims(0); ++a) {
-    size_t input1_offset_d = input1_offset_a;
-    size_t input2_offset_d = input2_offset_a;
-    size_t output_offset_d = output_offset_a;
-    for (int d = 0; d < extended_output_shape.Dims(1); ++d) {
-      size_t input1_offset_b = input1_offset_d;
-      size_t input2_offset_b = input2_offset_d;
-      size_t output_offset_b = output_offset_d;
-      for (int b = 0; b < extended_output_shape.Dims(2); ++b) {
-        size_t input1_offset_y = input1_offset_b;
-        size_t input2_offset_y = input2_offset_b;
-        size_t output_offset_y = output_offset_b;
-        for (int y = 0; y < extended_output_shape.Dims(3); ++y) {
-          size_t input1_offset_x = input1_offset_y;
-          size_t input2_offset_x = input2_offset_y;
-          size_t output_offset_x = output_offset_y;
-          for (int x = 0; x < extended_output_shape.Dims(4); ++x) {
-            size_t input1_offset_c = input1_offset_x;
-            size_t input2_offset_c = input2_offset_x;
-            size_t output_offset_c = output_offset_x;
-            for (int c = 0; c < extended_output_shape.Dims(5); ++c) {
-              output_data[output_offset_c] =
-                  binary_func(input1_data[input1_offset_c],
-                              input2_data[input2_offset_c], params);
-              input1_offset_c += desc1.strides[5];
-              input2_offset_c += desc2.strides[5];
-              ++output_offset_c;
-            }
-            input1_offset_x += desc1.strides[4];
-            input2_offset_x += desc2.strides[4];
-            output_offset_x += extended_output_shape.Dims(5);
-          }
-          input1_offset_y += desc1.strides[3];
-          input2_offset_y += desc2.strides[3];
-          output_offset_y +=
-              extended_output_shape.Dims(4) * extended_output_shape.Dims(5);
-        }
-        input1_offset_b += desc1.strides[2];
-        input2_offset_b += desc2.strides[2];
-        output_offset_b += extended_output_shape.Dims(3) *
-                           extended_output_shape.Dims(4) *
-                           extended_output_shape.Dims(5);
-      }
-      input1_offset_d += desc1.strides[1];
-      input2_offset_d += desc2.strides[1];
-      output_offset_d +=
-          extended_output_shape.Dims(2) * extended_output_shape.Dims(3) *
-          extended_output_shape.Dims(4) * extended_output_shape.Dims(5);
-    }
-    input1_offset_a += desc1.strides[0];
-    input2_offset_a += desc2.strides[0];
-    output_offset_a +=
-        extended_output_shape.Dims(1) * extended_output_shape.Dims(2) *
-        extended_output_shape.Dims(3) * extended_output_shape.Dims(4) *
-        extended_output_shape.Dims(5);
+  size_t compressed_input1_stride[kMaxBroadcastDim];
+  size_t compressed_input2_stride[kMaxBroadcastDim];
+  size_t compressed_output_shape[kMaxBroadcastDim];
+  bool broadcastable_shape = ReduceDimensionsForBroadcast<kMaxBroadcastDim>(
+      input1_shape, input2_shape, compressed_input1_stride,
+      compressed_input2_stride, compressed_output_shape);
+  // Skip broadcasting for degenerate shapes.
+  if (!broadcastable_shape) {
+    return;
   }
+
+  size_t input1_offset = 0;
+  size_t input2_offset = 0;
+  size_t output_offset = 0;
+  BroadcastAddRecursiveDimensions(
+      params, kMaxBroadcastDim - 1, &input1_offset, &input2_offset,
+      &output_offset, compressed_input1_stride, compressed_input2_stride,
+      compressed_output_shape, input1_data, input2_data, output_data,
+      check_arithmetic_params, binary_func);
 }
 
 template <typename T>

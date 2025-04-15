@@ -26,6 +26,7 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                        TF_PYTHON_VERSION=3.9
                     }
                     steps {
                         dir('tensorflow') {
@@ -52,7 +53,6 @@ pipeline {
 
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
-                                --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.9.13/lib/python3.9/site-packages" \
                                 //tensorflow/tools/pip_package:build_pip_package
                                     
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
@@ -61,15 +61,6 @@ pipeline {
                                 dist
                             '''
                         }
-
-                        // Sanity check before archiving/uploading to PyPi
-                        sh '''
-                            python -m pip install ${WORKSPACE}/tensorflow/dist/*.whl
-
-                            python -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'
-                            python -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.keras" in tf.keras.__name__ else 1)'
-                            python -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.estimator" in tf.estimator.__name__ else 1)'
-                        '''
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
 
@@ -84,6 +75,7 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                        TF_PYTHON_VERSION=3.10
                     }
                     steps {
                         dir('tensorflow') {
@@ -109,7 +101,6 @@ pipeline {
 
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
-                                --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.10.4/lib/python3.10/site-packages" \
                                 //tensorflow/tools/pip_package:build_pip_package
                                 
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
@@ -118,15 +109,6 @@ pipeline {
                                 dist
                             '''
                         }
-
-                        // Sanity check before archiving/uploading to PyPi
-                        sh '''
-                            python -m pip install ${WORKSPACE}/tensorflow/dist/*.whl
-
-                            python -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'
-                            python -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.keras" in tf.keras.__name__ else 1)'
-                            python -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.estimator" in tf.estimator.__name__ else 1)'
-                        '''
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
 
@@ -140,6 +122,7 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                        TF_PYTHON_VERSION=3.11
                     }
                     steps {
 
@@ -166,7 +149,6 @@ pipeline {
 
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
-                                --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.11.2/lib/python3.11/site-packages" \
                                 //tensorflow/tools/pip_package:build_pip_package
                                 
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
@@ -175,15 +157,6 @@ pipeline {
                                 dist
                             '''
                         }
-
-                        // Sanity check before archiving/uploading to PyPi
-                        sh '''
-                            python -m pip install ${WORKSPACE}/tensorflow/dist/*.whl
-
-                            python -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'
-                            python -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.keras" in tf.keras.__name__ else 1)'
-                            python -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.estimator" in tf.estimator.__name__ else 1)'
-                        '''
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
 

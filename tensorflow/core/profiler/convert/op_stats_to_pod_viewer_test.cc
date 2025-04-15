@@ -16,17 +16,18 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
 
 #include "google/protobuf/any.pb.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/pod_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
-#include "tensorflow/core/profiler/utils/diagnostics.h"
-#include "tensorflow/core/profiler/utils/event_span.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
+#include "plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/pod_stats.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/pod_viewer.pb.h"  // from @org_xprof
+#include "plugin/tensorboard_plugin_profile/protobuf/steps_db.pb.h"  // from @org_xprof
+#include "xprof/utils/diagnostics.h"  // from @org_xprof
+#include "xprof/utils/event_span.h"  // from @org_xprof
 
 namespace tensorflow {
 namespace profiler {
@@ -90,24 +91,30 @@ TEST(OpStatsToPodViewer, GpuPodViewer) {
   const PodStatsRecord& record = pod_stats_map.pod_stats_per_core().at(kCoreId);
   EXPECT_EQ(kStepNum, record.step_num());
   EXPECT_EQ(kHostname, record.host_name());
-  EXPECT_NEAR(PicoToMicro(kStepTimePs), record.total_duration_us(), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kStepTimePs),
+              record.total_duration_us(), kMaxError);
   const auto& breakdown = record.step_breakdown_us();
-  EXPECT_NEAR(PicoToMicro(kDeviceCompute32Ps + kDeviceCompute16Ps),
-              breakdown.at(kDeviceCompute), kMaxError);
-  EXPECT_NEAR(PicoToMicro(kDeviceToDevicePs + kDeviceWaitDevicePs),
-              breakdown.at(kDeviceToDevice), kMaxError);
-  EXPECT_NEAR(PicoToMicro(kDeviceCollectivePs),
-              breakdown.at(kDeviceCollectives), kMaxError);
-  EXPECT_NEAR(PicoToMicro(kHostComputePs), breakdown.at(kHostCompute),
-              kMaxError);
-  EXPECT_NEAR(PicoToMicro(kHostPreparePs), breakdown.at(kHostPrepare),
-              kMaxError);
   EXPECT_NEAR(
-      PicoToMicro(kHostWaitInputPs + kHostToDevicePs + kDeviceWaitHostPs),
-      breakdown.at(kInput), kMaxError);
-  EXPECT_NEAR(PicoToMicro(kDeviceToHostPs), breakdown.at(kOutput), kMaxError);
-  EXPECT_NEAR(PicoToMicro(kHostCompilePs), breakdown.at(kCompile), kMaxError);
-  EXPECT_NEAR(PicoToMicro(kUnknownTimePs), breakdown.at(kAllOthers), kMaxError);
+      tsl::profiler::PicoToMicro(kDeviceCompute32Ps + kDeviceCompute16Ps),
+      breakdown.at(kDeviceCompute), kMaxError);
+  EXPECT_NEAR(
+      tsl::profiler::PicoToMicro(kDeviceToDevicePs + kDeviceWaitDevicePs),
+      breakdown.at(kDeviceToDevice), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kDeviceCollectivePs),
+              breakdown.at(kDeviceCollectives), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kHostComputePs),
+              breakdown.at(kHostCompute), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kHostPreparePs),
+              breakdown.at(kHostPrepare), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kHostWaitInputPs + kHostToDevicePs +
+                                         kDeviceWaitHostPs),
+              breakdown.at(kInput), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kDeviceToHostPs),
+              breakdown.at(kOutput), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kHostCompilePs),
+              breakdown.at(kCompile), kMaxError);
+  EXPECT_NEAR(tsl::profiler::PicoToMicro(kUnknownTimePs),
+              breakdown.at(kAllOthers), kMaxError);
 
   EXPECT_EQ(GetGenericEventTypeStr(kDeviceCollectives), record.bottleneck());
 }

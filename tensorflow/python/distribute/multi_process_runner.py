@@ -929,10 +929,13 @@ class MultiProcessPoolRunner(object):
     if self._runner is not None:
       try:
         self._runner.join()
+      except unittest.SkipTest:
+        raise
       except Exception as e:  # pylint: disable=broad-except
-        logging.error(
+        logging.exception(
             'Ignoring exception when shutting down MultiProcessPoolRunner: %s',
-            e)
+            e,
+        )
       self._runner = None
 
   def _start(self):
@@ -1304,7 +1307,7 @@ def run(fn,
         raise ValueError('Task type {}, task id {} is errors out'.format(
             resolver.task_type, resolver.task_id))
 
-      with self.assertRaisesRegexp(ValueError,
+      with self.assertRaisesRegex(ValueError,
                                    'Task type worker, task id 0 is errors out'):
         cluster_spec = (
             tf.__internal__.distribute.multi_process_runner.create_cluster_spec(

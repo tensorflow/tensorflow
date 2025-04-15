@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "llvm/Support/Error.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
@@ -34,19 +35,15 @@ limitations under the License.
 namespace tensorflow {
 namespace tfd {
 
-// Injecting TF resources to TFRT GPU resource maps for tfrt::GpuOpHandler to
-// use.s
-Status InjectTfGpuResources();
-
 // Create an EagerOperation to run the op, taking tensorflow::TensorHandle and
 // returning tensorflow::AbstractTensorHandle*.
-Status CallEagerExecute(const tfrt::ExecutionContext& exec_ctx,
-                        EagerContext* eager_ctx, const char* op_name,
-                        const char* device_name,
-                        llvm::ArrayRef<TensorHandle*> input_tensor_handles,
-                        const tfrt::OpAttrsRef& attrs,
-                        llvm::MutableArrayRef<tensorflow::AbstractTensorHandle*>
-                            result_tensor_handles);
+absl::Status CallEagerExecute(
+    const tfrt::ExecutionContext& exec_ctx, EagerContext* eager_ctx,
+    const char* op_name, const char* device_name,
+    llvm::ArrayRef<TensorHandle*> input_tensor_handles,
+    const tfrt::OpAttrsRef& attrs,
+    llvm::MutableArrayRef<tensorflow::AbstractTensorHandle*>
+        result_tensor_handles);
 
 // Take and return RuntimeFallbackTensors.
 tfrt::AsyncValueRef<tfrt::Chain> RuntimeFallbackExecute(

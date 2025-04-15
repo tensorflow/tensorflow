@@ -1,0 +1,33 @@
+// RUN: hlo-translate -hlo-to-mlir -emit-mhlo -split-input-file %s | FileCheck %s
+
+HloModule main, entry_computation_layout={(f32[])->f32[]}
+
+ENTRY %main (Arg_0.1: f32[]) -> f32[] {
+  %Arg_0.1 = f32[] parameter(0)
+  // CHECK: %0 = mhlo.exponential %arg0 {result_accuracy = #mhlo.result_accuracy<atol = 1.000000e+00, ulps = 10, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : tensor<f32>
+  ROOT %exponential.2 = f32[] exponential(%Arg_0.1), result_accuracy={tolerance={atol=1.0,rtol=0,ulps=10}}
+}
+
+// -----
+
+ENTRY %main (Arg_0.1: f32[]) -> f32[] {
+  %Arg_0.1 = f32[] parameter(0)
+  // CHECK: %0 = mhlo.exponential %arg0 {result_accuracy = #mhlo.result_accuracy<mode = #mhlo.result_accuracy_mode<HIGHEST>>} : tensor<f32>
+  ROOT %exponential.2 = f32[] exponential(%Arg_0.1), result_accuracy={mode=HIGHEST}
+}
+
+// -----
+
+ENTRY %main (Arg_0.1: f32[]) -> f32[] {
+  %Arg_0.1 = f32[] parameter(0)
+  // CHECK: %0 = mhlo.exponential %arg0 : tensor<f32>
+  ROOT %exponential.2 = f32[] exponential(%Arg_0.1), result_accuracy={mode=DEFAULT}
+}
+
+// -----
+
+ENTRY %main (Arg_0.1: f32[]) -> f32[] {
+  %Arg_0.1 = f32[] parameter(0)
+  // CHECK: %0 = mhlo.exponential %arg0 : tensor<f32>
+  ROOT %exponential.2 = f32[] exponential(%Arg_0.1)
+}

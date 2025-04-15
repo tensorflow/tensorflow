@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variable.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -102,19 +103,22 @@ struct GrapplerItem {
 
     // Mark the grapper optimization run in eager mode or not.
     bool is_eager_mode = false;
+
+    // Number of intra threads used to run operation.
+    int intra_op_parallelism_threads = tsl::port::MaxParallelism();
   };
 
   const std::unordered_set<string>& devices() const;
   // Adds a device to a set of available devices, only if it's a valid fully
   // defined device name. Returns `OkStatus()` if successfully added a device,
   // and an error otherwise.
-  Status AddDevice(const string& device);
+  absl::Status AddDevice(const string& device);
   // Adds all valid devices from the other Grappler item to the device set.
-  Status AddDevices(const GrapplerItem& other);
+  absl::Status AddDevices(const GrapplerItem& other);
   // Adds all valid devices from the nodes of the graph to the device set.
   // Returns `OkStatus()` if all device annotations found in a graph are valid
   // fully defined device names, and an error otherwise.
-  Status InferDevicesFromGraph();
+  absl::Status InferDevicesFromGraph();
   // Clears a set of available devices.
   void ClearDevices();
 

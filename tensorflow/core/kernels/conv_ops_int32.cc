@@ -38,7 +38,6 @@ REGISTER_KERNEL_BUILDER(
     ConvOp<CPUDevice, int32>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 template <>
 struct LaunchConv2DOp<GPUDevice, int32> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
@@ -77,6 +76,31 @@ struct LaunchConv2DOp<GPUDevice, int32> {
     LaunchGeneric<GPUDevice, int32>()(
         ctx, input, filter, row_stride, col_stride, row_dilation, col_dilation,
         padding, explicit_paddings, output, data_format);
+  }
+};
+
+template <>
+struct LaunchConvOp<GPUDevice, int32> {
+  void operator()(OpKernelContext* context, bool cudnn_use_autotune,
+                  const Tensor& input, const Tensor& filter,
+                  const std::vector<int64>& dilations,
+                  const std::vector<int64>& strides, const Padding padding,
+                  const std::vector<int64_t>& explicit_paddings,
+                  TensorFormat data_format, Tensor* output) {
+    // Cuda backend does not support int32. For 2D we fall back to Conv2D Eigen
+    // based implementation and for 3D we throw an error.
+    int spatial_dims = input.dims() - 2;
+    if (spatial_dims == 2) {
+      LaunchConv2DOp<GPUDevice, int32>()(
+          context, true, cudnn_use_autotune, input, filter, dilations[1],
+          dilations[2], strides[1], strides[2], padding, explicit_paddings,
+          output, data_format);
+    } else if (spatial_dims == 3) {
+      context->SetStatus(absl::UnimplementedError(
+          "3D Convolution does not support int32 data type."));
+    } else {
+      context->SetStatus(absl::InternalError("Invalid spatial dimensions."));
+    }
   }
 };
 
@@ -132,6 +156,9 @@ DECLARE_GPU_SPEC(int32);
 REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<int32>("T"),
     Conv2DOp<GPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv").Device(DEVICE_GPU).TypeConstraint<int32>("T"),
+    ConvOp<GPUDevice, int32>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

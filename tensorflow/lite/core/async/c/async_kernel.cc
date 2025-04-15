@@ -100,6 +100,24 @@ void TfLiteAsyncKernelSetSetAttributes(
   async_kernel->set_attributes = set_attributes;
 }
 
+void TfLiteAsyncKernelSetSetBufferAttributes(
+    TfLiteAsyncKernel* async_kernel,
+    TfLiteStatus (*set_buffer_attributes)(TfLiteAsyncKernel* async_kernel,
+                                          const TfLiteBackendBuffer* buffer,
+                                          const TfLiteAttributeMap* attrs)) {
+  if (!async_kernel) return;
+  async_kernel->set_buffer_attributes = set_buffer_attributes;
+}
+
+void TfLiteAsyncKernelSetGetBufferAttributes(
+    TfLiteAsyncKernel* async_kernel,
+    TfLiteStatus (*get_buffer_attributes)(TfLiteAsyncKernel* async_kernel,
+                                          const TfLiteBackendBuffer* buffer,
+                                          TfLiteAttributeMap* attrs)) {
+  if (!async_kernel) return;
+  async_kernel->get_buffer_attributes = get_buffer_attributes;
+};
+
 void TfLiteAsyncKernelSetPrepare(
     TfLiteAsyncKernel* async_kernel,
     TfLiteStatus (*prepare)(TfLiteAsyncKernel* async_kernel,

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseSegmentMeanGrad"
   input_arg {
     name: "grad"

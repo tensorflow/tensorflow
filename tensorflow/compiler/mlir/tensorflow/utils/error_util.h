@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_ERROR_UTIL_H_
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/utils/error_util.h"
+#include "xla/mlir/utils/error_util.h"
 #include "tensorflow/core/platform/status.h"
 
 // Error utilities for MLIR when interacting with code using Status returns.

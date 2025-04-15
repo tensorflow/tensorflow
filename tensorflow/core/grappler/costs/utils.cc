@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
@@ -136,7 +136,7 @@ static void ExtractExtraProperties(
 
         Env* env = Env::Default();
         FileStatistics stat;
-        Status s = env->Stat(filename, &stat);
+        absl::Status s = env->Stat(filename, &stat);
         if (!s.ok()) {
           continue;
         }
@@ -250,7 +250,7 @@ DeviceProperties GetDeviceInfo(const string& device_str) {
     if (parsed.type == "GPU") {
       TfDeviceId tf_device_id(parsed.id);
       PlatformDeviceId platform_device_id;
-      Status s =
+      absl::Status s =
           GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id);
       if (!s.ok()) {
         // We are probably running simulation without linking cuda libraries.

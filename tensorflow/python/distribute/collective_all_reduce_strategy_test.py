@@ -130,7 +130,7 @@ class CollectiveAllReduceStrategyTestBase(
           communication_options=collective_util.Options(),
           devices=devices)
       # Manually set the field since the workaround bypasses the base
-      # contructor, resulting in the absence of this field.
+      # constructor, resulting in the absence of this field.
       strategy._extended._retrace_functions_for_each_device = (num_gpus > 1)
 
     return strategy, target
@@ -755,7 +755,6 @@ class ExperimentalCompatibilityTest(test.TestCase):
                           _CollectiveAllReduceStrategyExperimental)
 
   def testName(self):
-    # Estimator checks the __name__ to special case MultiWorkerMirroredStrategy.
     self.assertEqual(CollectiveAllReduceStrategy.__name__,
                      'CollectiveAllReduceStrategy')
     self.assertEqual(_CollectiveAllReduceStrategyExperimental.__name__,

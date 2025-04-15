@@ -26,7 +26,6 @@ from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.util.tf_export import keras_export
 
 
 def _assert_other_arg_none(arg_name, arg):
@@ -36,7 +35,6 @@ def _assert_other_arg_none(arg_name, arg):
                      'but %s is not None.' % arg_name)
 
 
-@keras_export('keras.layers.InputLayer')
 class InputLayer(base_layer.Layer):
   """Layer to be used as an entry point into a Network (a graph of layers).
 
@@ -254,7 +252,6 @@ class InputLayer(base_layer.Layer):
     return layer_serialization.InputLayerSavedModelSaver(self)
 
 
-@keras_export('keras.Input', 'keras.layers.Input')
 def Input(  # pylint: disable=invalid-name
     shape=None,
     batch_size=None,

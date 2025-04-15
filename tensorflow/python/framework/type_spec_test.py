@@ -426,7 +426,7 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     spec = type_spec.type_spec_from_value(value)
 
     self.assertEqual(
-        spec._flatten(),
+        spec.flatten(),
         [
             tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.int32),
             tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.int64),
@@ -435,7 +435,7 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         ],
     )
     self.assertEqual(
-        [trace_type.from_value(t) for t in spec._to_tensors(value)],
+        [trace_type.from_value(t) for t in spec.to_tensors(value)],
         [
             tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.int32),
             tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.int64),
@@ -444,9 +444,9 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         ],
     )
 
-    flat_original = spec._to_tensors(value)
-    reconstructed = spec._from_tensors(iter(flat_original))
-    flat_reconstructed = spec._to_tensors(reconstructed)
+    flat_original = spec.to_tensors(value)
+    reconstructed = spec.from_tensors(iter(flat_original))
+    flat_reconstructed = spec.to_tensors(reconstructed)
 
     for original, reconstructed in zip(flat_original, flat_reconstructed):
       self.assertIs(original, reconstructed)
@@ -458,7 +458,7 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     )
     spec = type_spec.type_spec_from_value(value)
 
-    casted_value = spec._cast(value, trace_type.InternalCastContext())
+    casted_value = spec.cast(value, trace_type.InternalCastContext())
 
     self.assertIs(value, casted_value)
 
@@ -697,7 +697,7 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     spec = TwoTensorsSpec([], dtypes.int32, [], dtypes.float32)
     foo = spec._from_components([1, 2.3])
     ctx = trace_type.InternalCastContext()
-    value = spec._cast(foo, ctx)
+    value = spec.cast(foo, ctx)
     tensor_type = type(ops.convert_to_tensor([1, 2, 3]))
     self.assertIsInstance(value.x, tensor_type)
     self.assertIsInstance(value.y, tensor_type)
@@ -708,7 +708,7 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         ragged_factory_ops.constant([[1, 2], [3]], dtypes.int32),
         ragged_factory_ops.constant([[5], [6, 7, 8]], dtypes.float32))
     bar_spec = type_spec.type_spec_from_value(bar)
-    value = bar_spec._cast(bar, ctx)
+    value = bar_spec.cast(bar, ctx)
     self.assertEqual(value.x.dtype, dtypes.int32)
     self.assertEqual(value.y.dtype, dtypes.float32)
 

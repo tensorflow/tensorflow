@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StatelessShuffle"
   input_arg {
     name: "value"

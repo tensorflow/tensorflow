@@ -12,19 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_split.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -329,13 +332,13 @@ class TfLiteSubgraphExecute : public OpKernel {
       } else if (subgraph_input->type == kTfLiteVariant) {
         InitializeVariantOrResource(tf_tensor, subgraph_input);
       } else if (!TensorCanBeShared(subgraph_input)) {
-        tensorflow::StringPiece tensor_data = tf_tensor.tensor_data();
+        absl::string_view tensor_data = tf_tensor.tensor_data();
         OP_REQUIRES(ctx, subgraph_input->bytes == tensor_data.size(),
                     errors::Internal("tensor size doesn't match"));
         // TODO(b/181352924): This could incur some overhead in memory copy.
         // Optimize this away in the future.
-        memcpy(subgraph_input->data.raw, tensor_data.data(),
-               tensor_data.size());
+        std::memcpy(subgraph_input->data.raw, tensor_data.data(),
+                    tensor_data.size());
       }
     }
   }

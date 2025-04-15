@@ -19,7 +19,6 @@ import tempfile
 import threading
 import unittest
 from tensorflow.python.data.experimental.service import server_lib
-from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 from tensorflow.python.profiler import profiler_client
 
@@ -162,13 +161,16 @@ class ServerLibTest(test.TestCase):
   def testProfileWorker(self):
     dispatcher = server_lib.DispatchServer()
     worker = server_lib.WorkerServer(
-        server_lib.WorkerConfig(dispatcher._address))
+        server_lib.WorkerConfig(dispatcher._address)
+    )
     # Test the profilers are successfully started and connected to profiler
     # service on the worker. Since there is no op running, it is expected to
-    # return UnavailableError with no trace events collected string.
-    with self.assertRaises(errors.UnavailableError) as error:
+    # return RuntimeError with no trace events collected string.
+    with self.assertRaises(RuntimeError) as error:
       profiler_client.trace(worker._address, tempfile.mkdtemp(), duration_ms=10)
-    self.assertStartsWith(str(error.exception), "No trace event was collected")
+    self.assertStartsWith(
+        str(error.exception), "UNAVAILABLE: No trace event was collected"
+    )
 
 
 if __name__ == "__main__":

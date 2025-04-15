@@ -16,8 +16,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_3x3.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_3x3_thin.h"

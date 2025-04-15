@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_FUSED_BATCH_NORM_OP_H_
 #define TENSORFLOW_CORE_KERNELS_FUSED_BATCH_NORM_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -32,8 +32,8 @@ enum class FusedBatchNormActivationMode { kIdentity, kRelu };
 
 std::string ToString(FusedBatchNormActivationMode activation_mode);
 
-Status ParseActivationMode(OpKernelConstruction* context,
-                           FusedBatchNormActivationMode* activation_mode);
+absl::Status ParseActivationMode(OpKernelConstruction* context,
+                                 FusedBatchNormActivationMode* activation_mode);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

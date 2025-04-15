@@ -1,0 +1,20 @@
+# proto-file: third_party/tensorflow/compiler/xla/tools/run_hlo_module.proto
+# proto-message: RunHloModuleIterationLiterals
+arguments {
+  shape {
+    element_type: F32
+    dimensions: 2
+    dimensions: 2
+    layout {
+      minor_to_major: 1
+      minor_to_major: 0
+      tail_padding_alignment_in_elements: 1
+    }
+    is_dynamic_dimension: false
+    is_dynamic_dimension: false
+  }
+  f32s: 0.1
+  f32s: 0.2
+  f32s: 0.3
+  f32s: 0.4
+}

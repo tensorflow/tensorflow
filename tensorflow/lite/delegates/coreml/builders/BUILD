@@ -76,7 +76,7 @@ cc_test(
     deps = [
         ":util",
         "//tensorflow/lite/core/c:common",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
     ],
 )
