@@ -146,6 +146,7 @@ tools/def_file_filter/BUILD:
 tools/def_file_filter/def_file_filter.py.tpl:
 tools/def_file_filter/def_file_filter_configure.bzl:
 tools/toolchains/BUILD:
+tools/toolchains/android/BUILD:
 tools/toolchains/clang6/BUILD:
 tools/toolchains/cpus/py/BUILD:
 tools/toolchains/cpus/py3/BUILD:
