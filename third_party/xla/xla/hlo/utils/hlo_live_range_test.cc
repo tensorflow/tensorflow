@@ -520,5 +520,84 @@ TEST_F(HloLiveRangeTest, Call) {
   EXPECT_EQ(inst_ranges["e"], std::make_pair(6, 7));
 }
 
+TEST_F(HloLiveRangeTest, ToString) {
+  auto builder = HloComputation::Builder(TestName());
+  auto paramA = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec4_, "paramA"));
+  auto paramX = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec4_, "paramX"));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec4_, HloOpcode::kMultiply, paramA, paramX));
+  module_->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module_.get());
+
+  schedule.set_sequence(module_->entry_computation(), {paramA, paramX, mul});
+
+  Analyze(schedule);
+
+  // The peak is at LogicalTime=2, where all three buffers are live. Each array
+  // of four F32 elements takes 16 bytes.
+  std::string expected_string = R"(HloLiveRange (max 3):
+  InstructionSequence:
+    0:paramA
+    1:paramX
+    2:multiply
+  BufferLiveRange:
+    paramA{}:0-3
+    paramX{}:0-3
+    multiply{}:2-3
+  Live ranges at 2 (peak):
+    paramA{}: 16 bytes
+    paramX{}: 16 bytes
+    multiply{}: 16 bytes
+)";
+  EXPECT_EQ(hlo_live_range_->ToString(), expected_string);
+}
+
+TEST_F(HloLiveRangeTest, ToStringTuple) {
+  auto builder = HloComputation::Builder(TestName());
+  auto paramA = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec4_, "paramA"));
+  auto tuple_const = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::MakeTupleOwned(
+          LiteralUtil::CreateR0<float>(1.0f),
+          LiteralUtil::CreateR1<float>({2.0f, 3.0f, 4.0f, 5.0f}))));
+  auto get_tuple_element = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32vec4_, tuple_const, 1));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec4_, HloOpcode::kAdd, paramA, get_tuple_element));
+  module_->AddEntryComputation(builder.Build());
+  HloSchedule schedule(module_.get());
+
+  schedule.set_sequence(module_->entry_computation(),
+                        {paramA, tuple_const, get_tuple_element, add});
+
+  Analyze(schedule);
+
+  // The peak time is at LogicalTime=1, when both constants in the tuple are
+  // live. The tuple itself has two pointers of 8 bytes each, and the two
+  // constants in the tuple have 4 and 16 bytes respectively.
+  std::string expected_string = R"(HloLiveRange (max 4):
+  InstructionSequence:
+    0:paramA
+    1:constant
+    2:get-tuple-element
+    3:add
+  BufferLiveRange:
+    paramA{}:0-4
+    constant{}:1-2
+    constant{0}:1-1
+    constant{1}:1-3
+    add{}:3-4
+  Live ranges at 1 (peak):
+    paramA{}: 16 bytes
+    constant{}: 16 bytes
+    constant{0}: 4 bytes
+    constant{1}: 16 bytes
+)";
+  EXPECT_EQ(hlo_live_range_->ToString(), expected_string);
+}
+
 }  // namespace
 }  // namespace xla
