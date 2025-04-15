@@ -91,14 +91,6 @@ class CoordinationService {
     return std::make_unique<CoordinationService>(env, config, std::move(cache));
   }
 
-  // TODO: b/410607726 - Remove once deprecated EnableCoordinationService is
-  // unused.
-  static std::unique_ptr<CoordinationService> EnableCoordinationService(
-      Env* env, const tensorflow::CoordinationServiceConfig& config,
-      std::unique_ptr<CoordinationClientCache> cache) {
-    return Create(env, config, std::move(cache));
-  }
-
   CoordinationService(Env* env,
                       const tensorflow::CoordinationServiceConfig& config,
                       std::unique_ptr<CoordinationClientCache> client_cache);
@@ -652,10 +644,6 @@ class CoordinationService {
   CoordinationService(const CoordinationService&) = delete;
   void operator=(const CoordinationService&) = delete;
 };
-
-// TODO: b/410607726 - Remove once deprecated CoordinationServiceInterface is
-// removed.
-using CoordinationServiceInterface = CoordinationService;
 
 }  // namespace tsl
 
