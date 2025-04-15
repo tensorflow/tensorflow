@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_LEGALIZE_SCHEDULING_ANNOTATIONS_H_
 #define XLA_SERVICE_LEGALIZE_SCHEDULING_ANNOTATIONS_H_
 
+#include <cstdint>
 #include <utility>
+#include <vector>
 
+#include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/util.h"
@@ -34,6 +39,7 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
   struct Config {
     HloPredicate keep_sync_annotation = HloPredicateTrue;
     bool propagate_annotation = false;
+    bool check_start_done_annotation_consistency = true;
   };
 
   explicit LegalizeSchedulingAnnotations(Config config)
@@ -41,6 +47,12 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
   absl::string_view name() const override {
     return "legalize-scheduling-annotations";
   }
+
+  static absl::StatusOr<bool> PropagateAnnotations(
+      const HloComputation* computation,
+      const absl::btree_map<int64_t, std::vector<HloInstruction*>>&
+          annotation_id_to_instructions);
+
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
