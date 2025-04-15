@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <variant>
@@ -1810,6 +1811,45 @@ ENTRY e {
 // CHECK-NOT: "split_k":"1"
 // CHECK: ROOT
 )");
+}
+
+TEST_F(GemmFusionAutotunerTest, VerifyHopperConfigsAreDifferentFromBlackwell) {
+  if (isRocm()) {
+    GTEST_SKIP() << "Not supported on ROCm.";
+  }
+
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+    ENTRY e {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT r = f32[1024,1024] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })")
+                                                  .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> blackwell_configs,
+      GetPossibleMatmulAutotuneTritonConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          se::CudaComputeCapability(se::CudaComputeCapability::kBlackwell, 0),
+          GetToolkitVersion(), GetDebugOptionsForTest()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> hopper_configs,
+      GetPossibleMatmulAutotuneTritonConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
+          GetToolkitVersion(), GetDebugOptionsForTest()));
+
+  std::set<TritonGemmConfig> blackwell_configs_set(blackwell_configs.begin(),
+                                                   blackwell_configs.end());
+  std::set<TritonGemmConfig> hopper_configs_set(hopper_configs.begin(),
+                                                hopper_configs.end());
+
+  EXPECT_GT(blackwell_configs_set.size(), 0);
+  EXPECT_GT(hopper_configs_set.size(), 0);
+  EXPECT_NE(blackwell_configs_set, hopper_configs_set);
 }
 
 }  // namespace
