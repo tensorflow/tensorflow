@@ -20,21 +20,16 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_communicator.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
@@ -44,9 +39,6 @@ limitations under the License.
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/global_device_id.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -262,74 +254,6 @@ absl::Status NcclCollectives::Deallocate(void* location) {
   VLOG(2) << "Deallocated collective memory " << location;
   return absl::OkStatus();
 }
-
-class NcclIdStore {
- public:
-  NcclIdStore(int node_id,
-              absl::flat_hash_map<GlobalDeviceId, int> device_to_node,
-              std::shared_ptr<KeyValueStoreInterface> kv_store)
-      : node_id_(node_id),
-        device_to_node_(std::move(device_to_node)),
-        kv_store_(std::move(kv_store)) {}
-
-  absl::StatusOr<CliqueId> GetNcclUniqueId(const CliqueKey& key) {
-    auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
-    if (gpu_key == nullptr) {
-      return InvalidArgument("Expected GPU clique key");
-    }
-
-    // The caller must ensure that threads calling this method concurrently have
-    // unique keys, otherwise the global key-value store may hold the wrong
-    // value.
-    {
-      absl::MutexLock lock(&mu_);
-      auto it = cache_.find(*gpu_key);
-      if (it != cache_.end()) {
-        return it->second;
-      }
-    }
-    CliqueId clique_id;
-    int primary_node_id = device_to_node_.at(gpu_key->root_device());
-    if (node_id_ == primary_node_id) {
-      TF_ASSIGN_OR_RETURN(
-          clique_id, gpu::GpuCollectives::Default()->CreateUniqueCliqueId());
-      TF_RETURN_IF_ERROR(
-          kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
-    } else {
-      TF_ASSIGN_OR_RETURN(
-          std::string id_str,
-          kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
-      clique_id = CliqueId(id_str);
-    }
-    absl::MutexLock lock(&mu_);
-    auto result = cache_.emplace(*gpu_key, std::move(clique_id));
-    TF_RET_CHECK(result.second) << "Unique ID already in cache.";
-    return result.first->second;
-  }
-
- private:
-  const int node_id_;
-  const absl::flat_hash_map<GlobalDeviceId, int> device_to_node_;
-  const std::shared_ptr<KeyValueStoreInterface> kv_store_;
-
-  absl::Mutex mu_;
-  absl::flat_hash_map<gpu::GpuCliqueKey, CliqueId> cache_ ABSL_GUARDED_BY(mu_);
-};
-
-absl::Status NcclCollectives::InitializeTopology(
-    NcclCollectives::Topology topology) {
-  if (topology.num_nodes > 1) {
-    auto nccl_id_store = std::make_shared<NcclIdStore>(
-        topology.node_id, topology.device_id_to_node_id,
-        std::move(topology.kv_store));
-    topology.gpu_executable_run_options->set_clique_id_callback(
-        [nccl_id_store](const CliqueKey& key) {
-          return nccl_id_store->GetNcclUniqueId(key);
-        });
-  }
-  return absl::OkStatus();
-}
-
 }  // namespace xla::gpu
 
 XLA_COLLECTIVES_REGISTER("gpu", "nccl", 1,

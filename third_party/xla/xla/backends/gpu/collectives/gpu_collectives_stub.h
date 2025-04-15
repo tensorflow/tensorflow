@@ -70,10 +70,6 @@ class GpuCollectivesStub : public GpuCollectives {
 
   absl::Status Deallocate(void* buffer) final { return UnimplementedError(); }
 
-  absl::Status InitializeTopology(Topology topology) final {
-    return UnimplementedError();
-  }
-
  protected:
   static absl::Status UnimplementedError() {
     return Unimplemented("XLA compiled without GPU collectives support");

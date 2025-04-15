@@ -19,18 +19,13 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <memory>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
-#include "xla/executable_run_options.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/global_device_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -113,18 +108,6 @@ class GpuCollectives : public Collectives {
   virtual absl::StatusOr<void*> Allocate(uint64_t bytes) = 0;
 
   virtual absl::Status Deallocate(void* buffer) = 0;
-
-  struct Topology {
-    int32_t node_id;
-    int32_t num_nodes;
-    size_t device_count_per_process;
-    std::shared_ptr<KeyValueStoreInterface> kv_store;
-    absl::flat_hash_map<GlobalDeviceId, int32_t> device_id_to_node_id;
-    gpu::GpuExecutableRunOptions* gpu_executable_run_options;
-  };
-
-  // Initializes the topology information for the collectives backend.
-  virtual absl::Status InitializeTopology(Topology topology) = 0;
 };
 
 }  // namespace xla::gpu

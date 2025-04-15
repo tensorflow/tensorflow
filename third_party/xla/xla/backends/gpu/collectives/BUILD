@@ -1,7 +1,7 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
-load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -24,7 +24,8 @@ cc_library(
     name = "gpu_collectives_plugin",
     deps = [
         ":gpu_collectives_stub",
-    ] + if_nccl([":nccl_collectives"]),
+        ":nccl_collectives",
+    ],
 )
 
 cc_library(
@@ -127,7 +128,6 @@ cc_library(
     srcs = ["gpu_collectives.cc"],
     hdrs = ["gpu_collectives.h"],
     deps = [
-        "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -136,12 +136,9 @@ cc_library(
         "//xla/core/collectives:clique_key",
         "//xla/core/collectives:collectives_registry",
         "//xla/core/collectives:communicator",
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/service:global_device_id",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -192,11 +189,9 @@ cc_library(
     ]),
     visibility = ["//visibility:private"],
     deps = [
-        ":gpu_clique_key",
         ":gpu_collectives",
         ":nccl_communicator",
         ":nccl_errors",
-        "//xla:debug_options_flags",
         "//xla:status_macros",
         "//xla:util",
         "//xla/core/collectives",
@@ -205,21 +200,15 @@ cc_library(
         "//xla/core/collectives:collectives_registry",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/service:global_device_id",
-        "//xla/service/gpu:gpu_executable_run_options",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
     ] + if_cuda_is_configured([
