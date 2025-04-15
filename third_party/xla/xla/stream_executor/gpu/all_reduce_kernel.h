@@ -13,22 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_KERNELS_ALL_REDUCE_KERNEL_COMMON_H_
-#define XLA_SERVICE_GPU_KERNELS_ALL_REDUCE_KERNEL_COMMON_H_
+#ifndef XLA_STREAM_EXECUTOR_GPU_ALL_REDUCE_KERNEL_H_
+#define XLA_STREAM_EXECUTOR_GPU_ALL_REDUCE_KERNEL_H_
 
+#include <array>
 #include <cstdint>
 
-namespace xla::gpu {
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/kernel.h"
+
+namespace stream_executor::gpu {
 
 // The maximum number of input pointers that can be passed to the all-reduce
 // kernel.
 inline constexpr int64_t kMaxNumAllReduceInputPtrs = 8;
 
-// Returns a pointer to the all-reduce kernel for the given element type.
-// Returns nullptr if the element type is not supported.
-template <typename T>
-void* GetAllReduceKernel();
+// Defines a trait for the AllReduce kernel that can be used to register
+// and look up the kernel in the GPU kernel registry.
+template <typename ElementT>
+struct AllReduceKernel {
+  using KernelType =
+      stream_executor::TypedKernel<std::array<void*, kMaxNumAllReduceInputPtrs>,
+                                   stream_executor::DeviceMemoryBase, int64_t,
+                                   int64_t>;
+};
 
-}  // namespace xla::gpu
+}  // namespace stream_executor::gpu
 
-#endif  // XLA_SERVICE_GPU_KERNELS_ALL_REDUCE_KERNEL_COMMON_H_
+#endif  // XLA_STREAM_EXECUTOR_GPU_ALL_REDUCE_KERNEL_H_

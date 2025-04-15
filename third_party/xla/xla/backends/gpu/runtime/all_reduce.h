@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_KERNELS_ALL_REDUCE_KERNEL_H_
-#define XLA_SERVICE_GPU_KERNELS_ALL_REDUCE_KERNEL_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_ALL_REDUCE_H_
+#define XLA_BACKENDS_GPU_RUNTIME_ALL_REDUCE_H_
 
 #include <cstdint>
 
@@ -51,4 +51,4 @@ absl::Status RunAllReduceKernel(
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_KERNELS_ALL_REDUCE_KERNEL_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_ALL_REDUCE_H_

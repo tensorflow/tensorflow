@@ -854,6 +854,7 @@ cc_library(
 
 exports_files([
     "buffer_comparator_kernel_lib.cu.h",
+    "all_reduce_kernel_lib.cu.h",
     "ragged_all_to_all_kernel_lib.cu.h",
 ])
 
@@ -869,6 +870,15 @@ cc_library(
 cc_library(
     name = "ragged_all_to_all_kernel",
     hdrs = ["ragged_all_to_all_kernel.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+cc_library(
+    name = "all_reduce_kernel",
+    hdrs = ["all_reduce_kernel.h"],
     deps = [
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",

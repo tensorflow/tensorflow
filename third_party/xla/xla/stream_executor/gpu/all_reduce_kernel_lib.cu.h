@@ -12,17 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef XLA_STREAM_EXECUTOR_GPU_ALL_REDUCE_KERNEL_LIB_CU_H_
+#define XLA_STREAM_EXECUTOR_GPU_ALL_REDUCE_KERNEL_LIB_CU_H_
 
 #include <array>
 #include <cstdint>
 
-#include "xla/service/gpu/kernels/all_reduce_kernel_common.h"
+#include "xla/stream_executor/gpu/all_reduce_kernel.h"
 
-namespace xla::gpu {
-namespace {
+namespace stream_executor::gpu {
 
 template <typename T>
-__global__ void AllReduceKernel(
+__global__ void AllReduceKernelImpl(
     std::array<void* __restrict__, kMaxNumAllReduceInputPtrs> input_ptrs,
     T* __restrict__ output_ptr, int64_t num_inputs, int64_t num_elements) {
   int64_t offset = blockIdx.x * blockDim.x + threadIdx.x;
@@ -47,16 +48,6 @@ __global__ void AllReduceKernel(
   }
 }
 
-}  // namespace
+}  // namespace stream_executor::gpu
 
-template <typename T>
-void* GetAllReduceKernel() {
-  return reinterpret_cast<  // REINTERPRET_CAST_OK=tsl::safe_reinterpret_cast
-                            // doesn't support this cast, but it's necessary to
-                            // conform to se::TypedKernelFactory<>::Create().
-      void*>(&AllReduceKernel<T>);
-}
-
-template void* GetAllReduceKernel<float>();
-
-}  // namespace xla::gpu
+#endif  // XLA_STREAM_EXECUTOR_GPU_ALL_REDUCE_KERNEL_LIB_CU_H_
