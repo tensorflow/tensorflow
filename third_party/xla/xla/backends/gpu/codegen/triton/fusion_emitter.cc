@@ -1388,6 +1388,10 @@ absl::StatusOr<SmallVector<Value>> EmitGeneric(
     const se::DeviceDescription& device_info,
     const HloFusionInstruction* fusion, mlir::FunctionOpInterface fn,
     const BlockLevelParameters& block_level_parameters) {
+  if (VLOG_IS_ON(6)) {
+    VLOG(6) << "Emitting Triton IR for fusion\n"
+            << ExtractInstructionIntoNewModule(*fusion)->ToString();
+  }
   const HloComputation* computation = fusion->fused_instructions_computation();
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
       SymbolicTileAnalysis::AnalyzeComputation(
