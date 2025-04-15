@@ -348,7 +348,7 @@ void ImportParameterLayoutModes(mlir::func::FuncOp main,
   CHECK_EQ(parameter_shapes.size(), main.getNumArguments());
   for (size_t i = 0; i < main.getNumArguments(); ++i) {
     const Shape& shape = *parameter_shapes[i];
-    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions_size() == 0))
+    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions().size() == 0))
       continue;
     if (LayoutUtil::HasAnyLayout(*parameter_shapes[i])) continue;
     main.setArgAttrs(
@@ -368,7 +368,7 @@ void ImportResultLayoutModes(mlir::func::FuncOp main,
   CHECK_EQ(result_shapes.size(), main.getNumResults());
   for (size_t i = 0; i < main.getNumResults(); ++i) {
     const Shape& shape = *result_shapes[i];
-    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions_size() == 0))
+    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions().size() == 0))
       continue;
     if (LayoutUtil::HasAnyLayout(shape)) continue;
     main.setResultAttrs(
