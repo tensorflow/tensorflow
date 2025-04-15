@@ -16,42 +16,36 @@ limitations under the License.
 // Tests of 1D convolution with trivial kernels and no special variations (like
 // strides and padding).
 
-#include <memory>
+#include <cstdint>
+#include <vector>
 
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "xla/array2d.h"
+#include "Eigen/Core"
 #include "xla/array3d.h"
-#include "xla/array4d.h"
-#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/padding.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/reference_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class ConvolutionTest : public ClientLibraryTestBase {
- protected:
 #if XLA_TEST_BACKEND_GPU
-  // XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
-  // convolution. So relax the absolute error threshold.
-  ErrorSpec error_spec_ = ErrorSpec(1e-2, 1e-3);
+// XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
+// convolution. So relax the absolute error threshold.
+constexpr ErrorSpec kErrorSpec(1e-2, 1e-3);
 #else
-  ErrorSpec error_spec_ = ErrorSpec(1e-4, 1e-3);
+constexpr ErrorSpec kErrorSpec(1e-4, 1e-3);
 #endif
-};
+
+using ConvolutionTest = ClientLibraryTestRunnerMixin<HloTestBase>;
 
 #ifdef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
 using TestTypes = ::testing::Types<float>;
@@ -121,11 +115,8 @@ class Convolve1D1WindowTestBase
     auto expected_r3 =
         expected_r1.Reshape({batch, num_windows, output_feature}).value();
 
-    auto input_literal = client_->TransferToServer(input_r3).value();
-    auto filter_literal = client_->TransferToServer(filter_r3).value();
-    ComputeAndCompareLiteral(&builder, expected_r3,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+    ComputeAndCompareLiteral(&builder, expected_r3, {&input_r3, &filter_r3},
+                             kErrorSpec);
   }
 };
 
@@ -202,7 +193,7 @@ INSTANTIATE_TEST_CASE_P(
 );
 #endif
 
-XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
+TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
@@ -217,16 +208,11 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
 
   Array3D<float> expected({{{510, 610, 710, 810}}});
 
-  auto input_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-          .value();
-  auto filter_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-          .value();
+  const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
+  const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
   ComputeAndCompareR3<float>(&builder, expected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+                             {&input_literal, &filter_literal}, kErrorSpec);
 }
 
 template <typename T>
@@ -252,16 +238,11 @@ class Convolve1D_1x2x5_1x2x2_WithRHSDilation : public ConvolutionTest {
 
     Array3D<T> expected({{{570.0f, 670.0f, 770.0f}}});
 
-    auto input_literal =
-        client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-            .value();
-    auto filter_literal =
-        client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-            .value();
+    const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
+    const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
     ComputeAndCompareR3<T>(&builder, expected,
-                           {input_literal.get(), filter_literal.get()},
-                           error_spec_);
+                           {&input_literal, &filter_literal}, kErrorSpec);
   }
 };  // namespace
 
@@ -269,8 +250,7 @@ TYPED_TEST_CASE(Convolve1D_1x2x5_1x2x2_WithRHSDilation, TestTypes);
 TYPED_TEST(Convolve1D_1x2x5_1x2x2_WithRHSDilation, Types) { this->RunTest(); }
 
 // Basic test with LHS dilation (i.e. strided transposed convolution).
-XLA_TEST_F(ConvolutionTest,
-           Convolve1D_1x1x5_1x1x3_WithLHSDilation_FullPadding) {
+TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_FullPadding) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
@@ -289,19 +269,14 @@ XLA_TEST_F(ConvolutionTest,
 
   Array3D<float> expected({{{34, 22, 56, 33, 78, 44, 100}}});
 
-  auto input_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-          .value();
-  auto filter_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-          .value();
+  const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
+  const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
   ComputeAndCompareR3<float>(&builder, expected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+                             {&input_literal, &filter_literal}, kErrorSpec);
 }
 
-XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_NoPadding) {
+TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_NoPadding) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
@@ -319,20 +294,14 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_NoPadding) {
   Array3D<float> filter({{{10, 11, 12}}});
   Array3D<float> expected({{{12, 11, 34, 22, 56, 33, 78, 44, 100, 55, 50}}});
 
-  auto input_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-          .value();
-  auto filter_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-          .value();
+  const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
+  const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
   ComputeAndCompareR3<float>(&builder, expected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+                             {&input_literal, &filter_literal}, kErrorSpec);
 }
 
-XLA_TEST_F(ConvolutionTest,
-           Convolve1D_1x1x5_1x1x3_WithLHSDilation_HalfPadding) {
+TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_HalfPadding) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
@@ -350,20 +319,15 @@ XLA_TEST_F(ConvolutionTest,
   Array3D<float> filter({{{10, 11, 12}}});
   Array3D<float> expected({{{11, 34, 22, 56, 33, 78, 44, 100, 55}}});
 
-  auto input_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-          .value();
-  auto filter_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-          .value();
+  const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
+  const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
   ComputeAndCompareR3<float>(&builder, expected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+                             {&input_literal, &filter_literal}, kErrorSpec);
 }
 
 // Test multiple output channels.
-XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_2x1x3_WithLHSDilation) {
+TEST_F(ConvolutionTest, Convolve1D_1x1x5_2x1x3_WithLHSDilation) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
@@ -382,20 +346,15 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_2x1x3_WithLHSDilation) {
   Array3D<float> expected(
       {{{34, 22, 56, 33, 78, 44, 100}, {68, 44, 112, 66, 156, 88, 200}}});
 
-  auto input_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-          .value();
-  auto filter_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-          .value();
+  const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
+  const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
   ComputeAndCompareR3<float>(&builder, expected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+                             {&input_literal, &filter_literal}, kErrorSpec);
 }
 
 // Test multiple input channels.
-XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x3_WithLHSDilation) {
+TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x3_WithLHSDilation) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
@@ -414,20 +373,15 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x3_WithLHSDilation) {
 
   Array3D<float> expected({{{730, 390, 870, 460, 1010, 530, 1150}}});
 
-  auto input_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-          .value();
-  auto filter_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-          .value();
+  const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
+  const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
   ComputeAndCompareR3<float>(&builder, expected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+                             {&input_literal, &filter_literal}, kErrorSpec);
 }
 
 // Batched version of the above test.
-XLA_TEST_F(ConvolutionTest, Convolve1D_3x2x5_1x2x3_WithLHSDilation) {
+TEST_F(ConvolutionTest, Convolve1D_3x2x5_1x2x3_WithLHSDilation) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {3, 2, 5});
@@ -451,20 +405,15 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_3x2x5_1x2x3_WithLHSDilation) {
                            {{7300, 3900, 8700, 4600, 10100, 5300, 11500}},
                            {{1460, 780, 1740, 920, 2020, 1060, 2300}}});
 
-  auto input_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-          .value();
-  auto filter_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-          .value();
+  const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
+  const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
   ComputeAndCompareR3<float>(&builder, expected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+                             {&input_literal, &filter_literal}, kErrorSpec);
 }
 
 // Test all together: batched, multiple input and output channels.
-XLA_TEST_F(ConvolutionTest, Convolve1D_3x2x5_2x2x3_WithLHSDilation) {
+TEST_F(ConvolutionTest, Convolve1D_3x2x5_2x2x3_WithLHSDilation) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {3, 2, 5});
@@ -492,22 +441,17 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_3x2x5_2x2x3_WithLHSDilation) {
                            {{1460, 780, 1740, 920, 2020, 1060, 2300},
                             {1606, 858, 1914, 1012, 2222, 1166, 2530}}});
 
-  auto input_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-          .value();
-  auto filter_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-          .value();
+  const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
+  const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
   ComputeAndCompareR3<float>(&builder, expected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+                             {&input_literal, &filter_literal}, kErrorSpec);
 }
 
 // Test LHS dilation (i.e. transposed convolution) and window strides at the
 // same time. That's probably never used in practice, but since the generic
 // algorithm covers it, we test it anyway with a simple case.
-XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilationAndStrides) {
+TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilationAndStrides) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
@@ -526,19 +470,14 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilationAndStrides) {
 
   Array3D<float> expected({{{34, 56, 78, 100}}});
 
-  auto input_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-          .value();
-  auto filter_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-          .value();
+  const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
+  const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
   ComputeAndCompareR3<float>(&builder, expected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+                             {&input_literal, &filter_literal}, kErrorSpec);
 }
 
-XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
+TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
   XlaBuilder builder(TestName());
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
@@ -557,16 +496,11 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
 
   Array3D<float> expected({{{510, 0, 610, 0, 710, 0, 810}}});
 
-  auto input_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-          .value();
-  auto filter_literal =
-      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-          .value();
+  const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
+  const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
   ComputeAndCompareR3<float>(&builder, expected,
-                             {input_literal.get(), filter_literal.get()},
-                             error_spec_);
+                             {&input_literal, &filter_literal}, kErrorSpec);
 }
 
 template <typename T>
@@ -593,16 +527,11 @@ class Convolve1D_1x2x5_1x2x2_WithPadding : public ConvolutionTest {
     Array3D<T> expected(
         {{{0.0f, 260.0f, 510.0f, 610.0f, 710.0f, 810.0f, 350.0f, 0.0f}}});
 
-    auto input_literal =
-        client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
-            .value();
-    auto filter_literal =
-        client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
-            .value();
+    const Literal input_literal = LiteralUtil::CreateR3FromArray3D(input);
+    const Literal filter_literal = LiteralUtil::CreateR3FromArray3D(filter);
 
     ComputeAndCompareR3<T>(&builder, expected,
-                           {input_literal.get(), filter_literal.get()},
-                           error_spec_);
+                           {&input_literal, &filter_literal}, kErrorSpec);
   }
 };
 

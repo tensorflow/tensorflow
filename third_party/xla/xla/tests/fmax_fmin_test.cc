@@ -13,20 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #include <vector>
 
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/service/service.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/literal.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class FmaxSimpleTest : public ClientLibraryTestBase {};
+using FmaxSimpleTest = ClientLibraryTestRunnerMixin<HloTestBase>;
 
-XLA_TEST_F(FmaxSimpleTest, FmaxTenValues) {
+TEST_F(FmaxSimpleTest, FmaxTenValues) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(
@@ -40,16 +43,16 @@ XLA_TEST_F(FmaxSimpleTest, FmaxTenValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(FmaxSimpleTest, FmaxEdgeCases) {
+TEST_F(FmaxSimpleTest, FmaxEdgeCases) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
   XlaOp param0, param1;
-  std::unique_ptr<GlobalData> param0_data = CreateR1Parameter<float>(
+  const Literal param0_data = CreateR1Parameter<float>(
       {INFINITY, INFINITY, INFINITY, -INFINITY, INFINITY, -INFINITY, NAN,
        INFINITY, -INFINITY, NAN},
       /*parameter_number=*/0, /*name=*/"param0",
       /*builder=*/&builder, /*data_handle=*/&param0);
-  std::unique_ptr<GlobalData> param1_data = CreateR1Parameter<float>(
+  const Literal param1_data = CreateR1Parameter<float>(
       {INFINITY, -INFINITY, NAN, NAN, -4.0, -5.0, -6.0, 7.0, 8.0, 9.0},
       /*parameter_number=*/1, /*name=*/"param1",
       /*builder=*/&builder, /*data_handle=*/&param1);
@@ -57,21 +60,20 @@ XLA_TEST_F(FmaxSimpleTest, FmaxEdgeCases) {
   Max(param0, param1);
   std::vector<float> expected = {INFINITY, INFINITY, NAN,      NAN, INFINITY,
                                  -5,       NAN,      INFINITY, 8,   NAN};
-  ComputeAndCompareR1<float>(&builder, expected,
-                             {param0_data.get(), param1_data.get()},
+  ComputeAndCompareR1<float>(&builder, expected, {&param0_data, &param1_data},
                              ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(FmaxSimpleTest, FminEdgeCases) {
+TEST_F(FmaxSimpleTest, FminEdgeCases) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
   XlaOp param0, param1;
-  std::unique_ptr<GlobalData> param0_data = CreateR1Parameter<float>(
+  const Literal param0_data = CreateR1Parameter<float>(
       {INFINITY, INFINITY, INFINITY, -INFINITY, INFINITY, -INFINITY, NAN,
        INFINITY, -INFINITY, NAN},
       /*parameter_number=*/0, /*name=*/"param0",
       /*builder=*/&builder, /*data_handle=*/&param0);
-  std::unique_ptr<GlobalData> param1_data = CreateR1Parameter<float>(
+  const Literal param1_data = CreateR1Parameter<float>(
       {INFINITY, -INFINITY, NAN, NAN, -4.0, -5.0, -6.0, 7.0, 8.0, 9.0},
       /*parameter_number=*/1, /*name=*/"param1",
       /*builder=*/&builder, /*data_handle=*/&param1);
@@ -79,8 +81,7 @@ XLA_TEST_F(FmaxSimpleTest, FminEdgeCases) {
   Min(param0, param1);
   std::vector<float> expected = {INFINITY,  -INFINITY, NAN, NAN,       -4,
                                  -INFINITY, NAN,       7,   -INFINITY, NAN};
-  ComputeAndCompareR1<float>(&builder, expected,
-                             {param0_data.get(), param1_data.get()},
+  ComputeAndCompareR1<float>(&builder, expected, {&param0_data, &param1_data},
                              ErrorSpec(0.0001));
 }
 

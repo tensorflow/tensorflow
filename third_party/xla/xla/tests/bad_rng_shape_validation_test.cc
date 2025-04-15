@@ -21,25 +21,22 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace {
 
-class BadRngShapeValidationTest : public ClientLibraryTestBase {};
-
-TEST_F(BadRngShapeValidationTest, DefaultConstructedShapeCreatesError) {
-  XlaBuilder builder(TestName());
+TEST(BadRngShapeValidationTest, DefaultConstructedShapeCreatesError) {
+  XlaBuilder builder("BadRngShapeValidationTest");
   auto zero = ConstantR0<float>(&builder, 0.0);
   auto one = ConstantR0<float>(&builder, 1.0);
   RngUniform(zero, one, Shape());
   EXPECT_FALSE(builder.Build().ok());
 }
 
-TEST_F(BadRngShapeValidationTest, ShapeWithoutLayoutIsOk) {
-  XlaBuilder builder(TestName());
+TEST(BadRngShapeValidationTest, ShapeWithoutLayoutIsOk) {
+  XlaBuilder builder("BadRngShapeValidationTest");
   auto zero = ConstantR0<float>(&builder, 0.0);
   auto one = ConstantR0<float>(&builder, 1.0);
   Shape shape;

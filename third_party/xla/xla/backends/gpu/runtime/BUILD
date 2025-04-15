@@ -72,6 +72,8 @@ cc_library(
         "//xla/ffi/api:c_api",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:buffer_use",
+        "//xla/runtime:execution_graph",
+        "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer",

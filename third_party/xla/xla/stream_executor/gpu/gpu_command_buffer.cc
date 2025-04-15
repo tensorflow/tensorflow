@@ -102,6 +102,8 @@ GpuCommandBuffer::ToGraphNodeDependencies(
   std::vector<GraphNodeHandle> handles;
 
   for (const Command* dep : dependencies) {
+    DCHECK(dep) << "Dependency command must be not null";
+
     if (auto* gpu_command = dynamic_cast<const GpuCommand*>(dep)) {
       handles.push_back(gpu_command->handle);
 

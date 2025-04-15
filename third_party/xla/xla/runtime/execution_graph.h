@@ -23,6 +23,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -111,6 +112,16 @@ class ExecutionGraph {
 
   // Sink nodes are the nodes that do not have any out-edges.
   absl::Span<const NodeId> sink() const { return sink_; }
+
+  // Returns true if a given node id is a source node.
+  bool is_source(NodeId id) const {
+    return absl::c_find(source_, id) != source_.end();
+  }
+
+  // Returns true if a given node id is a sink node.
+  bool is_sink(NodeId id) const {
+    return absl::c_find(sink_, id) != sink_.end();
+  }
 
   // Returns in-edges for a given node id.
   absl::Span<const NodeId> in_edges(NodeId id) const {
