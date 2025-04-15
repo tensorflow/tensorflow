@@ -123,6 +123,20 @@ cc_library(
 )
 
 xla_cc_test(
+    name = "hlo_computation_test",
+    srcs = ["hlo_computation_test.cc"],
+    deps = [
+        ":hlo",
+        "//xla:shape_util",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
     name = "hlo_instruction_test",
     srcs = ["hlo_instruction_test.cc"],
     deps = [
