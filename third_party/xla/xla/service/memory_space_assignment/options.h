@@ -374,7 +374,14 @@ struct Options {
   WindowPrefetchMode window_prefetch_mode = WindowPrefetchMode::kWindowExposure;
 
   MsaSortOrderOverrides msa_sort_order_overrides;
+
+  // A mode that enables expanding scoped alternate memory allocations to the
+  // largest contiguous open space available.
+  ExpandedScopedAlternateMemoryMode::Value
+      expanded_scoped_alternate_memory_mode =
+          ExpandedScopedAlternateMemoryMode::DISABLED;
 };
+
 }  // namespace memory_space_assignment
 }  // namespace xla
 

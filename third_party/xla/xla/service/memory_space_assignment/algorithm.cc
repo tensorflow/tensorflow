@@ -92,6 +92,10 @@ const HeapSimulator::Chunk kDummyChunk =
 // if the buffer occupies less of the execution time ratio than this value.
 const float kCrossProgramPrefetchOccupyFreeingLimit = 0.6;
 
+int64_t GetAlignedOffset(int64_t offset, int64_t alignment) {
+  return CeilOfRatio(offset, alignment) * alignment;
+}
+
 template <typename T>
 std::string VectorToString(const std::vector<T>& v,
                            bool include_indices = false, int start = 0,
@@ -624,6 +628,103 @@ void MsaAlgorithm::FindAliases(
         use.aliases.push_back(root_alias);
       }
     }
+  }
+}
+
+void MsaAlgorithm::ExtendScopedAlternateMemoryAllocations() {
+  VLOG(1) << "Starting vmem expansion";
+
+  // Iterate through all scoped allocations and try to expand them to the
+  // largest contiguous open space available.
+  for (std::unique_ptr<Allocation>& allocation : *allocations_) {
+    if (!allocation->is_scoped_allocation()) {
+      continue;
+    }
+
+    // Find the set of nodes that are live during allocation.
+    std::vector<Chunk> live_nodes = interval_tree_.ChunksOverlappingInTime(
+        allocation->start_time(), allocation->end_time());
+    absl::c_sort(live_nodes, [](const Chunk& a, const Chunk& b) {
+      return a.offset < b.offset;
+    });
+
+    // Loop over live_nodes to compute 2 things:
+    // 1. The largest contiguous free chunk (biggest_free_chunk)
+    // 2. The largest chunk we can get by moving the start time of the scoped
+    //    allocation earlier (i.e., to max_end_before_scoped_allocation), and
+    //    the end time later (i.e., to min_offset_after_scoped_allocation).
+    int64_t min_offset_after_scoped_allocation = available_heap_size();
+    int64_t max_end_before_scoped_allocation = 0;
+    Chunk biggest_free_chunk = Chunk::FromOffsetSize(0, 0);
+    for (int i = 0; i < live_nodes.size(); ++i) {
+      const Chunk& chunk = live_nodes[i];
+      if (allocation->chunk().chunk_end() <= chunk.offset) {
+        min_offset_after_scoped_allocation =
+            std::min(min_offset_after_scoped_allocation, chunk.offset);
+      }
+      if (allocation->chunk().offset >= chunk.chunk_end()) {
+        max_end_before_scoped_allocation =
+            std::max(max_end_before_scoped_allocation, chunk.chunk_end());
+      }
+
+      Chunk next_free_chunk = Chunk::FromOffsetEnd(
+          GetAlignedOffset(chunk.chunk_end(), options_.alignment_in_bytes),
+          (i + 1) < live_nodes.size() ? live_nodes[i + 1].offset
+                                      : available_heap_size());
+      if (next_free_chunk.size > biggest_free_chunk.size) {
+        biggest_free_chunk = next_free_chunk;
+      }
+    }
+
+    Chunk proposed_extended_chunk =
+        Chunk::FromOffsetEnd(GetAlignedOffset(max_end_before_scoped_allocation,
+                                              options_.alignment_in_bytes),
+                             min_offset_after_scoped_allocation);
+
+    // Check if we should extend the boundaries of the scoped allocation or
+    // move it.
+    Chunk proposed_chunk = allocation->chunk();
+    std::string source;
+    if (proposed_extended_chunk.size > proposed_chunk.size) {
+      proposed_chunk = proposed_extended_chunk;
+      source = "extended";
+    }
+    if (biggest_free_chunk.size > proposed_chunk.size) {
+      proposed_chunk = biggest_free_chunk;
+      source = "free";
+    }
+    if (source.empty()) {
+      VLOG(3) << "Could not move the scoped allocation for "
+              << allocation->defining_position().ToString()
+              << "; Current fragmentation: " <<
+          [&]() {
+            int64_t occupied_size = 0;
+            for (const Chunk& chunk : live_nodes) {
+              occupied_size += chunk.size;
+            }
+            double fragmentation =
+                static_cast<double>(available_heap_size() - occupied_size) /
+                static_cast<double>(available_heap_size());
+            return 100.0 * fragmentation;
+          }() << "%";
+      continue;
+    }
+
+    VLOG(1) << "Moving the scoped allocation for "
+            << allocation->defining_position().ToString() << " from "
+            << allocation->chunk().ToString() << " to "
+            << proposed_chunk.ToString() << " (" << source
+            << "); Size increase: "
+            << (100.0 *
+                static_cast<double>(proposed_chunk.size -
+                                    allocation->chunk().size) /
+                static_cast<double>(allocation->chunk().size))
+            << "%";
+
+    // Update the allocation. We don't need to update result_.chunk_map. It's
+    // not used by MSA.
+    *allocation->mutable_chunk() = proposed_chunk;
+    result_.UpdatedHeapSize(proposed_chunk);
   }
 }
 
@@ -2091,6 +2192,11 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
                                                                changes);
       }
     }
+  }
+
+  if (options_.expanded_scoped_alternate_memory_mode ==
+      ExpandedScopedAlternateMemoryMode::ENABLED) {
+    ExtendScopedAlternateMemoryAllocations();
   }
 
   HeapSimulator::Result<HloValue> result;
