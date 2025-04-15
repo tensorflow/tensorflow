@@ -2993,6 +2993,11 @@ bool HloInstruction::HasControlDependencies() const {
   return (!r->control_predecessors.empty() || !r->control_successors.empty());
 }
 
+bool HloInstruction::HasSuccessorControlDependencies() const {
+  const Rare* r = rare();
+  return (!r->control_successors.empty());
+}
+
 absl::Status HloInstruction::CopyAllControlDepsTo(HloInstruction* start,
                                                   HloInstruction* end) const {
   for (auto* ctrl_pred : control_predecessors()) {
