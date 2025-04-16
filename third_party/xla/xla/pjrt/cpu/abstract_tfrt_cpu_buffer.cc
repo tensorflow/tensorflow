@@ -510,22 +510,23 @@ PjRtFuture<> AbstractTfrtCpuBuffer::GetReadyFuture() {
 
   if (definition_event.IsAvailable()) {
     if (definition_event.IsError()) {
-      return PjRtFuture<>(
-          FailedPrecondition("Buffer Definition Event: %s",
-                             definition_event.GetError().message()));
+      const absl::Status& s = definition_event.GetError();
+      return PjRtFuture<>(tsl::errors::CreateWithUpdatedMessage(
+          s, absl::StrCat("Buffer Definition Event: ", s.message())));
     }
     return PjRtFuture<>(absl::OkStatus());
   } else {
     PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-    definition_event.AndThen([definition_event = definition_event.AsPtr(),
-                              promise]() mutable {
-      if (definition_event.IsError()) {
-        promise.Set(FailedPrecondition("Buffer Definition Event: %s",
-                                       definition_event.GetError().message()));
-      } else {
-        promise.Set();
-      }
-    });
+    definition_event.AndThen(
+        [definition_event = definition_event.AsPtr(), promise]() mutable {
+          if (definition_event.IsError()) {
+            const absl::Status& s = definition_event.GetError();
+            promise.Set(tsl::errors::CreateWithUpdatedMessage(
+                s, absl::StrCat("Buffer Definition Event: ", s.message())));
+          } else {
+            promise.Set();
+          }
+        });
 
     std::string message = absl::StrCat(buffer_name(), "::Await");
     return PjRtFuture<>(
