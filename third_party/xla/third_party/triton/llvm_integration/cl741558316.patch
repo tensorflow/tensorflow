@@ -1,0 +1,21 @@
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/LoadStoreOpToLLVM.cpp	2025-03-25 07:48:50.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/LoadStoreOpToLLVM.cpp	2025-03-28 10:03:52.000000000 -0700
+@@ -588,7 +588,7 @@
+       if (maskElems.empty()) {
+         rewriter.create<ROCDL::GlobalLoadLDSOp>(
+             loc, srcPtr, shmemAddrs[i], vecBytesVal, /*offset=*/b.i32_val(0),
+-            cacheModifiers);
++            cacheModifiers, ArrayAttr{}, ArrayAttr{}, ArrayAttr{});
+         continue;
+       }
+ 
+@@ -602,7 +602,7 @@
+       rewriter.setInsertionPointToStart(loadBlock);
+       rewriter.create<ROCDL::GlobalLoadLDSOp>(
+           loc, srcPtr, shmemAddrs[i], vecBytesVal, /*offset=*/b.i32_val(0),
+-          cacheModifiers);
++          cacheModifiers, ArrayAttr{}, ArrayAttr{}, ArrayAttr{});
+ 
+       rewriter.create<LLVM::BrOp>(loc, afterLoad);
+       rewriter.setInsertionPointToStart(afterLoad);

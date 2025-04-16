@@ -34,6 +34,8 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework.constant_op import constant as tf_constant
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load as tf_load
+from tensorflow.python.saved_model import save as tf_save
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_embedding_for_serving
 from tensorflow.python.tpu import tpu_embedding_v2_utils
@@ -402,6 +404,14 @@ class TPUEmbeddingLayerV2Test(parameterized.TestCase, test.TestCase):
         row_lookup[1],
         tf_constant([202.0, 203.0], shape=(1, 2)),
     )
+    saved_model_path = os.path.join(
+        self.create_tempdir().full_path, 'saved_model'
+    )
+    tf_save.save(
+        serving_embedding, saved_model_path
+    )
+    loaded_embedding = tf_load.load(saved_model_path)
+    self.assertLen(loaded_embedding._variables, 2)
 
   def testUnshardedToTpuRestore(self):
     table1 = tpu_embedding_v2_utils.TableConfig(

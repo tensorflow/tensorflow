@@ -38,6 +38,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/compiler/plugin:compiler_plugin",
         "//tensorflow/lite/experimental/litert/core/model:model_serialize",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
@@ -76,6 +77,7 @@ cc_test(
     ],
 )
 
+# TODO - @lukeboyer: Figure out some selective inclusiion of the data deps, some are very large.
 litert_cc_bin_with_qnn(
     name = "apply_plugin_main",
     srcs = ["apply_plugin_main.cc"],
@@ -86,6 +88,7 @@ litert_cc_bin_with_qnn(
         "//tensorflow/lite/experimental/litert/vendors/examples:example_plugin_so",
         "//tensorflow/lite/experimental/litert/vendors/google_tensor/compiler:google_tensor_compiler_plugin_so",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler:qnn_compiler_plugin_so",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek/compiler:compiler_plugin_so",
     ],
     export_litert_only = 1,
     include_system = 1,
@@ -194,21 +197,67 @@ cc_library(
     ],
 )
 
-cc_binary(
-    name = "run_model",
-    srcs = ["run_model.cc"],
+cc_library(
+    name = "benchmark_litert_model",
+    srcs = ["benchmark_litert_model.cc"],
+    hdrs = ["benchmark_litert_model.h"],
     deps = [
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/cc:litert_compilation_options",
         "//tensorflow/lite/experimental/litert/cc:litert_compiled_model",
         "//tensorflow/lite/experimental/litert/cc:litert_environment",
-        "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/flags:parse",
-        "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/strings:string_view",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
+        "//tensorflow/lite/tools:utils",
+        "//tensorflow/lite/tools/benchmark:benchmark_model_lib",
+        "//tensorflow/lite/tools/benchmark:benchmark_params",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "benchmark_litert_model_test",
+    srcs = ["benchmark_litert_model_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/litert/test:testdata/mobilenet_v2_1.0_224.tflite",
+    ],
+    env = {
+        "ASAN_OPTIONS": "detect_odr_violation=0",
+    },
+    tags = [
+        "manual",
+        "notap",
+        "requires-gpu-nvidia",
+    ],
+    deps =
+        [
+            ":benchmark_litert_model",
+            "@com_google_googletest//:gtest_main",
+            # copybara:uncomment_begin(google-only)
+            # "//third_party/odml/infra/ml_drift_delegate/litert:ml_drift_cl_accelerator",  # buildcleaner: keep
+            # copybara:uncomment_end
+            "//tensorflow/lite/core/c:c_api_types",
+            "//tensorflow/lite/tools/benchmark:benchmark_model_lib",
+            "//tensorflow/lite/tools/benchmark:benchmark_params",
+        ],
+)
+
+# We create a library for benchmark_main.cc to faciliate the creation of a
+# customized benchmark model binary that only needs linking with extra
+# dependency, e.g., enabling creating of benchmark binaries with a custom
+# delegate provider.
+cc_library(
+    name = "benchmark_model_main",
+    srcs = [
+        "benchmark_litert_model_main.cc",
+    ],
+    deps = [
+        ":benchmark_litert_model",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/tools:logging",
     ],
 )

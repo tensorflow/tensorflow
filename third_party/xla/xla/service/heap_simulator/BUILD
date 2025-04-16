@@ -2,7 +2,7 @@
 #   XLA Heap simulator.
 
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_test",
 )
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")

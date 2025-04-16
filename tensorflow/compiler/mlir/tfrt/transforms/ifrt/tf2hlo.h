@@ -49,7 +49,6 @@ struct Tf2HloArg {
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn;
   std::shared_ptr<xla::ifrt::Topology> topology;
   absl::string_view platform_name;
-  bool enable_r1_optimization = true;
 
   absl::StatusOr<uint64_t> Fingerprint() const;
 };

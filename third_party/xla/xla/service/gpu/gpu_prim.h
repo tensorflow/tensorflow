@@ -27,8 +27,6 @@ limitations under the license, the license you must see.
 #include "cub/device/device_segmented_radix_sort.cuh"
 #include "cub/device/device_segmented_reduce.cuh"
 #include "cub/device/device_select.cuh"
-#include "cub/iterator/counting_input_iterator.cuh"
-#include "cub/iterator/transform_input_iterator.cuh"
 #include "cub/thread/thread_operators.cuh"
 #include "cub/warp/warp_reduce.cuh"
 #include "third_party/gpus/cuda/include/cusparse.h"

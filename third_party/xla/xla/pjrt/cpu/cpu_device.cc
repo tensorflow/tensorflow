@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/pjrt/cpu/tfrt_cpu_async_execution_tracker.h"
+#include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/cpu/cpu_xfeed.h"
@@ -40,8 +40,7 @@ TfrtCpuDevice::TfrtCpuDevice(int process_id, int local_device_id,
     : description_(process_id, local_device_id),
       max_inflight_computations_semaphore_(
           /*capacity=*/max_inflight_computations),
-      async_execution_tracker_(
-          std::make_unique<TfrtCpuAsyncExecutionTracker>()) {}
+      async_execution_tracker_(std::make_unique<CpuAsyncExecutionTracker>()) {}
 
 absl::Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(local_hardware_id().value(), literal);

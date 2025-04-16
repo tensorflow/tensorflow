@@ -1,6 +1,7 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
-load("//xla:strict.default.bzl", "py_strict_test")
+load("//xla:py_strict.bzl", "py_strict_test")
+load("//xla/tsl:tsl.bzl", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -40,6 +41,9 @@ lit_test_suite(
     data = [
         "hlo_opt_hlo_protobinary.pb",
     ],
+    tags_override = {
+        "hlo_opt_emit_proto.hlo": if_oss(["not_run:arm"]),  # TODO(b/394180263)
+    },
     tools = [
         "//xla/hlo/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
@@ -77,14 +81,26 @@ lit_test_suite(
 
 cc_library(
     name = "hlo_opt_test_only_passes",
+    srcs = ["hlo_opt_test_only_passes.cc"],
     hdrs = ["hlo_opt_test_only_passes.h"],
     deps = [
+        "//xla:shape_util",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/builder/lib:math",
+        "//xla/hlo/builder/lib:matrix",
+        "//xla/hlo/builder/lib:prng",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/service:hlo_module_config",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

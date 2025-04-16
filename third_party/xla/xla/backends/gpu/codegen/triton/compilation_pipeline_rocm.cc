@@ -40,10 +40,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Value 0 for num_stages is used to represent AMD specific register
-// file double buffering.
-constexpr int kAmdDoubleBuffering = 0;
-
 namespace ma = ::mlir::arith;
 namespace mm = ::mlir::math;
 namespace ml = ::mlir::LLVM;
@@ -96,19 +92,23 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   // TODO ROCm Check if we want to compare MI100 and greater
   pm->addPass(mlir::createTritonAMDGPUOptimizeEpiloguePass());
   pm->addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
-  if (num_stages == kAmdDoubleBuffering && cc.has_amd_matrix_core()) {
-    pm->addPass(mlir::createTritonAMDGPUStreamPipelinePass(
-        num_stages, /*stream_prefetch=*/true));
+  pm->addNestedPass<mlir::triton::FuncOp>(
+    mlir::createTritonAMDGPUHoistLayoutConversionsPass());
+  if (cc.has_amd_matrix_core()) {
+    pm->addPass(mlir::createTritonAMDGPUStreamPipelinePass(num_stages));
     pm->addPass(mlir::createCanonicalizerPass());
   }
-  pm->addPass(mt::createTritonAMDGPUInsertInstructionSchedHintsPass());
+  // TODO(ROCm) Uncomment after corresponding run time flag is introduced.
+  //pm->addPass(mt::createTritonAMDGPUInsertInstructionSchedHintsPass("none"));
   pm->addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUReduceDataDuplication());
-  if (num_stages != kAmdDoubleBuffering) {
+  if (cc.has_amd_matrix_core()) {
     pm->addPass(mt::gpu::createTritonGPUReorderInstructions());
   }
-  pm->addPass(mlir::createTritonAMDGPUCanonicalizePointersPass());
+  // TODO(ROCm) Uncomment after corresponding run time flag is introduced.
+  //pm->addNestedPass<mlir::triton::FuncOp>(
+  //  mlir::createTritonAMDGPUCanonicalizePointersPass());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
@@ -122,7 +122,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
                                                             custom_lds_size));
   pm->addPass(mlir::createSCFToControlFlowPass());
   pm->addPass(mlir::createConvertIndexToLLVMPass());
-  pm->addPass(mt::gpu::createAllocateSharedMemoryPass());
+  pm->addPass(mt::gpu::createAllocateSharedMemory());
   pm->addPass(mt::createConvertTritonAMDGPUToLLVMPass(cc.gfx_version(), true));
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
@@ -132,8 +132,9 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
-  pm->addPass(mt::createTritonAMDGPULowerInstructionSchedHintsPass(
-      cc.gfx_version(), num_stages, "default"));
+  // TODO(ROCm) Uncomment after corresponding run time flag is introduced.
+  //pm->addPass(mt::createTritonAMDGPULowerInstructionSchedHintsPass(
+  //    cc.gfx_version(), num_stages));
   pm->addPass(mt::createConvertBuiltinFuncToLLVMPass(/*ftz=*/true));
   // There is no clusters in ROCm for now.
   out_cluster_info.clusterDimX = 1;

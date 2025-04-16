@@ -122,6 +122,9 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
   absl::Mutex barrier_mutex_;
   absl::flat_hash_map<int64_t, std::unique_ptr<se::Event>>
       receiver_barrier_events_;
+  absl::flat_hash_map<int64_t, std::unique_ptr<se::Event>>
+      sender_barrier_events_;
+
   bool p2p_memcpy_enabled_ = false;
   int64_t device_count_;
 };

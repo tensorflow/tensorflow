@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#include <gtest/gtest.h>
 
-#include "xla/backends/profiler/gpu/cupti_collector.h"
+#if GOOGLE_CUDA
 
 #include <cstdint>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "tsl/platform/test.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -68,3 +69,9 @@ TEST(CuptiCollectorTest, TestPmSamplingDataToCounterLine) {
 }  // namespace xla
 
 #endif  // GOOGLE_CUDA
+
+namespace {
+TEST(Dummy, EnsureAtLeastOneTestCase) {
+  // Makes sure the test program contains at least one test case.
+}
+}  // namespace

@@ -69,6 +69,7 @@ litert_dynamic_lib(
         "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
         "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek/schema:mediatek_litert_schema",
     ],
 )
 

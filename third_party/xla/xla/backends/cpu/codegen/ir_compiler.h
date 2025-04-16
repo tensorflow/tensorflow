@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,7 +33,9 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
 #include "xla/service/hlo_module_config.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 
@@ -49,12 +52,17 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
   //
   // See `llvm::orc::ConcurrentIRCompiler` to see corresponding API in ORC.
   using TargetMachineBuilder =
-      std::function<absl::StatusOr<std::shared_ptr<llvm::TargetMachine>>()>;
+      std::function<absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>()>;
 
   // Options for configuring the LLVM compilation pipeline and optimizations.
   struct Options {
     llvm::CodeGenOptLevel opt_level = llvm::CodeGenOptLevel::None;
     bool optimize_for_size = false;
+
+    // Maximum CPU instruction set for wich the compiler should generate code.
+    // If instruction set is empty, compiler will generate code for all ISA
+    // extensions detected on the current machine.
+    std::optional<tsl::port::CPUFeature> max_cpu_feature;
 
     llvm::FastMathFlags fast_math_flags;
 
@@ -75,15 +83,49 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
         post_codegen;
   };
 
+  static std::unique_ptr<IrCompiler> Create(llvm::TargetOptions target_options,
+                                            Options options,
+                                            CompilationHooks hooks);
+
   IrCompiler(TargetMachineBuilder target_machine_builder, Options options,
              CompilationHooks hooks);
+
+  // Infers the `llvm::TargetMachine` for the current host. If `max_cpu_feature`
+  // is provided, it will be used to constrain the set of features that LLVM
+  // codegen (instruction selection) is allowed to use, e.g. it can be used to
+  // explicitly disable certain AVX512 extensions, in case the compiled
+  // executable will be serialized and later loaded on a different machine.
+  static absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
+  InferTargetMachine(const llvm::TargetOptions& target_options,
+                     llvm::CodeGenOptLevel opt_level,
+                     std::optional<tsl::port::CPUFeature> max_cpu_feature);
+
+  // Returns a target machine builder that uses `InferTargetMachine` defined
+  // above to infer the target machine for the given options.
+  static TargetMachineBuilder InferTargetMachineBuilder(
+      const llvm::TargetOptions& target_options,
+      llvm::CodeGenOptLevel opt_level,
+      std::optional<tsl::port::CPUFeature> max_cpu_feature);
 
   // Compiles a `module` to an ObjectFile.
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> operator()(
       llvm::Module& module) final;
 
+  // Runs the IR passes on the given module.
+  llvm::Error RunIrPasses(llvm::Module& module,
+                          llvm::TargetMachine* target_machine) const;
+
+  // Emits machine code for the given module.
+  std::unique_ptr<llvm::MemoryBuffer> EmitMachineCode(
+      llvm::Module& module, llvm::TargetMachine* target_machine) const;
+
   static llvm::CodeGenOptLevel GetCodeGenOptLevel(
       const HloModuleConfig& module_config);
+
+  absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> build_target_machine()
+      const {
+    return target_machine_builder_();
+  }
 
  private:
   TargetMachineBuilder target_machine_builder_;

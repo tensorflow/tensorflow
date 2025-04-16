@@ -151,7 +151,7 @@ absl::Status RootDataset::FromOptions(const DatasetBase* input,
   Params params;
   SetRootDatasetParams(input->options(), &params);
   *output = new RootDataset(input, params);
-  (*output)->Initialize(/*metadata=*/{});
+  (*output)->Initialize(input->metadata());
   for (const auto& framework : input->options().framework_type()) {
     metrics::RecordTFDataFrameworkType(framework);
   }
@@ -165,8 +165,9 @@ absl::Status RootDataset::FromOptions(core::RefCountPtr<DatasetBase> input,
     metrics::RecordTFDataFrameworkType(framework);
   }
   SetRootDatasetParams(input->options(), &params);
+  Metadata metadata = input->metadata();
   *output = new RootDataset(std::move(input), params);
-  (*output)->Initialize(/*metadata=*/{});
+  (*output)->Initialize(metadata);
   return absl::OkStatus();
 }
 
@@ -457,6 +458,19 @@ absl::Status RootDataset::AsGraphDefInternal(SerializationContext* ctx,
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
+
+namespace {
+// Initialize the rewritten output dataset with the metadata from the input
+// dataset. Note: Do not override the `name` field in the metadata.
+void InitializeRewrittenDatasetMetadata(const DatasetBase* input,
+                                        DatasetBase* rewritten_output) {
+  Metadata rewritten_output_metadata = rewritten_output->metadata();
+  rewritten_output_metadata.set_data_service_address(
+      input->metadata().data_service_address());
+  rewritten_output->Initialize(rewritten_output_metadata);
+}
+}  // namespace
+
 absl::Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
                              DatasetBase** output) {
   const Options& options = input->options();
@@ -498,6 +512,7 @@ absl::Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
   if (!rewritten) {
     return RootDataset::FromOptions(input, output);
   } else {
+    InitializeRewrittenDatasetMetadata(input, rewritten_output.get());
     return RootDataset::FromOptions(std::move(rewritten_output), output);
   }
   return absl::OkStatus();

@@ -136,11 +136,12 @@ absl::Status InPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
               Cast<HloDynamicUpdateSliceInstruction>(&instr.instruction());
           const auto& update_shape = dus_instr->update()->shape();
           SmallVector<Value> update_indices;
-          auto start_indices = ProvideParameterRange(
-              root_computation, dus_instr,
-              dus_instr->first_index_operand_number(), update_shape.rank(), {},
-              call_targets, entry_function, nested_b);
-          for (int i = 0; i < update_shape.rank(); ++i) {
+          auto start_indices =
+              ProvideParameterRange(root_computation, dus_instr,
+                                    dus_instr->first_index_operand_number(),
+                                    update_shape.dimensions_size(), {},
+                                    call_targets, entry_function, nested_b);
+          for (int i = 0; i < update_shape.dimensions_size(); ++i) {
             int64_t update_size = update_shape.dimensions(i);
             auto start_index = ClampIndex(
                 start_indices[i],

@@ -33,12 +33,6 @@ Expected<NeuronCompilationPtr> CompileModel(
     return Error(kLiteRtStatusErrorInvalidArgument,
                  "JIT compilation for a specific SoC is not supported");
   }
-#else
-  // TODO: Support offline compilation for a specific SoC by setting environment
-  // variables MTKNN_ADAPTER_DLA_PLATFORM and MTKNN_ADAPTER_DLA_DIR and fetching
-  // the content of the generated DLA file.
-  return Error(kLiteRtStatusErrorInvalidArgument,
-               "AOT compilation is not supported yet");
 #endif
 
   // Per MediaTek recommendation, Compilation_create,

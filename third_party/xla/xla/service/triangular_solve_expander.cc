@@ -51,7 +51,7 @@ XlaOp DiagonalBlocks(XlaOp a, int64_t block_size) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(a));
-    int ndims = shape.rank();
+    int ndims = shape.dimensions_size();
     int64_t n = ShapeUtil::GetDimension(shape, -1);
     int64_t num_blocks = n / block_size;
     absl::Span<int64_t const> batch_dims = absl::MakeConstSpan(
@@ -146,14 +146,14 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
     int64_t block_size = ShapeUtil::GetDimension(blocks_shape, -1);
 
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    int64_t ndims = a_shape.rank();
+    int64_t ndims = a_shape.dimensions_size();
     int64_t n = ShapeUtil::GetDimension(a_shape, -1);
     int64_t num_blocks = n / block_size + (n % block_size != 0);
     int64_t m_dim = (left_side) ? -1 : -2;
     int64_t m = ShapeUtil::GetDimension(b_shape, m_dim);
 
     std::vector<XlaOp> update_ops;
-    int bdims = b_shape.rank();
+    int bdims = b_shape.dimensions_size();
     int64_t block_dim = (left_side) ? bdims - 2 : bdims - 1;
 
     // Initialize the solution
@@ -377,7 +377,7 @@ XlaOp TriangularSolveExpander::SolveByInvertingDiagonalBlocks(
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    const int64_t ndims = a_shape.rank();
+    const int64_t ndims = a_shape.dimensions_size();
     int64_t k = ShapeUtil::GetDimension(a_shape, -1);
 
     // TODO(phawkins): consider pushing triangle masking into
@@ -479,13 +479,13 @@ XlaOp TriangularSolveExpander::BuildTriangularSolve(
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
-    if (a_shape.rank() != b_shape.rank()) {
+    if (a_shape.dimensions_size() != b_shape.dimensions_size()) {
       return InvalidArgument(
           "Arguments to TriangularSolve have shapes with different ranks: "
           "%s vs. %s",
           ShapeUtil::HumanString(a_shape), ShapeUtil::HumanString(b_shape));
     }
-    const int64_t ndims = a_shape.rank();
+    const int64_t ndims = a_shape.dimensions_size();
     if (ndims < 2) {
       return InvalidArgument(
           "Arguments to TriangularSolve was rank %d but must have rank >= 2.",

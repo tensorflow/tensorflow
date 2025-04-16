@@ -82,7 +82,7 @@ load(
     "if_tensorrt_exec",
 )
 load(
-    "@local_xla//third_party/py/rules_pywrap:pywrap.bzl",
+    "@local_xla//third_party/py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
     _pybind_extension = "pybind_extension",
     _stripped_cc_info = "stripped_cc_info",
@@ -355,6 +355,7 @@ def if_libtpu(if_true, if_false = []):
     return select({
         # copybara:uncomment_begin(different config setting in OSS)
         # "//tools/cc_target_os:gce": if_true,
+        # "//buildenv/platforms/settings:chrome_linux": if_false,
         # copybara:uncomment_end_and_comment_begin
         clean_dep("//tensorflow:with_tpu_support"): if_true,
         # copybara:comment_end

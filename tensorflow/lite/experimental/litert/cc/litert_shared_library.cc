@@ -41,7 +41,7 @@
 #define LITERT_SANITIZER_BUILD 1
 #endif
 
-#if LITERT_SANITIZER_BUILD
+#if LITERT_SANITIZER_BUILD && defined(RTLD_DEEPBIND)
 namespace litert {
 namespace {
 RtldFlags SanitizeFlagsInCaseOfAsan(RtldFlags flags) {

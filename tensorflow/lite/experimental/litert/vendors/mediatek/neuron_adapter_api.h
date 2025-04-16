@@ -141,6 +141,8 @@ struct NeuronAdapterApi::Api {
       model_restore_from_compiled_network = nullptr;
   decltype(&NeuronModel_setName) model_set_name = nullptr;
   decltype(&NeuronModel_setOperandValue) model_set_operand_value = nullptr;
+  decltype(&NeuronModel_setOperandSymmPerChannelQuantParams)
+      model_set_symm_per_channel_quant_params = nullptr;
   decltype(&Neuron_getVersion) get_version = nullptr;
 };
 

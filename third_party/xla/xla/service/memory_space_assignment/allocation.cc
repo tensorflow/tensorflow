@@ -398,6 +398,10 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
     if (memory_space() == MemorySpace::kAlternate &&
         mutable_split_shape().has_value()) {
       dest_shape = mutable_split_shape().value();
+    } else if (memory_space() == MemorySpace::kDefault && shape.has_layout() &&
+               shape.layout().split_configs_size() > 0) {
+      dest_shape = shape;
+      dest_shape.mutable_layout()->clear_split_configs();
     } else {
       dest_shape = shape;
     }
@@ -743,11 +747,13 @@ bool SlicedCopyAllocation::SliceDetail::operator==(
 absl::Status SlicedCopyAllocation::SliceDetail::CreateAsyncSlice(
     const Shape& original_shape, HloInstruction& producer,
     HloComputation& parent) {
-  if (original_shape.rank() != slice_decision.sizing.slice_params.size()) {
+  if (original_shape.dimensions_size() !=
+      slice_decision.sizing.slice_params.size()) {
     return FailedPrecondition(
         "%s", absl::StrCat("The number of SlicedCopyAllocation parameters ",
                            slice_decision.sizing.slice_params.size(),
-                           " does not match the rank ", original_shape.rank(),
+                           " does not match the rank ",
+                           original_shape.dimensions_size(),
                            " of the tensor we are slicing."));
   }
 

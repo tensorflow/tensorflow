@@ -709,6 +709,7 @@ void DeriveLinesFromStats(XPlane* device_trace) {
       host_offload_event_processor.ProcessHostOffloadOpEvent(event, group_id);
     }
   }
+  tf_name_scope.ResetLastEvents(0);
 
   RemoveEmptyLines(device_trace);
 }

@@ -5,7 +5,7 @@ load(
     "if_rocm_hipblaslt",
     "rocm_library",
 )
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",

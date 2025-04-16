@@ -18,10 +18,7 @@ import datetime
 import os
 import statistics
 
-from gemma import params as params_lib
-from gemma import sampler as sampler_lib
-from gemma import transformer as transformer_lib
-import sentencepiece as spm
+from gemma import gm
 
 
 GEMMA_VARIANT = 'gemma2-2b-it'
@@ -38,32 +35,29 @@ CKPT_PATH = os.path.join(GEMMA_PATH, GEMMA_VARIANT)
 assert os.path.exists(CKPT_PATH), 'Flax checkpoint not found!'
 
 # Set up model sampler
-params = params_lib.load_and_format_params(CKPT_PATH)
-vocab = spm.SentencePieceProcessor()
-vocab.Load(TOKENIZER_PATH)
-transformer_config = transformer_lib.TransformerConfig.from_params(
-    params=params, cache_size=1024
-)
-transformer = transformer_lib.Transformer(transformer_config)
-sampler = sampler_lib.Sampler(
-    transformer=transformer,
-    vocab=vocab,
-    params=params['transformer'],
+params = gm.ckpts.load_params(CKPT_PATH)
+transformer = gm.nn.Gemma2_2B()
+tokenizer = gm.text.Gemma2Tokenizer(path=TOKENIZER_PATH)
+sampler = gm.text.ChatSampler(
+    model=transformer,
+    tokenizer=tokenizer,
+    params=params,
+    cache_length=1024,
 )
 
 OUTPUT_TOKEN_LEN = 128
-prompt = ['What is JAX in 3 bullet points?']
+prompt = 'What is JAX in 3 bullet points?'
 
 
 def benchmark_generation_time(output_token_len):
   """Benchmark generation time given output token length."""
   timestamp_start = datetime.datetime.now()
-  reply = sampler(input_strings=prompt, total_generation_steps=output_token_len)
+  reply = sampler.chat(prompt, max_new_tokens=output_token_len)
   timestamp_end = datetime.datetime.now()
   timer_delta = timestamp_end - timestamp_start
   # Prints generated tokens when benchmarking the full length.
   if output_token_len == OUTPUT_TOKEN_LEN:
-    print(reply.text)
+    print(reply)
   return timer_delta.total_seconds() * 1000
 
 

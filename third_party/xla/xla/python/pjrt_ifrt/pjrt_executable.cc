@@ -31,6 +31,8 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/ffi/execution_context.h"
+#include "xla/ffi/type_id_registry.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/layout.h"
@@ -547,12 +549,36 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   opts.use_major_to_minor_data_layout_for_callbacks = true;
   opts.non_donatable_input_indices = options.non_donatable_input_indices;
 
-  auto context = std::make_shared<xla::ExecuteContext>();
+  auto context = std::make_unique<xla::ExecuteContext>();
   auto platform_id = pjrt_loaded_executable_->client()->platform_id();
+  auto ffi_callbacks = std::make_unique<xla::FfiLoadedHostCallbacks>();
+  auto callbacks = std::make_unique<std::vector<void*>>();
   // Forward callbacks via FFI's ExecutionContext for CPU/GPU platforms only.
   if (platform_id == CpuId() || platform_id == CudaId() ||
       platform_id == RocmId() || platform_id == SyclId()) {
-    CHECK_OK(context->ffi_context().Insert(all_loaded_host_callbacks_.get()));
+    for (const auto& loaded_host_callback : *all_loaded_host_callbacks_) {
+      auto* ffi_loaded_host_callback =
+          llvm::dyn_cast<PjRtFfiLoadedHostCallback>(loaded_host_callback.get());
+      if (ffi_loaded_host_callback != nullptr) {
+        void* callback = ffi_loaded_host_callback->callable();
+        callbacks->push_back(callback);
+      }
+    }
+    // NOTE(dsuo): For now, check that either all or none of the host callbacks
+    // are FFI callbacks. Otherwise, we have an error.
+    // TODO(b/406585850): Improve how we determine when loaded host callbacks
+    // are forwarded to ffi::ExecutionContext.
+    if (!callbacks->empty() &&
+        callbacks->size() != all_loaded_host_callbacks_->size()) {
+      return InvalidArgument(
+          "ifrt::LoadedHostCallbacks must either be all "
+          "ifrt::PjRtFfiLoadedHostCallback or none.");
+    }
+    ffi_callbacks->callbacks = callbacks->data();
+    ffi_callbacks->num_callbacks = callbacks->size();
+    auto type_id = xla::ffi::TypeIdRegistry::TypeId(
+        xla::FfiLoadedHostCallbacks::id.type_id);
+    CHECK_OK(context->ffi_context().Insert(type_id, ffi_callbacks.get()));
     opts.context = context.get();
   }
 
@@ -616,7 +642,9 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     // the execution finishes.
     status.OnReady([all_loaded_host_callbacks = all_loaded_host_callbacks_,
                     host_callback_states = std::move(host_callback_states),
-                    context = std::move(context)](absl::Status) mutable {
+                    context = std::move(context),
+                    ffi_callbacks = std::move(ffi_callbacks),
+                    callbacks = std::move(callbacks)](absl::Status) mutable {
       all_loaded_host_callbacks.reset();
     });
   }

@@ -42,7 +42,12 @@ std::optional<int64_t> GetSchedulingAnnotation(
 
 void SetSchedulingAnnotation(HloInstruction* instruction, int64_t id) {
   FrontendAttributes fas = instruction->frontend_attributes();
-  fas.mutable_map()->find(kXlaSchedulingGroupIdAttr)->second = absl::StrCat(id);
+  if (fas.map().contains(kXlaSchedulingGroupIdAttr)) {
+    fas.mutable_map()->find(kXlaSchedulingGroupIdAttr)->second =
+        absl::StrCat(id);
+  } else {
+    fas.mutable_map()->insert({kXlaSchedulingGroupIdAttr, absl::StrCat(id)});
+  }
   instruction->set_frontend_attributes(fas);
 }
 

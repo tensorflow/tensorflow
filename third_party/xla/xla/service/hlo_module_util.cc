@@ -61,10 +61,11 @@ absl::Status ValidateResultShape(const Shape& client_shape,
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromString(
-    const absl::string_view hlo_string, const DebugOptions& debug_options) {
+    const absl::string_view hlo_string, const DebugOptions& debug_options,
+    const HloParserOptions& parser_options) {
   HloModuleConfig config;
   config.set_debug_options(debug_options);
-  return ParseAndReturnUnverifiedModule(hlo_string, config);
+  return ParseAndReturnUnverifiedModule(hlo_string, config, parser_options);
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(

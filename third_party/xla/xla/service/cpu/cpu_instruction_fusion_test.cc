@@ -47,7 +47,7 @@ using InstructionFusionTest = HloTestBase;
 std::unique_ptr<HloInstruction> MakeDot(const Shape& shape, HloInstruction* lhs,
                                         HloInstruction* rhs) {
   DotDimensionNumbers dot_dnums;
-  dot_dnums.add_lhs_contracting_dimensions(lhs->shape().rank() - 1);
+  dot_dnums.add_lhs_contracting_dimensions(lhs->shape().dimensions_size() - 1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   PrecisionConfig precision_config;
   precision_config.mutable_operand_precision()->Resize(
@@ -881,7 +881,7 @@ INSTANTIATE_TEST_SUITE_P(GatherLoopFusionTestInstantiation,
                          ::testing::ValuesIn(GetGatherLoopFusionTestSpecs()),
                          GatherLoopFusionTestSpec::Name);
 
-TEST_F(InstructionFusionTest, NoFuseReduceMajor) {
+TEST_F(InstructionFusionTest, FuseReduceMajor) {
   absl::string_view module_string = R"(
 HloModule module
 
@@ -904,9 +904,8 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_string));
   TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
                           CpuInstructionFusion().Run(module.get()));
-  EXPECT_FALSE(fused_something);
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              Not(op::Fusion()));
+  EXPECT_TRUE(fused_something);
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Fusion());
 }
 
 TEST_F(InstructionFusionTest, FuseReduceMinor) {

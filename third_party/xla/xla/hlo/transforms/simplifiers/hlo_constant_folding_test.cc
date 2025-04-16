@@ -476,7 +476,7 @@ TEST_F(HloConstantFoldingTest, AgressiveFoldOpsWhereBothOperandAreBroadcast) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
-  HloConstantFolding constant_folding(HloConstantFolding::Level::kAgressive);
+  HloConstantFolding constant_folding(HloConstantFolding::Level::kAggressive);
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&constant_folding, module.get()));
   EXPECT_TRUE(result);
@@ -614,7 +614,7 @@ TEST_F(HloConstantFoldingTest, FoldWhile) {
     }
    )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(mod_str));
-  HloConstantFolding const_fold(HloConstantFolding::Level::kAgressive);
+  HloConstantFolding const_fold(HloConstantFolding::Level::kAggressive);
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&const_fold, module.get()));
   EXPECT_TRUE(result);
   EXPECT_THAT(module->entry_computation()->root_instruction(),

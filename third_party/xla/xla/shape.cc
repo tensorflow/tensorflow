@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -43,6 +44,33 @@ Shape::Shape(const Shape&) = default;
 Shape::Shape(Shape&&) noexcept = default;
 Shape& Shape::operator=(const Shape&) = default;
 Shape& Shape::operator=(Shape&&) noexcept = default;
+
+Shape::Shape(const PrimitiveType element_type) : element_type_(element_type) {
+  CHECK(element_type_ == TOKEN || element_type_ == OPAQUE_TYPE)
+      << "Invalid element type for token or opaque shape: " << element_type_;
+}
+
+Shape::Shape(const PrimitiveType element_type,
+             const absl::Span<const int64_t> dimensions,
+             const absl::Span<const bool> dynamic_dimensions)
+    : element_type_(element_type),
+      dimensions_(dimensions.begin(), dimensions.end()),
+      dynamic_dimensions_(dynamic_dimensions.begin(),
+                          dynamic_dimensions.end()) {
+  CHECK(primitive_util::IsArrayType(element_type_))
+      << "Invalid element type for array shape: " << element_type_;
+  if (dynamic_dimensions_.empty()) {
+    // Assume all dimensions are static.
+    dynamic_dimensions_.resize(dimensions_.size(), false);
+  } else {
+    CHECK_EQ(dimensions_.size(), dynamic_dimensions_.size())
+        << "If dynamic_dimensions is provided, it must have the same size as "
+           "dimensions.";
+  }
+}
+
+Shape::Shape(std::vector<Shape> tuple_shapes)
+    : element_type_(TUPLE), tuple_shapes_(std::move(tuple_shapes)) {}
 
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
@@ -87,7 +115,7 @@ Shape::Shape(const ShapeProto& shape_proto) {
 void Shape::SetProto(ShapeProto& proto) const {
   proto.Clear();
   proto.set_element_type(element_type_);
-  proto.mutable_dimensions()->Reserve(rank());
+  proto.mutable_dimensions()->Reserve(dimensions_size());
   for (const int64_t dimension : dimensions()) {
     proto.add_dimensions(dimension);
   }
@@ -227,7 +255,7 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
       VLOG(3) << "CompareShapes: lhs rank != rhs rank";
       return false;
     }
-    for (int i = 0; i < lhs.rank(); ++i) {
+    for (int i = 0; i < lhs.dimensions_size(); ++i) {
       if (ignore_dynamic_dimension_ &&
           (lhs.is_unbounded_dynamic_dimension(i) ||
            rhs.is_unbounded_dynamic_dimension(i))) {
@@ -277,7 +305,7 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
   }
 
   if (!ignore_dynamic_dimension_) {
-    for (int i = 0; i < lhs.rank(); ++i) {
+    for (int i = 0; i < lhs.dimensions_size(); ++i) {
       if (lhs.is_dynamic_dimension(i) != rhs.is_dynamic_dimension(i)) {
         VLOG(3)
             << "CompareShapes: lhs and rhs have different dynamic dimensions.";

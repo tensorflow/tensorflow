@@ -24,13 +24,13 @@
 #include "tensorflow/lite/experimental/litert/c/litert_event_type.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/runtime/gpu_environment.h"
 
 #if LITERT_HAS_SYNC_FENCE_SUPPORT
 #include <poll.h>
 #include <unistd.h>
 #endif  // LITERT_HAS_SYNC_FENCE_SUPPORT
 #if LITERT_HAS_OPENCL_SUPPORT
+#include "tensorflow/lite/experimental/litert/runtime/gpu_environment.h"
 #include "tensorflow/lite/experimental/litert/runtime/opencl/cl_event.h"
 #endif  // LITERT_HAS_OPENCL_SUPPORT
 

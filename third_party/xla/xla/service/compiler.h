@@ -324,7 +324,7 @@ class Compiler {
       absl::string_view filename_prefix) const;
 
   virtual absl::StatusOr<std::unique_ptr<Executable>> DeserializeExecutable(
-      absl::Nonnull<const tsl::protobuf::Message*> serialized) const {
+      const absl::string_view serialized) const {
     return Unimplemented("DeserializeExecutable unimplemented");
   }
 

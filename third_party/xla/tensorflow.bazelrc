@@ -358,20 +358,31 @@ build:avx_linux --copt=-mavx
 build:avx_linux --host_copt=-mavx
 build:avx_win --copt=/arch:AVX
 
-build:windows_x86_cpu_2022 --crosstool_top="//tools/toolchains/win2022/20241118:toolchain"
-build:windows_x86_cpu_2022 --extra_toolchains="//tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
-build:windows_x86_cpu_2022 --extra_execution_platforms="//tools/toolchains/win2022:windows_ltsc2022_clang"
-build:windows_x86_cpu_2022 --host_platform="//tools/toolchains/win2022:windows_ltsc2022_clang"
-build:windows_x86_cpu_2022 --platforms="//tools/toolchains/win2022:windows_ltsc2022_clang"
-build:windows_x86_cpu_2022 --copt=/clang:-Weverything
-build:windows_x86_cpu_2022 --host_copt=/clang:-Weverything
-build:windows_x86_cpu_2022 --compiler=clang-cl
-build:windows_x86_cpu_2022 --linkopt=/FORCE:MULTIPLE
-build:windows_x86_cpu_2022 --host_linkopt=/FORCE:MULTIPLE
-test:windows_x86_cpu_2022 --linkopt=/FORCE:MULTIPLE
-test:windows_x86_cpu_2022 --host_linkopt=/FORCE:MULTIPLE
-test:windows_x86_cpu_2022 --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
-test:windows_x86_cpu_2022 --build_tests_only --keep_going --test_output=errors --verbose_failures=true --test_summary=short
+build:win_clang_base --@com_google_protobuf//:use_dlls=True
+build:win_clang_base --@com_google_absl//absl:use_dlls
+build:win_clang_base --linkopt=/demangle:no --host_linkopt=/demangle:no
+build:win_clang_base --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
+build:win_clang_base --copt=/clang:-Weverything
+build:win_clang_base --host_copt=/clang:-Weverything
+build:win_clang_base --compiler=clang-cl
+build:win_clang_base --linkopt=/FORCE:MULTIPLE
+build:win_clang_base --host_linkopt=/FORCE:MULTIPLE
+build:win_clang_base --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
+test:win_clang_base --linkopt=/FORCE:MULTIPLE
+test:win_clang_base --host_linkopt=/FORCE:MULTIPLE
+test:win_clang_base --build_tests_only --keep_going --test_output=errors --verbose_failures=true --test_summary=short
+
+build:win_clang --config=win_clang_base
+build:win_clang --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl
+build:win_clang --extra_execution_platforms=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
+build:win_clang --host_platform=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
+
+build:windows_x86_cpu_2022 --config=win_clang_base
+build:windows_x86_cpu_2022 --crosstool_top="//tensorflow/tools/toolchains/win2022/20241118:toolchain"
+build:windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
+build:windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
+build:windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
+build:windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 
 # Options to build TensorFlow 1.x or 2.x.
 # TODO(kanglan): Change v2's define to default behavior

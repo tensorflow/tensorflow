@@ -3,7 +3,7 @@ load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 
 # copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//xla:package_groups.bzl", "xla_package_groups")
-load("//xla:xla.bzl", "xla_bzl_library", "xla_cc_test", "xla_py_proto_library")
+load("//xla:xla.default.bzl", "xla_bzl_library", "xla_cc_test", "xla_py_proto_library")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
@@ -1218,6 +1218,8 @@ cc_library(
             "@com_google_absl//absl/log:check",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
+            "@local_tsl//tsl/platform",
+            "@local_tsl//tsl/platform:platform_port",
             "@local_tsl//tsl/platform:protobuf",
         ],
 )

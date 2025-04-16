@@ -14,7 +14,7 @@
 namespace qnn {
 
 enum class PaddingType {
-  Unkown = 0,
+  Unknown = 0,
   Same,
   Valid,
 };

@@ -39,7 +39,7 @@ class HloOp {
   void SetName(const std::string& name) {
     inst_->SetAndSanitizeName(name);
     if (inst_->GetModule() != nullptr) {
-      inst_->UniquifyName(&inst_->GetModule()->instruction_name_uniquer());
+      inst_->UniquifyName(inst_->GetModule());
     }
   }
   HloInstruction* get() { return inst_; }

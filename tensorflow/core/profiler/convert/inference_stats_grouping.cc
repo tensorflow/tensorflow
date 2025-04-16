@@ -318,6 +318,7 @@ void AggregateBatch(const BatchDetail& input, BatchDetail* result) {
   result->set_padding_amount(result->padding_amount() + input.padding_amount());
   result->set_batch_size_after_padding(result->batch_size_after_padding() +
                                        input.batch_size_after_padding());
+  result->set_device_time_ps(result->device_time_ps() + input.device_time_ps());
 }
 
 BatchDetail GetAverageBatchDetails(const BatchDetail& batch, int64_t size) {
@@ -331,12 +332,14 @@ BatchDetail GetAverageBatchDetails(const BatchDetail& batch, int64_t size) {
   result.set_batch_delay_ps(batch.batch_delay_ps() / size);
   result.set_padding_amount(batch.padding_amount() / size);
   result.set_batch_size_after_padding(batch.batch_size_after_padding() / size);
+  result.set_device_time_ps(batch.device_time_ps() / size);
   return result;
 }
 
 void AggregatePerModelInferenceStats(InferenceStats* inference_stats) {
   for (auto& [model_index, per_model_stats] :
        *inference_stats->mutable_inference_stats_per_model()) {
+    // TODO: remove batch size aggregation from request table.
     absl::flat_hash_map<int /*batch_id*/, const BatchDetail*> batch_id_to_batch;
     for (const BatchDetail& b : per_model_stats.batch_details()) {
       batch_id_to_batch[b.batch_id()] = &b;
@@ -358,6 +361,7 @@ void AggregatePerModelInferenceStats(InferenceStats* inference_stats) {
       // Aggregate all data.
       AggregateRequest(r, &aggregated_r);
       // Aggregate per batch size.
+      // TODO: remove batch size aggregation from request table.
       for (const auto batch_id : r.related_batch_ids()) {
         if (const BatchDetail* batch =
                 ::tsl::gtl::FindPtrOrNull(batch_id_to_batch, batch_id)) {

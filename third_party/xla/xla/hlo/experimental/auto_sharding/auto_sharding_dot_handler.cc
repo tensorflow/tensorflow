@@ -717,11 +717,11 @@ void DotHandler::AppendAllGatherWindowedEinsumStrategyForOperand(
     used_mesh_dims.insert(mesh_dim_set.begin(), mesh_dim_set.end());
   }
   if (used_mesh_dims.size() == device_mesh_.num_dimensions() ||
-      used_mesh_dims.size() == operand->shape().rank()) {
+      used_mesh_dims.size() == operand->shape().dimensions_size()) {
     return;
   }
 
-  for (int64_t tensor_dim = 0; tensor_dim < operand->shape().rank();
+  for (int64_t tensor_dim = 0; tensor_dim < operand->shape().dimensions_size();
        ++tensor_dim) {
     if (auto it = operand_dim_map.find(tensor_dim);
         it != operand_dim_map.end() && IsMeshDimSetNonTrivial(it->second)) {
@@ -763,11 +763,11 @@ void DotHandler::AppendReduceScatterWindowedEinsumStrategy(
   }
 
   if (used_mesh_dims.size() == device_mesh_.num_dimensions() ||
-      used_mesh_dims.size() == ins_->shape().rank()) {
+      used_mesh_dims.size() == ins_->shape().dimensions_size()) {
     return;
   }
 
-  for (int64_t tensor_dim = 0; tensor_dim < ins_->shape().rank();
+  for (int64_t tensor_dim = 0; tensor_dim < ins_->shape().dimensions_size();
        ++tensor_dim) {
     if (auto it = output_dim_map.find(tensor_dim);
         it != output_dim_map.end() && IsMeshDimSetNonTrivial(it->second)) {
@@ -805,7 +805,8 @@ absl::Status DotHandler::RegisterStrategies() {
       [&](const DimMap& output_dim_map) {
         GenerateDotShardingStrategiesFromOutputSharding(output_dim_map);
       },
-      ins_->shape().rank(), all_mesh_dims, option_.allow_mixed_mesh_shape);
+      ins_->shape().dimensions_size(), all_mesh_dims,
+      option_.allow_mixed_mesh_shape);
   SortStrategies();
   return absl::OkStatus();
 }
@@ -964,7 +965,7 @@ void ConvHandler::SplitDepthwise(bool forward) {
       };
   std::vector<int> all_mesh_dims(device_mesh_.num_dimensions());
   std::iota(all_mesh_dims.begin(), all_mesh_dims.end(), 0);
-  Enumerate(split_func, ins_->shape().rank(), all_mesh_dims,
+  Enumerate(split_func, ins_->shape().dimensions_size(), all_mesh_dims,
             option_.allow_mixed_mesh_shape);
 }
 

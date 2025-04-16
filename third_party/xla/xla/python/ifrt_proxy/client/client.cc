@@ -45,6 +45,7 @@
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/device.h"
@@ -55,9 +56,9 @@
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -225,31 +226,21 @@ Client::MakeArrayFromHostBuffer(
     std::optional<absl::Span<const int64_t>> byte_strides,
     std::shared_ptr<const Sharding> sharding,
     xla::ifrt::Client::HostBufferSemantics semantics,
-    std::function<void()> on_done_with_host_buffer) {
+    std::function<void()> on_done_with_host_buffer,
+    tsl::RCReference<xla::ifrt::UserContext> user_context) {
+  // TODO(b/407104769): Handle `user_context`.
   return Array::MakeArrayFromHostBuffer(
       this, rpc_helper_, data, dtype, std::move(shape), std::move(byte_strides),
       std::move(sharding), semantics, std::move(on_done_with_host_buffer));
 }
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-Client::AssembleArrayFromSingleDeviceArrays(
-    Shape shape, std::shared_ptr<const Sharding> sharding,
-    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-    ArrayCopySemantics semantics) {
-  return Array::AssembleArrayFromSingleDeviceArrays(
-      this, rpc_helper_, arrays[0]->dtype(), std::move(shape), sharding, arrays,
-      semantics, SingleDeviceShardSemantics::kAllShards);
-}
-
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-Client::AssembleArrayFromSingleDeviceArrays(
-    Shape shape, std::shared_ptr<const Sharding> sharding,
-    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-    ArrayCopySemantics array_copy_semantics,
-    SingleDeviceShardSemantics single_device_shard_semantics) {
-  return Array::AssembleArrayFromSingleDeviceArrays(
-      this, rpc_helper_, arrays[0]->dtype(), std::move(shape), sharding, arrays,
-      array_copy_semantics, single_device_shard_semantics);
+absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+Client::MakeArraysFromHostBufferShards(
+    absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
+    xla::ifrt::Client::HostBufferSemantics semantics,
+    tsl::RCReference<UserContext> user_context) {
+  return Array::MakeArraysFromHostBufferShards(
+      this, rpc_helper_, specs, semantics, std::move(user_context));
 }
 
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
@@ -290,7 +281,9 @@ Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
   for (const auto& array : arrays) {
     if (auto* proxy_array =
             llvm::dyn_cast<xla::ifrt::proxy::Array>(array.get())) {
-      req->add_array_handles(proxy_array->handle().handle);
+      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+                          proxy_array->GetHandle(semantics));
+      req->add_array_handles(handle.handle);
     } else {
       return absl::InvalidArgumentError(
           "CopyArrays only supports arrays created via IFRT Proxy client");
@@ -364,7 +357,13 @@ xla::ifrt::Future<> Client::GetReadyFuture(
     // type, but this may be extended later to other types such as Tuples.
     if (auto proxy_array =
             llvm::dyn_cast<xla::ifrt::proxy::Array>(value.get())) {
-      req->add_value_handles(proxy_array->handle().handle);
+      absl::StatusOr<ArrayHandle> handle =
+          proxy_array->GetHandle(ArrayCopySemantics::kAlwaysCopy);
+      if (!handle.ok()) {
+        futures.push_back(Future<>(handle.status()));
+      } else {
+        req->add_value_handles(handle->handle);
+      }
     } else {
       futures.push_back(value->GetReadyFuture());
     }

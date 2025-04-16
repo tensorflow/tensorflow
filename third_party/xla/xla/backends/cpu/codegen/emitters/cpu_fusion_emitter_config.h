@@ -21,7 +21,7 @@ namespace cpu {
 // Whether CPU Fusion emitters are enabled is controlled via XLA_FLAGS.
 // Here we define some flags to enable/disable specific emitters. This
 // will avoid churn until all emitters are stable.
-inline constexpr bool kFusionEmitterScatterEnabled = false;
+inline constexpr bool kFusionEmitterScatterEnabled = true;
 
 }  // namespace cpu
 }  // namespace xla

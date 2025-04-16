@@ -18,12 +18,14 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/shape_util.h"
 #include "tsl/platform/logging.h"
 
@@ -91,9 +93,17 @@ absl::StatusOr<bool> HloComputationDeduplicator::Run(
     // with large number of instructions or large-size constants due to increase
     // in time taken to stringify.
     if (comp->IsEntryComputation() || comp->instruction_count() > 128 ||
-        ContainsLargeConstants(comp) || comp->IsCollectiveCalledComputation()) {
+        ContainsLargeConstants(comp)) {
       continue;
     }
+    // Don't deduplicate collectives and non-collectives.
+    if (absl::c_any_of(
+            comp->caller_instructions(), [](const HloInstruction* instr) {
+              return hlo_query::IsCollectiveCommunicationOp(instr->opcode());
+            })) {
+      continue;
+    }
+
     std::string comp_str = comp->ToString(options);
     auto poss_dup = unique_comps.find(comp_str);
     if (poss_dup != unique_comps.end() &&

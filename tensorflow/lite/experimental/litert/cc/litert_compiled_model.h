@@ -136,6 +136,19 @@ class CompiledModel
     return GetInputBufferRequirements(signature_index, input_index);
   }
 
+  // Get input buffer requirements of the default signature for the given n-th
+  // input tensor.
+  Expected<TensorBufferRequirements> GetInputBufferRequirements(
+      size_t input_index) const {
+    return GetInputBufferRequirements(/*signature_index=*/0, input_index);
+  }
+
+  // Get input buffer requirements of the default signature for input name.
+  Expected<TensorBufferRequirements> GetInputBufferRequirements(
+      absl::string_view input_name) const {
+    return GetInputBufferRequirements(/*signature_index=*/0, input_name);
+  }
+
   // Get output buffer requirements for the given signature and output name.
   Expected<TensorBufferRequirements> GetOutputBufferRequirements(
       absl::string_view signature_name, absl::string_view output_name) {
@@ -163,6 +176,19 @@ class CompiledModel
     return GetOutputBufferRequirements(signature_index, output_index);
   }
 
+  // Get input buffer requirements of the default signature for the given n-th
+  // input tensor.
+  Expected<TensorBufferRequirements> GetOutputBufferRequirements(
+      size_t output_index) const {
+    return GetOutputBufferRequirements(/*signature_index=*/0, output_index);
+  }
+
+  // Get input buffer requirements of the default signature for input name.
+  Expected<TensorBufferRequirements> GetOutputBufferRequirements(
+      absl::string_view output_name) const {
+    return GetOutputBufferRequirements(/*signature_index=*/0, output_name);
+  }
+
   // Creates an input tensor buffer for the given signature and input name.
   Expected<TensorBuffer> CreateInputBuffer(absl::string_view signature_name,
                                            absl::string_view input_name) const {
@@ -170,10 +196,25 @@ class CompiledModel
                                    /*is_input=*/true);
   }
 
+  // Creates an input tensor buffer of the default signature for the given input
+  // name.
+  Expected<TensorBuffer> CreateInputBuffer(absl::string_view input_name) const {
+    return CreateInputOutputBuffer(/*signature_index=*/0, input_name,
+                                   /*is_input=*/true);
+  }
+
   // Creates an output tensor buffer for the given signature and output name.
   Expected<TensorBuffer> CreateOutputBuffer(
       absl::string_view signature_name, absl::string_view output_name) const {
     return CreateInputOutputBuffer(signature_name, output_name,
+                                   /*is_input=*/false);
+  }
+
+  // Creates an output tensor buffer of the default signature for the given
+  // output name.
+  Expected<TensorBuffer> CreateOutputBuffer(
+      absl::string_view output_name) const {
+    return CreateInputOutputBuffer(/*signature_index=*/0, output_name,
                                    /*is_input=*/false);
   }
 
@@ -195,6 +236,13 @@ class CompiledModel
     return CreateInputOutputBuffers(signature_index, /*is_input=*/true);
   }
 
+  // A helper function to creates the input tensor buffers for the default
+  // signature. It uses BufferRequirements and RankedTensorType to create the
+  // input tensor buffers.
+  Expected<std::vector<TensorBuffer>> CreateInputBuffers() const {
+    return CreateInputOutputBuffers(/*signature_index=*/0, /*is_input=*/true);
+  }
+
   // A helper function to create output tensor buffers for the given signature.
   // It uses BufferRequirements and RankedTensorType to create the output tensor
   // buffers.
@@ -213,6 +261,13 @@ class CompiledModel
     return CreateInputOutputBuffers(signature_index, /*is_input=*/false);
   }
 
+  // A helper function to creates the output tensor buffers for the default
+  // signature. It uses BufferRequirements and RankedTensorType to create the
+  // output tensor buffers.
+  Expected<std::vector<TensorBuffer>> CreateOutputBuffers() const {
+    return CreateInputOutputBuffers(/*signature_index=*/0, /*is_input=*/false);
+  }
+
   // Runs the model of the given signature index synchronously with the provided
   // input/output TensorBuffers.
   Expected<void> Run(size_t signature_index,
@@ -220,6 +275,15 @@ class CompiledModel
                      const std::vector<TensorBuffer>& output_buffers) const {
     bool async = false;
     return RunHelper(signature_index, input_buffers, output_buffers, async);
+  }
+
+  // Runs the model of the default signature synchronously with the provided
+  // input/output TensorBuffers.
+  Expected<void> Run(const std::vector<TensorBuffer>& input_buffers,
+                     const std::vector<TensorBuffer>& output_buffers) const {
+    bool async = false;
+    return RunHelper(/*signature_index=*/0, input_buffers, output_buffers,
+                     async);
   }
 
   // Runs the model of the given signature index asynchronously, if possible,
@@ -232,6 +296,18 @@ class CompiledModel
                           bool& async) const {
     async = true;
     return RunHelper(signature_index, input_buffers, output_buffers, async);
+  }
+
+  // Runs the model of the default signature asynchronously, if possible,
+  // with the provided input/output TensorBuffers. If asynchronous execution is
+  // possible then the function returns true in parameter `async`; otherwise the
+  // function runs the model synchronously.
+  Expected<void> RunAsync(const std::vector<TensorBuffer>& input_buffers,
+                          const std::vector<TensorBuffer>& output_buffers,
+                          bool& async) const {
+    async = true;
+    return RunHelper(/*signature_index=*/0, input_buffers, output_buffers,
+                     async);
   }
 
   // Runs the model of the given signature key synchronously with the provided
@@ -266,7 +342,23 @@ class CompiledModel
       const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map)
       const {
     bool async = false;
-    return RunHelper(signature_key, input_map, output_map, async);
+    return RunMapHelper(signature_key, input_map, output_map, async);
+  }
+
+  // Runs the model of the default signature synchronously with the provided
+  // input/output TensorBuffer map.
+  Expected<void> Run(
+      const absl::flat_hash_map<absl::string_view, TensorBuffer>& input_map,
+      const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map)
+      const {
+    bool async = false;
+    auto subgraph = model_.MainSubgraph();
+    if (!subgraph) {
+      return Unexpected(kLiteRtStatusErrorNotFound,
+                        "Failed to get main subgraph");
+    }
+    return RunMapWithIndexHelper(/*signature_index=*/0, *subgraph, input_map,
+                                 output_map, async);
   }
 
   // Runs the model of the given signature key asynchronously, if possible, with
@@ -279,7 +371,7 @@ class CompiledModel
       const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map,
       bool& async) const {
     async = true;
-    return RunHelper(signature_key, input_map, output_map, async);
+    return RunMapHelper(signature_key, input_map, output_map, async);
   }
 
  private:
@@ -296,10 +388,19 @@ class CompiledModel
       const TensorBufferRequirements& buffer_requirements,
       const RankedTensorType& tensor_type);
 
+  // Creates a TensorBuffer for the given signature index and tensor name.
+  Expected<TensorBuffer> CreateInputOutputBuffer(size_t signature_index,
+                                                 absl::string_view tensor_name,
+                                                 bool is_input) const;
+
   // Creates a TensorBuffer for the given signature and tensor name.
   Expected<TensorBuffer> CreateInputOutputBuffer(
       absl::string_view signature_name, absl::string_view tensor_name,
-      bool is_input) const;
+      bool is_input) const {
+    LITERT_ASSIGN_OR_RETURN(size_t signature_index,
+                            model_.GetSignatureIndex(signature_name));
+    return CreateInputOutputBuffer(signature_index, tensor_name, is_input);
+  }
 
   // Creates a vector of TensorBuffers for the given signature subgraph.
   Expected<std::vector<TensorBuffer>> CreateInputOutputBuffers(
@@ -317,8 +418,14 @@ class CompiledModel
                            const std::vector<TensorBuffer>& output_buffers,
                            bool& async) const;
 
-  Expected<void> RunHelper(
+  Expected<void> RunMapHelper(
       absl::string_view signature_key,
+      const absl::flat_hash_map<absl::string_view, TensorBuffer>& input_map,
+      const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map,
+      bool& async) const;
+
+  Expected<void> RunMapWithIndexHelper(
+      size_t signature_index, const Subgraph& subgraph,
       const absl::flat_hash_map<absl::string_view, TensorBuffer>& input_map,
       const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map,
       bool& async) const;

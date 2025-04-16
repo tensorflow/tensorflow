@@ -114,10 +114,9 @@ class ShapeUtil {
   template <bool kBoundedDynamicOk>
   static inline std::pair<int64_t, bool> ExtentProduct(const Shape& shape) {
     DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
-    DCHECK_EQ(shape.rank(), shape.rank());
     int64_t product = 1;
     bool any_overflows = false;
-    for (int dim = 0; dim < shape.rank(); ++dim) {
+    for (int dim = 0; dim < shape.dimensions().size(); ++dim) {
       if constexpr (kBoundedDynamicOk) {
         if (shape.is_unbounded_dynamic_dimension(dim)) {
           continue;
@@ -292,10 +291,10 @@ class ShapeUtil {
   static bool EqualStructure(const Shape& lhs, const Shape& rhs);
 
   // Returns the number of dimensions for which the dimension is not (trivially)
-  // 1. e.g., f32[2x1x1] has a true rank of 1D, the other dimensions are just
-  // fluff. Note that zero dimensions are included in the true rank, e.g.,
-  // f32[3,0,1] has a true rank of 2D.
-  static int64_t TrueRank(const Shape& shape);
+  // 1. e.g., f32[2x1x1] has a true dimensionality of 1D, the other dimensions
+  // are just fluff. Note that zero dimensions are included in the true
+  // dimensionality, e.g., f32[3,0,1] has a true dimensionality of 2D.
+  static int64_t TrueNumDimensions(const Shape& shape);
 
   static ProgramShape MakeProgramShape(std::initializer_list<Shape> parameters,
                                        Shape result);
@@ -304,10 +303,10 @@ class ShapeUtil {
   // Scalar-specific
 
   static bool IsScalar(const Shape& shape) {
-    return shape.IsArray() && shape.rank() == 0;
+    return shape.IsArray() && shape.dimensions().size() == 0;
   }
   static bool IsEffectiveScalar(const Shape& shape) {
-    return shape.IsArray() && TrueRank(shape) == 0;
+    return shape.IsArray() && TrueNumDimensions(shape) == 0;
   }
 
   // Returns whether "shape" is a scalar (array) with the given element_type.
@@ -961,8 +960,8 @@ class ShapeUtil {
 
   static absl::Status ForEachIndexWithStatus(
       const Shape& shape, const ForEachVisitorFunction& visitor_function) {
-    std::vector<int64_t> base(shape.rank());
-    std::vector<int64_t> incr(shape.rank(), 1);
+    std::vector<int64_t> base(shape.dimensions().size());
+    std::vector<int64_t> incr(shape.dimensions().size(), 1);
     return ForEachIndexWithStatus(shape, base,
                                   /*count=*/shape.dimensions(), incr,
                                   visitor_function);
@@ -971,8 +970,8 @@ class ShapeUtil {
   static void ForEachIndexNoStatus(
       const Shape& shape,
       const ForEachVisitorFunctionNoStatus& visitor_function) {
-    std::vector<int64_t> base(shape.rank());
-    std::vector<int64_t> incr(shape.rank(), 1);
+    std::vector<int64_t> base(shape.dimensions().size());
+    std::vector<int64_t> incr(shape.dimensions().size(), 1);
     ForEachIndexNoStatus(shape, base,
                          /*count=*/shape.dimensions(), incr, visitor_function);
   }
@@ -1161,7 +1160,7 @@ inline ShapeUtil::ForEachState::ForEachState(const Shape& s,
       indexes(b.begin(), b.end()),
       indexes_ptr((rank == 0) ? nullptr : indexes.data()),
       indexes_span(indexes) {
-  CHECK_EQ(shape.rank(), b.size());
+  CHECK_EQ(shape.dimensions().size(), b.size());
   CHECK_EQ(i.size(), b.size());
   CHECK_EQ(c.size(), b.size());
 }

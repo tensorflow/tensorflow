@@ -427,7 +427,7 @@ bool IsCubCompatibleSort(const HloSortInstruction* sort_op) {
   }
 
   const Shape& operand_shape = sort_op->operand(0)->shape();
-  if (sort_op->sort_dimension() != operand_shape.rank() - 1) {
+  if (sort_op->sort_dimension() != operand_shape.dimensions_size() - 1) {
     VLOG(2) << "Sort dimension should be the minor one";
     return false;
   }

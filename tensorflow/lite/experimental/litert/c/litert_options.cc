@@ -739,6 +739,33 @@ LiteRtStatus LiteRtGetSpaceToDepthBlockSizeOption(LiteRtOp op,
   return kLiteRtStatusOk;
 }
 
+LiteRtStatus LiteRtGetResizeNearestNeighborAlignCornersOption(
+    LiteRtOp op, bool* align_corners) {
+  if (op->OpCode() != kLiteRtOpCodeTflResizeNearestNeighbor) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *align_corners = opts.AsResizeNearestNeighborOptions()->align_corners;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetResizeNearestNeighborHalfPixelCenterOption(
+    LiteRtOp op, bool* half_pixel_centers) {
+  if (op->OpCode() != kLiteRtOpCodeTflResizeNearestNeighbor) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *half_pixel_centers =
+      opts.AsResizeNearestNeighborOptions()->half_pixel_centers;
+  return kLiteRtStatusOk;
+}
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

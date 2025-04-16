@@ -1,4 +1,4 @@
-load("//xla:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("//xla:py_strict.bzl", "py_strict_library", "py_strict_test")
 
 # Description:
 #   Python API for XLA.

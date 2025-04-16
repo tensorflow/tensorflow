@@ -48,8 +48,8 @@ class GlTexture {
   absl::Mutex mutex_;
 #if LITERT_HAS_OPENGL_SUPPORT
   tflite::gpu::gl::GlTexture tflite_gl_texture_;
-#endif  // LITERT_HAS_OPENGL_SUPPORT
   LiteRtGlTextureDeallocator deallocator_;
+#endif  // LITERT_HAS_OPENGL_SUPPORT
 };
 
 }  // namespace litert::internal

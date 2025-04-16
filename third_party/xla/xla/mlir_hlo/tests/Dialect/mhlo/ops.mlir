@@ -1640,10 +1640,21 @@ func.func @dot_bad_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi3
 
 // -----
 
-// CHECK-LABEL: func @exponential_result_accuracy
-func.func @exponential_result_accuracy(%arg0: tensor<f32>) -> tensor<f32> {
-  %0 = "mhlo.exponential"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 0.0, rtol = 0.0, ulps = 10, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<f32>) -> tensor<f32>
-  func.return %0: tensor<f32>
+// CHECK-LABEL: func @test_unary_result_accuracy_tol
+func.func @test_unary_result_accuracy_tol(%arg0: tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) {
+  %cbrt = "mhlo.cbrt"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 1.000000e+00, rtol = 1.000000e+00, ulps = 5, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<2xf32>) -> tensor<2xf32>
+  %cosine = "mhlo.cosine"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 1.000000e+00, rtol = 1.000000e+00, ulps = 5, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<2xf32>) -> tensor<2xf32>
+  %exponential = "mhlo.exponential"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 1.000000e+00, rtol = 1.000000e+00, ulps = 5, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<2xf32>) -> tensor<2xf32>
+  %exponential_minus_one = "mhlo.exponential_minus_one"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 1.000000e+00, rtol = 1.000000e+00, ulps = 5, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<2xf32>) -> tensor<2xf32>
+  %log = "mhlo.log"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 1.000000e+00, rtol = 1.000000e+00, ulps = 5, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<2xf32>) -> tensor<2xf32>
+  %log_plus_one = "mhlo.log_plus_one"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 1.000000e+00, rtol = 1.000000e+00, ulps = 5, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<2xf32>) -> tensor<2xf32>
+  %logistic = "mhlo.logistic"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 1.000000e+00, rtol = 1.000000e+00, ulps = 5, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<2xf32>) -> tensor<2xf32>
+  %rsqrt = "mhlo.rsqrt"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 1.000000e+00, rtol = 1.000000e+00, ulps = 5, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<2xf32>) -> tensor<2xf32>
+  %sine = "mhlo.sine"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 1.000000e+00, rtol = 1.000000e+00, ulps = 5, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<2xf32>) -> tensor<2xf32>
+  %sqrt = "mhlo.sqrt"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 1.000000e+00, rtol = 1.000000e+00, ulps = 5, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<2xf32>) -> tensor<2xf32>
+  %tan = "mhlo.tan"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 1.000000e+00, rtol = 1.000000e+00, ulps = 5, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<2xf32>) -> tensor<2xf32>
+  %tanh = "mhlo.tanh"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 1.000000e+00, rtol = 1.000000e+00, ulps = 5, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<2xf32>) -> tensor<2xf32>
+  func.return %cbrt, %cosine, %exponential, %exponential_minus_one, %log, %log_plus_one, %logistic, %rsqrt, %sine, %sqrt, %tan, %tanh : tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>
 }
 
 // -----

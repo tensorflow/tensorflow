@@ -238,7 +238,7 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
       if (hlo->dynamic_slice_sizes().size() == 1 &&
           hlo->dynamic_slice_sizes()[0] == 1 &&
           ds_buffer->opcode() == HloOpcode::kConstant &&
-          ds_buffer->shape().rank() == 1 &&
+          ds_buffer->shape().dimensions_size() == 1 &&
           ds_buffer->shape().element_type() == PrimitiveType::S32 &&
           ((cross_partition_spmd &&
             hlo->operand(1)->opcode() == HloOpcode::kPartitionId) ||

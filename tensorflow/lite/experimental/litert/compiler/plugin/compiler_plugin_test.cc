@@ -223,6 +223,27 @@ TEST(PartitionModelTest, MultiSubgraph) {
   EXPECT_EQ(subgraphs.Elements().back()->Ops().size(), 1);
 }
 
+TEST(PartitionModelTest, MultiSubgraphWithSelectedSubgraphs) {
+  auto model_wrap = testing::LoadTestFileModel("multi_subgraph_mul.tflite");
+  auto& model = *model_wrap.Get();
+
+  auto plugins = CompilerPlugin::LoadPlugins({kTestPluginSearchPath});
+  ASSERT_EQ(plugins->size(), 1);
+  auto& plugin = plugins->front();
+
+  auto partition_result = PartitionModel(plugin, model, {1});
+  ASSERT_TRUE(partition_result);
+  ASSERT_EQ(model.NumSubgraphs(), 2);
+
+  const auto& [ops, subgraphs] = *partition_result;
+
+  EXPECT_EQ(ops.size(), 1);
+  EXPECT_EQ(ops.front()->OpCode(), kLiteRtOpCodeTflCustom);
+
+  EXPECT_EQ(subgraphs.Size(), 1);
+  EXPECT_EQ(subgraphs.Elements().front()->Ops().size(), 1);
+}
+
 TEST(PartitionModelTest, CstMultiSubgraph) {
   auto model_wrap = testing::LoadTestFileModel("multi_use_cst.tflite");
   auto& model = *model_wrap.Get();

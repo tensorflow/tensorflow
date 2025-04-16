@@ -25,17 +25,31 @@
 #endif
 // clang-format on
 
+#include <cstdlib>
 #include <filesystem>  // NOLINT
 #include <string>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 
 namespace litert::internal {
+
+namespace {
+
+static constexpr absl::string_view kLdLibraryPath = "LD_LIBRARY_PATH";
+
+bool EnvPathContains(absl::string_view path, absl::string_view var_value) {
+  return absl::EndsWith(var_value, path) ||
+         absl::StrContains(var_value, absl::StrCat(path, ":"));
+}
+
+}  // namespace
 
 static constexpr absl::string_view kSo = ".so";
 
@@ -98,6 +112,37 @@ LiteRtStatus FindLiteRtDispatchSharedLibs(absl::string_view search_path,
       absl::StrCat(kLiteRtSharedLibPrefix, kDispatchLibPatternFmt);
   return FindLiteRtSharedLibsHelper(root, lib_pattern, /*full_match=*/false,
                                     results);
+}
+
+LiteRtStatus PutLibOnLdPath(absl::string_view search_path,
+                            absl::string_view lib_pattern) {
+  std::vector<std::string> results;
+  LITERT_RETURN_IF_ERROR(FindLiteRtSharedLibsHelper(
+      std::string(search_path), std::string(lib_pattern), true, results));
+  if (results.empty()) {
+    LITERT_LOG(LITERT_INFO, "No match found in %s", search_path.data());
+    return kLiteRtStatusOk;
+  }
+
+  const auto lib_dir = std::filesystem::path(results[0]).parent_path().string();
+  absl::string_view ld = getenv(kLdLibraryPath.data());
+
+  if (EnvPathContains(lib_dir, ld)) {
+    LITERT_LOG(LITERT_INFO, "dir already in LD_LIBRARY_PATH");
+    return kLiteRtStatusOk;
+  }
+
+  std::string new_ld;
+  if (ld.empty()) {
+    new_ld = lib_dir;
+  } else {
+    new_ld = absl::StrCat(ld, ":", lib_dir);
+  }
+
+  LITERT_LOG(LITERT_INFO, "Adding %s to LD_LIBRARY_PATH", new_ld.c_str());
+  setenv(kLdLibraryPath.data(), new_ld.c_str(), /*overwrite=*/1);
+
+  return kLiteRtStatusOk;
 }
 
 }  // namespace litert::internal

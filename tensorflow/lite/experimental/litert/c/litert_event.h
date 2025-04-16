@@ -25,20 +25,16 @@
 extern "C" {
 #endif  // __cplusplus
 
-#if LITERT_HAS_OPENCL_SUPPORT
 // Forward declaration of OpenCL event to avoid including OpenCL headers.
 typedef struct _cl_event* cl_event;
-#endif  // LITERT_HAS_OPENCL_SUPPORT
 
 LITERT_DEFINE_HANDLE(LiteRtEvent);
 
 LiteRtStatus LiteRtCreateEventFromSyncFenceFd(int sync_fence_fd, bool owns_fd,
                                               LiteRtEvent* event);
 
-#if LITERT_HAS_OPENCL_SUPPORT
 LiteRtStatus LiteRtCreateEventFromOpenClEvent(cl_event cl_event,
                                               LiteRtEvent* event);
-#endif  // LITERT_HAS_OPENCL_SUPPORT
 
 LiteRtStatus LiteRtCreateManagedEvent(LiteRtEventType type, LiteRtEvent* event);
 

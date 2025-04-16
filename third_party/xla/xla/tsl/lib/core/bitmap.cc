@@ -43,6 +43,17 @@ static size_t FindFirstSet(uint32_t w) {
   return w == 0 ? 0 : absl::countr_zero(w) + 1;
 }
 
+bool Bitmap::IsAllSet() const { return CountOnes() == nbits_; }
+
+size_t Bitmap::CountOnes() const {
+  const size_t nwords = NumWords(nbits_);
+  size_t count = 0;
+  for (size_t i = 0; i < nwords; i++) {
+    count += absl::popcount(word_[i]);
+  }
+  return count;
+}
+
 size_t Bitmap::FirstUnset(size_t start) const {
   if (start >= nbits_) {
     return nbits_;

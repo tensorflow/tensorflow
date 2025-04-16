@@ -20,7 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Debug.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -28,6 +30,8 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/xla_data.pb.h"
+
+#define DEBUG_TYPE "hlo-translate"
 
 namespace mlir {
 namespace mhlo {
@@ -129,6 +133,18 @@ absl::Status AddTileToShapeProto(
   return absl::OkStatus();
 }
 
+// Finds the entry XLA computation.
+absl::StatusOr<xla::HloComputationProto*> FindEntryComputation(
+    xla::HloModuleProto& hlo) {
+  const int id = hlo.entry_computation_id();
+  for (auto& c : *hlo.mutable_computations()) {
+    if (c.id() == id) {
+      return &c;
+    }
+  }
+  return absl::InvalidArgumentError("Missing entry computation");
+}
+
 }  // namespace
 
 void ExportHloModuleConfig(xla::HloModuleConfig& config,
@@ -146,16 +162,24 @@ void ExportHloModuleConfig(xla::HloModuleConfig& config,
 absl::Status ExportModuleEntryComputationParameterLayouts(
     const mlir::ArrayAttr& xla_entry_computation_parameter_layout,
     xla::HloModuleProto& hlo_module) {
-  for (auto [i, parameter_layout] :
+  auto entry_computation = FindEntryComputation(hlo_module);
+  if (!entry_computation.ok()) return entry_computation.status();
+
+  auto entry_computation_params =
+      entry_computation.value()->mutable_program_shape()->mutable_parameters();
+  auto host_program_params =
+      hlo_module.mutable_host_program_shape()->mutable_parameters();
+
+  LLVM_DEBUG(llvm::dbgs() << "Setting "
+                          << xla_entry_computation_parameter_layout.size()
+                          << " parameter layouts for "
+                          << entry_computation.value()->name() << "\n");
+
+  for (auto [arg_i, parameter_layout] :
        llvm::enumerate(xla_entry_computation_parameter_layout)) {
     auto status = AddLayoutToShapeProto(
-        parameter_layout,
-        hlo_module.mutable_host_program_shape()->mutable_parameters()->Mutable(
-            i),
-        hlo_module.mutable_computations(0)
-            ->mutable_program_shape()
-            ->mutable_parameters()
-            ->Mutable(i));
+        parameter_layout, host_program_params->Mutable(arg_i),
+        entry_computation_params->Mutable(arg_i));
     if (!status.ok()) return status;
   }
   return absl::OkStatus();
@@ -164,16 +188,24 @@ absl::Status ExportModuleEntryComputationParameterLayouts(
 absl::Status ExportModuleEntryComputationParameterTiles(
     const mlir::ArrayAttr& xla_entry_computation_parameter_tiles,
     xla::HloModuleProto& hlo_module) {
+  auto entry_computation = FindEntryComputation(hlo_module);
+  if (!entry_computation.ok()) return entry_computation.status();
+
+  auto entry_computation_params =
+      entry_computation.value()->mutable_program_shape()->mutable_parameters();
+  auto host_program_params =
+      hlo_module.mutable_host_program_shape()->mutable_parameters();
+
+  LLVM_DEBUG(llvm::dbgs() << "Setting "
+                          << xla_entry_computation_parameter_tiles.size()
+                          << " parameter tiles for "
+                          << entry_computation.value()->name() << "\n");
+
   for (auto [arg_i, parameter_tile_arg] :
        llvm::enumerate(xla_entry_computation_parameter_tiles)) {
-    auto status = AddTileToShapeProto(
-        parameter_tile_arg,
-        hlo_module.mutable_host_program_shape()->mutable_parameters()->Mutable(
-            arg_i),
-        hlo_module.mutable_computations(0)
-            ->mutable_program_shape()
-            ->mutable_parameters()
-            ->Mutable(arg_i));
+    auto status = AddTileToShapeProto(parameter_tile_arg,
+                                      host_program_params->Mutable(arg_i),
+                                      entry_computation_params->Mutable(arg_i));
     if (!status.ok()) return status;
   }
   return absl::OkStatus();

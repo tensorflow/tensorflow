@@ -1,8 +1,8 @@
 # Tools and utilities that aid in XLA development and usage.
 
-load("//xla:strict.default.bzl", "py_strict_library")
+load("//xla:py_strict.bzl", "py_strict_library")
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_binary",
 )
 load("//xla/tsl:tsl.default.bzl", "filegroup")

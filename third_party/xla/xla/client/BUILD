@@ -1,7 +1,7 @@
 # Description:
 #   XLA client libraries.
 
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -93,7 +93,6 @@ xla_cc_test(
     srcs = ["executable_build_options_test.cc"],
     deps = [
         ":executable_build_options",
-        "//xla:protobuf_util",
         "//xla:shape_util",
         "//xla/pjrt:compile_options_proto_cc",
         "//xla/service:computation_placer",
@@ -103,6 +102,7 @@ xla_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",

@@ -59,10 +59,10 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
   HloComputation* comp = instr->parent();
 
   const Shape& shape = instr->shape();
-  PaddingConfig pad_config = MakeNoPaddingConfig(shape.rank());
+  PaddingConfig pad_config = MakeNoPaddingConfig(shape.dimensions_size());
 
   bool added_padding = false;
-  for (int64_t dim = 0; dim < shape.rank(); ++dim) {
+  for (int64_t dim = 0; dim < shape.dimensions_size(); ++dim) {
     if (shape.dimensions(dim) == new_shape.dimensions(dim)) {
       continue;
     }
@@ -122,10 +122,10 @@ static absl::Status PadConv(HloCustomCallInstruction* conv,
   // Slice the new conv result if necessary, keeping in mind that new_conv
   // has tuple shape (new_result_shape, u8[0]).
   if (!ShapeUtil::Equal(result_shape, new_result_shape)) {
-    std::vector<int64_t> start_indices(result_shape.rank(), 0);
+    std::vector<int64_t> start_indices(result_shape.dimensions_size(), 0);
     std::vector<int64_t> end_indices(result_shape.dimensions().begin(),
                                      result_shape.dimensions().end());
-    std::vector<int64_t> strides(result_shape.rank(), 1);
+    std::vector<int64_t> strides(result_shape.dimensions_size(), 1);
 
     auto* new_conv_result = add(
         HloInstruction::CreateGetTupleElement(new_result_shape, new_conv, 0));

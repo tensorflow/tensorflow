@@ -243,12 +243,10 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       xla::GetDebugOptionsFromFlags()
           .xla_gpu_nccl_init_max_rank_per_root_ratio();
   int64_t nranks = clique_key.num_devices();
-  int64_t nroots = 1;
-  // Ceiling division to get number of roots
-  if (nccl_init_rank_per_root_ratio > 0) {
-    nroots = (nranks + nccl_init_rank_per_root_ratio - 1) /
-             nccl_init_rank_per_root_ratio;
-  }
+  int64_t nroots = nccl_init_rank_per_root_ratio != 0
+                       ? CeilOfRatio(nranks, nccl_init_rank_per_root_ratio)
+                       : 1;
+
   // Initializes a GpuClique for given device ranks and returns a lock that
   // gives access to clique communicators.
   auto initialize = [&](absl::Span<const RendezvousArg* const> args)
@@ -443,7 +441,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     int32_t color = GetCommSplitColor(clique_key);
 
     bool peer_access_enabled = false;
-    if ((*parent_clique)->IsLocal()) {
+    if ((*parent_clique)->key().is_local()) {
       // The parent clique is local, we can be sure that peer access was already
       // enabled.
       peer_access_enabled = (*parent_clique)->peer_access_enabled();
@@ -523,8 +521,8 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
     GpuCollectives* collectives, se::StreamExecutor* device, RunId run_id,
     const GpuCliqueKey& clique_key,
     const GpuCollectives::CliqueIdCallback& clique_id_callback, RankId rank,
-    size_t num_local_participants, const AcquiredCliquesMap& acquired_cliques,
-    int64_t max_nchannels) {
+    const AcquiredCliquesMap& acquired_cliques, int64_t max_nchannels) {
+  int64_t num_local_participants = clique_key.num_local_participants();
   VLOG(2) << "Acquire GPU clique " << clique_key.ToString() << "; run"
           << run_id.ToString() << "; rank " << rank
           << "; num_local_participants=" << num_local_participants

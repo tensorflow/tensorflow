@@ -34,16 +34,19 @@ AutotuneResults ThreeAutotuneEntries(int32_t version) {
   auto r1 = results.add_results();
   r1->set_device("dev1");
   r1->set_hlo("hlo1");
+  r1->set_version(1);
   r1->mutable_result()->set_scratch_bytes(1);
 
   auto r2 = results.add_results();
   r2->set_device("dev2");
   r2->set_hlo("hlo2");
+  r2->set_version(2);
   r2->mutable_result()->set_scratch_bytes(2);
 
   auto r3 = results.add_results();
   r3->set_device("dev3");
   r3->set_hlo("hlo3");
+  r3->set_version(3);
   r3->mutable_result()->set_scratch_bytes(3);
 
   return results;
@@ -75,12 +78,15 @@ TEST(AutotuneResultWrapperTest, FullRoundTrip) {
   EXPECT_EQ(round_tripped.version(), 42);
   EXPECT_EQ(round_tripped.results(0).device(), "dev1");
   EXPECT_EQ(round_tripped.results(0).hlo(), "hlo1");
+  EXPECT_EQ(round_tripped.results(0).version(), 1);
   EXPECT_EQ(round_tripped.results(0).result().scratch_bytes(), 1);
   EXPECT_EQ(round_tripped.results(1).device(), "dev2");
   EXPECT_EQ(round_tripped.results(1).hlo(), "hlo2");
+  EXPECT_EQ(round_tripped.results(1).version(), 2);
   EXPECT_EQ(round_tripped.results(1).result().scratch_bytes(), 2);
   EXPECT_EQ(round_tripped.results(2).device(), "dev3");
   EXPECT_EQ(round_tripped.results(2).hlo(), "hlo3");
+  EXPECT_EQ(round_tripped.results(2).version(), 3);
   EXPECT_EQ(round_tripped.results(2).result().scratch_bytes(), 3);
 }
 

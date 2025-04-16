@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
@@ -635,13 +636,27 @@ static XLA_FFI_Error* XLA_FFI_TypeId_Register(
       "XLA_FFI_ExecutionContext_Get_Args",
       XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
 
-  auto type_id = TypeIdRegistry::RegisterExternalTypeId(
-      std::string_view(args->name.ptr, args->name.len));
-  if (!type_id.ok()) {
-    return new XLA_FFI_Error{std::move(type_id).status()};
+  absl::string_view type_name(args->name.ptr, args->name.len);
+  TypeIdRegistry::TypeId type_id(args->type_id->type_id);
+
+  // If type_id is unknown, we are registering a new type and XLA will assign a
+  // unique type id to it.
+  if (type_id == TypeIdRegistry::kUnknownTypeId) {
+    auto assigned_type_id = TypeIdRegistry::AssignExternalTypeId(type_name);
+    if (!assigned_type_id.ok()) {
+      return new XLA_FFI_Error{std::move(assigned_type_id).status()};
+    }
+
+    args->type_id->type_id = assigned_type_id->value();
+    return nullptr;
   }
 
-  args->type_id->type_id = type_id->value();
+  // If type_id is set, we are relying on the caller-provided unique type id.
+  if (auto status = TypeIdRegistry::RegisterExternalTypeId(type_name, type_id);
+      !status.ok()) {
+    return new XLA_FFI_Error{std::move(status)};
+  }
+
   return nullptr;
 }
 

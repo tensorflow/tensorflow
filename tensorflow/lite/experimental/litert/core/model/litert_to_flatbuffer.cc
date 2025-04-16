@@ -38,6 +38,8 @@ Expected<TflElementType> MapElementType(LiteRtElementType litert_element_type) {
       return tflite::TensorType_FLOAT16;
     case kLiteRtElementTypeInt32:
       return tflite::TensorType_INT32;
+    case kLiteRtElementTypeInt64:
+      return tflite::TensorType_INT64;
     case kLiteRtElementTypeBool:
       return tflite::TensorType_BOOL;
     case kLiteRtElementTypeInt16:

@@ -21,17 +21,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
-#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
+#include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
@@ -39,12 +40,12 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -196,11 +197,6 @@ static absl::StatusOr<Command> Convert(const AllGatherStartThunk& thunk) {
                                         thunk.config(), thunk.buffers());
 }
 
-static absl::StatusOr<Command> Convert(const CollectiveDoneThunk& thunk) {
-  return std::make_unique<BarrierCmd>(thunk.execution_stream_id(),
-                                      thunk.nccl_execution_stream_id());
-}
-
 static absl::StatusOr<Command> Convert(const DynamicSliceThunk& thunk) {
   auto cmd_sequence = std::make_unique<CommandBufferCmdSequence>();
   auto embed_thunk = thunk.get_embedded_thunk();
@@ -249,11 +245,6 @@ static absl::StatusOr<Command> Convert(const CustomCallThunk& thunk) {
 static absl::StatusOr<Command> Convert(const CuDnnThunk& thunk) {
   return std::make_unique<CuDnnCmd>(thunk.execution_stream_id(),
                                     thunk.arguments(), thunk.graph());
-}
-
-static absl::StatusOr<Command> Convert(const WaitForStreamsThunk& thunk) {
-  return std::make_unique<BarrierCmd>(thunk.stream_id(),
-                                      thunk.wait_for_stream_id());
 }
 
 //===----------------------------------------------------------------------===//
@@ -324,6 +315,8 @@ static absl::Status AppendCommands(
       return append(Convert<WhileThunk>(thunk, synchronization_mode));
     case Thunk::Kind::kCuDnn:
       return append(Convert<CuDnnThunk>(thunk));
+    case Thunk::Kind::kDynamicSlice:
+      return append(Convert<DynamicSliceThunk>(thunk));
 
     // Sequential thunk does not have any special semantics and we simply inline
     // all nested thunks into command buffer.
@@ -332,17 +325,14 @@ static absl::Status AppendCommands(
                             static_cast<const SequentialThunk&>(thunk).thunks(),
                             synchronization_mode);
 
+    // Thunks that simply wait for stream events are no-op in the command buffer
+    // context, as we convert async thunks to command dependency graph.
     case Thunk::Kind::kAllGatherDone:
     case Thunk::Kind::kAllReduceDone:
     case Thunk::Kind::kReduceScatterDone:
     case Thunk::Kind::kAllToAllDone:
-      return append(Convert<CollectiveDoneThunk>(thunk));
-
-    case Thunk::Kind::kDynamicSlice:
-      return append(Convert<DynamicSliceThunk>(thunk));
-
     case Thunk::Kind::kWaitForStreams:
-      return append(Convert<WaitForStreamsThunk>(thunk));
+      return absl::OkStatus();
 
     case Thunk::Kind::kCommandBuffer:
       return Internal(

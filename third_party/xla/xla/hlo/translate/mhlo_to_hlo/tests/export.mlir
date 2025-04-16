@@ -499,6 +499,36 @@ func.func @callee(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>,
 // -----
 
 // CHECK:  HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32> {
+  // CHECK: f32[1,16,16,3] cosine
+  %0 = mhlo.cosine %arg0 : tensor<1x16x16x3xf32>
+  return %0 : tensor<1x16x16x3xf32>
+}
+
+// -----
+
+// CHECK:  HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32> {
+  // CHECK: f32[1,16,16,3] sine
+  %0 = mhlo.sine %arg0 : tensor<1x16x16x3xf32>
+  return %0 : tensor<1x16x16x3xf32>
+}
+
+// -----
+
+// CHECK:  HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: f32[] exponential({{.*}}), result_accuracy={tolerance={atol=0,rtol=0,ulps=10}}
+  %0 = mhlo.exponential %arg0 {result_accuracy = #mhlo.result_accuracy<ulps = 10, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   %0 = "mhlo.collective_broadcast"(%arg0) {
     replica_groups = dense<[[0, 1], [2, 3]]> : tensor<2x2xi64>,

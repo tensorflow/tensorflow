@@ -58,34 +58,14 @@ static PersistentCliquesMap& GetPersistentCliquesMap() {
 }
 }  // namespace
 
-absl::Status ResourceRequests::AddClique(const GpuCliqueKey& clique_key,
-                                         int32_t num_local_participants) {
-  VLOG(5) << "Add collective clique request: " << clique_key.ToString()
-          << "; num_local_participants: " << num_local_participants;
-
-  // Check if there is already a clique request for this clique key.
-  if (auto it = cliques_.find(clique_key); it != cliques_.end()) {
-    // We can't have multiple requests for a same clique key with different
-    // number of local participants as we can acquire a clique only once and
-    // we have to know how many executables will join the rendezvous.
-    if (it->second.num_local_participants != num_local_participants) {
-      return absl::InternalError(absl::StrFormat(
-          "Clique request for a clique key %s has number of local "
-          "participants %d different from previously requested value of %d. "
-          "This will lead to deadlock at run time and is an XLA compiler "
-          "bug. Please report it to XLA team.",
-          clique_key.ToString(), num_local_participants,
-          it->second.num_local_participants));
-    }
-    return absl::OkStatus();
-  }
+absl::Status ResourceRequests::AddClique(const GpuCliqueKey& clique_key) {
+  VLOG(5) << "Add collective clique request: " << clique_key.ToString();
 
   // XLA compiler guarantees that all collective operations have the same
   // order on all replicas. We rely on this property to assign unique id to
-  // clique requests simply based on the number of already recored requests.
+  // clique requests simply based on the number of already recorded requests.
   int64_t id = cliques_.size();
-  cliques_.try_emplace(clique_key,
-                       CliqueRequest{clique_key, num_local_participants, id});
+  cliques_.try_emplace(clique_key, CliqueRequest{clique_key, id});
   return absl::OkStatus();
 }
 
@@ -108,7 +88,7 @@ ResourceRequests::AcquireCollectiveCliques(
     const CliqueRequest& r = ordered_cliques[i];
     VLOG(2) << "  clique #" << i << " (for global device id "
             << params.global_device_id.value() << ")"
-            << ": num_local_participants=" << r.num_local_participants
+            << ": num_local_participants=" << r.key.num_local_participants()
             << "; id=" << r.id << "; key=" << r.key.ToString();
   }
 
@@ -133,10 +113,9 @@ ResourceRequests::AcquireCollectiveCliques(
           " in clique key ", r.key.ToString()));
     }
 
-    bool is_local = r.key.devices().size() == r.num_local_participants;
     TF_ASSIGN_OR_RETURN(const CliqueIdCallback* clique_id_callback,
                         params.collectives->GetCliqueIdCallback(
-                            params.nccl_clique_id_callback, is_local));
+                            params.nccl_clique_id_callback, r.key.is_local()));
 
     int64_t max_channels = r.key.stream_kind() == AsyncStreamKind::kCollective
                                ? params.collective_max_nchannels
@@ -159,8 +138,8 @@ ResourceRequests::AcquireCollectiveCliques(
     TF_ASSIGN_OR_RETURN(
         std::shared_ptr<LockableGpuClique::Lock> clique,
         AcquireGpuClique(params.collectives, params.executor, params.run_id,
-                         r.key, *clique_id_callback, *rank,
-                         r.num_local_participants, cliques_map, max_channels));
+                         r.key, *clique_id_callback, *rank, cliques_map,
+                         max_channels));
     ++num_transient_cliques;
 
     // Take a copy of the clique lock, so that we can reuse it. This is

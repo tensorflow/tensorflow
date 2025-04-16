@@ -20,13 +20,11 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -40,23 +38,20 @@
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 
 using ::testing::_;
-using ::testing::Pointee;
+using ::testing::ElementsAre;
 using ::testing::Return;
 using ::tsl::protobuf::TextFormat;
 using ::tsl::testing::IsOk;
-
-#if defined(PLATFORM_GOOGLE)
-using ::testing::EquivToProto;
-using ::testing::proto::Partially;
-#endif
 
 namespace xla {
 namespace ifrt {
@@ -90,47 +85,36 @@ class ArrayTest : public ::testing::Test {
   std::shared_ptr<ClientHostBufferStore> host_buffer_store_;
 };
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_F(ArrayTest, Destruction) {
   // Destruction may not happen immediately because of batching at the
   // client-side. This test waits until destruction happens.
-  absl::Notification destructed;
-  EXPECT_CALL(
-      *session_,
-      Enqueue(Pointee(Partially(EquivToProto(R"pb(destruct_array_request {
-                                                    array_handle: 1234
-                                                  })pb")))))
-      .WillOnce([&](std::unique_ptr<IfrtRequest> request)
-                    -> Future<ClientSession::Response> {
-        destructed.Notify();
-        auto result = std::make_shared<IfrtResponse>();
-        return Future<ClientSession::Response>(result);
-      });
+  TestQueue<IfrtRequest> requests_queue(/*pop_timeout=*/absl::Minutes(1));
+
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kDestructArrayRequest)))
+      .WillOnce(MockClientCaptureAndReturn(&requests_queue, IfrtResponse()));
 
   MockClient client;
   tsl::MakeRef<Array>(&client, rpc_helper_, DType(DType::Kind::kBF16),
                       Shape({}), /*sharding=*/nullptr, ArrayHandle{1234});
 
-  ASSERT_TRUE(destructed.WaitForNotificationWithTimeout(absl::Seconds(10)));
+  auto destruct_array_request = requests_queue.Pop().destruct_array_request();
+  EXPECT_THAT(destruct_array_request.array_handle(), ElementsAre(1234));
 }
-#endif
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_F(ArrayTest, FullyReplicatedShard) {
   IfrtResponse response;
+  TestQueue<IfrtRequest> requests_queue(/*pop_timeout=*/absl::Minutes(1));
+
   ASSERT_TRUE(TextFormat::ParseFromString(
       R"pb(response_metadata {}
            fully_replicated_shard_response { array_handle: 1 })pb",
       &response));
 
-  EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
-                             R"pb(fully_replicated_shard_request {
-                                    array_handle: 1234
-                                    result_handle: 1
-                                  })pb")))))
-      .WillOnce(MockClientSessionReturnResponse(response));
+  EXPECT_CALL(
+      *session_,
+      Enqueue(IfrtRequestOfType(IfrtRequest::kFullyReplicatedShardRequest)))
+      .WillOnce(MockClientCaptureAndReturn(&requests_queue, response));
 
   MockClient client;
   ON_CALL(client, MakeDeviceList(_))
@@ -148,10 +132,12 @@ TEST_F(ArrayTest, FullyReplicatedShard) {
       tsl::MakeRef<Array>(&client, rpc_helper_, DType(DType::Kind::kBF16),
                           Shape({}), std::move(sharding), ArrayHandle{1234});
 
-  ASSERT_THAT(array->FullyReplicatedShard(ArrayCopySemantics::kAlwaysCopy),
+  EXPECT_THAT(array->FullyReplicatedShard(ArrayCopySemantics::kAlwaysCopy),
               IsOk());
+  auto req = requests_queue.Pop().fully_replicated_shard_request();
+  EXPECT_EQ(req.array_handle(), 1234);
+  EXPECT_EQ(req.result_handle(), 1);
 }
-#endif
 
 }  // namespace
 }  // namespace proxy

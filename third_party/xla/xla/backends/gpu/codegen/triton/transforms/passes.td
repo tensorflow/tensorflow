@@ -47,71 +47,6 @@ def GeneralizeKernelSignaturePass
   let constructor = "CreateGeneralizeKernelSignaturePass()";
 }
 
-def SparseAddEncodingPass : Pass<"sparse-add-encoding", "mlir::ModuleOp"> {
-  let summary = "Add sparse encoding for all the arguments of a SparseDotOp.";
-  let options = [
-    Option<"num_warps_", "num-warps", "int32_t", /*default=*/"4",
-           "Number of warps">,
-    Option<"threads_per_warp_", "threads-per-warp", "int32_t", /*default=*/"32",
-           "Number of threads per warp">,
-    Option<"num_ctas_", "num-ctas", "int32_t", /*default=*/"1",
-           "Number of CTAs in a CGA">,
-  ];
-  let dependentDialects = [
-    "triton::gpu::TritonGPUDialect",
-  ];
-  let constructor = "CreateSparseAddEncodingPass()";
-}
-
-def SparseBlockedToMMAPass : Pass<"sparse-blocked-to-mma", "mlir::ModuleOp"> {
-  let summary = "Add convert layouts to/from MMA before and after SparseDotOp.";
-  let description = [{
-     Add convert layouts to and from MMA before and after SparseDotOp. In MMAV3,
-     shared memory allocations will be used for A and B operands.
-  }];
-  let dependentDialects = [
-    "triton::gpu::TritonGPUDialect",
-  ];
-  let constructor = "CreateSparseBlockedToMMAPass()";
-}
-
-def SparseRemoveLayoutConversionPass
-    : Pass<"sparse-remove-layout-conversion", "mlir::ModuleOp"> {
-  let summary = "Replaces ConvertLayoutOp with sparse dot encoding";
-  let dependentDialects = [
-    "triton::gpu::TritonGPUDialect",
-  ];
-  let constructor = "CreateSparseRemoveLayoutConversionPass()";
-}
-
-def SparseLocalLoadToLLVMPass
-    : Pass<"sparse-local-load-to-llvm", "mlir::ModuleOp"> {
-  let summary = "Lowers sparse local load to LLVM";
-  let dependentDialects = [
-    "triton::gpu::TritonGPUDialect",
-    "mlir::LLVM::LLVMDialect"
-  ];
-  let constructor = "CreateSparseLocalLoadToLLVMPass()";
-}
-
-def SparseDotOpToLLVMPass : Pass<"sparse-dot-to-llvm", "mlir::ModuleOp"> {
-  let summary = "Lowers sparse dot to LLVM";
-  let constructor = "CreateSparseDotOpToLLVMPass()";
-  let dependentDialects = [
-    "triton::gpu::TritonGPUDialect",
-    "mlir::triton::nvgpu::NVGPUDialect",
-  ];
-}
-
-def SparseWGMMAOpToLLVMPass : Pass<"sparse-wgmma-to-llvm", "mlir::ModuleOp"> {
-  let summary = "Lowers sparse WGMMA to LLVM";
-  let dependentDialects = [
-    "triton::gpu::TritonGPUDialect",
-    "mlir::triton::nvgpu::NVGPUDialect",
-  ];
-  let constructor = "CreateSparseWGMMAOpToLLVMPass()";
-}
-
 def PreventMmaV3LoopUnrollingPass
     : Pass<"prevent-mmav3-loop-unrolling", "mlir::ModuleOp"> {
   let summary = "Prevent MMAv3 loop unrolling.";
@@ -133,6 +68,18 @@ def LoadInt4RewritePass
     int8 tensor with the unpack sequence.
   }];
   let constructor = "CreateInt4ToPackedInt4RewritePass()";
+}
+
+def RoundF32ToTF32ForTf32DotRewritePass
+    : Pass<"round-f32-to-tf32-for-tf32-dot-rewrite", "mlir::ModuleOp"> {
+  let summary = "dot with tf32 algorithm requires explicit rounding.";
+  let description = [{
+    This pass adds explicit rounding from f32 to tf32 for the dot with tf32 algorithm.
+    This is required because mma instruction does not have explicit rounding and
+    by default does truncation. As a result, the dot with tf32 algorithm has too
+    small precision. It is even less than for the dot with BF16 arguments.
+  }];
+  let constructor = "CreateRoundF32ToTF32ForTf32DotRewritePass()";
 }
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

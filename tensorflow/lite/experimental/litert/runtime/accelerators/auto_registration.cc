@@ -16,7 +16,6 @@
 
 #include <utility>
 
-#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
@@ -25,24 +24,33 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_shared_library.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
+#include "tensorflow/lite/experimental/litert/runtime/accelerators/dispatch/dispatch_accelerator.h"
 
-// Define a weak function to allow the accelerator registration to be overridden
-// by the LiteRT environment.
-// This is used to link the GPU accelerator statically.
-// NOTE: weak function is only supported in Linux.
-//
-// Return true if the accelerator is registered successfully.
-ABSL_ATTRIBUTE_WEAK extern "C" bool RegisterStaticLinkedAcceleratorGpu(
-    LiteRtEnvironmentT& environment) {
-  return false;
-}
+// Define a function pointer to allow the accelerator registration to be
+// overridden by the LiteRT environment. This is to use the GPU accelerator
+// statically linked.
+extern "C" bool (*LiteRtRegisterStaticLinkedAcceleratorGpu)(
+    LiteRtEnvironmentT& environment) = nullptr;
 
 namespace litert {
 
 Expected<void> TriggerAcceleratorAutomaticRegistration(
     LiteRtEnvironmentT& environment) {
+  // Register the NPU accelerator.
+
+  auto npu_registration =
+      LiteRtRegisterNpuAccelerator(&environment, /*options=*/nullptr);
+  if (npu_registration != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_WARNING,
+               "GPU accelerator could not be loaded and registered: %s.",
+               LiteRtGetStatusString(npu_registration));
+  } else {
+    LITERT_LOG(LITERT_INFO, "NPU accelerator registered.");
+  }
+
   // Register the GPU accelerator.
-  if (RegisterStaticLinkedAcceleratorGpu(environment)) {
+  if (LiteRtRegisterStaticLinkedAcceleratorGpu != nullptr &&
+      LiteRtRegisterStaticLinkedAcceleratorGpu(environment)) {
     LITERT_LOG(LITERT_INFO, "Statically linked GPU accelerator registered.");
     return {};
   }

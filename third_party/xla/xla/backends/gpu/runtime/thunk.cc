@@ -77,30 +77,6 @@ absl::StatusOr<Communicator*> Thunk::CollectiveCliques::GetComm(
   return *communicator;
 }
 
-absl::StatusOr<bool> Thunk::CollectiveCliques::is_local_clique(
-    const GpuCliqueKey& clique_key) const {
-  // Check that we locked access to a clique for `clique_key`.
-  auto clique = cliques_map_.find(clique_key);
-  if (clique == cliques_map_.end()) {
-    return absl::NotFoundError(absl::StrCat("No clique found for clique key: ",
-                                            clique_key.ToString()));
-  }
-
-  return (*clique->second)->IsLocal();
-}
-
-absl::StatusOr<size_t> Thunk::CollectiveCliques::num_communicators(
-    const GpuCliqueKey& clique_key) const {
-  // Check that we locked access to a clique for `clique_key`.
-  auto clique = cliques_map_.find(clique_key);
-  if (clique == cliques_map_.end()) {
-    return absl::NotFoundError(absl::StrCat("No clique found for clique key: ",
-                                            clique_key.ToString()));
-  }
-
-  return (*clique->second)->num_communicators();
-}
-
 absl::StatusOr<bool> Thunk::CollectiveCliques::peer_access_enabled(
     const GpuCliqueKey& clique_key) const {
   // Check that we locked access to a clique for `clique_key`.

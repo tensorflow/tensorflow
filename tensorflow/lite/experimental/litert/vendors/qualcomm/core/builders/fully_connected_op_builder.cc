@@ -24,7 +24,6 @@ std::vector<OpWrapper> BuildFullyConnectedOp(
     TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const bool keep_num_dims) {
   std::vector<OpWrapper> res;
-
   OpWrapper& fully_connected_op = CreateOpWrapper(res, QNN_OP_FULLY_CONNECTED);
 
   TensorWrapper& input_tensor = inputs[0];

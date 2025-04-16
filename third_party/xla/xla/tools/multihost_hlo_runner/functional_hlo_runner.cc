@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 #include "xla/hlo/translate/hlo_to_mhlo/translate.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/layout.h"
@@ -782,6 +783,9 @@ absl::Status FunctionalHloRunner::PrepareHloModuleForCompilation(
             preproc_options.flatten_conditional,
             /*conditional_value=*/
             preproc_options.conditional_value});
+    if (preproc_options.annotate_while_loop_trip_count) {
+      pipeline.AddPass<WhileLoopTripCountAnnotator>();
+    }
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
   return absl::OkStatus();
@@ -1537,26 +1541,25 @@ FunctionalHloRunner::FetchAndLogOutput(
   return outputs;
 }
 
-GPURunnerProfiler::GPURunnerProfiler(absl::string_view dump_path,
+HLORunnerProfiler::HLORunnerProfiler(absl::string_view dump_path,
                                      bool keep_xspace)
     : dump_path_(dump_path), keep_xspace_(keep_xspace) {}
 
-absl::StatusOr<std::unique_ptr<GPURunnerProfiler>> GPURunnerProfiler::Create(
+absl::StatusOr<std::unique_ptr<HLORunnerProfiler>> HLORunnerProfiler::Create(
     absl::string_view dump_path, bool keep_xspace) {
   if (dump_path.empty()) {
     return absl::InvalidArgumentError(
         "Please provide a valid dump path to save XSpace results to disk.");
   }
-  return std::make_unique<GPURunnerProfiler>(dump_path, keep_xspace);
+  return std::make_unique<HLORunnerProfiler>(dump_path, keep_xspace);
 }
 
-void GPURunnerProfiler::CreateSession() {
+void HLORunnerProfiler::CreateSession() {
   auto options = tsl::ProfilerSession::DefaultOptions();
-  options.set_device_type(tensorflow::ProfileOptions::GPU);
   session_ = tsl::ProfilerSession::Create(options);
 }
 
-void GPURunnerProfiler::UploadSession() {
+void HLORunnerProfiler::UploadSession() {
   xspace_ = std::make_unique<tensorflow::profiler::XSpace>();
   // Stops the ProfilerSession
   TF_CHECK_OK(session_->CollectData(xspace_.get()));
@@ -1571,7 +1574,7 @@ void GPURunnerProfiler::UploadSession() {
   }
 }
 
-const tensorflow::profiler::XSpace* GPURunnerProfiler::GetXSpace() {
+const tensorflow::profiler::XSpace* HLORunnerProfiler::GetXSpace() {
   return xspace_.get();
 }
 

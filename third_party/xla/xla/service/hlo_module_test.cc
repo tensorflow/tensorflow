@@ -248,8 +248,8 @@ ENTRY entry () -> s32[] {
   HloInstruction* cloned_custom_call =
       cloned_module->entry_computation()->GetInstructionWithName("custom-call");
 
-  EXPECT_TRUE(cloned_computation->IsCustomCallComputation());
-  EXPECT_EQ(cloned_computation->CustomCallInstruction(), cloned_custom_call);
+  EXPECT_EQ(cloned_computation->GetUniqueCaller(HloOpcode::kCustomCall),
+            cloned_custom_call);
 }
 
 TEST_F(HloModuleTest, CloneCustomCallComputationCalledComputations) {
@@ -288,10 +288,10 @@ ENTRY entry () -> s32[] {
   HloInstruction* cloned_custom_call =
       cloned_module->entry_computation()->GetInstructionWithName("custom-call");
 
-  EXPECT_TRUE(cloned_computation_0->IsCustomCallComputation());
-  EXPECT_EQ(cloned_computation_0->CustomCallInstruction(), cloned_custom_call);
-  EXPECT_TRUE(cloned_computation_1->IsCustomCallComputation());
-  EXPECT_EQ(cloned_computation_1->CustomCallInstruction(), cloned_custom_call);
+  EXPECT_EQ(cloned_computation_0->GetUniqueCaller(HloOpcode::kCustomCall),
+            cloned_custom_call);
+  EXPECT_EQ(cloned_computation_1->GetUniqueCaller(HloOpcode::kCustomCall),
+            cloned_custom_call);
 }
 
 TEST_F(HloModuleTest, CloneFusionComputation) {

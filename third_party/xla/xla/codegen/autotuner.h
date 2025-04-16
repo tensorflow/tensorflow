@@ -17,12 +17,10 @@ limitations under the License.
 #define XLA_CODEGEN_AUTOTUNER_H_
 
 #include <cstddef>
-#include <cstdint>
+#include <memory>
 #include <string>
-#include <variant>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -65,18 +63,7 @@ class Autotuner {
  public:
   virtual ~Autotuner() = default;
 
-  using Knob = std::variant<int64_t, double, std::string>;
-
-  // ExecutableConfig that can be used to annotate fusion and let
-  // codegen pick the right backends + knobs (tiles, etc.)
-  //
-  // Example: ExecutableConfig {"triton", {"t0": 128, "t1": 256}}
-  struct ExecutableConfig {
-    std::string backend;
-    absl::flat_hash_map<std::string, Knob> knobs;
-  };
-
-  // Result of compiling a fusion to thunk sequence for given executable config.
+  // Result of compiling a fusion to thunk sequence ready for execution.
   //
   // Example: Executable {0, {KernelThunk<triton-kernel-inside>}}
   struct Executable {
@@ -95,13 +82,26 @@ class Autotuner {
    public:
     virtual ~ExecutableProvider() = default;
 
+    // Executable config defines provider-specific parameters for compiling a
+    // given fusion to an executable. It's defined as a virtual base class to
+    // allow different executable providers to define their own config types.
+    //
+    // Example: TritonCodegenConfig {"t0": 128, "t1": 256}
+    class ExecutableConfig {
+     public:
+      virtual ~ExecutableConfig() = default;
+
+      // Returns a human-readable string representation of the config.
+      virtual std::string ToString() const = 0;
+    };
+
     // Returns the default executable config for the given fusion.
-    virtual ExecutableConfig GetDefaultConfig(
+    virtual std::unique_ptr<ExecutableConfig> GetDefaultConfig(
         const HloFusionInstruction* fusion) = 0;
 
     // Returns a list of executable configs that can be used to compile
     // a given fusion to a thunk sequence.
-    virtual absl::StatusOr<std::vector<ExecutableConfig>>
+    virtual absl::StatusOr<std::vector<std::unique_ptr<ExecutableConfig>>>
     SupportedExecutableConfigs(const HloFusionInstruction* fusion) = 0;
 
     // Compiles a given fusion with a given executable config.

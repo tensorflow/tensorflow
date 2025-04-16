@@ -20,7 +20,7 @@ std::pair<std::uint32_t, std::uint32_t> ComputePaddingBeforeAfter(
   // padding_before, padding_after
   std::pair<std::uint32_t, std::uint32_t> result{0, 0};
   if (stride == 0) {
-    // TODO: error log
+    QNN_LOG_ERROR("Stride is 0");
     return result;
   }
 
@@ -34,8 +34,8 @@ std::pair<std::uint32_t, std::uint32_t> ComputePaddingBeforeAfter(
     case PaddingType::Valid:
       output_size = (input_size + stride - effective_filter_size) / stride;
       break;
-    default:  // PaddingType::Unkown
-      // TODO: error log
+    default:  // PaddingType::Unknown
+      QNN_LOG_ERROR("Unknown padding type");
       return result;
   }
 

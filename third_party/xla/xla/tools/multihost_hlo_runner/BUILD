@@ -1,7 +1,7 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("//xla:xla.bzl", "xla_cc_binary")
+load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm", "if_google")
 load("//xla/tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
@@ -68,7 +68,7 @@ cc_library(
         "//xla/stream_executor:cuda_platform",
     ] + if_google(
         [
-            "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
+            "//third_party/py/jax/jaxlib/cuda:cuda_gpu_kernels",  # fixdeps: keep
         ],
     )) + if_rocm([
         "//xla/stream_executor:rocm_platform",
@@ -100,7 +100,7 @@ xla_cc_binary(
         "//xla/service:gpu_plugin",
         "//xla/stream_executor:cuda_platform",
     ] + if_google([
-        "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
+        "//third_party/py/jax/jaxlib/cuda:cuda_gpu_kernels",  # fixdeps: keep
     ]),
 )
 
@@ -151,6 +151,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/transforms:while_loop_trip_count_annotator",
         "//xla/hlo/translate:stablehlo",
         "//xla/hlo/translate/hlo_to_mhlo:translate",
         "//xla/pjrt:host_memory_spaces",
@@ -182,6 +183,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:FuncExtensions",
         "@local_tsl//tsl/platform:protobuf",
@@ -216,6 +218,7 @@ xla_test(
         "data/single_device.hlo",
         "data/single_device_tupled.hlo",
         "data/single_gemm_fusion.hlo",
+        "data/while_with_known_trip_count.hlo",
     ],
     tags = ["no_mac"],
     deps = [

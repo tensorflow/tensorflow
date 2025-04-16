@@ -66,7 +66,7 @@ using ::tsl::testing::StatusIs;
 // user-supplied buffers and on_done_with_buffer callback by means of the
 // factory method: `BasicStringArray::Create`. Uses the first device from the
 // `client->addressable_devices()`.
-absl::StatusOr<tsl::RCReference<BasicStringArray>> CreateTestArray(
+absl::StatusOr<tsl::RCReference<Array>> CreateTestArray(
     Client* client, Future<BasicStringArray::Buffers> buffers,
     BasicStringArray::OnDoneWithBuffer on_done_with_buffer) {
   Shape shape({1});

@@ -10,11 +10,11 @@ versions.
 
 The supported CUDA versions are specified in `CUDA_REDIST_JSON_DICT`
 dictionary,
-[third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
+[third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
 The supported CUDNN versions are specified in `CUDNN_REDIST_JSON_DICT`
 dictionary,
-[third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
+[third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
 The `.bazelrc` files of individual projects have `HERMETIC_CUDA_VERSION`,
 `HERMETIC_CUDNN_VERSION` environment variables set to the versions used by
@@ -51,7 +51,7 @@ hermetic CUDA/CUDNN repository rules will look up `TF_CUDA_VERSION` and
 compatibility with non-hermetic CUDA/CUDNN repository rules.
 
 The mapping between CUDA version and NCCL distribution version to be downloaded
-is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
+is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
 
 ## Configure hermetic CUDA
 
@@ -155,14 +155,14 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
 
 1.  Create and submit a pull request with updated `CUDA_REDIST_JSON_DICT`,
     `CUDA_REDIST_JSON_DICT` dictionaries in
-    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
+    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
     Update `CUDA_NCCL_WHEELS` in
-    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
+    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
     if needed.
 
     Update `REDIST_VERSIONS_TO_BUILD_TEMPLATES` in
-    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
+    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
     if needed.
 
     Update `PTX_VERSION_DICT` in

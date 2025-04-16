@@ -66,6 +66,7 @@ using ::testing::Ne;
 using ::testing::Not;
 using ::testing::TempDir;
 using ::testing::UnorderedElementsAre;
+using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
 class AutotunerUtilTest : public HloTestBase {
@@ -100,6 +101,7 @@ results {
       num_ctas: 1
     }
   }
+  version: 1
 })";
 
   void SetUp() override {
@@ -178,6 +180,19 @@ TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
 
   TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
   EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
+
+  AutotuneResults results;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      std::string(kResultText), &results));
+  ASSERT_GT(results.results().size(), 0);
+  AutotuneCacheKey key(results.results(0).device(), results.results(0).hlo(),
+                       results.results(0).version());
+  auto options = DebugOptions();
+  options.set_xla_gpu_require_complete_aot_autotune_results(true);
+  stream_executor::StreamExecutor* executor = NewStreamExecutor();
+  AutotuneConfig config(DeviceConfig{executor}, options);
+
+  EXPECT_THAT(AutotunerUtil::IsInCache(key, config), IsOkAndHolds(true));
 }
 
 TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto2) {

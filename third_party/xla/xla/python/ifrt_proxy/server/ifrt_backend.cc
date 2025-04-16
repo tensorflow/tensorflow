@@ -29,6 +29,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -105,6 +106,69 @@ absl::StatusOr<IfrtArrayRef> MakeStringArrayFromHostBuffer(
       /*on_done_with_host_buffer=*/
       [host_buffer = std::move(host_buffer),
        string_host_buffer = std::move(string_host_buffer)]() {});
+}
+
+// Parses a `MakeArraysFromHostBufferShardsRequest::ShardIndices` proto to
+// `xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::ShardIndices`.
+xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::ShardIndices
+ParseMakeArraysFromHostBufferShardsSpecShardIndicesProto(
+    const MakeArraysFromHostBufferShardsRequest::ShardIndices&
+        shard_indices_proto) {
+  xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::ShardIndices
+      shard_indices;
+  shard_indices.reserve(shard_indices_proto.indices_size());
+  for (const int shard_index : shard_indices_proto.indices()) {
+    shard_indices.push_back(shard_index);
+  }
+  return shard_indices;
+}
+
+// Parses a `MakeArraysFromHostBufferShardsRequest::HostBuffer` proto to
+// `xla::ifrt::Client::HostBuffer`. It requires a referenced host buffer handle
+// to exist in `host_buffer_store`. Once this function returns, the host buffer
+// may be deleted from `host_buffer_store` without affecting the returned
+// `xla::ifrt::Client::HostBuffer`.
+absl::StatusOr<xla::ifrt::Client::HostBuffer>
+ParseMakeArraysFromHostBufferShardsSpecHostBufferProto(
+    HostBufferStore* host_buffer_store,
+    const MakeArraysFromHostBufferShardsRequest::HostBuffer&
+        host_buffer_proto) {
+  TF_ASSIGN_OR_RETURN(DType dtype, DType::FromProto(host_buffer_proto.dtype()));
+  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(host_buffer_proto.shape()));
+  std::optional<std::vector<int64_t>> byte_strides;
+  if (host_buffer_proto.has_byte_strides()) {
+    byte_strides = FromByteStridesProto(host_buffer_proto.byte_strides());
+  }
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const std::string> host_buffer,
+      host_buffer_store->Lookup(host_buffer_proto.host_buffer_handle(),
+                                /*timeout=*/absl::InfiniteDuration()));
+  const void* data;
+  std::function<void()> on_done_with_host_buffer;
+  if (dtype.kind() == DType::kString) {
+    TF_ASSIGN_OR_RETURN(std::vector<absl::Cord> string_host_buffer,
+                        DeserializeStringHostBufferFromString(*host_buffer));
+    data = string_host_buffer.data();
+    on_done_with_host_buffer = [host_buffer = std::move(host_buffer),
+                                string_host_buffer =
+                                    std::move(string_host_buffer)]() mutable {
+      string_host_buffer.clear();
+      host_buffer.reset();
+    };
+  } else {
+    TF_ASSIGN_OR_RETURN(const auto mem_region,
+                        ArrayMemRegion::FromMinimalMemRegion(
+                            *host_buffer, dtype, shape, byte_strides));
+    data = mem_region.zeroth_element();
+    on_done_with_host_buffer = [host_buffer =
+                                    std::move(host_buffer)]() mutable {
+      host_buffer.reset();
+    };
+  }
+
+  return xla::ifrt::Client::HostBuffer{data, dtype, std::move(shape),
+                                       std::move(byte_strides),
+                                       std::move(on_done_with_host_buffer)};
 }
 
 // Returns a string_view that is guaranteed to be valid and constant until this
@@ -246,6 +310,8 @@ struct IfrtBackend::LoadedExecutableWithInfo {
   std::optional<std::vector<xla::ifrt::ArraySpec>> output_spec
       ABSL_GUARDED_BY(mu);
   const std::unique_ptr<xla::ifrt::LoadedExecutable> executable;
+
+  absl::flat_hash_set<int> donatable_indices ABSL_GUARDED_BY(mu);
 };
 
 class IfrtBackend::InOrderRequestsProcessor {
@@ -456,6 +522,12 @@ Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
                   &array_store_);
       return Future<Response>(asr->ProcessResponse(
           HandleMakeArrayFromHostBufferRequest(*asr, std::move(request))));
+    case IfrtRequest::RequestCase::kMakeArraysFromHostBufferShardsRequest:
+      asr.emplace(request->make_arrays_from_host_buffer_shards_request()
+                      .array_handles(),
+                  &array_store_);
+      return Future<Response>(HandleMakeArraysFromHostBufferShardsRequest(
+          *asr, std::move(request)));
     case IfrtRequest::RequestCase::kAssembleArrayFromSingleDeviceArraysRequest:
       asr.emplace(request->assemble_array_from_single_device_arrays_request()
                       .result_handle(),
@@ -794,6 +866,82 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
   auto* make_array_resp =
       response->mutable_make_array_from_host_buffer_response();
   make_array_resp->set_array_handle(asr.Fill(std::move(array)));
+
+  return response;
+}
+
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
+    ArrayStore::Reservation& asr, std::unique_ptr<IfrtRequest> request) {
+  CHECK(request->has_make_arrays_from_host_buffer_shards_request());
+  auto* make_arrays_request =
+      request->mutable_make_arrays_from_host_buffer_shards_request();
+
+  absl::Cleanup cleanup = [&] {
+    for (const auto& spec : make_arrays_request->specs()) {
+      for (const auto& host_buffer : spec.host_buffers()) {
+        host_buffer_store_->Delete(host_buffer.host_buffer_handle())
+            .IgnoreError();
+      }
+    }
+  };
+
+  std::vector<xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec> specs;
+  specs.reserve(make_arrays_request->specs_size());
+  for (const auto& spec_proto : make_arrays_request->specs()) {
+    xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::Buffers buffers;
+    buffers.reserve(spec_proto.host_buffers_size());
+    for (int buffer_idx = 0; buffer_idx < spec_proto.host_buffers_size();
+         ++buffer_idx) {
+      xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec::ShardIndices
+          shard_indices =
+              ParseMakeArraysFromHostBufferShardsSpecShardIndicesProto(
+                  spec_proto.addressable_shard_indices(buffer_idx));
+      TF_ASSIGN_OR_RETURN(
+          xla::ifrt::Client::HostBuffer host_buffer,
+          ParseMakeArraysFromHostBufferShardsSpecHostBufferProto(
+              host_buffer_store_.get(), spec_proto.host_buffers(buffer_idx)));
+      buffers.push_back({std::move(shard_indices), std::move(host_buffer)});
+    }
+    TF_ASSIGN_OR_RETURN(
+        auto array_spec,
+        ArraySpec::FromProto(client_.get(), spec_proto.array_spec()));
+    specs.push_back({std::move(buffers), std::move(array_spec)});
+  }
+
+  std::move(cleanup).Invoke();
+
+  TF_ASSIGN_OR_RETURN(std::vector<tsl::RCReference<xla::ifrt::Array>> arrays,
+                      client_->MakeArraysFromHostBufferShards(
+                          absl::MakeSpan(specs),
+                          xla::ifrt::Client::HostBufferSemantics::
+                              kImmutableUntilTransferCompletes,
+                          client_->CreateUserContext()));
+
+  std::vector<uint64_t> handles;
+  handles.reserve(make_arrays_request->specs_size());
+  if (!make_arrays_request->array_handles().empty()) {
+    TF_RET_CHECK(make_arrays_request->array_handles_size() ==
+                 make_arrays_request->specs_size());
+    for (uint64_t handle : make_arrays_request->array_handles()) {
+      handles.push_back(handle);
+    }
+  } else {
+    // TODO(b/282757875): Consider merging the handle_generator with the
+    // arrays_.
+    for (int i = 0; i < make_arrays_request->specs_size(); ++i) {
+      handles.push_back(handle_generator_.GenerateAtServer());
+    }
+  }
+
+  std::unique_ptr<IfrtResponse> response =
+      NewIfrtResponse(request->request_metadata().op_id());
+  auto* make_arrays_resp =
+      response->mutable_make_arrays_from_host_buffer_shards_response();
+  make_arrays_resp->mutable_array_handles()->Reserve(arrays.size());
+  for (uint64_t handle : asr.Fill(arrays)) {
+    make_arrays_resp->add_array_handles(handle);
+  }
 
   return response;
 }
@@ -1360,6 +1508,16 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
           tsl::StatusToProto(output_memory_kinds.status());
     }
 
+    auto donated_input_indices = executable->GetDonatableInputIndices();
+    if (donated_input_indices.ok()) {
+      metadata_resp->mutable_donated_input_indices()
+          ->mutable_donated_input_indices()
+          ->Add(donated_input_indices->begin(), donated_input_indices->end());
+    } else {
+      *metadata_resp->mutable_donated_input_indices_error() =
+          tsl::StatusToProto(donated_input_indices.status());
+    }
+
     return ifrt_resp;
   });
 }
@@ -1423,6 +1581,17 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
             << "LoadedExecutable::Execute output " << i
             << "mismatched shape across invocations";
       }
+
+      // Check that only donatable arguments were deleted. The following assumes
+      // that there was no other concurrent operation issued that would delete
+      // the array. As of March 2025, the proxy-server issues operations in
+      // sequence, so this assumption is satisfied.
+      for (int i = 0; i < args.size(); ++i) {
+        if (execute_options.non_donatable_input_indices.contains(i) ||
+            !executable_info->donatable_indices.contains(i)) {
+          CHECK(!args[i]->IsDeleted());
+        }
+      }
     } else {
       // First `Execute()` call.
       executable_info->output_spec.emplace();
@@ -1432,6 +1601,16 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
             ArraySpec{/*dtype=*/output->dtype(), /*shape=*/output->shape(),
                       /*sharding=*/output->shared_ptr_sharding()});
       }
+      executable_info->donatable_indices = [&] {
+        absl::flat_hash_set<int> result;
+        absl::StatusOr<absl::Span<const int>> donatable_input_indices =
+            executable_info->executable->GetDonatableInputIndices();
+        if (donatable_input_indices.ok()) {
+          result.insert(donatable_input_indices->begin(),
+                        donatable_input_indices->end());
+        }
+        return result;
+      }();
     }
   }
 

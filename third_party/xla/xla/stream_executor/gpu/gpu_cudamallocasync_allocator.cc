@@ -31,6 +31,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_status.h"
 #endif  // GOOGLE_CUDA
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"

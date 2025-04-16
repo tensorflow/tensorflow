@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/IR/Diagnostics.h"
@@ -177,6 +179,7 @@ limitations under the License.
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/runtime_intrinsics.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/transforms/add_tracking_suffix_to_instruction_names.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
 #include "xla/service/gpu/transforms/algorithm_checker.h"
 #include "xla/service/gpu/transforms/all_gather_dynamic_slice_simplifier.h"
@@ -202,6 +205,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
+#include "xla/service/gpu/transforms/explicit_collectives_group_async_wrapper.h"
 #include "xla/service/gpu/transforms/explicit_stream_annotation_async_wrapper.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
 #include "xla/service/gpu/transforms/gemm_broadcast_folding_rewriter.h"
@@ -430,7 +434,7 @@ GpuThunkAotCompilationResult::LoadExecutable(
     return Internal("Compiler is not a GpuCompiler.");
   }
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
-  llvm_module->setTargetTriple(gpu_compiler->target_triple());
+  llvm_module->setTargetTriple(llvm::Triple(gpu_compiler->target_triple()));
   llvm_module->setDataLayout(gpu_compiler->data_layout());
   IrEmitterContext ir_emitter_context(
       hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
@@ -580,12 +584,16 @@ AlgebraicSimplifierOptions LayoutInsensitiveAlgebraicSimplifierOptions(
 }
 
 absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module) {
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
   HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner");
   // Run some IR cleanup passes before running the SPMD partitioning
   // passes.
   pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();
   pre_spmd_pipeline.AddPass<ConvertMemoryPlacementToInternalAnnotations>();
-  pre_spmd_pipeline.AddPass<CallInliner>();
+  pre_spmd_pipeline.AddPass<CallInliner>(
+      /*single_call_site=*/false, /*update_domain=*/false,
+      /*composites_to_preserve=*/absl::flat_hash_set<std::string>(),
+      /*uniquify_channel_ids=*/debug_options.xla_ignore_channel_id());
   pre_spmd_pipeline.AddPass<ZeroSizedHloElimination>();
   pre_spmd_pipeline.AddPass<ConditionalCanonicalizer>();
 
@@ -720,7 +728,10 @@ absl::Status RunOptimizationPasses(
 
   pipeline.AddPass<DynamicIndexSplitter>();
 
-  pipeline.AddPass<CallInliner>();
+  pipeline.AddPass<CallInliner>(
+      /*single_call_site=*/false, /*update_domain=*/false,
+      /*composites_to_preserve=*/absl::flat_hash_set<std::string>(),
+      /*uniquify_channel_ids=*/debug_options.xla_ignore_channel_id());
 
   pipeline.AddPass<StochasticConvertDecomposer>();
 
@@ -1067,6 +1078,10 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
   const se::DeviceDescription& gpu_device_info =
       gpu_target_config.device_description;
 
+  HloPassPipeline pre_fusion("pre-fusion");
+  pre_fusion.AddPass<AddTrackingSuffixToInstructionNames>();
+  TF_RETURN_IF_ERROR(pre_fusion.Run(hlo_module).status());
+
   TF_RETURN_IF_ERROR(FusionPipeline(hlo_module->config().debug_options(),
                                     shape_size_fn, thread_pool, gpu_device_info)
                          .Run(hlo_module)
@@ -1197,6 +1212,7 @@ absl::Status RunPostFusionSimplificationPasses(
           .xla_gpu_experimental_stream_annotation()) {
     pipeline.AddPass<ExplicitStreamAnnotationAsyncWrapper>();
   }
+  pipeline.AddPass<ExplicitCollectivesGroupAsyncWrapper>();
   return pipeline.Run(hlo_module).status();
 }
 
@@ -1637,7 +1653,10 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<NestGemmFusion>();
   }
   // Inline back the calls which have better performance with cuBLAS.
-  pipeline.AddPass<CallInliner>();
+  pipeline.AddPass<CallInliner>(
+      /*single_call_site=*/false, /*update_domain=*/false,
+      /*composites_to_preserve=*/absl::flat_hash_set<std::string>(),
+      /*uniquify_channel_ids=*/debug_options.xla_ignore_channel_id());
   // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated
   // here for possibly better cuBLAS performance.
 
@@ -1787,7 +1806,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   const std::optional<std::string> unoptimized_fingerprint =
       MaybeUploadUnoptimizedGpuSymbols(module.get(),
                                        gpu_target_config.ToProto());
-
+  DumpHloConfigIfEnabled(*module);
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER_IF(
       absl::StrCat("GpuCompiler::RunHloPasses for ", module->name()),

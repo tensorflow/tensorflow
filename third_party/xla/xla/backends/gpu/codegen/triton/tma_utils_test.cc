@@ -70,7 +70,7 @@ TEST(Create2DTmaDescriptorTest, ValidInputReturnCorrectDescriptor) {
       TmaDescriptor tma_desc,
       Create2DTmaDescriptor(global_shape, block_shape, element_type));
   EXPECT_EQ(tma_desc.element_size(), 4);
-  EXPECT_EQ(tma_desc.rank(), 2);
+  EXPECT_EQ(tma_desc.num_dimensions(), 2);
   EXPECT_THAT(tma_desc.global_dims(), ElementsAre(128, 256));
   EXPECT_THAT(tma_desc.global_strides(), ElementsAre(128 * 4));
   EXPECT_THAT(tma_desc.box_dims(), ElementsAre(32, 64));

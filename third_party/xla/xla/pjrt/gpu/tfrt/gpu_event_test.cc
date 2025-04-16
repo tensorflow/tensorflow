@@ -115,10 +115,10 @@ TEST(MarkEventReadyOnExitTest, EventReleaseAndReadyOnExit) {
   tsl::AsyncValueRef<GpuEvent> event =
       tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   tsl::AsyncValueRef<GpuEvent> released_event =
-      MarkEventReadyOnExit(event).Release();
+      MarkGpuEventReadyOnExit(event).Release();
   EXPECT_EQ(event.GetAsyncValue(), released_event.GetAsyncValue());
   {
-    MarkEventReadyOnExit ready_on_exit(event);
+    MarkGpuEventReadyOnExit ready_on_exit(event);
     EXPECT_FALSE(event.IsAvailable());
   }
   EXPECT_TRUE(event.IsAvailable());

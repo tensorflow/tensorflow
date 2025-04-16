@@ -37,7 +37,9 @@ namespace gpu {
 namespace {
 bool UseBufferForWeights(const GpuInfo& gpu_info) {
   return gpu_info.IsAdreno() || gpu_info.IsAMD() || gpu_info.IsMali() ||
-         gpu_info.IsApple();
+         gpu_info.IsApple() ||
+         (gpu_info.IsIntel() && gpu_info.IsApiOpenCl() &&
+          gpu_info.opencl_info.IsCLVK());
 }
 
 void RearrangeFCWeightsToOIO4I4(

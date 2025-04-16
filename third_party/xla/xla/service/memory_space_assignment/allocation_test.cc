@@ -56,7 +56,7 @@ ENTRY entry {
       HeapSimulator::Chunk::FromOffsetSize(0, 24);
 
   PinnedAllocation p1_negate_pinned(
-      HloPosition{p1_negate, {}}, MemorySpace::kAlternate, p1_negate_chunk,
+      HloPosition{p1_negate, {}}, MemorySpace::kDefault, p1_negate_chunk,
       /*start_time=*/0,
       /*end_time=*/5, /*is_scoped_allocation=*/false);
   CopyAllocation copy_allocation(p1_negate_pinned, MemorySpace::kAlternate,
@@ -64,7 +64,7 @@ ENTRY entry {
                                  /*copy_start_schedule_after_time=*/2,
                                  /*copy_done_schedule_before_time=*/3,
                                  /*end_time=*/5, std::nullopt,
-                                 /*sync_instruction=*/nullptr);
+                                 /*sync_mem_op=*/nullptr);
 
   // Use the correct instruction and operand numbers for the add instruction
   copy_allocation.AddUse(HloUse{add, 1});  // Use of p1_negate in add
@@ -81,6 +81,62 @@ ENTRY entry {
   ASSERT_NE(copy_done, nullptr);
   EXPECT_EQ(copy_done->opcode(), HloOpcode::kCopyDone);
   EXPECT_EQ(copy_done->operand(0), copy_start);
+
+  // Check that uses are updated.
+  EXPECT_EQ(add->operand(1), copy_done);
+
+  // Check defining position
+  EXPECT_EQ(copy_allocation.defining_position().instruction, copy_done);
+}
+
+TEST_F(AllocationTest, EvictedSplitShape) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  p1_negate = f32[2,3]{1,0:S(1)SC(0:1)} negate(p1)
+  add = f32[2,3]{1,0} add(p0, p1_negate)
+  ROOT tuple = tuple(add, p0)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  // HloComputation* computation = module->entry_computation();
+  HloInstruction* add = FindInstruction(module.get(), "add");
+  HloInstruction* p1_negate = FindInstruction(module.get(), "p1_negate");
+
+  HeapSimulator::Chunk p1_negate_chunk =
+      HeapSimulator::Chunk::FromOffsetSize(0, 24);
+
+  PinnedAllocation p1_negate_pinned(
+      HloPosition{p1_negate, {}}, MemorySpace::kAlternate, p1_negate_chunk,
+      /*start_time=*/0,
+      /*end_time=*/5, /*is_scoped_allocation=*/false);
+  CopyAllocation copy_allocation(p1_negate_pinned, MemorySpace::kDefault,
+                                 std::nullopt,
+                                 /*copy_start_schedule_after_time=*/2,
+                                 /*copy_done_schedule_before_time=*/3,
+                                 /*end_time=*/5, std::nullopt,
+                                 /*sync_mem_op=*/nullptr);
+
+  // Use the correct instruction and operand numbers for the add instruction
+  copy_allocation.AddUse(HloUse{add, 1});  // Use of p1_negate in add
+  BitcastSplitFn split_fn = nullptr;
+  TF_ASSERT_OK(copy_allocation.Process(split_fn));
+
+  // Check copy_start and copy_done instructions.
+  HloInstruction* copy_start = copy_allocation.copy_start();
+  ASSERT_NE(copy_start, nullptr);
+  EXPECT_EQ(copy_start->opcode(), HloOpcode::kCopyStart);
+  EXPECT_EQ(copy_start->operand(0), p1_negate);
+
+  HloInstruction* copy_done = copy_allocation.copy_done();
+  ASSERT_NE(copy_done, nullptr);
+  EXPECT_EQ(copy_done->opcode(), HloOpcode::kCopyDone);
+  EXPECT_EQ(copy_done->operand(0), copy_start);
+  EXPECT_EQ(copy_done->shape().layout().split_configs_size(), 0);
 
   // Check that uses are updated.
   EXPECT_EQ(add->operand(1), copy_done);
@@ -121,7 +177,7 @@ ENTRY entry {
                                  /*copy_start_schedule_after_time=*/2,
                                  /*copy_done_schedule_before_time=*/3,
                                  /*end_time=*/5, std::nullopt,
-                                 /*sync_instruction=*/slice);
+                                 /*sync_mem_op=*/slice);
 
   // Use the correct instruction and operand numbers for the add instruction
   copy_allocation.AddUse(HloUse{add, 1});  // Use of p1_negate in add

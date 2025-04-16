@@ -7,6 +7,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
         "//xla/tsl:internal",
+        "//third_party/py/jax:__subpackages__",
     ]),
     licenses = ["notice"],
 )

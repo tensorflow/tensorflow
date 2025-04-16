@@ -435,6 +435,7 @@ TEST(InferenceStatsGroupingTest, TestWithoutModelId) {
                       end_time_ps: 1000
                       batch_delay_ps: 0
                       padding_amount: 0
+                      device_time_ps: 0
                       batch_size_after_padding: 192
                     }
                     per_batch_size_aggregated_result {
@@ -460,6 +461,7 @@ TEST(InferenceStatsGroupingTest, TestWithoutModelId) {
                         end_time_ps: 1000
                         batch_delay_ps: 0
                         padding_amount: 0
+                        device_time_ps: 0
                         batch_size_after_padding: 128
                       }
                       request_throughput: 285714285.71428573
@@ -488,6 +490,7 @@ TEST(InferenceStatsGroupingTest, TestWithoutModelId) {
                         end_time_ps: 1000
                         batch_delay_ps: 0
                         padding_amount: 0
+                        device_time_ps: 0
                         batch_size_after_padding: 256
                       }
                       request_throughput: 285714285.71428573

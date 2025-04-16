@@ -39,7 +39,7 @@ absl::StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64_t dim) {
 
   // Transpose the input so C is directly followed by VECT_C.
   std::vector<int64_t> permutation;
-  auto rank = input_shape.rank();
+  const int64_t rank = input_shape.dimensions().size();
   permutation.reserve(rank);
   for (int64_t i = 0; i != rank - 1; ++i) {
     permutation.push_back(i);

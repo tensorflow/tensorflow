@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/test.h"
@@ -27,6 +29,8 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
+
+using ::tsl::testing::StatusIs;
 
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
 // must define ProcessNewEnv for them.
@@ -129,6 +133,27 @@ TEST_F(CompilationEnvironmentsTest, MultipleMutableEnvs) {
   EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 101);
   EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment2>().some_other_flag(),
             201);
+}
+
+TEST_F(CompilationEnvironmentsTest, ReplaceExistingEnv) {
+  CompilationEnvironments envs;
+  auto env1 = std::make_unique<TestCompilationEnvironment1>();
+  env1->set_some_flag(5);
+  TF_ASSERT_OK(envs.AddEnv(std::move(env1)));
+  EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 5);
+  {
+    auto env2 = std::make_unique<TestCompilationEnvironment1>();
+    env2->set_some_flag(6);
+    ASSERT_THAT(envs.AddEnv(std::move(env2)),
+                StatusIs(absl::StatusCode::kAlreadyExists));
+  }
+  envs.DeleteEnv<TestCompilationEnvironment1>();
+  {
+    auto env2 = std::make_unique<TestCompilationEnvironment1>();
+    env2->set_some_flag(6);
+    TF_ASSERT_OK(envs.AddEnv(std::move(env2)));
+    EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 6);
+  }
 }
 
 TEST_F(CompilationEnvironmentsTest, CopyConstructor) {

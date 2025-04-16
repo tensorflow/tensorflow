@@ -392,6 +392,36 @@ TEST(ComparisonsTest, LessFloat) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
 
+TEST(ComparisonsTest, LessFloat16) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT16,
+                          BuiltinOperator_LESS);
+  model.PopulateTensor<Eigen::half>(
+      model.input1(),
+      {Eigen::half(0.1), Eigen::half(0.9), Eigen::half(0.7), Eigen::half(0.3)});
+  model.PopulateTensor<Eigen::half>(
+      model.input2(),
+      {Eigen::half(0.1), Eigen::half(0.2), Eigen::half(0.6), Eigen::half(0.5)});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, false, true));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(ComparisonsTest, LessBFloat16) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_BFLOAT16,
+                          BuiltinOperator_LESS);
+  model.PopulateTensor<Eigen::bfloat16>(
+      model.input1(), {Eigen::bfloat16(0.1), Eigen::bfloat16(0.9),
+                       Eigen::bfloat16(0.7), Eigen::bfloat16(0.3)});
+  model.PopulateTensor<Eigen::bfloat16>(
+      model.input2(), {Eigen::bfloat16(0.1), Eigen::bfloat16(0.2),
+                       Eigen::bfloat16(0.6), Eigen::bfloat16(0.5)});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, false, true));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
 TEST(ComparisonsTest, LessInt) {
   ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_INT32,
                           BuiltinOperator_LESS);

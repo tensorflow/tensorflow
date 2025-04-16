@@ -249,6 +249,7 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
   auto& entry = *results->add_results();
   entry.set_device(std::string(k.GetModelStr()));
   entry.set_hlo(std::string(k.GetHlo()));
+  entry.set_version(k.GetVersion());
   *entry.mutable_result() = *res;
 }
 }  // namespace
@@ -272,7 +273,7 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
     const AutotuneResults& results, bool allow_override) {
   absl::MutexLock lock(&autotune_cache_mu);
   for (const AutotuneResults::Entry& result : results.results()) {
-    AutotuneCacheKey key(result.device(), result.hlo());
+    AutotuneCacheKey key(result.device(), result.hlo(), result.version());
     if (allow_override) {
       autotune_cache.insert_or_assign(key, result.result());
     } else {

@@ -2699,8 +2699,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         TokenError("Expected at least one operand.");
         return nullptr;
       }
-      if (!(operands.size() == 2 && operands[1]->shape().rank() == 1) &&
-          operands.size() != 1 + operands[0]->shape().rank()) {
+      if (!(operands.size() == 2 &&
+            operands[1]->shape().dimensions_size() == 1) &&
+          operands.size() != 1 + operands[0]->shape().dimensions_size()) {
         TokenError("Wrong number of operands.");
         return nullptr;
       }
@@ -2718,8 +2719,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         TokenError("Expected at least two operands.");
         return nullptr;
       }
-      if (!(operands.size() == 3 && operands[2]->shape().rank() == 1) &&
-          operands.size() != 2 + operands[0]->shape().rank()) {
+      if (!(operands.size() == 3 &&
+            operands[2]->shape().dimensions_size() == 1) &&
+          operands.size() != 2 + operands[0]->shape().dimensions_size()) {
         TokenError("Wrong number of operands.");
         return nullptr;
       }
@@ -4502,7 +4504,7 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
   // Cast `rank` to int because we call shape.dimensions(int rank) below, and if
   // `rank` is an int64_t, that's an implicit narrowing conversion, which is
   // implementation-defined behavior.
-  const int rank = static_cast<int>(shape.rank());
+  const int rank = static_cast<int>(shape.dimensions_size());
 
   // Create a literal with the given shape in default layout.
   *literal = LiteralUtil::CreateFromDimensions(shape.element_type(),
@@ -6335,17 +6337,17 @@ bool HloParserImpl::ParseShape(Shape* result,
       return false;
     }
     if (layout.dim_level_types_size() != 0 &&
-        layout.dim_level_types_size() != result->rank()) {
+        layout.dim_level_types_size() != result->dimensions_size()) {
       return Error(
           lexer_.GetLoc(),
           StrFormat("Dimensions size is %ld, but dim level types size is %ld.",
-                    result->rank(), layout.dim_level_types_size()));
+                    result->dimensions_size(), layout.dim_level_types_size()));
     }
-    if (layout.minor_to_major_size() != result->rank()) {
+    if (layout.minor_to_major_size() != result->dimensions_size()) {
       return Error(
           lexer_.GetLoc(),
           StrFormat("Dimensions size is %ld, but minor to major size is %ld.",
-                    result->rank(), layout.minor_to_major_size()));
+                    result->dimensions_size(), layout.minor_to_major_size()));
     }
     if (LayoutUtil::IsSparse(layout) && layout.tiles_size() > 0) {
       return Error(lexer_.GetLoc(),

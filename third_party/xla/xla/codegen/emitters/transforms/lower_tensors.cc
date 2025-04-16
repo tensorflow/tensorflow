@@ -49,6 +49,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Types.h"
@@ -122,6 +123,30 @@ Value GetDestinationBuffer(Value dest) {
     }
   }
   return dest;
+}
+
+std::optional<int> GetAlignmentFromArg(Value addr, ValueRange indices) {
+  CHECK_LE(indices.size(), 1) << "Only 0D and 1D tensors are supported";
+
+  // If the offset isn't empty or {0}, we don't return any alignment because
+  // computing it isn't trivial and it's unclear that we need to deal with that
+  // case in practice.
+  auto effective_offset_is_zero = [](ValueRange offsets) -> bool {
+    if (offsets.empty()) return true;
+    return mlir::matchPattern(offsets[0].getDefiningOp(), mlir::m_Zero());
+  };
+  if (!effective_offset_is_zero(indices)) return std::nullopt;
+
+  // Try to get the alignment from the function signature.
+  auto base = mlir::dyn_cast<mlir::BlockArgument>(addr);
+  if (!base) return std::nullopt;
+  auto func =
+      mlir::dyn_cast<mlir::func::FuncOp>(base.getOwner()->getParentOp());
+  if (!func) return std::nullopt;
+  auto align_attr =
+      func.getArgAttr(base.getArgNumber(), ml::LLVMDialect::getAlignAttrName());
+  if (!align_attr) return std::nullopt;
+  return align_attr.cast<mlir::IntegerAttr>().getValue().getSExtValue();
 }
 
 template <typename Op>
@@ -393,7 +418,11 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
 
     mlir::LLVMTypeConverter converter(b.getContext());
     auto llvm_vector_type = converter.convertType(vector_type);
-    auto loaded = b.create<ml::LoadOp>(llvm_vector_type, gep).getResult();
+    auto load = b.create<ml::LoadOp>(llvm_vector_type, gep);
+    if (auto alignment = GetAlignmentFromArg(op.getSource(), op.getIndices())) {
+      load.setAlignment(*alignment);
+    }
+    auto loaded = load.getResult();
 
     if (source_element_type.isInteger(1)) {
       Value zero = b.create<mlir::arith::ConstantOp>(
@@ -958,6 +987,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     // propagating -NaNs. To handle this, we check if the update value is -NaN
     // and convert it to a positive one by dropping the sign-bit.
     Value current = b.create<ml::LoadOp>(loc, element_type, addr);
+
     Value current_is_nan =
         b.create<ml::FCmpOp>(loc, ml::FCmpPredicate::uno, current, current);
     auto is_current_nan =
@@ -1064,7 +1094,16 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
 
     // Calculate load address for the input.
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    Value addr = CreateGep(input, op.getIndices(), b);
+    Value linear_index = GetLinearIndex(op.getIndices(), b);
+    Value is_low_nibble;
+
+    bool is_4_bit_wide =
+        result_ty.isIntOrFloat() && result_ty.getIntOrFloatBitWidth() == 4;
+    if (is_4_bit_wide) {
+      std::tie(linear_index, is_low_nibble) =
+          GetI4IndexAndNibble(linear_index, b);
+    }
+    Value addr = CreateGep(input, linear_index, b);
     Value shift, mask;
     if (small_type) {
       // Update input pointer by discarding the last two bits - i.e. align to
@@ -1086,6 +1125,13 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       shift = rewriter.create<ml::MulOp>(
           loc, offset,
           rewriter.create<ml::ConstantOp>(loc, offset.getType(), 8));
+      if (is_4_bit_wide) {
+        auto c0 = rewriter.create<ml::ConstantOp>(loc, shift.getType(), 0);
+        auto c4 = rewriter.create<ml::ConstantOp>(loc, shift.getType(), 4);
+        auto subshift =
+            rewriter.create<ml::SelectOp>(loc, is_low_nibble, c0, c4);
+        shift = rewriter.create<ml::AddOp>(loc, shift, subshift);
+      }
 
       // Compose the update mask.
       Value bits_long = rewriter.create<ml::ConstantOp>(loc, atomic_ty, -1);

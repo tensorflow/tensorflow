@@ -59,8 +59,10 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@local_xla//xla/tsl/lib/io:buffered_file",
         "@local_xla//xla/tsl/util:byte_swap_array",
     ],
@@ -76,7 +78,11 @@ cc_library(
     name = "naming",
     srcs = ["naming.cc"],
     hdrs = ["naming.h"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 cc_library(

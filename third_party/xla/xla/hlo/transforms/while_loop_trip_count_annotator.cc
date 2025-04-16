@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"

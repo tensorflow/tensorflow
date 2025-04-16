@@ -49,7 +49,7 @@ absl::Status HostTensorToBorrowingLiteral(const xla::Shape& xla_shape,
                                           xla::BorrowingLiteral* literal) {
   const auto& tshape = host_tensor.shape();
   TF_RET_CHECK(tshape.IsFullyDefined() &&
-               tshape.dims() == xla_shape.dimensions_size() &&
+               tshape.dims() == xla_shape.dimensions().size() &&
                tshape.dim_sizes() == xla_shape.dimensions())
       << "Provided xla::Shape must have the same dims as the Tensor shape.";
   *literal = xla::BorrowingLiteral(

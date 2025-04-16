@@ -174,7 +174,7 @@ HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction(
       return size;
     }
     // Each dynamic dimension size is represented as a S32.
-    int64_t metadata_size = sizeof(int32_t) * shape.rank();
+    int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
     return size + metadata_size;
   };
 }
@@ -231,7 +231,9 @@ bool GpuScheduleCrossesOverlapLimit(
       CHECK(
           hlo_query::IsAsyncCollectiveStartOp(curr_hlo_inst.operand(0), true));
       const HloInstruction* curr_start_inst =
-          curr_hlo_inst.operand(0)->async_wrapped_instruction();
+          curr_hlo_inst.IsAsynchronous()
+              ? curr_hlo_inst.operand(0)->async_wrapped_instruction()
+              : curr_hlo_inst.operand(0);
 
       // If candidate can be overlapped with in-flight collectives
       bool can_overlap = true;

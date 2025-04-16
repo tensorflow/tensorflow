@@ -66,7 +66,6 @@ absl::StatusOr<bool> ReduceScatterDecomposer::Run(
               rs->operand(0)->shape(), rs->operands(), apply_clone,
               rs->device_list(), rs->constrain_layout(), channel_id,
               rs->use_global_device_ids()));
-      apply_clone->SetCollectiveCallInstruction(ar);
 
       // Create start indices for a dynamic slice to decompose the all-reduce
       // results.

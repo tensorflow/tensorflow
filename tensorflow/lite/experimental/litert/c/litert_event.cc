@@ -40,16 +40,18 @@ LiteRtStatus LiteRtCreateEventFromSyncFenceFd(int sync_fence_fd, bool owns_fd,
 #endif
 }
 
-#if LITERT_HAS_OPENCL_SUPPORT
 LiteRtStatus LiteRtCreateEventFromOpenClEvent(cl_event cl_event,
                                               LiteRtEvent* event) {
+#if LITERT_HAS_OPENCL_SUPPORT
   *event = new LiteRtEventT{
       .type = LiteRtEventTypeOpenCl,
       .opencl_event = cl_event,
   };
   return kLiteRtStatusOk;
-}
+#else
+  return kLiteRtStatusErrorUnsupported;
 #endif
+}
 
 LiteRtStatus LiteRtGetEventEventType(LiteRtEvent event, LiteRtEventType* type) {
   *type = event->type;

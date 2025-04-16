@@ -25,13 +25,14 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -194,6 +195,7 @@ TEST(StreamExecutorGpuClientTest, MemorySpacesUniqueIds) {
   }
 }
 
+#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 TEST(StreamExecutorGpuClientTest, DonateExternalMem) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
@@ -241,6 +243,7 @@ ENTRY main.5 {
   ASSERT_EQ(result[0].size(), 1);
   EXPECT_OK(result[0][0]->GetReadyFuture().Await());
 }
+#endif
 
 TEST(StreamExecutorGpuClientTest, PropagateError) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
@@ -1129,6 +1132,37 @@ TEST(StreamExecutorGpuClientTest, DistributedInit) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, GetDeviceFabricInfo) {
+  auto kv_store = std::make_shared<InMemoryKeyValueStore>();
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
+                                      "PopulateAndRetrieveFabricInfos", 4);
+  int num_nodes = 2;
+  for (int node_id = 0; node_id < num_nodes; ++node_id) {
+    thread_pool.Schedule([kv_store, node_id, num_nodes] {
+      GpuClientOptions options;
+      options.node_id = node_id;
+      options.num_nodes = num_nodes;
+      options.kv_store = kv_store;
+      TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+      for (const auto& device : client->addressable_devices()) {
+        LocalDeviceState* local_device_state =
+            tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
+                ->local_device_state();
+        if (local_device_state != nullptr) {
+          se::StreamExecutor* executor = local_device_state->executor();
+          if (std::stoi(MakeComputeCapabilityString(
+                  &executor->GetDeviceDescription())) == 9) {
+            auto fabric_info = GetDeviceFabricInfo(executor->device_ordinal());
+            if (fabric_info.ok()) {
+              EXPECT_FALSE(true);
+            }
+          }
+        }
+      }
+    });
+  }
+}
+
 TEST(StreamExecutorGpuClientTest, GetAllocatorStatsTest) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
@@ -1157,6 +1191,22 @@ TEST(StreamExecutorGpuClientTest, GpuDeviceDescriptionTest) {
             ->description()
             .coords();
     EXPECT_EQ(coords[0], device_index);
+  }
+}
+
+TEST(TfrtCpuClientTest, CopyToMemorySpace) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  for (auto* memory_space : client->memory_spaces()) {
+    xla::Shape shape = xla::ShapeUtil::MakeShape(S32, {128, 256});
+    TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto buffer, client->BufferFromHostLiteral(literal, memory_space));
+    TF_ASSERT_OK_AND_ASSIGN(buffer,
+                            buffer->CopyToMemorySpace(buffer->memory_space()));
+    TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+    EXPECT_THAT(received_literal->data<int32_t>(),
+                ElementsAreArray(literal.data<int32_t>()));
   }
 }
 

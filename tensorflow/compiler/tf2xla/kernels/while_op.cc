@@ -264,7 +264,7 @@ absl::StatusOr<xla::XlaComputation> BuildWrappedBody(
               if (output_subshape.IsArray()) {
                 const xla::Shape& input_subshape =
                     xla::ShapeUtil::GetSubshape(input_shape, index);
-                for (int d = 0; d < output_subshape.rank(); ++d) {
+                for (int d = 0; d < output_subshape.dimensions_size(); ++d) {
                   if (input_subshape.is_dynamic_dimension(d) &&
                       !output_subshape.is_dynamic_dimension(d)) {
                     *element = xla::SetDimensionSize(
@@ -596,7 +596,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
           // Set dynamic dimension size to 0 for element value. Inside the while
           // loop, TensorlistSetItem will properly set the element shape's
           // dynamic dimension.
-          for (int64_t dim = 1; dim < shape.dimensions_size(); ++dim) {
+          for (int64_t dim = 1; dim < shape.dimensions().size(); ++dim) {
             int32_t dim_size = shape.dimensions(dim);
             if (shape.is_dynamic_dimension(dim)) {
               dim_size = 0;

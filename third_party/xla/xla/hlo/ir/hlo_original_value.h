@@ -35,6 +35,15 @@ using OriginalValue = ShapeTree<std::optional<OriginalArray>>;
 std::string OriginalValueToString(const OriginalValue& original_value);
 
 OriginalValueProto OriginalValueToProto(const OriginalValue& original_value);
+
+// Copy the original value from the source to the destination instruction. Note
+// the original values of fused instructions are copied when they are added
+// into a fusion, so it's not required to copy the value if the target is a
+// fusion instruction, which should have the same original value as the root of
+// the fused computation anyway. However, we will copy the value nontheless to
+// simplify some use cases that involve fusions.
+void CopyOriginalValue(const HloInstruction* src_instruction,
+                       HloInstruction* dest_instruction);
 }  // namespace xla
 
 #endif  // XLA_HLO_IR_HLO_ORIGINAL_VALUE_H_

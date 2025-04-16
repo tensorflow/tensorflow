@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"

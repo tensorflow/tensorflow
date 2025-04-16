@@ -173,7 +173,10 @@ tsl_cc_test(
 cc_library(
     name = "profiler_session",
     hdrs = ["profiler_session.h"],
-    visibility = internal_visibility(["@local_xla//xla/tsl:internal"]),
+    visibility = internal_visibility([
+        "@local_xla//xla/tsl:internal",
+        "//third_party/py/jax:__subpackages__",
+    ]),
     deps = [
         "//tsl/platform",
         "//tsl/platform:thread_annotations",

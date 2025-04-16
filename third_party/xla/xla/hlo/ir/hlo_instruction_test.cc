@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/xla_data.pb.h"

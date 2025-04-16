@@ -20,8 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape_util.h"
@@ -170,5 +172,10 @@ CreateHostCallbackStateAndAppendSendRecvCallbacks(
 
   return context;
 }
+
+// First 64 bits of SHA-512 of "xla::FfiLoadedHostCallbacks".
+ffi::TypeId FfiLoadedHostCallbacks::id = {7357244197867843242};
+XLA_FFI_REGISTER_TYPE(ffi::GetXlaFfiApi(), "FfiLoadedHostCallbacks",
+                      &FfiLoadedHostCallbacks::id);
 
 }  // namespace xla

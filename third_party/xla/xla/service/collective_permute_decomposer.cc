@@ -66,7 +66,9 @@ static bool ShouldDecompose(
   }
 
   // Respect threshold to limit this pass.
-  if (ShapeUtil::ByteSizeOf(result_shape) < threshold_in_bytes) {
+  if (pipeline_parallelism_opt_level ==
+          DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE &&
+      ShapeUtil::ByteSizeOf(result_shape) < threshold_in_bytes) {
     return false;
   }
 

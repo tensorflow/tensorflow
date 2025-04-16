@@ -15,10 +15,13 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_COMPILATION_OPTIONS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_COMPILATION_OPTIONS_H_
 
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compilation_options.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_accelerator_compilation_options.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 
 namespace litert {
 
@@ -38,21 +41,35 @@ class CompilationOptions
 
   static Expected<CompilationOptions> Create() {
     LiteRtCompilationOptions options;
-    if (auto status = LiteRtCreateCompilationOptions(&options);
-        status != kLiteRtStatusOk) {
-      return Error(status, "Could not create default compilation options");
-    }
+    LITERT_RETURN_IF_ERROR(LiteRtCreateCompilationOptions(&options));
     return CompilationOptions(options);
   }
 
   Expected<void> SetHardwareAccelerators(LiteRtHwAcceleratorSet accelerators) {
-    if (auto status = LiteRtSetCompilationOptionsHardwareAccelerators(
-            Get(), accelerators);
-        status != kLiteRtStatusOk) {
-      return Error(
-          status, "Could not set hardware accelerators in compilation options");
-    }
+    LITERT_RETURN_IF_ERROR(
+        LiteRtSetCompilationOptionsHardwareAccelerators(Get(), accelerators));
     return {};
+  }
+
+  Expected<LiteRtHwAcceleratorSet> GetHardwareAccelerators() {
+    LiteRtHwAcceleratorSet accelerators;
+    LITERT_RETURN_IF_ERROR(
+        LiteRtGetCompilationOptionsHardwareAccelerators(Get(), &accelerators));
+    return accelerators;
+  }
+
+  Expected<void> AddAcceleratorCompilationOptions(
+      AcceleratorCompilationOptions&& options) {
+    LITERT_RETURN_IF_ERROR(
+        LiteRtAddAcceleratorCompilationOptions(Get(), options.Release()));
+    return {};
+  }
+
+  Expected<AcceleratorCompilationOptions> GetAcceleratorCompilationOptions() {
+    LiteRtAcceleratorCompilationOptions options;
+    LITERT_RETURN_IF_ERROR(
+        LiteRtGetAcceleratorCompilationOptions(Get(), &options));
+    return AcceleratorCompilationOptions(options, /*owned=*/false);
   }
 };
 

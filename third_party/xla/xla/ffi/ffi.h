@@ -82,8 +82,23 @@ namespace internal {
 
 inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
 
+// NativeTypeOf<dtype>::type is the native type for implementing the given dtype
+// in the FFI.
 template <PrimitiveType dtype>
-using NativeType = typename primitive_util::PrimitiveTypeToNative<dtype>::type;
+struct NativeTypeOf {
+  using type = typename primitive_util::PrimitiveTypeToNative<dtype>::type;
+};
+// PrimitiveTypeToNative<PrimitiveType::TOKEN> is not defined, so we need to
+// specialize it here.
+template <>
+struct NativeTypeOf<PrimitiveType::TOKEN> {
+  using type = void;
+};
+
+// NativeType<dtype> is the alias for the native type for implementing the given
+// dtype in the FFI.
+template <PrimitiveType dtype>
+using NativeType = typename NativeTypeOf<dtype>::type;
 
 }  // namespace internal
 

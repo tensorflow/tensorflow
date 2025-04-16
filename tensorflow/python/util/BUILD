@@ -553,6 +553,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ] + if_pywrap(
@@ -1168,7 +1169,9 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/core/platform:logging",
+        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@pybind11",
     ],
 )

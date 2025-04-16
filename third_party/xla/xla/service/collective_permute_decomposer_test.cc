@@ -136,8 +136,27 @@ TEST_F(DecomposerTest, ThresholdNotTransformed) {
   TF_ASSERT_OK(RunAndCheckHloRewrite(
       hlo,
       Pass(/*threshold_in_bytes=*/kThreshold,
-           DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+           DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE),
       false));
+}
+
+TEST_F(DecomposerTest, ThresholdIgnoredWhenPipelineParallelismOptEnabled) {
+  const int64_t kThreshold = 64 * 8;
+  std::string hlo = GetSimpleHloWhileLoopStr(R"(
+  body {
+    param = (u32[], f32[64]) parameter(0)
+    i = get-tuple-element(param), index=0
+    data = get-tuple-element(param), index=1
+    cp = f32[64] collective-permute(data),
+        source_target_pairs={{0,1}, {1,2}, {2,3}}
+    ROOT result = tuple(i, cp)
+  }
+  )");
+  TF_ASSERT_OK(RunAndCheckHloRewrite(
+      hlo,
+      Pass(/*threshold_in_bytes=*/kThreshold,
+           DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+      true));
 }
 
 TEST_F(DecomposerTest, Basic) {

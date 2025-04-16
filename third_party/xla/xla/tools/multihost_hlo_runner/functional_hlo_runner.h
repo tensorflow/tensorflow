@@ -89,30 +89,30 @@ class XSpaceProfilerInterface : public ProfilerInterface {
   virtual const tensorflow::profiler::XSpace* GetXSpace() = 0;
 };
 
-// GPURunnerProfiler is a profiler plugin that using tsl::ProfilerSession to
-// profile GPU execution and allows programmable control of
+// HLORunnerProfiler is a profiler plugin that using tsl::ProfilerSession to
+// profile CPU/GPU execution and allows programmable control of
 // profiling sessions for the MultihostHloRunner. It needs to be created after
 // PJRT client is initialized. Example usage:
 //
 //   TF_ASSIGN_OR_RETURN(
 //       env, xla::GetPjRtEnvironmentForGpu(...)));
 //   if (env.client != nullptr) {
-//     TF_ASSIGN_OR_RETURN(auto profiler, GPURunnerProfiler::Create());
+//     TF_ASSIGN_OR_RETURN(auto profiler, HLORunnerProfiler::Create());
 //   }
 //   profiler.CreateSession();
 //   ...
 //   profiler.UploadSession();
-class GPURunnerProfiler : public XSpaceProfilerInterface {
+class HLORunnerProfiler : public XSpaceProfilerInterface {
  public:
   // Factory method to create a GPURunnerProfiler with profile result dump path.
   // If keep_xspace is true, the XSpace proto can be retrieved
   // by GetXSpace() after UploadSession() is called, which can be used by
   // caller to get a programmatic handler of the profile data and create XProf.
-  static absl::StatusOr<std::unique_ptr<GPURunnerProfiler>> Create(
+  static absl::StatusOr<std::unique_ptr<HLORunnerProfiler>> Create(
       absl::string_view dump_path, bool keep_xspace = false);
 
   // Default ctor.
-  explicit GPURunnerProfiler(absl::string_view dump_path, bool keep_xspace);
+  explicit HLORunnerProfiler(absl::string_view dump_path, bool keep_xspace);
 
   // Start a new profiling session.
   void CreateSession() override;
@@ -242,6 +242,9 @@ class FunctionalHloRunner {
     bool flatten_while_loop() const {
       return while_execution_count.has_value();
     }
+
+    // Set / update known_trip_count in while loop backend config.
+    bool annotate_while_loop_trip_count = false;
 
     // Is the module the partitioned result of SPMD?
     bool is_spmd_partitioned_module() const {

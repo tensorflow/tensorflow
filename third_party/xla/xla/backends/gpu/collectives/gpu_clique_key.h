@@ -55,7 +55,7 @@ CollectiveStreamId GetCollectiveStreamId(
 class GpuCliqueKey : public CliqueKey {
  public:
   explicit GpuCliqueKey(
-      std::vector<GlobalDeviceId> devices,
+      std::vector<GlobalDeviceId> devices, int64_t num_local_participants,
       CollectiveStreamId stream_id = CollectiveStreamId(0),
       AsyncStreamKind stream_kind = AsyncStreamKind::kCollective,
       std::vector<std::vector<GlobalDeviceId>> participant_groups = {},
@@ -86,6 +86,16 @@ class GpuCliqueKey : public CliqueKey {
   // specify what configuration to pass for each type of operation.
   AsyncStreamKind stream_kind() const { return stream_kind_; }
 
+  // The number of participant devices that are local to the current process (in
+  // multi-host environments this likely to be all devices on the same host).
+  // This number should never be different in two cliques over the same sets of
+  // devices.
+  int64_t num_local_participants() const { return num_local_participants_; }
+
+  // Returns true if this clique is local to the current process (in multi-host
+  // environments this likely to be all devices on the same host).
+  bool is_local() const { return num_local_participants_ == devices().size(); }
+
   std::string ToString() const final;
 
   // GPU clique keys have a total order on which we rely on for acquiring
@@ -96,6 +106,9 @@ class GpuCliqueKey : public CliqueKey {
 
  private:
   void HashValue(absl::HashState state) const final;
+
+  // See comment on `num_local_participants()`.
+  int64_t num_local_participants_;
 
   CollectiveStreamId stream_id_;
   AsyncStreamKind stream_kind_;

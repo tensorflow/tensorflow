@@ -348,7 +348,8 @@ static void AssertCorrectLayoutForDotOutputFusion(
   Layout expected_dot_rhs_layout = expect_col_major_dot_rhs
                                        ? LayoutUtil::MakeLayout({0, 1})
                                        : LayoutUtil::MakeLayout({1, 0});
-  if (layout_assignment_result.dot_rhs_fusion_param->shape().rank() == 1) {
+  if (layout_assignment_result.dot_rhs_fusion_param->shape()
+          .dimensions_size() == 1) {
     expected_dot_rhs_layout = LayoutUtil::MakeLayout({0});
   }
   EXPECT_TRUE(LayoutUtil::Equal(
@@ -357,12 +358,14 @@ static void AssertCorrectLayoutForDotOutputFusion(
 
   EXPECT_TRUE(LayoutUtil::Equal(
       LayoutUtil::MakeDescendingLayout(
-          layout_assignment_result.dot_lhs_fusion_param->shape().rank()),
+          layout_assignment_result.dot_lhs_fusion_param->shape()
+              .dimensions_size()),
       layout_assignment_result.dot_lhs_fusion_param->shape().layout()));
 
   EXPECT_TRUE(LayoutUtil::Equal(
       LayoutUtil::MakeDescendingLayout(
-          layout_assignment_result.addend_fusion_param->shape().rank()),
+          layout_assignment_result.addend_fusion_param->shape()
+              .dimensions_size()),
       layout_assignment_result.addend_fusion_param->shape().layout()));
   EXPECT_THAT(computation->instructions(), Each(Not(op::Copy())));
 }

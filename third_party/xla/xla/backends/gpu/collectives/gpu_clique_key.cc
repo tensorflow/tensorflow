@@ -43,11 +43,12 @@ CollectiveStreamId GetCollectiveStreamId(bool is_async,
 }
 
 GpuCliqueKey::GpuCliqueKey(
-    std::vector<GlobalDeviceId> devices, CollectiveStreamId stream_id,
-    AsyncStreamKind stream_kind,
+    std::vector<GlobalDeviceId> devices, int64_t num_local_participants,
+    CollectiveStreamId stream_id, AsyncStreamKind stream_kind,
     std::vector<std::vector<GlobalDeviceId>> participant_groups,
     GlobalDeviceId root_device)
     : CliqueKey(std::move(devices)),
+      num_local_participants_(num_local_participants),
       stream_id_(stream_id),
       stream_kind_(stream_kind),
       participant_groups_(std::move(participant_groups)),
@@ -109,9 +110,11 @@ std::string GpuCliqueKey::ToString() const {
     }
     group_string = absl::StrFormat("; groups=[%s]", absl::StrJoin(values, ","));
   }
-  return absl::StrFormat("devices=[%s]; stream=%d%s; root_device=%lld",
-                         GlobalDeviceIdsToString(devices()), stream_id_.value(),
-                         group_string, root_device_.value());
+  return absl::StrFormat(
+      "devices=[%s]; stream=%d%s; root_device=%lld; "
+      "num_local_participants=%lld",
+      GlobalDeviceIdsToString(devices()), stream_id_.value(), group_string,
+      root_device_.value(), num_local_participants_);
 }
 
 void GpuCliqueKey::HashValue(absl::HashState state) const {
@@ -122,6 +125,7 @@ void GpuCliqueKey::HashValue(absl::HashState state) const {
 bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b) {
   return a.devices() == b.devices() && a.stream_id_ == b.stream_id_ &&
          a.participant_groups_ == b.participant_groups_ &&
+         a.num_local_participants_ == b.num_local_participants_ &&
          a.root_device_ == b.root_device_;
 }
 
@@ -135,6 +139,9 @@ bool operator<(const GpuCliqueKey& a, const GpuCliqueKey& b) {
   if (a.root_device_ < b.root_device_) return true;
   if (b.root_device_ < a.root_device_) return false;
 
+  if (a.num_local_participants_ < b.num_local_participants_) return true;
+  if (b.num_local_participants_ < a.num_local_participants_) return false;
+
   return a.stream_id_.value() < b.stream_id_.value();
 }
 
@@ -147,6 +154,9 @@ bool operator>(const GpuCliqueKey& a, const GpuCliqueKey& b) {
 
   if (a.root_device_ > b.root_device_) return true;
   if (b.root_device_ > a.root_device_) return false;
+
+  if (a.num_local_participants_ > b.num_local_participants_) return true;
+  if (b.num_local_participants_ > a.num_local_participants_) return false;
 
   // We still use `<` to order by stream id as we want to acquire sync cliques
   // before async ones.

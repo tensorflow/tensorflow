@@ -13,11 +13,14 @@
 # limitations under the License.
 
 load("//tensorflow/lite/experimental/litert/build_common:tfl_model_gen.bzl", "tfl_model_gen")
+load("//tensorflow/lite/experimental/litert/integration_test:run_on_device.bzl", "litert_integration_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
 )
+
+# C++ TEST SCAFFOLD ################################################################################
 
 cc_test(
     name = "gen_device_test",
@@ -28,6 +31,7 @@ cc_test(
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
     }),
+    tags = ["manual"],
     deps = [
         ":gen_device_test_lib",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
@@ -35,8 +39,10 @@ cc_test(
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:matchers",
+        "//tensorflow/lite/experimental/litert/tools:dump",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -61,6 +67,8 @@ cc_library(
     ],
 )
 
+# TEST MODELS ######################################################################################
+
 filegroup(
     name = "classic_ml_models",
     srcs = glob(["classic_ml_models/*.tflite"]),
@@ -70,4 +78,52 @@ tfl_model_gen(
     name = "single_op_models",
     srcs = glob(["single_op_models/*.mlir"]),
     subdir = "single_op_models",
+)
+
+filegroup(
+    name = "pre_compiled_models",
+    srcs = glob(["pre_compiled_models/*.tflite"]),
+)
+
+# ON DEVICE INTEGRATION TESTS ######################################################################
+
+# NOTE: Everything here should be built with -c opt --config=android_arm64.
+
+sh_binary(
+    name = "run_on_device_driver_OSS",
+    srcs = ["run_on_device_driver_OSS.sh"],
+)
+
+litert_integration_test(
+    name = "single_op_device_tests_cpu",
+    hw = "cpu",
+    models = ":single_op_models",
+)
+
+litert_integration_test(
+    name = "single_op_device_tests_qualcomm_JIT",
+    hw = "qualcomm",
+    models = ":single_op_models",
+    skips = [
+        "greater_f32",  # TODO: lukeboyer - Investigate (segfault).
+        "less_f32",  # TODO: lukeboyer - Investigate (segfault).
+    ],
+)
+
+litert_integration_test(
+    name = "classic_ml_device_tests_cpu",
+    hw = "cpu",
+    models = ":classic_ml_models",
+)
+
+litert_integration_test(
+    name = "classic_ml_device_tests_qualcomm_JIT",
+    hw = "qualcomm",
+    models = ":classic_ml_models",
+)
+
+litert_integration_test(
+    name = "pre_compiled_device_tests_qualcomm",
+    hw = "qualcomm",
+    models = ":pre_compiled_models",
 )

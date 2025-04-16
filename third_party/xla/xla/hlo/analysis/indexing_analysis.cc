@@ -290,7 +290,8 @@ HloInstructionIndexing ComputeOutputToInputCwiseOpIndexing(
     // Select allows implicit broadcasting in the predicate. We just handle it
     // generically here.
     auto* operand = instr->operand(operand_id);
-    if (operand->shape().rank() == 0 && instr->shape().rank() > 0) {
+    if (operand->shape().dimensions_size() == 0 &&
+        instr->shape().dimensions_size() > 0) {
       instr_indexing.indexing_maps[operand_id].insert(unit_map);
     } else {
       instr_indexing.indexing_maps[operand_id].insert(identity_map);
@@ -330,7 +331,7 @@ HloInstructionIndexing ComputeInputToOutputBroadcastOpIndexing(
 
   std::vector<int64_t> added_dims_sizes;
   std::vector<AffineExpr> exprs;
-  exprs.reserve(output_shape.rank());
+  exprs.reserve(output_shape.dimensions_size());
   for (auto [output_dim_id, output_dim] :
        llvm::enumerate(output_shape.dimensions())) {
     auto bcast_dim =
@@ -345,8 +346,8 @@ HloInstructionIndexing ComputeInputToOutputBroadcastOpIndexing(
         std::distance(bcast_dims.begin(), bcast_dim), mlir_context));
   }
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
-      AffineMap::get(input_shape.rank(), added_dims_sizes.size(), exprs,
-                     mlir_context),
+      AffineMap::get(input_shape.dimensions_size(), added_dims_sizes.size(),
+                     exprs, mlir_context),
       input_shape.dimensions(), added_dims_sizes);
 
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
@@ -437,8 +438,8 @@ HloInstructionIndexing ComputeOutputToInputDotOpIndexing(
   // According to the StableHLO specification, the dimensions of the output
   // shape are ordered as follows:
   //   lhs_batch_dims | lhs_non_contracting_dims | rhs_non_contracting_dims
-  SmallVector<AffineExpr> lhs_exprs(lhs_shape.rank());
-  SmallVector<AffineExpr> rhs_exprs(rhs_shape.rank());
+  SmallVector<AffineExpr> lhs_exprs(lhs_shape.dimensions_size());
+  SmallVector<AffineExpr> rhs_exprs(rhs_shape.dimensions_size());
   int64_t output_dim_id = 0;
 
   // lhs_batch_dims
@@ -486,13 +487,13 @@ HloInstructionIndexing ComputeOutputToInputDotOpIndexing(
   }
 
   IndexingMap lhs_indexing_map = IndexingMap::FromTensorSizes(
-      AffineMap::get(dot->shape().rank(), input_dim_sizes.size(), lhs_exprs,
-                     mlir_context),
+      AffineMap::get(dot->shape().dimensions_size(), input_dim_sizes.size(),
+                     lhs_exprs, mlir_context),
       dot->shape().dimensions(), input_dim_sizes);
 
   IndexingMap rhs_indexing_map = IndexingMap::FromTensorSizes(
-      AffineMap::get(dot->shape().rank(), input_dim_sizes.size(), rhs_exprs,
-                     mlir_context),
+      AffineMap::get(dot->shape().dimensions_size(), input_dim_sizes.size(),
+                     rhs_exprs, mlir_context),
       dot->shape().dimensions(), input_dim_sizes);
   return HloInstructionIndexing::FromIndexingMaps(
       {lhs_indexing_map, rhs_indexing_map});
@@ -503,10 +504,10 @@ HloInstructionIndexing ComputeOutputToInputDynamicSliceOpIndexing(
     MLIRContext* mlir_context) {
   const Shape& input_shape = dynamic_slice->operand(0)->shape();
   const Shape& output_shape = dynamic_slice->shape();
-  int64_t rank = output_shape.rank();
+  int64_t rank = output_shape.dimensions_size();
   const int64_t first_index_num = dynamic_slice->first_index_operand_number();
 
-  CHECK(dynamic_slice->operand(first_index_num)->shape().rank() == 0)
+  CHECK(dynamic_slice->operand(first_index_num)->shape().dimensions_size() == 0)
       << "b/118437727: Old form, not supported.";
   // A map from tensor iteration space to (), because index operands are 0d
   // tensors.
@@ -541,7 +542,7 @@ HloInstructionIndexing ComputeOutputToInputDynamicUpdateSliceOpIndexing(
     const HloDynamicUpdateSliceInstruction* dus, MLIRContext* mlir_context) {
   const Shape& update_shape = dus->update()->shape();
   const Shape& output_shape = dus->shape();
-  int64_t rank = output_shape.rank();
+  int64_t rank = output_shape.dimensions_size();
 
   // operand: (d0, ... d_{N-1}) -> (d0, ... d_{N-1})
   std::vector<AffineExpr> identity;
@@ -597,7 +598,7 @@ HloInstructionIndexing ComputeOutputToInputGatherOpIndexing(
       indices_shape.dimensions(dimension_numbers.index_vector_dim());
 
   const Shape& output_shape = gather->shape();
-  int64_t output_rank = output_shape.rank();
+  int64_t output_rank = output_shape.dimensions_size();
 
   // A map for the `indices` operand of gather. It is always
   // (d_0, ... d_{rank - 1}) -> (d_0, s_0),
@@ -618,7 +619,7 @@ HloInstructionIndexing ComputeOutputToInputGatherOpIndexing(
   // where s_i are RTVars that extract indices from the `indices` operand.
   std::vector<HLORTVar> rt_vars;
   std::vector<AffineExpr> exprs;
-  exprs.reserve(operand_shape.rank());
+  exprs.reserve(operand_shape.dimensions_size());
   for (auto [operand_dim_id, slice_size] :
        llvm::enumerate(gather->gather_slice_sizes())) {
     int64_t output_dim_id = dimension_numbers.offset_dims(operand_dim_id);
@@ -681,7 +682,7 @@ IndexingMap ComputeOutputToInputPadOpIndexingImpl(
 HloInstructionIndexing ComputeOutputToInputPadOpIndexing(
     const HloPadInstruction* pad, MLIRContext* mlir_context) {
   const Shape& output_shape = pad->shape();
-  int64_t rank = output_shape.rank();
+  int64_t rank = output_shape.dimensions_size();
   SmallVector<int64_t> padding_low, padding_high, padding_interior;
   padding_low.reserve(rank);
   padding_high.reserve(rank);
@@ -695,7 +696,8 @@ HloInstructionIndexing ComputeOutputToInputPadOpIndexing(
       output_shape.dimensions(), padding_low, padding_high, padding_interior,
       mlir_context);
   IndexingMap padding_value_indexing_map = IndexingMap::FromTensorSizes(
-      AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {}, mlir_context),
+      AffineMap::get(output_shape.dimensions_size(), /*symbolCount=*/0, {},
+                     mlir_context),
       output_shape.dimensions(), /*symbol_upper_bounds=*/{});
   return HloInstructionIndexing::FromIndexingMaps(
       {input_indexing_map, padding_value_indexing_map});
@@ -712,7 +714,7 @@ HloInstructionIndexing ComputeOutputToInputReduceOpIndexing(
   std::vector<int64_t> parallel_dims_sizes;
   int64_t output_dim_id = 0;
   std::vector<AffineExpr> exprs;
-  exprs.reserve(input_shape.rank());
+  exprs.reserve(input_shape.dimensions_size());
   for (auto [input_dim_id, input_dim] :
        llvm::enumerate(input_shape.dimensions())) {
     if (reduce_dims_ids.contains(input_dim_id)) {
@@ -724,11 +726,12 @@ HloInstructionIndexing ComputeOutputToInputReduceOpIndexing(
     exprs.push_back(getAffineDimExpr(output_dim_id++, mlir_context));
   }
   IndexingMap inputs_indexing_map = IndexingMap::FromTensorSizes(
-      AffineMap::get(output_shape.rank(), reduce_dims_ids.size(), exprs,
-                     mlir_context),
+      AffineMap::get(output_shape.dimensions_size(), reduce_dims_ids.size(),
+                     exprs, mlir_context),
       output_shape.dimensions(), parallel_dims_sizes);
   IndexingMap inits_indexing_map = IndexingMap::FromTensorSizes(
-      AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {}, mlir_context),
+      AffineMap::get(output_shape.dimensions_size(), /*symbolCount=*/0, {},
+                     mlir_context),
       output_shape.dimensions(), {});
 
   HloInstructionIndexing instr_indexing;
@@ -746,7 +749,7 @@ HloInstructionIndexing ComputeInputToOutputReduceOpIndexing(
     const HloReduceInstruction* reduce, int input_id,
     MLIRContext* mlir_context) {
   const Shape& output_shape = GetOutputShape(reduce, 0);
-  int64_t output_rank = output_shape.rank();
+  int64_t output_rank = output_shape.dimensions_size();
 
   HloInstructionIndexing instr_indexing;
   int arity = reduce->input_count();
@@ -780,8 +783,8 @@ HloInstructionIndexing ComputeInputToOutputReduceOpIndexing(
     }
   }
   IndexingMap inputs_indexing_map = IndexingMap::FromTensorSizes(
-      AffineMap::get(input_shape.rank(), /*symbolCount=*/0, inputs_exprs,
-                     mlir_context),
+      AffineMap::get(input_shape.dimensions_size(), /*symbolCount=*/0,
+                     inputs_exprs, mlir_context),
       input_shape.dimensions(), {});
   for (int64_t id = 0; id < arity; ++id) {
     instr_indexing.indexing_maps[id].insert(inputs_indexing_map);
@@ -862,7 +865,8 @@ HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
 
   // Indexing map for the init value.
   IndexingMap inits_indexing_map = IndexingMap::FromTensorSizes(
-      AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {}, mlir_context),
+      AffineMap::get(output_shape.dimensions_size(), /*symbolCount=*/0, {},
+                     mlir_context),
       output_shape.dimensions(), /*symbol_upper_bounds=*/{});
 
   HloInstructionIndexing instr_indexing;
@@ -884,7 +888,7 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
   const Shape& output_shape = convolution->shape();
   const ConvolutionDimensionNumbers& dnums =
       convolution->convolution_dimension_numbers();
-  size_t rank = output_shape.rank();
+  size_t rank = output_shape.dimensions_size();
 
   // Collect sizes for input/output spatial dimensions.
   size_t spatial_rank = rank - 2;
@@ -1101,12 +1105,12 @@ AffineMap ComputeReshapeIndexingMap(const Shape& input, const Shape& output,
   absl::Span<const int64_t> output_dims = output.dimensions();
 
   std::vector<AffineExpr> exprs;
-  exprs.reserve(input.rank());
+  exprs.reserve(input.dimensions_size());
 
   // If the input shape has no elements (e.g. 1000x10x0 -> 100x100x0), just set
   // everything to 0.
   if (ShapeUtil::ElementsIn(input) == 0) {
-    for (int i = 0; i < input.rank(); ++i) {
+    for (int i = 0; i < input.dimensions_size(); ++i) {
       exprs.push_back(getAffineConstantExpr(0, mlir_context));
     }
     return AffineMap::get(output_dims.size(), /*symbolCount=*/0, exprs,
@@ -1120,9 +1124,9 @@ AffineMap ComputeReshapeIndexingMap(const Shape& input, const Shape& output,
   int64_t output_num_elements = 1;
   std::vector<int64_t> input_subshape, output_subshape;
   size_t input_dim_id = 0, output_dim_id = 0;
-  while (input_dim_id < input.rank() || output_dim_id < output.rank() ||
-         !input_subshape.empty()) {
-    if (input_dim_id < input.rank() &&
+  while (input_dim_id < input.dimensions_size() ||
+         output_dim_id < output.dimensions_size() || !input_subshape.empty()) {
+    if (input_dim_id < input.dimensions_size() &&
         (input_subshape.empty() || input_num_elements < output_num_elements ||
          input_dims[input_dim_id] == 1)) {
       input_num_elements *= input_dims[input_dim_id];
@@ -1130,7 +1134,7 @@ AffineMap ComputeReshapeIndexingMap(const Shape& input, const Shape& output,
       ++input_dim_id;
       continue;
     }
-    if (output_dim_id < output.rank() &&
+    if (output_dim_id < output.dimensions_size() &&
         (output_subshape.empty() || output_num_elements < input_num_elements ||
          output_dims[output_dim_id] == 1)) {
       output_num_elements *= output_dims[output_dim_id];
@@ -1202,7 +1206,7 @@ HloInstructionIndexing ComputeReverseOpIndexing(
 
 HloInstructionIndexing ComputeOutputToInputSliceOpIndexing(
     const HloSliceInstruction* slice, MLIRContext* mlir_context) {
-  auto output_rank = slice->shape().rank();
+  auto output_rank = slice->shape().dimensions_size();
 
   std::vector<AffineExpr> exprs;
   exprs.reserve(output_rank);
@@ -1219,7 +1223,7 @@ HloInstructionIndexing ComputeOutputToInputSliceOpIndexing(
 
 HloInstructionIndexing ComputeInputToOutputSliceOpIndexing(
     const HloSliceInstruction* slice, MLIRContext* mlir_context) {
-  auto output_rank = slice->shape().rank();
+  auto output_rank = slice->shape().dimensions_size();
 
   std::vector<AffineExpr> exprs;
   exprs.reserve(output_rank);
@@ -1398,7 +1402,7 @@ llvm::SmallVector<AffineExpr, 4> DelinearizeInBoundsIndex(
 
 IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(
     const Shape& shape, MLIRContext* mlir_context) {
-  if (shape.rank() == 0) {
+  if (shape.dimensions_size() == 0) {
     return IndexingMap(AffineMap::get(mlir_context),
                        /*dimensions=*/{}, /*range vars=*/{}, /*rt_vars=*/{});
   }
@@ -1413,7 +1417,7 @@ IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(
 
 IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(
     const Shape& shape, MLIRContext* mlir_context) {
-  if (shape.rank() == 0) {
+  if (shape.dimensions_size() == 0) {
     return IndexingMap(AffineMap::get(mlir_context),
                        /*dimensions=*/{}, /*range vars=*/{}, /*rt_vars=*/{});
   }

@@ -41,24 +41,26 @@ extern "C" {
 #define LITERT_HAS_DMABUF_SUPPORT 1
 #define LITERT_HAS_FASTRPC_SUPPORT 1
 #define LITERT_HAS_OPENGL_SUPPORT 1
-#define LITERT_HAS_OPENCL_SUPPORT 1
+#define LITERT_HAS_OPENCL_SUPPORT_DEFAULT 1
 // copybara:comment_begin(google-only)
 #elif defined(GOOGLE_UNSUPPORTED_OS_LOONIX)
 #define LITERT_HAS_ION_SUPPORT 0
 #define LITERT_HAS_DMABUF_SUPPORT 1
 #define LITERT_HAS_FASTRPC_SUPPORT 0
-#define LITERT_HAS_OPENCL_SUPPORT 1
+#define LITERT_HAS_OPENCL_SUPPORT_DEFAULT 1
 // copybara:comment_end
 #else
 #define LITERT_HAS_ION_SUPPORT 0
 #define LITERT_HAS_DMABUF_SUPPORT 0
 #define LITERT_HAS_FASTRPC_SUPPORT 0
-#define LITERT_HAS_OPENCL_SUPPORT 1
+#define LITERT_HAS_OPENCL_SUPPORT_DEFAULT 1
 #define LITERT_HAS_OPENGL_SUPPORT 0
 #endif
 
 #if defined(LITERT_DISABLE_OPENCL_SUPPORT)
 #define LITERT_HAS_OPENCL_SUPPORT 0
+#else
+#define LITERT_HAS_OPENCL_SUPPORT LITERT_HAS_OPENCL_SUPPORT_DEFAULT
 #endif
 
 #define LITERT_API_VERSION_MAJOR 0
@@ -70,12 +72,6 @@ typedef struct LiteRtApiVersion {
   int minor;
   int patch;
 } LiteRtApiVersion;
-
-// Compares `v1` and `v2`.
-//
-// Returns 0 if they are the same, a negative number if v1 < v2 and a positive
-// number if v1 > v2.
-int LiteRtCompareApiVersion(LiteRtApiVersion v1, LiteRtApiVersion v2);
 
 typedef enum {
   kLiteRtStatusOk = 0,

@@ -15,11 +15,16 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <initializer_list>
+#include <iomanip>
+#include <ios>
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -36,12 +41,14 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/kernel_name_tracer.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
@@ -52,6 +59,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -65,15 +73,7 @@ class AlgorithmTest : public GpuCodegenTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    if (debug_options.xla_dump_to().empty()) {
-      debug_options.set_xla_dump_to("sponge");
-    }
-    debug_options.set_xla_dump_hlo_pass_re(".*");
-    debug_options.set_xla_gpu_dump_autotuned_gemm_fusions(true);
-
-    // Enable triton fusion for all supported GEMMs.
-    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
-
+    debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
 
@@ -94,17 +94,6 @@ class AlgorithmTest : public GpuCodegenTest {
   const stream_executor::GpuComputeCapability& GpuComputeComp() {
     return device_desc().gpu_compute_capability();
   }
-  stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
-    if (std::holds_alternative<stream_executor::RocmComputeCapability>(
-            GpuComputeComp())) {
-      return stream_executor::GpuComputeCapability{
-          device_desc().rocm_compute_capability()};
-    } else {
-      return stream_executor::GpuComputeCapability{
-          stream_executor::CudaComputeCapability{
-              stream_executor::CudaComputeCapability::kAmpere, 0}};
-    }
-  }
 
  protected:
   const stream_executor::DeviceDescription& device_desc() {
@@ -115,21 +104,6 @@ class AlgorithmTest : public GpuCodegenTest {
 // In these tests, we depend on "algorithm" annotations for selecting the 6XBF16
 // algorithm.
 class Triton6xBF16GemmTest : public AlgorithmTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
-    // These 2 flags are not strictly necessary now, but we're adding them to be
-    // on the safe side against future flakiness.
-    //
-    // Do not fall back to cuBLAS, we are testing Triton.
-    debug_options.set_xla_gpu_cublas_fallback(false);
-
-    // Do not autotune split-k by default, since this prevents deterministically
-    // matching the optimized HLO.
-    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
-    return debug_options;
-  }
-
  protected:
   void SetUp() override {
     if (!SupportsBF16(GpuComputeComp())) {
@@ -142,30 +116,17 @@ class BlasAlgorithmTest : public AlgorithmTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
-    // Do not autotune split-k by default, since this prevents deterministically
-    // matching the optimized HLO.
-    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
     debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
   }
 };
 
-class TritonAlgorithmTest : public AlgorithmTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
-    // Do not fall back to cuBLAS, we are testing Triton.
-    debug_options.set_xla_gpu_cublas_fallback(false);
-    // Enable gemm for any hlo including pure matmuls.
-    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
-    // Do not autotune split-k by default, since this prevents deterministically
-    // matching the optimized HLO.
-    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
-    return debug_options;
-  }
-};
+using TritonAlgorithmTest = AlgorithmTest;
 
 TEST_F(AlgorithmTest, Algorithm3xBF16) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "ALG_DOT_BF16_BF16_F32_X3 not supported on ROCM.";
+  }
   constexpr absl::string_view kHloText = R"(
     HloModule Algorithm3xBF16
 
@@ -182,6 +143,9 @@ TEST_F(AlgorithmTest, Algorithm3xBF16) {
 }
 
 TEST_F(AlgorithmTest, Algorithm6xBF16) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "ALG_DOT_BF16_BF16_F32_X6 not supported on ROCM.";
+  }
   constexpr absl::string_view kHloText = R"(
     HloModule Algorithm6xBF16
 
@@ -565,24 +529,7 @@ CHECK-NOT: mma.sync.aligned.{{.*}}.row.col.f32.tf32.tf32.f32
 
 // In these tests, we depend on "algorithm" annotations for selecting the 3XBF16
 // algorithm.
-class Triton3xBF16GemmTest : public AlgorithmTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
-    // These 2 flags are not strictly necessary now, but we're adding them the
-    // to be on the safe side against future flakiness.
-    //
-    // Enable triton fusion for all supported GEMMs.
-    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
-    // Do not fall back to cuBLAS, we are testing Triton.
-    debug_options.set_xla_gpu_cublas_fallback(false);
-
-    // Do not autotune split-k by default, since this prevents deterministically
-    // matching the optimized HLO.
-    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
-    return debug_options;
-  }
-};
+using Triton3xBF16GemmTest = AlgorithmTest;
 
 TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmWhenBothInputsAreF32) {
   constexpr absl::string_view kHloText = R"(
@@ -1288,13 +1235,6 @@ class TritonAndBlasSupportForDifferentTensorSizes
     : public WithParamInterface<PC::Algorithm>,
       public AlgorithmTest {
  public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
-    debug_options.clear_xla_dump_hlo_pass_re();  // Too many dumps.
-    debug_options.clear_xla_gpu_dump_autotuned_gemm_fusions();
-    return debug_options;
-  }
-
   static auto GetModuleConfig(const DebugOptions& debug_options) {
     HloModuleConfig config;
     config.set_debug_options(debug_options);
@@ -1338,12 +1278,9 @@ class TritonAndBlasSupportForDifferentTensorSizes
     debug_options_ = GetDebugOptionsForTest();
 
     triton_options_ = debug_options_;
-    triton_options_.set_xla_gpu_unsupported_force_triton_gemm(true);
-    triton_options_.set_xla_gpu_cublas_fallback(false);
 
     blas_options_ = debug_options_;
     blas_options_.set_xla_gpu_enable_triton_gemm(false);
-    blas_options_.set_xla_gpu_cublas_fallback(true);
 
     algorithm_ = AlgorithmToString(GetParam());
   }
@@ -1538,7 +1475,7 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
     case PC::ALG_DOT_BF16_BF16_F32_X6:
     case PC::ALG_DOT_BF16_BF16_F32_X9:
     case PC::ALG_DOT_F32_F32_F32:
-      EXPECT_TRUE(result_or_status.status().ok())
+      ASSERT_TRUE(result_or_status.status().ok())
           << "failed to compile " << algorithm_;
       EXPECT_TRUE(result_or_status.value())
           << "wrong result for " << algorithm_;
@@ -1562,6 +1499,129 @@ INSTANTIATE_TEST_SUITE_P(
          PC::ALG_DOT_F32_F32_F32, PC::ALG_DOT_TF32_TF32_F32,
          PC::ALG_DOT_TF32_TF32_F32_X3, PC::ALG_DOT_F64_F64_F64, PC::ALG_UNSET}),
     AlgorithmTestParamToString);
+
+class PrecisionTestsForTriton : public TritonAlgorithmTest,
+                                public NumericTestsArguments,
+                                public WithParamInterface<PC::Algorithm> {
+ public:
+  PrecisionTestsForTriton() : TritonAlgorithmTest() {
+    algorithm_ = AlgorithmToString(GetParam());
+  }
+
+  std::string test_hlo_text() const {
+    return absl::StrReplaceAll(kHloText, {{"${test_name}", HloModuleTestName()},
+                                          {"${algorithm}", algorithm_}});
+  }
+  std::string reference_hlo_text() const {
+    return absl::StrReplaceAll(kHloText, {{"${test_name}", HloModuleTestName()},
+                                          {"${algorithm}", "dot_f32_f32_f32"}});
+  }
+
+  absl::string_view algorithm() const { return algorithm_; }
+
+  static constexpr absl::string_view kPattern = R"(CHECK: __triton_gemm)";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> GetModule(
+      const std::string& hlo_text) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                        GetOptimizedModule(hlo_text));
+    auto module_text = module->ToString();
+    TF_ASSIGN_OR_RETURN(auto ok, RunFileCheck(module_text, kPattern));
+    if (!ok) {
+      return absl::InternalError(
+          "The module does not contain the pattern __triton_gemm.");
+    }
+    return module;
+  }
+
+ private:
+  static constexpr absl::string_view kHloText = R"(
+    HloModule ${test_name}
+
+    ENTRY main {
+      p0 = f32[1024,1024]{1,0} parameter(0)
+      p1 = f32[1024,1024]{1,0} parameter(1)
+      ROOT %dot = f32[1024,1024]{1,0} dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0},
+        algorithm=${algorithm}
+    }
+  )";
+  std::string algorithm_;
+};
+
+TEST_P(PrecisionTestsForTriton, PrecisionCheck) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "Precision tests is unknown for ROCM.";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto test_module, GetModule(test_hlo_text()));
+  TF_ASSERT_OK_AND_ASSIGN(auto ref_module, GetModule(reference_hlo_text()));
+
+  // Prepare arguments.
+  absl::StatusOr<std::vector<Literal>> fake_arguments = MakeFakeArguments(
+      test_module.get(), /*pseudo_random=*/true, /*use_large_range=*/false,
+      /*treat_gte_as_data_formatting=*/false, 23);
+  CHECK_OK(fake_arguments);
+
+  // abs the arguments.
+  for (auto& literal : *fake_arguments) {
+    literal.MutableEachCell<float>([](absl::Span<const int64_t> indices,
+                                      float value) { return std::abs(value); });
+  }
+  std::vector<Literal*> fake_argument_ptrs;
+  absl::c_transform(
+      *fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
+
+  // Run the test and reference modules.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto test_result,
+      test_runner().Execute(std::move(test_module), fake_argument_ptrs, false));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto ref_result,
+      test_runner().Execute(std::move(ref_module), fake_argument_ptrs, false));
+
+  // Calculate the relative and absolute errors.
+  absl::Span<const float> test_data = test_result.data<float>();
+  absl::Span<const float> ref_data = ref_result.data<float>();
+  float abs_error = 0.0f;
+  float rel_error = 0.0f;
+  for (int i = 0; i < test_data.size(); ++i) {
+    abs_error += std::abs(test_data[i] - ref_data[i]);
+    rel_error += std::abs((test_data[i] - ref_data[i]) / ref_data[i]);
+  }
+  abs_error /= test_data.size();
+  rel_error /= test_data.size();
+
+  std::unordered_map<PC::Algorithm, float> max_mean_rel_error = {
+      {PC::ALG_DOT_BF16_BF16_F32, 6e-5},
+      {PC::ALG_DOT_TF32_TF32_F32, 2e-5},
+      {PC::ALG_DOT_BF16_BF16_F32_X3, 7e-6},
+      {PC::ALG_DOT_BF16_BF16_F32_X6, 4e-7},
+      {PC::ALG_DOT_BF16_BF16_F32_X9, 4e-7},
+      {PC::ALG_DOT_TF32_TF32_F32_X3, 5e-7}};
+
+  LOG(INFO) << "mean(abs_error):    " << abs_error;
+  LOG(ERROR) << "mean(rel_error):    " << std::fixed << std::setprecision(9)
+             << rel_error;
+  LOG(ERROR) << "max_mean_rel_error: " << std::fixed << std::setprecision(9)
+             << max_mean_rel_error[GetParam()];
+
+  ASSERT_TRUE(max_mean_rel_error.find(GetParam()) != max_mean_rel_error.end())
+      << "No precision test for algorithm " << algorithm();
+  EXPECT_LT(rel_error, max_mean_rel_error[GetParam()])
+      << "mean(rel_error) is too high.";
+}
+
+INSTANTIATE_TEST_SUITE_P(PrecisionTestsForTriton, PrecisionTestsForTriton,
+                         ::testing::ValuesIn({PC::ALG_DOT_TF32_TF32_F32,
+                                              PC::ALG_DOT_TF32_TF32_F32_X3,
+                                              PC::ALG_DOT_BF16_BF16_F32,
+                                              PC::ALG_DOT_BF16_BF16_F32_X3,
+                                              PC::ALG_DOT_BF16_BF16_F32_X6,
+                                              PC::ALG_DOT_BF16_BF16_F32_X9}),
+                         AlgorithmTestParamToString);
 
 }  // namespace
 }  // namespace gpu

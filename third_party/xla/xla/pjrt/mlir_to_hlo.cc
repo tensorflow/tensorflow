@@ -62,7 +62,7 @@ limitations under the License.
 #include "stablehlo/dialect/Version.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/debug_options_flags.h"
-#include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
+#include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -98,13 +98,11 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::stablehlo::createStablehloComplexMathExpanderPass());
 
-    // StableHLO -> MHLO
-    pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
     // In order to export to XLA, we must sink constants to control flow
     // regions, since XLA uses functional control flow.
     pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createSinkConstantsToControlFlowPass());
+        mlir::stablehlo_ext::createSinkConstantsToControlFlowPass());
+
     if (failed(pm.run(module))) {
       VLOG(1) << "MHLO->HLO lowering passes failed.";
       module->dump();
@@ -127,13 +125,9 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
     use_tuple_args = false;
   }
 
-  // create config options use use_tuple_args, return_tuple set:
-  mlir::MlirToHloConversionOptions options;
-  options.use_tuple_args = use_tuple_args;
-  options.return_tuple = return_tuple;
-
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      mlir::ConvertMlirHloToHloModule(module, options));
+                      xla::ConvertStablehloToHloWithOptions(
+                          module, use_tuple_args, return_tuple));
 
   xla_computation = XlaComputation(hlo_module->ToProto());
   return absl::OkStatus();
@@ -253,7 +247,7 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createShapeLegalizeToStablehloPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());  // not required
   if (!mlir::succeeded(pm.run(mlir_module))) {
     const absl::Status status = diagnostic_handler.ConsumeStatus();
     return absl::InvalidArgumentError(absl::StrCat(

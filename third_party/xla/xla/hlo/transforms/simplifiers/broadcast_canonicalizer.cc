@@ -58,7 +58,7 @@ absl::StatusOr<bool> BroadcastCanonicalizer::Run(
       std::vector<int64_t> new_broadcast_dims(hlo->shape().dimensions().begin(),
                                               hlo->shape().dimensions().end());
       absl::c_sort(new_dims);
-      const int64_t rank = hlo->shape().rank();
+      const int64_t rank = hlo->shape().dimensions_size();
       for (int i = 0; i < new_dims.size(); ++i) {
         new_broadcast_dims[new_dims[i]] =
             hlo->operand(0)->shape().dimensions(i);

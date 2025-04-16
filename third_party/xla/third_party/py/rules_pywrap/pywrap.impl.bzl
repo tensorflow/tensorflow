@@ -18,6 +18,12 @@ CollectedPywrapInfo = provider(
     },
 )
 
+ObjectFiles = provider(
+    fields = {
+        "objects": "",
+    },
+)
+
 PywrapFilters = provider(
     fields = {
         "pywrap_lib_filter": "",
@@ -34,8 +40,9 @@ def pywrap_library(
         pywrap_lib_exclusion_filter = None,
         common_lib_filters = {},
         common_lib_version_scripts = {},
+        common_lib_def_files_or_filters = {},
         common_lib_linkopts = {},
-        win_def_file = None,
+        enable_common_lib_starlark_only_filter = True,
         pywrap_count = None,
         starlark_only_pywrap_count = 0,
         extra_deps = ["@pybind11//:pybind11"],
@@ -81,13 +88,17 @@ def pywrap_library(
         pywrap_lib_exclusion_filter = pywrap_lib_exclusion_filter,
         common_lib_filters = inverse_common_lib_filters,
         starlark_only_filter_name = starlark_only_filter_full_name,
+        enable_common_lib_starlark_only_filter = enable_common_lib_starlark_only_filter,
     )
 
-    common_deps = []
+    common_deps = [] + extra_deps
     starlark_only_common_deps = []
     binaries_data = {}
     starlark_only_binaries_data = {}
+    win_binaries_data = {}
+    win_starlark_only_binaries_data = {}
     internal_binaries = []
+    win_internal_binaries = []
 
     common_lib_full_names = []
     common_lib_full_names.extend(common_lib_filters.keys())
@@ -107,18 +118,33 @@ def pywrap_library(
             linker_input_filters = "%s" % linker_input_filters_name,
             testonly = testonly,
             compatible_with = compatible_with,
+            collect_objects = select({
+                "@bazel_tools//src/conditions:windows": True,
+                "//conditions:default": False,
+            }),
         )
-        ver_script = common_lib_version_scripts.get(common_lib_full_name, None)
-        linkopts = common_lib_linkopts.get(common_lib_full_name, [])
 
+        win_def_name = "_%s_def" % common_lib_name
+        def_file_or_filter = common_lib_def_files_or_filters.get(
+            common_lib_full_name,
+            None,
+        )
+        generated_common_win_def_file(
+            name = win_def_name,
+            dep = ":%s" % common_split_name,
+            filter = def_file_or_filter,
+        )
+
+        linkopts = common_lib_linkopts.get(common_lib_full_name, [])
+        ver_script = common_lib_version_scripts.get(common_lib_full_name, None)
         common_cc_binary_name = "%s" % common_lib_name
-        common_import_name = _construct_common_binary(
+        common_import_name, win_import_library_name = _construct_common_binary(
             common_cc_binary_name,
             common_deps + [":%s" % common_split_name],
             linkopts,
             testonly,
             compatible_with,
-            win_def_file,
+            ":%s" % win_def_name,
             None,
             binaries_data.values(),
             common_lib_pkg,
@@ -127,11 +153,15 @@ def pywrap_library(
         )
         actual_binaries_data = binaries_data
         actual_common_deps = common_deps
+        actual_win_binaries_data = win_binaries_data
         if common_lib_full_name == starlark_only_filter_full_name:
             actual_binaries_data = starlark_only_binaries_data
             actual_common_deps = starlark_only_common_deps
+            actual_win_binaries_data = win_starlark_only_binaries_data
         internal_binaries.append(":%s" % common_cc_binary_name)
+        win_internal_binaries.append(":%s" % win_import_library_name)
         actual_binaries_data[":%s" % common_cc_binary_name] = common_lib_pkg
+        actual_win_binaries_data[":%s" % win_import_library_name] = common_lib_pkg
         actual_common_deps.append(":%s" % common_import_name)
 
     # 2) Create individual super-thin pywrap libraries, which depend on the
@@ -184,12 +214,22 @@ def pywrap_library(
     #
     pywrap_binaries_name = "%s_common_binaries" % name
     wheel_locations_json_name = ":%s_wheel_locations.json" % pywrap_binaries_name
+
+    win_binaries_data.update(binaries_data)
+    win_starlark_only_binaries_data.update(starlark_only_binaries_data)
+
     _pywrap_binaries(
         name = pywrap_binaries_name,
         collected_pywraps = ":%s" % info_collector_name,
         deps = shared_objects,
-        common_binaries = binaries_data,
-        starlark_only_common_binaries = starlark_only_binaries_data,
+        common_binaries = select({
+            "@bazel_tools//src/conditions:windows": win_binaries_data,
+            "//conditions:default": binaries_data,
+        }),
+        starlark_only_common_binaries = select({
+            "@bazel_tools//src/conditions:windows": win_starlark_only_binaries_data,
+            "//conditions:default": starlark_only_binaries_data,
+        }),
         extension = select({
             "@bazel_tools//src/conditions:windows": ".pyd",
             "//conditions:default": ".so",
@@ -217,7 +257,10 @@ def pywrap_library(
 
     native.filegroup(
         name = name + "_all_binaries",
-        srcs = internal_binaries,
+        srcs = select({
+            "@bazel_tools//src/conditions:windows": internal_binaries + win_internal_binaries,
+            "//conditions:default": internal_binaries,
+        }),
     )
 
 def _construct_common_binary(
@@ -250,7 +293,6 @@ def _construct_common_binary(
         compatible_with = compatible_with,
         win_def_file = win_def_file,
         local_defines = local_defines,
-        #        data = data,
     )
 
     if_lib_name = "%s_if_lib" % name
@@ -266,8 +308,10 @@ def _construct_common_binary(
     native.cc_import(
         name = import_name,
         shared_library = ":%s" % name,
-        # TODO: put it back to fix Windows
-        #        interface_library = ":%s" % if_lib_name,
+        interface_library = select({
+            "@bazel_tools//src/conditions:windows": ":%s" % if_lib_name,
+            "//conditions:default": None,
+        }),
         testonly = testonly,
         compatible_with = compatible_with,
     )
@@ -280,7 +324,7 @@ def _construct_common_binary(
         data = data,
     )
 
-    return import_name
+    return cc_lib_name, if_lib_name
 
 def _pywrap_split_library_impl(ctx):
     pywrap_index = ctx.attr.pywrap_index
@@ -312,6 +356,7 @@ def _pywrap_split_library_impl(ctx):
         user_link_flags,
         private_linker_inputs,
         default_runfiles,
+        ctx.attr.collect_objects,
     )
 
 _pywrap_split_library = rule(
@@ -330,6 +375,7 @@ _pywrap_split_library = rule(
         "_cc_toolchain": attr.label(
             default = "@bazel_tools//tools/cpp:current_cc_toolchain",
         ),
+        "collect_objects": attr.bool(default = False, mandatory = False),
     },
     fragments = ["cpp"],
     toolchains = use_cpp_toolchain(),
@@ -376,6 +422,7 @@ def _pywrap_common_split_library_impl(ctx):
         list(user_link_flags.keys()),
         [],
         default_runfiles,
+        ctx.attr.collect_objects,
     )
 
 _pywrap_common_split_library = rule(
@@ -393,6 +440,7 @@ _pywrap_common_split_library = rule(
         "_cc_toolchain": attr.label(
             default = "@bazel_tools//tools/cpp:current_cc_toolchain",
         ),
+        "collect_objects": attr.bool(default = False, mandatory = False),
     },
     fragments = ["cpp"],
     toolchains = use_cpp_toolchain(),
@@ -404,10 +452,12 @@ def _construct_split_library_cc_info(
         split_linker_inputs,
         user_link_flags,
         private_linker_inputs,
-        default_runfiles):
-    dependency_libraries = _construct_dependency_libraries(
+        default_runfiles,
+        collect_objects):
+    dependency_libraries, objects = _construct_dependency_libraries(
         ctx,
         split_linker_inputs,
+        collect_objects,
     )
 
     linker_input = cc_common.create_linker_input(
@@ -425,11 +475,11 @@ def _construct_split_library_cc_info(
 
     return [
         CcInfo(linking_context = linking_context),
-        #        DefaultInfo(files = default_runfiles.files)
+        ObjectFiles(objects = depset(direct = objects)),
         DefaultInfo(runfiles = default_runfiles),
     ]
 
-def _construct_dependency_libraries(ctx, split_linker_inputs):
+def _construct_dependency_libraries(ctx, split_linker_inputs, collect_objects):
     cc_toolchain = find_cpp_toolchain(ctx)
     feature_configuration = cc_common.configure_features(
         ctx = ctx,
@@ -438,22 +488,26 @@ def _construct_dependency_libraries(ctx, split_linker_inputs):
         unsupported_features = ctx.disabled_features,
     )
     dependency_libraries = []
+    objects = []
     for split_linker_input in split_linker_inputs:
         for lib in split_linker_input.libraries:
             lib_copy = lib
-            if not lib.alwayslink and (lib.static_library or lib.pic_static_library):
-                lib_copy = cc_common.create_library_to_link(
-                    actions = ctx.actions,
-                    cc_toolchain = cc_toolchain,
-                    feature_configuration = feature_configuration,
-                    static_library = lib.static_library,
-                    pic_static_library = lib.pic_static_library,
-                    interface_library = lib.interface_library,
-                    alwayslink = True,
-                )
+            if lib.static_library or lib.pic_static_library:
+                if collect_objects:
+                    objects.extend(lib.objects)
+                if not lib.alwayslink:
+                    lib_copy = cc_common.create_library_to_link(
+                        actions = ctx.actions,
+                        cc_toolchain = cc_toolchain,
+                        feature_configuration = feature_configuration,
+                        static_library = lib.static_library,
+                        pic_static_library = lib.pic_static_library,
+                        interface_library = lib.interface_library,
+                        alwayslink = True,
+                    )
             dependency_libraries.append(lib_copy)
 
-    return dependency_libraries
+    return dependency_libraries, objects
 
 def _linker_input_filters_impl(ctx):
     pywrap_lib_exclusion_filter = {}
@@ -491,15 +545,16 @@ def _linker_input_filters_impl(ctx):
     starlark_only_filter = {}
 
     if ctx.attr.starlark_only_filter_name:
-        for pw in pywrap_infos:
-            if pw.starlark_only:
-                for li in pw.cc_info.linking_context.linker_inputs.to_list()[1:]:
-                    starlark_only_filter[li] = li.owner
+        if ctx.attr.enable_common_lib_starlark_only_filter:
+            for pw in pywrap_infos:
+                if pw.starlark_only:
+                    for li in pw.cc_info.linking_context.linker_inputs.to_list()[1:]:
+                        starlark_only_filter[li] = li.owner
 
-        for pw in pywrap_infos:
-            if not pw.starlark_only:
-                for li in pw.cc_info.linking_context.linker_inputs.to_list()[1:]:
-                    starlark_only_filter.pop(li, None)
+            for pw in pywrap_infos:
+                if not pw.starlark_only:
+                    for li in pw.cc_info.linking_context.linker_inputs.to_list()[1:]:
+                        starlark_only_filter.pop(li, None)
 
         common_lib_filters[ctx.attr.starlark_only_filter_name] = starlark_only_filter
 
@@ -551,6 +606,10 @@ _linker_input_filters = rule(
             default = {},
         ),
         "starlark_only_filter_name": attr.string(mandatory = False),
+        "enable_common_lib_starlark_only_filter": attr.bool(
+            mandatory = False,
+            default = True,
+        ),
     },
     implementation = _linker_input_filters_impl,
 )
@@ -590,6 +649,7 @@ def _generated_win_def_file_impl(ctx):
             owner = pywrap_info.owner.name,
             win_def_file = win_def_file.path,
         ),
+        mnemonic = "PywrapWinDefFile",
         outputs = [win_def_file],
     )
 
@@ -884,6 +944,7 @@ def _pywrap_binaries_impl(ctx):
                 original = original_binary_file.path,
                 final = final_binary.path,
             ),
+            mnemonic = "PywrapBinaryRename",
             outputs = [final_binary],
         )
 
@@ -1005,9 +1066,12 @@ def _get_common_lib_package_and_name(common_lib_full_name):
 
 def _construct_inverse_common_lib_filters(common_lib_filters):
     inverse_common_lib_filters = {}
+    select_type = type(select({"//conditions:default": []}))
+    list_type = type([])
+
     for common_lib_k, common_lib_v in common_lib_filters.items():
         new_common_lib_k = common_lib_v
-        if type(common_lib_v) == type([]):
+        if type(common_lib_v) == list_type or type(common_lib_v) == select_type:
             new_common_lib_k = "_%s_common_lib_filter" % common_lib_k.rsplit("/", 1)[-1]
             native.cc_library(
                 name = new_common_lib_k,
@@ -1051,3 +1115,74 @@ def _construct_linkopt_version_script(version_script):
     if not version_script:
         return []
     return ["-Wl,--version-script,$(location {})".format(version_script)]
+
+def _generated_common_win_def_file_impl(ctx):
+    win_raw_def_file_name = "%s.gen.def" % ctx.attr.name
+    if ctx.attr.filter:
+        if ctx.file.filter.extension != "json":
+            return [DefaultInfo(files = depset(direct = [ctx.file.filter]))]
+        win_raw_def_file_name = "%s.raw.gen.def" % ctx.attr.name
+    win_raw_def_file = ctx.actions.declare_file(win_raw_def_file_name)
+
+    args = ctx.actions.args()
+    args.add(win_raw_def_file)
+    args.add("")
+    obj_files_args = ctx.actions.args()
+    obj_files_args.add_all(ctx.attr.dep[ObjectFiles].objects)
+    obj_files_args.use_param_file("@%s", use_always = True)
+    obj_files_args.set_param_file_format("multiline")
+
+    ctx.actions.run(
+        inputs = ctx.attr.dep[ObjectFiles].objects,
+        tools = [ctx.executable.parser],
+        executable = ctx.executable.parser,
+        arguments = [args, obj_files_args],
+        outputs = [win_raw_def_file],
+        mnemonic = "WinDefFileParse",
+    )
+
+    win_def_file = win_raw_def_file
+    if ctx.attr.filter:
+        win_def_file_name = "%s.gen.def" % ctx.attr.name
+        win_def_file = ctx.actions.declare_file(win_def_file_name)
+
+        filter_args = ctx.actions.args()
+        filter_args.add("--def-file", win_raw_def_file)
+        filter_args.add("--def-file-filter", ctx.file.filter)
+        filter_args.add("--filtered-def-file", win_def_file)
+
+        ctx.actions.run(
+            inputs = [win_raw_def_file, ctx.file.filter],
+            tools = [ctx.executable.filter_tool],
+            executable = ctx.executable.filter_tool,
+            arguments = [filter_args],
+            outputs = [win_def_file],
+            mnemonic = "WinDefFileFilter",
+        )
+
+    return [DefaultInfo(files = depset(direct = [win_def_file]))]
+
+generated_common_win_def_file = rule(
+    attrs = {
+        "dep": attr.label(
+            providers = [ObjectFiles],
+            mandatory = True,
+        ),
+        "filter": attr.label(
+            allow_single_file = True,
+            mandatory = False,
+        ),
+        "parser": attr.label(
+            allow_single_file = True,
+            default = Label("@bazel_tools//tools/def_parser:def_parser"),
+            executable = True,
+            cfg = "host",
+        ),
+        "filter_tool": attr.label(
+            default = Label(":def_file_filter_tool"),
+            executable = True,
+            cfg = "host",
+        ),
+    },
+    implementation = _generated_common_win_def_file_impl,
+)

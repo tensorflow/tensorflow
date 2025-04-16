@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Triple.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
@@ -119,20 +120,20 @@ class CpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module);
 
   absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-  CompileAheadOfTimeLegacy(std::unique_ptr<HloModule> module,
-                           std::shared_ptr<llvm::TargetMachine> target_machine,
-                           const CpuAotCompilationOptions& aot_options,
-                           const llvm::Triple& triple,
-                           const llvm::PICLevel::Level& pic_level,
-                           const llvm::PIELevel::Level& pie_level);
+  CompileAheadOfTimeLegacy(
+      std::unique_ptr<HloModule> module,
+      IrCompiler::TargetMachineBuilder target_machine_builder,
+      const CpuAotCompilationOptions& aot_options, const llvm::Triple& triple,
+      const llvm::PICLevel::Level& pic_level,
+      const llvm::PIELevel::Level& pie_level);
 
   absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-  CompileAheadOfTimeThunks(std::unique_ptr<HloModule> module,
-                           std::shared_ptr<llvm::TargetMachine> target_machine,
-                           const CpuAotCompilationOptions& aot_options,
-                           const llvm::Triple& triple,
-                           const llvm::PICLevel::Level& pic_level,
-                           const llvm::PIELevel::Level& pie_level);
+  CompileAheadOfTimeThunks(
+      std::unique_ptr<HloModule> module,
+      IrCompiler::TargetMachineBuilder target_machine_builder,
+      const CpuAotCompilationOptions& aot_options, const llvm::Triple& triple,
+      const llvm::PICLevel::Level& pic_level,
+      const llvm::PIELevel::Level& pie_level);
 
   CpuCompiler(const CpuCompiler&) = delete;
   CpuCompiler& operator=(const CpuCompiler&) = delete;

@@ -25,6 +25,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -77,6 +78,8 @@ class LoadedExecutable final
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override;
 
   std::optional<std::vector<OpSharding>> GetParameterShardings() const override;
+  absl::StatusOr<absl::Span<const int>> GetDonatableInputIndices()
+      const override;
   std::optional<std::vector<OpSharding>> GetOutputShardings() const override;
   absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetParameterLayouts() const override;
@@ -122,6 +125,10 @@ class LoadedExecutable final
     absl::node_hash_set<std::string> memory_kinds;
     absl::StatusOr<std::vector<std::vector<absl::string_view>>>
         output_memory_kinds;
+
+    absl::StatusOr<std::vector<int>> donatable_input_indices;
+
+    std::optional<absl::flat_hash_set<int>> donatable_input_indices_set;
   };
 
   void PollLoadedHostCallback(

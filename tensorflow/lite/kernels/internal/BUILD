@@ -94,10 +94,17 @@ cc_library(
 )
 
 config_setting(
+    name = "armv7",
+    constraint_values = [
+        "@platforms//cpu:armv7",
+    ],
+)
+
+config_setting(
     name = "aarch64",
-    values = {
-        "cpu": "aarch64",
-    },
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+    ],
 )
 
 config_setting(
@@ -139,20 +146,6 @@ config_setting(
     name = "haswell",
     values = {
         "cpu": "haswell",
-    },
-)
-
-config_setting(
-    name = "ios_x86_64",
-    values = {
-        "cpu": "ios_x86_64",
-    },
-)
-
-config_setting(
-    name = "tvos_x86_64",
-    values = {
-        "cpu": "tvos_x86_64",
     },
 )
 
@@ -227,13 +220,6 @@ config_setting(
 )
 
 config_setting(
-    name = "darwin_x86_64",
-    values = {
-        "cpu": "darwin_x86_64",
-    },
-)
-
-config_setting(
     name = "darwin_arm64",
     values = {
         "cpu": "darwin_arm64",
@@ -267,37 +253,50 @@ config_setting(
 selects.config_setting_group(
     name = "x86_any",
     match_any = [
-        ":haswell",
-        ":ios_x86_64",
-        ":k8",
-        ":x86",
-        ":x86_64",
-        ":darwin",
-        ":darwin_x86_64",
-        ":freebsd",
-        ":windows",
-        ":tvos_x86_64",
+        ":x86_32_any",
+        ":x86_64_any",
     ],
 )
 
 selects.config_setting_group(
     name = "arm_any",
     match_any = [
-        ":aarch64",
-        ":arm",
-        ":arm64-v8a",
-        ":armeabi-v7a",
-        ":armhf",
-        ":armv7a",
-        ":ios_armv7",
-        ":ios_arm64",
-        ":ios_arm64e",
-        ":ios_sim_arm64",
-        ":darwin_arm64",
-        ":raspberry_pi_with_neon",
-        ":visionos_arm64",
-        ":visionos_sim_arm64",
+        ":arm32_any",
+        ":aarch64_any",
     ] + tflite_extra_arm_config_settings(),
+)
+
+selects.config_setting_group(
+    name = "arm32_any",
+    match_any = [
+        "@platforms//cpu:aarch32",
+        "@platforms//cpu:armv7",
+        "@platforms//cpu:armv7-m",
+        "@platforms//cpu:armv7e-m",
+        "@platforms//cpu:armv7e-mf",
+    ],
+)
+
+selects.config_setting_group(
+    name = "aarch64_any",
+    match_any = [
+        "@platforms//cpu:aarch64",
+        "@platforms//cpu:arm64e",
+    ],
+)
+
+config_setting(
+    name = "x86_32_any",
+    constraint_values = [
+        "@platforms//cpu:x86_32",
+    ],
+)
+
+config_setting(
+    name = "x86_64_any",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+    ],
 )
 
 cc_library(
@@ -430,44 +429,6 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "@eigen_archive//:eigen3",
         "@local_xla//xla/tsl/framework/convolution:eigen_spatial_convolutions-inl",
-    ],
-)
-
-selects.config_setting_group(
-    name = "arm32_any",
-    match_any = [
-        ":armeabi-v7a",
-        ":armhf",
-        ":armv7a",
-        ":ios_armv7",
-    ],
-)
-
-selects.config_setting_group(
-    name = "aarch64_any",
-    match_any = [
-        ":arm",
-        ":aarch64",
-        ":arm64-v8a",
-        ":darwin_arm64",
-        ":ios_arm64",
-        ":ios_arm64e",
-        ":ios_sim_arm64",
-        ":visionos_arm64",
-        ":visionos_sim_arm64",
-    ],
-)
-
-selects.config_setting_group(
-    name = "x86_64_any",
-    match_any = [
-        ":darwin_x86_64",
-        ":haswell",
-        ":ios_x86_64",
-        ":k8",
-        ":tvos_x86_64",
-        ":windows",
-        ":x86_64",
     ],
 )
 
