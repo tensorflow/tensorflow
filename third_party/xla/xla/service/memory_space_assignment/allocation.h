@@ -245,6 +245,46 @@ class PinnedAllocation final : public Allocation {
   bool operator==(const PinnedAllocation& other) const;
 };
 
+// This class represents an allocation that is used to reserve a chunk of
+// memory. If an HloPosition or an HloUse is colored in alternate memory, to
+// make sure we are able to satisfy the coloring requirements, we reserve a
+// chunk in the alternate memory before we start processing the buffers in
+// sorted order. The reserved chunk serves as a fallback in case we are not able
+// to satisfy the coloring requirements using the buffers in sorted order.
+class ReservedAllocation final : public Allocation {
+ public:
+  ReservedAllocation(HloPosition defining_position, HeapSimulator::Chunk chunk,
+                     int64_t reservation_time);
+
+  // Overridden methods
+  //
+  // Returns the original defining position.
+  HloPosition defining_position() const override;
+  int64_t earliest_available_time() const override { return start_time(); }
+  bool is_pinned_allocation() const override { return false; }
+  bool is_copy_allocation() const override { return false; }
+  bool is_sliced_copy_allocation() const override { return false; }
+  bool is_window_prefetched_allocation() const override { return false; }
+  absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
+  absl::Status PostProcess() override { return absl::OkStatus(); }
+  void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
+      const override;
+  void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
+      const override;
+  std::string ToString() const override;
+  bool operator==(const Allocation& other) const override;
+
+  // New non-virtual methods
+  bool operator==(const ReservedAllocation& other) const;
+
+  bool is_chunk_reserved_in_interval_tree() const { return reserved_; }
+  void chunk_freed_in_interval_tree() { reserved_ = false; }
+
+ private:
+  // Indicates whether the chunk is still reserved in the interval_tree_.
+  bool reserved_;
+};
+
 // This class represents an allocation as a result of an asynchronous copy.
 // Note: CopyStart instructions are inserted after
 // `copy_start_schedule_after`, while CopyDone instructions are inserted
