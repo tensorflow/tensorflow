@@ -99,6 +99,7 @@ cc_library(
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@gemmlowp",
         "@local_xla//xla/tsl/framework/fixedpoint",
     ],
 )

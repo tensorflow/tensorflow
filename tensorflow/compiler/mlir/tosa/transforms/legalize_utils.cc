@@ -582,6 +582,90 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
   }
 }
 
+Value getTosaConstHardSwish8bitTable(PatternRewriter& rewriter, Operation* op,
+                                     float input_scale, int32_t input_zp,
+                                     float output_scale, int32_t output_zp) {
+  // Define tflite params:
+  // See: HardSwishPrepare / HardSwishParams
+  const float hires_input_scale = (1.0f / 128.0f) * input_scale;
+  const float reluish_scale = 3.0f / 32768.0f;
+  const float output_multiplier = hires_input_scale / output_scale;
+
+  int16_t output_multiplier_fixedpoint_int16;
+  int output_multiplier_exponent;
+
+  int16_t reluish_multiplier_fixedpoint_int16;
+  int reluish_multiplier_exponent;
+
+  int32_t output_multiplier_fixedpoint_int32;
+  tflite::QuantizeMultiplier(output_multiplier,
+                             &output_multiplier_fixedpoint_int32,
+                             &output_multiplier_exponent);
+  tflite::DownScaleInt32ToInt16Multiplier(output_multiplier_fixedpoint_int32,
+                                          &output_multiplier_fixedpoint_int16);
+  assert(output_multiplier_exponent <= 0);
+
+  const float reluish_multiplier = hires_input_scale / reluish_scale;
+  int32_t reluish_multiplier_fixedpoint_int32;
+
+  tflite::QuantizeMultiplier(reluish_multiplier,
+                             &reluish_multiplier_fixedpoint_int32,
+                             &reluish_multiplier_exponent);
+  tflite::DownScaleInt32ToInt16Multiplier(reluish_multiplier_fixedpoint_int32,
+                                          &reluish_multiplier_fixedpoint_int16);
+
+  // See HardSwish function in
+  // tensorflow/lite/kernels/internal/reference/hardswish.h
+  SmallVector<int8_t, 256> table;
+  for (int32_t i = -128; i < 128; i++) {
+    const int16_t input_value = i - input_zp;
+    const int16_t input_value_on_hires_input_scale = input_value * (1 << 7);
+    const int16_t input_value_on_preshift_output_scale =
+        gemmlowp::SaturatingRoundingDoublingHighMul(
+            input_value_on_hires_input_scale,
+            output_multiplier_fixedpoint_int16);
+    int16_t reluish_value = input_value_on_hires_input_scale;
+    if (reluish_multiplier_exponent > 0) {
+      reluish_value = tflite::reference_ops::SaturatingLeftShift(
+          reluish_value, reluish_multiplier_exponent - 1);
+    }
+    reluish_value = gemmlowp::SaturatingRoundingDoublingHighMul(
+        reluish_value, reluish_multiplier_fixedpoint_int16);
+    if (reluish_multiplier_exponent > 0) {
+      reluish_value =
+          tflite::reference_ops::SaturatingLeftShift(reluish_value, 1);
+    }
+    if (reluish_multiplier_exponent < 0) {
+      reluish_value = gemmlowp::RoundingDivideByPOT(
+          reluish_value, -reluish_multiplier_exponent);
+    }
+    reluish_value = (reluish_value + (1 << 15)) >> 1;
+    const int16_t preshift_output_value =
+        tflite::reference_ops::SaturatingDoublingHighMul(
+            reluish_value, input_value_on_preshift_output_scale);
+    int16_t output_value = gemmlowp::RoundingDivideByPOT(
+        preshift_output_value, -output_multiplier_exponent);
+    output_value += output_zp;
+    output_value =
+        std::min<int16_t>(output_value, std::numeric_limits<int8_t>::max());
+    output_value =
+        std::max<int16_t>(output_value, std::numeric_limits<int8_t>::min());
+    table.push_back(output_value);
+  }
+
+  auto element_qtype =
+      UniformQuantizedType::get(true, rewriter.getIntegerType(8),
+                                rewriter.getF32Type(), 1.0f, 0, -128, 127);
+  auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
+  auto storage_type = tensorflow::GetTypeFromTFTensorShape(
+      {256}, element_qtype.getStorageType());
+  auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
+
+  auto const_op =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
+  return const_op.getResult();
+}
+
 Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
                                  float input_scale, int32_t input_zp,
                                  float output_scale, int32_t output_zp) {
