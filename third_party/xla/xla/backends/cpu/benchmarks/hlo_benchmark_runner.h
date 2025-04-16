@@ -57,6 +57,17 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                              StrToStrMapping replacements = {},
                              const HloBenchmarkOptions& benchmark_options = {});
 
+// Same as above, but take an HloComputation or HloModule as input instead of
+// HLO text.
+absl::Status RunHloBenchmark(benchmark::State& state,
+                             std::unique_ptr<HloComputation> hlo_computation,
+                             absl::Span<const Literal* const> args,
+                             const HloBenchmarkOptions& benchmark_options = {});
+absl::Status RunHloBenchmark(benchmark::State& state,
+                             std::unique_ptr<HloModule> hlo_module,
+                             absl::Span<const Literal* const> args,
+                             const HloBenchmarkOptions& benchmark_options = {});
+
 // Benchmarks the given HLO's compilation time.
 //
 // Takes the same options as RunHloBenchmark, except no arguments since the
