@@ -717,6 +717,8 @@ class Delegate {
     return (options_.flags & TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SLINKY) != 0;
   }
 
+  uint32_t runtime_flags() const { return options_.runtime_flags; }
+
   bool support_variable_ops() const {
     if (options_.flags & TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS) {
       return true;
@@ -1314,6 +1316,7 @@ class Subgraph {
       constexpr uint32_t XNN_FLAG_SLINKY_ENABLED = 0x40000000;
       flags |= XNN_FLAG_SLINKY_ENABLED;
     }
+    flags |= delegate.runtime_flags();
 
     if (delegate.weight_cache_provider_.IsActive() &&
         delegate.weight_cache_provider_.CanStartBuildStep()) {
