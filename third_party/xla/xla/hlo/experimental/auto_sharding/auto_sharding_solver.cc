@@ -221,8 +221,7 @@ absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
     const AutoShardingSolverParams& params,
     const std::vector<std::vector<MPVariable*>>& s,
     const std::vector<std::vector<MPVariable*>>& e,
-    const MPVariable* overbudget_var, const MPVariable* makespan_var,
-    MPSolver& solver) {
+    const MPVariable* overbudget_var, MPSolver& solver) {
   auto status = solver.Solve();
   LOG(INFO) << "Solver absl::Status: " << status;
 
@@ -324,10 +323,6 @@ absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
     unsalted_objective += *params.overbudget_coeff *
                           overbudget_var->solution_value() *
                           request.memory_budget();
-  }
-  if (makespan_var) {
-    unsalted_objective +=
-        request.makespan_coeff().coeff() * makespan_var->solution_value();
   }
 
   LOG(INFO) << "Unsalted objective value: " << unsalted_objective;
@@ -511,10 +506,8 @@ void AddMemoryTerms(
 //    the share same sharding as s_follow[i].
 // 2. If request.overbudget_coeff is present, we turn the hard memory budget
 //    constraint into a soft constraint instead.
-// 3. If request.makespan_coeff is present, the objective additionally includes
-//    a makespan term. This is experimental and turned off by default.
-// 4. request.max_departures is used only for debugging and can be ignored.
-// 5. Note that due to our modeling of XLA's AllReduceReassociate optimization
+// 3. request.max_departures is used only for debugging and can be ignored.
+// 4. Note that due to our modeling of XLA's AllReduceReassociate optimization
 //    (more details in CostGraph::CostGraph() in auto_sharding_cost_graph.cc,
 //    and in CreateElementwiseOperatorStrategies() in auto_sharding.cc), there
 //    can be a few (usually < 10) edges in the problem with negative costs. This
@@ -562,7 +555,6 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
   std::vector<std::vector<MPVariable*>> s(request.num_nodes());
   std::vector<std::vector<MPVariable*>> e(num_edges);
   MPVariable* overbudget_var = nullptr;
-  MPVariable* makespan_var = nullptr;
 
   size_t unique_nodes = 0;
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
@@ -608,10 +600,6 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
   if (request.memory_budget() > 0 && params.overbudget_coeff.has_value()) {
     overbudget_var =
         solver->MakeNumVar(0.0, MPSolver::infinity(), "overbudget");
-  }
-
-  if (request.has_makespan_coeff()) {
-    makespan_var = CreateMakespanVar(request, e, *solver);
   }
 
   // Construct objective function.
@@ -903,8 +891,8 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
   if (params.max_departures.has_value()) {
     VLOG(0) << "Max departures: " << *params.max_departures;
   }
-  auto result = SolveAndExtractSolution(request, params, s, e, overbudget_var,
-                                        makespan_var, *solver);
+  auto result =
+      SolveAndExtractSolution(request, params, s, e, overbudget_var, *solver);
   if (result.ok()) {
     const AutoShardingEvaluation evaluation =
         Evaluate(request, *result, params);
@@ -922,13 +910,9 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     LOG(INFO) << "Total Overbudget Cost: " << evaluation.total.overbudget_cost
               << " (lower bound: " << evaluation.lower_bound.overbudget_cost
               << ")";
-    LOG(INFO) << "Total Makespan Cost: " << evaluation.total.makespan_cost
-              << " (lower bound: " << evaluation.lower_bound.makespan_cost
-              << ")";
     LOG(INFO) << "Total Cost: " << evaluation.total.cost()
               << " (lower bound: " << evaluation.lower_bound.cost() << ")";
     LOG(INFO) << "Total Departures: " << evaluation.total_departures;
-    LOG(INFO) << "Total Makespan: " << evaluation.total_makespan;
     LOG(INFO) << "Total Violations: " << evaluation.violation_codes.size();
     LOG(INFO) << "Total Maximum Memory: " << evaluation.total.max_memory
               << " (lower bound: " << evaluation.lower_bound.max_memory << ")";
@@ -1107,12 +1091,12 @@ bool CostComponents::operator==(const CostComponents& other) const {
          computation_cost == other.computation_cost &&
          resharding_cost == other.resharding_cost &&
          overbudget_cost == other.overbudget_cost &&
-         makespan_cost == other.makespan_cost && max_memory == other.max_memory;
+         max_memory == other.max_memory;
 }
 
 double CostComponents::cost() const {
   return communication_cost + computation_cost + resharding_cost +
-         overbudget_cost + makespan_cost;
+         overbudget_cost;
 }
 
 bool AutoShardingEvaluation::operator==(
@@ -1240,7 +1224,6 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
     evaluation.lower_bound.resharding_cost += *std::min_element(
         r.at(edge_idx).costs().begin(), r.at(edge_idx).costs().end());
   }
-  evaluation.total_makespan = EvaluateMakespan(request, result, evaluation);
   return evaluation;
 }
 

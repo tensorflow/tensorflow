@@ -53,11 +53,6 @@ absl::StatusOr<AutoShardingSolverOutput> Solve(
       /*deterministic mode*/ true);
 }
 
-void PopulateTemporalValues(const CostGraph& cost_graph,
-                            AutoShardingSolverRequest& request) {
-  // TODO(moffitt): Implement this.
-}
-
 double GetDotConvReplicationPenalty(const HloInstruction* inst,
                                     size_t instruction_id, size_t window,
                                     const HloInstructionSequence& sequence,

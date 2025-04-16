@@ -78,7 +78,6 @@ struct CostComponents {
   double computation_cost = 0.0;
   double resharding_cost = 0.0;
   double overbudget_cost = 0.0;
-  double makespan_cost = 0.0;
   double max_memory = 0.0;
 
   double cost() const;
@@ -99,9 +98,6 @@ struct AutoShardingEvaluation {
   // How many instructions departed from the "default" sharding strategy.
   double total_departures = 0.0;
 
-  // The (raw) total makespan, i.e., not scaled by the makespan coefficient.
-  double total_makespan = 0.0;
-
   bool operator==(const AutoShardingEvaluation& other) const;
 };
 
@@ -119,16 +115,6 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
 double ComputeShardingStrategyCost(
     const AutoShardingSolverRequest& request,
     const std::vector<NodeStrategyIdx>& node_strategies);
-
-// Creates and returns a variable for makespan.
-operations_research::MPVariable* CreateMakespanVar(
-    const AutoShardingSolverRequest& request,
-    const std::vector<std::vector<operations_research::MPVariable*>>& e,
-    operations_research::MPSolver& solver);
-
-double EvaluateMakespan(const AutoShardingSolverRequest& request,
-                        const AutoShardingSolverOutput& result,
-                        AutoShardingEvaluation& evaluation);
 
 // Determines if strategy 'first' is dominated by strategy 'second' (i.e., its
 // costs are all equal or worse, and it has identical alias mappings).
