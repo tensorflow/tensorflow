@@ -9,6 +9,7 @@ cc_library(
     name = "gpu_backend",
     hdrs = ["gpu_backend.h"],
     deps = [
+        "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backend",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
