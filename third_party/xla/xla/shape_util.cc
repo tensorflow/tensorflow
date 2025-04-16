@@ -2075,10 +2075,7 @@ struct ParallelState {
 
 /* static */ Shape ShapeUtil::DeleteDimensions(
     absl::Span<int64_t const> dims_to_delete, Shape shape) {
-  std::vector<int64_t> dims_to_delete_v(dims_to_delete.begin(),
-                                        dims_to_delete.end());
-  absl::c_sort(dims_to_delete_v);
-  shape.DeleteDimensions(dims_to_delete_v);
+  shape.DeleteDimensions(dims_to_delete);
   return shape;
 }
 

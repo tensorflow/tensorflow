@@ -223,7 +223,9 @@ class Shape {
   // Precondition: this is an array shape, and the input dimension indices are
   // valid.
   void DeleteDimension(int64_t dim_to_delete);
-  void DeleteDimensions(absl::Span<const int64_t> sorted_dims_to_delete);
+  // Like the above, but deletes multiple dimensions at once. The dimensions
+  // must not contain duplicates.
+  void DeleteDimensions(absl::Span<const int64_t> dims_to_delete);
 
   // Returns the primitive type of the shape.
   PrimitiveType element_type() const { return element_type_; }

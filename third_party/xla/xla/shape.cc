@@ -228,9 +228,11 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
   }
 }
 
-void Shape::DeleteDimensions(absl::Span<const int64_t> sorted_dims_to_delete) {
+void Shape::DeleteDimensions(absl::Span<const int64_t> dims_to_delete) {
   auto& state = array_state();
-  CHECK(absl::c_is_sorted(sorted_dims_to_delete));
+  std::vector<int64_t> sorted_dims_to_delete(dims_to_delete.begin(),
+                                             dims_to_delete.end());
+  absl::c_sort(sorted_dims_to_delete);
   state.dimensions = RemoveElements(sorted_dims_to_delete, state.dimensions);
   state.dynamic_dimensions =
       RemoveElements(sorted_dims_to_delete, state.dynamic_dimensions);
