@@ -1431,7 +1431,7 @@ absl::StatusOr<bool> RewriteDynamicSort(
   sort_comp->set_root_instruction(new_root);
   if (sort->shape().IsTuple()) {
     // For sort that is already tuple, simply add another result to the tuple.
-    *sort->mutable_shape()->add_tuple_shapes() =
+    *sort->mutable_shape()->add_tuple_shape() =
         ShapeUtil::ChangeElementType(operand_shape, PRED);
   } else {
     auto sort_users = sort->users();

@@ -200,13 +200,13 @@ absl::Status VerifyBodyInputAndOutputShapeMatch(
   body_output_shape.set_element_type(xla::TUPLE);
   for (int i = 0; i < ctx->num_outputs(); i++) {
     if (!compile_time_const_arg_indices[i]) {
-      *(body_output_shape.add_tuple_shapes()) =
+      *(body_output_shape.add_tuple_shape()) =
           body.xla_output_shape.tuple_shapes(i);
     }
   }
   // If `body` has a token output, append its shape to `body_output_shape`.
   if (has_token_input_output) {
-    *(body_output_shape.add_tuple_shapes()) =
+    *(body_output_shape.add_tuple_shape()) =
         body.xla_output_shape.tuple_shapes(ctx->num_inputs());
   }
   if (!xla::ShapeUtil::Compatible(body_input_shape, body_output_shape)) {

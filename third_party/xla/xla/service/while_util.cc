@@ -138,7 +138,7 @@ WhileUtil::MakeInstructionsLiveIn(
   int elements_in_old_while_shape = while_instr->shape().tuple_shapes_size();
   Shape new_while_shape = while_instr->shape();
   for (auto* instruction : instructions) {
-    *new_while_shape.add_tuple_shapes() = instruction->shape();
+    *new_while_shape.add_tuple_shape() = instruction->shape();
   }
 
   HloComputation* new_while_condition;

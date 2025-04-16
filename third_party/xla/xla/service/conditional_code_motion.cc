@@ -902,7 +902,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
         auto new_op = hoisted_boundaries[b_to_move].operands()[i];
         auto new_root = computation->root_instruction();
         new_root->AppendOperand(new_op);
-        *new_root->mutable_shape()->add_tuple_shapes() = new_op->shape();
+        *new_root->mutable_shape()->add_tuple_shape() = new_op->shape();
         VLOG(2) << "Extending conditional root " << i << " : "
                 << new_root->ToString() << "\n";
       }

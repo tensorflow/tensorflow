@@ -177,7 +177,7 @@ absl::StatusOr<HloInstruction*> InsertTokenIntoTuple(HloInstruction* tuple,
   }
 
   // Append the token to the parameter tuple.
-  *tuple->mutable_shape()->add_tuple_shapes() = ShapeUtil::MakeTokenShape();
+  *tuple->mutable_shape()->add_tuple_shape() = ShapeUtil::MakeTokenShape();
   if (add_token_operand) {
     tuple->AppendOperand(
         computation->AddInstruction(HloInstruction::CreateToken()));

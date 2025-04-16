@@ -164,7 +164,7 @@ absl::Status HloControlFlowFlattening::FlattenWhileLoop(
     Shape* shape = instruction->mutable_shape();
     CHECK(shape->IsTuple());
     CHECK_EQ(shape->tuple_shapes().size(), new_tuple_size - 1);
-    Shape* subshape = shape->add_tuple_shapes();
+    Shape* subshape = shape->add_tuple_shape();
     return ShapeUtil::PopulateShape(S32, {}, subshape);
   };
 

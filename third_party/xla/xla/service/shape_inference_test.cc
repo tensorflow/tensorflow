@@ -3963,7 +3963,7 @@ class ScatterShapeInferenceTest
     program_shape.mutable_parameters()->reserve(types.size() * 2);
     for (PrimitiveType type : types) {
       *program_shape.add_parameters() = scalar(type);
-      *result.add_tuple_shapes() = scalar(type);
+      *result.add_tuple_shape() = scalar(type);
     }
     for (PrimitiveType type : types) {
       *program_shape.add_parameters() = scalar(type);
