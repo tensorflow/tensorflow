@@ -3146,5 +3146,88 @@ ENTRY main {
   EXPECT_EQ(ag_start->operand(0)->shape().layout().memory_space(), 1);
 }
 
+class AllReduceTest
+    : public CollectiveOpsWithFlagsBase,
+      public ::testing::WithParamInterface<std::tuple<bool, bool>> {
+ public:
+  AllReduceTest()
+      : CollectiveOpsWithFlagsBase(std::get<0>(GetParam()),
+                                   /*enable_p2p_memcpy=*/false) {}
+
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
+
+    opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(
+        std::get<1>(GetParam()));
+
+    return opts;
+  }
+};
+
+TEST_P(AllReduceTest, AsyncAllReduce) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY test_computation {
+    param_0 = f32[65536] parameter(0)
+    ROOT all-reduce = f32[65536] all-reduce(param_0), to_apply=apply_op, replica_groups={{0,1}}
+  }
+  )";
+
+  const int64_t kNumReplicas = 2;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  int64_t num_elements =
+      module->entry_computation()->root_instruction()->shape().dimensions()[0];
+
+  Array<float> input1({num_elements}), input2({num_elements});
+  input1.FillRandom(1.0f, 10.0f, /*seed=*/0);
+  input2.FillRandom(1.0f, 10.0f, /*seed=*/1);
+  Array<float> expected_output({num_elements});
+  expected_output.Each([&](absl::Span<const int64_t> indices, float* val) {
+    *val = input1(indices) + input2(indices);
+  });
+
+  Literal input_literal1 = LiteralUtil::CreateFromArray(input1);
+  Literal input_literal2 = LiteralUtil::CreateFromArray(input2);
+  Literal expected_output_literal =
+      LiteralUtil::CreateFromArray(expected_output);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module),
+                                     {{&input_literal1}, {&input_literal2}},
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[1]));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AllReduceTest, AllReduceTest,
+    ::testing::Combine(::testing::Bool(), ::testing::Bool()),
+    [](const ::testing::TestParamInfo<std::tuple<bool, bool>>& info) {
+      return absl::StrCat(GetAsyncTestName(std::get<0>(info.param)), "_",
+                          std::get<1>(info.param) ? "one_shot" : "nccl");
+    });
+
 }  // namespace
 }  // namespace xla

@@ -56,9 +56,9 @@ absl::Status LaunchTypedKernel(
 }
 }  // namespace
 
-bool IsAllReduceKernelSupported(int64_t num_outputs,
+bool IsAllReduceKernelSupported(int64_t num_inputs,
                                 PrimitiveType element_type) {
-  return num_outputs <= stream_executor::gpu::kMaxNumAllReduceInputPtrs &&
+  return num_inputs <= stream_executor::gpu::kMaxNumAllReduceInputPtrs &&
          element_type == F32;
 }
 
