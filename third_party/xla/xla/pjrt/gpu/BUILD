@@ -66,8 +66,11 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/client:client_library",
         "//xla/client:local_client",
+        "//xla/core/collectives",
+        "//xla/core/collectives:collectives_registry",
         "//xla/hlo/builder:xla_computation",
         "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:event_pool",
@@ -143,7 +146,6 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:traceme",
     ] + if_cuda_or_rocm([
         # keep sorted
-        ":nccl_id_store",
         "//xla:debug_options_flags",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_constants",
@@ -232,30 +234,6 @@ xla_test(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
-    name = "nccl_id_store",
-    srcs = ["nccl_id_store.cc"],
-    hdrs = ["nccl_id_store.h"],
-    deps = [
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla/backends/gpu/collectives:gpu_clique_key",
-        "//xla/backends/gpu/collectives:gpu_collectives",
-        "//xla/core/collectives:clique_id",
-        "//xla/core/collectives:clique_key",
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/service:global_device_id",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
