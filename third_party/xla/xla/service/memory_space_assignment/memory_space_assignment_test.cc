@@ -12010,7 +12010,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
           return false;
         }
         if (slice->slice_starts().size() !=
-            copy_operand->shape().dimensions_size()) {
+            copy_operand->shape().dimensions().size()) {
           *listener
               << " has slice (" << slice->name() << "), with "
               << slice->slice_starts().size()
