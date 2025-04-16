@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/delegate.h"
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
+#include <thread>
 #include <vector>
 
 #include <gmock/gmock.h>
