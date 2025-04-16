@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/service/executable.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
@@ -55,7 +56,12 @@ class NanoRtExecutable {
 
   class ExecuteOptions {
    public:
-    ExecuteOptions() : intra_op_thread_pool_(nullptr), task_runner_(nullptr) {}
+    ExecuteOptions()
+        : intra_op_thread_pool_(nullptr),
+          task_runner_(nullptr),
+          device_ordinal_(0),
+          launch_id_(0),
+          ffi_context_(nullptr) {}
     // Sets the thread pool device on which to run Eigen subcomputations.
     //
     // This field must be set for XLA:CPU models that call Eigen routines, but
@@ -67,12 +73,31 @@ class NanoRtExecutable {
     ExecuteOptions& set_intra_op_thread_pool(
         const Eigen::ThreadPoolDevice* intra_op_thread_pool);
 
+    ExecuteOptions& set_ffi_context(const ffi::ExecutionContext* ffi_context);
+    ExecuteOptions& set_collectives(CpuCollectives* collectives);
+
+    ExecuteOptions& set_launch_id(int32_t launch_id);
+
+    ExecuteOptions& set_device_ordinal(int32_t device_ordinal);
+
     const Eigen::ThreadPoolDevice* intra_op_thread_pool() const;
     ThreadPoolTaskRunner* task_runner() const;
+
+    int32_t device_ordinal() const { return device_ordinal_; }
+    int32_t launch_id() const { return launch_id_; }
+    const ffi::ExecutionContext* ffi_context() const { return ffi_context_; }
 
    private:
     const Eigen::ThreadPoolDevice* intra_op_thread_pool_;
     std::unique_ptr<ThreadPoolTaskRunner> task_runner_;
+
+    // If non-zero, identifies this execution as part of a potentially
+    // multi-device launch. This can be used to detect scheduling errors, e.g.
+    // if multi-host programs are launched in different orders on different
+    // hosts, the launch IDs may be used by the runtime to detect the mismatch.
+    int32_t device_ordinal_;
+    int32_t launch_id_;
+    const ffi::ExecutionContext* ffi_context_;
   };
 
   // A non-owning read-only view into the XLA executable's argument buffer.
