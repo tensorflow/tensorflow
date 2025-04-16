@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -68,7 +69,6 @@ AllReduceThunk::AllReduceThunk(Info info, ReductionKind reduction_kind,
 
 tsl::AsyncValueRef<AllReduceThunk::ExecuteEvent> AllReduceThunk::Execute(
     const ExecuteParams& params) {
-
   TF_ASSIGN_OR_RETURN(OpDeviceMemory data, GetOpDeviceMemory(params));
 
   VLOG(3) << absl::StreamFormat(
@@ -101,18 +101,29 @@ tsl::AsyncValueRef<AllReduceThunk::ExecuteEvent> AllReduceThunk::Execute(
 
   return ExecuteWithCommunicator(
       params.collective_params,
-      [&](const RendezvousKey& key, Communicator& comm) {
+      [&, data = std::move(data)](const RendezvousKey& key, Communicator& comm)
+          -> tsl::AsyncValueRef<Communicator::Event> {
+        tsl::CountDownAsyncValueRef<Communicator::Event> state(
+            data.source.size());
+
         CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
         for (int32_t i = 0; i < data.source.size(); ++i) {
           const Shape& shape = destination_shape(i);
-          TF_RETURN_IF_ERROR(comm.AllReduce(
-              data.source[i], data.destination[i], shape.element_type(),
-              ShapeUtil::ElementsIn(shape), reduction_kind_, executor));
-        }
-        return absl::OkStatus();
-      });
 
-  return OkExecuteEvent();
+          auto communicator_event = comm.AllReduce(
+              data.source[i], data.destination[i], shape.element_type(),
+              ShapeUtil::ElementsIn(shape), reduction_kind_, executor);
+
+          communicator_event.AndThen([state, communicator_event]() mutable {
+            if (ABSL_PREDICT_FALSE(communicator_event.IsError())) {
+              state.CountDown(communicator_event.GetError());
+            } else {
+              state.CountDown();
+            }
+          });
+        }
+        return state.AsRef();
+      });
 }
 
 }  // namespace xla::cpu

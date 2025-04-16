@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -409,9 +410,14 @@ absl::Status RunCollectivePermute(
       const auto src_addr = src_addrs.at(idx);
       const auto dest_addr = dest_addrs.at(idx);
       const auto buffer = buffers.at(idx);
-      TF_RETURN_IF_ERROR(comm->CollectivePermute(
+      auto event = comm->CollectivePermute(
           src_addr, dest_addr, buffer.element_type, buffer.element_count,
-          source_rank, target_ranks, GpuCollectives::On(stream)));
+          source_rank, target_ranks, GpuCollectives::On(stream));
+
+      tsl::BlockUntilReady(event);
+      if (event.IsError()) {
+        return event.GetError();
+      }
     }
 
     if (is_nccl_group_needed) {
