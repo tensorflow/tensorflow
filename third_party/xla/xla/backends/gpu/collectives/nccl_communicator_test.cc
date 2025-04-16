@@ -27,9 +27,11 @@ limitations under the License.
 #include "absl/utility/utility.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 
@@ -112,6 +114,15 @@ TEST(NcclCommunicator, OperationsFailAfterAbort) {
                             HasSubstr("aborted")));
   };
 
+  auto assert_event_aborted =
+      [](tsl::AsyncValueRef<Communicator::Event> event) {
+        tsl::BlockUntilReady(event);
+        ASSERT_TRUE(event.IsError());
+        ASSERT_THAT(event.GetError(),
+                    StatusIs(absl::StatusCode::kFailedPrecondition,
+                             HasSubstr("aborted")));
+      };
+
   // Declare placeholder variables to make the operations below compile.
   se::DeviceMemoryBase buf;
   PrimitiveType dtype = PrimitiveType::U64;
@@ -130,15 +141,17 @@ TEST(NcclCommunicator, OperationsFailAfterAbort) {
   assert_aborted(comm->HealthCheck());
   assert_aborted(comm->NumRanks().status());
   assert_aborted(comm->RegisterBuffer(buf).status());
-  assert_aborted(comm->AllReduce(buf, buf, dtype, count, rk, executor));
-  assert_aborted(comm->Broadcast(buf, buf, dtype, count, RankId(0), executor));
-  assert_aborted(comm->ReduceScatter(buf, buf, dtype, count, rk, executor));
-  assert_aborted(comm->AllGather(buf, buf, dtype, count, executor));
-  assert_aborted(comm->AllToAll({}, {}, dtype, count, executor));
-  assert_aborted(
+  assert_event_aborted(comm->AllReduce(buf, buf, dtype, count, rk, executor));
+  assert_event_aborted(
+      comm->Broadcast(buf, buf, dtype, count, RankId(0), executor));
+  assert_event_aborted(
+      comm->ReduceScatter(buf, buf, dtype, count, rk, executor));
+  assert_event_aborted(comm->AllGather(buf, buf, dtype, count, executor));
+  assert_event_aborted(comm->AllToAll({}, {}, dtype, count, executor));
+  assert_event_aborted(
       comm->CollectivePermute(buf, buf, dtype, count, {}, {}, executor));
-  assert_aborted(comm->Send(buf, dtype, count, RankId(0), executor));
-  assert_aborted(comm->Recv(buf, dtype, count, RankId(0), executor));
+  assert_event_aborted(comm->Send(buf, dtype, count, RankId(0), executor));
+  assert_event_aborted(comm->Recv(buf, dtype, count, RankId(0), executor));
 }
 
 }  // namespace

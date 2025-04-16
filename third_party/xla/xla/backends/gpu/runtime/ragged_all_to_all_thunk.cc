@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -120,13 +121,23 @@ absl::Status RunAllToAllOnIndexBuffer(
         collectives->Slice(destination_buffer, element_type, offset,
                            /*count=*/num_updates_per_replica);
 
-    TF_RETURN_IF_ERROR(comm->Send(send_slice, element_type,
-                                  /*count=*/num_updates_per_replica,
-                                  RankId(peer), GpuCollectives::On(stream)));
+    auto event_send = comm->Send(send_slice, element_type,
+                                 /*count=*/num_updates_per_replica,
+                                 RankId(peer), GpuCollectives::On(stream));
 
-    TF_RETURN_IF_ERROR(comm->Recv(recv_slice, element_type,
-                                  /*count=*/num_updates_per_replica,
-                                  RankId(peer), GpuCollectives::On(stream)));
+    tsl::BlockUntilReady(event_send);
+    if (event_send.IsError()) {
+      return event_send.GetError();
+    }
+
+    auto event_recv = comm->Recv(recv_slice, element_type,
+                                 /*count=*/num_updates_per_replica,
+                                 RankId(peer), GpuCollectives::On(stream));
+
+    tsl::BlockUntilReady(event_recv);
+    if (event_recv.IsError()) {
+      return event_recv.GetError();
+    }
   }
 
   TF_RETURN_IF_ERROR(collectives->GroupEnd());
@@ -191,13 +202,23 @@ absl::Status RunRaggedAllToAll(
                              output_offsets[idx] * ragged_row_element_size,
                              recv_sizes[idx] * ragged_row_element_size);
 
-      TF_RETURN_IF_ERROR(comm->Send(send_slice, element_type,
-                                    send_sizes[idx] * ragged_row_element_size,
-                                    RankId(peer), GpuCollectives::On(stream)));
+      auto event_send = comm->Send(send_slice, element_type,
+                                   send_sizes[idx] * ragged_row_element_size,
+                                   RankId(peer), GpuCollectives::On(stream));
 
-      TF_RETURN_IF_ERROR(comm->Recv(recv_slice, element_type,
-                                    recv_sizes[idx] * ragged_row_element_size,
-                                    RankId(peer), GpuCollectives::On(stream)));
+      tsl::BlockUntilReady(event_send);
+      if (event_send.IsError()) {
+        return event_send.GetError();
+      }
+
+      auto event_recv = comm->Recv(recv_slice, element_type,
+                                   recv_sizes[idx] * ragged_row_element_size,
+                                   RankId(peer), GpuCollectives::On(stream));
+
+      tsl::BlockUntilReady(event_recv);
+      if (event_recv.IsError()) {
+        return event_recv.GetError();
+      }
     }
   }
 
