@@ -8256,6 +8256,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   if (arg->opcode() == HloOpcode::kBroadcast &&
       Match(reduce->to_apply()->root_instruction(),
             m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+    TF_RET_CHECK(
+        std::is_sorted(arg->dimensions().begin(), arg->dimensions().end()))
+        << "Broadcasts need to be canonicalized before algebraic "
+           "simplification.";
     bool only_reduce_dims_from_broadcast = true;
     int64_t common_dims_prod = 1;
     int64_t num_common_dims = 0;
