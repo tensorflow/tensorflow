@@ -283,7 +283,8 @@ def PrepareTFPass : Pass<"tfl-prepare-tf", "mlir::func::FuncOp"> {
   let dependentDialects = ["TFL::TensorFlowLiteDialect",
     "mlir::quant::QuantDialect",
     "mlir::quantfork::QuantizationForkDialect",
-    "mhlo::MhloDialect"
+    "mhlo::MhloDialect",
+    "stablehlo::StablehloDialect"
   ];
   let options = [
       Option<"unfold_batch_matmul_", "unfold_batchmatmul",
