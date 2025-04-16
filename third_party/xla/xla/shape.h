@@ -301,7 +301,8 @@ class Shape {
 
   // Returns the number of top-level tuple components in this shape.
   // Precondition: this is a tuple shape.
-  int tuple_shapes_size() const { return tuple_state().tuple_shapes.size(); }
+  ABSL_DEPRECATE_AND_INLINE()
+  inline int tuple_shapes_size() const { return tuple_shapes().size(); }
 
   // Returns the shape of the i-th tuple component.
   // Precondition: this is a tuple shape and `index` is a valid tuple component
