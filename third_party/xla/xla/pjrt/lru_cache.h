@@ -87,6 +87,8 @@ class LRUCache {
   Value GetOrCreateIfAbsent(const Key& key,
                             const std::function<Value(const Key&)>& factory);
 
+  std::optional<Value> Get(const Key& key);
+
   void Remove(const Key& key);
 
   // Removes all entries from the cache.
@@ -110,6 +112,8 @@ class LRUCache {
     LRUCache* container;
     std::optional<Value> value;
   };
+
+  void Rearrange(Entry& entry);
 
   // We use `unordered_map` because (a) we want to guarantee pointer stability
   // for keys and values, and (b) we need exception safety so we can't use
@@ -152,6 +156,45 @@ void LRUCache<Key, Value, Hash, Eq>::Remove(const Key& key) {
 }
 
 template <typename Key, typename Value, typename Hash, typename Eq>
+std::optional<Value> LRUCache<Key, Value, Hash, Eq>::Get(const Key& key) {
+  auto it = entries_.find(key);
+  if (it == entries_.end()) {
+    return std::nullopt;
+  }
+  Entry& entry = it->second;
+  // Removes the entry from the LRU list, in preparation for adding it
+  // to the back of the list.
+  entry.prev->next = entry.next;
+  entry.next->prev = entry.prev;
+  Rearrange(entry);
+  return entry.value;
+}
+
+template <typename Key, typename Value, typename Hash, typename Eq>
+void LRUCache<Key, Value, Hash, Eq>::Rearrange(Entry& entry) {
+  // (Re-)adds entry to the back of the LRU list. Since it is now the
+  // most recently used element, it goes at the back.
+  LRUListEntry& lru_head = lru_list_->head_;
+  entry.container = this;
+  entry.prev = lru_head.prev;
+  entry.next = &lru_head;
+  lru_head.prev->next = &entry;
+  lru_head.prev = &entry;
+
+  // Evict an LRU entry if we are over capacity.
+  if (lru_list_->size_ > lru_list_->capacity_) {
+    Entry* to_remove = static_cast<Entry*>(lru_head.next);
+    to_remove->next->prev = &lru_head;
+    lru_head.next = to_remove->next;
+    // Extract instead of erase in case the kv pair contains python objects
+    // whose destruction could call back into this code. Extract causes the
+    // dtor to be delayed until the kv pair is fully removed from the map.
+    to_remove->container->entries_.extract(*to_remove->key);
+    --lru_list_->size_;
+  }
+}
+
+template <typename Key, typename Value, typename Hash, typename Eq>
 Value LRUCache<Key, Value, Hash, Eq>::GetOrCreateIfAbsent(
     const Key& key, const std::function<Value(const Key&)>& factory) {
   auto [it, inserted] = entries_.try_emplace(key);
@@ -166,28 +209,8 @@ Value LRUCache<Key, Value, Hash, Eq>::GetOrCreateIfAbsent(
     entry.prev->next = entry.next;
     entry.next->prev = entry.prev;
   }
-  // (Re-)adds entry to the back of the LRU list. Since it is now the
-  // most recently used element, it goes at the back.
-  LRUListEntry& lru_head = lru_list_->head_;
-  entry.container = this;
-  entry.prev = lru_head.prev;
-  entry.next = &lru_head;
-  lru_head.prev->next = &entry;
-  lru_head.prev = &entry;
-
+  Rearrange(entry);
   Value v = *entry.value;
-
-  // Evict an LRU entry if we are over capacity.
-  if (lru_list_->size_ > lru_list_->capacity_) {
-    Entry* to_remove = static_cast<Entry*>(lru_head.next);
-    to_remove->next->prev = &lru_head;
-    lru_head.next = to_remove->next;
-    // Extract instead of erase in case the kv pair contains python objects
-    // whose destruction could call back into this code. Extract causes the
-    // dtor to be delayed until the kv pair is fully removed from the map.
-    to_remove->container->entries_.extract(*to_remove->key);
-    --lru_list_->size_;
-  }
   return v;
 }
 
