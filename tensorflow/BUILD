@@ -1080,6 +1080,7 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf_version_bzl",
+        "//devtools/build_cleaner/skylark:build_defs_lib",
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
