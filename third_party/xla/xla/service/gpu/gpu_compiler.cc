@@ -1847,17 +1847,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   TF_RETURN_IF_ERROR(
       RunPreSchedulingCopyInsertion(*module, device_description));
 
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &device_description.gpu_compute_capability());
-  if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
-    // This needs to run after every pass affecting fusions, which includes
-    // `CopyFusion`, which runs just before.
-    TF_RETURN_IF_ERROR(
-        FusionDispatchPipeline(device_description, ShapeSizeBytesFunction())
-            .Run(module.get())
-            .status());
-  }
-
   uint64_t end_usecs = tsl::Env::Default()->NowMicros();
 
   // This won't record values for calls that error out (because if they error
@@ -2755,6 +2744,15 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloPassPipeline& pipeline =
         main_pipeline.AddPass<HloPassPipeline>("fusion-wrapper");
     pipeline.AddPass<FusionWrapper>(gpu_device_info);
+  }
+
+  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
+      &gpu_device_info.gpu_compute_capability());
+  if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
+    // This needs to run after every pass affecting fusions. The last passes
+    // that create new fusions are FusionWrapper and StreamAttributeAnnotator.
+    main_pipeline.AddPass<HloPassPipeline>(
+        FusionDispatchPipeline(gpu_device_info, ShapeSizeBytesFunction()));
   }
 
   // Pipeline with passes which wrap a scheduled module into command buffers.

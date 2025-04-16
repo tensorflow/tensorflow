@@ -106,6 +106,24 @@ class GpuCompilerTest : public HloTestBase {
     return tensorflow::down_cast<GpuCompiler*>(compiler)
         ->RunPostSchedulingPipelines(module, 4 * 1024 * 1024, gpu_device_info);
   }
+
+  // Like GetOptimizedModule, but also runs the backend. This is important for
+  // tests that need to verify behavior of passes that run in RunBackend. The
+  // former function will only run the passes in RunHloPasses.
+  // This returns the module and the executable because the latter owns the
+  // former.
+  absl::StatusOr<std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>>
+  GetOptimizedModuleForExecutable(absl::string_view hlo,
+                                  const HloModuleConfig& config) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                        ParseAndReturnVerifiedModule(hlo, config));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<OpaqueExecutable> executable,
+        CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+    TF_ASSIGN_OR_RETURN(const HloModule* optimized_module,
+                        test_runner().HloModuleFromWrapped(executable.get()));
+    return {{optimized_module, std::move(executable)}};
+  }
 };
 
 // TODO(b/399912696): Fix and enable this test.
@@ -1184,10 +1202,10 @@ ENTRY main {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> module,
-      ParseAndReturnVerifiedModule(transpose_fusion_module));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(module)));
+      auto module_and_executable,
+      GetOptimizedModuleForExecutable(transpose_fusion_module,
+                                      GetModuleConfigForTest()));
+  const HloModule* optimized_module = module_and_executable.first;
 
   if (cc.IsAtLeastAmpere()) {
     EXPECT_TRUE(HasBlockLevelFusionConfig(
@@ -1223,12 +1241,11 @@ ENTRY main {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> rewritable_transpose_module,
-      ParseAndReturnVerifiedModule(rewritable_transpose_string));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> rewritable_transpose_optimized_module,
-      GetOptimizedModule(std::move(rewritable_transpose_module)));
+      auto rewritable_transpose_module_and_executable,
+      GetOptimizedModuleForExecutable(rewritable_transpose_string,
+                                      GetModuleConfigForTest()));
+  const HloModule* rewritable_transpose_optimized_module =
+      rewritable_transpose_module_and_executable.first;
   EXPECT_TRUE(HasBlockLevelFusionConfig(
       rewritable_transpose_optimized_module->entry_computation()
           ->root_instruction()));
@@ -1247,8 +1264,11 @@ ENTRY main {
       ParseAndReturnVerifiedModule(unrewritable_transpose_string));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> unrewritable_transpose_optimized_module,
-      GetOptimizedModule(std::move(unrewritable_transpose_module)));
+      auto unrewritable_transpose_module_and_executable,
+      GetOptimizedModuleForExecutable(unrewritable_transpose_string,
+                                      GetModuleConfigForTest()));
+  const HloModule* unrewritable_transpose_optimized_module =
+      unrewritable_transpose_module_and_executable.first;
   EXPECT_FALSE(HasBlockLevelFusionConfig(
       unrewritable_transpose_optimized_module->entry_computation()
           ->root_instruction()));
@@ -1476,7 +1496,7 @@ class PassOrderTest : public GpuCompilerTest {
     int other_pass_first_run = std::numeric_limits<int>::max();
     int run_index = 0;
     for (const HloPassMetadata& pass_metadata :
-         optimized_module_->metadata()->proto().pass_metadata()) {
+         optimized_module_->metadata().proto().pass_metadata()) {
       if (RE2::FullMatch(pass_metadata.pass_name(), first_pass_regex)) {
         VLOG(2) << "Pass " << pass_metadata.pass_name()
                 << " matches first_pass_regex." << std::endl;
@@ -1517,7 +1537,7 @@ class PassOrderTest : public GpuCompilerTest {
     int last_pass_earliest_run = std::numeric_limits<int>::max();
     int run_index = 0;
     for (const HloPassMetadata& pass_metadata :
-         optimized_module_->metadata()->proto().pass_metadata()) {
+         optimized_module_->metadata().proto().pass_metadata()) {
       std::string name = pass_metadata.pass_name();
       if (include_pipeline_name) {
         name = absl::StrCat(pass_metadata.pipeline_name(), ".",
@@ -1549,9 +1569,10 @@ class PassOrderTest : public GpuCompilerTest {
   // `pass_range.first_pass_run_index` and `pass_range.second_pass_run_index`.
   void VerifyNotRunInBetween(const PassRange& pass_range,
                              absl::string_view pass_regex) {
+    CHECK(optimized_module_);
     int run_index = 0;
     for (const HloPassMetadata& pass_metadata :
-         optimized_module_->metadata()->proto().pass_metadata()) {
+         optimized_module_->metadata().proto().pass_metadata()) {
       if (run_index >= pass_range.second_pass_run_index) {
         break;
       }
@@ -1564,21 +1585,22 @@ class PassOrderTest : public GpuCompilerTest {
   }
 
  protected:
-  absl::Status ScheduleModule() { return Schedule(optimized_module_.get()); }
-
+  // Compiles a dummy module with the given configuration, running all passes,
+  // including the ones in RunBackend. This is important because otherwise, we
+  // might miss some passes when verifying pass order.
   void CompileModule(const HloModuleConfig& config) {
     constexpr absl::string_view constant_module = R"(
-ENTRY main {
-  ROOT constant = f32[] constant(0)
-})";
+        ENTRY main {
+          ROOT constant = f32[] constant(0)
+        })";
     TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<VerifiedHloModule> module,
-        ParseAndReturnVerifiedModule(constant_module, config));
-    TF_ASSERT_OK_AND_ASSIGN(optimized_module_,
-                            GetOptimizedModule(std::move(module)));
+        std::tie(optimized_module_, compiled_executable_),
+        GetOptimizedModuleForExecutable(constant_module, config));
   }
 
-  std::unique_ptr<HloModule> optimized_module_;
+  // Owns the optimized_module_ below.
+  std::unique_ptr<OpaqueExecutable> compiled_executable_ = nullptr;
+  const HloModule* optimized_module_ = nullptr;
 };
 
 TEST_F(PassOrderTest, PassesAreRunInCorrectOrder) {
@@ -1620,9 +1642,10 @@ TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
       true);
   SetDebugOptions(debug_options);
 
-  VerifyPassOrder(/*first_pass_regex=*/".*fusion.*",
-                  /*last_pass_regex=*/"fusion-dispatch-pipeline.*",
-                  /*include_pipeline_name=*/true);
+  VerifyPassOrder(
+      /*first_pass_regex=*/".*(fusion|stream-attribute-annotator).*",
+      /*last_pass_regex=*/"fusion-dispatch-pipeline.*",
+      /*include_pipeline_name=*/true);
 }
 
 TEST_F(PassOrderTest,
@@ -1649,7 +1672,7 @@ TEST_F(PassOrderTest, StableSortExpanderRunsAfterDynamicPadder) {
 
 MATCHER_P(HasExpectedPasses, expected_pass_names, "") {
   std::vector<absl::string_view> run_pass_names;
-  auto metadata = arg->metadata()->proto();
+  auto metadata = arg->metadata().proto();
   run_pass_names.reserve(metadata.pass_metadata_size());
   for (auto& pass_metadata : metadata.pass_metadata()) {
     run_pass_names.push_back(pass_metadata.pass_name());
@@ -1660,7 +1683,6 @@ MATCHER_P(HasExpectedPasses, expected_pass_names, "") {
 TEST_F(PassOrderTest, ExecEffortAt0point2RunsSpecifiedPasses) {
   HloModuleConfig config = GetModuleConfigForTest();
   CompileModule(config);
-  TF_ASSERT_OK(ScheduleModule());
 
   // Make sure passes are not enabled by default.
   std::vector<std::string> kExpectedPasses = {
@@ -1675,7 +1697,6 @@ TEST_F(PassOrderTest, ExecEffortAt0point2RunsSpecifiedPasses) {
   // enabled.
   config.set_exec_time_optimization_effort(0.2);
   CompileModule(config);
-  TF_ASSERT_OK(ScheduleModule());
   EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
 }
 
@@ -1687,7 +1708,6 @@ TEST_F(PassOrderTest, LHSRunsIfProfileDataIsAvailable) {
       "latency-hiding-scheduler",
   };
   CompileModule(config);
-  TF_ASSERT_OK(ScheduleModule());
   EXPECT_THAT(optimized_module_, Not(HasExpectedPasses(kExpectedPasses)));
 
   // Make sure we turn the LHS on with we schedule with profile data.
@@ -1696,7 +1716,6 @@ TEST_F(PassOrderTest, LHSRunsIfProfileDataIsAvailable) {
   )pb";
   config.set_fdo_profile(kProfile);
   CompileModule(config);
-  TF_ASSERT_OK(ScheduleModule());
 
   EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
 }
