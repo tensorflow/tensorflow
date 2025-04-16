@@ -124,12 +124,16 @@ class RocmComputeCapability {
   }
 
   bool has_hipblaslt() const {
-    return gfx9_mi200_or_later() || gfx1200() || gfx1201();
+    return gfx9_mi200_or_later() || gfx1200() || gfx1201() || gfx_version() == "gfx950";
   }
 
   bool has_fp8_support() const {
-    return gfx9_mi300() || gfx1200() || gfx1201();
+    return has_ocp_fp8_support() || has_nanoo_fp8_support();
   }
+
+  bool has_ocp_fp8_support() const { return gfx1200() || gfx1201() || gfx_version() == "gfx950"; }
+
+  bool has_nanoo_fp8_support() const { return gfx_version() == "gfx942"; }
 
   std::string ToString() const { return gcn_arch_name(); }
 
@@ -152,6 +156,7 @@ class RocmComputeCapability {
       "gfx908",                         // MI100
       "gfx90a",                         // MI200
       "gfx942",                         // MI300
+      "gfx950",
       "gfx1030",                        // RX68xx / RX69xx
       "gfx1100", "gfx1101", "gfx1102",  // RX7900
       "gfx1200", "gfx1201",             // RX8900      
