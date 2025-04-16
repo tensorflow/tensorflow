@@ -402,7 +402,29 @@ void TritonDotFusionSearchSpace::AddOutputTilings(
   const int split = config.config.split_k;
   ConfigWithNotes new_config = config;
   for (int m = min_out_tile_.lhs_dim; m <= max_out_tile_.lhs_dim; m *= 2) {
-    for (int n = min_out_tile_.rhs_dim; n <= max_out_tile_.rhs_dim; n *= 2) {
+    int min_n = min_out_tile_.rhs_dim;
+    int max_n = max_out_tile_.rhs_dim;
+    // If there are square-ish tiles contained within the search space, it is
+    // extremely unlikely that a non-square-ish tile will perform better, since
+    // it does not optimize data reuse. The one exception to this is the
+    // edge-case where one of the dimensions is small: m >= LHS dim, or max_n >=
+    // RHS dim.
+    //
+    // Thus, as soon as there are square-ish tiles in the search space, and
+    // we're not in the edge case (i.e., m < LHS dim; the requirement on max_n
+    // is satisfied by construction as soon as [m/2, m*2] and [min_n, max_n]
+    // overlap), we can restrict the n-space to only these tiles.
+    auto overlaps = [](std::pair<int, int> a, std::pair<int, int> b) {
+      return !(a.second < b.first || b.second < a.first);
+    };
+    if (m < lhs_parallel_size_ && overlaps({m / 2, m * 2}, {min_n, max_n})) {
+      min_n = std::max(m / 2, min_n);
+      max_n = std::min(m * 2, max_n);
+      VLOG(5) << "Computing output tile: For m = " << m
+              << ", restricting n-space to [" << min_n << "," << max_n
+              << "] to have square-ish tiles.";
+    }
+    for (int n = min_n; n <= max_n; n *= 2) {
       OutputTile tile = {m, n};
       // We could make the tile size limits depend on split_k, but then we
       // need to implement the "inverse" of `GetMaxContractingSplit`.

@@ -34,6 +34,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::testing::AllOf;
 using ::testing::Eq;
 using ::testing::Field;
 using ::testing::Ge;
@@ -192,6 +193,17 @@ TEST_F(DotSearchSpaceTest, FindsGoodDataReuseOutputTiles) {
               Contains(AllOf(BlockMIs(Ge(32)), BlockNIs(Ge(32)))).Times(Ge(2)));
 }
 
+TEST_F(DotSearchSpaceTest, RestrictsOutputToSquareishTiles) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          GetDefaultDotModule(/*lhs_parallel_dim=*/1024,
+                                              /*rhs_parallel_dim=*/1024));
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(
+      search_space.GenerateConfigs(),
+      WhenFilteredBy(BlockMIs(Eq(64)), BlockNIs(AllOf(Ge(32), Le(128)))));
+}
+
 TEST_F(DotSearchSpaceTest, FindsGoodDataReuseTilesForLowOccupancyProblem) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
@@ -285,7 +297,7 @@ TEST_F(DotSearchSpaceTest, ConsidersAppropriateCtaSizeForTileSize) {
   EXPECT_THAT(search_space.GenerateConfigs(),
               AllOf(Contains(AllOf(BlockMIs(Eq(64)), BlockNIs(Eq(32)),
                                    NumWarpsIs(Eq(4)))),
-                    Contains(AllOf(BlockMIs(Eq(128)), BlockNIs(Eq(32)),
+                    Contains(AllOf(BlockMIs(Eq(64)), BlockNIs(Eq(64)),
                                    NumWarpsIs(Eq(8))))));
 }
 
