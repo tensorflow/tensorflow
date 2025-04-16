@@ -242,7 +242,7 @@ class TritonSupportTest : public TritonSupportTestBase {
                 root_instruction->shape().tuple_shapes_size());
       for (int64_t i = 0; i < output_tile_sizes.size(); ++i) {
         const auto& shape = root_instruction->shape().tuple_shapes(i);
-        if (shape.IsTuple()) {
+        if (shape.IsTuple() || shape.IsToken()) {
           continue;  // No validation for nested tuples, as there is no way to
                      // specify output tile sizes for them.
         }
@@ -2696,6 +2696,50 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::ValuesIn(AllDevicesToTest())),
     TritonSupportTestTypeAndDeviceToString);
 
+using InfeedTest = TritonSupportTestWithTypeAndDeviceParam;
+
+TEST_P(InfeedTest, Infeed) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+        ENTRY triton_computation {
+          token0 = token[] after-all()
+          ROOT infeed_op = ($0[10], token[]) infeed(token0)
+        })";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                          ParseTemplateAndGetInstruction(
+                              kHloTestTemplate, data_type, HloOpcode::kInfeed));
+  RunSupportTestMultipleOutputTiles(std::move(ti),
+                                    /*output_tile_sizes=*/{{1}, {}}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    InfeedSuite, InfeedTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    TritonSupportTestTypeAndDeviceToString);
+
+using OutfeedTest = TritonSupportTestWithTypeAndDeviceParam;
+
+TEST_P(OutfeedTest, Outfeed) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+        ENTRY triton_computation {
+          data = $0[10] parameter(0)
+          token0 = token[] after-all()
+          ROOT outfeed_op = token[] outfeed(data, token0)
+        })";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kOutfeed));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    OutfeedSuite, OutfeedTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    TritonSupportTestTypeAndDeviceToString);
+
 constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
@@ -2705,9 +2749,7 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kDynamicUpdateSlice,
     HloOpcode::kGather,
     HloOpcode::kGetTupleElement,
-    HloOpcode::kInfeed,
     HloOpcode::kMap,
-    HloOpcode::kOutfeed,
     HloOpcode::kPad,
     HloOpcode::kRaggedDot,
     HloOpcode::kRecv,
@@ -2769,6 +2811,8 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kRngGetAndUpdateState);
   ret.emplace(HloOpcode::kWhile);
   ret.emplace(HloOpcode::kFusion);
+  ret.emplace(HloOpcode::kInfeed);
+  ret.emplace(HloOpcode::kOutfeed);
   ret.insert(kUnsupportedOps.begin(), kUnsupportedOps.end());
 
   return ret;
