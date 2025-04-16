@@ -3010,13 +3010,12 @@ std::optional<Value> convertReduceOpCommon(
     bool is_quantized, int32_t input_scale_multiplier,
     int32_t input_scale_shift, int64_t input_zp,
     int32_t output_scale_multiplier, int32_t output_scale_shift,
-    int64_t output_zp, StringRef nan_mode = "") {
+    int64_t output_zp, bool keep_dims, StringRef nan_mode = "") {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   ArrayRef<int64_t> input_shape = input_type.getShape();
-  ArrayRef<int64_t> output_shape = output_type.getShape();
   auto input_rank = input_shape.size();
   Location loc = op->getLoc();
 
@@ -3083,7 +3082,29 @@ std::optional<Value> convertReduceOpCommon(
                        /*scale32=*/true);
   }
 
+  // If keep dims, no reshaping of the output is required
+  if (keep_dims) {
+    return val;
+  }
+
   // Squeeze out the reduced axes.
+  const auto squeeze_axes = [](llvm::ArrayRef<int64_t> in, llvm::ArrayRef<int64_t> axes) {
+    llvm::SmallVector<int64_t> sorted_axes{axes};
+    std::sort(sorted_axes.begin(), sorted_axes.end());
+    auto current_axis = sorted_axes.begin();
+
+    llvm::SmallVector<int64_t> out;
+    out.reserve(in.size() - axes.size());
+    for (const auto& [i, dim] : llvm::enumerate(in)) {
+      if (current_axis == sorted_axes.end() || i != *current_axis)
+        out.push_back(dim);
+      else
+        current_axis++;
+    }
+    return out;
+  };
+
+  const auto output_shape = squeeze_axes(input_shape, axes);
   auto output_shape_value =
       getTosaConstShape(rewriter, op->getLoc(),
                     tensorflow::ConvertMlirShapeToTF(output_shape));
@@ -3099,7 +3120,7 @@ std::optional<Value> convertReduceOpCommon(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
     Value input_value, ElementsAttr axes_elems, Type reduce_element_type,
     bool is_quantized, double input_scale, int64_t input_zp,
-    double output_scale, int64_t output_zp, StringRef nan_mode = "") {
+    double output_scale, int64_t output_zp, bool keep_dims, StringRef nan_mode = "") {
   const int32_t scale_width = 32;
 
   int32_t input_scale_multiplier;
@@ -3115,7 +3136,7 @@ std::optional<Value> convertReduceOpCommon(
   return convertReduceOpCommon<T>(
       rewriter, op, output_type, input_value, axes_elems, reduce_element_type,
       is_quantized, input_scale_multiplier, input_scale_shift, input_zp,
-      output_scale_multiplier, output_scale_shift, output_zp, nan_mode);
+      output_scale_multiplier, output_scale_shift, output_zp, keep_dims, nan_mode);
 }
 
 // Lowers ReduceAll to a sequence of TOSA ops.
@@ -3123,14 +3144,15 @@ std::optional<Value> convertReduceAllOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems) {
+                                        ElementsAttr axes_elems,
+                                        bool keep_dims) {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   return convertReduceOpCommon<tosa::ReduceAllOp>(
       rewriter, op, output_type, input_value, axes_elems,
-      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0);
+      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0, keep_dims);
 }
 
 // Lowers ReduceAny to a sequence of TOSA ops.
@@ -3138,14 +3160,15 @@ std::optional<Value> convertReduceAnyOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems) {
+                                        ElementsAttr axes_elems,
+                                        bool keep_dims) {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   return convertReduceOpCommon<tosa::ReduceAnyOp>(
       rewriter, op, output_type, input_value, axes_elems,
-      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0);
+      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0, keep_dims);
 }
 
 // Lowers ReduceMin to a sequence of TOSA ops.
@@ -3154,6 +3177,7 @@ std::optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
                                         RankedTensorType output_type,
                                         Value input_value,
                                         ElementsAttr axes_elems,
+                                        bool keep_dims,
                                         StringRef nan_mode) {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
@@ -3161,7 +3185,7 @@ std::optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
 
   return convertReduceOpCommon<tosa::ReduceMinOp>(
       rewriter, op, output_type, input_value, axes_elems,
-      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0, nan_mode);
+      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0, keep_dims, nan_mode);
 }
 
 // Lowers ReduceMax to a sequence of TOSA ops.
@@ -3170,6 +3194,7 @@ std::optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
                                         RankedTensorType output_type,
                                         Value input_value,
                                         ElementsAttr axes_elems,
+                                        bool keep_dims,
                                         StringRef nan_mode) {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
@@ -3177,7 +3202,7 @@ std::optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
 
   return convertReduceOpCommon<tosa::ReduceMaxOp>(
       rewriter, op, output_type, input_value, axes_elems,
-      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0, nan_mode);
+      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0, keep_dims, nan_mode);
 }
 
 // Lowers ReduceProd to a sequence of TOSA ops.
@@ -3185,7 +3210,8 @@ std::optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
                                          Operation* op,
                                          RankedTensorType output_type,
                                          Value input_value,
-                                         ElementsAttr axes_elems) {
+                                         ElementsAttr axes_elems,
+                                         bool keep_dims) {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
@@ -3203,7 +3229,7 @@ std::optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
 
   return convertReduceOpCommon<tosa::ReduceProductOp>(
       rewriter, op, output_type, input_value, axes_elems,
-      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0);
+      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0, keep_dims);
 }
 
 // Lowers ReduceSum to a sequence of TOSA ops.
@@ -3211,7 +3237,8 @@ std::optional<Value> convertReduceSumOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems) {
+                                        ElementsAttr axes_elems,
+                                        bool keep_dims) {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
@@ -3254,7 +3281,7 @@ std::optional<Value> convertReduceSumOp(PatternRewriter& rewriter,
 
   return convertReduceOpCommon<tosa::ReduceSumOp>(
       rewriter, op, output_type, input_value, axes_elems, reduce_element_type,
-      input_is_qtype, input_scale, input_zp, output_scale, output_zp);
+      input_is_qtype, input_scale, input_zp, output_scale, output_zp, keep_dims);
 }
 
 // Lowers ReduceMean to a sequence of TOSA ops.
@@ -3262,7 +3289,8 @@ std::optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
                                          Operation* op,
                                          RankedTensorType output_type,
                                          Value input_value,
-                                         ElementsAttr axes_elems) {
+                                         ElementsAttr axes_elems,
+                                         bool keep_dims) {
   // reduce_mean is lowered as followed for quantized types:
   // op1 = reduce_sum(input) with the 1.0/num_elements_on_reduced_axis
   // integrated to the rescale layer,
@@ -3355,7 +3383,7 @@ std::optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
   auto val = convertReduceOpCommon<tosa::ReduceSumOp>(
       rewriter, op, output_type, input_value, axes_elems, reduce_element_type,
       input_is_qtype, input_scale_multiplier, input_scale_shift, input_zp,
-      output_scale_multiplier, output_scale_shift, output_zp);
+      output_scale_multiplier, output_scale_shift, output_zp, keep_dims);
 
   if (!val.has_value()) return std::nullopt;
 

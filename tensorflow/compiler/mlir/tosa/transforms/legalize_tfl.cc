@@ -2612,7 +2612,7 @@ LogicalResult ConvertTFLReduceAllOp::matchAndRewrite(
     return rewriter.notifyMatchFailure(op, "fail to get reduction indices");
 
   std::optional<Value> result = convertReduceAllOp(
-      rewriter, op, output_type, tfl_all_op.getInput(), axes_elems);
+      rewriter, op, output_type, tfl_all_op.getInput(), axes_elems, tfl_all_op.getKeepDims());
 
   if (!result) return failure();
 
@@ -2634,7 +2634,7 @@ LogicalResult ConvertTFLReduceAnyOp::matchAndRewrite(
     return failure();
 
   std::optional<Value> result = convertReduceAnyOp(
-      rewriter, op, output_type, tfl_any_op.getInput(), axes_elems);
+      rewriter, op, output_type, tfl_any_op.getInput(), axes_elems, tfl_any_op.getKeepDims());
 
   if (!result) return failure();
 
@@ -2656,7 +2656,7 @@ LogicalResult ConvertTFLReduceMaxOp::matchAndRewrite(
     return failure();
 
   std::optional<Value> result = convertReduceMaxOp(
-      rewriter, op, output_type, tfl_max_op.getInput(), axes_elems);
+      rewriter, op, output_type, tfl_max_op.getInput(), axes_elems, tfl_max_op.getKeepDims());
 
   if (!result) return failure();
 
@@ -2678,7 +2678,7 @@ LogicalResult ConvertTFLReduceMinOp::matchAndRewrite(
     return failure();
 
   std::optional<Value> result = convertReduceMinOp(
-      rewriter, op, output_type, tfl_min_op.getInput(), axes_elems);
+      rewriter, op, output_type, tfl_min_op.getInput(), axes_elems, tfl_min_op.getKeepDims());
 
   if (!result) return failure();
 
@@ -2700,7 +2700,7 @@ LogicalResult ConvertTFLReduceProdOp::matchAndRewrite(
     return failure();
 
   std::optional<Value> result = convertReduceProdOp(
-      rewriter, op, output_type, tfl_prod_op.getInput(), axes_elems);
+      rewriter, op, output_type, tfl_prod_op.getInput(), axes_elems, tfl_prod_op.getKeepDims());
 
   if (!result) return failure();
 
@@ -2722,7 +2722,7 @@ LogicalResult ConvertTFLMeanOp::matchAndRewrite(
     return failure();
 
   std::optional<Value> result = convertReduceMeanOp(
-      rewriter, op, output_type, tfl_mean_op.getInput(), axes_elems);
+      rewriter, op, output_type, tfl_mean_op.getInput(), axes_elems, tfl_mean_op.getKeepDims());
 
   if (!result) return failure();
 
@@ -2744,7 +2744,7 @@ LogicalResult ConvertTFLSumOp::matchAndRewrite(
     return failure();
 
   std::optional<Value> result = convertReduceSumOp(
-      rewriter, op, output_type, tfl_sum_op.getInput(), axes_elems);
+      rewriter, op, output_type, tfl_sum_op.getInput(), axes_elems, tfl_sum_op.getKeepDims());
 
   if (!result) return failure();
 
