@@ -20,6 +20,7 @@ import numpy as np
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import config
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import nccl_ops
@@ -55,6 +56,13 @@ def _NcclBroadcast(tensors, devices):
 
 
 class NcclTestCase(test.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    num_gpus = len(config.list_physical_devices('GPU'))
+    if num_gpus < 3:
+      self.skipTest(f"Skipping test because only {num_gpus} GPU(s) are available, but 3 are required.")
+
 
   def _Test(self,
             nccl_reduce,
