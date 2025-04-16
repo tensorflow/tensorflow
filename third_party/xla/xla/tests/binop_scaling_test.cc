@@ -13,20 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include "xla/array2d.h"
 #include "xla/array4d.h"
-#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/reference_util.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class BinopScalingTest : public ClientLibraryTestBase {};
+using BinopScalingTest = ClientLibraryTestRunnerMixin<HloTestBase>;
 
 TEST_F(BinopScalingTest, MatrixPlusPseudoMatrixRowVector_32x4) {
   auto alhs = MakeLinspaceArray2D(0.0, 1.0, 32, 4);

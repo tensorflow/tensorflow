@@ -14,33 +14,37 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
+#include <ostream>
 #include <type_traits>
+#include <vector>
 
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/status_macros.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/shape_util.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class ScalarComputationsTest : public ClientLibraryTestBase {
- public:
-  ErrorSpec error_spec_{0.0001};
+constexpr ErrorSpec kErrorSpec{0.0001};
 
+class ScalarComputationsTest
+    : public ClientLibraryTestRunnerMixin<HloTestBase> {
  protected:
   // A template for building and running a binary comparison test.
   template <typename NativeT>
@@ -76,14 +80,14 @@ XLA_TEST_F(ScalarComputationsTest, ReturnScalarF32) {
   XlaBuilder builder(TestName());
   ConstantR0<float>(&builder, 2.1f);
 
-  ComputeAndCompareR0<float>(&builder, 2.1f, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 2.1f, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, NegateScalarF32) {
   XlaBuilder builder(TestName());
   Neg(ConstantR0<float>(&builder, 2.1f));
 
-  ComputeAndCompareR0<float>(&builder, -2.1f, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, -2.1f, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, NegateScalarS32) {
@@ -97,7 +101,7 @@ XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsF32) {
   XlaBuilder builder(TestName());
   Add(ConstantR0<float>(&builder, 2.1f), ConstantR0<float>(&builder, 5.5f));
 
-  ComputeAndCompareR0<float>(&builder, 7.6f, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 7.6f, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsS32) {
@@ -150,7 +154,7 @@ XLA_TEST_F(ScalarComputationsTest, SubtractTwoScalarsF32) {
   XlaBuilder builder(TestName());
   Sub(ConstantR0<float>(&builder, 2.1f), ConstantR0<float>(&builder, 5.5f));
 
-  ComputeAndCompareR0<float>(&builder, -3.4f, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, -3.4f, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, SubtractTwoScalarsS32) {
@@ -167,10 +171,7 @@ XLA_TEST_F(ScalarComputationsTest, CastS64ToF32) {
 
   int64_t value = 3LL << 35;
   Literal a_literal = LiteralUtil::CreateR0<int64_t>(value);
-  std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(a_literal).value();
-  ComputeAndCompareR0<float>(&builder, static_cast<float>(value),
-                             {a_data.get()});
+  ComputeAndCompareR0<float>(&builder, static_cast<float>(value), {&a_literal});
 }
 
 XLA_TEST_F(ScalarComputationsTest, MulThreeScalarsF32) {
@@ -178,7 +179,7 @@ XLA_TEST_F(ScalarComputationsTest, MulThreeScalarsF32) {
   Mul(Mul(ConstantR0<float>(&builder, 2.1f), ConstantR0<float>(&builder, 5.5f)),
       ConstantR0<float>(&builder, 0.5f));
 
-  ComputeAndCompareR0<float>(&builder, 5.775f, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 5.775f, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, MulThreeScalarsF64) {
@@ -240,16 +241,9 @@ XLA_TEST_F(ScalarComputationsTest, MulThreeScalarsS32) {
 
 XLA_TEST_F(ScalarComputationsTest, MulThreeScalarsF32Params) {
   XlaBuilder builder(TestName());
-  Literal a_literal = LiteralUtil::CreateR0<float>(2.1f);
-  Literal b_literal = LiteralUtil::CreateR0<float>(5.5f);
-  Literal c_literal = LiteralUtil::CreateR0<float>(0.5f);
-
-  std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(a_literal).value();
-  std::unique_ptr<GlobalData> b_data =
-      client_->TransferToServer(b_literal).value();
-  std::unique_ptr<GlobalData> c_data =
-      client_->TransferToServer(c_literal).value();
+  const Literal a_literal = LiteralUtil::CreateR0<float>(2.1f);
+  const Literal b_literal = LiteralUtil::CreateR0<float>(5.5f);
+  const Literal c_literal = LiteralUtil::CreateR0<float>(0.5f);
 
   XlaOp a = Parameter(&builder, 0, a_literal.shape(), "a");
   XlaOp b = Parameter(&builder, 1, b_literal.shape(), "b");
@@ -257,22 +251,21 @@ XLA_TEST_F(ScalarComputationsTest, MulThreeScalarsF32Params) {
   Mul(Mul(a, b), c);
 
   ComputeAndCompareR0<float>(&builder, 5.775f,
-                             {a_data.get(), b_data.get(), c_data.get()},
-                             error_spec_);
+                             {&a_literal, &b_literal, &c_literal}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, DivideTwoScalarsF32) {
   XlaBuilder builder(TestName());
   Div(ConstantR0<float>(&builder, 5.0f), ConstantR0<float>(&builder, 2.5f));
 
-  ComputeAndCompareR0<float>(&builder, 2.0f, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 2.0f, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, RemTwoScalarsF32) {
   XlaBuilder builder(TestName());
   Rem(ConstantR0<float>(&builder, 2.5f), ConstantR0<float>(&builder, 5.0f));
 
-  ComputeAndCompareR0<float>(&builder, 2.5f, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 2.5f, {}, kErrorSpec);
 }
 
 struct DivS32Params {
@@ -287,7 +280,7 @@ void PrintTo(const DivS32Params& p, std::ostream* os) {
       << p.remainder << "}";
 }
 
-class DivS32Test : public ClientLibraryTestBase,
+class DivS32Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
                    public ::testing::WithParamInterface<DivS32Params> {};
 
 XLA_TEST_P(DivS32Test, DivideTwoScalarsS32) {
@@ -319,8 +312,7 @@ XLA_TEST_P(DivS32Test, DivideTwoScalarsNonConstS32) {
       CreateR0Parameter<int32_t>(p.divisor, 1, "divisor", &builder, &divisor);
   Div(dividend, divisor);
 
-  ComputeAndCompareR0<int32_t>(&builder, p.quotient,
-                               {dividendd.get(), divisord.get()});
+  ComputeAndCompareR0<int32_t>(&builder, p.quotient, {&dividendd, &divisord});
 }
 
 XLA_TEST_P(DivS32Test, RemainderTwoScalarsNonConstDivisorS32) {
@@ -334,8 +326,7 @@ XLA_TEST_P(DivS32Test, RemainderTwoScalarsNonConstDivisorS32) {
       CreateR0Parameter<int32_t>(p.divisor, 1, "divisor", &builder, &divisor);
   Rem(dividend, divisor);
 
-  ComputeAndCompareR0<int32_t>(&builder, p.remainder,
-                               {dividendd.get(), divisord.get()});
+  ComputeAndCompareR0<int32_t>(&builder, p.remainder, {&dividendd, &divisord});
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -389,19 +380,15 @@ XLA_TEST_F(ScalarComputationsTest, DivU32s) {
   for (uint32_t divisor : vals) {
     if (divisor != 0) {
       for (uint32_t dividend : vals) {
-        auto dividend_literal = LiteralUtil::CreateR0<uint32_t>(dividend);
-        auto divisor_literal = LiteralUtil::CreateR0<uint32_t>(divisor);
-        TF_ASSERT_OK_AND_ASSIGN(auto dividend_data,
-                                client_->TransferToServer(dividend_literal));
-        TF_ASSERT_OK_AND_ASSIGN(auto divisor_data,
-                                client_->TransferToServer(divisor_literal));
-        auto actual_literal =
-            client_
-                ->ExecuteAndTransfer(div_computation,
-                                     {dividend_data.get(), divisor_data.get()},
-                                     &execution_options_)
-                .value();
-        auto expected_literal =
+        const Literal dividend_literal =
+            LiteralUtil::CreateR0<uint32_t>(dividend);
+        const Literal divisor_literal =
+            LiteralUtil::CreateR0<uint32_t>(divisor);
+        TF_ASSERT_OK_AND_ASSIGN(
+            const Literal actual_literal,
+            ExecuteAndTransfer(div_computation,
+                               {&dividend_literal, &divisor_literal}));
+        const Literal expected_literal =
             LiteralUtil::CreateR0<uint32_t>(dividend / divisor);
         EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, actual_literal));
       }
@@ -431,19 +418,15 @@ XLA_TEST_F(ScalarComputationsTest, RemU32s) {
   for (uint32_t divisor : vals) {
     if (divisor != 0) {
       for (uint32_t dividend : vals) {
-        auto dividend_literal = LiteralUtil::CreateR0<uint32_t>(dividend);
-        auto divisor_literal = LiteralUtil::CreateR0<uint32_t>(divisor);
-        TF_ASSERT_OK_AND_ASSIGN(auto dividend_data,
-                                client_->TransferToServer(dividend_literal));
-        TF_ASSERT_OK_AND_ASSIGN(auto divisor_data,
-                                client_->TransferToServer(divisor_literal));
-        auto actual_literal =
-            client_
-                ->ExecuteAndTransfer(rem_computation,
-                                     {dividend_data.get(), divisor_data.get()},
-                                     &execution_options_)
-                .value();
-        auto expected_literal =
+        const Literal dividend_literal =
+            LiteralUtil::CreateR0<uint32_t>(dividend);
+        const Literal divisor_literal =
+            LiteralUtil::CreateR0<uint32_t>(divisor);
+        TF_ASSERT_OK_AND_ASSIGN(
+            const Literal actual_literal,
+            ExecuteAndTransfer(rem_computation,
+                               {&dividend_literal, &divisor_literal}));
+        const Literal expected_literal =
             LiteralUtil::CreateR0<uint32_t>(dividend % divisor);
         EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, actual_literal));
       }
@@ -457,8 +440,7 @@ XLA_TEST_F(ScalarComputationsTest, RemainderTwoScalarsNonConstDividendS32) {
   Rem(x, ConstantR0<int32_t>(&builder, 80000));
 
   Literal literal = LiteralUtil::CreateR0<int32_t>(87919);
-  TF_ASSERT_OK_AND_ASSIGN(auto input_data, client_->TransferToServer(literal));
-  ComputeAndCompareR0<int32_t>(&builder, 7919, {input_data.get()});
+  ComputeAndCompareR0<int32_t>(&builder, 7919, {&literal});
 }
 
 XLA_TEST_F(ScalarComputationsTest, DivideTwoScalarsU32) {
@@ -577,7 +559,7 @@ XLA_TEST_F(ScalarComputationsTest, SelectScalarTrue) {
          ConstantR0<float>(&builder, 123.0f),  // The value on true.
          ConstantR0<float>(&builder, 42.0f));  // The value on false.
 
-  ComputeAndCompareR0<float>(&builder, 123.0f, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 123.0f, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, SelectScalarFalse) {
@@ -586,7 +568,7 @@ XLA_TEST_F(ScalarComputationsTest, SelectScalarFalse) {
          ConstantR0<float>(&builder, 123.0f),  // The value on true.
          ConstantR0<float>(&builder, 42.0f));  // The value on false.
 
-  ComputeAndCompareR0<float>(&builder, 42.0f, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 42.0f, {}, kErrorSpec);
 }
 
 // This test is an explicit version of what is happening in the following
@@ -716,42 +698,42 @@ XLA_TEST_F(ScalarComputationsTest, ExpScalar) {
   XlaBuilder builder(TestName());
   Exp(ConstantR0<float>(&builder, 2.0f));
 
-  ComputeAndCompareR0<float>(&builder, 7.3890562, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 7.3890562, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, LogScalar) {
   XlaBuilder builder("log");
   Log(ConstantR0<float>(&builder, 2.0f));
 
-  ComputeAndCompareR0<float>(&builder, 0.6931471, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 0.6931471, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, TanhScalar) {
   XlaBuilder builder(TestName());
   Tanh(ConstantR0<float>(&builder, 2.0f));
 
-  ComputeAndCompareR0<float>(&builder, 0.96402758, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 0.96402758, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, TanhDoubleScalar) {
   XlaBuilder builder(TestName());
   Tanh(ConstantR0<double>(&builder, 2.0));
 
-  ComputeAndCompareR0<double>(&builder, 0.96402758, {}, error_spec_);
+  ComputeAndCompareR0<double>(&builder, 0.96402758, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, PowScalar) {
   XlaBuilder builder(TestName());
   Pow(ConstantR0<float>(&builder, 2.0f), ConstantR0<float>(&builder, 3.0f));
 
-  ComputeAndCompareR0<float>(&builder, 8.0, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 8.0, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, CbrtScalar) {
   XlaBuilder builder(TestName());
   Cbrt(ConstantR0<float>(&builder, 2.0f));
 
-  ComputeAndCompare(&builder, {}, error_spec_);
+  ComputeAndCompare(&builder, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, ClampScalarHighS32) {
@@ -814,7 +796,7 @@ XLA_TEST_F(ScalarComputationsTest, ClampScalarHighF32) {
         ConstantR0<float>(&builder, 5.0f),   // The operand to be clamped.
         ConstantR0<float>(&builder, 3.0f));  // The upper bound.
 
-  ComputeAndCompareR0<float>(&builder, 3.0, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 3.0, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, ClampScalarMiddleF32) {
@@ -823,7 +805,7 @@ XLA_TEST_F(ScalarComputationsTest, ClampScalarMiddleF32) {
         ConstantR0<float>(&builder, 2.5f),   // The operand to be clamped.
         ConstantR0<float>(&builder, 3.0f));  // The upper bound.
 
-  ComputeAndCompareR0<float>(&builder, 2.5, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 2.5, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, ClampScalarLowF32) {
@@ -832,7 +814,7 @@ XLA_TEST_F(ScalarComputationsTest, ClampScalarLowF32) {
         ConstantR0<float>(&builder, -5.0f),  // The operand to be clamped.
         ConstantR0<float>(&builder, 3.0f));  // The upper bound.
 
-  ComputeAndCompareR0<float>(&builder, 2.0, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 2.0, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, MinS32Above) {
@@ -906,7 +888,7 @@ XLA_TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionF32) {
           ConstantR0<float>(&b, 4)),
       ConstantR0<float>(&b, 20));
 
-  ComputeAndCompareR0<float>(&b, 0.5, {}, error_spec_);
+  ComputeAndCompareR0<float>(&b, 0.5, {}, kErrorSpec);
 }
 
 XLA_TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionS32) {
@@ -924,7 +906,7 @@ XLA_TEST_F(ScalarComputationsTest, RoundScalar) {
   XlaBuilder builder(TestName());
   Round(ConstantR0<float>(&builder, 1.4f));
 
-  ComputeAndCompareR0<float>(&builder, 1.0f, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 1.0f, {}, kErrorSpec);
 }
 
 }  // namespace

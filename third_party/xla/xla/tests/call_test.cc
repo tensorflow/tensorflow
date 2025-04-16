@@ -16,22 +16,25 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class CallOpTest : public ClientLibraryTestBase {
+class CallOpTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
  protected:
   XlaComputation CreateR0F32IdentityComputation() {
     XlaBuilder builder("Identity");
@@ -74,7 +77,7 @@ class CallOpTest : public ClientLibraryTestBase {
   Shape r1s2f32_ = ShapeUtil::MakeShape(F32, {2});
 };
 
-XLA_TEST_F(CallOpTest, CallR0F32IdentityScalar) {
+TEST_F(CallOpTest, CallR0F32IdentityScalar) {
   XlaBuilder builder(TestName());
   XlaComputation callee = CreateR0F32IdentityComputation();
   auto constant = ConstantLiteral(&builder, LiteralUtil::CreateR0<float>(42.0));
@@ -83,7 +86,7 @@ XLA_TEST_F(CallOpTest, CallR0F32IdentityScalar) {
   ComputeAndCompareR0<float>(&builder, 42.0, {}, ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(CallOpTest, CallR1S0F32AddArray) {
+TEST_F(CallOpTest, CallR1S0F32AddArray) {
   XlaBuilder builder(TestName());
   XlaComputation callee = CreateR1S0F32AdditionComputation();
   auto x = ConstantLiteral(&builder, LiteralUtil::CreateR1<float>({}));
@@ -93,7 +96,7 @@ XLA_TEST_F(CallOpTest, CallR1S0F32AddArray) {
   ComputeAndCompareR1<float>(&builder, {}, {}, ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(CallOpTest, CallR1S2F32AddArray) {
+TEST_F(CallOpTest, CallR1S2F32AddArray) {
   XlaBuilder builder(TestName());
   XlaComputation callee = CreateR1S2F32AdditionComputation();
   auto x =
@@ -105,7 +108,7 @@ XLA_TEST_F(CallOpTest, CallR1S2F32AddArray) {
   ComputeAndCompareR1<float>(&builder, {3.0f, 5.0f}, {}, ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(CallOpTest, CallTreeTwoDeepBranchFactorThree) {
+TEST_F(CallOpTest, CallTreeTwoDeepBranchFactorThree) {
   XlaBuilder builder("inner");
   {
     auto x = Parameter(&builder, 0, r0f32_, "x");
@@ -130,13 +133,11 @@ XLA_TEST_F(CallOpTest, CallTreeTwoDeepBranchFactorThree) {
     x = Call(&builder3, outer, {x});
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<GlobalData> start,
-      client_->TransferToServer(LiteralUtil::CreateR0<float>(1.0f)));
-  ComputeAndCompareR0<float>(&builder3, 10.0f, {start.get()}, ErrorSpec(0.0f));
+  const Literal start = LiteralUtil::CreateR0<float>(1.0f);
+  ComputeAndCompareR0<float>(&builder3, 10.0f, {&start}, ErrorSpec(0.0f));
 }
 
-XLA_TEST_F(CallOpTest, CallR0F32Tuple) {
+TEST_F(CallOpTest, CallR0F32Tuple) {
   XlaBuilder builder(TestName());
   XlaComputation callee = CreateR0F32TupleComputation();
   auto elem = LiteralUtil::CreateR0<float>(42.0);

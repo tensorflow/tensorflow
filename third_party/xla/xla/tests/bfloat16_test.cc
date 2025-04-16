@@ -13,51 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cmath>
-#include <memory>
-#include <vector>
-
-#include "absl/status/statusor.h"
-#include "xla/array2d.h"
 #include "xla/array4d.h"
-#include "xla/client/local_client.h"
-#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/testlib/test.h"
-#include "xla/hlo/testlib/test_helpers.h"
-#include "xla/literal.h"
-#include "xla/reference_util.h"
-#include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/literal_util.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
-#include "xla/util.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/types.h"
 
 namespace xla {
 namespace {
 
-class Bfloat16Test : public ClientLibraryTestBase {
- protected:
-  const ErrorSpec error_spec_{0.001, 0.001};
-};
+constexpr ErrorSpec kErrorSpec{0.001, 0.001};
 
-XLA_TEST_F(Bfloat16Test, ScalarOperation) {
+using Bfloat16Test = ClientLibraryTestRunnerMixin<HloTestBase>;
+
+TEST_F(Bfloat16Test, ScalarOperation) {
   XlaBuilder builder(TestName());
   auto x = ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(2.0f));
   auto y = ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(1.0f));
   Add(x, y);
 
   ComputeAndCompareR0<bfloat16>(&builder, static_cast<bfloat16>(3.0f), {},
-                                error_spec_);
+                                kErrorSpec);
 }
 
-XLA_TEST_F(Bfloat16Test, LogOperation) {
+TEST_F(Bfloat16Test, LogOperation) {
   XlaBuilder builder(TestName());
   auto x = ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(4.0f));
   Log(x);
@@ -66,17 +49,17 @@ XLA_TEST_F(Bfloat16Test, LogOperation) {
                                 ErrorSpec(0.01, 0.01));
 }
 
-XLA_TEST_F(Bfloat16Test, NegateScalarF16) {
+TEST_F(Bfloat16Test, NegateScalarF16) {
   XlaBuilder builder(TestName());
   Neg(ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(2.1f)));
 
   ComputeAndCompareR0<bfloat16>(&builder, static_cast<bfloat16>(-2.1f), {},
-                                error_spec_);
+                                kErrorSpec);
 }
 
 // Disabled on interpreter since BatchNormExpander is not run by default on the
 // interpreter backend.
-XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
+TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
   const int kFeatureIndex = 2;
   XlaBuilder builder(TestName());
 
@@ -112,7 +95,7 @@ XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
 
 // Disabled on interpreter since BatchNormExpander is not run by default on the
 // interpreter backend.
-XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormGrad)) {
+TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormGrad)) {
   const int kFeatureIndex = 2;
   XlaBuilder builder(TestName());
 

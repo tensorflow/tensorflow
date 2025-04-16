@@ -13,24 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
+#include <cstdint>
 #include <vector>
 
-#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
+#include "xla/literal.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/types.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class SelectTest : public ClientLibraryTestBase {
- public:
-  ErrorSpec error_spec_{0.0001};
-};
+constexpr ErrorSpec kErrorSpec{0.0001};
+
+using SelectTest = ClientLibraryTestRunnerMixin<HloTestBase>;
 
 TEST_F(SelectTest, SelectScalarF32True) {
   XlaBuilder builder(TestName());
@@ -39,7 +39,7 @@ TEST_F(SelectTest, SelectScalarF32True) {
   auto on_false = ConstantR0<float>(&builder, 42.0f);
   Select(pred, on_true, on_false);
 
-  ComputeAndCompareR0<float>(&builder, 123.0f, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 123.0f, {}, kErrorSpec);
 }
 
 TEST_F(SelectTest, SelectScalarS32True) {
@@ -59,7 +59,7 @@ TEST_F(SelectTest, SelectScalarF32False) {
   auto on_false = ConstantR0<float>(&builder, 42.0f);
   Select(pred, on_true, on_false);
 
-  ComputeAndCompareR0<float>(&builder, 42.0f, {}, error_spec_);
+  ComputeAndCompareR0<float>(&builder, 42.0f, {}, kErrorSpec);
 }
 
 XLA_TEST_F(SelectTest, SelectR1S0F32WithConstantR1S0PRED) {
@@ -69,7 +69,7 @@ XLA_TEST_F(SelectTest, SelectR1S0F32WithConstantR1S0PRED) {
   auto on_false = ConstantR1<float>(&builder, {});
   Select(pred, on_true, on_false);
 
-  ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
+  ComputeAndCompareR1<float>(&builder, {}, {}, kErrorSpec);
 }
 
 TEST_F(SelectTest, SelectR1F32WithConstantR1PRED) {
@@ -82,7 +82,7 @@ TEST_F(SelectTest, SelectR1F32WithConstantR1PRED) {
   Select(pred, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {10.0f, 25.5f, 1.0f, -10.0f, -6.0f}, {},
-                             error_spec_);
+                             kErrorSpec);
 }
 
 XLA_TEST_F(SelectTest, SelectR1S0F32WithCmpR1S0S32s) {
@@ -96,7 +96,7 @@ XLA_TEST_F(SelectTest, SelectR1S0F32WithCmpR1S0S32s) {
   auto on_false = ConstantR1<float>(&builder, {});
   Select(cmp, on_true, on_false);
 
-  ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
+  ComputeAndCompareR1<float>(&builder, {}, {}, kErrorSpec);
 }
 
 TEST_F(SelectTest, SelectR1F32WithCmpR1S32s) {
@@ -113,7 +113,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1S32s) {
   Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {10.0f, 25.5f, 1.0f, -10.0f, -6.0f}, {},
-                             error_spec_);
+                             kErrorSpec);
 }
 
 TEST_F(SelectTest, SelectR1F32WithCmpR1F32s) {
@@ -129,7 +129,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32s) {
   Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {-2.5f, 25.5f, 1.0f, 10.0f, 6.0f}, {},
-                             error_spec_);
+                             kErrorSpec);
 }
 
 TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsSmall) {
@@ -138,18 +138,17 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsSmall) {
   XlaBuilder builder(TestName());
 
   XlaOp v1, v2;
-  std::unique_ptr<GlobalData> param0_data = CreateR1Parameter<float>(
+  const Literal param0_data = CreateR1Parameter<float>(
       {41.0f, 2.0f, 3.0f, 84.0f}, /*parameter_number=*/0, /*name=*/"v1",
       /*builder=*/&builder, /*data_handle=*/&v1);
-  std::unique_ptr<GlobalData> param1_data = CreateR1Parameter<float>(
+  const Literal param1_data = CreateR1Parameter<float>(
       {21.0f, 22.0f, 23.0f, 24.0f}, /*parameter_number=*/1, /*name=*/"v2",
       /*builder=*/&builder, /*data_handle=*/&v2);
 
   auto cmp = Gt(v1, v2);
   Select(cmp, v1, v2);
   ComputeAndCompareR1<float>(&builder, {41.0f, 22.0f, 23.0f, 84.0f},
-                             {param0_data.get(), param1_data.get()},
-                             error_spec_);
+                             {&param0_data, &param1_data}, kErrorSpec);
 }
 
 TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsLarge) {
@@ -182,18 +181,17 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsLarge) {
   }
 
   XlaOp v1, v2;
-  std::unique_ptr<GlobalData> param0_data =
+  const Literal param0_data =
       CreateR1Parameter<float>(v1vec, /*parameter_number=*/0, /*name=*/"v1",
                                /*builder=*/&builder, /*data_handle=*/&v1);
-  std::unique_ptr<GlobalData> param1_data =
+  const Literal param1_data =
       CreateR1Parameter<float>(v2vec, /*parameter_number=*/1, /*name=*/"v2",
                                /*builder=*/&builder, /*data_handle=*/&v2);
 
   auto cmp = Gt(v1, v2);
   Select(cmp, v1, v2);
   ComputeAndCompareR1<float>(&builder, expected_vec,
-                             {param0_data.get(), param1_data.get()},
-                             error_spec_);
+                             {&param0_data, &param1_data}, kErrorSpec);
 }
 
 TEST_F(SelectTest, SelectR1F32WithCmpR1S32ToScalar) {
@@ -210,7 +208,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1S32ToScalar) {
   Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {11.0f, -222.0f, 33.0f, -444.0f}, {},
-                             error_spec_);
+                             kErrorSpec);
 }
 
 TEST_F(SelectTest, SelectR1F32WithCmpR1F32ToScalar) {
@@ -227,7 +225,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32ToScalar) {
   Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {-111.0f, -222.0f, 33.0f, 44.0f}, {},
-                             error_spec_);
+                             kErrorSpec);
 }
 
 XLA_TEST_F(SelectTest, SelectR1S0F32WithScalarPredicate) {
@@ -238,7 +236,7 @@ XLA_TEST_F(SelectTest, SelectR1S0F32WithScalarPredicate) {
     auto on_false = ConstantR1<float>(&builder, {});
     Select(pred, on_true, on_false);
 
-    ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
+    ComputeAndCompareR1<float>(&builder, {}, {}, kErrorSpec);
   }
 }
 
@@ -249,7 +247,7 @@ TEST_F(SelectTest, SelectR1F32WithScalarPredicateTrue) {
   auto on_false = ConstantR1<float>(&builder, {10.0f, 5.0f});
   Select(pred, on_true, on_false);
 
-  ComputeAndCompareR1<float>(&builder, {-2.5f, 25.5f}, {}, error_spec_);
+  ComputeAndCompareR1<float>(&builder, {-2.5f, 25.5f}, {}, kErrorSpec);
 }
 
 TEST_F(SelectTest, SelectR1F32WithScalarPredicateFalse) {
@@ -259,7 +257,7 @@ TEST_F(SelectTest, SelectR1F32WithScalarPredicateFalse) {
   auto on_false = ConstantR1<float>(&builder, {10.0f, 5.0f});
   Select(pred, on_true, on_false);
 
-  ComputeAndCompareR1<float>(&builder, {10.0f, 5.0f}, {}, error_spec_);
+  ComputeAndCompareR1<float>(&builder, {10.0f, 5.0f}, {}, kErrorSpec);
 }
 
 TEST_F(SelectTest, SelectR1S4WithConstantR1PRED) {

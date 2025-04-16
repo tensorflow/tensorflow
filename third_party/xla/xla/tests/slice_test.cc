@@ -15,8 +15,12 @@ limitations under the License.
 
 // Tests that slice operations can be performed.
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <numeric>
-#include <vector>
+#include <string>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
@@ -24,18 +28,22 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
-#include "xla/client/local_client.h"
+#include "xla/array3d.h"
+#include "xla/array4d.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/layout_util.h"
+#include "xla/literal_util.h"
 #include "xla/reference_util.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class SliceTest : public ClientLibraryTestBase {};
+using SliceTest = ClientLibraryTestRunnerMixin<HloTestBase>;
 
 TEST_F(SliceTest, Slice3x3x3_To_3x3x1_F32) {
   Array3D<float> values(3, 3, 3);
@@ -208,7 +216,7 @@ struct R1Spec {
 
 // Parameterized test that generates R1 values, slices them according
 // to the R1Spec, and compares the result with a computed version.
-class SliceR1Test : public ClientLibraryTestBase,
+class SliceR1Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
                     public ::testing::WithParamInterface<R1Spec> {
  protected:
   template <typename NativeT>
@@ -233,9 +241,7 @@ class SliceR1Test : public ClientLibraryTestBase,
       expected.push_back(i);
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
-                            client_->TransferToServer(literal));
-    ComputeAndCompareR1<NativeT>(&builder, expected, {arg.get()});
+    ComputeAndCompareR1<NativeT>(&builder, expected, {&literal});
   }
 };
 
@@ -397,7 +403,7 @@ struct R2Spec {
 
 // Parameterized test that generates patterned R2 values, slices them according
 // to the R2Spec, and compares the results with the ReferenceUtil version.
-class SliceR2Test : public ClientLibraryTestBase,
+class SliceR2Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
                     public ::testing::WithParamInterface<R2Spec> {};
 
 XLA_TEST_P(SliceR2Test, DoIt) {
@@ -411,11 +417,9 @@ XLA_TEST_P(SliceR2Test, DoIt) {
   auto a = Parameter(&builder, 0, literal.shape(), "p0");
   Slice(a, spec.slice_starts, spec.slice_limits, spec.slice_strides);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
-                          client_->TransferToServer(literal));
   std::unique_ptr<Array2D<int32_t>> expected = ReferenceUtil::Slice2D(
       input, spec.slice_starts, spec.slice_limits, spec.slice_strides);
-  ComputeAndCompareR2<int32_t>(&builder, *expected, {arg.get()});
+  ComputeAndCompareR2<int32_t>(&builder, *expected, {&literal});
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -488,7 +492,7 @@ std::string R4SpecToString(const ::testing::TestParamInfo<R4Spec>& data) {
                       "__strides_", absl::StrJoin(spec.slice_strides, "x"));
 }
 
-class SliceR4Test : public ClientLibraryTestBase,
+class SliceR4Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
                     public ::testing::WithParamInterface<R4Spec> {
  protected:
   void Run(const R4Spec& spec) {
@@ -501,10 +505,8 @@ class SliceR4Test : public ClientLibraryTestBase,
     auto literal = LiteralUtil::CreateR4FromArray4DWithLayout(
         values, LayoutUtil::MakeLayout(spec.input_layout));
     auto parameter = Parameter(&builder, 0, literal.shape(), "p0");
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
-                            client_->TransferToServer(literal));
     Slice(parameter, spec.slice_starts, spec.slice_limits, spec.slice_strides);
-    ComputeAndCompareR4(&builder, *expected, {arg.get()}, ErrorSpec(0.000001));
+    ComputeAndCompareR4(&builder, *expected, {&literal}, ErrorSpec(0.000001));
   }
 };
 

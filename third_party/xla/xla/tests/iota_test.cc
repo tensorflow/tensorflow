@@ -25,9 +25,10 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -35,7 +36,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
-XLA_TEST_F(HloTestBase, IotaReshapeR1) {
+using IotaTest = HloTestBase;
+
+TEST_F(IotaTest, IotaReshapeR1) {
   const std::string hlo_text = R"(
   HloModule iota_reshape
   ENTRY main {
@@ -46,7 +49,7 @@ XLA_TEST_F(HloTestBase, IotaReshapeR1) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, IotaReshapeExtraDims) {
+TEST_F(IotaTest, IotaReshapeExtraDims) {
   const std::string hlo_text = R"(
   HloModule iota_reshape
   ENTRY main {
@@ -67,7 +70,7 @@ std::vector<T> GetR1Expected(const int64_t num_elements) {
 }
 
 class IotaR1Test
-    : public ClientLibraryTestBase,
+    : public ClientLibraryTestRunnerMixin<HloTestBase>,
       public ::testing::WithParamInterface<std::tuple<PrimitiveType, int>> {};
 
 XLA_TEST_P(IotaR1Test, DoIt) {
@@ -113,7 +116,7 @@ INSTANTIATE_TEST_CASE_P(
                                         /*end=*/10001,
                                         /*step=*/10)));
 
-class IotaR2Test : public ClientLibraryTestBase,
+class IotaR2Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
@@ -151,7 +154,7 @@ INSTANTIATE_TEST_CASE_P(
                                         /*step=*/10),
                        ::testing::Values(0, 1)));
 
-class IotaR3Test : public ClientLibraryTestBase,
+class IotaR3Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 

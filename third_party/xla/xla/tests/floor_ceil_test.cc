@@ -14,21 +14,20 @@ limitations under the License.
 ==============================================================================*/
 
 #include <limits>
-#include <string>
 
+#include "absl/log/log.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class FloorCeilTest : public ClientLibraryTestBase {
+class FloorCeilTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
  public:
   enum Function {
     kFloor,
@@ -63,8 +62,6 @@ class FloorCeilTest : public ClientLibraryTestBase {
     ComputeAndCompareR0<float>(&builder, expected, /*arguments=*/{});
   }
 
-  const ErrorSpec error_spec_{0.0001};
-
   float infinity_ = std::numeric_limits<float>::infinity();
   float minus_infinity_ = -std::numeric_limits<float>::infinity();
 };
@@ -74,7 +71,7 @@ class FloorCeilTest : public ClientLibraryTestBase {
 // * passing x86-based CPU's qnan to the GPU makes a different nan
 //   "7fc00000=nan=nan vs 7fffffff=nan=nan"
 
-XLA_TEST_F(FloorCeilTest, R1S0Floor) { TestR1F32({}, {}, kFloor); }
+TEST_F(FloorCeilTest, R1S0Floor) { TestR1F32({}, {}, kFloor); }
 
 TEST_F(FloorCeilTest, R1Floor) {
   TestR1F32({0.0, -0.0, infinity_, minus_infinity_, 1.1, -0.1},
