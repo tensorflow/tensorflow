@@ -404,7 +404,7 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
     EXPECT_THAT(status.message(),
                 ::testing::ContainsRegex(
                     "Kernel '.*' launch needs more blocks [(]2147483648, 1[)] "
-                    "than allowed by hardware [(]2147483647, 65535[)]"));
+                    "than allowed by hardware [(]2147483647, 65536[)]"));
   } else {
     EXPECT_THAT(status.message(),
                 ::testing::ContainsRegex(
