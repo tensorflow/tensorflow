@@ -79,7 +79,7 @@ class MixedTypeTest : public GpuCodegenTest,
   }
 };
 
-TEST_P(MixedTypeTest, DISABLED_MixedTypeDotProducesCorrectResult) {
+TEST_P(MixedTypeTest, MixedTypeDotProducesCorrectResult) {
   MixTypeParams params = GetParam();
   const std::string hlo_string_template = R"(
 HloModule m
@@ -184,7 +184,7 @@ std::string ElementwiseTestParamsToString(
 
 using UnaryElementwiseTest = ElementwiseTest;
 
-TEST_P(UnaryElementwiseTest, DISABLED_ElementwiseFusionExecutesCorrectly) {
+TEST_P(UnaryElementwiseTest, ElementwiseFusionExecutesCorrectly) {
   PrimitiveType data_type;
   HloOpcode opcode;
   float tolerance;
@@ -249,7 +249,7 @@ ENTRY e {
       /*run_hlo_passes=*/false));
 }
 
-TEST_P(UnaryElementwiseTest, DISABLED_ElementwiseUnaryOpExecutesCorrectly) {
+TEST_P(UnaryElementwiseTest, ElementwiseUnaryOpExecutesCorrectly) {
   PrimitiveType data_type;
   HloOpcode opcode;
   float tolerance;
@@ -360,7 +360,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 using BinaryElementwiseTest = ElementwiseTest;
 
-TEST_P(BinaryElementwiseTest, DISABLED_ElementwiseFusionExecutesCorrectly) {
+TEST_P(BinaryElementwiseTest, ElementwiseFusionExecutesCorrectly) {
   PrimitiveType data_type;
   HloOpcode opcode;
   float tolerance;
@@ -429,7 +429,7 @@ ENTRY e {
       /*run_hlo_passes=*/false, /*args_max_bits_of_precision=*/6));
 }
 
-TEST_P(BinaryElementwiseTest, DISABLED_ElementwiseBinaryOpExecutesCorrectly) {
+TEST_P(BinaryElementwiseTest, ElementwiseBinaryOpExecutesCorrectly) {
   PrimitiveType data_type;
   HloOpcode opcode;
   float tolerance;
@@ -551,7 +551,7 @@ std::string CompareTestParamsToString(
                       "_", ComparisonDirectionToString(direction));
 }
 
-TEST_P(CompareTest, DISABLED_CompareFusionExecutesCorrectly) {
+TEST_P(CompareTest, CompareFusionExecutesCorrectly) {
   PrimitiveType data_type;
   Comparison::Direction direction;
   std::tie(data_type, direction) = GetParam();
@@ -654,7 +654,7 @@ class SelectTest : public TritonTest,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, PrimitiveType>> {};
 
-TEST_P(SelectTest, DISABLED_SelectFusionExecutesCorrectly) {
+TEST_P(SelectTest, SelectFusionExecutesCorrectly) {
   PrimitiveType data_type1, data_type2;
   std::tie(data_type1, data_type2) = GetParam();
   for (const PrimitiveType type : {data_type1, data_type2}) {
@@ -759,7 +759,7 @@ INSTANTIATE_TEST_SUITE_P(
 class ConstantTest : public TritonTest,
                      public ::testing::WithParamInterface<PrimitiveType> {};
 
-TEST_P(ConstantTest, DISABLED_ConstantFusionExecutesCorrectly) {
+TEST_P(ConstantTest, ConstantFusionExecutesCorrectly) {
   const PrimitiveType data_type = GetParam();
   if (!legacy_triton::IsTritonSupportedDataType(data_type,
                                                 GetCudaComputeCapability())) {
@@ -861,7 +861,7 @@ class ConvertTest : public TritonTest,
                     public ::testing::WithParamInterface<
                         std::tuple<PrimitiveType, PrimitiveType>> {};
 
-TEST_P(ConvertTest, DISABLED_ConvertFusionExecutesCorrectly) {
+TEST_P(ConvertTest, ConvertFusionExecutesCorrectly) {
   PrimitiveType data_type1, data_type2;
   std::tie(data_type1, data_type2) = GetParam();
   for (const PrimitiveType type : {data_type1, data_type2}) {
@@ -918,7 +918,7 @@ class TritonNormalizationTest
   }
 };
 
-TEST_P(TritonNormalizationTest, DISABLED_CanFuseAndEmitExactSoftmax) {
+TEST_P(TritonNormalizationTest, CanFuseAndEmitExactSoftmax) {
   PrimitiveType data_type = GetParam();
 
   if (data_type == F16) {
@@ -982,7 +982,7 @@ ENTRY main {
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
 }
 
-TEST_P(TritonNormalizationTest, DISABLED_CanFuseAndEmitFirstSoftmaxDiamond) {
+TEST_P(TritonNormalizationTest, CanFuseAndEmitFirstSoftmaxDiamond) {
   PrimitiveType data_type = GetParam();
   const std::string hlo_text_template = R"(
 HloModule softmax
@@ -1037,8 +1037,7 @@ ENTRY main {
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
 }
 
-TEST_P(TritonNormalizationTest,
-       DISABLED_CanFuseAndEmitSoftmaxDiamondWithSmallRows) {
+TEST_P(TritonNormalizationTest, CanFuseAndEmitSoftmaxDiamondWithSmallRows) {
   PrimitiveType data_type = GetParam();
   constexpr absl::string_view kHloTextTemplate = R"(
 HloModule softmax
@@ -1075,8 +1074,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(/*aabs=*/0, /*arel=*/0)));
 }
 
-TEST_F(TritonNormalizationTest,
-       DISABLED_CanFuseAndEmitDiamondWithBF16Converts) {
+TEST_F(TritonNormalizationTest, CanFuseAndEmitDiamondWithBF16Converts) {
   const std::string hlo_text = R"(
 HloModule softmax
 max_computation {
@@ -1112,7 +1110,7 @@ ENTRY main {
 }
 
 TEST_P(TritonNormalizationTest,
-       DISABLED_CanFuseAndEmitDiamondWithMultipleBroadcastDimensions) {
+       CanFuseAndEmitDiamondWithMultipleBroadcastDimensions) {
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1166,7 +1164,7 @@ ENTRY main {
 }
 
 TEST_P(TritonNormalizationTest,
-       DISABLED_CanFuseAndEmitSoftmaxWithIntermediateUnaryElementwise) {
+       CanFuseAndEmitSoftmaxWithIntermediateUnaryElementwise) {
   PrimitiveType data_type = GetParam();
 
   if (data_type == F16) {
@@ -1233,7 +1231,7 @@ ENTRY main {
 
 TEST_P(
     TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitTwoDiamondsWithSecondDiamondProducerEqualToFirstDiamondRoot) {  // NOLINT(whitespace/line_length)
+    CanFuseAndEmitTwoDiamondsWithSecondDiamondProducerEqualToFirstDiamondRoot) {
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1294,7 +1292,7 @@ ENTRY main {
 }
 
 TEST_P(TritonNormalizationTest,
-       DISABLED_CanFuseAndEmitDiamondWithTrailingUnaryElementwiseAtTheRoot) {
+       CanFuseAndEmitDiamondWithTrailingUnaryElementwiseAtTheRoot) {
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1349,7 +1347,7 @@ ENTRY main {
 }
 
 TEST_P(TritonNormalizationTest,
-       DISABLED_CanFuseAndEmitDiamondWithUnaryElementwisePrefix) {
+       CanFuseAndEmitDiamondWithUnaryElementwisePrefix) {
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1403,9 +1401,8 @@ ENTRY main {
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
 }
 
-TEST_P(
-    TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitSoftmaxDiamondWithLastDimensionBitcastAfterReduce) {
+TEST_P(TritonNormalizationTest,
+       CanFuseAndEmitSoftmaxDiamondWithLastDimensionBitcastAfterReduce) {
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1461,9 +1458,8 @@ ENTRY main {
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
 }
 
-TEST_P(
-    TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitConvertInvolvingBF16InputIntoSoftmaxDiamondCorrectly) {  // NOLINT(whitespace/line_length)
+TEST_P(TritonNormalizationTest,
+       CanFuseAndEmitConvertInvolvingBF16InputIntoSoftmaxDiamondCorrectly) {
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1516,7 +1512,7 @@ ENTRY main {
 
 TEST_P(
     TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitBinaryElementwiseProducerIntoDiamondWhenBothOperandsAreTheSame) {  // NOLINT(whitespace/line_length)
+    CanFuseAndEmitBinaryElementwiseProducerIntoDiamondWhenBothOperandsAreTheSame) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1572,7 +1568,7 @@ ENTRY main {
 
 TEST_P(
     TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitIntermediateBinaryElementwiseWithinDiamondWhenBothOperandsAreTheSame) {  // NOLINT(whitespace/line_length)
+    CanFuseAndEmitIntermediateBinaryElementwiseWithinDiamondWhenBothOperandsAreTheSame) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1628,7 +1624,7 @@ ENTRY main {
 
 TEST_P(
     TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitBinaryElementwiseWhenBothOperandsAreTheSameBetweenDiamonds) {  // NOLINT(whitespace/line_length)
+    CanFuseAndEmitBinaryElementwiseWhenBothOperandsAreTheSameBetweenDiamonds) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1695,7 +1691,7 @@ ENTRY main {
 
 TEST_P(
     TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitBinaryElementwiseConsumerWhereBothOperandsAreTheSameIntoDiamond) {  // NOLINT(whitespace/line_length)
+    CanFuseAndEmitBinaryElementwiseConsumerWhereBothOperandsAreTheSameIntoDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1757,7 +1753,7 @@ ENTRY main {
 
 TEST_P(
     TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitTwoBinaryElementwiseWhereBothOperandsAreTheSameBetweenDiamonds) {  // NOLINT(whitespace/line_length)
+    CanFuseAndEmitTwoBinaryElementwiseWhereBothOperandsAreTheSameBetweenDiamonds) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1819,7 +1815,7 @@ ENTRY main {
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
 }
 
-TEST_P(TritonNormalizationTest, DISABLED_DiamondEmitterIsNumericallyStable) {
+TEST_P(TritonNormalizationTest, DiamondEmitterIsNumericallyStable) {
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1853,7 +1849,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(/*aabs=*/0, /*arel=*/0)));
 }
 
-TEST_P(TritonNormalizationTest, DISABLED_CanFuseAndEmitRMSNormDiamond) {
+TEST_P(TritonNormalizationTest, CanFuseAndEmitRMSNormDiamond) {
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1917,7 +1913,7 @@ ENTRY main.30 {
 
 TEST_P(
     TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitBinaryElementwiseWhereTheFirstOperandIsASplatConstantBetweenDiamonds) {  // NOLINT(whitespace/line_length)
+    CanFuseAndEmitBinaryElementwiseWhereTheFirstOperandIsASplatConstantBetweenDiamonds) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1980,7 +1976,7 @@ ENTRY main {
 
 TEST_P(
     TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitBinaryElementwiseWhereTheSecondOperandIsASplatConstantBetweenDiamonds) {  // NOLINT(whitespace/line_length)
+    CanFuseAndEmitBinaryElementwiseWhereTheSecondOperandIsASplatConstantBetweenDiamonds) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -2043,7 +2039,7 @@ ENTRY main {
 
 TEST_P(
     TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitBinaryElementwiseWhereTheFirstOperandIsASplatConstantWithinDiamond) {  // NOLINT(whitespace/line_length)
+    CanFuseAndEmitBinaryElementwiseWhereTheFirstOperandIsASplatConstantWithinDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -2102,7 +2098,7 @@ ENTRY main {
 
 TEST_P(
     TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitBinaryElementwiseConsumerWhereTheFirstOperandIsASplatConstantIntoDiamond) {  // NOLINT(whitespace/line_length)
+    CanFuseAndEmitBinaryElementwiseConsumerWhereTheFirstOperandIsASplatConstantIntoDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -2160,7 +2156,7 @@ ENTRY main {
 
 TEST_P(
     TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitBinaryElementwiseProducerWhereTheFirstOperandIsASplatConstantIntoDiamond) {  // NOLINT(whitespace/line_length)
+    CanFuseAndEmitBinaryElementwiseProducerWhereTheFirstOperandIsASplatConstantIntoDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -2219,7 +2215,7 @@ ENTRY main {
 
 TEST_P(
     TritonNormalizationTest,
-    DISABLED_CanFuseAndEmitBinaryElementwiseOperationWhereOneOperandIsASharedSplatProducerIntoDiamond) {  // NOLINT(whitespace/line_length)
+    CanFuseAndEmitBinaryElementwiseOperationWhereOneOperandIsASharedSplatProducerIntoDiamond) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -2265,8 +2261,7 @@ ENTRY main {
 INSTANTIATE_TEST_SUITE_P(TritonNormalizationTestSuite, TritonNormalizationTest,
                          ::testing::Values(F32, F16, BF16));
 
-TEST_F(TritonNormalizationTest,
-       DISABLED_CanFuseAndEmitTritonSoftmaxWithTwoParameters) {
+TEST_F(TritonNormalizationTest, CanFuseAndEmitTritonSoftmaxWithTwoParameters) {
   const std::string hlo_text = R"(
 HloModule layernorm
 
@@ -2306,8 +2301,7 @@ ENTRY main {
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
 }
 
-TEST_F(TritonNormalizationTest,
-       DISABLED_CanFuseAndEmitTritonSoftmaxWithNonBatchReduce) {
+TEST_F(TritonNormalizationTest, CanFuseAndEmitTritonSoftmaxWithNonBatchReduce) {
   const std::string hlo_text = R"(
 HloModule layernorm
 
@@ -2351,7 +2345,7 @@ class ReductionTypeTest : public TritonTest,
                           public ::testing::WithParamInterface<PrimitiveType> {
 };
 
-TEST_P(ReductionTypeTest, DISABLED_DifferentReductionTypes) {
+TEST_P(ReductionTypeTest, DifferentReductionTypes) {
   PrimitiveType data_type = GetParam();
 
   const std::string kHloTestTemplate = R"(

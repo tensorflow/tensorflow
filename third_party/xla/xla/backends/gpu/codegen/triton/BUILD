@@ -829,6 +829,33 @@ xla_test(
         "gpu_b200",
         "gpu_amd_any",
     ],
+    tags = ["no_mac"],
+    deps = [
+        ":support",
+        ":test_utils",
+        "//xla:comparison_util",
+        "//xla:error_spec",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
+    name = "fusion_emitter_parametrized_legacy_test",
+    srcs = if_gpu_is_configured(["fusion_emitter_parametrized_legacy_test.cc"]),
+    backends = [
+        "gpu_a100",
+        "gpu_h100",
+        "gpu_b200",
+        "gpu_amd_any",
+    ],
     shard_count = 10,
     tags = ["no_mac"],
     deps = [
