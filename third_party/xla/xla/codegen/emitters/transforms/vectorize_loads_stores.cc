@@ -101,7 +101,7 @@ int64_t GetAlignmentOfRemainder(mlir::AffineExpr expr,
 
     std::optional<int64_t> rhs_cst = std::nullopt;
     if (binop.getRHS().getKind() == mlir::AffineExprKind::Constant) {
-      rhs_cst = binop.getRHS().cast<mlir::AffineConstantExpr>().getValue();
+      rhs_cst = mlir::cast<mlir::AffineConstantExpr>(binop.getRHS()).getValue();
     }
 
     switch (binop.getKind()) {

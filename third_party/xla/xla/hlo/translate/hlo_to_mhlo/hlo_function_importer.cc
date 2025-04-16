@@ -330,7 +330,7 @@ void HloFunctionImporter::ReplaceBlockArgumentsWithImplicitOperands(
 }
 
 static bool IsNestedTupleInData(Type type) {
-  auto tuple_type = type.dyn_cast<mlir::TupleType>();
+  auto tuple_type = mlir::dyn_cast<mlir::TupleType>(type);
   if (!tuple_type) return false;
 
   assert((llvm::isa<mlir::mhlo::TokenType>(tuple_type.getType(1)) ||
@@ -338,11 +338,11 @@ static bool IsNestedTupleInData(Type type) {
          "Infeed: Non token type");
   auto data_type = tuple_type.getType(0);
 
-  auto data_tuple_type = data_type.dyn_cast<mlir::TupleType>();
+  auto data_tuple_type = mlir::dyn_cast<mlir::TupleType>(data_type);
   if (!data_tuple_type) return false;
 
   for (auto child_type : data_tuple_type.getTypes()) {
-    if (child_type.isa<mlir::TupleType>()) return true;
+    if (mlir::isa<mlir::TupleType>(child_type)) return true;
   }
 
   return false;
@@ -360,7 +360,7 @@ mlir::Attribute GetFrontendAttributes(mlir::Builder& b,
 
 void HloFunctionImporter::FlattenTupleType(
     Type type, llvm::SmallVectorImpl<Type>& flattened_types) {
-  auto tuple_type = type.dyn_cast<mlir::TupleType>();
+  auto tuple_type = mlir::dyn_cast<mlir::TupleType>(type);
   if (!tuple_type) {
     flattened_types.push_back(type);
     return;
@@ -660,7 +660,7 @@ absl::Status HloFunctionImporter::ImportInstructions(
     int flatten_idx = 0;
     for (Type computation_arg_type : computation_arg_types) {
       auto orig_tuple_arg_type =
-          computation_arg_type.dyn_cast<mlir::TupleType>();
+          mlir::dyn_cast<mlir::TupleType>(computation_arg_type);
 
       // If the computation-parameter type is non-tuple, no action is needed.
       if (!orig_tuple_arg_type) {
@@ -824,7 +824,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 
       if (instruction->opcode() == HloOpcode::kAsyncStart) {
         auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(
-            context_, result_type.cast<mlir::TupleType>().getTypes());
+            context_, mlir::cast<mlir::TupleType>(result_type).getTypes());
         // XLA Feature -- MHLO Only
         return func_builder
             ->create<mlir::mhlo::AsyncStartOp>(loc, bundle_result_type,
@@ -832,7 +832,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             .getOperation();
       } else if (instruction->opcode() == HloOpcode::kAsyncUpdate) {
         auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(
-            context_, result_type.cast<mlir::TupleType>().getTypes());
+            context_, mlir::cast<mlir::TupleType>(result_type).getTypes());
         // XLA Feature -- MHLO Only
         return func_builder
             ->create<mlir::mhlo::AsyncUpdateOp>(loc, bundle_result_type,
@@ -1198,7 +1198,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         } else {
           mlir::Attribute attr =
               mlir::parseAttribute(raw_backend_config, builder_->getContext());
-          if (!attr.isa<mlir::DictionaryAttr>())
+          if (!mlir::isa<mlir::DictionaryAttr>(attr))
             return Internal(
                 "Couldn't parse backend config into a dictionary attribute");
 
@@ -1451,7 +1451,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto sort_instruction = Cast<HloSortInstruction>(instruction);
 
       llvm::SmallVector<Type, 4> return_types = {result_type};
-      if (mlir::TupleType tuple_ty = result_type.dyn_cast<mlir::TupleType>()) {
+      if (mlir::TupleType tuple_ty =
+              mlir::dyn_cast<mlir::TupleType>(result_type)) {
         return_types = llvm::to_vector<6>(tuple_ty.getTypes());
       }
 
@@ -1473,8 +1474,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto topk_instruction = Cast<HloTopKInstruction>(instruction);
       // XLA Feature -- MHLO Only
       auto topk_op = func_builder->create<mlir::mhlo::TopKOp>(
-          loc, result_type.dyn_cast<mlir::TupleType>().getTypes(), operands[0],
-          builder_->getI64IntegerAttr(topk_instruction->k()),
+          loc, mlir::dyn_cast<mlir::TupleType>(result_type).getTypes(),
+          operands[0], builder_->getI64IntegerAttr(topk_instruction->k()),
           builder_->getBoolAttr(topk_instruction->largest()));
       return WrapInTuple(func_builder, topk_op);
     }
@@ -1513,7 +1514,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                               flattened_operands.end());
 
       mlir::Type pred_or_index_type =
-          operands[0].getType().cast<mlir::TensorType>().getElementType();
+          mlir::cast<mlir::TensorType>(operands[0].getType()).getElementType();
       // It is a predicated conditional if first argument is a boolean and
       // should be mapped to If op.
       if (pred_or_index_type.isInteger(1)) {
@@ -1580,7 +1581,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kAllGather: {
       auto all_gather = Cast<HloAllGatherInstruction>(instruction);
-      auto result_tuple_ty = result_type.dyn_cast<mlir::TupleType>();
+      auto result_tuple_ty = mlir::dyn_cast<mlir::TupleType>(result_type);
 
       llvm::SmallVector<Type> result_types = {result_type};
       if (result_tuple_ty) {
@@ -1613,7 +1614,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kAllReduce: {
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
-      auto result_tuple_ty = result_type.dyn_cast<mlir::TupleType>();
+      auto result_tuple_ty = mlir::dyn_cast<mlir::TupleType>(result_type);
 
       llvm::SmallVector<Type> result_types = {result_type};
       if (result_tuple_ty) {
@@ -1713,7 +1714,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // operands are corresponding initial values.
       size_t num_inputs = operands.size() / 2;
       llvm::SmallVector<Type, 4> return_types = {result_type};
-      if (mlir::TupleType tuple_ty = result_type.dyn_cast<mlir::TupleType>()) {
+      if (mlir::TupleType tuple_ty =
+              mlir::dyn_cast<mlir::TupleType>(result_type)) {
         return_types = llvm::to_vector<6>(tuple_ty.getTypes());
       }
 
@@ -1747,7 +1749,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kRng: {
       auto shape = func_builder->create<mlir::stablehlo::ConstantOp>(
-          loc, Convert(result_type.cast<RankedTensorType>().getShape()));
+          loc, Convert(mlir::cast<RankedTensorType>(result_type).getShape()));
       switch (instruction->random_distribution()) {
         case RNG_UNIFORM:
           return func_builder
@@ -1905,7 +1907,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kReduceWindow: {
       llvm::SmallVector<Type, 4> return_types = {result_type};
-      if (mlir::TupleType tuple_ty = result_type.dyn_cast<mlir::TupleType>()) {
+      if (mlir::TupleType tuple_ty =
+              mlir::dyn_cast<mlir::TupleType>(result_type)) {
         return_types = llvm::to_vector<6>(tuple_ty.getTypes());
       }
       llvm::SmallVector<int64_t, 4> sizes, strides, base_dilations,
@@ -2084,10 +2087,10 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     case HloOpcode::kConvert: {
       // Convert to boolean is special, it requires a comparison to 0 instead of
       // a truncation to i1, otherwise it is a 1-1 translation.
-      auto ranked_type = result_type.dyn_cast<mlir::RankedTensorType>();
+      auto ranked_type = mlir::dyn_cast<mlir::RankedTensorType>(result_type);
       mlir::IntegerType integer_type =
           (ranked_type)
-              ? ranked_type.getElementType().dyn_cast<mlir::IntegerType>()
+              ? mlir::dyn_cast<mlir::IntegerType>(ranked_type.getElementType())
               : nullptr;
       if (!integer_type || integer_type.getWidth() != 1) {
         // Simple case: 1-1 mapping.

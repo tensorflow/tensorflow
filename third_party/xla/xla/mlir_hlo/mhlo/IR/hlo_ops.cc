@@ -3478,7 +3478,7 @@ OpFoldResult DynamicSliceOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
   if (!operands[0]) return nullptr;
 
-  auto cst_attr = operands[0].dyn_cast<DenseElementsAttr>();
+  auto cst_attr = mlir::dyn_cast<DenseElementsAttr>(operands[0]);
   if (cst_attr && cst_attr.isSplat()) {
     return cst_attr.resizeSplat(getResult().getType());
   }

@@ -147,7 +147,7 @@ std::optional<int> GetAlignmentFromArg(Value addr, ValueRange indices) {
   auto align_attr =
       func.getArgAttr(base.getArgNumber(), ml::LLVMDialect::getAlignAttrName());
   if (!align_attr) return std::nullopt;
-  return align_attr.cast<mlir::IntegerAttr>().getValue().getSExtValue();
+  return mlir::cast<mlir::IntegerAttr>(align_attr).getValue().getSExtValue();
 }
 
 template <typename Op>

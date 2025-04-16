@@ -276,7 +276,7 @@ SmallVector<InterpreterValue> Dot(InterpreterState&, linalg::DotOp op,
                                   InterpreterValue acc) {
   const auto& lhs = inputs[0];
   const auto& rhs = inputs[1];
-  if (op.getOutputs()[0].getType().isa<TensorType>()) {
+  if (mlir::isa<TensorType>(op.getOutputs()[0].getType())) {
     acc = acc.Clone();
   }
   DispatchScalarType(op.getOutputs()[0].getType(), [&](auto dummy) {
@@ -300,7 +300,7 @@ SmallVector<InterpreterValue> Vecmat(InterpreterState&, linalg::VecmatOp op,
                                      InterpreterValue acc) {
   const auto& lhs = inputs[0];
   const auto& rhs = inputs[1];
-  if (op.getOutputs()[0].getType().isa<TensorType>()) {
+  if (mlir::isa<TensorType>(op.getOutputs()[0].getType())) {
     acc = acc.Clone();
   }
   DispatchScalarType(op.getOutputs()[0].getType(), [&](auto dummy) {

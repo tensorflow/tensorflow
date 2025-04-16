@@ -524,7 +524,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDotLoop(
   const mlir::Type accumulator_type =
       result_element_type.isBF16() ? b.getF32Type() : result_element_type;
   Value accum_init_value;
-  if (auto complex_ty = accumulator_type.dyn_cast<mlir::ComplexType>()) {
+  if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(accumulator_type)) {
     // For complex, build real-zero and imag-zero separately:
     mlir::Type element_ty = complex_ty.getElementType();
 

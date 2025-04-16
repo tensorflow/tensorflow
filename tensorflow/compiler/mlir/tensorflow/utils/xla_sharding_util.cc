@@ -380,7 +380,7 @@ mlir::LogicalResult HandleTileShardedInputsUsingXlaSplitOps(
   std::vector<int64_t> paddings;
   paddings.reserve(rank);
   auto shape = llvm::to_vector<4>(
-      original_source.getType().cast<mlir::TensorType>().getShape());
+      mlir::cast<mlir::TensorType>(original_source.getType()).getShape());
   for (int dim = 0; dim < rank; ++dim) {
     paddings.push_back(
         GetPadding(dim, input_sharding.tile_assignment_dimensions(dim),

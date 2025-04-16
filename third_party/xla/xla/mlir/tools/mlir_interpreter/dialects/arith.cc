@@ -78,10 +78,10 @@ InterpreterValue Constant(InterpreterState&, arith::ConstantOp constant) {
     }
 
     auto value = constant.getValue();
-    if (auto integer = value.dyn_cast<IntegerAttr>()) {
+    if (auto integer = mlir::dyn_cast<IntegerAttr>(value)) {
       return {static_cast<T>(integer.getInt())};
     }
-    if (auto float_value = value.dyn_cast<FloatAttr>()) {
+    if (auto float_value = mlir::dyn_cast<FloatAttr>(value)) {
       return {static_cast<T>(float_value.getValueAsDouble())};
     }
 
@@ -135,7 +135,7 @@ llvm::SmallVector<InterpreterValue> UiToFP(
     MutableArrayRef<InterpreterValue> args, mlir::Operation* op,
     InterpreterState&) {
   if (args[0].IsTensor()) {
-    auto ty = op->getResultTypes()[0].cast<ShapedType>();
+    auto ty = mlir::cast<ShapedType>(op->getResultTypes()[0]);
     return {DispatchScalarType(
         ty.getElementType(), [&](auto dummy) -> InterpreterValue {
           auto result =

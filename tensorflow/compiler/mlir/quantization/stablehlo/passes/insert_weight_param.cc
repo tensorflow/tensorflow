@@ -219,7 +219,7 @@ class InsertWeightParamPattern
           dimension_numbers.getRhsContractingDimensions();
       ArrayRef<int64_t> rhs_batching_dims =
           dimension_numbers.getRhsBatchingDimensions();
-      int64_t rank = dot.getRhs().getType().cast<TensorType>().getRank();
+      int64_t rank = mlir::cast<TensorType>(dot.getRhs().getType()).getRank();
       for (int i = 0; i < rank; ++i) {
         // Return the first non-contracting, non-batching dimension of rhs.
         if (llvm::find(rhs_contracting_dims, i) == rhs_contracting_dims.end() &&
@@ -228,7 +228,7 @@ class InsertWeightParamPattern
         }
       }
     }
-    return op.getOperand(1).getType().cast<TensorType>().getRank() - 1;
+    return mlir::cast<TensorType>(op.getOperand(1).getType()).getRank() - 1;
   }
 };
 

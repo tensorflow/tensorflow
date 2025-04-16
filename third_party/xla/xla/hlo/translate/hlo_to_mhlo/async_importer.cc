@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -81,7 +82,7 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
     return tsl::errors::InvalidArgument(
         "expected async_bundle tuple result type");
   }
-  auto result_types = result_type.cast<mlir::TupleType>().getTypes();
+  auto result_types = mlir::cast<mlir::TupleType>(result_type).getTypes();
   if (result_types.size() < 2) {
     return tsl::errors::InvalidArgument(
         "async_bundle must contain at least two values");
@@ -213,7 +214,7 @@ absl::StatusOr<mlir::Operation*> ImportSend(
     // format of (args, results, scratchpad), so to rewrite the `send` and
     // `send-done` ops to use the new-style async API, we need to reorder the
     // arguments to be in (args, token, sync flag) order.
-    auto result_types = result_type.cast<mlir::TupleType>().getTypes();
+    auto result_types = mlir::cast<mlir::TupleType>(result_type).getTypes();
     if (result_types.size() != 3)
       return InvalidArgument("send should return a 3-tuple");
     auto async_arg_type = mlir::TupleType::get(
@@ -447,8 +448,8 @@ absl::StatusOr<mlir::Operation*> ImportCopyStart(
                                 *cross_program_prefetch_index)));
     // Cross-program prefetch allows copy ops to accept tuples, in which
     // case, we need to double-wrap inputs and outputs in tuples.
-    if (operands[0].getType().isa<mlir::TupleType>()) {
-      auto result_types = result_type.cast<mlir::TupleType>().getTypes();
+    if (mlir::isa<mlir::TupleType>(operands[0].getType())) {
+      auto result_types = mlir::cast<mlir::TupleType>(result_type).getTypes();
       result_type = mlir::TupleType::get(
           context,
           {mlir::TupleType::get(context, {result_types[0]}),
