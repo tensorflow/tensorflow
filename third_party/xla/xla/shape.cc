@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/shape.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <ostream>
 #include <string>
@@ -83,28 +82,28 @@ Shape::Shape(std::vector<Shape> tuple_shapes) {
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
   if (auto* const state = if_array_state()) {
-    state->dimensions.reserve(shape_proto.dimensions_size());
-    for (const int64_t dimension : shape_proto.dimensions()) {
-      add_dimensions(dimension);
-    }
+    const int n_dim = shape_proto.dimensions_size();
+    const int n_is_dynamic_dim = shape_proto.is_dynamic_dimension_size();
     // A malformed proto may have different is_dynamic_dimension_size and
     // dimensions_size. Since C++ is evil, and we have no good way of bailing
     // out in a constructor, conservatively trim the is_dynamic_dimension size.
     // TODO(b/120111794): Make this a hard error when we have a factory method
     // instead of a constructor.
-    if (shape_proto.dimensions_size() !=
-        shape_proto.is_dynamic_dimension_size()) {
-      if (shape_proto.is_dynamic_dimension_size() != 0) {
+    if (n_dim != n_is_dynamic_dim) {
+      if (n_is_dynamic_dim != 0) {
         LOG(ERROR) << "Malformed shape proto: number of is_dynamic_dimension "
                       "fields does not match number of dimension fields";
       } else {
         LOG(WARNING) << "Malformed shape proto: is_dynamic_dimension is empty";
       }
     }
-    const int64_t num_dynamic_dimension_fields = std::min(
-        shape_proto.dimensions_size(), shape_proto.is_dynamic_dimension_size());
-    for (int i = 0; i < num_dynamic_dimension_fields; i++) {
-      state->dynamic_dimensions[i] = shape_proto.is_dynamic_dimension(i);
+    const auto is_dynamic_dimension = [&](int i) {
+      return (i < n_is_dynamic_dim) && shape_proto.is_dynamic_dimension(i);
+    };
+    state->dimensions.reserve(n_dim);
+    state->dynamic_dimensions.reserve(n_dim);
+    for (int i = 0; i < n_dim; ++i) {
+      add_dimensions(shape_proto.dimensions(i), is_dynamic_dimension(i));
     }
   } else if (auto* const state = if_tuple_state()) {
     state->tuple_shapes.reserve(shape_proto.tuple_shapes_size());

@@ -113,6 +113,7 @@ void PrintTupleShapes(Printer* printer, absl::Span<const Shape> tuple_shapes) {
 // its Layout.
 absl::StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+    const std::vector<bool>& dynamic_dimensions,
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
     absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
@@ -121,6 +122,11 @@ absl::StatusOr<Shape> MakeShapeWithLayoutInternal(
     int64_t element_size_in_bits, int64_t memory_space,
     absl::Span<const SplitConfig> split_configs,
     std::optional<Shape> physical_shape) {
+  if (dimensions.size() != dynamic_dimensions.size()) {
+    return InvalidArgument(
+        "Dimensions size is %ld, but dynamic dimensions size is %ld.",
+        dimensions.size(), dynamic_dimensions.size());
+  }
   if (dimensions.size() != minor_to_major.size()) {
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
                            dimensions.size(), minor_to_major.size());
@@ -131,7 +137,8 @@ absl::StatusOr<Shape> MakeShapeWithLayoutInternal(
                            PrimitiveType_Name(element_type));
   }
   TF_ASSIGN_OR_RETURN(Shape shape,
-                      ShapeUtil::MakeValidatedShape(element_type, dimensions));
+                      ShapeUtil::MakeValidatedShape(element_type, dimensions,
+                                                    dynamic_dimensions));
   if (element_size_in_bits ==
       ShapeUtil::ByteSizeOfPrimitiveType(element_type) * 8) {
     // Only set element_size_in_bits if it's different from the default value.
@@ -240,9 +247,9 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   return accum;
 }
 
-/* static */ bool ShapeUtil::FillNewShape(PrimitiveType element_type,
-                                          absl::Span<const int64_t> dimensions,
-                                          Shape* shape) {
+/* static */ bool ShapeUtil::FillNewShape(
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+    const std::vector<bool>& dynamic_dimensions, Shape* shape) {
   int64_t dense_shape_size = primitive_util::IsArrayType(element_type)
                                  ? primitive_util::ByteWidth(element_type)
                                  : -1;
@@ -266,7 +273,10 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
       any_overflows |= overflow;
     }
 
-    shape->add_dimensions(d);
+    if (!Shape::ValidateDimensionSize(d, dynamic_dimensions[i])) {
+      return false;
+    }
+    shape->add_dimensions(d, dynamic_dimensions[i]);
     minor_to_major->push_back(ndims - 1 - i);
   }
   if (any_overflows) {
@@ -288,7 +298,9 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
 /* static */ Shape ShapeUtil::MakeShape(PrimitiveType element_type,
                                         absl::Span<const int64_t> dimensions) {
   Shape shape;
-  CHECK(FillNewShape(element_type, dimensions, &shape));
+  CHECK(FillNewShape(element_type, dimensions,
+                     // Assume all dimensions are static.
+                     std::vector<bool>(dimensions.size(), false), &shape));
   return shape;
 }
 
@@ -313,7 +325,9 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
 /* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedShape(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
   Shape shape;
-  if (!FillNewShape(element_type, dimensions, &shape)) {
+  if (!FillNewShape(element_type, dimensions,
+                    // Assume all dimensions are static.
+                    std::vector<bool>(dimensions.size(), false), &shape)) {
     return InvalidArgument("invalid shape type=%d, dims=[%s]",
                            static_cast<int>(element_type),
                            absl::StrJoin(dimensions, ","));
@@ -331,20 +345,25 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   }
 
   Shape shape;
-  if (!FillNewShape(element_type, dimensions, &shape)) {
-    return InvalidArgument("invalid shape type=%d, dims=[%s]",
-                           static_cast<int>(element_type),
-                           absl::StrJoin(dimensions, ","));
-  }
-  for (int i = 0, n = dimensions.size(); i < n; i++) {
-    shape.set_dynamic_dimension(i, dynamic_dimensions[i]);
-    if (shape.dimensions(i) == Shape::kUnboundedSize &&
-        !dynamic_dimensions[i]) {
-      return InvalidArgument(
-          "Cannot mark a dynamic dimension at dim=%d as static", i);
-    }
+  if (!FillNewShape(element_type, dimensions, dynamic_dimensions, &shape)) {
+    return InvalidArgument(
+        "invalid shape type=%d, dims=[%s], dynamic_dims=[%s]",
+        static_cast<int>(element_type), absl::StrJoin(dimensions, ","),
+        absl::StrJoin(dynamic_dimensions, ","));
   }
   return shape;
+}
+
+// Returns a vector of booleans indicating whether each dimension is dynamic.
+static std::vector<bool> GetIsDynamicDimensions(
+    absl::Span<const int64_t> dimensions) {
+  std::vector<bool> dynamic_dimensions(dimensions.size(), false);
+  for (int i = 0; i < dimensions.size(); ++i) {
+    if (dimensions[i] == Shape::kUnboundedSize) {
+      dynamic_dimensions[i] = true;
+    }
+  }
+  return dynamic_dimensions;
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDenseLayout(
@@ -353,7 +372,8 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
     int64_t tail_padding_alignment_in_elements, int64_t element_size_in_bits,
     int64_t memory_space, absl::Span<const SplitConfig> split_configs) {
   auto ret = MakeShapeWithLayoutInternal(
-      element_type, dimensions, minor_to_major, /*dim_level_types=*/{},
+      element_type, dimensions, GetIsDynamicDimensions(dimensions),
+      minor_to_major, /*dim_level_types=*/{},
       /*dim_unique=*/{}, /*dim_ordered=*/{}, tiles,
       tail_padding_alignment_in_elements,
       /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
@@ -373,10 +393,11 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
     int64_t tail_padding_alignment_in_elements, int64_t element_size_in_bits,
     int64_t memory_space, std::optional<Shape> physical_shape) {
   auto ret = MakeShapeWithLayoutInternal(
-      element_type, dimensions, minor_to_major, dim_level_types, dim_unique,
-      dim_ordered, /*tiles=*/{}, tail_padding_alignment_in_elements,
-      index_primitive_type, pointer_primitive_type, element_size_in_bits,
-      memory_space, /*split_configs=*/{}, std::move(physical_shape));
+      element_type, dimensions, GetIsDynamicDimensions(dimensions),
+      minor_to_major, dim_level_types, dim_unique, dim_ordered, /*tiles=*/{},
+      tail_padding_alignment_in_elements, index_primitive_type,
+      pointer_primitive_type, element_size_in_bits, memory_space,
+      /*split_configs=*/{}, std::move(physical_shape));
   TF_CHECK_OK(ret.status());
   return *ret;
 }
