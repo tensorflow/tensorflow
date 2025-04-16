@@ -66,7 +66,6 @@ struct AddDependencyOpToMhoTokenConverter
 
 void legalDirectStablehloToHloConversionOps(ConversionTarget& target) {
   target.addLegalOp<
-      // go/keep-sorted start
       stablehlo::AbsOp, stablehlo::CbrtOp, stablehlo::SqrtOp, stablehlo::TanOp,
       stablehlo::AddOp, stablehlo::AddOp, stablehlo::AllGatherOp,
       stablehlo::Atan2Op, stablehlo::BroadcastInDimOp, stablehlo::BroadcastOp,
@@ -83,7 +82,6 @@ void legalDirectStablehloToHloConversionOps(ConversionTarget& target) {
       stablehlo::ShiftLeftOp, stablehlo::ShiftRightArithmeticOp,
       stablehlo::ShiftRightLogicalOp, stablehlo::SubtractOp, stablehlo::SignOp,
       stablehlo::SineOp, stablehlo::SliceOp, stablehlo::TanhOp
-      // go/keep-sorted end
       >();
 }
 
