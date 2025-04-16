@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
 #include "xla/literal_util.h"
+#include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
@@ -128,19 +129,32 @@ absl::StatusOr<HloInstruction*> MakeSparseMetaOperand(
 }
 
 PrimitiveType GetAccumulatorType(bool disable_reduced_precision_reduction,
-                                 HloComputation* computation,
+                                 HloDotInstruction* dot,
                                  HloInstruction* instr) {
   if (!disable_reduced_precision_reduction) {
     return instr->shape().element_type();
   }
 
-  PrimitiveType output_type =
-      computation->root_instruction()->shape().element_type();
-  PrimitiveType accumulator_type = output_type == PrimitiveType::F64
-                                       ? PrimitiveType::F64
-                                       : PrimitiveType::F32;
-  return accumulator_type;
+  // Return the accumulator type if it is explicitly specified as dot algorithm.
+  auto accumulator_type = algorithm_util::GetDotAccumulatorType(
+      dot->precision_config().algorithm());
+  if (accumulator_type.ok()) {
+    return accumulator_type.value();
+  }
+  // Otherwise, return the default accumulator type for the output type.
+  PrimitiveType output_type = dot->shape().element_type();
+  switch (output_type) {
+    case PrimitiveType::F16:
+    case PrimitiveType::BF16:
+      return PrimitiveType::F32;
+    case PrimitiveType::F32:
+    case PrimitiveType::F64:
+    case PrimitiveType::S32:
+    default:
+      return output_type;
+  }
 }
+
 }  // namespace
 
 absl::StatusOr<HloInstruction*> MakeSplitKOperand(
@@ -335,10 +349,10 @@ absl::Status MakeDotComputationSplitKBatch(
                             MakeSparseMetaOperand(*dot, config));
       }
       // Keep the precision of the accumulator type for the dot output.
-      PrimitiveType dot_dtype = GetAccumulatorType(
-          disable_reduced_precision_reduction, computation, dot);
+      PrimitiveType accumulator_dtype =
+          GetAccumulatorType(disable_reduced_precision_reduction, dot, current);
       expanded = MakeDotHlo(lhs, rhs, new_dim_numbers, dot->precision_config(),
-                            dot_dtype, sparsity, sparse_meta)
+                            accumulator_dtype, sparsity, sparse_meta)
                      .value();
       // Make the added batch dimension the major-most, keep the order of the
       // original dimensions.
@@ -352,8 +366,8 @@ absl::Status MakeDotComputationSplitKBatch(
       dot->SetupDerivedInstruction(expanded);
     } else {
       // Propagate the precision of the accumulator to the GEMM fusion root.
-      PrimitiveType accumulator_dtype = GetAccumulatorType(
-          disable_reduced_precision_reduction, computation, current);
+      PrimitiveType accumulator_dtype =
+          GetAccumulatorType(disable_reduced_precision_reduction, dot, current);
       expanded = computation->AddInstruction(
           current->CloneWithNewShape(ShapeUtil::PrependMajorDimension(
               config.split_k, ShapeUtil::ChangeElementType(
@@ -383,7 +397,7 @@ absl::Status MakeDotComputationSplitKBatch(
         // Broadcast the operand to the Split-K dimension and convert to the
         // accumulator dtype.
         auto accumulator_dtype = GetAccumulatorType(
-            disable_reduced_precision_reduction, computation, operand);
+            disable_reduced_precision_reduction, dot, operand);
         HloInstruction* convert = MakeConvertToHlo(operand, accumulator_dtype);
         std::vector<int64_t> broadcast_dimensions(
             operand->shape().dimensions().size());
