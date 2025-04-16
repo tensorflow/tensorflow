@@ -597,4 +597,72 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithCsrInput")
       return absl::OkStatus();
     });
 
+REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_pos_ids: int32")
+    .Input("sorted_gains: float32")
+    .Input("weights: float32")
+    // We need to preserve the outputs of the SC forward pass and feed them into
+    // the VJP computations in the backward pass.
+    .Input("preserved_valencies: int32")
+    .Input("preserved_vectors: float32")
+    .Input("activation_gradients: float32")
+    .Input("tables: N * float32")
+    .Input("hyperparameters: M * float32")
+    .Input("combiner_weights_learning_rate: float32")
+    .Output("updated_tables: N * float32")
+    .Output("updated_weights: float32")
+    .Attr("N: int >= 1")
+    .Attr("M: int >= 1")
+    .Attr("max_valency: int >= 0")
+    .Attr("num_weights: int >= 0")
+    .Attr("combiner_table_vjp_computation: func")
+    .Attr("combiner_weights_vjp_computation: func")
+    .Attr("optimizer_custom_computation: func")
+    .Attr("table_name: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      constexpr int kWeightsIndex = 5;
+      constexpr int kPreservedValenciesIndex = 6;
+      constexpr int kPreservedVectorsIndex = 7;
+      constexpr int kActivationGradientsIndex = 8;
+      constexpr int kTablesIndex = 9;
+      shape_inference::ShapeHandle shape;
+      int num_tables;
+      int num_weights;
+      int max_valency_int;
+      TF_RETURN_IF_ERROR(c->GetAttr("N", &num_tables));
+      TF_RETURN_IF_ERROR(c->GetAttr("num_weights", &num_weights));
+      TF_RETURN_IF_ERROR(c->GetAttr("max_valency", &max_valency_int));
+      // Only check the shape of the weights when num_weights > 0 to avoid
+      // issues of 0-shaped values.
+      if (num_weights > 0) {
+        TF_RETURN_IF_ERROR(c->Merge(c->input(kWeightsIndex),
+                                    c->MakeShape({c->MakeDim(num_weights)}),
+                                    &shape));
+      }
+      // Check that the preserved tensors have the expected shapes:
+      // valencies: [input_size];
+      // vectors: [input_size, max_valency, feature_width];
+      auto input_size = c->Dim(c->input(kActivationGradientsIndex), 0);
+      auto max_valency = c->MakeDim(max_valency_int);
+      auto feature_width = c->Dim(c->input(kTablesIndex), 1);
+      TF_RETURN_IF_ERROR(c->Merge(c->input(kPreservedValenciesIndex),
+                                  c->MakeShape({input_size}), &shape));
+      TF_RETURN_IF_ERROR(c->Merge(
+          c->input(kPreservedVectorsIndex),
+          c->MakeShape({input_size, max_valency, feature_width}), &shape));
+      // `updated_tables` refers to both the embedding table and the associated
+      // slot variables. They all have the same embedding table shape.
+      for (int i = 0; i < num_tables; ++i) {
+        c->set_output(i, c->input(kTablesIndex));
+      }
+      // `updated_weights` simply have a 1D shape of `num_weights`.
+      // TODO(peitianpan): Do we need to account for the number of replicas
+      // here?
+      c->set_output(num_tables, c->MakeShape({c->MakeDim(num_weights)}));
+      return absl::OkStatus();
+    });
+
 }  // namespace tensorflow

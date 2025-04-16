@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/slicing.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -873,6 +874,369 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulGradWithCsrInput"),
                 XlaSparseDenseMatmulGradWithCsrInputOp);
+
+class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp
+    : public XlaOpKernel {
+ public:
+  explicit XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp(
+      OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_valency", &max_valency_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_weights", &num_weights_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("N", &num_tables_));
+
+    // The updated weights is immediately after the updated tables in the output
+    // list.
+    updated_weights_index_ = num_tables_;
+
+    const NameAttrList* name_attr;
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("combiner_table_vjp_computation", &name_attr));
+    combiner_lookups_custom_vjp_computation_ = *name_attr;
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("combiner_weights_vjp_computation", &name_attr));
+    combiner_weights_custom_vjp_computation_ = *name_attr;
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("optimizer_custom_computation", &name_attr));
+    optimizer_custom_computation_ = *name_attr;
+  }
+
+  absl::StatusOr<xla::XlaComputation> BuildOptimizerComputation(
+      XlaOpKernelContext* ctx, absl::Span<const xla::XlaOp> tables_inputs,
+      absl::Span<const xla::XlaOp> hyperparameters_inputs,
+      int32_t feature_width) {
+    XlaCompiler::CompileOptions options;
+
+    // We don't use tuple args and always return tuple for this computation.
+    options.use_tuple_arg = false;
+    options.always_return_tuple = true;
+    options.is_entry_computation = false;
+
+    XlaCompiler* compiler = ctx->compiler();
+
+    XlaCompiler::CompilationResult custom_computation_result;
+
+    // The number of arguments is the number of tables + the number of
+    // hyperparameters + 1 for the activation gradients.
+    int32_t num_arguments =
+        1 + tables_inputs.size() + hyperparameters_inputs.size();
+
+    std::vector<XlaCompiler::Argument> arguments(num_arguments);
+
+    // For all the arguments, we use the float type and the shape is
+    // {1, feature_width}.
+    for (int32_t i = 0; i < num_arguments; ++i) {
+      arguments[i].kind = XlaCompiler::Argument::kParameter;
+      arguments[i].type = DT_FLOAT;
+      arguments[i].shape =
+          xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
+    }
+
+    TF_RETURN_IF_ERROR(
+        compiler->CompileFunction(options, optimizer_custom_computation_,
+                                  arguments, &custom_computation_result));
+
+    return std::move(*custom_computation_result.computation);
+  }
+
+  std::vector<XlaCompiler::Argument> BuildVjpArguments(XlaOpKernelContext* ctx,
+                                                       int32_t input_size,
+                                                       int32_t feature_width) {
+    std::vector<XlaCompiler::Argument> arguments;
+
+    XlaCompiler::Argument valencies_arg;
+    XlaCompiler::Argument vectors_arg;
+    XlaCompiler::Argument weights_arg;
+    XlaCompiler::Argument activation_gradients_arg;
+
+    valencies_arg.kind = XlaCompiler::Argument::kParameter;
+    valencies_arg.type = DT_INT32;
+    valencies_arg.shape = xla::ShapeUtil::MakeShape(xla::S32, {input_size});
+    valencies_arg.name = "valencies";
+
+    vectors_arg.kind = XlaCompiler::Argument::kParameter;
+    vectors_arg.type = DT_FLOAT;
+    vectors_arg.shape = xla::ShapeUtil::MakeShape(
+        xla::F32, {input_size, max_valency_, feature_width});
+    vectors_arg.name = "vectors";
+
+    weights_arg.kind = XlaCompiler::Argument::kParameter;
+    weights_arg.type = DT_FLOAT;
+    weights_arg.shape =
+        xla::ShapeUtil::MakeShape(xla::F32, {input_size, num_weights_});
+    weights_arg.name = "weights";
+    arguments.push_back(weights_arg);
+
+    activation_gradients_arg.kind = XlaCompiler::Argument::kParameter;
+    activation_gradients_arg.type = DT_FLOAT;
+    activation_gradients_arg.shape =
+        xla::ShapeUtil::MakeShape(xla::F32, {input_size, feature_width});
+    activation_gradients_arg.name = "activation_gradients";
+    arguments.push_back(activation_gradients_arg);
+
+    if (num_weights_ > 0) {
+      arguments = {valencies_arg, vectors_arg, weights_arg,
+                   activation_gradients_arg};
+    } else {
+      // Don't add the weights argument if it's not needed. This helps avoid
+      // issues of passing around zero-sized tensors and Xla values.
+      arguments = {valencies_arg, vectors_arg, activation_gradients_arg};
+    }
+
+    return arguments;
+  }
+
+  absl::StatusOr<xla::XlaComputation> BuildCombinerVjpComputation(
+      XlaOpKernelContext* ctx, int32_t input_size, int32_t feature_width,
+      const NameAttrList& computation) {
+    XlaCompiler::CompileOptions options;
+    options.use_tuple_arg = false;
+    options.always_return_tuple = false;
+    options.is_entry_computation = false;
+
+    XlaCompiler* compiler = ctx->compiler();
+    XlaCompiler::CompilationResult vjp_computation_result;
+
+    TF_RETURN_IF_ERROR(compiler->CompileFunction(
+        options, computation, BuildVjpArguments(ctx, input_size, feature_width),
+        &vjp_computation_result));
+    return std::move(*vjp_computation_result.computation);
+  }
+
+  xla::XlaOp EmitTensorCoreComputations(
+      XlaOpKernelContext* ctx, xla::XlaBuilder* builder,
+      xla::XlaComputation&& combiner_vectors_vjp,
+      xla::XlaComputation&& combiner_weights_vjp, int32_t input_size) {
+    xla::XlaOp weights = ctx->Input("weights");
+    xla::XlaOp activation_gradients = ctx->Input("activation_gradients");
+    xla::XlaOp valencies = ctx->Input("preserved_valencies");
+    xla::XlaOp vectors = ctx->Input("preserved_vectors");
+
+    std::vector<xla::XlaOp> vjp_args;
+    if (num_weights_ > 0) {
+      xla::XlaOp broadcasted_weights = xla::Broadcast(weights, {input_size});
+      vjp_args = {valencies, vectors, broadcasted_weights,
+                  activation_gradients};
+    } else {
+      vjp_args = {valencies, vectors, activation_gradients};
+    }
+
+    // Compute the lookup gradients based on the activation gradients. This
+    // result will be passed to SC to drive the embedding table update.
+    xla::XlaOp lookup_gradients =
+        xla::Call(builder, combiner_vectors_vjp, vjp_args);
+
+    // Compute the weights gradients based on the activation gradients.
+    if (num_weights_ > 0) {
+      // The weights VJP returns a tensor of shape f32[input_size, num_weights].
+      xla::XlaOp weights_gradients_all_samples =
+          xla::Call(builder, combiner_weights_vjp, vjp_args);
+      // Local reduction, which aggregates the contributions from all samples
+      // and returns a tensor of shape f32[num_weights].
+      xla::XlaOp per_replica_reduced_weights_gradients = xla::Reduce(
+          weights_gradients_all_samples, xla::ConstantR0<float>(builder, 0.0),
+          xla::CreateScalarAddComputation(xla::F32, builder), {0});
+      // Global reduction, which aggregates the contributions from all replicas
+      // and returns a tensor of shape f32[num_weights].
+      // Here we assume that all replicas participate in the all-reduce (using
+      // default value of `replica_groups`) and that all-reduce from different
+      // modules do not participate in this reduction (using default value of
+      // `channel_id`).
+      xla::XlaOp global_reduced_weights_gradients =
+          xla::AllReduce(per_replica_reduced_weights_gradients,
+                         xla::CreateScalarAddComputation(xla::F32, builder));
+      // Use SGD optimizer on the weights.
+      // TODO(peitianpan): Add support for more optimizers.
+      xla::XlaOp learning_rate = ctx->Input("combiner_weights_learning_rate");
+      xla::XlaOp updated_weights =
+          weights - learning_rate * global_reduced_weights_gradients;
+      ctx->SetOutput(updated_weights_index_, updated_weights);
+    } else {
+      // The caller is not supposed to rely on this output if num_weights is 0.
+      ctx->SetOutput(updated_weights_index_,
+                     xla::ConstantR0<float>(builder, 0));
+    }
+
+    return lookup_gradients;
+  }
+
+  void EmitSparseCoreComputations(
+      XlaOpKernelContext* ctx, xla::XlaBuilder* builder,
+      absl::Span<const xla::XlaOp> tables_inputs,
+      absl::Span<const TensorShape> tables_shapes,
+      absl::Span<const xla::XlaOp> hyperparameters_inputs,
+      xla::XlaOp lookup_gradients, xla::XlaComputation&& optimizer,
+      int32_t max_ids_per_partition, int32_t max_unique_ids_per_partition) {
+    xla::XlaOp row_pointers = ctx->Input("row_pointers");
+    xla::XlaOp sorted_sample_ids = ctx->Input("sorted_sample_ids");
+    xla::XlaOp sorted_token_ids = ctx->Input("sorted_token_ids");
+    xla::XlaOp sorted_pos_ids = ctx->Input("sorted_pos_ids");
+    xla::XlaOp sorted_gains = ctx->Input("sorted_gains");
+
+    xla::FrontendAttributes original_frontend_attributes =
+        builder->frontend_attributes();
+
+    xla::FrontendAttributes tuple_frontend_attributes;
+
+    tuple_frontend_attributes.mutable_map()->insert(
+        {"_xla_compute_type", "sparse"});
+
+    builder->SetFrontendAttributes(tuple_frontend_attributes);
+
+    xla::XlaOp tables = xla::Tuple(ctx->builder(), tables_inputs);
+
+    xla::XlaOp hyperparameters =
+        xla::Tuple(ctx->builder(), hyperparameters_inputs);
+
+    std::vector<xla::Shape> xla_tables_shapes;
+
+    xla_tables_shapes.reserve(tables_shapes.size());
+    for (const auto& table_shape : tables_shapes) {
+      xla_tables_shapes.push_back(xla::ShapeUtil::MakeShape(
+          xla::F32, {table_shape.dim_size(0), table_shape.dim_size(1)}));
+    }
+
+    xla::Shape tables_shape = xla::ShapeUtil::MakeTupleShape(xla_tables_shapes);
+
+    xla::FrontendAttributes custom_call_frontend_attributes;
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_compute_type", "sparse"});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_sharding_strategy", "mod"});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_pad_value", absl::StrCat(kXlaPadValue)});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_max_ids_per_partition", absl::StrCat(max_ids_per_partition)});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_max_unique_ids_per_partition",
+         absl::StrCat(max_unique_ids_per_partition)});
+
+    builder->SetFrontendAttributes(custom_call_frontend_attributes);
+
+    xla::XlaOp updated_tables = xla::CustomCallWithComputation(
+        builder,
+        "SparseDenseMatmulCustomCombinerTcCombinerGradOptimizerUpdateMegachipO"
+        "p",
+        {row_pointers, sorted_token_ids, sorted_sample_ids, sorted_pos_ids,
+         sorted_gains, tables, lookup_gradients, hyperparameters},
+        optimizer, tables_shape);
+
+    builder->SetFrontendAttributes(tuple_frontend_attributes);
+
+    // Updated embedding table.
+    for (int i = 0; i < tables_shape.tuple_shapes_size(); ++i) {
+      ctx->SetOutput(i, xla::GetTupleElement(updated_tables, i));
+    }
+
+    builder->SetFrontendAttributes(original_frontend_attributes);
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* builder = ctx->builder();
+
+    // Get the shape of the gradient.
+    OP_REQUIRES_VALUE(xla::Shape activation_shape, ctx,
+                      ctx->InputXlaShape("activation_gradients"));
+    OP_REQUIRES(
+        ctx,
+        activation_shape.is_static() && activation_shape.dimensions_size() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "activations input has non static or non-rank 2 shape: ",
+            activation_shape.ToString())));
+    OP_REQUIRES_VALUE(int64_t num_sparsecores_per_chip, ctx,
+                      GetSparseCoresPerChip());
+    int64_t num_samples_per_chip = activation_shape.dimensions(0);
+    OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_chip == 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "num_samples_per_chip ", num_samples_per_chip,
+                    " not divisible by the number of sparsecores per chip ",
+                    num_sparsecores_per_chip)));
+
+    std::vector<xla::XlaOp> tables_inputs;
+    std::vector<TensorShape> tables_shapes;
+    OP_REQUIRES_OK(ctx,
+                   ctx->InputList("tables", &tables_inputs, &tables_shapes));
+    OP_REQUIRES(ctx, num_tables_ == tables_inputs.size(),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expecting ", num_tables_, " tables, but got ",
+                                 tables_inputs.size())));
+
+    std::vector<xla::XlaOp> hyperparameters_inputs;
+    std::vector<TensorShape> hyperparameters_shapes;
+    OP_REQUIRES_OK(ctx,
+                   ctx->InputList("hyperparameters", &hyperparameters_inputs,
+                                  &hyperparameters_shapes));
+
+    int64_t per_sparse_core_batch_size =
+        num_samples_per_chip / num_sparsecores_per_chip;
+    int64_t max_ids_per_partition = 0;
+    int64_t max_unique_ids_per_partition = 0;
+
+    const int32_t feature_width = tables_shapes[0].dim_size(1);
+    OP_REQUIRES_OK(
+        ctx, GetMaxIdsAndUniquesExternal(kUnknownProgramKey, table_name_,
+                                         per_sparse_core_batch_size,
+                                         feature_width, &max_ids_per_partition,
+                                         &max_unique_ids_per_partition));
+    LOG(INFO)
+        << "Lowering XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp "
+        << "to HLO: table_name = '" << table_name_
+        << "', max_ids = " << max_ids_per_partition
+        << ", max_uniques = " << max_unique_ids_per_partition;
+
+    // Build the required computations -- one for the optimizer and two for the
+    // custom combiner.
+    int32_t input_size = activation_shape.dimensions(0);
+    OP_REQUIRES_VALUE(
+        xla::XlaComputation optimizer, ctx,
+        BuildOptimizerComputation(ctx, tables_inputs, hyperparameters_inputs,
+                                  feature_width));
+    OP_REQUIRES_VALUE(
+        xla::XlaComputation combiner_vectors_vjp, ctx,
+        BuildCombinerVjpComputation(ctx, input_size, feature_width,
+                                    combiner_lookups_custom_vjp_computation_));
+    OP_REQUIRES_VALUE(
+        xla::XlaComputation combiner_weights_vjp, ctx,
+        BuildCombinerVjpComputation(ctx, input_size, feature_width,
+                                    combiner_weights_custom_vjp_computation_));
+
+    // Emit the two custom combiner VJP computations onto TC.
+    xla::XlaOp lookup_gradients = EmitTensorCoreComputations(
+        ctx, builder, std::move(combiner_vectors_vjp),
+        std::move(combiner_weights_vjp), input_size);
+
+    // Pass the TC activation gradients back to SC for back-propagation with
+    // optimizer.
+    EmitSparseCoreComputations(ctx, builder, tables_inputs, tables_shapes,
+                               hyperparameters_inputs, lookup_gradients,
+                               std::move(optimizer), max_ids_per_partition,
+                               max_unique_ids_per_partition);
+  }
+
+ private:
+  int32_t max_valency_;
+  int32_t num_weights_;
+  int32_t num_tables_;
+  int32_t updated_weights_index_;
+  std::string table_name_;
+  NameAttrList optimizer_custom_computation_;
+  NameAttrList combiner_weights_custom_vjp_computation_;
+  NameAttrList combiner_lookups_custom_vjp_computation_;
+
+  XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp&) = delete;
+  void operator=(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp&) = delete;
+};
+
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput"),
+                XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp);
 
 // This TensorFlow op calculates the gradients and performs SGD update on the
 // embedding table on SparseCore. It takes the activation gradients, input

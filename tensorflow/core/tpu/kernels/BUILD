@@ -201,6 +201,7 @@ cc_library(
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
         "@local_xla//xla/hlo/builder/lib:slicing",
         "@local_xla//xla/stream_executor/tpu:c_api_decl",
         "@local_xla//xla/stream_executor/tpu:tpu_api",

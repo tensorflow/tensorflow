@@ -5741,6 +5741,10 @@ tf_module {
     argspec: "args=[\'row_ids\', \'col_ids\', \'values\', \'offsets\', \'embedding_table\', \'max_ids_per_partition\', \'max_unique_ids_per_partition\', \'input_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_pos_ids\', \'sorted_gains\', \'weights\', \'preserved_valencies\', \'preserved_vectors\', \'activation_gradients\', \'tables\', \'hyperparameters\', \'combiner_weights_learning_rate\', \'max_valency\', \'num_weights\', \'combiner_table_vjp_computation\', \'combiner_weights_vjp_computation\', \'optimizer_custom_computation\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput"
     argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_pos_ids\', \'sorted_gains\', \'embedding_table\', \'weights\', \'input_size\', \'max_valency\', \'num_weights\', \'combiner_computation\', \'quantization_config_low\', \'quantization_config_high\', \'quantization_config_num_buckets\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
