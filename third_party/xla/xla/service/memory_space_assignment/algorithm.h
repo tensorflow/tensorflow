@@ -276,6 +276,9 @@ class AsynchronousCopyResource {
   std::vector<float> initial_resources_;
   std::vector<int64_t> initial_resources_scaled_;
   std::vector<int64_t> delay_;
+  // A vector of pairs of (time, delay) used by
+  // HasEnoughResourceMultiCheck(), stored here to avoid reallocations.
+  std::vector<std::pair<int64_t, int64_t>> delay_changes_;
 };
 
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of

@@ -3565,18 +3565,18 @@ bool AsynchronousCopyResource::HasEnoughResource(int64_t exclusive_start_time,
 
 bool AsynchronousCopyResource::HasEnoughResourceMultiCheck(
     const std::vector<ResourceSpec>& specs) {
-  std::vector<std::pair<int64_t, int64_t>> delay_changes;
-  delay_changes.reserve(delay_.size());
+  delay_changes_.resize(0);
+  delay_changes_.reserve(delay_.size());
   bool result = absl::c_all_of(specs, [&](const ResourceSpec& spec) {
     return ConsumeResource(spec.exclusive_start_time, spec.end_time,
                            GetScaledIntegerResource(spec.resource),
-                           &delay_changes);
+                           &delay_changes_);
   });
   // Apply the delay changes in reverse order. This ensures that the original
   // value of each delay is restored.
-  if (!delay_changes.empty()) {
-    for (int64_t i = delay_changes.size() - 1; i >= 0; --i) {
-      const auto& [time, delay] = delay_changes[i];
+  if (!delay_changes_.empty()) {
+    for (int64_t i = delay_changes_.size() - 1; i >= 0; --i) {
+      const auto& [time, delay] = delay_changes_[i];
       delay_[time] = delay;
     }
   }
