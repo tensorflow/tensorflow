@@ -97,7 +97,7 @@ CuboidConvolutionBackwardInput(
                                internal::traits<Kernel>::Layout, TensorIndex>>
       kern(kernel);
   const TensorRef<
-      const Tensor<typename internal::traits<OutputBackward>::Scalar,
+      const Tensor<const typename internal::traits<OutputBackward>::Scalar,
                    internal::traits<OutputBackward>::NumDimensions,
                    internal::traits<OutputBackward>::Layout, TensorIndex>>
       out(output_backward);
