@@ -5027,6 +5027,22 @@ int64_t LogisticOp::GetArithmeticCount(Operation* op) {
 }
 
 //===----------------------------------------------------------------------===//
+// SoftsignOp
+//===----------------------------------------------------------------------===//
+
+int64_t SoftsignOp::GetArithmeticCount(Operation* op) {
+  int64_t count;
+  // As a very rough ballpark, the cost of evaluating a math function
+  // such as softsign is about 32 multiplications, and about as
+  // many additions/subtractions. (Just a power-of-two order-of-magnitude
+  // from looking at actual implementations that we use in runtime/code).
+  if (ArithmeticCountUtilHelper::GetFirstOutputCount(op, &count))
+    return 64 * count;
+
+  return -1;
+}
+
+//===----------------------------------------------------------------------===//
 // LogSoftmaxOp
 //===----------------------------------------------------------------------===//
 

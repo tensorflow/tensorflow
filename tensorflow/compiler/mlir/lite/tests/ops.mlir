@@ -281,6 +281,14 @@ func.func @testTanhWithQUI8(%arg0: tensor<? x !quant.uniform<u8:f32, 0.1>>) -> t
   func.return %0 : tensor<? x !quant.uniform<u8:f32, 0.1>>
 }
 
+// CHECK-LABEL: testSoftsign
+func.func @testSoftsignWithFloatInput(tensor<? x f32>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<? x f32>):
+  // CHECK: "tfl.softsign"(%arg0)
+  %0 = "tfl.softsign"(%arg0): (tensor<? x f32>) -> tensor<? x f32>
+  func.return %0 : tensor<? x f32>
+}
+
 // CHECK-LABEL: testZerosLike
 func.func @testZerosLike(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):

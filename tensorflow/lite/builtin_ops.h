@@ -237,6 +237,7 @@ typedef enum {
   kTfLiteBuiltinStablehloShiftLeft = 207,
   kTfLiteBuiltinStablehloCbrt = 208,
   kTfLiteBuiltinStablehloCase = 209,
+  kTfLiteBuiltinSoftsign = 210,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus
