@@ -439,7 +439,8 @@ TFTPU_CAPI_EXPORT int TpuTopology_AvailableCoresPerChip(
 
 // Returns the number of cores per Chip or -1 if the TPU system is not
 // available.
-TFTPU_CAPI_EXPORT absl::StatusOr<int> TpuTopology_MaybeAvailableCoresPerChip(
+TFTPU_CAPI_EXPORT absl::StatusOr<int>
+TpuTopology_MaybeAvailableSparseCoresPerLogicalDevice(
     TpuCoreTypeEnum tpu_core_type);
 
 // Recycle unused service port.
@@ -808,7 +809,7 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_AvailableCoreCount);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_AvailableCoresPerChip);
-  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_MaybeAvailableCoresPerChip);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_MaybeAvailableSparseCoresPerLogicalDevice);
   TFTPU_ADD_FN_IN_STRUCT(TpuNetUtil_RecycleUnusedPort);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CreateCompilationCacheKey);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_DestroyCompilationCacheKey);
