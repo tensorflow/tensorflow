@@ -290,18 +290,29 @@ std::vector<const HloValue*> GetAllValuesUsedByInstruction(
 
 // Returns true if all HloValues used by the left and right nodes have their
 // defining instructions matched.
-double AllOperandHloValuesMatchedScore(const HloInstructionNode* left_node,
-                                       const HloInstructionNode* right_node,
-                                       const HloGumgraph& left,
-                                       const HloGumgraph& right,
-                                       HloGumgraphMappings& mappings) {
-  std::vector<const HloValue*> left_hlo_values =
-      GetAllValuesUsedByInstruction(left_node->instruction, left);
-  std::vector<const HloValue*> right_hlo_values =
-      GetAllValuesUsedByInstruction(right_node->instruction, right);
+double AllOperandHloValuesMatchedScore(
+    const HloInstructionNode* left_node, const HloInstructionNode* right_node,
+    const HloGumgraph& left, const HloGumgraph& right,
+    absl::flat_hash_map<const HloInstruction*,
+                        const std::vector<const HloValue*>>&
+        instruction_used_values_cache,
+    HloGumgraphMappings& mappings) {
+  if (!instruction_used_values_cache.contains(left_node->instruction)) {
+    instruction_used_values_cache.emplace(
+        left_node->instruction,
+        GetAllValuesUsedByInstruction(left_node->instruction, left));
+  }
+  if (!instruction_used_values_cache.contains(right_node->instruction)) {
+    instruction_used_values_cache.emplace(
+        right_node->instruction,
+        GetAllValuesUsedByInstruction(right_node->instruction, right));
+  }
+  auto& left_hlo_values = instruction_used_values_cache[left_node->instruction];
+  auto& right_hlo_values =
+      instruction_used_values_cache[right_node->instruction];
 
   if (left_hlo_values.empty() || right_hlo_values.empty() ||
-      left_hlo_values.size() != right_hlo_values.size()) {
+      (left_hlo_values.size() != right_hlo_values.size())) {
     return 0.0;
   }
 
@@ -431,6 +442,8 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
     HloGumgraphMappings& mappings) const {
   LOG(INFO) << "Running GreedyLimitedCandidatesBottomUpMatcher: matching "
                "subgraphs that match based on Dice similarity";
+  absl::flat_hash_map<const HloInstruction*, const std::vector<const HloValue*>>
+      instruction_used_values_cache;
   int current_mapping_count = mappings.left_to_right_instruction_map.size();
   std::vector<const HloInstructionNode*> left_postorder = GetAllNodesInDfsOrder(
       left_.GetRoot(), DfsTraversalOrder::kPostOrder, left_.GetNodeCount());
@@ -479,7 +492,8 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
               node.instruction->opcode() == left_node->instruction->opcode()) {
             // Found candidate. Calculate similarity.
             double operands_match_similarity = AllOperandHloValuesMatchedScore(
-                left_node, &node, left_, right_, mappings);
+                left_node, &node, left_, right_, instruction_used_values_cache,
+                mappings);
             double dice_sim = DiceSimLimitedSubgraph(
                 left_node, &node, mappings, max_dice_subgraph_size_,
                 left_.GetNodeCount(), right_.GetNodeCount());
