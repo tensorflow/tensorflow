@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/debug_options_flags.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/numbers.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -235,7 +237,24 @@ absl::Status NcclCollectives::GroupEnd() {
   return XLA_NCCL_STATUS(ncclGroupEnd());
 }
 
+static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
+  TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
+                      xla::CollectivesRegistry::Get("gpu", "nvshmem"));
+  xla::gpu::GpuCollectives* nvshmem_collectives =
+      tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+  if (nvshmem_collectives == nullptr) {
+    return absl::InternalError("Failed to get NVSHMEM collectives");
+  }
+
+  return nvshmem_collectives;
+}
+
 absl::StatusOr<void*> NcclCollectives::Allocate(uint64_t bytes) {
+  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
+    TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
+    return nvshmem_collectives->Allocate(bytes);
+  }
+
   void* ptr = nullptr;
   ncclResult_t res = ncclMemAlloc(&ptr, bytes);
   if (res != ncclSuccess) {
@@ -251,6 +270,11 @@ absl::StatusOr<void*> NcclCollectives::Allocate(uint64_t bytes) {
 }
 
 absl::Status NcclCollectives::Deallocate(void* location) {
+  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
+    TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
+    return nvshmem_collectives->Deallocate(location);
+  }
+
   ncclResult_t res = ncclMemFree(location);
   if (res != ncclSuccess) {
     return absl::InternalError(absl::StrFormat(
@@ -318,6 +342,11 @@ class NcclIdStore {
 
 absl::Status NcclCollectives::InitializeTopology(
     NcclCollectives::Topology topology) {
+  if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
+    TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
+    TF_RETURN_IF_ERROR(nvshmem_collectives->InitializeTopology(topology));
+  }
+
   if (topology.num_nodes > 1) {
     auto nccl_id_store = std::make_shared<NcclIdStore>(
         topology.node_id, topology.device_id_to_node_id,
@@ -329,7 +358,6 @@ absl::Status NcclCollectives::InitializeTopology(
   }
   return absl::OkStatus();
 }
-
 }  // namespace xla::gpu
 
 XLA_COLLECTIVES_REGISTER("gpu", "nccl", 1,
