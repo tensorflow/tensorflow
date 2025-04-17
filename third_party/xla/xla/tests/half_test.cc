@@ -26,7 +26,8 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -42,7 +43,8 @@ using UnaryBuildFuncTy = std::function<void(const xla::XlaOp& src)>;
 constexpr int kNumElements = 4;
 constexpr ErrorSpec kErrorSpec{0.001, 0.001};
 
-using HalfTestBase = ClientLibraryTestRunnerMixin<HloTestBase>;
+using HalfTestBase = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 struct UnaryOpTestParam {
   std::function<half(half)> compute_func;

@@ -28,7 +28,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -39,7 +40,8 @@ namespace tridiagonal {
 namespace {
 
 class TridiagonalTest
-    : public ClientLibraryTestRunnerMixin<HloTestBase>,
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
       public ::testing::WithParamInterface<std::tuple<int, int, int>> {};
 
 XLA_TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {

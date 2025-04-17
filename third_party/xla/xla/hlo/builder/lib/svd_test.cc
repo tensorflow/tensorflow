@@ -31,17 +31,20 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
-class SVDTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
+class SVDTest : public ClientLibraryTestRunnerMixin<
+                    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   void SetUp() override {
-    ClientLibraryTestRunnerMixin<HloTestBase>::SetUp();
+    ClientLibraryTestRunnerMixin<
+        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>::SetUp();
     batch_3d_4x5_ = Array3D<float>{
         {
             {4, 6, 8, 10, 1},

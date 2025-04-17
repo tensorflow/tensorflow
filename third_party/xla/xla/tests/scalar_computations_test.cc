@@ -17,7 +17,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
-#include <memory>
 #include <ostream>
 #include <type_traits>
 #include <vector>
@@ -31,7 +30,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
@@ -44,7 +44,8 @@ namespace {
 constexpr ErrorSpec kErrorSpec{0.0001};
 
 class ScalarComputationsTest
-    : public ClientLibraryTestRunnerMixin<HloTestBase> {
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   // A template for building and running a binary comparison test.
   template <typename NativeT>
@@ -280,7 +281,8 @@ void PrintTo(const DivS32Params& p, std::ostream* os) {
       << p.remainder << "}";
 }
 
-class DivS32Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
+class DivS32Test : public ClientLibraryTestRunnerMixin<
+                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
                    public ::testing::WithParamInterface<DivS32Params> {};
 
 XLA_TEST_P(DivS32Test, DivideTwoScalarsS32) {

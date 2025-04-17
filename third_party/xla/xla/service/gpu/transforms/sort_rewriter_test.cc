@@ -33,7 +33,8 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -44,11 +45,11 @@ namespace {
 namespace m = ::xla::match;
 
 class SortRewriterTest
-    : public HloTestBase,
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
       public ::testing::WithParamInterface<std::tuple<PrimitiveType, bool>> {
  public:
   void SetUp() override {
-    HloTestBase::SetUp();
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>::SetUp();
     SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   }
 

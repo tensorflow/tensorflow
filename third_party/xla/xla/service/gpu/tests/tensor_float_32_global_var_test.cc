@@ -16,12 +16,18 @@ limitations under the License.
 #include <string>
 
 #include "xla/error_spec.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+// The error tolerances are small enough so that the use of TF32 will cause
+// the error to be greater than the tolerances.
+constexpr ErrorSpec kErrorSpec = ErrorSpec{1e-4, 1e-4};
 
 // Test that setting the TensorFloat-32 global variable to false causes
 // TensorFloat-32 not to be used, even when the operand precision is set to the
@@ -30,15 +36,12 @@ namespace {
 // NOTE: Unfortunately TF2XLA doesn't set the precision config for all
 // operations based on tensor_float_32_execution_enabled(), so we can not ignore
 // the global variable.
-class TensorFloat32GlobalVarTest : public ::testing::WithParamInterface<bool>,
-                                   public HloTestBase {
+class TensorFloat32GlobalVarTest
+    : public ::testing::WithParamInterface<bool>,
+      public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  protected:
   TensorFloat32GlobalVarTest() {
     tsl::enable_tensor_float_32_execution(false);
-
-    // The error tolerances are small enough so that the use of TF32 will cause
-    // the error to be greater than the tolerances.
-    error_spec_ = ErrorSpec{1e-4, 1e-4};
   }
 
   ~TensorFloat32GlobalVarTest() override {
@@ -46,7 +49,7 @@ class TensorFloat32GlobalVarTest : public ::testing::WithParamInterface<bool>,
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     const bool enable_triton_gemm = GetParam();
     if (enable_triton_gemm) {
       debug_options.set_xla_gpu_enable_triton_gemm(true);
@@ -68,7 +71,7 @@ ENTRY %dot_computation (x: f32[1024,1024], source: f32[1024,1024]) -> f32[1024,1
   ROOT %result = f32[1024,1024] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={default, default}
 }
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_text, error_spec_));
+  EXPECT_TRUE(RunAndCompare(hlo_text, kErrorSpec));
 }
 
 TEST_P(TensorFloat32GlobalVarTest, Convolution) {
@@ -81,7 +84,7 @@ ENTRY %conv_computation (x: f32[16,40,40,64], source: f32[3,3,64,64]) -> f32[16,
   ROOT %result = f32[16,40,40,64] convolution(x, y), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, operand_precision={default, default}
 }
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_text, error_spec_));
+  EXPECT_TRUE(RunAndCompare(hlo_text, kErrorSpec));
 }
 
 std::string TestParamToString(const ::testing::TestParamInfo<bool>& info) {

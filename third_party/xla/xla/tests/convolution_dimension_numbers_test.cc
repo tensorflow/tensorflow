@@ -27,8 +27,8 @@ limitations under the License.
 #include "xla/reference_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/test.h"
 
@@ -59,7 +59,8 @@ absl::StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
 }
 
 class ConvolutionDimensionNumbersTest
-    : public ClientLibraryTestRunnerMixin<HloTestBase> {};
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
 
 // Tests the convolution operation with invalid input dimension numbers.
 TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {

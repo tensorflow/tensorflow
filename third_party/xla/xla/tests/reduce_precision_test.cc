@@ -23,7 +23,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -447,7 +448,8 @@ static const uint64_t f64_test_values[][4] = {
 };
 
 class ReducedPrecisionAccuracyTest
-    : public ClientLibraryTestRunnerMixin<HloTestBase>,
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
       public ::testing::WithParamInterface<int> {
  protected:
   template <typename Fp, typename Uint, int kNumTestcases, int kNumInputs>

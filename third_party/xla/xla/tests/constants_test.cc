@@ -31,7 +31,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -44,7 +45,8 @@ namespace {
 
 constexpr ErrorSpec kErrorSpec{1e-3, 1e-5};
 
-using ConstantsTest = ClientLibraryTestRunnerMixin<HloTestBase>;
+using ConstantsTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 template <typename T>
 class ConstantsFloatTest : public ConstantsTest {};
@@ -249,7 +251,7 @@ TEST_F(ConstantsTest, FullLikeScalar) {
   ComputeAndCompareR0<float>(&b, -1, {}, kErrorSpec);
 }
 
-using ConstantsHloTest = HloTestBase;
+using ConstantsHloTest = HloPjRtTestBase;
 
 // TODO(b/121147351): Fails on GPU. Not clear if this is expected behavior.
 TEST_F(ConstantsHloTest, DISABLED_ON_TPU(DISABLED_ON_GPU(BitcastOfConstant))) {

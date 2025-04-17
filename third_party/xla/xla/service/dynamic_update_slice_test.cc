@@ -13,18 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/execution_options_util.h"
-#include "xla/hlo/parser/hlo_parser.h"
+#include <cstdint>
+#include <iterator>
+#include <utility>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/types/span.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/status_macros.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/shape_util.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tests/test_utils.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-class DynamicUpdateSliceTest : public HloTestBase {};
+using DynamicUpdateSliceTest =
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 XLA_TEST_F(DynamicUpdateSliceTest, ShardedInPlaceDUS) {
   // A dynamic-update-slice within a while loop.  This construction is an easy

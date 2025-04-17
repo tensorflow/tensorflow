@@ -44,8 +44,8 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -54,7 +54,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class DynamicSliceTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
+class DynamicSliceTest
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   template <typename IndexT, typename DataT>
   void TestR1() {
@@ -318,7 +320,8 @@ TEST_F(DynamicSliceTest, Int32R3Pred) {
 }
 
 class DynamicUpdateSliceTest
-    : public ClientLibraryTestRunnerMixin<HloTestBase> {
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   template <typename IndexT, typename DataT>
   void TestR0() {
@@ -750,9 +753,11 @@ TEST_F(DynamicUpdateSliceTest, R3ContiguousLargerBF16) {
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/7, /*size=*/1);
 }
 
+using DynamicOpsTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+
 // This test that buffer assignment does not alias constants with the output of
 // dynamic update slice.
-TEST_F(HloTestBase, AddOfDUS) {
+TEST_F(DynamicOpsTest, AddOfDUS) {
   const char* hlo_string = R"(
   HloModule m
   test {
@@ -773,7 +778,7 @@ TEST_F(HloTestBase, AddOfDUS) {
 // and multiple output fusions of dynamic update slices produce the right
 // results. On some backends (e.g. GPU), this is done inplace.
 #ifdef XLA_TEST_BACKEND_GPU
-TEST_F(HloTestBase, MultipleOutputFusedDynamicUpdateSlices) {
+TEST_F(DynamicOpsTest, MultipleOutputFusedDynamicUpdateSlices) {
   const char* hlo_string = R"(
 HloModule MultipleInplaceDus, input_output_alias={ {0}: (0, {}), {1}: (2, {}) }
 
@@ -803,7 +808,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_string, ErrorSpec{0, 0}));
 }
 
-TEST_F(HloTestBase,
+TEST_F(DynamicOpsTest,
        MultipleOutputFusedDynamicUpdateSlicesWithTransposeBitcastedRoot) {
   const char* hlo_string = R"(
 HloModule MultipleInplaceDusWithTransposeBitcastToTheRoot, input_output_alias={ {0}: (0, {}), {1}: (2, {}) }
@@ -835,7 +840,8 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_string, ErrorSpec{0, 0}));
 }
 
-TEST_F(HloTestBase, SingleFusedDynamicUpdateSliceWithTransposeBitcastedRoot) {
+TEST_F(DynamicOpsTest,
+       SingleFusedDynamicUpdateSliceWithTransposeBitcastedRoot) {
   const char* hlo_string = R"(
 HloModule SingleInplaceDusWithTransposeBitcastToTheRoot, input_output_alias={ {}: (0, {}) }
 
@@ -862,7 +868,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_string, ErrorSpec{0, 0}));
 }
 
-TEST_F(HloTestBase, SingleFusedDynamicUpdateSliceWithReshapeBitcastedRoot) {
+TEST_F(DynamicOpsTest, SingleFusedDynamicUpdateSliceWithReshapeBitcastedRoot) {
   const char* hlo_string = R"(
 HloModule SingleInplaceDusWithReshapeBitcastToTheRoot, input_output_alias={ {}: (0, {}) }
 
@@ -889,7 +895,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_string, ErrorSpec{0, 0}));
 }
 
-TEST_F(HloTestBase,
+TEST_F(DynamicOpsTest,
        SingleFusedDynamicUpdateSliceWithBitcastedRootAndParameter) {
   const char* hlo_string = R"(
 HloModule SingleInplaceDusWithBitcastToTheRootAndFromTheParameter, input_output_alias={ {}: (0, {}) }
@@ -919,7 +925,8 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_string, ErrorSpec{0, 0}));
 }
 
-TEST_F(HloTestBase, SingleFusedDynamicUpdateSliceWithSameDynamicSliceAccess) {
+TEST_F(DynamicOpsTest,
+       SingleFusedDynamicUpdateSliceWithSameDynamicSliceAccess) {
   const char* hlo_string = R"(
 HloModule fusion, input_output_alias={ {}: (0, {}) }
 
@@ -945,7 +952,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_string, ErrorSpec{0, 0}));
 }
 
-TEST_F(HloTestBase,
+TEST_F(DynamicOpsTest,
        SingleFusedDynamicUpdateSliceWithDynamicSliceAccessSlicesOfSizeOne) {
   const char* hlo_string = R"(
 HloModule fusion, input_output_alias={ {}: (0, {}) }

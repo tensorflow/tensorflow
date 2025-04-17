@@ -22,7 +22,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -30,7 +31,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class UnaryOpTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
+class UnaryOpTest : public ClientLibraryTestRunnerMixin<
+                        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   template <typename T>
   T inf() {

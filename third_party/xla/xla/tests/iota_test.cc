@@ -26,7 +26,8 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -36,7 +37,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using IotaTest = HloTestBase;
+using IotaTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 TEST_F(IotaTest, IotaReshapeR1) {
   const std::string hlo_text = R"(
@@ -70,7 +71,8 @@ std::vector<T> GetR1Expected(const int64_t num_elements) {
 }
 
 class IotaR1Test
-    : public ClientLibraryTestRunnerMixin<HloTestBase>,
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
       public ::testing::WithParamInterface<std::tuple<PrimitiveType, int>> {};
 
 XLA_TEST_P(IotaR1Test, DoIt) {
@@ -116,7 +118,8 @@ INSTANTIATE_TEST_CASE_P(
                                         /*end=*/10001,
                                         /*step=*/10)));
 
-class IotaR2Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
+class IotaR2Test : public ClientLibraryTestRunnerMixin<
+                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
@@ -154,7 +157,8 @@ INSTANTIATE_TEST_CASE_P(
                                         /*step=*/10),
                        ::testing::Values(0, 1)));
 
-class IotaR3Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
+class IotaR3Test : public ClientLibraryTestRunnerMixin<
+                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 

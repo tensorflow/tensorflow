@@ -20,17 +20,17 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-class CommandBufferTest : public HloTestBase,
+class CommandBufferTest : public HloPjRtTestBase,
                           public ::testing::WithParamInterface<bool> {
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_graph_enable_concurrent_region(GetParam());
     return debug_options;
   }

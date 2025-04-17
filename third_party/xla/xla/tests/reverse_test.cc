@@ -32,7 +32,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/client_library_test_runner_utils.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
@@ -81,7 +82,8 @@ void PrintTo(const ReverseSpec& spec, std::ostream* os) {
   *os << spec.ToTestCaseName();
 }
 
-class FloatReverseTest : public ClientLibraryTestRunnerMixin<HloTestBase>,
+class FloatReverseTest : public ClientLibraryTestRunnerMixin<
+                             HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
                          public ::testing::WithParamInterface<ReverseSpec> {
  public:
   FloatReverseTest() { set_float_type(GetParam().test_type); }
@@ -122,7 +124,8 @@ INSTANTIATE_TEST_CASE_P(FloatReverseInstance, FloatReverseTest,
                         ::testing::PrintToStringParamName());
 
 // A simple test class which not templated by float precision.
-using ReverseTest = ClientLibraryTestRunnerMixin<HloTestBase>;
+using ReverseTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 // Tests the reverse operation on a 4D U8 array on dimension 0 and 3.
 TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
