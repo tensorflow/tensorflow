@@ -934,8 +934,8 @@ void HloCollectiveInstruction::PrintExtraAttributesImpl(
     VLOG(4) << name() << " replica_groups="
             << device_list_.ToString(options.print_full_replica_group_list());
 
-    AppendCat(printer, "replica_groups=",
-              device_list_.ToString(options.print_full_replica_group_list()));
+    printer->Append("replica_groups=");
+    device_list_.Print(printer, options.print_full_replica_group_list());
   });
   if (constrain_layout_) {
     printer.Next(

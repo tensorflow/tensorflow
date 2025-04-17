@@ -425,6 +425,9 @@ class HloModule {
   absl::Cord ToCord() const { return ToCord(HloPrintOptions::Default()); }
   absl::Cord ToCord(const HloPrintOptions& options) const;
 
+  // Returns a stable fingerprint of the module using the given print options.
+  uint64_t ToFingerprint(const HloPrintOptions& options) const;
+
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
