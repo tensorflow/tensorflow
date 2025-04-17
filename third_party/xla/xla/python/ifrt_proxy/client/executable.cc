@@ -719,7 +719,7 @@ void LoadedExecutable::PollLoadedHostCallback(
     }
   };
 
-  static auto* global_pool = new tsl::thread::ThreadPool(
+  static auto* const global_pool = new tsl::thread::ThreadPool(
       tsl::Env::Default(), GetThreadOptions(), "XLAIFRTProxy",
       std::min(16, tsl::port::MaxParallelism()));
   global_pool->Schedule(std::move(f));

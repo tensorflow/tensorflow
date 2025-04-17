@@ -227,8 +227,8 @@ static void LogPtxasTooOld(const std::string& ptxas_path, int cc_major,
   using AlreadyLoggedSetTy =
       absl::flat_hash_set<std::tuple<std::string, int, int>>;
 
-  static absl::Mutex* mutex = new absl::Mutex;
-  static AlreadyLoggedSetTy* already_logged = new AlreadyLoggedSetTy;
+  static absl::Mutex* const mutex = new absl::Mutex;
+  static AlreadyLoggedSetTy* const already_logged = new AlreadyLoggedSetTy;
 
   absl::MutexLock lock(mutex);
 

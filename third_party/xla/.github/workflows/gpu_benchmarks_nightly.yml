@@ -109,6 +109,7 @@ jobs:
             --num_repeats=5 \
             --use_spmd_partitioning \
             --profile_execution=True \
+            --hlo_argument_mode=use_zeros_as_input \
             --xla_gpu_dump_xspace_to="${OUTPUT_PREFIX_GEMMA}_xspace.pb" \
             "$HLO_FILE_GEMMA" \
             > "${OUTPUT_PREFIX_GEMMA}.txt"
@@ -131,6 +132,7 @@ jobs:
             --num_repeats=5 \
             --use_spmd_partitioning \
             --profile_execution=True \
+            --hlo_argument_mode=use_zeros_as_input \
             --xla_gpu_dump_xspace_to="${OUTPUT_PREFIX_GEMMA3_CALL}_xspace.pb" \
             "$HLO_FILE_GEMMA3_CALL" \
             > "${OUTPUT_PREFIX_GEMMA3_CALL}.txt"
@@ -153,6 +155,7 @@ jobs:
             --num_repeats=5 \
             --use_spmd_partitioning \
             --profile_execution=True \
+            --hlo_argument_mode=use_zeros_as_input \
             --xla_gpu_dump_xspace_to="${OUTPUT_PREFIX_GEMMA3_SAMPLE_LOOP}_xspace.pb" \
             "$HLO_FILE_GEMMA3_SAMPLE_LOOP" \
             > "${OUTPUT_PREFIX_GEMMA3_SAMPLE_LOOP}.txt"

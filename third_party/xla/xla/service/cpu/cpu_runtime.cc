@@ -70,8 +70,8 @@ namespace cpu {
 namespace runtime {
 
 XfeedManager* GetXfeedManager(int device_ordinal) {
-  static auto* managers = new absl::flat_hash_map<int, XfeedManager*>();
-  static absl::Mutex* mutex = new absl::Mutex();
+  static auto* const managers = new absl::flat_hash_map<int, XfeedManager*>();
+  static absl::Mutex* const mutex = new absl::Mutex();
 
   absl::MutexLock lock(mutex);
   auto it = managers->find(device_ordinal);

@@ -34,7 +34,7 @@ namespace {
 class TfToPlatformDeviceIdMap {
  public:
   static TfToPlatformDeviceIdMap* singleton() {
-    static auto* id_map = new TfToPlatformDeviceIdMap;
+    static auto* const id_map = new TfToPlatformDeviceIdMap;
     return id_map;
   }
 

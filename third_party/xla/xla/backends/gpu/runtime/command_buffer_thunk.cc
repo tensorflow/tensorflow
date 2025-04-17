@@ -296,7 +296,7 @@ struct CommandBufferThunk::GlobalState {
 };
 
 CommandBufferThunk::GlobalState* CommandBufferThunk::GetGlobalState() {
-  static auto* global_state = new GlobalState();
+  static auto* const global_state = new GlobalState();
   return global_state;
 }
 

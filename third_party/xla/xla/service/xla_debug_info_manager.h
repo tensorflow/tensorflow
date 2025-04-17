@@ -39,7 +39,7 @@ using ModuleIdentifier = int;
 class XlaDebugInfoManager {
  public:
   static XlaDebugInfoManager* Get() {
-    static XlaDebugInfoManager* singleton = new XlaDebugInfoManager();
+    static XlaDebugInfoManager* const singleton = new XlaDebugInfoManager();
     return singleton;
   }
 

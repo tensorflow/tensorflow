@@ -47,7 +47,8 @@ mutex name_mutex(tsl::LINKER_INITIALIZED);
 
 std::map<std::thread::id, string>& GetThreadNameRegistry()
     TF_EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
-  static auto* thread_name_registry = new std::map<std::thread::id, string>();
+  static auto* const thread_name_registry =
+      new std::map<std::thread::id, string>();
   return *thread_name_registry;
 }
 
@@ -198,7 +199,7 @@ REGISTER_FILE_SYSTEM("file", LocalWinFileSystem);
 REGISTER_FILE_SYSTEM("ram", RamFileSystem);
 
 Env* Env::Default() {
-  static Env* default_env = new WindowsEnv;
+  static Env* const default_env = new WindowsEnv;
   return default_env;
 }
 

@@ -206,7 +206,8 @@ ComputationPlacer::GetForPlatform(const se::Platform* platform) {
 
 /* static */ std::map<se::Platform::Id, ComputationPlacer::State>*
 ComputationPlacer::GetPlatformComputationPlacers() {
-  static auto* r = new std::map<se::Platform::Id, ComputationPlacer::State>;
+  static auto* const r =
+      new std::map<se::Platform::Id, ComputationPlacer::State>;
   return r;
 }
 

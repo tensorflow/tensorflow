@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -83,28 +84,35 @@ Shape::Shape(std::vector<Shape> tuple_shapes) {
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
   if (auto* const state = if_array_state()) {
-    state->dimensions.reserve(shape_proto.dimensions_size());
-    for (const int64_t dimension : shape_proto.dimensions()) {
-      add_dimensions(dimension);
-    }
+    const int num_dims = shape_proto.dimensions_size();
+    const int num_is_dynamic_dims = shape_proto.is_dynamic_dimension_size();
+    state->dimensions.reserve(num_dims);
+    state->dynamic_dimensions.reserve(num_dims);
     // A malformed proto may have different is_dynamic_dimension_size and
     // dimensions_size. Since C++ is evil, and we have no good way of bailing
     // out in a constructor, conservatively trim the is_dynamic_dimension size.
     // TODO(b/120111794): Make this a hard error when we have a factory method
     // instead of a constructor.
-    if (shape_proto.dimensions_size() !=
-        shape_proto.is_dynamic_dimension_size()) {
-      if (shape_proto.is_dynamic_dimension_size() != 0) {
+    if (num_dims != num_is_dynamic_dims) {
+      if (num_is_dynamic_dims != 0) {
         LOG(ERROR) << "Malformed shape proto: number of is_dynamic_dimension "
-                      "fields does not match number of dimension fields";
+                      "fields ("
+                   << num_is_dynamic_dims
+                   << ") does not match number of dimension fields ("
+                   << num_dims << ").";
       } else {
-        LOG(WARNING) << "Malformed shape proto: is_dynamic_dimension is empty";
+        LOG(WARNING) << "Malformed shape proto: is_dynamic_dimension is empty "
+                        "- assuming all dimensions are static.";
       }
     }
-    const int64_t num_dynamic_dimension_fields = std::min(
-        shape_proto.dimensions_size(), shape_proto.is_dynamic_dimension_size());
-    for (int i = 0; i < num_dynamic_dimension_fields; i++) {
-      state->dynamic_dimensions[i] = shape_proto.is_dynamic_dimension(i);
+    for (int i = 0; i < num_dims; ++i) {
+      const bool is_dynamic =
+          (i < num_is_dynamic_dims) && shape_proto.is_dynamic_dimension(i);
+      // We don't want to crash due to a malformed proto, so use
+      // UnsafeAddDimension. We expect that the caller will eventually call a
+      // validation routine that will detect the error in case the dimension
+      // value is invalid.
+      UnsafeAddDimension(shape_proto.dimensions(i), is_dynamic);
     }
   } else if (auto* const state = if_tuple_state()) {
     state->tuple_shapes.reserve(shape_proto.tuple_shapes_size());
@@ -175,6 +183,31 @@ bool Shape::AreAllLeavesIntegers() const {
     });
   }
   return primitive_util::IsIntegralType(element_type());
+}
+
+void Shape::add_dimensions(int64_t value, std::optional<bool> is_dynamic) {
+  // For backward compatibility, if `is_dynamic` is nullopt, we treat it as
+  // false.
+  const bool inferred_dynamic = is_dynamic.has_value() && *is_dynamic;
+  if (value < 0 &&
+      // TODO(b/411121729): for backward compatibility, if `is_dynamic` is
+      // nullopt, we don't validate the dimension size - add the validation
+      // when we change `is_dynamic` to be a bool.
+      is_dynamic.has_value()) {
+    CHECK(*is_dynamic) << "static dimension must have size >= 0 instead of "
+                       << value << ".";
+    CHECK_EQ(value, kUnboundedSize)
+        << "dynamic dimension must have size == kUnboundedSize or >= 0.";
+  }
+  UnsafeAddDimension(value, inferred_dynamic);
+}
+
+void Shape::UnsafeAddDimension(int64_t value, bool is_dynamic) {
+  auto& state = array_state();
+  CHECK_EQ(state.dimensions.size(), state.dynamic_dimensions.size())
+      << "where the shape is " << ToString();
+  state.dimensions.push_back(value);
+  state.dynamic_dimensions.push_back(is_dynamic);
 }
 
 bool Shape::is_static() const {

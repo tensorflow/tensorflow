@@ -86,14 +86,15 @@ Compiler::CompileAheadOfTime(
 
 /* static */ absl::flat_hash_map<se::Platform::Id, Compiler::CompilerFactory>*
 Compiler::GetPlatformCompilerFactories() {
-  static auto* r = new absl::flat_hash_map<se::Platform::Id, CompilerFactory>;
+  static auto* const r =
+      new absl::flat_hash_map<se::Platform::Id, CompilerFactory>;
   return r;
 }
 
 /* static */
 absl::flat_hash_map<se::Platform::Id, std::unique_ptr<Compiler>>*
 Compiler::GetPlatformCompilers() {
-  static auto* r =
+  static auto* const r =
       new absl::flat_hash_map<se::Platform::Id, std::unique_ptr<Compiler>>;
   return r;
 }

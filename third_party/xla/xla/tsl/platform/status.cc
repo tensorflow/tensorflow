@@ -56,7 +56,7 @@ namespace {
 class StatusLogSink : public TFLogSink {
  public:
   static StatusLogSink* GetInstance() {
-    static StatusLogSink* sink = new StatusLogSink();
+    static StatusLogSink* const sink = new StatusLogSink();
     return sink;
   }
 

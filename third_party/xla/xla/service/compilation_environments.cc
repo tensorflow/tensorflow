@@ -53,7 +53,7 @@ absl::flat_hash_map<const tsl::protobuf::Descriptor*,
 class GlobalCompEnvStats {
  public:
   static GlobalCompEnvStats& GetSingleton() {
-    static GlobalCompEnvStats* singleton = new GlobalCompEnvStats();
+    static GlobalCompEnvStats* const singleton = new GlobalCompEnvStats();
 
     return *singleton;
   }

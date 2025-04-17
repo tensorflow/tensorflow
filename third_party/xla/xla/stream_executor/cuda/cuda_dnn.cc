@@ -879,7 +879,7 @@ const json* CudnnExecutionPlanEngineFilterStatic() {
             "comment"             : "b/281887114"
           }
       ]})";
-  static const json* json_handle = new json(json::parse(filter_str));
+  static const json* const json_handle = new json(json::parse(filter_str));
   return json_handle;
 }
 

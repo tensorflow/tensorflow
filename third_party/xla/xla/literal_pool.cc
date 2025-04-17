@@ -29,7 +29,7 @@ limitations under the License.
 namespace xla {
 
 LiteralPool* LiteralPool::Default() {
-  static auto* pool = new LiteralPool();
+  static auto* const pool = new LiteralPool();
   return pool;
 }
 

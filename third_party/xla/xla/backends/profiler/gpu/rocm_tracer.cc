@@ -1324,7 +1324,7 @@ void RocmActivityCallbackImpl::AddHipOpsMemsetActivityEvent(
 }
 
 /* static */ RocmTracer* RocmTracer::GetRocmTracerSingleton() {
-  static auto* singleton = new RocmTracer();
+  static auto* const singleton = new RocmTracer();
   return singleton;
 }
 

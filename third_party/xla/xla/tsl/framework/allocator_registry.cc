@@ -23,7 +23,8 @@ namespace tsl {
 
 // static
 AllocatorFactoryRegistry* AllocatorFactoryRegistry::singleton() {
-  static AllocatorFactoryRegistry* singleton = new AllocatorFactoryRegistry;
+  static AllocatorFactoryRegistry* const singleton =
+      new AllocatorFactoryRegistry;
   return singleton;
 }
 
