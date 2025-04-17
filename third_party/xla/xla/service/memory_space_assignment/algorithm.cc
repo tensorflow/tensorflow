@@ -4779,6 +4779,8 @@ void MsaAlgorithm::CheckAndUpdateForDualLiveAllocationValues(
 }
 
 AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
+  // Clear the chunk map to avoid using it in MSA.
+  result_.chunk_map.clear();
   auto allocation_sequence =
       request.allocation_value->mutable_allocation_sequence();
   // inclusive_start_time == end_time is a special case where the value is
