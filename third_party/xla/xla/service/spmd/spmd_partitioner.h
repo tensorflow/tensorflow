@@ -53,7 +53,7 @@ namespace xla {
 namespace spmd {
 
 // Enum representing the partitioning methods for gather and scatter.
-enum class PartitioningMethod {
+enum class GatherScatterPartitioningMethod {
   kExplicitBatch,
   kIndexParallel,
   kOperandPassthrough,
@@ -111,12 +111,16 @@ struct SpmdPartitionerOptions {
   bool disable_ag_rewrite_for_multiple_consumers = false;
 
   // Partitioning method to prioritize for gather operations.
-  PartitioningMethod gather_partition_method =
-      PartitioningMethod::kExplicitBatch;
+  std::vector<GatherScatterPartitioningMethod>
+      preferred_gather_partition_methods = {
+          GatherScatterPartitioningMethod::kExplicitBatch,
+          GatherScatterPartitioningMethod::kIndexParallel};
 
   // Partitioning method to prioritize for scatter operations.
-  PartitioningMethod scatter_partition_method =
-      PartitioningMethod::kExplicitBatch;
+  std::vector<GatherScatterPartitioningMethod>
+      preferred_scatter_partition_methods = {
+          GatherScatterPartitioningMethod::kExplicitBatch,
+          GatherScatterPartitioningMethod::kIndexParallel};
 
   // The minimum size to enable windowed einsum in total bytes.
   // This combines sizes in bytes of both operands.
