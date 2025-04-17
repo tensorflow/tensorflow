@@ -55,6 +55,19 @@ ENTRY main {
 )");
 }
 
+TEST_F(LayoutNormalizationTest,
+       TestInstructionsWithNormalizedLayoutAreSkipped) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p = f32[5,4]{1,0} parameter(0)
+  ROOT o = f32[5,4]{1,0} abs(p)
+}
+)";
+  CheckLayoutNormalization(hlo, /*expected=*/std::nullopt);
+}
+
 TEST_F(LayoutNormalizationTest, TestUnary) {
   const char* hlo = R"(
 HloModule module
@@ -138,14 +151,13 @@ HloModule module
 ENTRY main {
   a = f32[5,4]{1,0} parameter(0)
   t = f32[4,5]{0,1} transpose(a), dimensions={1,0}
-  ROOT out = abs(t)
+  ROOT out = f32[4,5]{0,1} abs(t)
 }
 )";
 
   CheckLayoutNormalization(hlo, R"(
 // CHECK: [[a_0:%[^ ]+]] = f32[5,4]{1,0} parameter(0)
-// CHECK: [[bitcast_1:%[^ ]+]] = f32[5,4]{1,0} bitcast([[a_0]])
-// CHECK: [[abs_2:%[^ ]+]] = f32[5,4]{1,0} abs([[bitcast_1]])
+// CHECK: [[abs_2:%[^ ]+]] = f32[5,4]{1,0} abs([[a_0]])
 // CHECK: ROOT [[bitcast_3_3:%[^ ]+]] = f32[4,5]{0,1} bitcast([[abs_2]])
 )");
 }
@@ -265,14 +277,13 @@ HloModule module
 ENTRY main {
   a = f32[2,3]{1,0} parameter(0)
   b = f32[2,4,3]{1,2,0} broadcast(a), dimensions={0,2}
-  ROOT out = abs(b)
+  ROOT out = f32[2,4,3]{1,2,0} abs(b)
 }
 )";
 
   CheckLayoutNormalization(hlo, R"(
 // CHECK: [[a_0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
-// CHECK: [[bitcast_1:%[^ ]+]] = f32[2,3]{1,0} bitcast([[a_0]])
-// CHECK: [[broadcast_2:%[^ ]+]] = f32[2,3,4]{2,1,0} broadcast([[bitcast_1]]), dimensions={0,1}
+// CHECK: [[broadcast_2:%[^ ]+]] = f32[2,3,4]{2,1,0} broadcast([[a_0]]), dimensions={0,1}
 // CHECK: [[abs_3:%[^ ]+]] = f32[2,3,4]{2,1,0} abs([[broadcast_2]])
 // CHECK: ROOT [[bitcast_3_4:%[^ ]+]] = f32[2,4,3]{1,2,0} bitcast([[abs_3]])
 )");
@@ -285,17 +296,11 @@ HloModule module
 ENTRY main {
   a = f32[2,3]{1,0} parameter(0)
   b = f32[3,4,2]{2,1,0} broadcast(a), dimensions={2,0}
-  ROOT out = abs(b)
+  ROOT out = f32[3,4,2]{2,1,0} abs(b)
 }
 )";
 
-  CheckLayoutNormalization(hlo, R"(
-// CHECK: [[a_0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
-// CHECK: [[bitcast_1:%[^ ]+]] = f32[2,3]{1,0} bitcast([[a_0]])
-// CHECK: [[broadcast_2:%[^ ]+]] = f32[3,4,2]{2,1,0} broadcast([[bitcast_1]]), dimensions={2,0}
-// CHECK: [[abs_3:%[^ ]+]] = f32[3,4,2]{2,1,0} abs([[broadcast_2]])
-// CHECK: ROOT [[bitcast_3_4:%[^ ]+]] = f32[3,4,2]{2,1,0} bitcast([[abs_3]])
-)");
+  CheckLayoutNormalization(hlo, std::nullopt);
 }
 
 TEST_F(LayoutNormalizationTest, BroadcastCustomOutputLayoutWithDegenerate) {
@@ -305,13 +310,13 @@ HloModule module
 ENTRY main {
   a = f32[9]{0} parameter(0)
   b = f32[2,1,4,9]{2,0,1,3} broadcast(a), dimensions={3}
-  ROOT out = abs(b)
+  ROOT out = f32[2,1,4,9]{2,0,1,3} abs(b)
 }
 )";
 
   CheckLayoutNormalization(hlo, R"(
-// CHECK: [[bitcast_0:%[^ ]+]] = f32[9]{0} bitcast([[a_1:%[^ ]+]])
-// CHECK: [[broadcast_2:%[^ ]+]] = f32[9,1,2,4]{3,2,1,0} broadcast([[bitcast_0]]), dimensions={0}
+// CHECK: [[a:%[^ ]+]] = f32[9]{0} parameter(0)
+// CHECK: [[broadcast_2:%[^ ]+]] = f32[9,1,2,4]{3,2,1,0} broadcast([[a]]), dimensions={0}
 // CHECK: [[abs_3:%[^ ]+]] = f32[9,1,2,4]{3,2,1,0} abs([[broadcast_2]])
 // CHECK: ROOT [[bitcast_3_4:%[^ ]+]] = f32[2,1,4,9]{2,0,1,3} bitcast([[abs_3]])
 )");
@@ -816,14 +821,15 @@ TEST_F(LayoutNormalizationTest, BitcastConvertToSmallerType) {
 HloModule m
 
 ENTRY main {
-  p0 = u64[4]{0} parameter(0)
-  ROOT out = u32[4,2]{0,1} bitcast-convert(u64[4]{0} p0), metadata={op_name="test"}
+  p0 = u64[3,4]{0,1} parameter(0)
+  bc_convert = u32[3,4,2]{1,0,2} bitcast-convert(p0), metadata={op_name="test"}
+  ROOT out = u32[3,4,2]{1,0,2} reverse(bc_convert), dimensions={0}
 }
 )";
 
   CheckLayoutNormalization(hlo, R"(
 // CHECK: bitcast-convert({{.*}}), metadata={op_name="test"}
-)");
+  )");
 }
 
 TEST_F(LayoutNormalizationTest, Scatter) {
@@ -927,14 +933,14 @@ TEST_F(LayoutNormalizationTest, CompareInt4) {
 HloModule module
 
 ENTRY main {
-  a = s4[10]{0:E(4)} parameter(0)
-  b = s4[10]{0:E(4)} parameter(1)
-  ROOT out = compare(a, b), direction=EQ
+  a = s4[10,11]{0,1:E(4)} parameter(0)
+  b = s4[10,11]{0,1:E(4)} parameter(1)
+  ROOT out = pred[10,11]{0,1} compare(a, b), direction=EQ
 }
 )";
 
   CheckLayoutNormalization(hlo, R"(
-// CHECK: pred[10]{0} compare({{.*}})
+// CHECK: pred[11,10]{1,0} compare({{.*}})
 )");
 }
 
