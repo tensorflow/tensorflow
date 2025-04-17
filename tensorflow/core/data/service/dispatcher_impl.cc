@@ -227,8 +227,10 @@ absl::Status DataServiceDispatcherImpl::Start() {
         env_->RecursivelyCreateDir(DatasetsDir(config_.work_dir())));
   }
   if (!config_.fault_tolerant_mode()) {
-    LOG(INFO) << "Running with fault_tolerant_mode=False. The dispatcher will "
-                 "not be able to recover its state on restart.";
+    LOG(INFO) << "Started tf.data service dispatcher in non-fault-tolerant "
+                 "mode with config: "
+              << config_.DebugString()
+              << "\nIt will not recover its state on restart.";
     started_ = true;
     return absl::OkStatus();
   }
@@ -270,7 +272,7 @@ absl::Status DataServiceDispatcherImpl::Start() {
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
   TF_RETURN_IF_ERROR(RestoreSnapshots());
   started_ = true;
-  LOG(INFO) << "Started tf.data service dispatcher with config "
+  LOG(INFO) << "Started tf.data service dispatcher with config: "
             << config_.DebugString();
   return absl::OkStatus();
 }
