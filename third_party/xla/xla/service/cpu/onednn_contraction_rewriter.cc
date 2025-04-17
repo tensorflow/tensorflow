@@ -1195,6 +1195,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     HloInstruction* contraction;
     if (Match(custom_call, OneDnnMatmulInstr(&contraction))) {
       auto backend_config = contraction->backend_config<BackendConfig>();
+
       auto new_ops = contraction->mutable_operands();
 
       UpdateTransposeDimensions(contraction, new_ops, 0, &backend_config);
