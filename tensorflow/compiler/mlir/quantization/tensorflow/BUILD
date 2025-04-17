@@ -410,6 +410,36 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_passes",
+    srcs = [
+        "passes/tf_convert_fake_quant_to_qdq.cc",
+    ],
+    hdrs = [
+        "passes/tf_passes.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/common/tf_quantization_lib:tf_quantization_config",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:temp_fake_quant_utils",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+    # Alwayslink is required for registering the MLIR passes.
+    # TODO(b/255530126): Split the pass registration from the definitions to avoid binary size bloat.
+    alwayslink = True,
+)
+
+cc_library(
     name = "quantize_preprocess",
     srcs = [
         "quantize_preprocess.cc",
@@ -527,6 +557,7 @@ tf_cc_binary(
     srcs = ["passes/tf_quant_opt.cc"],
     deps = [
         ":passes",
+        ":tf_passes",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
