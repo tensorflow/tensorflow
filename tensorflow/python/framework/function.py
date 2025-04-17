@@ -1390,4 +1390,6 @@ _DTYPE_TO_STR = {
     dtypes.float8_e5m2fnuz: "f8e5m2fnuz",
     dtypes.int4: "i4",
     dtypes.uint4: "u4",
+    dtypes.int2: "i2",
+    dtypes.uint2: "u2",
 }

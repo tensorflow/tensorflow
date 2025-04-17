@@ -231,6 +231,12 @@ absl::Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       } else if (pyarray_type == custom_dtypes.uint4) {
         *out_tf_datatype = TF_UINT4;
         break;
+      } else if (pyarray_type == custom_dtypes.int2) {
+        *out_tf_datatype = TF_INT2;
+        break;
+      } else if (pyarray_type == custom_dtypes.uint2) {
+        *out_tf_datatype = TF_UINT2;
+        break;
       }
 
       return errors::Internal("Unsupported numpy type: ",
