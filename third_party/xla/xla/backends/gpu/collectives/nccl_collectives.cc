@@ -94,7 +94,7 @@ NcclCollectives::GetCliqueIdCallback(const CliqueIdCallback* clique_id_callback,
       << "If non-local devices are taking part of a collective API on "
          "GPU, the clique_id_callback must be provided by the client.";
 
-  static auto* local_callback = new CliqueIdCallback(
+  static auto* const local_callback = new CliqueIdCallback(
       [this](const CliqueKey&) { return CreateUniqueCliqueId(); });
   return local_callback;
 }

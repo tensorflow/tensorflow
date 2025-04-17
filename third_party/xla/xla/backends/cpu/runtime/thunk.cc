@@ -98,7 +98,8 @@ Thunk::CollectiveExecuteParams::Create(
 
   // Default implementation of a collectives interface that can execute
   // collective operations within the same process.
-  static CpuCollectives* in_process_collectives = new InProcessCollectives();
+  static CpuCollectives* const in_process_collectives =
+      new InProcessCollectives();
 
   // If CPU executable run options are set, use the collectives interface
   // provided by the executable run options if it is set. Otherwise, use the

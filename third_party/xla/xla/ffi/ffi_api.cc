@@ -340,7 +340,7 @@ static HandlerKey MakeHandlerKey(std::string_view name,
 }
 
 static HandlerRegistry& GetHandlerRegistry() {
-  static auto* registry = new HandlerRegistry();
+  static auto* const registry = new HandlerRegistry();
   return *registry;
 }
 

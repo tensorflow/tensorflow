@@ -26,7 +26,8 @@ limitations under the License.
 namespace xla {
 
 std::vector<RegisterRawBufferFactory::FactoryFuncT>& GetFactoryFuncs() {
-  static auto* funcs = new std::vector<RegisterRawBufferFactory::FactoryFuncT>;
+  static auto* const funcs =
+      new std::vector<RegisterRawBufferFactory::FactoryFuncT>;
   return *funcs;
 }
 

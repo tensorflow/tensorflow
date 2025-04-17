@@ -54,7 +54,7 @@ const char* kSymbols[] = {
 constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
 
 absl::flat_hash_set<std::string_view> const& ErrorStringSymbols() {
-  static auto* syms = new absl::flat_hash_set<std::string_view>{
+  static auto* const syms = new absl::flat_hash_set<std::string_view>{
       "ncclGetErrorString",
       "pncclGetErrorString",
       "ncclGetLastError",

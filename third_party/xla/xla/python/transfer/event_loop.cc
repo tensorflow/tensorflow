@@ -178,7 +178,7 @@ void PollEventLoop::Handler::Register(PollEventLoop* loop) {
 }
 
 PollEventLoop* PollEventLoop::GetDefault() {
-  static auto* loop = new PollEventLoopImpl;
+  static auto* const loop = new PollEventLoopImpl;
   return loop;
 }
 

@@ -216,7 +216,7 @@ absl::StatusOr<Platform*> PlatformManagerImpl::LookupByIdLocked(
 }
 
 PlatformManagerImpl& Impl() {
-  static PlatformManagerImpl* impl = new PlatformManagerImpl;
+  static PlatformManagerImpl* const impl = new PlatformManagerImpl;
   return *impl;
 }
 

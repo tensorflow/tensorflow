@@ -53,7 +53,7 @@ const std::string& BackendConfigWrapper::GetRawStringWithoutMutex() const {
     // Cache the raw string.
     raw_string_ = BackendConfigToRawString(*proto_).value();
   }
-  static const std::string* kEmptyString = new std::string();
+  static const std::string* const kEmptyString = new std::string();
   return raw_string_.empty() ? *kEmptyString : raw_string_;
 }
 

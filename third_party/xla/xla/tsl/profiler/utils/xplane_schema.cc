@@ -98,7 +98,7 @@ using LineIdTypeMap = absl::flat_hash_map<absl::string_view, LineIdType>;
 using LineIdTypeStrMap = absl::flat_hash_map<LineIdType, absl::string_view>;
 
 const HostEventTypeMap& GetHostEventTypeMap() {
-  static auto* host_event_type_map = new HostEventTypeMap({
+  static auto* const host_event_type_map = new HostEventTypeMap({
       {"UnknownHostEventType", kUnknownHostEventType},
       {"TraceContext", kTraceContext},
       {"SessionRun", kSessionRun},
@@ -206,7 +206,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
 }
 
 const StatTypeMap& GetStatTypeMap() {
-  static auto* stat_type_map = new StatTypeMap(
+  static auto* const stat_type_map = new StatTypeMap(
       {{"UnknownStatType", kUnknownStatType},
        // TraceMe arguments.
        {"id", kStepId},
@@ -372,7 +372,7 @@ const StatTypeMap& GetStatTypeMap() {
 }
 
 const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
-  static auto* stat_type_map = new MegaScaleStatTypeMap(
+  static auto* const stat_type_map = new MegaScaleStatTypeMap(
       {{"graph_key", kMegaScaleGraphKey},
        {"local_device_id", kMegaScaleLocalDeviceId},
        {"num_actions", kMegaScaleNumActions},
@@ -405,7 +405,7 @@ const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
 }
 
 const LineIdTypeMap& GetLineIdTypeMap() {
-  static auto* line_id_type_map = new LineIdTypeMap({
+  static auto* const line_id_type_map = new LineIdTypeMap({
       {"UnknownLineIdType", kUnknownLineIdType},
       {"DcnHostTraffic", kDcnHostTraffic},
       {"DcnCollectiveTraffic", kDcnCollectiveTraffic},
@@ -415,25 +415,25 @@ const LineIdTypeMap& GetLineIdTypeMap() {
 }
 
 const HostEventTypeStrMap& GetHostEventTypeStrMap() {
-  static auto* host_event_type_str_map = new HostEventTypeStrMap(
+  static auto* const host_event_type_str_map = new HostEventTypeStrMap(
       gtl::ReverseMap<HostEventTypeStrMap>(GetHostEventTypeMap()));
   return *host_event_type_str_map;
 }
 
 const StatTypeStrMap& GetStatTypeStrMap() {
-  static auto* stat_type_str_map =
+  static auto* const stat_type_str_map =
       new StatTypeStrMap(gtl::ReverseMap<StatTypeStrMap>(GetStatTypeMap()));
   return *stat_type_str_map;
 }
 
 const MegaScaleStatTypeStrMap& GetMegaScaleStatTypeStrMap() {
-  static auto* stat_type_str_map = new MegaScaleStatTypeStrMap(
+  static auto* const stat_type_str_map = new MegaScaleStatTypeStrMap(
       gtl::ReverseMap<MegaScaleStatTypeStrMap>(GetMegaScaleStatTypeMap()));
   return *stat_type_str_map;
 }
 
 const LineIdTypeStrMap& GetLineIdTypeStrMap() {
-  static auto* line_id_type_str_map = new LineIdTypeStrMap(
+  static auto* const line_id_type_str_map = new LineIdTypeStrMap(
       gtl::ReverseMap<LineIdTypeStrMap>(GetLineIdTypeMap()));
   return *line_id_type_str_map;
 }
@@ -447,7 +447,7 @@ constexpr int kNumTaskEnvStatTypes = TaskEnvStatType::kLastTaskEnvStatType -
                                      TaskEnvStatType::kFirstTaskEnvStatType + 1;
 
 const TaskEnvStatTypeMap& GetTaskEnvStatTypeMap() {
-  static auto* task_env_stat_type_map = new TaskEnvStatTypeMap({
+  static auto* const task_env_stat_type_map = new TaskEnvStatTypeMap({
       {"profile_start_time", kEnvProfileStartTime},
       {"profile_stop_time", kEnvProfileStopTime},
   });
@@ -456,7 +456,7 @@ const TaskEnvStatTypeMap& GetTaskEnvStatTypeMap() {
 }
 
 const TaskEnvStatTypeStrMap& GetTaskEnvStatTypeStrMap() {
-  static auto* task_env_stat_type_str_map = new TaskEnvStatTypeStrMap(
+  static auto* const task_env_stat_type_str_map = new TaskEnvStatTypeStrMap(
       gtl::ReverseMap<TaskEnvStatTypeStrMap>(GetTaskEnvStatTypeMap()));
   return *task_env_stat_type_str_map;
 }

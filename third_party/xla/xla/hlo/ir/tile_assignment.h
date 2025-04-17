@@ -275,7 +275,7 @@ class TileAssignment {
   void MaybeMaterializeFullArray() const;
 
   static const Array<int64_t>* ReplicatedArray() {
-    static auto* array = new Array<int64_t>({0});
+    static auto* const array = new Array<int64_t>({0});
     return array;
   }
 

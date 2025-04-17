@@ -179,7 +179,8 @@ inline DeviceAssignment MakeInterpreterDeviceAssignment() {
 }  // namespace
 
 const InterpreterDescription& InterpreterDescription::Singleton() {
-  static const InterpreterDescription* singleton = new InterpreterDescription;
+  static const InterpreterDescription* const singleton =
+      new InterpreterDescription;
   return *singleton;
 }
 

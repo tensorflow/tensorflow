@@ -235,8 +235,8 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   }
 
   // Set read/write access to all GPUs.
-  static auto* all_pools_ = new std::vector<CUmemoryPool>();
-  static auto* all_ids_ = new std::vector<tsl::PlatformDeviceId>();
+  static auto* const all_pools_ = new std::vector<CUmemoryPool>();
+  static auto* const all_ids_ = new std::vector<tsl::PlatformDeviceId>();
   DCHECK(all_pools_->size() == all_ids_->size());
 
   // If the cuda_state_->pool is found in all_pools_, it means it has been

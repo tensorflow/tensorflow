@@ -68,7 +68,7 @@ CustomKernelFusionPattern::Match::BuildReplacement(
 
 CustomKernelFusionPatternRegistry*
 CustomKernelFusionPatternRegistry::Default() {
-  static auto* registry = new CustomKernelFusionPatternRegistry();
+  static auto* const registry = new CustomKernelFusionPatternRegistry();
   return registry;
 }
 
