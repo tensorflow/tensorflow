@@ -320,6 +320,9 @@ absl::Status ParseSlice(const Operator* op, BuiltinDataAllocator* allocator,
 absl::Status ParseSoftmax(const Operator* op, BuiltinDataAllocator* allocator,
                           void** builtin_data);
 
+absl::Status ParseSoftsign(const Operator* op, BuiltinDataAllocator* allocator,
+                           void** builtin_data);
+
 absl::Status ParseSpaceToBatchNd(const Operator* op,
                                  BuiltinDataAllocator* allocator,
                                  void** builtin_data);

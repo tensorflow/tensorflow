@@ -88,6 +88,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX(),
              /* min_version = */ 1,
              /* max_version = */ 3);
+  AddBuiltin(BuiltinOperator_SOFTSIGN, Register_SOFTSIGN());
   AddBuiltin(BuiltinOperator_CONCATENATION, Register_CONCATENATION(),
              /* min_version = */ 1,
              /* max_version = */ 4);

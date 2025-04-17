@@ -198,6 +198,7 @@ using tflite::BuiltinOperator_SIN;
 using tflite::BuiltinOperator_SKIP_GRAM;
 using tflite::BuiltinOperator_SLICE;
 using tflite::BuiltinOperator_SOFTMAX;
+using tflite::BuiltinOperator_SOFTSIGN;
 using tflite::BuiltinOperator_SPACE_TO_BATCH_ND;
 using tflite::BuiltinOperator_SPACE_TO_DEPTH;
 using tflite::BuiltinOperator_SPARSE_TO_DENSE;
@@ -814,6 +815,10 @@ absl::Status ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
 
     case BuiltinOperator_SOFTMAX: {
       return ParseSoftmax(op, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_SOFTSIGN: {
+      return ParseSoftsign(op, allocator, builtin_data);
     }
 
     case BuiltinOperator_SPACE_TO_BATCH_ND: {
@@ -2045,6 +2050,13 @@ absl::Status ParseLogistic(const Operator*, BuiltinDataAllocator*, void**) {
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.
 absl::Status ParseLogSoftmax(const Operator*, BuiltinDataAllocator*, void**) {
+  return OkStatus();
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+absl::Status ParseSoftsign(const Operator*, BuiltinDataAllocator*, void**) {
   return OkStatus();
 }
 

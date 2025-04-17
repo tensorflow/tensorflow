@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/prelu.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
+#include "tensorflow/lite/kernels/internal/reference/softsign.h"
 #include "tensorflow/lite/kernels/internal/reference/tanh.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -119,6 +121,11 @@ struct ReluOpData : public OpData {
   int output_shift = 0;
 };
 
+struct SoftsignOpData : public OpData {
+  int32_t output_multiplier = 0;
+  int output_shift = 0;
+};
+
 namespace {
 
 template <typename T>
@@ -170,6 +177,10 @@ void* PreluInit(TfLiteContext* context, const char* buffer, size_t length) {
   return new PreluOpData;
 }
 
+void* SoftsignInit(TfLiteContext* context, const char* buffer, size_t length) {
+  return new SoftsignOpData;
+}
+
 void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
@@ -180,6 +191,10 @@ void LogSoftmaxFree(TfLiteContext* context, void* buffer) {
 
 void PreluFree(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<PreluOpData*>(buffer);
+}
+
+void SoftsignFree(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<SoftsignOpData*>(buffer);
 }
 
 void* HardSwishInit(TfLiteContext* context, const char* buffer, size_t length) {
@@ -727,6 +742,29 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, HaveSameShapes(input, output));
 
   return kTfLiteOk;
+}
+
+TfLiteStatus SoftsignPrepare(TfLiteContext* context, TfLiteNode* node) {
+  SoftsignOpData* data = reinterpret_cast<SoftsignOpData*>(node->user_data);
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
+  if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8 ||
+      input->type == kTfLiteInt16) {
+    double real_multiplier = input->params.scale / output->params.scale;
+    QuantizeMultiplier(real_multiplier, &data->output_multiplier,
+                       &data->output_shift);
+  }
+
+  if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+  return GenericPrepare(context, node);
 }
 
 TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
@@ -1586,6 +1624,28 @@ TfLiteStatus GeluEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+template <KernelType kernel_type>
+TfLiteStatus SoftsignEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+
+  switch (input->type) {
+    case kTfLiteFloat32:
+      if (kernel_type == kReference) {
+        reference_ops::Softsign(
+            GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<float>(output));
+      }
+      return kTfLiteOk;
+    default:
+      TF_LITE_KERNEL_LOG(context, "Only float32 supported currently, got %s.",
+                         TfLiteTypeGetName(input->type));
+      return kTfLiteError;
+  }
+}
+
 }  // namespace activations
 
 TfLiteRegistration* Register_ELU() {
@@ -1729,6 +1789,14 @@ TfLiteRegistration* Register_LOG_SOFTMAX() {
       activations::LogSoftmaxInit, activations::LogSoftmaxFree,
       activations::LogSoftmaxPrepare<activations::kGenericOptimized>,
       activations::LogSoftmaxEval<activations::kGenericOptimized>};
+  return &r;
+}
+
+TfLiteRegistration* Register_SOFTSIGN() {
+  static TfLiteRegistration r = {
+      activations::SoftsignInit, activations::SoftsignFree,
+      activations::SoftsignPrepare,
+      activations::SoftsignEval<activations::kReference>};
   return &r;
 }
 
