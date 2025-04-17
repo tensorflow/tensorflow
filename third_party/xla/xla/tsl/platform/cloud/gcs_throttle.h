@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_CLOUD_GCS_THROTTLE_H_
 #define XLA_TSL_PLATFORM_CLOUD_GCS_THROTTLE_H_
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 
@@ -111,7 +113,7 @@ class GcsThrottle {
    * instrumentation the number of available tokens in the pool.
    */
   inline int64_t available_tokens() TF_LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
+    absl::MutexLock l(&mu_);
     UpdateState();
     return available_tokens_;
   }
@@ -124,7 +126,7 @@ class GcsThrottle {
    * true.
    */
   bool is_enabled() TF_LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
+    absl::MutexLock l(&mu_);
     return config_.enabled;
   }
 
@@ -141,7 +143,7 @@ class GcsThrottle {
     return num_bytes >> 10;
   }
 
-  mutex mu_;
+  absl::Mutex mu_;
 
   /**
    * last_updated_secs_ records the number of seconds since the Unix epoch that

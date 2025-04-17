@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "unsupported/Eigen/CXX11/ThreadPool"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 
 namespace tsl {
 namespace thread {
