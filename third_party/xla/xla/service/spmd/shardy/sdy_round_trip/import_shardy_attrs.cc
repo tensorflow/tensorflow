@@ -114,10 +114,11 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
     // Attempt to extract the TensorShardingAttr from the frontend attributes of
     // the function argument/result.
     if (DictionaryAttr dictAttr = getFuncArgFrontendAttrs(funcOp, argNum)) {
-      funcOp.setArgAttr(argNum, kShardingAttr,
-                        parseStringAttr<TensorShardingAttr>(
-                            dictAttr, kShardingRoundTripAttr));
-      removeFrontendAttribute(funcOp, kShardingRoundTripAttr, argNum);
+      if (auto sharding = parseStringAttr<TensorShardingAttr>(
+              dictAttr, kShardingRoundTripAttr)) {
+        funcOp.setArgAttr(argNum, kShardingAttr, sharding);
+        removeFrontendAttribute(funcOp, kShardingRoundTripAttr, argNum);
+      }
     }
   }
 
