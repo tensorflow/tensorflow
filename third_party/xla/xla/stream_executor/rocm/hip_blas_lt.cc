@@ -378,8 +378,12 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
 
 absl::Status BlasLt::MatmulPlan::DoMatmul(
     Stream* stream, const void* alpha, const void* beta,
-    const MatmulAlgorithm& algorithm, const gpu::BlasLt::MemoryArgs& args,
+    const gpu::BlasLt::MemoryArgs& args,
     blas::ProfileResult* profile_result) const {
+  if (!algorithm_.has_value()) {
+    return absl::InternalError(
+        "Algorithm must be set before calling DoMatMul!");
+  }
   DeviceMemoryBase a = args.a, b = args.b;
   if (must_swap_operands_) {
     std::swap(a, b);
@@ -399,7 +403,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
   }
 
   void* workspace_addr = nullptr;
-  uint64_t workspace_size = algorithm.workspace_size;
+  uint64_t workspace_size = algorithm_->workspace_size;
   if (workspace_size > 0) {
     if (args.scratch_allocator != nullptr) {
       TF_ASSIGN_OR_RETURN(
@@ -414,7 +418,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     }
   }
 
-  auto palgo = std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm.opaque_algo);
+  auto palgo = std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm_->opaque_algo);
   {
     absl::MutexLock lock(&blas_lt->mu_);
     TF_RET_CHECK(blas_lt->blas_lt_ != nullptr);
@@ -497,8 +501,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
 }
 
 absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
-    Stream* stream, const MatmulAlgorithm& algorithm,
-    const gpu::BlasLt::MemoryArgs& args,
+    Stream* stream, const gpu::BlasLt::MemoryArgs& args,
     blas::ProfileResult* profile_result) const {
   auto wrapped_matmul = [&](auto scale) {
     using Scale = decltype(scale);
@@ -510,7 +513,7 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
       salpha = static_cast<Scale>(alpha_.real());
     }
     Scale sbeta = static_cast<Scale>(beta_);
-    return DoMatmul(stream, &salpha, &sbeta, algorithm, args, profile_result);
+    return DoMatmul(stream, &salpha, &sbeta, args, profile_result);
   };
 
   std::tuple operand_types{a_desc_.type(), b_desc_.type(), c_desc_.type(),

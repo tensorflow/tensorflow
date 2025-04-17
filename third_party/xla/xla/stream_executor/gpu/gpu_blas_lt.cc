@@ -234,6 +234,29 @@ DataType GetScaleType(DataType c_type, ComputationType computation_type) {
               : c_type);
 }
 
-}  // namespace gpu
+absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlan(
+    const std::string& key, PlanCreateFunc create) {
+  absl::MutexLock lock(&plan_cache_mu_);  // double mutex ???
+  auto res = plan_cache_.emplace(key, MatmulPlanPtr{});
+  // New entry inserted: always create a new matmul plan if key is empty,
+  // this is used by command_buffer_thunk test.
+  if (res.second || key.empty()) {
+    VLOG(2) << "Creating a plan for: " << key;
+    TF_ASSIGN_OR_RETURN(res.first->second, create());
+    VLOG(2) << "Plan created: cache size: " << plan_cache_.size();
+  }
+  return res.first->second.get();
+}
 
+void BlasLt::ClearMatmulPlanCache() {
+  absl::MutexLock lock(&plan_cache_mu_);
+  plan_cache_.clear();
+}
+
+size_t BlasLt::GetMatmulPlanCacheSize() const {
+  absl::MutexLock lock(&plan_cache_mu_);
+  return plan_cache_.size();
+}
+
+}  // namespace gpu
 }  // namespace stream_executor

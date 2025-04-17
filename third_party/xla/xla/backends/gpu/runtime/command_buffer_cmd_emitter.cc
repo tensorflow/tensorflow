@@ -134,13 +134,7 @@ static absl::StatusOr<Command> Convert(const CublasLtMatmulThunk& thunk) {
     return absl::InternalError(
         "Gemm thunk does not contain a workspace buffer");
   }
-  return std::make_unique<CublasLtCmd>(
-      thunk.execution_stream_id(), thunk.config(), thunk.epilogue(),
-      thunk.algorithm_idx(), thunk.a_buffer(), thunk.b_buffer(),
-      thunk.c_buffer(), thunk.d_buffer(), thunk.bias_buffer(),
-      thunk.aux_buffer(), thunk.a_scale_buffer(), thunk.b_scale_buffer(),
-      thunk.c_scale_buffer(), thunk.d_scale_buffer(), thunk.d_amax_buffer(),
-      thunk.workspace().value());
+  return std::make_unique<CublasLtCmd>(thunk.execution_stream_id(), thunk);
 }
 
 static absl::StatusOr<Command> Convert(
