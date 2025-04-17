@@ -249,7 +249,7 @@ class PrimitiveTypeNameGenerator {
 };
 
 const std::string& LowercasePrimitiveTypeName(PrimitiveType s) {
-  static auto* gen = new PrimitiveTypeNameGenerator();
+  static auto* const gen = new PrimitiveTypeNameGenerator();
   return gen->LowercaseName(s);
 }
 
@@ -263,7 +263,8 @@ const absl::flat_hash_map<std::string, PrimitiveType>&
 LowerCaseNameToPrimitiveType() {
   static absl::flat_hash_map<std::string, PrimitiveType>* const name_to_type =
       [] {
-        static auto* map = new absl::flat_hash_map<std::string, PrimitiveType>;
+        static auto* const map =
+            new absl::flat_hash_map<std::string, PrimitiveType>;
         for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
           if (PrimitiveType_IsValid(i) && i != PRIMITIVE_TYPE_INVALID) {
             auto value = static_cast<PrimitiveType>(i);

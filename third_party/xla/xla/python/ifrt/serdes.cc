@@ -50,7 +50,7 @@ struct Registry {
 };
 
 Registry* registry() {
-  static auto* r = new Registry();
+  static auto* const r = new Registry();
   return r;
 }
 

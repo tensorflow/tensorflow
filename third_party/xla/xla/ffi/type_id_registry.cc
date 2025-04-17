@@ -38,7 +38,7 @@ using ExternalTypeIdRegistry =
     absl::flat_hash_map<std::string, TypeIdRegistry::TypeId>;
 
 static ExternalTypeIdRegistry& StaticExternalTypeIdRegistry() {
-  static auto* registry = new ExternalTypeIdRegistry();
+  static auto* const registry = new ExternalTypeIdRegistry();
   return *registry;
 }
 

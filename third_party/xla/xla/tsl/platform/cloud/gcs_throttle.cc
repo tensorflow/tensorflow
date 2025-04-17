@@ -21,7 +21,7 @@ namespace tsl {
 
 namespace {
 EnvTime* get_default_env_time() {
-  static EnvTime* default_env_time = new EnvTime;
+  static EnvTime* const default_env_time = new EnvTime;
   return default_env_time;
 }
 }  // namespace
