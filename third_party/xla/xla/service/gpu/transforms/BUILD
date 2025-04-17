@@ -2106,7 +2106,6 @@ xla_cc_test(
     ],
 )
 
-# TODO(b/358278858): Currently lacking test coverage.
 cc_library(
     name = "gpusolver_rewriter",
     srcs = if_gpu_is_configured(["gpusolver_rewriter.cc"]),
@@ -2138,6 +2137,23 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+    ],
+)
+
+xla_test(
+    name = "gpusolver_rewriter_test",
+    srcs = ["gpusolver_rewriter_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":gpusolver_rewriter",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/service:pattern_matcher",
+        "//xla/stream_executor/cuda:cuda_solver_context",  # fixdeps: keep
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_googletest//:gtest",
     ],
 )
 
