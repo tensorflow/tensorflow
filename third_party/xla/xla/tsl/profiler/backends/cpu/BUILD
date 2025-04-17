@@ -86,6 +86,7 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ] + if_static([
         ":annotation_stack_impl",
@@ -107,6 +108,7 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,

@@ -101,7 +101,7 @@ void importCallOp(
   } else {
     FuncOp funcOp = symbolTable.lookup<FuncOp>(calleeName);
     CHECK(funcOp) << "Failed to lookup function: "
-                  << std::string_view(calleeName);  // non-absl ok
+                  << absl::string_view(calleeName);  // non-absl ok
     mlir::sdy::inlineRegionAndConvertTerminatorOp<mlir::sdy::ReturnOp>(
         funcOp.getBody(), namedCompRegion);
     calleeNameToMovedRegion[calleeName] = &namedCompRegion;

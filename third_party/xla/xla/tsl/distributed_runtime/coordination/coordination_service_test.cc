@@ -722,9 +722,9 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
 
   // Get simple key
   absl::Notification n1;
-  absl::StatusOr<std::string_view> ret;
+  absl::StatusOr<absl::string_view> ret;
   coord_service_->GetKeyValueAsync(
-      "key0", [&](const absl::StatusOr<std::string_view>& status_or_value) {
+      "key0", [&](const absl::StatusOr<absl::string_view>& status_or_value) {
         ret = status_or_value;
         n1.Notify();
       });
@@ -735,7 +735,7 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
   absl::Notification n2;
   coord_service_->GetKeyValueAsync(
       "path//to///key1////",
-      [&](const absl::StatusOr<std::string_view>& status_or_value) {
+      [&](const absl::StatusOr<absl::string_view>& status_or_value) {
         ret = status_or_value;
         n2.Notify();
       });
@@ -747,7 +747,7 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
   // Get key that is not available
   absl::Notification n3;
   coord_service_->GetKeyValueAsync(
-      "key0", [&](const absl::StatusOr<std::string_view>& status_or_value) {
+      "key0", [&](const absl::StatusOr<absl::string_view>& status_or_value) {
         ret = status_or_value;
         n3.Notify();
       });
@@ -767,7 +767,7 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
       // service shutdown. Hence, we use a shared pointer for notification so
       // that the it will not be deallocated before the pending callback is
       // cleaned up.
-      [n4](const absl::StatusOr<std::string_view>& status_or_value) {
+      [n4](const absl::StatusOr<absl::string_view>& status_or_value) {
         n4->Notify();
       });
   EXPECT_FALSE(n4->HasBeenNotified());

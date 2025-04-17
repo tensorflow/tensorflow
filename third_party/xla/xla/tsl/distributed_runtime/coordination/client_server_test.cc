@@ -18,7 +18,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 

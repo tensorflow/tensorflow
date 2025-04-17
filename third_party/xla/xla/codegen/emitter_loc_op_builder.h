@@ -28,8 +28,6 @@ limitations under the License.
 #if defined(PLATFORM_GOOGLE)
 // The source_location.h is not available in open source.
 #include "absl/types/source_location.h"
-#else
-#include <string_view>
 #endif
 
 namespace xla {
