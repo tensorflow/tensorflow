@@ -83,6 +83,9 @@ message OneDnnMatMulConfig {
   reserved 7;  // was user_scratchpad
 
   OneDnnOptimizationConfig optimization_config = 8;
+  OneDnnTensorLayoutProto lhs = 9;
+  OneDnnTensorLayoutProto rhs = 10;
+  OneDnnTensorLayoutProto result = 11;
 }
 
 message OneDnnWindowProto {

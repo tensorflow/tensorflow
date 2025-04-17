@@ -377,6 +377,7 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:platform_port",
     ],
 )

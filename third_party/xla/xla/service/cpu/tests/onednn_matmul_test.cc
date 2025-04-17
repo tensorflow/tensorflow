@@ -15,8 +15,10 @@ limitations under the License.
 
 #if defined(INTEL_MKL)
 
+#include <string>
 #include <utility>
 
+#include "absl/strings/str_replace.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
@@ -147,6 +149,10 @@ class MatmulTest : public HloTestBase {
     ; CHECK-DAG:         "ops":["BIAS","SIGMOID"]
     ; CHECK-DAG:     }
     ; CHECK:     }
+    )";
+  const char* matmul_transpose_rewrite_str_ = R"(
+    ; CHECK-NOT: transpose(%{{[a-z,A-Z,0-9,_,\.]*}}),
+    ; CHECK:     custom_call_target="__onednn$matmul",
     )";
 };
 
@@ -1529,6 +1535,62 @@ TEST_F(MatmulTest, SimpleTestBF16WithMulAndAddFusion) {
     ; CHECK-DAG:     }
     ; CHECK-DAG:   }
     ; CHECK:     }
+    )");
+}
+
+std::string CreateTransposeFusionModuleText(std::string dtype) {
+  const char* matmul_module_str = R"(
+  ENTRY matmul.test {
+    arg0.1 = DTYPE[32,40,30,64] parameter(0), parameter_replication={false}
+    transpose.1 = DTYPE[32,30,40,64]{3,1,2,0} transpose(arg0.1), dimensions={0,2,1,3}
+    copy.1 = DTYPE[32,30,40,64]{3,2,1,0} copy(transpose.1)
+    arg0.2 = DTYPE[32,40,30,64]{3,2,1,0} parameter(1), parameter_replication={false}
+    transpose.2 = DTYPE[32,30,40,64]{3,1,2,0} transpose(arg0.2), dimensions={0,2,1,3}
+    copy.2 = DTYPE[32,30,40,64]{3,2,1,0} copy(transpose.2)
+    ROOT dot.201 = DTYPE[32,30,40,40]{3,2,1,0} dot(copy.1, copy.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  })";
+  return absl::StrReplaceAll(matmul_module_str, {{"DTYPE", dtype}});
+}
+
+TEST_F(MatmulTest, SimpleTestTransposeFusionF32) {
+  const std::string matmul_module_str = CreateTransposeFusionModuleText("f32");
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, matmul_transpose_rewrite_str_);
+}
+
+TEST_F(MatmulTest, SimpleTestTransposeFusionBF16) {
+  if (!IsSupportedType(PrimitiveType::BF16)) {
+    GTEST_SKIP() << "CPU does not support BF16.";
+  }
+  const std::string matmul_module_str = CreateTransposeFusionModuleText("bf16");
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(matmul_module_str, matmul_transpose_rewrite_str_);
+}
+
+TEST_F(MatmulTest, SimpleTestTransposeFusionF16) {
+  if (!IsSupportedType(PrimitiveType::F16)) {
+    GTEST_SKIP() << "CPU does not support F16.";
+  }
+  const std::string matmul_module_str = CreateTransposeFusionModuleText("f16");
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(matmul_module_str, matmul_transpose_rewrite_str_);
+}
+
+TEST_F(MatmulTest, SimpleTestNoTransposeFusion) {
+  const char* matmul_module_str = R"(
+  ENTRY matmul.test {
+    arg0.1 = f32[32,40,40,32] parameter(0), parameter_replication={false}
+    arg0.2 = f32[32,40,40,32] parameter(1), parameter_replication={false}
+    transpose.2 = f32[32,40,40,32] transpose(arg0.2), dimensions={3,2,1,0}
+    copy.2 = f32[32,40,40,32] copy(transpose.2)
+    ROOT dot.201 = f32[32,40,40,40] dot(arg0.1, copy.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+    ; CHECK:     transpose(%{{[a-z,A-Z,0-9,_,\.]*}}),
+    ; CHECK:     custom_call_target="__onednn$matmul",
     )");
 }
 

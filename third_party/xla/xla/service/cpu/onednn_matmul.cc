@@ -50,6 +50,20 @@ using dnnl::matmul;
 using dnnl::memory;
 using dnnl::stream;
 
+void TransposeIfNecessary(
+    const tsl::protobuf::RepeatedField<uint64_t> dimensions,
+    bool transpose_last_2_dims, dnnl::memory::desc& mem_desc) {
+  if (mem_desc.get_ndims() < 2) return;
+  std::vector<int> permutation(mem_desc.get_ndims());
+  std::iota(permutation.begin(), permutation.end(), 0);
+  int counter = 0;
+  for (auto it = dimensions.begin(); it != dimensions.end(); it++) {
+    permutation[*it - 1] = counter++;
+  }
+  mem_desc = mem_desc.permute_axes(permutation);
+  TRANSPOSE_LAST_TWO_DIMS_IF(transpose_last_2_dims, mem_desc);
+}
+
 dnnl::memory::desc OneDnnMatMulOptWeightsDesc(
     const dnnl::engine& engine, const dnnl::memory::desc& input_md,
     const dnnl::memory::desc& weights_md, const dnnl::memory::desc& bias_md,
@@ -70,13 +84,17 @@ dnnl::memory::desc OneDnnMatMulOptWeightsDesc(
     const Shape& output_shape, const OneDnnMatMulConfig* matmul_config) {
   auto input_md = ShapeToMemDesc(input_shape);
   auto weights_md = ShapeToMemDesc(weights_shape);
-  TRANSPOSE_LAST_TWO_DIMS_IF(matmul_config->transpose_a(), input_md);
-  TRANSPOSE_LAST_TWO_DIMS_IF(matmul_config->transpose_b(), weights_md);
+  TransposeIfNecessary(matmul_config->lhs().tensor().dimensions(),
+                       matmul_config->transpose_a(), input_md);
+  TransposeIfNecessary(matmul_config->rhs().tensor().dimensions(),
+                       matmul_config->transpose_b(), weights_md);
   auto bias_md = absl::c_count(matmul_config->fusions().ops(),
                                OneDnnFusionConfig::BIAS) > 0
                      ? ShapeToMemDesc(bias_shape)
                      : dnnl::memory::desc{};
   auto output_md = ShapeToMemDesc(output_shape);
+  TransposeIfNecessary(matmul_config->result().tensor().dimensions(), false,
+                       output_md);
 
   // extend bias rank to match result rank
   auto missed_rank = output_md.get_ndims() - bias_md.get_ndims();
@@ -140,9 +158,13 @@ std::unique_ptr<matmul::primitive_desc> CreateMatMulPrimDesc(
     const OneDnnMatMulConfig& matmul_config) {
   auto input_md = ShapeToMemDesc(input_shape);
   auto weights_md = ShapeToMemDesc(weights_shape);
-  TRANSPOSE_LAST_TWO_DIMS_IF(matmul_config.transpose_a(), input_md);
-  TRANSPOSE_LAST_TWO_DIMS_IF(matmul_config.transpose_b(), weights_md);
+  TransposeIfNecessary(matmul_config.lhs().tensor().dimensions(),
+                       matmul_config.transpose_a(), input_md);
+  TransposeIfNecessary(matmul_config.rhs().tensor().dimensions(),
+                       matmul_config.transpose_b(), weights_md);
   auto output_md = ShapeToMemDesc(output_shape);
+  TransposeIfNecessary(matmul_config.result().tensor().dimensions(), false,
+                       output_md);
   std::vector<memory::desc> fused_mds;
   std::transform(fused_shapes.begin(), fused_shapes.end(),
                  std::back_inserter(fused_mds),
@@ -218,10 +240,10 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
   auto weights_md = weights_minfo.GetOneDnnMemDesc();
   // Input and weights memory::desc need to be in correct layout before matmul
   // primitive descriptor is created.
-  TRANSPOSE_LAST_TWO_DIMS_IF(
-      matmul_config.transpose_a() && input_md.get_ndims() > 1, input_md);
-  TRANSPOSE_LAST_TWO_DIMS_IF(
-      matmul_config.transpose_b() && weights_md.get_ndims() > 1, weights_md);
+  TransposeIfNecessary(matmul_config.lhs().tensor().dimensions(),
+                       matmul_config.transpose_a(), input_md);
+  TransposeIfNecessary(matmul_config.rhs().tensor().dimensions(),
+                       matmul_config.transpose_b(), weights_md);
   auto output_md = output_minfo.GetOneDnnMemDesc();
 
   Literal* reordered_weights_literal = nullptr;
@@ -278,7 +300,8 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
     onednn_stream.wait();
     weights_md = reordered_weights_md;
   }
-
+  TransposeIfNecessary(matmul_config.result().tensor().dimensions(), false,
+                       output_md);
   const int64_t num_fused_operands = num_args - arg_indx;
   std::vector<memory::desc> fused_mds;
   std::vector<void*> fused_bufs;
@@ -374,8 +397,10 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMulReorder(
   XLA_LIGHTWEIGHT_CHECK(num_args >= arg_indx);
 
   // Update dims and strides for transposed inputs.
-  TRANSPOSE_LAST_TWO_DIMS_IF(matmul_config.transpose_a(), input_md);
-  TRANSPOSE_LAST_TWO_DIMS_IF(matmul_config.transpose_b(), weight_md);
+  TransposeIfNecessary(matmul_config.lhs().tensor().dimensions(),
+                       matmul_config.transpose_a(), input_md);
+  TransposeIfNecessary(matmul_config.rhs().tensor().dimensions(),
+                       matmul_config.transpose_b(), weight_md);
 
   // extend bias rank to match result rank
   if (!bias_md.is_zero()) {
