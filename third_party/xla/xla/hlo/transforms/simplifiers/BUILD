@@ -411,6 +411,7 @@ xla_cc_test(
         "//xla/service:memory_annotations_hdr",
         "//xla/service:pattern_matcher",
         "//xla/service:shape_inference",
+        "//xla/tests:test_utils",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",

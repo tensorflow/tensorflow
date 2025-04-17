@@ -5728,6 +5728,7 @@ absl::Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
       }
       *broadcast->mutable_shape() = broadcast_shape1;
       *broadcast->mutable_dimensions() = broadcast_dimensions;
+      broadcast->clear_sharding();
       simplifier_->UpdateLayout(broadcast->mutable_shape());
       auto pad2 = pad->AddInstruction(pad->CloneWithNewShape(pad_shape1));
       *pad2->mutable_padding_config() = pad_config;
