@@ -32,7 +32,7 @@ namespace xla::gpu {
 //===----------------------------------------------------------------------===//
 
 CustomKernelFusionRegistry* CustomKernelFusionRegistry::Default() {
-  static auto* registry = new CustomKernelFusionRegistry();
+  static auto* const registry = new CustomKernelFusionRegistry();
   return registry;
 }
 
