@@ -67,6 +67,9 @@ class ExecutionGraph {
   static constexpr NodeId kInvalidNodeId = std::numeric_limits<NodeId>::min();
 
   struct NodeEdge {
+    // Edge kind defines execution ordering between two operations. Scheduling
+    // edge is weaker than an execution edge, as it gives more flexibility
+    // to the backend runtime to execute operations concurrently.
     enum class Kind {
       // If two operations have a scheduling edge between them, then the
       // dependent operation must be scheduled (start execution) after the
@@ -97,6 +100,16 @@ class ExecutionGraph {
 
     bool operator==(const NodeEdge& other) const {
       return kind == other.kind && id == other.id;
+    }
+
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, Kind kind) {
+      sink.Append(kind == Kind::kScheduling ? "scheduling" : "execution");
+    }
+
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const NodeEdge& edge) {
+      absl::Format(&sink, "NodeEdge {kind: %v, id: %v}", edge.kind, edge.id);
     }
 
     Kind kind;
@@ -212,9 +225,11 @@ class ExecutionGraph {
   static std::tuple<NodesEdges, NodesEdges, std::vector<NodeDef>>
   CreateNodeDefs(std::vector<NodeDefBuilder> builders);
 
-  // Erases edge from `from` node to `to` node if it exists. We rely on the fact
-  // that out and in-edges are sorted and use binary search on a critical path.
-  static int64_t EraseEdge(NodeDefBuilder& from, NodeDefBuilder& to);
+  // Erases edge from `from` node to `to` node if it exists and it has a weaker
+  // ordering than the given `kind`. We rely on the fact that out and in-edges
+  // are sorted and use binary search on a critical path.
+  static int64_t EraseEdge(NodeDefBuilder& from, NodeDefBuilder& to,
+                           NodeEdge::Kind kind);
 
   // Runs a transitive reduction on the NodeDefBuilder graph to remove redundant
   // edges, and updates nodes priorities. Returns the number of removed edges.

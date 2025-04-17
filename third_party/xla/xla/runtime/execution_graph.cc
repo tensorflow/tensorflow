@@ -198,7 +198,8 @@ ExecutionGraph::CreateNodeDefs(std::vector<NodeDefBuilder> builders) {
                          std::move(nodes_defs));
 }
 
-int64_t ExecutionGraph::EraseEdge(NodeDefBuilder& from, NodeDefBuilder& to) {
+int64_t ExecutionGraph::EraseEdge(NodeDefBuilder& from, NodeDefBuilder& to,
+                                  NodeEdge::Kind kind) {
   DCHECK_NE(from.id, to.id) << "Nodes must be different";
   DCHECK_LT(from.id, to.id) << "Nodes must be ordered";
 
@@ -242,6 +243,7 @@ int64_t ExecutionGraph::EraseEdge(NodeDefBuilder& from, NodeDefBuilder& to) {
       in_edges_it != to.in_edges.end() && in_edges_it->id == from.id;
 
   DCHECK(has_in_edge) << "In-edge must exist if out-edge exists";
+  DCHECK_EQ(in_edges_it->kind, out_edges_it->kind) << "Edges kind must match";
 
   // At this point we must have exactly one edge between `from` and `to` nodes.
   DCHECK_EQ(absl::c_count_if(from.out_edges, EdgePredicate(to.id)), 1)
@@ -249,27 +251,74 @@ int64_t ExecutionGraph::EraseEdge(NodeDefBuilder& from, NodeDefBuilder& to) {
   DCHECK_EQ(absl::c_count_if(to.in_edges, EdgePredicate(from.id)), 1)
       << "Expected exactly one in edge from " << from.id << " to " << to.id;
 
+  // We can't erase an edge with a stronger ordering guarantee.
+  if (in_edges_it->kind > kind) {
+    return 0;
+  }
+
+  // We erased exactly one edge between `from` and `to` nodes.
   from.out_edges.erase(out_edges_it);
   to.in_edges.erase(in_edges_it);
-
-  // We erased one edge between `from` and `to` nodes.
   return 1;
 }
+
+namespace {
+
+// A state of a DFS traversal for transitive reduction.
+class TransitiveReductionDfsState {
+ public:
+  void PushToStack(ExecutionGraph::NodeEdge edge) {
+    if (!visited_[edge.id]) {
+      ++(edge.kind == kExecution ? num_execution_edges_
+                                 : num_scheduling_edges_);
+      stack_.push_back(edge);
+      visited_[edge.id] = true;
+    }
+  }
+
+  void PushToStack(absl::Span<const ExecutionGraph::NodeEdge> edges) {
+    for (const ExecutionGraph::NodeEdge& edge : edges) {
+      PushToStack(edge);
+    }
+  }
+
+  ExecutionGraph::NodeEdge PopFromStack() {
+    ExecutionGraph::NodeEdge edge = stack_.back();
+    --(edge.kind == kExecution ? num_execution_edges_ : num_scheduling_edges_);
+    stack_.pop_back();
+    return edge;
+  }
+
+  bool Empty() const { return stack_.empty(); }
+
+  void Visited(ExecutionGraph::NodeId id) { visited_[id] = true; }
+  size_t NumVisited() const { return absl::c_count(visited_, true); }
+
+  void Clear(size_t num_nodes) {
+    stack_.clear();
+    visited_.assign(num_nodes, false);
+  }
+
+  bool num_execution_edges() const { return num_execution_edges_; }
+  bool num_scheduling_edges() const { return num_scheduling_edges_; }
+
+ private:
+  std::vector<ExecutionGraph::NodeEdge> stack_;
+  std::vector<bool> visited_;
+
+  // The number of execution and scheduling edges currently in the stack.
+  size_t num_execution_edges_ = 0;
+  size_t num_scheduling_edges_ = 0;
+};
+
+}  // namespace
 
 int64_t ExecutionGraph::RunTransitiveReductionAndUpdatePriorities(
     absl::Span<NodeDefBuilder> builders) {
   int64_t num_erased_edges = 0;
 
   // Keep workspace for DFS traversal between iterations.
-  std::vector<int64_t> stack;
-  std::vector<bool> visited;
-
-  auto add_to_stack = [&](int64_t node_id) {
-    if (!visited[node_id]) {
-      stack.push_back(node_id);
-      visited[node_id] = true;
-    }
-  };
+  TransitiveReductionDfsState state;
 
   // For each node we do a DFS traversal and delete redundant edges that
   // connect source node with the node reachable via DFS. We do traversal in
@@ -277,35 +326,41 @@ int64_t ExecutionGraph::RunTransitiveReductionAndUpdatePriorities(
   for (int64_t i = builders.size() - 1; i >= 0; --i) {
     NodeDefBuilder& source_node = builders[i];
 
-    // Clear DFS workspace from previous iteration.
-    stack.clear();
-    visited.assign(builders.size(), false);
+    // Clear DFS state from previous iteration.
+    state.Clear(builders.size());
 
-    // Initialize stack with nodes reachable via immediate out nodes. We mark
-    // immediate out nodes as visited to correctly compute node priority below.
-    for (NodeEdge out_edge : source_node.out_edges) {
+    // Make a copy of out edges to avoid invalidating iterators.
+    for (NodeEdge out_edge : std::vector<NodeEdge>(source_node.out_edges)) {
+      DCHECK(state.Empty()) << "Stack must be empty at the start of the DFS";
+
+      // Initialize state with nodes reachable via `out_edge`. We mark immediate
+      // out nodes as visited to correctly compute node priority below.
       NodeDefBuilder& out_node = builders[out_edge.id];
-      visited[out_edge.id] = true;
-      for (NodeEdge start_edge : out_node.out_edges) {
-        add_to_stack(start_edge.id);
-      }
-    }
+      state.Visited(out_edge.id);
+      state.PushToStack(out_node.out_edges);
 
-    // Traverse the graph and delete redundant edges.
-    while (!stack.empty()) {
-      int64_t node_id = stack.back();
-      stack.pop_back();
+      // Do a round of DFS traversal and delete redundant edges from the
+      // `source_node` to the nodes reachable via DFS.
+      while (!state.Empty()) {
+        NodeEdge node_edge = state.PopFromStack();
+        NodeDefBuilder& node = builders[node_edge.id];
 
-      NodeDefBuilder& node = builders[node_id];
-      num_erased_edges += EraseEdge(source_node, node);
+        // If we reached `node` via a scheduling edge, then we can't remove an
+        // execution edge from the `source_node`, as we might weaker the
+        // execution order and introduce a data race.
+        bool has_scheduling_edge = out_edge.kind == kScheduling ||
+                                   node_edge.kind == kScheduling ||
+                                   state.num_scheduling_edges();
+        NodeEdge::Kind kind = has_scheduling_edge ? kScheduling : kExecution;
+        num_erased_edges += EraseEdge(source_node, node, kind);
 
-      for (NodeEdge out_edge : node.out_edges) {
-        add_to_stack(out_edge.id);
+        // Keep following nodes reachable via `node` out edges.
+        state.PushToStack(node.out_edges);
       }
     }
 
     // Set node priority to the number of visited nodes in the DFS traversal.
-    source_node.priority = absl::c_count(visited, true);
+    source_node.priority = state.NumVisited();
   }
 
   return num_erased_edges;
