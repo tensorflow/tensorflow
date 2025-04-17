@@ -26,8 +26,8 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 def NotFromDequant : Constraint<CPred<"NotFromDequant($0)">>;
 
 def IsResultRankEqualTo : Constraint<CPred<
-  "$0.getType().front().cast<ShapedType>().getRank() == "
-  "$1.getType().cast<ShapedType>().getRank()">>;
+  "llvm::cast<ShapedType>($0.getType().front()).getRank() == "
+  "llvm::cast<ShapedType>($1.getType()).getRank()">>;
 
 // Fuses TFL_FullyConnectedOp and TFL_TransposeOp Rhs to TFL_BatchMatMulOp when
 // it's used by TFL_BatchMatMulOp and "transpose_lhs" is true.

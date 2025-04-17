@@ -27,21 +27,21 @@ include "mlir/IR/CommonAttrConstraints.td"
 
 // Checks if the param passed is a F32 ElementsAttr.
 def F32ElementsAttr : ElementsAttrBase<
-  CPred<"$_self.isa<ElementsAttr>() && $_self.cast<ElementsAttr>().getShapedType().getElementType().isF32()">,
+  CPred<"llvm::isa<ElementsAttr>($_self) && llvm::cast<ElementsAttr>($_self).getShapedType().getElementType().isF32()">,
         "32 bit float constant tensor">;
 
 // Checks if the param passed is a float ElementsAttr.
 def FloatElementsAttr : ElementsAttrBase<
-  CPred<"$_self.isa<ElementsAttr>() && $_self.cast<ElementsAttr>().getShapedType().getElementType().isa<FloatType>()">,
+  CPred<"llvm::isa<ElementsAttr>($_self) && llvm::isa<FloatType>(llvm::cast<ElementsAttr>($_self).getShapedType().getElementType())">,
         "float constant tensor">;
 
 def ExtractSingleElementAsFloat : NativeCodeCall<
-    "ExtractSingleElementAsFloat($_self.cast<ElementsAttr>())">;
+    "ExtractSingleElementAsFloat(llvm::cast<ElementsAttr>($_self))">;
 
 // Checks if the value has rank 'n'.
 class HasRank<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
-          "$0.getType().cast<ShapedType>().getRank() == " # n>>;
+    CPred<"llvm::cast<ShapedType>($0.getType()).hasRank() && "
+          "llvm::cast<ShapedType>($0.getType()).getRank() == " # n>>;
 
 class FloatValueEquals<string val> : Constraint<CPred<
   "FloatValueEquals($0, " # val # ")">>;
@@ -57,9 +57,9 @@ def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 def IsPermutationNCHW : Constraint<CPred<"IsPermutationNCHW($0)">>;
 
 def IsBiasShape : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().getRank() == 4 && "
-          "$0.getType().cast<ShapedType>().getShape()[2] == 1 && "
-          "$0.getType().cast<ShapedType>().getShape()[3] == 1">,
+    CPred<"llvm::cast<ShapedType>($0.getType()).getRank() == 4 && "
+          "llvm::cast<ShapedType>($0.getType()).getShape()[2] == 1 && "
+          "llvm::cast<ShapedType>($0.getType()).getShape()[3] == 1">,
     "has shape consistent with a bias">;
 
 def ReshapeNCHWBiasToNHWC : NativeCodeCall<"ReshapeNCHWBiasToNHWC($0, $1)">;
@@ -114,7 +114,7 @@ foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
 }
 
 def GetBiasMultiplier:
-  NativeCodeCall<"GetBiasMultiplier($_builder, $0, $1.cast<DenseFPElementsAttr>())">;
+  NativeCodeCall<"GetBiasMultiplier($_builder, $0, llvm::cast<DenseFPElementsAttr>($1))">;
 
 class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
   CPred<"TFL::CanFuseConvOrDepthwiseConv($0, $1, " # is_depthwise # ")">>;
@@ -372,22 +372,22 @@ def MatchHardSwishPattern6 : Pat<
 
 // Constraint that the attribute value is less than 'n'
 class ConstDoubleValueLessThan<string n> : Constraint<
-  CPred<"$0.isa<DenseElementsAttr>() && "
-  "$0.cast<DenseElementsAttr>().getNumElements() == 1 && "
-  "std::abs(*$0.cast<DenseElementsAttr>().getValues<float>().begin()) < "
+  CPred<"llvm::isa<DenseElementsAttr>($0) && "
+  "llvm::cast<DenseElementsAttr>($0).getNumElements() == 1 && "
+  "std::abs(*llvm::cast<DenseElementsAttr>($0).getValues<float>().begin()) < "
   # n>>;
 
 // Constraint that the attribute value is negative infinity or negative largest.
 // We use both -inf & flt_min due to the forward compatibility.
 def ConstAPFloatNegLargestOrNegInfinity : Constraint<CPred<
-  "$0.isa<DenseElementsAttr>() && "
-  "$0.cast<DenseElementsAttr>().getNumElements() == 1 && "
-  "(($0.cast<DenseElementsAttr>().getValues<APFloat>()[0].isLargest() && "
-  "$0.cast<DenseElementsAttr>().getValues<APFloat>()[0].isNegative()) || "
-  "$0.cast<DenseElementsAttr>().getValues<APFloat>()[0].isNegInfinity())">>;
+  "llvm::isa<DenseElementsAttr>($0) && "
+  "llvm::cast<DenseElementsAttr>($0).getNumElements() == 1 && "
+  "((llvm::cast<DenseElementsAttr>($0).getValues<APFloat>()[0].isLargest() && "
+  "llvm::cast<DenseElementsAttr>($0).getValues<APFloat>()[0].isNegative()) || "
+  "llvm::cast<DenseElementsAttr>($0).getValues<APFloat>()[0].isNegInfinity())">>;
 
 def L2NormValidReduceIndex : Constraint<CPred<
-  "L2NormalizeReduceAxis($0, $1.cast<DenseElementsAttr>())">>;
+  "L2NormalizeReduceAxis($0, llvm::cast<DenseElementsAttr>($1))">>;
 
 // Currently L2Normalization doesn't support activation function
 // in TFLite.
@@ -456,9 +456,9 @@ def IsReducedTailOfShape : Constraint<CPred<
   "TFL::IsReducedTailOfShape($0.getType(), $1.getType())">>;
 
 def Flatten : NativeCodeCall<
-  "$0.cast<DenseElementsAttr>()"
-    ".reshape(RankedTensorType::get({$0.getType().cast<ShapedType>().getNumElements()}, "
-                                   "$0.getType().cast<ShapedType>().getElementType()))">;
+  "llvm::cast<DenseElementsAttr>($0)"
+    ".reshape(RankedTensorType::get({llvm::cast<ShapedType>($0.getType()).getNumElements()}, "
+                                   "llvm::cast<ShapedType>($0.getType()).getElementType()))">;
 
 def IsLastDimEqualToNumElements : Constraint<CPred<
   "TFL::IsLastDimEqualToNumElements($0.getType(), $1.getType())">>;
@@ -729,8 +729,8 @@ def GetPrefixTruncatedShape: NativeCodeCall<"GetShapeAttr($0, true)">;
 
 // Returns True if the operand type is RankedTensorType and valid.
 def HasValidRankedTensor : Constraint<CPred<
-  "$0.getType().isa<RankedTensorType>() && "
-  "$0.getType().cast<RankedTensorType>().getNumDynamicDims() <= 1">>;
+  "llvm::isa<RankedTensorType>($0.getType()) && "
+  "llvm::cast<RankedTensorType>($0.getType()).getNumDynamicDims() <= 1">>;
 
 // Check if the truncated shape of the lhs is equal to the shape of rhs
 def IsPrefixTruncatedShapeEqualTo : Constraint<CPred<
@@ -900,8 +900,8 @@ def RemoveShapeOnlyCast : Pat<(TFL_CastOp:$output $input),
 
 // Checks if the operand0's rank is one less than operand1's rank.
 def PReluAlphaRankCheck : Constraint<
-  CPred<"$0.getType().cast<ShapedType>().getRank() == "
-  "$1.getType().cast<ShapedType>().getRank() - 1">>;
+  CPred<"llvm::cast<ShapedType>($0.getType()).getRank() == "
+  "llvm::cast<ShapedType>($1.getType()).getRank() - 1">>;
 
 // PReLU pattern from Keras:
 // f(x) = Relu(x) + (-alpha * Relu(-x))
@@ -979,7 +979,7 @@ def OptimizePow2ToRsqrt : Pat<
 
 def CanOptimizeIdentityGatherNdOrScatterNdOp : Constraint<CPred<
   "TFL::CanOptimizeIdentityGatherNdOrScatterNdOp("
-  "$0, $1.cast<DenseIntElementsAttr>(), $2.getType())">>;
+  "$0, llvm::cast<DenseIntElementsAttr>($1), $2.getType())">>;
 
 def OptimizeIdentityGatherNdOp : Pat<
   (TFL_GatherNdOp:$output $params, (Arith_ConstantOp I32ElementsAttr: $indices)),
@@ -1013,9 +1013,9 @@ def IsSame : Constraint<CPred<"$0 == $1">>;
 def HasTwoUse : Constraint<CPred<
   "std::distance($0.use_begin(), $0.use_end()) == 2">>;
 def AxesIsLastDimension : Constraint<CPred<
-  "$0.cast<DenseIntElementsAttr>().getNumElements() == 1 && "
-  "($0.cast<DenseIntElementsAttr>().getValues<APInt>()[0] == "
-  "$1.getType().cast<ShapedType>().getRank() - 1 || $0.cast<DenseIntElementsAttr>().getValues<int32_t>()[0] == -1)">>;
+  "llvm::cast<DenseIntElementsAttr>($0).getNumElements() == 1 && "
+  "(llvm::cast<DenseIntElementsAttr>($0).getValues<APInt>()[0] == "
+  "llvm::cast<ShapedType>($1.getType()).getRank() - 1 || llvm::cast<DenseIntElementsAttr>($0).getValues<int32_t>()[0] == -1)">>;
 
 // Convert exp(x)/sum(exp(x)) into softmax.
 def OptimizeToSoftmax : Pat<
@@ -1070,10 +1070,10 @@ def FoldNormalizationIntoSoftmaxJaxWithAxisMinus1 : Pat<
 def HaveSameType : Constraint<CPred<"($0.getType() == $1.getType())">>;
 
 class AllElementsAreF32<string val> : Constraint<CPred<
-  "($0.isa<DenseElementsAttr>() && "
-   "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isF32() && "
-   "std::all_of($0.cast<DenseElementsAttr>().getValues<float>().begin(), "
-               "$0.cast<DenseElementsAttr>().getValues<float>().end(), "
+  "(llvm::isa<DenseElementsAttr>($0) && "
+   "llvm::cast<ShapedType>(llvm::cast<DenseElementsAttr>($0).getType()).getElementType().isF32() && "
+   "std::all_of(llvm::cast<DenseElementsAttr>($0).getValues<float>().begin(), "
+               "llvm::cast<DenseElementsAttr>($0).getValues<float>().end(), "
                "[](float v){ return v == " #val# ";}))">>;
 
 // Optimize X*1 to X
@@ -1086,10 +1086,10 @@ def OptimizeMul1ToIdentity : Pat<
    (AllElementsAreF32<"1.0f"> $constant)]>;
 
 class AllElementsAreBool<string val> : Constraint<CPred<
-  "($0.isa<DenseElementsAttr>() && "
-   "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isInteger(1) && "
-   "std::all_of($0.cast<DenseElementsAttr>().getValues<bool>().begin(), "
-               "$0.cast<DenseElementsAttr>().getValues<bool>().end(), "
+  "(llvm::isa<DenseElementsAttr>($0) && "
+   "llvm::cast<ShapedType>(llvm::cast<DenseElementsAttr>($0).getType()).getElementType().isInteger(1) && "
+   "std::all_of(llvm::cast<DenseElementsAttr>($0).getValues<bool>().begin(), "
+               "llvm::cast<DenseElementsAttr>($0).getValues<bool>().end(), "
                "[](bool v){ return v == " #val# ";}))">>;
 
 // Remove select operators when the result is known in advance.
@@ -1225,11 +1225,11 @@ def IsLastDimensionEqualOne : Constraint<CPred<"IsLastDimensionEqualOne($0)">>;
 // As above but if shape is not static and rank 2 with last dim 1.
 def IsLastDimensionEqualOneOrDynamicBatchDimRank2 : Constraint<
   CPred<"IsLastDimensionEqualOne($0) || "
-        "(!$0.getType().cast<ShapedType>().hasStaticShape() && "
-        "  $0.getType().cast<ShapedType>().hasRank() && "
-        "  $0.getType().cast<ShapedType>().getRank() == 2 && "
-        "  !$0.getType().cast<ShapedType>().getShape().empty() && "
-        "  $0.getType().cast<ShapedType>().getShape()[1] == 1)">>;
+        "(!llvm::cast<ShapedType>($0.getType()).hasStaticShape() && "
+        "  llvm::cast<ShapedType>($0.getType()).hasRank() && "
+        "  llvm::cast<ShapedType>($0.getType()).getRank() == 2 && "
+        "  !llvm::cast<ShapedType>($0.getType()).getShape().empty() && "
+        "  llvm::cast<ShapedType>($0.getType()).getShape()[1] == 1)">>;
 
 // Replace
 //   Equal(X, indices)
@@ -1250,10 +1250,10 @@ def ReshapeEqualOpToOneHotOp : Pat<
    (IsOneHotIndexAttribute $series)]>;
 
 def F32ElementsVal : Constraint<CPred<
-  "$0.getType().cast<TensorType>().getElementType().isF32()">,
+  "llvm::cast<TensorType>($0.getType()).getElementType().isF32()">,
   "32 bit float tensor">;
 def I32ElementsVal : Constraint<CPred<
-  "$0.getType().cast<TensorType>().getElementType().isInteger(32)">,
+  "llvm::cast<TensorType>($0.getType()).getElementType().isInteger(32)">,
   "32 bit integer tensor">;
 
 def ConvertSingleElementAttrToFloatAttr :
@@ -1664,7 +1664,7 @@ def isF32Splat : Constraint<
   CPred<"IsF32Splat($0)">>;
 
 def ExtractF32AtIndex0: NativeCodeCall<
-    "$_builder.getF32FloatAttr($_self.cast<DenseElementsAttr>().getValues<float>()[0])">;
+    "$_builder.getF32FloatAttr(llvm::cast<DenseElementsAttr>($_self).getValues<float>()[0])">;
 
 def FuseLeakyReluConst : Pat<
   (TFL_SelectOp
@@ -1699,16 +1699,16 @@ class ContractingDimsProductEqual<int agg_start_idx> : Constraint<CPred<
 
 // Returns true if the dimensions of a subsection of two tensors is equal
 class AreTensorSubSectionShapesEqual<int skip_first, int skip_last> : Constraint<CPred<
-  "($0.getType().dyn_cast<ShapedType>().getShape()"
+  "(llvm::dyn_cast<ShapedType>($0.getType()).getShape()"
     ".drop_back("#skip_last#").drop_front("#skip_first#") =="
-  "$1.getType().dyn_cast<ShapedType>().getShape()"
+  "llvm::dyn_cast<ShapedType>($1.getType()).getShape()"
     ".drop_back("#skip_last#").drop_front("#skip_first#"))">>;
 
 // Returns true if the broadcast dimension of a tensor is [1]
 // here- broadcast dimension is first prefix dimension
 // excluding the last two dimensions
 def IsBroadcastDimEqualToOne : Constraint<CPred<
-  "$0.getType().dyn_cast<ShapedType>().getShape()[0] == 1">>;
+  "llvm::dyn_cast<ShapedType>($0.getType()).getShape()[0] == 1">>;
 
 // Pattern to fuse/fold the reshape ops around TFL_BatchMatMulOp
 // This pattern is applied when the rank of rhs is 2
@@ -1953,25 +1953,25 @@ def FuseSliceAndPack4D : Pat<(
 
 // Given a value, checks if dim `d` is static.
 class HasStaticDim<int d> : Constraint<CPred<
-  "!$0.getType().cast<ShapedType>().isDynamicDim(" # d # ")">>;
+  "!llvm::cast<ShapedType>($0.getType()).isDynamicDim(" # d # ")">>;
 
 class IsBalancedPaddingArray<int spatials_start, int spatials_end> :
   Constraint<CPred<
     "IsBalancedPaddingArray("# spatials_start #","# spatials_end #","
-      "$0.cast<DenseElementsAttr>())">>;
+      "llvm::cast<DenseElementsAttr>($0))">>;
 
 // Given in_shape, out_shape, stride checks ceil(in_shape[d] / stride) == out_shape[d]
 def IsSameStridedShape2D : Constraint<CPred<
   "HasSameStridedShape($0.getDefiningOp<TFL::Conv2DOp>(),"
-    "$1.getType().cast<ShapedType>().getShape())">>;
+    "llvm::cast<ShapedType>($1.getType()).getShape())">>;
 
 def IsSameStridedShapeDepthwise : Constraint<CPred<
   "HasSameStridedShape($0.getDefiningOp<TFL::DepthwiseConv2DOp>(),"
-    "$1.getType().cast<ShapedType>().getShape())">>;
+    "llvm::cast<ShapedType>($1.getType()).getShape())">>;
 
 def IsSameStridedShape3D : Constraint<CPred<
   "HasSameStridedShape($0.getDefiningOp<TFL::Conv3DOp>(),"
-    "$1.getType().cast<ShapedType>().getShape())">>;
+    "llvm::cast<ShapedType>($1.getType()).getShape())">>;
 
 def IsValidPadding : Constraint<CPred<"$0.str() == \"VALID\"">>;
 

@@ -26,20 +26,20 @@ include "tensorflow/compiler/mlir/lite/utils/utils.td"
 def CreateEmptyBoolAttr : NativeCodeCall<"::mlir::BoolAttr()">;
 
 def DenseElementsAttr : ElementsAttrBase<
-  CPred<"$_self.isa<DenseElementsAttr>()">,
+  CPred<"llvm::isa<DenseElementsAttr>($_self)">,
   "non-opaque constant tensor">;
 
 def F32ElementsAttr : ElementsAttrBase<
-  CPred<"$_self.cast<ElementsAttr>().getShapedType().getElementType().isF32()">, "float constant tensor">;
+  CPred<"llvm::cast<ElementsAttr>($_self).getShapedType().getElementType().isF32()">, "float constant tensor">;
 
 def Int64ElementsAttr : ElementsAttrBase<
-  CPred<"$_self.cast<ElementsAttr>().getShapedType().getElementType().isInteger(64)">, "Int 64 constant tensor">;
+  CPred<"llvm::cast<ElementsAttr>($_self).getShapedType().getElementType().isInteger(64)">, "Int 64 constant tensor">;
 
 // Extract the ith int element from an ArrayAttr $0 as an 32-bit IntegerAttr
 // with builder.
 class ExtractI32At<int i> : NativeCodeCall<
-    "$_builder.getI32IntegerAttr($_self.cast<ArrayAttr>().getValue()[" # i #
-    "].cast<IntegerAttr>().getInt())">;
+    "$_builder.getI32IntegerAttr(llvm::cast<IntegerAttr>(llvm::cast<ArrayAttr>($_self).getValue()[" # i #
+    "]).getInt())">;
 
 // Use the tensor type information from $0 and convert min $1, max $2 and
 // numBits $3 and narrowRange $4 to a QuantizedType.
@@ -48,7 +48,7 @@ def ConvertToQuantTypeFromAttrs : NativeCodeCall<
 
 // Converts an integer attribute $0 to 32-bit with builder.
 def convertIntAttrTo32Bit : NativeCodeCall<
-    "$_builder.getI32IntegerAttr($0.cast<IntegerAttr>().getInt())">;
+    "$_builder.getI32IntegerAttr(llvm::cast<IntegerAttr>($0).getInt())">;
 
 // Builds a constant bool attribute.
 class GetBoolAttr<int value> :
@@ -56,15 +56,15 @@ class GetBoolAttr<int value> :
 
 // Converts an integer attribute $0 to 64-bit with builder.
 def convertIntAttrTo64Bit : NativeCodeCall<
-    "$_builder.getI64IntegerAttr($0.cast<IntegerAttr>().getInt())">;
+    "$_builder.getI64IntegerAttr(llvm::cast<IntegerAttr>($0).getInt())">;
 
 // Extracts the single integer element from $_self.
 def ExtractSingleElementAsInteger : NativeCodeCall<
-    "ExtractSingleElementAsInteger($_self.cast<ElementsAttr>())">;
+    "ExtractSingleElementAsInteger(llvm::cast<ElementsAttr>($_self))">;
 
 // Extracts the single int32 element from $_self.
 def ExtractSingleElementAsInt32 : NativeCodeCall<
-    "$_builder.getI32IntegerAttr(ExtractSingleElementAsInteger($_self.cast<ElementsAttr>()).getInt())">;
+    "$_builder.getI32IntegerAttr(ExtractSingleElementAsInteger(llvm::cast<ElementsAttr>($_self)).getInt())">;
 
 // Converts tensor with int64 to int32.
 def CreateTFCastToInt32Op : NativeCodeCall<
@@ -75,7 +75,7 @@ def CreateInt32ConstOrCast : NativeCodeCall<
 
 // Creates an int32 constant op from an integer attribute $0.
 def CreateInt32ConstOpFromIntAttr
-  : NativeCodeCall<"$_builder.create<TF::ConstOp>($_loc, DenseElementsAttr::get(RankedTensorType::get({}, $_builder.getI32Type()), {static_cast<int32_t>($0.cast<IntegerAttr>().getInt())}))">;
+  : NativeCodeCall<"$_builder.create<TF::ConstOp>($_loc, DenseElementsAttr::get(RankedTensorType::get({}, $_builder.getI32Type()), {static_cast<int32_t>(llvm::cast<IntegerAttr>($0).getInt())}))">;
 
 //===----------------------------------------------------------------------===//
 // Nullary ops patterns.
@@ -100,8 +100,8 @@ def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
 def IsDataFormatNCHW : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NCHW\"">;
 
 class I32VectorElementsAttr<int len> : ElementsAttrBase<
-  CPred<"$_self.isa<DenseIntElementsAttr>() &&"
-      "$_self.cast<DenseIntElementsAttr>().getType()."
+  CPred<"llvm::isa<DenseIntElementsAttr>($_self) &&"
+      "llvm::cast<DenseIntElementsAttr>($_self).getType()."
       "getElementType().isSignlessInteger(32)">,
   "32-bit int elements attribute of shape [" # len # "]"> {
 
@@ -123,8 +123,8 @@ def IsAllOnes : AttrConstraint<CPred<"TFIntListIsAllOnes($_self)">>;
 
 // Constraint that attribute is string with value either "SAME" or "VALID"
 def IsSameOrValid : AttrConstraint<
-    CPred<"$_self.cast<StringAttr>().getValue() == \"SAME\" || " #
-          "$_self.cast<StringAttr>().getValue() == \"VALID\"">,
+    CPred<"llvm::cast<StringAttr>($_self).getValue() == \"SAME\" || " #
+          "llvm::cast<StringAttr>($_self).getValue() == \"VALID\"">,
     "'SAME' or 'VALID' paddings">;
 
 def TFL_GetMirrorPaddingType : NativeCodeCall<
@@ -443,8 +443,8 @@ def LegalizeSum : Pat<(TF_SumOp $arg, $axes, BoolAttr:$arg2),
 def LegalizeTopKV2 : Pat<(TF_TopKV2Op $input, $k, $ignored_sorted),
                          (TFL_TopKV2Op $input, $k)>;
 
-def ReductionDimensionIsLastDim : Constraint<CPred<"($0.cast<IntegerAttr>().getInt() == "
-  "$1.getType().cast<ShapedType>().getRank() - 1 || $0.cast<IntegerAttr>().getInt() == -1)">>;
+def ReductionDimensionIsLastDim : Constraint<CPred<"(llvm::cast<IntegerAttr>($0).getInt() == "
+  "llvm::cast<ShapedType>($1.getType()).getRank() - 1 || llvm::cast<IntegerAttr>($0).getInt() == -1)">>;
 
 // Legalizes TF_ApproxTopKOp to TFL_TopKV2Op with the following constraints:
 //    1. It computes max k
@@ -558,10 +558,10 @@ def LegalizeConv2DBackpropInput : Pat<
      /*fused_activation_function=*/TFL_AF_None)>;
 
 def IsRankZeroAttr
-  : CPred<"$_self.cast<DenseElementsAttr>().getType().getRank() == 0">;
+  : CPred<"llvm::cast<DenseElementsAttr>($_self).getType().getRank() == 0">;
 
 def HasValueZero
-  : CPred<"$_self.cast<DenseElementsAttr>()."
+  : CPred<"llvm::cast<DenseElementsAttr>($_self)."
           "getSplatValue<::mlir::IntegerAttr>().getInt() == 0">;
 
 // TFLite only supports MatrixSetDiag ops with scalar zero k attribute.
