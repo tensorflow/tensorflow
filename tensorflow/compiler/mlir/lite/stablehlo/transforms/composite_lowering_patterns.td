@@ -29,21 +29,21 @@ def LegalizeHardSwishComposite: Pat<
                     (TFL_HardSwishOp $input)>;
 
 def IsNchwLayoutOp: Constraint<CPred<
-  "$0.get(\"is_nchw_op\") && $0.get(\"is_nchw_op\").dyn_cast<BoolAttr>() "
+  "$0.get(\"is_nchw_op\") && llvm::dyn_cast<BoolAttr>($0.get(\"is_nchw_op\")) "
       "== mlir::BoolAttr::get($_builder.getContext(), true)">>;
 
 def IsNhwcLayoutOp: Constraint<Neg<IsNchwLayoutOp.predicate>>;
 
 class HasRank<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
-          "$0.getType().cast<ShapedType>().getRank() == " # n>>;
+    CPred<"llvm::cast<ShapedType>($0.getType()).hasRank() && "
+          "llvm::cast<ShapedType>($0.getType()).getRank() == " # n>>;
 
 class HasRankAtLeast<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
-          "$0.getType().cast<ShapedType>().getRank() >= " # n>>;
+    CPred<"llvm::cast<ShapedType>($0.getType()).hasRank() && "
+          "llvm::cast<ShapedType>($0.getType()).getRank() >= " # n>>;
 
 def I32ElementsVal : Constraint<CPred<
-  "$0.getType().cast<TensorType>().getElementType().isInteger(32)">,
+  "llvm::cast<TensorType>($0.getType()).getElementType().isInteger(32)">,
   "32 bit integer tensor">;
 
 // TODO(b/343278954): Move the creation of transposes to a separate prepare pass

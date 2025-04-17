@@ -33,8 +33,8 @@ def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
 // BatchNorm op patterns.
 //===----------------------------------------------------------------------===//
 
-def FalseBoolAttr : AttrConstraint<CPred<"!$_self.cast<BoolAttr>().getValue()">>;
-def TrueBoolAttr : AttrConstraint<CPred<"$_self.cast<BoolAttr>().getValue()">>;
+def FalseBoolAttr : AttrConstraint<CPred<"!llvm::cast<BoolAttr>($_self).getValue()">>;
+def TrueBoolAttr : AttrConstraint<CPred<"llvm::cast<BoolAttr>($_self).getValue()">>;
 
 def CastValueToI64: NativeCodeCall<
   "CastValueToI64($0.getLoc(), $1, &$_builder)">;
@@ -47,18 +47,18 @@ def CastValueToElementType: NativeCodeCall<
 // the corresponding value of ranked tensor type whose axis is referred in $0.
 def GetHLOAxisFromTFAxis : NativeCodeCall<
   "GetHLOAxisFromTFAxis("
-  "$0, $1.getType().cast<RankedTensorType>().getRank(), &$_builder)">;
+  "$0, llvm::cast<RankedTensorType>($1.getType()).getRank(), &$_builder)">;
 
 // Same as the above but with $1 of type operand_range from variadic TensorFlow
 // input.
 def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
   "GetHLOAxisFromTFAxis("
-  "$0, (*$1.begin()).getType().cast<RankedTensorType>().getRank(), "
+  "$0, llvm::cast<RankedTensorType>((*$1.begin()).getType()).getRank(), "
   "&$_builder)">;
 
 def CastElementsToI64Elements : NativeCodeCall<
-  "hlo::convertElementsAttr("
-    "$0.cast<ElementsAttr>(), $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
+  "llvm::cast<DenseIntElementsAttr>(hlo::convertElementsAttr("
+    "llvm::cast<ElementsAttr>($0), $_builder.getIntegerType(64)))">;
 
 def EmptyDotAlgorithmAttr : NativeCodeCall<"mlir::mhlo::DotAlgorithmAttr{}">;
 
@@ -274,17 +274,17 @@ def : EqualityPat<TF_NotEqualOp, CHLO_ComparisonDirectionValue<"NE">>;
 //===----------------------------------------------------------------------===//
 
 def OneElementAttrPred
-  : CPred<"$_self.cast<ElementsAttr>().getShapedType().getNumElements() == 1">;
+  : CPred<"llvm::cast<ElementsAttr>($_self).getShapedType().getNumElements() == 1">;
 
 def OneElementAttr
   : ElementsAttrBase<And<[ElementsAttr.predicate, OneElementAttrPred]>,
                      "Scalar ElementsAttr">;
 
 def HasRankedFirstOperand
-  : Constraint<CPred<"(*$0.begin()).getType().isa<RankedTensorType>()">>;
+  : Constraint<CPred<"llvm::isa<RankedTensorType>((*$0.begin()).getType())">>;
 
 def IsShapedTensor
-  : Constraint<CPred<"$0.getType().isa<RankedTensorType>()">>;
+  : Constraint<CPred<"llvm::isa<RankedTensorType>($0.getType())">>;
 
 // This pattern converts TensorFlow axis format to HLO axis format which
 // doesn't wrap around like TensorFlow and is always positive. For this
@@ -332,10 +332,10 @@ class MHLO_FftTypeValue<string enumStr> :
   ConstantAttr<MHLO_FftTypeAttr, "::mlir::mhlo::FftType::" # enumStr>;
 
 def GetInnerDimFromValue : NativeCodeCall<
-  "GetInnerDimFromValue($0.getType().cast<ShapedType>(), &$_builder)">;
+  "GetInnerDimFromValue(llvm::cast<ShapedType>($0.getType()), &$_builder)">;
 
 def CheckInnerDimStatic
-  : Constraint<CPred<"CheckInnerDimStatic($0.getType().cast<ShapedType>(), &$_builder)">>;
+  : Constraint<CPred<"CheckInnerDimStatic(llvm::cast<ShapedType>($0.getType()), &$_builder)">>;
 
 def : Pat<(TF_FFTOp:$res $input),
           (MHLO_FftOp $input, MHLO_FftTypeValue<"FFT">, (GetInnerDimFromValue $res)),
@@ -364,14 +364,14 @@ def LegalizeGatherV2 :
 //===----------------------------------------------------------------------===//
 
 class SliceDenseIntElementsAttrColumn2D<string column> : NativeCodeCall<
-  "SliceDenseIntElementsAttrColumn2D($0.cast<ElementsAttr>(), " # column # " )">;
+  "SliceDenseIntElementsAttrColumn2D(llvm::cast<ElementsAttr>($0), " # column # " )">;
 
 class SliceDenseIntElementsAttr<string index, string axis> : NativeCodeCall<
-  "SliceDenseIntElementsAttr($0.cast<ElementsAttr>(), " # index # ", " # axis # ")">;
+  "SliceDenseIntElementsAttr(llvm::cast<ElementsAttr>($0), " # index # ", " # axis # ")">;
 
 // Interior padding attribute based on the TF padding.
 def GetInteriorPadding : NativeCodeCall <
-  "GetInteriorPadding($0.cast<ElementsAttr>())">;
+  "GetInteriorPadding(llvm::cast<ElementsAttr>($0))">;
 
 def : Pat<(TF_PadV2Op $input, (ConstantLikeMatcher ElementsAttr:$padding), $c),
           (MHLO_PadOp $input, $c,
@@ -511,10 +511,10 @@ def UnpackStartingIndices: NativeCodeCall<
   "UnpackTensorAlongZeroDim($0.getLoc(), $1, &$_builder).getOutput()">;
 
 def CanBeTranslatedToDynamicSlice : Constraint<CPred<
-  "CanBeTranslatedToDynamicSlice($0, $1, $2.cast<DenseIntElementsAttr>())">>;
+  "CanBeTranslatedToDynamicSlice($0, $1, llvm::cast<DenseIntElementsAttr>($2))">>;
 
 def TFSliceSizes2HLOSliceSizes : NativeCodeCall<
-    "TFSliceSizes2HLOSliceSizes($0, $1, $2.cast<DenseIntElementsAttr>(),"
+    "TFSliceSizes2HLOSliceSizes($0, $1, llvm::cast<DenseIntElementsAttr>($2),"
     "&$_builder)">;
 
 def : Pat<(TF_SliceOp:$op MHLO_Tensor:$input, MHLO_Tensor:$starting_indices,
@@ -560,7 +560,7 @@ def : Pat<(TF_LegacyCallOp:$op $args, $args_attrs, $res_attrs, FlatSymbolRefAttr
 //===----------------------------------------------------------------------===//
 
 // Handles axis conversion for TF reverse.
-def ConvertAxisAttr : NativeCodeCall<"ConvertAxisAttr($0, $1.cast<ElementsAttr>(), &$_builder)">;
+def ConvertAxisAttr : NativeCodeCall<"ConvertAxisAttr($0, llvm::cast<ElementsAttr>($1), &$_builder)">;
 
 def : Pat<(TF_ReverseV2Op AnyRankedTensor:$values, (ConstantLikeMatcher ElementsAttr:$axis)),
     (MHLO_ReverseOp $values, (ConvertAxisAttr $values, $axis))>;
