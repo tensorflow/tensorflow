@@ -1,14 +1,14 @@
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/LoadStoreOpToLLVM.cpp	2025-04-11 01:29:32.000000000 -0700
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/LoadStoreOpToLLVM.cpp	2025-04-14 17:05:58.000000000 -0700
-@@ -12,6 +12,7 @@
+@@ -7,6 +7,7 @@
+ #include "Utility.h"
+ #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
+ #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
++#include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/PatternMatch.h"
  #include "mlir/IR/TypeUtilities.h"
- #include "mlir/IR/ValueRange.h"
- #include "mlir/Transforms/DialectConversion.h"
-+#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/Builders.h"
- #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
- #include "triton/Dialect/Triton/IR/Types.h"
- #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 @@ -366,7 +367,7 @@
  
      auto cacheMod = op.getCache();
@@ -57,18 +57,17 @@
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/Utility.cpp	2025-04-11 01:29:32.000000000 -0700
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/Utility.cpp	2025-04-14 17:05:59.000000000 -0700
-@@ -1,9 +1,11 @@
+@@ -1,8 +1,10 @@
  #include "Utility.h"
 +
  #include "Dialect/TritonAMDGPU/IR/Dialect.h"
  #include "TritonAMDGPUToLLVM/GCNAsmFormat.h"
  #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
  #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
++#include "mlir/IR/Builders.h"
  #include "mlir/IR/PatternMatch.h"
-+#include "third_party/llvm/llvm-project/mlir/include/mlir/IR/Builders.h"
  #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
  #include "triton/Dialect/Triton/IR/Dialect.h"
- #include "triton/Dialect/TritonGPU/IR/LinearLayoutConversions.h"
 @@ -49,7 +51,7 @@
  Value createVectorMaskFromPredicate(RewriterBase &rewriter, Location loc,
                                      Value pred, int64_t vecSize) {
