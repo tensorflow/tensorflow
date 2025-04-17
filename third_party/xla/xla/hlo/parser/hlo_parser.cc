@@ -1810,7 +1810,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
             *shape, operands, *to_apply, device_list,
             constrain_layout ? *constrain_layout : false, channel_id,
             use_global_device_ids ? *use_global_device_ids : false));
-      } else if (opcode == HloOpcode::kReduceScatter) {
+      }
+      if (opcode == HloOpcode::kReduceScatter) {
         return builder->AddInstruction(HloInstruction::CreateReduceScatter(
             *shape, operands, *to_apply, device_list,
             constrain_layout ? *constrain_layout : false, channel_id,
@@ -4014,7 +4015,8 @@ bool HloParserImpl::ParseBooleanListOrSingleBoolean(BoolList* boolean_list) {
       boolean_list->push_back(true);
       lexer_.Lex();
       return true;
-    } else if (lexer_.GetKind() == TokKind::kw_false) {
+    }
+    if (lexer_.GetKind() == TokKind::kw_false) {
       boolean_list->push_back(false);
       lexer_.Lex();
       return true;
@@ -5611,7 +5613,8 @@ bool HloParserImpl::ParseConvolutionDimensionNumbers(
       char c = lhs[i];
       if (c == '?') {
         continue;
-      } else if (c == 'b') {
+      }
+      if (c == 'b') {
         dnums->set_input_batch_dimension(i);
       } else if (c == 'f') {
         dnums->set_input_feature_dimension(i);
@@ -5639,7 +5642,8 @@ bool HloParserImpl::ParseConvolutionDimensionNumbers(
       char c = rhs[i];
       if (c == '?') {
         continue;
-      } else if (c == 'i') {
+      }
+      if (c == 'i') {
         dnums->set_kernel_input_feature_dimension(i);
       } else if (c == 'o') {
         dnums->set_kernel_output_feature_dimension(i);
@@ -5667,7 +5671,8 @@ bool HloParserImpl::ParseConvolutionDimensionNumbers(
       char c = out[i];
       if (c == '?') {
         continue;
-      } else if (c == 'b') {
+      }
+      if (c == 'b') {
         dnums->set_output_batch_dimension(i);
       } else if (c == 'f') {
         dnums->set_output_feature_dimension(i);
