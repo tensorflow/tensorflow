@@ -780,7 +780,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 
       if (instruction->opcode() == HloOpcode::kAsyncStart) {
         auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(
-            context_, result_type.cast<mlir::TupleType>().getTypes());
+            context_, llvm::cast<mlir::TupleType>(result_type).getTypes());
         // XLA Feature -- MHLO Only
         return func_builder
             ->create<mlir::mhlo::AsyncStartOp>(loc, bundle_result_type,
@@ -788,7 +788,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             .getOperation();
       } else if (instruction->opcode() == HloOpcode::kAsyncUpdate) {
         auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(
-            context_, result_type.cast<mlir::TupleType>().getTypes());
+            context_, llvm::cast<mlir::TupleType>(result_type).getTypes());
         // XLA Feature -- MHLO Only
         return func_builder
             ->create<mlir::mhlo::AsyncUpdateOp>(loc, bundle_result_type,

@@ -21,7 +21,7 @@ include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.td"
 class Quantize<string value> : NativeCodeCall<"TFR::Quantize(" # value # ", $0, $1, $_builder)">;
 
 class HasStringAttr<string value> : AttrConstraint<
-    CPred<"$_self.cast<StringAttr>().getValue() == \"" # value # "\"">>;
+    CPred<"llvm::cast<StringAttr>($_self).getValue() == \"" # value # "\"">>;
 
 def QuantActRangeNonePattern :
   Pattern<

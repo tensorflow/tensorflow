@@ -57,7 +57,7 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [Pure]> {
     // Returns data type of the result handle. Returned type contains type of
     // the TensorList element as a subtype.
     VariantType handle_dtype() {
-      return getElementTypeOrSelf(getHandle().getType()).cast<TF::VariantType>();
+      return llvm::cast<TF::VariantType>(getElementTypeOrSelf(getHandle().getType()));
     }
   }];
 }
@@ -118,7 +118,7 @@ An n-way switch statement, implementing the following:
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
     func::FuncOp ResolveBranchFunction(::mlir::SymbolTableCollection* table, int index) {
-      auto flat_sym_ref = getBranches()[index].cast<FlatSymbolRefAttr>();
+      auto flat_sym_ref = llvm::cast<FlatSymbolRefAttr>(getBranches()[index]);
       if (table)
         return table->lookupNearestSymbolFrom<func::FuncOp>(*this, flat_sym_ref);
       return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, flat_sym_ref);
@@ -854,14 +854,14 @@ Example:
       "return getElementTypeOrSelf(resource_subtype());">;
   DerivedAttr shape = DerivedAttr<
       "ShapedType",
-      "return resource_subtype().cast<ShapedType>();",
+      "return llvm::cast<ShapedType>(resource_subtype());",
       [{ mlir::TF::ShapeAttr::get($_ctxt, $_self) }]>;
 
   let extraClassDeclaration = [{
     TensorType resource_subtype() { return resource_type().getSubtypes()[0]; }
 
     ResourceType resource_type() {
-      return getElementTypeOrSelf(getResource()).cast<TF::ResourceType>();
+      return llvm::cast<TF::ResourceType>(getElementTypeOrSelf(getResource()));
     }
   }];
 

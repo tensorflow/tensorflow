@@ -23,18 +23,18 @@ def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
 // Get the last dimension size as a 1-d single element attr.
 def GetLastDimSizeAsI32 : NativeCodeCall<
   "DenseElementsAttr::get(RankedTensorType::get({1}, $_builder.getIntegerType(32)), "
-  "static_cast<int32_t>($0.getType().cast<RankedTensorType>().getDimSize(  "
-  "  $0.getType().cast<RankedTensorType>().getRank() - 1)))">;
+  "static_cast<int32_t>(llvm::cast<RankedTensorType>($0.getType()).getDimSize(  "
+  "  llvm::cast<RankedTensorType>($0.getType()).getRank() - 1)))">;
 
 // Check whether the tensor is ranked and whether its last dim is static.
 def IsRankedShapeLastDimStatic : Constraint<And<[
-  CPred<"$0.getType().isa<RankedTensorType>()">,
-  CPred<"!$0.getType().cast<ShapedType>().isDynamicDim( "
-  "  $0.getType().cast<RankedTensorType>().getRank() - 1)">]>>;
+  CPred<"llvm::isa<RankedTensorType>($0.getType())">,
+  CPred<"!llvm::cast<ShapedType>($0.getType()).isDynamicDim( "
+  "  llvm::cast<RankedTensorType>($0.getType()).getRank() - 1)">]>>;
 
 def IsNotComplexType : Constraint<And<[
-  CPred<"$0.getType().isa<RankedTensorType>()">,
-  CPred<"!$0.getType().cast<ShapedType>().getElementType().isa<ComplexType>()">
+  CPred<"llvm::isa<RankedTensorType>($0.getType())">,
+  CPred<"!llvm::isa<ComplexType>(llvm::cast<ShapedType>($0.getType()).getElementType())">
 ]>>;
 
 // Only fuse multiplier if all dimensions other than the channel dimension
@@ -43,7 +43,7 @@ def CanFuseMulAndConv2D :
     Constraint<CPred<"IsBroadcastableElementsAttrs($0, $1) && IsDimensionsDegenerateExceptLastOne($1)">>;
 
 def F32ElementsAttr : ElementsAttrBase<
-    CPred<"$_self.cast<ElementsAttr>().getShapedType().getElementType().isF32()">, "float constant tensor">;
+    CPred<"llvm::cast<ElementsAttr>($_self).getShapedType().getElementType().isF32()">, "float constant tensor">;
 def DefinedByConv2D : Constraint<CPred<"llvm::isa_and_nonnull<mlir::TF::Conv2DOp>($0.getDefiningOp())">>;
 // Checks if the value has only one user.
 def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
