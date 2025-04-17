@@ -33,7 +33,7 @@ struct FactoryItem {
 };
 
 FactoryItem& host_stream_factory() {
-  static FactoryItem* factory = new FactoryItem();
+  static FactoryItem* const factory = new FactoryItem();
   return *factory;
 }
 

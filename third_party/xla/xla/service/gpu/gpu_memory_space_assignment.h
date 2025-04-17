@@ -36,19 +36,20 @@ inline constexpr int64_t kTempBufferMemorySpaceColor = 2;
 // collective memory using ncclMemAlloc in the runtime.
 inline BufferAssigner::Colorer CollectiveColorer() {
   return [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
-    static const auto* kSupportedOpcodes = new absl::flat_hash_set<HloOpcode>{
-        HloOpcode::kAllReduce,
-        HloOpcode::kAllReduceStart,
-        HloOpcode::kAllReduceDone,
-        HloOpcode::kAllGather,
-        HloOpcode::kAllGatherStart,
-        HloOpcode::kAllGatherDone,
-        HloOpcode::kReduceScatter,
-        HloOpcode::kCollectivePermute,
-        HloOpcode::kCollectivePermuteStart,
-        HloOpcode::kCollectivePermuteDone,
-        HloOpcode::kAllToAll,
-    };
+    static const auto* const kSupportedOpcodes =
+        new absl::flat_hash_set<HloOpcode>{
+            HloOpcode::kAllReduce,
+            HloOpcode::kAllReduceStart,
+            HloOpcode::kAllReduceDone,
+            HloOpcode::kAllGather,
+            HloOpcode::kAllGatherStart,
+            HloOpcode::kAllGatherDone,
+            HloOpcode::kReduceScatter,
+            HloOpcode::kCollectivePermute,
+            HloOpcode::kCollectivePermuteStart,
+            HloOpcode::kCollectivePermuteDone,
+            HloOpcode::kAllToAll,
+        };
     auto is_collective_memory_instr = [&](const HloInstruction* instr) {
       return kSupportedOpcodes->contains(instr->opcode()) ||
              // opcode or async wrapped opcode is in kSupportedOpcodes.

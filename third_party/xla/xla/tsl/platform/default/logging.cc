@@ -99,13 +99,13 @@ class TFLogSinks {
 
 TFLogSinks::TFLogSinks() {
 #ifndef NO_DEFAULT_LOGGER
-  static TFDefaultLogSink* default_sink = new TFDefaultLogSink();
+  static TFDefaultLogSink* const default_sink = new TFDefaultLogSink();
   sinks_.push_back(default_sink);
 #endif
 }
 
 TFLogSinks& TFLogSinks::Instance() {
-  static TFLogSinks* instance = new TFLogSinks();
+  static TFLogSinks* const instance = new TFLogSinks();
   return *instance;
 }
 

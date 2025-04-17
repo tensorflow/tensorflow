@@ -631,7 +631,7 @@ Type TensorFlowRefType::RemoveRef() {
   if (mlir::isa<Complex128RefType>(*this))
     return ComplexType::get(Float64Type::get(ctx));
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  if (isa<tftype##RefType>()) return tftype##Type::get(ctx);
+  if (mlir::isa<tftype##RefType>(*this)) return tftype##Type::get(ctx);
 
 #define HANDLE_TF_REF_TYPE(tftype, enumerant, name)
 // NOLINTNEXTLINE
