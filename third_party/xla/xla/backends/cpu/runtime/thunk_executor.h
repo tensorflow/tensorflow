@@ -255,9 +255,11 @@ class ThunkExecutor {
                        ReadyQueue& ready_queue, int64_t split_threshold);
 
   // Processes out edges of a scheduled `node` and updates `ready_queue` with
-  // nodes that are ready to execute.
+  // nodes that are ready to execute. Returns true if `node` had any scheduling
+  // edges, and pending nodes counter was incremented, and must be dropped when
+  // `node` is completed.
   template <typename ReadyQueue>
-  void ProcessOutEdges(ExecuteState* state, ExecuteState::Node& node,
+  bool ProcessOutEdges(ExecuteState* state, ExecuteState::Node& node,
                        ReadyQueue& ready_queue);
 
   // Processes out edges of a completed `node` and updates `ready_queue` with

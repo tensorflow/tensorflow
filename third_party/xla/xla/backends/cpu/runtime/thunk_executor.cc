@@ -422,17 +422,10 @@ void ThunkExecutor::Execute(ExecuteState* state,
           /*drop_pending_nodes=*/is_sink);
 
     } else {
-      // If this was not a sink node that was already counted as a pending node,
-      // then we need to increment the pending nodes counter to keep executor
-      // alive until thunk execution is completed.
-      if (ABSL_PREDICT_FALSE(!is_sink)) {
-        state->pending_nodes.fetch_add(1, std::memory_order_relaxed);
-      }
-
       // Process scheduling edges first, before waiting for the completion of
       // thunk execution. This allows to schedule more thunks without having to
       // wait for the execution completion.
-      ProcessOutEdges(state, node, ready_queue);
+      bool inc_pending_nodes = ProcessOutEdges(state, node, ready_queue);
 
       // If thunk execution is not completed yet, attach a continuation to the
       // event and resume execution on the continuation thread (ready queue
@@ -444,7 +437,7 @@ void ThunkExecutor::Execute(ExecuteState* state,
       // execute session. If we happen to process the last thunk in the ready
       // queue, we will forward the lock that we already hold (note that the
       // lock might be empty, if `Execute` was called by the main thread).
-      execute_event.AndThen([&params, &node, state,
+      execute_event.AndThen([&params, &node, state, is_sink, inc_pending_nodes,
                              execute_event = execute_event.AsPtr(),
                              ready_queue = ready_queue.CreateEmptyReadyQueue(),
                              lock = ready_queue.Empty()
@@ -452,7 +445,7 @@ void ThunkExecutor::Execute(ExecuteState* state,
                                         : params.session.Join()]() mutable {
         state->executor->ProcessOutEdges</*process_scheduling_edges=*/false>(
             state, execute_event, node, ready_queue,
-            /*drop_pending_nodes=*/true);
+            /*drop_pending_nodes=*/is_sink || inc_pending_nodes);
 
         // If ready queue is empty, it might mean that we have completed an
         // execution and destroyed the `state`, so we make sure we don't
@@ -510,15 +503,28 @@ inline ABSL_ATTRIBUTE_ALWAYS_INLINE void ThunkExecutor::SplitReadyQueue(
 }
 
 template <typename ReadyQueue>
-void ThunkExecutor::ProcessOutEdges(ExecuteState* state,
+bool ThunkExecutor::ProcessOutEdges(ExecuteState* state,
                                     ExecuteState::Node& node,
                                     ReadyQueue& ready_queue) {
+  bool inc_pending_nodes = false;
+
   // Append ready nodes to the back of the ready queue.
   for (NodeEdge out_edge : node.out_edges) {
     // Do not process execution edges as they'll be processed later after thunk
     // execution is completed (async execute event becomes available).
     if (ABSL_PREDICT_TRUE(out_edge.kind == NodeEdge::Kind::kExecution)) {
       continue;
+    }
+
+    // If it is the first scheduling edge, we must increment the pending nodes
+    // counter to keep thunk executor alive until all scheduled thunks are
+    // completed. We don't need to do that for execution edges, as they have a
+    // path to sink nodes, and executor waits for the completion of all sink
+    // nodes. We must do it before we decrement the node counter, to avoid data
+    // races with the dependent thunks.
+    if (!inc_pending_nodes) {
+      state->pending_nodes.fetch_add(1, std::memory_order_relaxed);
+      inc_pending_nodes = true;
     }
 
     ExecuteState::Node& out_node = state->node(out_edge.id);
@@ -529,6 +535,8 @@ void ThunkExecutor::ProcessOutEdges(ExecuteState* state,
       ready_queue.Push(out_edge.id);
     }
   }
+
+  return inc_pending_nodes;
 }
 
 template <bool process_scheduling_edges, typename ReadyQueue>
