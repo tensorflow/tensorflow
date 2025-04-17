@@ -214,9 +214,6 @@ class Shape {
   absl::Span<const bool> dynamic_dimensions() const {
     return array_state().dynamic_dimensions;
   }
-  absl::Span<bool> mutable_dynamic_dimensions() {
-    return absl::MakeSpan(array_state().dynamic_dimensions);
-  }
 
   // Removes the given dimension from the shape. Layout, if it exists, is
   // adjusted to match the modified shape.
