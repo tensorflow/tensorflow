@@ -155,17 +155,15 @@ mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
 }
 
 mlir::LogicalResult StablehloToMhlo(Operation *op) {
-  RewritePatternSet patterns(op->getContext());
-  stablehlo::StablehloToHloTypeConverter converter;
-  stablehlo::populateStablehloToHloPatterns(&patterns, &converter,
-                                            op->getContext());
   ConversionTarget target(*op->getContext());
-  target.addLegalDialect<mhlo::MhloDialect>();
-  target.addIllegalDialect<stablehlo::StablehloDialect>();
+  stablehlo::setupStablehloToHloConversionTarget(target);
+
+  RewritePatternSet patterns(op->getContext());
   stablehlo::StablehloToHloTypeConverter shlo_converter;
   stablehlo::populateStablehloToHloPatterns(&patterns, &shlo_converter,
                                             patterns.getContext());
   stablehlo::registerFuncOpsForTypeConversion(target, patterns, shlo_converter);
+
   if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
     return op->emitError("TF2XLA failed to convert StableHLO to MHLO");
   }

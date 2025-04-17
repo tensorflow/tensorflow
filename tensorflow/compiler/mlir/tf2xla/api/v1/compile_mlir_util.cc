@@ -54,6 +54,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "stablehlo/dialect/Base.h"  // from @stablehlo
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -201,12 +202,12 @@ mlir::RankedTensorType GetBufferType(mlir::Type ty) {
 
   int64_t rank = ranked_ty.getRank();
   llvm::SmallVector<int64_t, 4> dims = llvm::to_vector<4>(ranked_ty.getShape());
-  auto encoding = mlir::dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>(
-      ranked_ty.getEncoding());
-  if (encoding && !encoding.getBounds().empty()) {
+  llvm::ArrayRef<int64_t> bounds =
+      mlir::hlo::encodingToBounds(ranked_ty.getEncoding());
+  if (!bounds.empty()) {
     for (int64_t dim = 0; dim < rank; ++dim) {
       if (dims[dim] == mlir::ShapedType::kDynamic) {
-        dims[dim] = encoding.getBounds()[dim];
+        dims[dim] = bounds[dim];
       }
     }
   }

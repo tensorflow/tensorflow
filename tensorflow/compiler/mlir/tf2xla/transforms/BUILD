@@ -290,6 +290,7 @@ cc_library(
         "@local_xla//xla/mlir_hlo:type_conversion",
         "@local_xla//xla/stream_executor/tpu:c_api_conversions",
         "@local_xla//xla/stream_executor/tpu:tpu_api",
+        "@stablehlo//:base",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
     ],
@@ -345,12 +346,12 @@ cc_library(
         "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",
         "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
-        "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/service:hlo_proto_cc",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/platform:statusor",
+        "@stablehlo//:base",
         "@stablehlo//:stablehlo_ops",
     ],
 )
@@ -425,7 +426,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@stablehlo//:base",
     ],
 )
 

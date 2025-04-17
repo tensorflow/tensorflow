@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/StablehloOps.h"
 
@@ -40,29 +39,6 @@ namespace mhlo {
 #include "mhlo/transforms/mhlo_passes.h.inc"
 
 namespace {
-
-// AddDependencyOp is the only op that doesn't exist in StableHLO but uses
-// token types. This led to two options (1) support either token type in
-// AddDependencyOp or (2) Design a token conversion (or unrealized cast) between
-// MHLO and StableHLO. Option (1) seems safer, and we can hopefully obsolete
-// mhlo::TokenType all together and just use StableHLO tokens everywhere.
-//
-// Note: Only the second argument needs to be converted. All token creation and
-// propagation is already handled by existing conversions.
-struct AddDependencyOpToMhoTokenConverter
-    : public OpConversionPattern<mhlo::AddDependencyOp> {
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      mhlo::AddDependencyOp op, mhlo::AddDependencyOpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const override {
-    // Only convert if input token type is MHLO token
-    if (!llvm::isa<mhlo::TokenType>(adaptor.getToken().getType()))
-      return rewriter.notifyMatchFailure(op, "nothing to convert");
-    rewriter.replaceOpWithNewOp<mhlo::AddDependencyOp>(op, adaptor.getOperand(),
-                                                       adaptor.getToken());
-    return success();
-  }
-};
 
 void legalDirectStablehloToHloConversionOps(ConversionTarget& target) {
   target.addLegalOp<
@@ -90,12 +66,7 @@ struct StablehloLegalizeToHloPass
   using StablehloLegalizeToHloPassBase::StablehloLegalizeToHloPassBase;
   void runOnOperation() override {
     ConversionTarget target(getContext());
-    target.addIllegalDialect<stablehlo::StablehloDialect>();
-    target.addLegalDialect<mhlo::MhloDialect>();
-    target.addDynamicallyLegalOp<mhlo::AddDependencyOp>(
-        [](mhlo::AddDependencyOp op) {
-          return llvm::isa<mhlo::TokenType>(op.getToken().getType());
-        });
+    stablehlo::setupStablehloToHloConversionTarget(target);
 
     // Allow injecting legal ops to permit gradual migration.
     if (!convert_xla_supported_stablehlo_) {
@@ -104,7 +75,6 @@ struct StablehloLegalizeToHloPass
 
     stablehlo::StablehloToHloTypeConverter converter;
     RewritePatternSet patterns(&getContext());
-    patterns.add<AddDependencyOpToMhoTokenConverter>(&getContext());
     stablehlo::populateStablehloToHloPatterns(&patterns, &converter,
                                               &getContext());
     stablehlo::registerFuncOpsForTypeConversion(target, patterns, converter);

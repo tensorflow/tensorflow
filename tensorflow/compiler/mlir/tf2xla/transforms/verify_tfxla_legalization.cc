@@ -21,11 +21,13 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/Base.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
@@ -87,9 +89,8 @@ static void IncrementCounterFor(tensorflow::monitoring::Counter<1>* counter,
 }
 
 bool HasBounds(RankedTensorType type) {
-  auto encoding = mlir::dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>(
-      type.getEncoding());
-  return (encoding && !encoding.getBounds().empty());
+  auto bounds = hlo::encodingToBounds(type.getEncoding());
+  return !bounds.empty();
 }
 
 bool HasStaticShapeOrBounded(Value val) {

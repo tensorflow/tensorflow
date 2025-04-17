@@ -2095,6 +2095,14 @@ func.func @bounded_dynamism_broadcast_in_dim(%arg0: tensor<1x?xf32, #stablehlo.b
   return %0 : tensor<2x1x?xf32, #stablehlo.bounds<?, ?, 5>>
 }
 
+// CHECK-LABEL: bounded_dynamism_with_unknown_op
+func.func @bounded_dynamism_with_unknown_op(%arg0: tensor<1x4xi32>, %arg1: tensor<i32>) -> tensor<1x4xi32> {
+  %0 = "stablehlo.set_dimension_size"(%arg0, %arg1) <{dimension = 1 : i64}> : (tensor<1x4xi32>, tensor<i32>) -> tensor<1x?xi32, #stablehlo.bounds<?, 4>>
+  // CHECK: "tensor.cast"({{.*}}) : (tensor<1x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>) -> tensor<1x4xi32>
+  %cast = tensor.cast %0 : tensor<1x?xi32, #stablehlo.bounds<?, 4>> to tensor<1x4xi32>
+  return %cast : tensor<1x4xi32>
+}
+
 // ============ TYPES ============
 
 // CHECK-LABEL: "type_i1"

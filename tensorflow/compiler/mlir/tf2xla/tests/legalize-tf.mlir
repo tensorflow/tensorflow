@@ -91,12 +91,12 @@ func.func @fusedBatchNormV3_training_exponentialAvgFactor(%arg0: tensor<8x8x8x8x
   // CHECK-DAG: %[[ALPHA:.*]] = mhlo.constant dense<0.199999988>
   // CHECK-DAG: %[[BETA:.*]] = mhlo.constant dense<8.000000e-01>
 
-  // CHECK: %[[ALPHA_MUL_OLD_MEAN:.*]] = chlo.broadcast_multiply %arg3, %[[ALPHA]]
-  // CHECK: %[[BETA_MUL_BATCH_MEAN:.*]] = chlo.broadcast_multiply %[[MEAN]], %[[BETA]]
+  // CHECK: %[[ALPHA_MUL_OLD_MEAN:.*]] = chlo.broadcast_multiply %[[ALPHA]], %arg3
+  // CHECK: %[[BETA_MUL_BATCH_MEAN:.*]] = chlo.broadcast_multiply %[[BETA]], %[[MEAN]]
   // CHECK: %[[NEW_BATCH_MEAN:.*]] = chlo.broadcast_add %[[ALPHA_MUL_OLD_MEAN]], %[[BETA_MUL_BATCH_MEAN]]
 
-  // CHECK: %[[ALPHA_MUL_OLD_VAR:.*]] = chlo.broadcast_multiply %arg4, %[[ALPHA]]
-  // CHECK: %[[BETA_MUL_CORRECTED_VAR:.*]] = chlo.broadcast_multiply %[[CORRECTED_VAR]], %[[BETA]]
+  // CHECK: %[[ALPHA_MUL_OLD_VAR:.*]] = chlo.broadcast_multiply %[[ALPHA]], %arg4
+  // CHECK: %[[BETA_MUL_CORRECTED_VAR:.*]] = chlo.broadcast_multiply %[[BETA]], %[[CORRECTED_VAR]]
   // CHECK: %[[NEW_BATCH_VAR:.*]] = chlo.broadcast_add %[[ALPHA_MUL_OLD_VAR]], %[[BETA_MUL_CORRECTED_VAR]]
 
   // CHECK: return %[[NEW_BATCH_MEAN]], %[[NEW_BATCH_VAR]], %[[MEAN]], %[[VAR]]
@@ -430,7 +430,8 @@ func.func @fusedBatchNormGradV3_Training_NCHW(%arg0: tensor<8x8x8x8xf32>, %arg1:
 // CHECK-LABEL: func @biasAdd_default
 func.func @biasAdd_default(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
   // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
-  // CHECK: %[[ARG1_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_SHAPE]])
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
+  // CHECK: %[[ARG1_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
   // CHECK-SAME:   {broadcast_dimensions = dense<3> : tensor<1xi64>}
   // CHECK: %[[RESULT:.+]] = mhlo.add %arg0, %[[ARG1_BCAST]]
   %0 = "tf.BiasAdd"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT"} : (tensor<1x32x10x32xi32>, tensor<32xi32>) -> tensor<1x32x10x32xi32>
@@ -442,7 +443,8 @@ func.func @biasAdd_default(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>)
 // CHECK-LABEL: func @biasAdd_NHWC
 func.func @biasAdd_NHWC(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
   // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
-  // CHECK: %[[ARG1_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_SHAPE]])
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
+  // CHECK: %[[ARG1_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
   // CHECK-SAME:   {broadcast_dimensions = dense<3> : tensor<1xi64>}
   // CHECK: %[[RESULT:.+]] = mhlo.add %arg0, %[[ARG1_BCAST]]
   %0 = "tf.BiasAdd"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NHWC"} : (tensor<1x32x10x32xi32>, tensor<32xi32>) -> tensor<1x32x10x32xi32>
@@ -454,7 +456,8 @@ func.func @biasAdd_NHWC(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) ->
 // CHECK-LABEL: func @biasAdd_NCHW
 func.func @biasAdd_NCHW(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
   // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
-  // CHECK: %[[ARG1_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_SHAPE]])
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
+  // CHECK: %[[ARG1_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
   // CHECK-SAME:   {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK: %[[RESULT:.+]] = mhlo.add %arg0, %[[ARG1_BCAST]]
   %0 = "tf.BiasAdd"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NCHW"} : (tensor<1x32x10x32xi32>, tensor<32xi32>) -> tensor<1x32x10x32xi32>
@@ -466,7 +469,8 @@ func.func @biasAdd_NCHW(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) ->
 // CHECK-LABEL: func @biasAdd_dynamic
 func.func @biasAdd_dynamic(%arg0: tensor<?x?x?x?xi32>, %arg1: tensor<?xi32>) -> tensor<?x?x?x?xi32> {
   // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
-  // CHECK: %[[ARG1_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_SHAPE]])
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
+  // CHECK: %[[ARG1_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
   // CHECK-SAME:   {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK: %[[RESULT:.+]] = mhlo.add %arg0, %[[ARG1_BCAST]]
   %0 = "tf.BiasAdd"(%arg0, %arg1) {data_format = "NCHW"} : (tensor<?x?x?x?xi32>, tensor<?xi32>) -> tensor<?x?x?x?xi32>
@@ -478,7 +482,8 @@ func.func @biasAdd_dynamic(%arg0: tensor<?x?x?x?xi32>, %arg1: tensor<?xi32>) -> 
 // CHECK-LABEL: func @biasAdd_partial_dynamic
 func.func @biasAdd_partial_dynamic(%arg0: tensor<?x?x?x?xi32>, %arg1: tensor<512xi32>) -> tensor<?x?x?x512xi32> {
   // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
-  // CHECK: %[[ARG1_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_SHAPE]])
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
+  // CHECK: %[[ARG1_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
   // CHECK-SAME:   {broadcast_dimensions = dense<3> : tensor<1xi64>}
   // CHECK: %[[RESULT:.+]] = mhlo.add %arg0, %[[ARG1_BCAST]]
   // CHECK: %[[CAST:.+]] = tensor.cast %[[RESULT]] : tensor<?x?x?x?xi32> to tensor<?x?x?x512xi32>
@@ -1792,7 +1797,7 @@ func.func @elu_grad(%gradients: tensor<4x8xf32>, %features: tensor<?x?xf32>) -> 
 // CHECK-LABEL: func @relu
 func.func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<i32>
-  // CHECK: chlo.broadcast_maximum %arg0, %[[ZERO]] {broadcast_dimensions = array<i64>} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK: chlo.broadcast_maximum %[[ZERO]], %arg0 {broadcast_dimensions = array<i64>} : (tensor<i32>, tensor<1xi32>) -> tensor<1xi32>
   %0 = "tf.Relu"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
   func.return %0: tensor<1xi32>
 }
@@ -1802,7 +1807,7 @@ func.func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 // CHECK-LABEL: func @relu_unsigned
 func.func @relu_unsigned(%arg0: tensor<?xui32>) -> tensor<?xui32> {
   // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<ui32>
-  // CHECK: chlo.broadcast_maximum %arg0, %[[ZERO]] {broadcast_dimensions = array<i64>} : (tensor<?xui32>, tensor<ui32>) -> tensor<?xui32>
+  // CHECK: chlo.broadcast_maximum %[[ZERO]], %arg0 {broadcast_dimensions = array<i64>} : (tensor<ui32>, tensor<?xui32>) -> tensor<?xui32>
   %0 = "tf.Relu"(%arg0) : (tensor<?xui32>) -> tensor<?xui32>
   func.return %0: tensor<?xui32>
 }
@@ -1877,7 +1882,7 @@ func.func @softsign_grad(%arg0: tensor<4x10xf32>, %arg1: tensor<4x10xf32>) -> te
 
     // CHECK-NEXT: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
     // CHECK-NEXT: %[[ABS:.*]] = mhlo.abs %{{.*}} : tensor<4x10xf32>
-    // CHECK-NEXT: %[[BROADCAST_ADD:.*]] = chlo.broadcast_add %[[ABS]], %[[ONE]] {broadcast_dimensions = array<i64>} : (tensor<4x10xf32>, tensor<f32>) -> tensor<4x10xf32>
+    // CHECK-NEXT: %[[BROADCAST_ADD:.*]] = chlo.broadcast_add %[[ONE]], %[[ABS]] {broadcast_dimensions = array<i64>} : (tensor<f32>, tensor<4x10xf32>) -> tensor<4x10xf32>
     // CHECK-NEXT: %[[MUL:.*]] = mhlo.multiply %[[BROADCAST_ADD]], %[[BROADCAST_ADD]] : tensor<4x10xf32>
     // CHECK-NEXT: %[[BROADCAST_DIV:.*]] = chlo.broadcast_divide %{{.*}}, %[[MUL]] : (tensor<4x10xf32>, tensor<4x10xf32>) -> tensor<4x10xf32>
     // CHECK-NEXT: return %[[BROADCAST_DIV]] : tensor<4x10xf32>
@@ -1953,7 +1958,8 @@ func.func @select_batch_dynamic_r1(%arg0: tensor<?xi1>, %arg1: tensor<?x?x8xi32>
   // CHECK-NEXT: %[[SHAPEEQ2:.*]] = shape.cstr_eq %[[SHAPE0]], %[[HEAD]] : tensor<1xindex>, tensor<1xindex>
   // CHECK-NEXT: %[[SHAPEEQ:.*]] = shape.assuming_all %[[SHAPEEQ1]], %[[SHAPEEQ2]]
   // CHECK-NEXT: %[[ASSUMING:.*]] = shape.assuming %[[SHAPEEQ]] -> (tensor<?x?x8xi32>) {
-  // CHECK-NEXT: %[[BCAST:.*]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[SHAPE1]]) <{broadcast_dimensions = dense<0> : tensor<1xi64>}> : (tensor<?xi1>, tensor<3xindex>) -> tensor<?x?x8xi1>
+  // CHECK-NEXT: %[[SHAPE1E:.*]] = shape.to_extent_tensor %[[SHAPE1]] : tensor<3xindex> -> tensor<3xindex>
+  // CHECK-NEXT: %[[BCAST:.*]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[SHAPE1E]]) <{broadcast_dimensions = dense<0> : tensor<1xi64>}> : (tensor<?xi1>, tensor<3xindex>) -> tensor<?x?x8xi1>
   // CHECK-NEXT: %[[SELECT:.*]] = mhlo.select %[[BCAST]], %arg1, %arg2 : tensor<?x?x8xi1>, tensor<?x?x8xi32>
   // CHECK-NEXT: shape.assuming_yield %[[SELECT]] : tensor<?x?x8xi32>
   %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<?xi1>, tensor<?x?x8xi32>, tensor<?x?x8xi32>) -> tensor<?x?x8xi32>

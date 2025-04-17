@@ -77,6 +77,7 @@ cc_library(
         "@local_xla//xla/service:hlo_proto_cc",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:statusor",
+        "@stablehlo//:base",
         "@stablehlo//:register",
     ],
 )

@@ -692,12 +692,16 @@ def : Pat<(TF_RandomStandardNormalOp:$old $shape, $seed, $seed2),
 // Sigmoid grad op.
 //===----------------------------------------------------------------------===//
 
-// TODO(hinsu): Handle unranked inputs by broadcasting constant one to the
-// shape of $l instead of having it as a constant.
+// Only handle static shape here, dynamic shape is handled by
+// ConvertSigmoidGradOpDynamic
+def HasStaticShape : Constraint<
+    CPred<"::llvm::dyn_cast<ShapedType>($0.getType()).hasStaticShape()">>;
+
 def : Pat<(TF_SigmoidGradOp AnyRankedTensor:$l, AnyRankedTensor:$r),
           (MHLO_MulOp
            (MHLO_MulOp $r, $l),
-           (MHLO_SubtractOp (MHLO_ConstantOp (ConstantSplat<"1"> $l)), $l))>;
+           (MHLO_SubtractOp (MHLO_ConstantOp (ConstantSplat<"1"> $l)), $l)),
+          [(HasStaticShape $l)]>;
 
 //===----------------------------------------------------------------------===//
 // Softplus op.

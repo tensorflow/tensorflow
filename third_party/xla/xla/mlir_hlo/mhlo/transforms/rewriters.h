@@ -142,6 +142,10 @@ void populateStablehloToHloPatterns(RewritePatternSet *patterns,
                                     TypeConverter *converter,
                                     MLIRContext *context);
 
+// Sets up legality definitions for StableHLO ops and non-StableHLO ops that
+// may have StableHLO operands.
+void setupStablehloToHloConversionTarget(ConversionTarget &target);
+
 }  // namespace stablehlo
 
 }  // namespace mlir

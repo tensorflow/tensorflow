@@ -56,19 +56,27 @@ mlir::stablehlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
 mlir::stablehlo::DotAlgorithmAttr ConvertDotAlgorithm(
     PrecisionConfig::Algorithm algorithm, mlir::Builder* builder);
 
+// Converts the conv dimensions to attributes.
+mlir::stablehlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(
+    const xla::ConvolutionDimensionNumbers& dnums, mlir::Builder* builder);
+
 // Converts the dot dimensions to attributes.
 mlir::stablehlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
     const DotDimensionNumbers& dnums, mlir::Builder* builder);
 
 // Converts the output operand aliasing to attributes.
 mlir::ArrayAttr ConvertOutputOperandAliasing(
-    const std::vector<std::pair<xla::ShapeIndex,
-                                std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
+    const std::vector<std::pair<
+        xla::ShapeIndex, std::pair<int64_t, xla::ShapeIndex>>>& aliasInfo,
     mlir::Builder* builder);
 
 // Converts an XLA PrecisionConfig to the corresponding MLIR attribute.
 mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
                                        mlir::Builder* builder);
+
+// Converts an XLA ResultAccuracy to the corresponding MLIR attribute.
+mlir::stablehlo::ResultAccuracyAttr ConvertResultAccuracy(
+    const ResultAccuracy& result_accuracy, mlir::Builder* builder);
 
 }  // namespace stablehlo
 
@@ -86,11 +94,6 @@ mlir::mhlo::GatherDimensionNumbersAttr ConvertGatherDimensionNumbers(
 mlir::mhlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
     const xla::ScatterDimensionNumbers& dnums, mlir::Builder* builder);
 
-// Converts the dot algorithm to attributes.
-// Used by sparse dot.
-mlir::mhlo::DotAlgorithmAttr ConvertDotAlgorithm(
-    PrecisionConfig::Algorithm algorithm, mlir::Builder* builder);
-
 // Converts the dot dimensions to attributes.
 // Used by sparse dot.
 mlir::mhlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
@@ -101,6 +104,7 @@ mlir::mhlo::RaggedDotDimensionNumbersAttr ConvertRaggedDotDimensionNumbers(
     const RaggedDotDimensionNumbers& dnums, mlir::Builder* builder);
 
 // Converts the conv dimensions to attributes.
+// [Deprecated] Used in TF2XLA only.
 mlir::mhlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(
     const xla::ConvolutionDimensionNumbers& dnums, mlir::Builder* builder);
 
@@ -113,10 +117,6 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
 // Converts the sparsity descriptor to attributes.
 absl::StatusOr<mlir::mhlo::SparsityDescriptorAttr> ConvertSparsityDescriptor(
     xla::SparsityDescriptor sparsity_descriptor, mlir::Builder* builder);
-
-absl::StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
-absl::StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
-    TriangularSolveOptions_Transpose transpose);
 
 absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version);
@@ -145,10 +145,6 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
 // tuple shapes.
 absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const xla::Shape shape,
                                                         mlir::Builder* builder);
-
-// Converts the ResultAccuracy to ResultAccuracyAttr.
-mlir::mhlo::ResultAccuracyAttr ConvertResultAccuracy(
-    const ResultAccuracy& result_accuracy, mlir::Builder* builder);
 
 }  // namespace xla
 

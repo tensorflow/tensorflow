@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -63,6 +64,41 @@ struct AddDependencyOpToStablehloTokenConverter
   }
 };
 
+bool hasMhloOperand(Operation* op) {
+  return llvm::any_of(op->getOperandTypes(), [](Type type) {
+    // Check for !stablehlo.token
+    if (llvm::isa<mhlo::MhloDialect>(type.getDialect())) return true;
+
+    // Check for tensor<X, #stablehlo.bounds<...>>
+    if (auto rankedType = dyn_cast<RankedTensorType>(type)) {
+      return llvm::isa_and_nonnull<mhlo::TypeExtensionsAttr>(
+          rankedType.getEncoding());
+    }
+    // Not StableHLO
+    return false;
+  });
+}
+
+struct UpdateOperandsInUnknownOp : public ConversionPattern {
+  UpdateOperandsInUnknownOp(TypeConverter& converter, MLIRContext* context)
+      : ConversionPattern(converter, MatchAnyOpTypeTag(), /*benefit=*/1,
+                          context) {}
+  LogicalResult matchAndRewrite(
+      Operation* op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const override {
+    // Input types already converted to MHLO.
+    if (llvm::isa<mhlo::MhloDialect, stablehlo::StablehloDialect>(
+            op->getDialect()))
+      return rewriter.notifyMatchFailure(op, "op is not an unknown op");
+
+    if (!hasMhloOperand(op))
+      return rewriter.notifyMatchFailure(op, "op has no mhlo operands");
+
+    rewriter.modifyOpInPlace(op, [&]() { op->setOperands(operands); });
+    return success();
+  }
+};
+
 struct HloLegalizeToStablehloPass
     : public impl::HloLegalizeToStablehloPassBase<HloLegalizeToStablehloPass> {
   HloLegalizeToStablehloPass()
@@ -78,6 +114,9 @@ struct HloLegalizeToStablehloPass
 
     stablehlo::HloToStablehloTypeConverter converter;
     RewritePatternSet patterns(&getContext());
+    stablehlo::populateHloToStablehloPatterns(
+        &patterns, &converter, &getContext(), allow_experimental_features_);
+    stablehlo::registerFuncOpsForTypeConversion(target, patterns, converter);
 
     if (allow_xla_features_) {
       // These ops do not exist in StableHLO.
@@ -88,15 +127,14 @@ struct HloLegalizeToStablehloPass
           mhlo::SparseDotOp, mhlo::StochasticConvertOp, mhlo::TopKOp,
           mhlo::TraceOp, mhlo::XlaRngGetAndUpdateStateOp>();
       target.addDynamicallyLegalOp<mhlo::AddDependencyOp>(
-          [](mhlo::AddDependencyOp op) {
-            return llvm::isa<stablehlo::TokenType>(op.getToken().getType());
-          });
+          [](mhlo::AddDependencyOp op) { return !hasMhloOperand(op); });
       patterns.add<AddDependencyOpToStablehloTokenConverter>(&getContext());
     }
 
-    stablehlo::populateHloToStablehloPatterns(
-        &patterns, &converter, &getContext(), allow_experimental_features_);
-    stablehlo::registerFuncOpsForTypeConversion(target, patterns, converter);
+    // Handle non-MHLO ops that may have bounded dynamism or token types.
+    target.markUnknownOpDynamicallyLegal(
+        [](Operation* op) { return !hasMhloOperand(op); });
+    patterns.add<UpdateOperandsInUnknownOp>(converter, &getContext());
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
