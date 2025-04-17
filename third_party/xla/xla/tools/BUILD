@@ -400,6 +400,7 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
         "//xla/stream_executor:platform",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
@@ -478,6 +479,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
@@ -713,6 +715,7 @@ cc_library(
     hdrs = ["collective_perf_table_gen.h"],
     deps = [
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/utils:hlo_query",
@@ -789,6 +792,7 @@ xla_cc_test(
         ":compute_xspace_stats",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -906,6 +910,7 @@ tsl_gpu_library(
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
@@ -923,6 +928,7 @@ tsl_gpu_library(
         "//xla/service/cpu:cpu_executable",
         "//xla/service/gpu:gpu_symbol_repository",
         "//xla/service/gpu/autotuning:autotuner_util",
+        "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
@@ -1002,6 +1008,7 @@ xla_test(
     deps = [
         ":xla_compile_lib",
         "//xla:util",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:platform_util",
         "//xla/service:symbol_repository",
