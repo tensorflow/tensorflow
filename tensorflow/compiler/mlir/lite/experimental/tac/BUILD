@@ -122,16 +122,16 @@ cc_library(
     ],
     deps = [
         ":common",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:verification_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        # "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:verification_utils",
     ],
 )
 

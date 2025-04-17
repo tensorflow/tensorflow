@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
@@ -23,8 +24,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 
 namespace mlir {
 namespace TFL {
@@ -60,7 +61,7 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
 
     // If the op is the pass-through op with (3x) smaller output, the dequantize
     // op can be pushed down to the single result of this op.
-    if (!llvm::dyn_cast<mlir::SameScalesOpInterface>(passthrough_op) ||
+    if (!llvm::dyn_cast<mlir::TFL::SameScalesOpInterface>(passthrough_op) ||
         passthrough_op->getNumResults() != 1) {
       return failure();
     }
