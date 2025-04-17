@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tsl/platform/abi.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -66,8 +66,6 @@ using tensorflow::profiler::XLine;
 using tensorflow::profiler::XPlane;
 using tensorflow::profiler::XSpace;
 using tensorflow::profiler::XStatMetadata;
-using tsl::mutex;
-using tsl::mutex_lock;
 using tsl::profiler::Annotation;
 using tsl::profiler::FindMutablePlaneWithName;
 using tsl::profiler::FindOrAddMutablePlaneWithName;
@@ -431,13 +429,13 @@ class PerDeviceCollector {
   PerDeviceCollector() = default;
 
   void AddEvent(CuptiTracerEvent&& event) {
-    mutex_lock l(m_);
+    absl::MutexLock l(&m_);
     events_.emplace_back(std::move(event));
   }
 
   size_t Flush(uint64_t start_gpu_ns, uint64_t end_gpu_ns,
                XPlaneBuilder* device_plane, XPlaneBuilder* host_plane) {
-    mutex_lock l(m_);
+    absl::MutexLock l(&m_);
     // Tracking event types per line.
     absl::flat_hash_map<int64_t, absl::flat_hash_set<CuptiTracerEventType>>
         events_types_per_line;
@@ -590,7 +588,7 @@ class PerDeviceCollector {
   }
 
  private:
-  mutex m_;
+  absl::Mutex m_;
   std::vector<CuptiTracerEvent> events_ TF_GUARDED_BY(m_);
   cudaOccDeviceProp device_properties_;
   absl::flat_hash_map<DeviceOccupancyParams, OccupancyStats> occupancy_cache_;

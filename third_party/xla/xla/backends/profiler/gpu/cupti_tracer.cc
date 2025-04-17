@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
@@ -802,24 +803,24 @@ static void SetCallbackEventUponApiExit(CuptiTracerEvent &event,
 class GuardedCallbackAnnotationsAndEvents {
  public:
   CallbackAnnotationsAndEvents Consume() {
-    tsl::mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     CallbackAnnotationsAndEvents grabbed;
     std::swap(grabbed, annotations_and_events_);
     return grabbed;
   }
 
   void Clear() {
-    tsl::mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     annotations_and_events_.Clear();
   }
 
   void IncNumDroppedEvents() {
-    tsl::mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     annotations_and_events_.IncNumDroppedEvents();
   }
 
   void Push(const CuptiTracer &tracer, CuptiTracerEvent &&event) {
-    tsl::mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     // Some logic change as no cross thread string comparison should be
     // made here. The max_annotation_string is used to limit per-thread
     // annotation string count. And annotation string is not collected
@@ -838,7 +839,7 @@ class GuardedCallbackAnnotationsAndEvents {
       const int64_t *head = sequence.data();
       const int64_t *curr = &sequence.back();
 
-      tsl::mutex_lock lock(mu_);
+      absl::MutexLock lock(&mu_);
       ScopeRangeIdTree &tree = annotations_and_events_.scope_range_id_tree();
       for (; curr > head && !tree.contains(*curr); --curr) {
         tree.emplace(*curr, *(curr - 1));
@@ -847,7 +848,7 @@ class GuardedCallbackAnnotationsAndEvents {
   }
 
  private:
-  tsl::mutex mu_;
+  absl::Mutex mu_;
   CallbackAnnotationsAndEvents annotations_and_events_ TF_GUARDED_BY(mu_);
 };
 
