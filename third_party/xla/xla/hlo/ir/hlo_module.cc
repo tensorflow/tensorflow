@@ -244,8 +244,9 @@ HloComputation* HloModule::AddEmbeddedComputation(
 }
 
 void HloModule::MarkFusionDuplications(
-    const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
-  for (std::unique_ptr<HloComputation>& computation : computations_) {
+    const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements)
+    const {
+  for (const std::unique_ptr<HloComputation>& computation : computations_) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kFusion) {
         auto rep =
@@ -1343,7 +1344,8 @@ uint64_t HloModule::RandomNew64() const {
   return rng_();
 }
 
-HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
+HloComputation* HloModule::GetComputationWithName(
+    absl::string_view name) const {
   auto computations_in_module = computations();
   auto it = absl::c_find_if(
       computations_in_module,
