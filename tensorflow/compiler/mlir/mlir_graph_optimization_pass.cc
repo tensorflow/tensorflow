@@ -348,9 +348,11 @@ absl::Status MlirFunctionOptimizationPass::Run(
       //     error to the caller.
       //   Enabled - return error back to the caller.
       if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
-        LOG(WARNING) << StringRefToView(name)
-                     << " pass failed, continuing without the pass because the "
-                        "pass has fallback enabled";
+        LOG(WARNING)
+            << StringRefToView(name)
+            << " pass failed, continuing without the pass because the "
+            << "pass has fallback enabled. This was the pass failure:\n"
+            << pass_status;
         mlir_function_pass_fallback_count->GetCell(kFailure)->IncrementBy(1);
       } else if (pass_state == MlirOptimizationPassState::Enabled) {
         return pass_status;
