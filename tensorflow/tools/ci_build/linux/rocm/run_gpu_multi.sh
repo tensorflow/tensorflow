@@ -128,13 +128,7 @@ fi
 # FLAKY : //tensorflow/python/keras/distribute:custom_training_loop_metrics_test_2gpu \
 # FLAKY : //tensorflow/python/keras/distribute:custom_training_loop_models_test_2gpu \
 
-# FAILED : //tensorflow/python/distribute/v1:cross_device_ops_test_2gpu \
-# FAILED : //tensorflow/python/distribute:cross_device_ops_test_2gpu \
-# FAILED : //tensorflow/python/distribute:mirrored_strategy_test_2gpu \
 # FAILED : //tensorflow/python/keras/distribute:distribute_strategy_test_2gpu \
-# FAILED : //tensorflow/python/kernel_tests:collective_ops_test_2gpu \
-# FAILED : //tensorflow/python:collective_ops_gpu_test_2gpu \
-# FAILED : //tensorflow/python:nccl_ops_test_2gpu \
 
 # FAILED ON CI Node only : //tensorflow/python/distribute:collective_all_reduce_strategy_test_2gpu \
 # See run : http://ml-ci.amd.com:21096/job/tensorflow/job/github-prs-rocmfork-develop-upstream/job/rocm-latest-ubuntu-gpu-multi/216/console
