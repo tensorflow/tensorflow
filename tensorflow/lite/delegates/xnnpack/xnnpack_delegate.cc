@@ -4499,8 +4499,12 @@ class Subgraph {
                                   (input_tensor.type == kTfLiteFloat32 &&
                                    (filter_tensor.type == kTfLiteInt4 ||
                                     filter_tensor.type == kTfLiteInt8)));
+    bool supported_srq = (input_tensor.type == kTfLiteInt8 &&
+                          (filter_tensor.type == kTfLiteInt4 ||
+                           filter_tensor.type == kTfLiteInt8));
     if (input_tensor.type != output_tensor.type ||
-        ((input_tensor.type != filter_tensor.type) && !dynamically_quantized)) {
+        ((input_tensor.type != filter_tensor.type) &&
+         !(dynamically_quantized || supported_srq))) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
           "unsupported mixed types in FULLY_CONNECTED operator #%d",
