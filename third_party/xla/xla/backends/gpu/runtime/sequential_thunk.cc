@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -79,11 +80,14 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
   std::optional<tsl::profiler::ScopedAnnotation> seq_annotation =
       GetKernelAnnotation(profile_annotation());
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+    tsl::profiler::TraceMe trace(thunk->profile_annotation());
+
     std::optional<tsl::profiler::ScopedAnnotation> annotation =
         GetKernelAnnotation(thunk->profile_annotation());
     if (params.mock_collectives && thunk->IsCollective()) {
       continue;
     }
+
     VLOG(1) << "[" << params.stream->parent()->device_ordinal() << "] "
             << "Start SequentialThunk::ExecuteOnStream: "
             << thunk->profile_annotation();
