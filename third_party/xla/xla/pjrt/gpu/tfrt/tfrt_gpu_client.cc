@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -73,6 +74,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/semaphore.h"
+#include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/pjrt/worker_thread.h"
@@ -1163,9 +1165,8 @@ absl::StatusOr<DeviceAssignment> TfrtGpuClient::GetDefaultDeviceAssignment(
   return computation_placer_->AssignDevices(num_replicas, num_partitions);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-TfrtGpuClient::CompileAndLoad(const XlaComputation& computation,
-                              CompileOptions options) {
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
   std::vector<const Shape*> argument_layout_pointers;
   const ExecutableBuildOptions& build_options =
       options.executable_build_options;
@@ -1194,14 +1195,13 @@ TfrtGpuClient::CompileAndLoad(const XlaComputation& computation,
   // https://github.com/openxla/xla/blob/b729ae319d85d5ec1ec11c488092c2d6683a63f2/xla/pjrt/gpu/se_gpu_pjrt_client.cc#L792-L809
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-TfrtGpuClient::CompileInternal(
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::CompileInternal(
     const XlaComputation& computation,
     const std::vector<const Shape*>& argument_layout_pointers,
     LayoutCanonicalizationCallback layout_canonicalization_callback,
     CompileOptions options) {
-  tsl::profiler::TraceMe traceme("TfrtGpuClient::Compile");
-  VLOG(1) << "TfrtGpuClient::Compile";
+  tsl::profiler::TraceMe traceme("TfrtGpuClient::CompileInternal");
+  VLOG(1) << "TfrtGpuClient::CompileInternal";
   if (key_value_store().has_value() &&
       !options.executable_build_options.key_value_store()) {
     options.executable_build_options.set_key_value_store(*key_value_store());
@@ -1209,13 +1209,7 @@ TfrtGpuClient::CompileInternal(
   auto input_options = options;
 
   TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
-
-  TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
-  std::shared_ptr<DeviceAssignment>& device_assignment =
-      extras.device_assignment;
-  std::vector<TfrtGpuExecutable::LogicalDeviceIds>&
-      addressable_device_logical_ids = extras.addressable_device_logical_ids;
-  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
+  TF_RETURN_IF_ERROR(UpdateCompileOptions(&options));
 
   // It is important to set the canonicalization callback after creating
   // a copy of the options so that the executable's options remain without
@@ -1230,25 +1224,12 @@ TfrtGpuClient::CompileInternal(
       xla_client_->Compile(computation, argument_layout_pointers,
                            options.executable_build_options));
 
-  auto executable = std::make_unique<TfrtGpuExecutable>(
-      std::move(local_executables), options.parameter_is_tupled_arguments,
-      std::move(device_assignment), std::move(input_options),
-      std::move(addressable_device_logical_ids), std::move(addressable_devices),
-      this);
-
-  TF_RETURN_IF_ERROR(
-      executable->SetUpDonation(options.parameter_is_tupled_arguments));
-  const auto& ex_options = options.executable_build_options;
-  if (ex_options.has_debug_options() &&
-      ex_options.debug_options().xla_gpu_dump_hlo_unoptimized_snapshots()) {
-    executable->SetInputHloSnapshotBits(
-        computation.proto(), options.executable_build_options.debug_options());
-  }
-  return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
+  return BuildPjRtExecutable(std::move(local_executables),
+                             std::move(input_options));
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
+    mlir::ModuleOp module, CompileOptions options) {
   XlaComputation xla_computation;
   const ExecutableBuildOptions& exec_build_options =
       options.executable_build_options;
@@ -1260,7 +1241,22 @@ TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
   // TODO: b/382117736 - Add support for LayoutModesToXlaShapes
   // Ref:
   // https://github.com/openxla/xla/blob/b729ae319d85d5ec1ec11c488092c2d6683a63f2/xla/pjrt/pjrt_stream_executor_client.cc#L3538-L3586
-  return CompileAndLoad(xla_computation, options);
+  return Compile(xla_computation, options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+TfrtGpuClient::CompileAndLoad(const XlaComputation& computation,
+                              CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                      Compile(computation, options));
+  return Load(std::move(executable), LoadOptions());
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                      Compile(module, options));
+  return Load(std::move(executable), LoadOptions());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -1328,21 +1324,55 @@ absl::StatusOr<std::string> TfrtGpuExecutable::SerializeExecutable() const {
   return proto.SerializeAsString();
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-TfrtGpuClient::LoadSerializedExecutable(absl::string_view serialized,
-                                        std::optional<CompileOptions> options,
-                                        const LoadOptions& load_options) {
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+TfrtGpuClient::BuildPjRtExecutable(
+    std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+    CompileOptions compile_options) {
+  if (local_executables.empty()) {
+    return Internal("No local executable");
+  }
+  if (local_executables.size() != 1) {
+    return Unimplemented("Multiple executables are not supported");
+  }
+  Executable* built_executable = local_executables[0]->executable();
+  if (!built_executable->has_module()) {
+    return absl::InternalError("Executable does not have HLO modules.");
+  }
+  const auto& hlo_module = built_executable->module();
+
+  const int num_replicas = hlo_module.config().replica_count();
+  const int num_partitions = hlo_module.config().num_partitions();
+  const std::string name = hlo_module.name();
+  const std::string fingerprint = hlo_module.GetFingerprint128();
+
+  return std::make_unique<StreamExecutorExecutable>(
+      std::move(compile_options), std::move(local_executables), xla_client_,
+      num_replicas, num_partitions, name, fingerprint,
+      memory_spaces()[0]->kind());
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+TfrtGpuClient::DeserializeExecutable(
+    absl::string_view serialized,
+    std::optional<CompileOptions> compile_options) {
+  TF_ASSIGN_OR_RETURN(
+      auto local_executables_and_options,
+      DeserializeToLocalExecutable(serialized, compile_options));
+
+  return BuildPjRtExecutable(std::move(local_executables_and_options.first),
+                             local_executables_and_options.second);
+}
+
+absl::StatusOr<
+    std::pair<std::vector<std::unique_ptr<LocalExecutable>>, CompileOptions>>
+TfrtGpuClient::DeserializeToLocalExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options) {
   ExecutableAndOptionsProto proto;
   if (serialized.size() > std::numeric_limits<int>::max()) {
-    return Internal(
-        "TfrtGpuClient::LoadSerializedExecutable proto too large "
-        "(>2GB)");
+    return Internal("Proto is too large (>2GB)");
   }
   if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
-    return Internal(
-        "TfrtGpuClient::LoadSerializedExecutable proto "
-        "deserialization "
-        "failed");
+    return Internal("Proto deserialization failed");
   }
 
   CompileOptions compile_options;
@@ -1352,33 +1382,88 @@ TfrtGpuClient::LoadSerializedExecutable(absl::string_view serialized,
     TF_ASSIGN_OR_RETURN(compile_options,
                         CompileOptions::FromProto(proto.compile_options()));
   }
+
+  tsl::profiler::TraceMe traceme("TfrtGpuClient::DeserializeToLocalExecutable");
+  VLOG(1) << "TfrtGpuClient::DeserializeToLocalExecutable";
+
+  std::string str = std::move(*proto.mutable_serialized_executable());
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<LocalExecutable> loaded,
+      xla_client_->Load(str, compile_options.executable_build_options));
+
+  std::vector<std::unique_ptr<LocalExecutable>> local_executables;
+  local_executables.push_back(std::move(loaded));
+
+  return std::make_pair(std::move(local_executables), compile_options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+TfrtGpuClient::LoadSerializedExecutable(absl::string_view serialized,
+                                        std::optional<CompileOptions> options,
+                                        const LoadOptions& load_options) {
+  TF_ASSIGN_OR_RETURN(auto local_executables_and_options,
+                      DeserializeToLocalExecutable(serialized, options));
+  return LoadInternal(std::move(local_executables_and_options.first),
+                      local_executables_and_options.second);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+TfrtGpuClient::LoadInternal(
+    std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+    CompileOptions compile_options) {
   auto input_options = compile_options;
 
-  tsl::profiler::TraceMe traceme("TfrtGpuClient::LoadSerializedExecutable");
+  TF_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
 
-  TF_ASSIGN_OR_RETURN(ExecutableExtras extras,
-                      GetExecutableExtras(&compile_options));
+  TF_ASSIGN_OR_RETURN(
+      ExecutableExtras extras,
+      UpdateCompileOptionsAndGetExecutableExtras(&compile_options));
   std::shared_ptr<DeviceAssignment>& device_assignment =
       extras.device_assignment;
   std::vector<TfrtGpuExecutable::LogicalDeviceIds>&
       addressable_device_logical_ids = extras.addressable_device_logical_ids;
   std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
-  std::string str = std::move(*proto.mutable_serialized_executable());
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<LocalExecutable> loaded,
-      xla_client_->Load(str, compile_options.executable_build_options));
-  std::vector<std::unique_ptr<LocalExecutable>> executables;
-  executables.push_back(std::move(loaded));
+  const auto& ex_options = compile_options.executable_build_options;
+  const bool xla_gpu_dump_hlo_unoptimized_snapshots =
+      ex_options.has_debug_options() &&
+      ex_options.debug_options().xla_gpu_dump_hlo_unoptimized_snapshots();
+  HloModuleProto hlo_module_proto;
+  if (xla_gpu_dump_hlo_unoptimized_snapshots) {
+    hlo_module_proto = local_executables[0]->executable()->module().ToProto();
+  }
 
   auto executable = std::make_unique<TfrtGpuExecutable>(
-      std::move(executables), compile_options.parameter_is_tupled_arguments,
+      std::move(local_executables),
+      compile_options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(input_options),
-      addressable_device_logical_ids, addressable_devices, this);
+      std::move(addressable_device_logical_ids), std::move(addressable_devices),
+      this);
 
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(compile_options.parameter_is_tupled_arguments));
+  if (xla_gpu_dump_hlo_unoptimized_snapshots) {
+    executable->SetInputHloSnapshotBits(
+        std::move(hlo_module_proto),
+        compile_options.executable_build_options.debug_options());
+  }
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtGpuClient::Load(
+    std::unique_ptr<PjRtExecutable> executable,
+    const LoadOptions& load_options) {
+  auto se_executable = absl::WrapUnique(
+      tensorflow::down_cast<StreamExecutorExecutable*>(executable.release()));
+  CompileOptions compile_options = se_executable->compile_options();
+
+  tsl::profiler::TraceMe traceme("TfrtGpuClient::Load");
+  VLOG(1) << "TfrtGpuClient::Load";
+
+  TF_ASSIGN_OR_RETURN(
+      auto local_executables,
+      se_executable->ConsumeExecutable(xla_client_, compile_options));
+  return LoadInternal(std::move(local_executables), compile_options);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
@@ -1415,20 +1500,25 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
       tsl::down_cast<TfrtGpuDevice*>(device), memory_space);
 }
 
-absl::StatusOr<TfrtGpuClient::ExecutableExtras>
-TfrtGpuClient::GetExecutableExtras(CompileOptions* options) {
-  ExecutableExtras extras;
-  std::shared_ptr<DeviceAssignment>& device_assignment =
-      extras.device_assignment;
-  std::vector<TfrtGpuExecutable::LogicalDeviceIds>&
-      addressable_device_logical_ids = extras.addressable_device_logical_ids;
-  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
+absl::Status TfrtGpuClient::UpdateCompileOptions(CompileOptions* options) {
+  return UpdateCompileOptionsInternal(options, /*returned_extras=*/nullptr);
+}
 
+absl::StatusOr<TfrtGpuClient::ExecutableExtras>
+TfrtGpuClient::UpdateCompileOptionsAndGetExecutableExtras(
+    CompileOptions* options) {
+  ExecutableExtras extras;
+  TF_RETURN_IF_ERROR(UpdateCompileOptionsInternal(options, &extras));
+  return extras;
+}
+
+absl::Status TfrtGpuClient::UpdateCompileOptionsInternal(
+    CompileOptions* options, ExecutableExtras* returned_extras) {
   ExecutableBuildOptions& build_options = options->executable_build_options;
+  const int original_device_ordinal = build_options.device_ordinal();
   if (!build_options.compile_thread_pool()) {
     build_options.set_compile_thread_pool(compile_thread_pool_.get());
   }
-
   if (!build_options.device_allocator()) {
     build_options.set_device_allocator(
         xla_client_->backend().memory_allocator());
@@ -1462,6 +1552,28 @@ TfrtGpuClient::GetExecutableExtras(CompileOptions* options) {
   };
 
   build_options.set_layout_canonicalization_callback(layout_callback);
+
+  if (build_options.device_ordinal() < 0) {
+    build_options.set_device_ordinal(0);
+  }
+
+  // We need the information of device assignment for
+  //   1) XLA GPU shard autotuning, as the process count and the current process
+  //   index are needed;
+  //   2) getting executable extras, as the addressable devices are needed.
+  const bool use_xla_gpu_shard_autotuning =
+      build_options.has_debug_options() &&
+      build_options.debug_options().xla_gpu_shard_autotuning();
+  if (!use_xla_gpu_shard_autotuning && returned_extras == nullptr) {
+    return absl::OkStatus();
+  }
+
+  ExecutableExtras extras;
+  std::shared_ptr<DeviceAssignment>& device_assignment =
+      extras.device_assignment;
+  std::vector<TfrtGpuExecutable::LogicalDeviceIds>&
+      addressable_device_logical_ids = extras.addressable_device_logical_ids;
+  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
   int num_replicas;
   int num_partitions;
@@ -1506,7 +1618,7 @@ TfrtGpuClient::GetExecutableExtras(CompileOptions* options) {
           device_assignment->ToString());
     }
 
-    if (build_options.device_ordinal() < 0) {
+    if (original_device_ordinal < 0) {
       build_options.set_device_ordinal(
           addressable_devices.front()->local_hardware_id().value());
     }
@@ -1514,7 +1626,10 @@ TfrtGpuClient::GetExecutableExtras(CompileOptions* options) {
     build_options.set_process_index(*this_process_index);
     build_options.set_process_count(all_process_indices.size());
   }
-  return extras;
+  if (returned_extras != nullptr) {
+    *returned_extras = std::move(extras);
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
@@ -1523,6 +1638,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     HostBufferSemantics host_buffer_semantics,
     absl::AnyInvocable<void() &&> on_done_with_host_buffer,
     PjRtMemorySpace* memory_space, const Layout* device_layout) {
+  VLOG(1) << "TfrtGpuClient::BufferFromHostBuffer";
   // TODO: b/382117736 - support device_layout
   // TODO: b/382117736 - support non-default memory_space (e.g. pinned)
   PjRtDevice* device = memory_space->devices()[0];
@@ -1674,6 +1790,7 @@ TfrtGpuClient::CreateBuffersForAsyncHostToDevice(
     absl::Span<const ShapeSpec> shape_specs,
     std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
     PjRtMemorySpace* memory_space) {
+  VLOG(1) << "TfrtGpuClient::CreateBuffersForAsyncHostToDevice";
   CHECK_EQ(memory_space->devices().size(), 1);
   PjRtDevice* device = memory_space->devices()[0];
   auto* tfrt_gpu_device = tensorflow::down_cast<TfrtGpuDevice*>(device);

@@ -213,9 +213,9 @@ class ThunkExecutor {
     absl::FixedArray<NodeStorage> nodes;
     tsl::AsyncValueRef<ExecuteEvent> execute_event;
 
-    // Once the number of pending sink nodes drops to zero, the execution is
+    // Once the number of pending nodes drops to zero, the execution is
     // completed and we set `execute_event` as concrete or error.
-    alignas(kAtomicAlignment) std::atomic<int64_t> pending_sink_nodes;
+    alignas(kAtomicAlignment) std::atomic<int64_t> pending_nodes;
 
     // We store the first error from failed thunks in `abort_status` and at the
     // end of execution the executor forwards it via the `execute_event`.
@@ -254,13 +254,20 @@ class ThunkExecutor {
   void SplitReadyQueue(ExecuteState* state, const Thunk::ExecuteParams& params,
                        ReadyQueue& ready_queue, int64_t split_threshold);
 
+  // Processes out edges of a scheduled `node` and updates `ready_queue` with
+  // nodes that are ready to execute.
+  template <typename ReadyQueue>
+  void ProcessOutEdges(ExecuteState* state, ExecuteState::Node& node,
+                       ReadyQueue& ready_queue);
+
   // Processes out edges of a completed `node` and updates `ready_queue` with
   // nodes that are ready to execute. If `node_event` is in error state, aborts
   // the execution and records the error status to forward it to the caller.
-  template <typename ReadyQueue>
+  template <bool process_scheduling_edges, typename ReadyQueue>
   void ProcessOutEdges(ExecuteState* state,
                        tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
-                       ExecuteState::Node& node, ReadyQueue& ready_queue);
+                       ExecuteState::Node& node, ReadyQueue& ready_queue,
+                       bool drop_pending_nodes);
 
   ThunkSequence thunk_sequence_;
   ExecutionGraph execution_graph_;
