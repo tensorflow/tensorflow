@@ -315,7 +315,7 @@ enum StatType {
   kMinDurationPs,
   kTotalProfileDurationPs,
   kMaxIterationNum,
-  kDeviceType,
+  kDeviceType,  // Do not use. Use kDeviceTypeString instead.
   kUsesMegaCore,
   kSymbolId,
   kTfOpName,
