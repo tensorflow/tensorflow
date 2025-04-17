@@ -44,7 +44,18 @@ class TritonDotFusionSearchSpace {
   // autotuner to try. If `force_contracting_split` is set, the search space
   // will be restricted to only include configs with the given split_k factor.
   std::vector<TritonGemmConfig> GenerateConfigs(
-      std::optional<int64_t> force_contracting_split = std::nullopt);
+      std::optional<int64_t> force_contracting_split = std::nullopt) const;
+
+  // Restrict the set of configs to the ones compatible with the hints list.
+  // Generally, this will mean that configs are restricted to the ones that
+  // appear in hints. The implementation is allowed to deviate though, and
+  // slightly change the hints list if it thinks that the exact configs in the
+  // hints are unlikely to be performant (e.g., if the RHS side of a config in
+  // hints list is larger than the problem's RHS side, it might restrict that
+  // config to the problem's RHS size).
+  std::vector<TritonGemmConfig> OptimizeConfigSet(
+      const std::vector<TritonGemmConfig>& configs,
+      const std::vector<TritonGemmConfig>& hints) const;
 
   // Serializes the search space to a human-readable string.
   std::string ToString() const;
@@ -89,13 +100,13 @@ class TritonDotFusionSearchSpace {
   // extensions of `config` to the `updated_configs` vector.
   using ExtendConfigCallback = void (TritonDotFusionSearchSpace::*)(
       const ConfigWithNotes& config,
-      std::vector<ConfigWithNotes>& updated_configs);
+      std::vector<ConfigWithNotes>& updated_configs) const;
 
   // Extends Triton gemm configs by repeatedly calling `*extend_config()` on
   // each config in `configs`. Expects that after all calls to `extend_config`,
   // the updated list of configs is non-empty.
   void ExtendConfigs(std::vector<ConfigWithNotes>& configs,
-                     ExtendConfigCallback extend_config);
+                     ExtendConfigCallback extend_config) const;
 
   // Computes the maximum number of total warps we should have to sufficiently
   // saturate the GPU.
@@ -155,40 +166,43 @@ class TritonDotFusionSearchSpace {
 
   // Finds all promising values for splitting the contracting dimension to
   // achieve sufficient occupancy (split_k).
-  std::vector<ConfigWithNotes> GenerateContractingSplitFactors();
+  std::vector<ConfigWithNotes> GenerateContractingSplitFactors() const;
 
   // Finds all promising output shape tilings (block_m, block_n), based on
   // `config` with already determined contracting split value and appends them
   // to `updated_configs`. Each config in the input list might yield zero or
   // more configs in the output.
   void AddOutputTilings(const ConfigWithNotes& config,
-                        std::vector<ConfigWithNotes>& updated_configs);
+                        std::vector<ConfigWithNotes>& updated_configs) const;
 
   // Finds all promising values for the Cooperative Thread Array (aka. CTA, aka.
   // CUDA block) size (num_warps), based on `config` with already determined
   // output tiling and appends them to `updated_configs`. Each config in the
   // input list might yield zero or more configs in the output.
   void AddCtaSizeParameter(const ConfigWithNotes& config,
-                           std::vector<ConfigWithNotes>& updated_configs);
+                           std::vector<ConfigWithNotes>& updated_configs) const;
 
   // Finds all promising values for the contracting dimension tile size
   // (block_k), based on `config` with already determined contracting split and
   // output tiling, and appends them to `updated_configs`. Each config in the
   // input list might yield zero or more configs in the output.
-  void AddContractingTiling(const ConfigWithNotes& config,
-                            std::vector<ConfigWithNotes>& updated_configs);
+  void AddContractingTiling(
+      const ConfigWithNotes& config,
+      std::vector<ConfigWithNotes>& updated_configs) const;
 
   // Finds all promising values for the pipelining parameter, based on
   // `config` with already determined contracting split, output tiling, and
   // contracting tile size, and appends them to `updated_configs`. Each config
   // in the input list might yield zero or more configs in the output.
-  void AddPipeliningParameter(const ConfigWithNotes& config,
-                              std::vector<ConfigWithNotes>& updated_configs);
+  void AddPipeliningParameter(
+      const ConfigWithNotes& config,
+      std::vector<ConfigWithNotes>& updated_configs) const;
 
   // Removes configs that are marked with `not_enough_tiles` from the list. If
   // this results in an empty list, adds a config that should be the most
   // optimal one even though it does not occupy all cores.
-  void EliminateLowOccupancyConfigs(std::vector<ConfigWithNotes>& configs);
+  void EliminateLowOccupancyConfigs(
+      std::vector<ConfigWithNotes>& configs) const;
 
   // The order of these fields is important: the values of those defined earlier
   // are used to compute the values of later ones.

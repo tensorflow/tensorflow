@@ -901,6 +901,11 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
         /*force_contracting_split=*/autotune_contracting_split
             ? std::nullopt
             : std::make_optional(1));
+    if (!debug_options_.xla_gpu_exhaustive_tiling_search()) {
+      VLOG(1) << "Restricting configs to the default set.";
+      configs = search_space.OptimizeConfigSet(
+          configs, /*hints=*/GetDefaultTritonConfigs());
+    }
     if (!IsAutotuningEnabled()) {
       // Keep the first config, which likely does not spill registers.
       configs.resize(1);

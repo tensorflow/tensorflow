@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/dot_search_space.h"
 
 #include <memory>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -35,6 +36,8 @@ namespace xla::gpu {
 namespace {
 
 using ::testing::AllOf;
+using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
 using ::testing::Eq;
 using ::testing::Field;
 using ::testing::Ge;
@@ -401,6 +404,88 @@ TEST_F(DotSearchSpaceTest, EnsuresWgmmaShapeForLargeProblem) {
       search_space.GenerateConfigs(),
       AllOf(Not(IsEmpty()), Each(AllOf(NumWarpsIs(Ge(4)), BlockMIs(Ge(64)),
                                        BlockNIs(Ge(16))))));
+}
+
+TEST_F(DotSearchSpaceTest, ReturnsAllConfigsIfNoHints) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          GetDefaultDotModule());
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+  std::vector<TritonGemmConfig> configs = search_space.GenerateConfigs();
+
+  EXPECT_THAT(search_space.OptimizeConfigSet(configs, {}),
+              ElementsAreArray(configs));
+}
+
+TEST_F(DotSearchSpaceTest, OptimizesEmptyConfigSet) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          GetDefaultDotModule());
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+  TritonGemmConfig hint = {/*block_m=*/32,   /*block_n=*/32,
+                           /*block_k=*/32,   /*split_k=*/1,
+                           /*num_stages=*/1, /*num_warps=*/4,
+                           /*num_ctas=*/1};
+
+  EXPECT_THAT(search_space.OptimizeConfigSet({}, {hint}), IsEmpty());
+}
+
+TEST_F(DotSearchSpaceTest, RestrictsConfigsToHints) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          GetDefaultDotModule());
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+  TritonGemmConfig matching_hint = {
+      /*block_m=*/32, /*block_n=*/32,   /*block_k=*/32,
+      /*split_k=*/1,  /*num_stages=*/1, /*num_warps=*/4,
+      /* num_ctas=*/1};
+  TritonGemmConfig non_matching_hint = {
+      /*block_m=*/64, /*block_n=*/32,   /*block_k=*/32,
+      /*split_k=*/1,  /*num_stages=*/1, /*num_warps=*/4,
+      /*num_ctas=*/1};
+  TritonGemmConfig other_config = {
+      /*block_m=*/32, /*block_n=*/64,   /*block_k=*/32,
+      /*split_k=*/1,  /*num_stages=*/1, /*num_warps=*/4,
+      /*num_ctas=*/1};
+
+  EXPECT_THAT(
+      search_space.OptimizeConfigSet({other_config, matching_hint},
+                                     {matching_hint, non_matching_hint}),
+      ElementsAre(matching_hint));
+}
+
+TEST_F(DotSearchSpaceTest, RestrictsConfigsWithPartialMatch) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/4096, /*rhs_parallel_dim=*/16,
+                          /*contracting_dim=*/1024));
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+  TritonGemmConfig hint = {/*block_m=*/32,   /*block_n=*/32,
+                           /*block_k=*/32,   /*split_k=*/1,
+                           /*num_stages=*/1, /*num_warps=*/4,
+                           /*num_ctas=*/1};
+  TritonGemmConfig expected = {/*block_m=*/32,   /*block_n=*/16,
+                               /*block_k=*/32,   /*split_k=*/2,
+                               /*num_stages=*/1, /*num_warps=*/4,
+                               /*num_ctas=*/1};
+
+  EXPECT_THAT(
+      search_space.OptimizeConfigSet(
+          search_space.GenerateConfigs(/*force_contracting_split=*/2), {hint}),
+      ElementsAre(expected));
+}
+
+TEST_F(DotSearchSpaceTest, ReturnsNonEmptySetForUnusualHints) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          GetDefaultDotModule(/*lhs_parallel_dim=*/4096,
+                                              /*rhs_parallel_dim=*/4096));
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  TritonGemmConfig hint = {/*block_m=*/1024, /*block_n=*/1024,
+                           /*block_k=*/32,   /*split_k=*/1,
+                           /*num_stages=*/1, /*num_warps=*/4,
+                           /*num_ctas=*/1};
+
+  EXPECT_THAT(
+      search_space.OptimizeConfigSet(search_space.GenerateConfigs(), {hint}),
+      Not(IsEmpty()));
 }
 
 }  // namespace
