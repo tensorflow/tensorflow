@@ -17,7 +17,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <functional>
-#include <ostream>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -25,6 +24,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -36,6 +36,7 @@
 #include "xla/hlo/tools/hlo_diff/hlo_diff_summary.h"
 #include "xla/hlo/tools/hlo_diff/render/graph_url_generator.h"
 #include "xla/hlo/tools/hlo_diff/render/hlo_gumgraph_renderer_util.h"
+#include "xla/hlo/tools/hlo_diff/render/op_metric_getter.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -196,7 +197,8 @@ std::string PrintDetails(absl::string_view summary, absl::string_view content) {
 
 // Prints a link to the given url.
 std::string PrintLink(absl::string_view text, absl::string_view url) {
-  return absl::StrFormat("<a href=\"%s\" target=\"_blank\">%s</a>", url, text);
+  return absl::StrFormat(R"html(<a href="%s" target="_blank">%s</a>)html", url,
+                         text);
 }
 
 // Prints a html block with a header.
@@ -495,11 +497,12 @@ std::string PrintUnchangedInstructions(
 
 std::string PrintUnmatchedMetricsDiff(
     const absl::flat_hash_set<const HloInstruction*>& instructions,
-    GetOpMetricFn get_op_metrics, GraphUrlGenerator* url_generator) {
+    const OpMetricGetter& op_metric_getter, GraphUrlGenerator* url_generator) {
   std::vector<std::pair<const HloInstruction*, double>> sorted_metrics_diff;
   for (const HloInstruction* inst : instructions) {
-    if (auto metric = get_op_metrics(inst->name()); metric.has_value()) {
-      sorted_metrics_diff.push_back({inst, static_cast<double>(*metric)});
+    if (auto time_ps = op_metric_getter.GetOpTimePs(inst->name());
+        time_ps.ok()) {
+      sorted_metrics_diff.push_back({inst, static_cast<double>(*time_ps)});
     }
   }
 
@@ -517,19 +520,23 @@ std::string PrintUnmatchedMetricsDiff(
 std::string PrintMatchedMetricsDiff(
     const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
         instructions,
-    GetOpMetricFn left_op_metrics, GetOpMetricFn right_op_metrics,
+    const OpMetricGetter& left_op_metric_getter,
+    const OpMetricGetter& right_op_metric_getter,
     GraphUrlGenerator* url_generator) {
   std::vector<std::pair<std::pair<const HloInstruction*, const HloInstruction*>,
                         double>>
       sorted_metrics_diff;
   for (const auto& [left_inst, right_inst] : instructions) {
-    auto left_metric = left_op_metrics(left_inst->name());
-    auto right_metric = right_op_metrics(right_inst->name());
-    if (left_metric.has_value() && right_metric.has_value()) {
-      sorted_metrics_diff.push_back(
-          {{left_inst, right_inst},
-           static_cast<double>(*left_metric - *right_metric)});
+    absl::StatusOr<uint64_t> left_time_ps =
+        left_op_metric_getter.GetOpTimePs(left_inst->name());
+    absl::StatusOr<uint64_t> right_time_ps =
+        right_op_metric_getter.GetOpTimePs(right_inst->name());
+    if (!left_time_ps.ok() || !right_time_ps.ok()) {
+      continue;
     }
+    sorted_metrics_diff.push_back(
+        {{left_inst, right_inst},
+         static_cast<double>(*right_time_ps - *left_time_ps)});
   }
   std::sort(sorted_metrics_diff.begin(), sorted_metrics_diff.end());
   std::vector<std::string> metrics_diff_list(sorted_metrics_diff.size());
@@ -621,8 +628,10 @@ std::string PrintRepetitiveDiffPatterns(
 }  // namespace
 
 void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
-                GraphUrlGenerator* url_generator, GetOpMetricFn left_op_metrics,
-                GetOpMetricFn right_op_metrics, std::ostringstream& out) {
+                GraphUrlGenerator* url_generator,
+                OpMetricGetter* left_op_metric_getter,
+                OpMetricGetter* right_op_metric_getter,
+                std::ostringstream& out) {
   const absl::flat_hash_set<HloOpcode> ignored_opcodes(kIgnoredOpcodes.begin(),
                                                        kIgnoredOpcodes.end());
   out << PrintCss() << PrintJavascript();
@@ -654,25 +663,29 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
                                        ignored_opcodes, url_generator))));
 
   // Print profile metrics diff
-  out << PrintSectionWithHeader(
-      "Profile Metrics Diff",
-      absl::StrCat(
-          PrintDetails("Left Module Unmatched Instructions",
-                       PrintUnmatchedMetricsDiff(
-                           diff_result.left_module_unmatched_instructions,
-                           left_op_metrics, url_generator)),
-          PrintDetails("Right Module Unmatched Instructions",
-                       PrintUnmatchedMetricsDiff(
-                           diff_result.right_module_unmatched_instructions,
-                           right_op_metrics, url_generator)),
-          PrintDetails("Changed Instructions",
-                       PrintMatchedMetricsDiff(
-                           diff_result.changed_instructions, left_op_metrics,
-                           right_op_metrics, url_generator)),
-          PrintDetails("Unchanged Instructions",
-                       PrintMatchedMetricsDiff(
-                           diff_result.unchanged_instructions, left_op_metrics,
-                           right_op_metrics, url_generator))));
+  if (left_op_metric_getter != nullptr && right_op_metric_getter != nullptr) {
+    out << PrintSectionWithHeader(
+        "Profile Metrics Diff",
+        absl::StrCat(
+            PrintDetails("Left Module Unmatched Instructions",
+                         PrintUnmatchedMetricsDiff(
+                             diff_result.left_module_unmatched_instructions,
+                             *left_op_metric_getter, url_generator)),
+            PrintDetails("Right Module Unmatched Instructions",
+                         PrintUnmatchedMetricsDiff(
+                             diff_result.right_module_unmatched_instructions,
+                             *right_op_metric_getter, url_generator)),
+            PrintDetails(
+                "Changed Instructions",
+                PrintMatchedMetricsDiff(
+                    diff_result.changed_instructions, *left_op_metric_getter,
+                    *right_op_metric_getter, url_generator)),
+            PrintDetails(
+                "Unchanged Instructions",
+                PrintMatchedMetricsDiff(
+                    diff_result.unchanged_instructions, *left_op_metric_getter,
+                    *right_op_metric_getter, url_generator))));
+  }
 
   // Print repetitive computation groups
   out << PrintSectionWithHeader(
