@@ -281,6 +281,26 @@ class AsynchronousCopyResource {
   std::vector<std::pair<int64_t, int64_t>> delay_changes_;
 };
 
+// Helper class to compute a minimal fingerprint of an HloInstruction and it's
+// operand shapes for MSA.
+class MsaInstructionFingerprint {
+ public:
+  explicit MsaInstructionFingerprint(const HloInstruction* instruction)
+      : inst_(instruction) {};
+
+  template <typename H>
+  friend H AbslHashValue(H h, const MsaInstructionFingerprint& fp) {
+    for (const HloInstruction* operand : fp.inst_->operands()) {
+      h = H::combine(std::move(h), operand->shape());
+    }
+    return H::combine(std::move(h), fp.inst_->opcode(),
+                      fp.inst_->operand_count(), fp.inst_->shape());
+  }
+
+ private:
+  const HloInstruction* inst_;
+};
+
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
 // maximum size.
 //
@@ -1110,10 +1130,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   int64_t memory_pressure_ = 0;
   int64_t next_async_copy_id_ = 0;
   // Fingerprint cache.
-  absl::flat_hash_map<const HloInstruction*, std::string> fingerprint_map_;
+  absl::flat_hash_map<const HloInstruction*, uint64_t> fingerprint_map_;
   // Vector of repeated instructions (that have the same fingerprint) indexed by
   // fingerprint.
-  absl::flat_hash_map<std::string, std::vector<const HloInstruction*>>
+  absl::flat_hash_map<uint64_t, std::vector<const HloInstruction*>>
       repeated_inst_map_;
 
   // Loop-optimized allocations found by MemoryBoundLoopOptimizer. These

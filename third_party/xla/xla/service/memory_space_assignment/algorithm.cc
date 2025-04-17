@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -457,18 +458,7 @@ MsaAlgorithm::MsaAlgorithm(AllocationSequence* allocations,
             options.cost_analysis->GetInstructionElapsed(*inst);
         if (options_.use_repeated_instance_for_preferred_prefetch_time ||
             options_.memory_bound_loop_optimizer_options.enabled()) {
-          std::string fingerprint;
-          absl::StrAppend(&fingerprint, inst->shape().ToString(), " ",
-                          HloOpcodeString(inst->opcode()), "(");
-          for (int operand_idx = 0; operand_idx < inst->operands().size();
-               ++operand_idx) {
-            if (operand_idx > 0) {
-              absl::StrAppend(&fingerprint, ", ");
-            }
-            absl::StrAppend(&fingerprint,
-                            inst->operand(operand_idx)->shape().ToString());
-          }
-          absl::StrAppend(&fingerprint, ")");
+          uint64_t fingerprint = absl::HashOf(MsaInstructionFingerprint(inst));
           fingerprint_map_[inst] = fingerprint;
           repeated_inst_map_[fingerprint].push_back(inst);
         }
@@ -1137,7 +1127,7 @@ bool AreOperandCandidatesCompatible(int loop_size_candidate,
 }  // namespace
 
 void MsaAlgorithm::IdentifyAndOptimizeMemoryBoundLoops() {
-  absl::flat_hash_map<absl::string_view, int> fingerprint_schedule_map;
+  absl::flat_hash_map<uint64_t, int> fingerprint_schedule_map;
   const auto& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
   // The minimum and maximum loop sizes that we consider.
@@ -1185,7 +1175,7 @@ void MsaAlgorithm::IdentifyAndOptimizeMemoryBoundLoops() {
               << " fingerprint: "
               << (fingerprint_it == fingerprint_map_.end()
                       ? "none"
-                      : fingerprint_it->second);
+                      : std::to_string(fingerprint_it->second));
     }
     VLOG(3) << "Loop size candidate: " << loop_size_candidate;
     if (loop_size_candidate == -1) {
