@@ -171,7 +171,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
   }
 
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  if (type.isa<tftype##Type>()) {               \
+  if (llvm::isa<tftype##Type>(type)) {          \
     *dtype = tensorflow::DT_##enumerant;        \
     return ::tensorflow::OkStatus();            \
   }

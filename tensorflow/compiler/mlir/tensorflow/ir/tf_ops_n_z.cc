@@ -561,7 +561,7 @@ LogicalResult ParseExampleV2Op::verify() {
 template <typename CallOpClass>
 static LogicalResult VerifyPartitionedCall(CallOpClass op,
                                            SymbolTableCollection &symbolTable) {
-  SymbolRefAttr func = op->getAttr("f").template cast<SymbolRefAttr>();
+  SymbolRefAttr func = llvm::cast<SymbolRefAttr>(op->getAttr("f"));
   auto function = symbolTable.lookupNearestSymbolFrom<func::FuncOp>(op, func);
   if (!function) {
     return op.emitError("'f' attribute refers to an undefined function: ")
@@ -1666,8 +1666,7 @@ LogicalResult VerifySplitInputAndSplitDim(Op op,
   // We can perform further verification if the input tensor to be split has
   // known rank and the split dimension tensor is a constant.
 
-  auto input_type =
-      op.getValue().getType().template dyn_cast<RankedTensorType>();
+  auto input_type = llvm::dyn_cast<RankedTensorType>(op.getValue().getType());
   if (!input_type) return success();
 
   int64_t input_rank = input_type.getRank();
@@ -3324,9 +3323,9 @@ static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
   if (!HasRankAtMost(op.getNumSegments(), 0))
     return op.emitOpError("number of segments should be a 0-D tensor");
 
-  auto data_type = op.getData().getType().template dyn_cast<RankedTensorType>();
+  auto data_type = llvm::dyn_cast<RankedTensorType>(op.getData().getType());
   auto segment_ids_type =
-      op.getSegmentIds().getType().template dyn_cast<RankedTensorType>();
+      llvm::dyn_cast<RankedTensorType>(op.getSegmentIds().getType());
   if (data_type && segment_ids_type) {
     if (data_type.getRank() < segment_ids_type.getRank())
       return op.emitOpError(
