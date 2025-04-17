@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <set>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
