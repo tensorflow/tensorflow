@@ -259,7 +259,7 @@ LogicalResult QuantizeContext::PropagateQuantParams(
   // Use the final state to set all the operands' parameters.
   for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
     auto ele = op->getOperand(i).getType().cast<ShapedType>().getElementType();
-    if (ele.isa<FloatType>() && SetOperandParams(op, i, params)) {
+    if (isa<FloatType>(ele) && SetOperandParams(op, i, params)) {
       *changed |= true;
       new_items->push_back(op->getOperand(i).getDefiningOp());
     }
@@ -268,7 +268,7 @@ LogicalResult QuantizeContext::PropagateQuantParams(
   // Use the final state to set all the results' parameters.
   for (int res = 0, e = op->getNumResults(); res != e; ++res) {
     auto ele = op->getResult(res).getType().cast<ShapedType>().getElementType();
-    if (ele.isa<FloatType>() && SetResultParams(op, res, params)) {
+    if (isa<FloatType>(ele) && SetResultParams(op, res, params)) {
       auto users = op->getResult(res).getUsers();
       *changed |= !users.empty();
       new_items->append(users.begin(), users.end());

@@ -98,7 +98,7 @@ namespace {
 // Returns the equivalent Value skipping through identity nodes.
 Value LookThroughIdentity(Value result) {
   while (isa_and_nonnull<IdentityOp, IdentityNOp>(result.getDefiningOp())) {
-    auto op_result = result.cast<OpResult>();
+    auto op_result = cast<OpResult>(result);
     result = op_result.getOwner()->getOperand(op_result.getResultNumber());
   }
   return result;
@@ -809,7 +809,7 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
     }
     return BuildConstRangeTensor(elem_type, num_elements, start_attr,
                                  delta_attr);
-  } else if (elem_type.isa<FloatType>()) {
+  } else if (isa<FloatType>(elem_type)) {
     auto start_attr = start_tensor.getValues<FloatAttr>()[0];
     auto limit_attr = limit_tensor.getValues<FloatAttr>()[0];
     auto delta_attr = delta_tensor.getValues<FloatAttr>()[0];
@@ -2418,7 +2418,7 @@ LogicalResult TPUExecuteAndUpdateVariablesOp::verify() {
   TPUExecuteAndUpdateVariablesOp op = *this;
   int num_resource_args = 0;
   for (Type arg_type : op.getArgs().getTypes())
-    if (arg_type.cast<TensorType>().getElementType().isa<ResourceType>())
+    if (isa<ResourceType>(cast<TensorType>(arg_type).getElementType()))
       ++num_resource_args;
 
   auto check_attr = [&](ArrayAttr indices, llvm::StringRef name,
@@ -2457,11 +2457,8 @@ void TPUExecuteAndUpdateVariablesOp::getEffects(
                        ResourceEffects::TPUExecute::get());
   auto resource_handles =
       llvm::make_filter_range(getArgsMutable(), [](OpOperand &op_operand) {
-        return op_operand.get()
-            .getType()
-            .cast<TensorType>()
-            .getElementType()
-            .isa<ResourceType>();
+        return isa<ResourceType>(
+            cast<TensorType>(op_operand.get().getType()).getElementType());
       });
 
   for (const auto& entry : llvm::enumerate(resource_handles)) {
@@ -2858,7 +2855,7 @@ class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
       Attribute zero_attr;
       if (element_type.isIntOrFloat())
         zero_attr = rewriter.getZeroAttr(type);
-      else if (element_type.isa<TF::StringType>())
+      else if (isa<TF::StringType>(element_type))
         zero_attr = DenseStringElementsAttr::get(type, {""});
 
       if (!zero_attr) return failure();

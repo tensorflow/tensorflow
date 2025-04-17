@@ -111,8 +111,7 @@ class TFRInlinerInterface : public DialectInlinerInterface {
   Operation *materializeCallConversion(OpBuilder &builder, Value input,
                                        Type result_type,
                                        Location conversion_loc) const final {
-    if (!input.getType().isa<IntegerType>() ||
-        !result_type.isa<IntegerType>()) {
+    if (!isa<IntegerType>(input.getType()) || !isa<IntegerType>(result_type)) {
       return nullptr;
     }
     auto input_itype = input.getType().cast<IntegerType>();
@@ -250,7 +249,7 @@ LogicalResult TFRFuncOp::verify() {
       continue;
     }
 
-    if (!arg_type.isa<TensorType>()) {
+    if (!isa<TensorType>(arg_type)) {
       if (first_attr == -1) {
         first_attr = arg.index();
       }
@@ -423,7 +422,7 @@ class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
       DenseElementsAttr attr =
           DenseElementsAttr::get(new_out_type, array.getValue());
       new_cst = rewriter.create<TF::ConstOp>(loc, new_out_type, attr);
-      if (out_type.isa<TFRTensorType>()) {
+      if (isa<TFRTensorType>(out_type)) {
         new_cst = rewriter.create<CastOp>(loc, out_type, new_cst->getResult(0));
       }
       rewriter.replaceOp(cst_tensor_op, new_cst->getResult(0));
@@ -434,7 +433,7 @@ class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
     if (matchPattern(cst_tensor_op.getArg(), m_Constant(&scalar))) {
       Type new_out_type = RankedTensorType::get({}, scalar.getType());
       new_cst = rewriter.create<TF::ConstOp>(loc, new_out_type, scalar);
-      if (out_type.isa<TFRTensorType>()) {
+      if (isa<TFRTensorType>(out_type)) {
         new_cst = rewriter.create<CastOp>(loc, out_type, new_cst->getResult(0));
       }
       rewriter.replaceOp(cst_tensor_op, new_cst->getResult(0));
@@ -447,7 +446,7 @@ class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
 inline bool isQuantizedType(Type type) {
   auto tensor_type = type.dyn_cast<TensorType>();
   return (tensor_type &&
-          tensor_type.getElementType().isa<quant::QuantizedType>());
+          isa<quant::QuantizedType>(tensor_type.getElementType()));
 }
 
 class RemoveRedundantCast : public OpRewritePattern<CastOp> {
@@ -493,7 +492,7 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
 
     // If the two types are the same, the back-to-back tfr.cast ops can be
     // removed.
-    if (input_type == output_type || output_type.isa<UnrankedTensorType>()) {
+    if (input_type == output_type || isa<UnrankedTensorType>(output_type)) {
       rewriter.replaceOp(cast_op, {input});
       return success();
     }
@@ -501,7 +500,7 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
     // If the rank of the input tensor isn't ranked, we replace the pair
     // with tf.EnsureShape op so it can be removed after shape inference or
     // confirmed at runtime.
-    if (input_type.isa<UnrankedTensorType>()) {
+    if (isa<UnrankedTensorType>(input_type)) {
       auto shape = output_type.cast<ShapedType>().getShape();
       auto shape_attr = TF::ShapeAttr::get(rewriter.getContext(), shape);
       rewriter.replaceOpWithNewOp<TF::EnsureShapeOp>(cast_op, output_type,
@@ -548,7 +547,7 @@ class RemoveRedundantGetElement : public OpRewritePattern<GetElementOp> {
     Value input = preceding_build_list.getOperand(index.getInt());
     Type output_type = ge_op.getType();
     if (input.getType() != output_type &&
-        !output_type.isa<UnrankedTensorType>()) {
+        !isa<UnrankedTensorType>(output_type)) {
       return failure();
     }
     rewriter.replaceOp(ge_op, {input});
@@ -995,7 +994,7 @@ Type TFRDialect::parseType(DialectAsmParser &parser) const {
 void TFRDialect::printType(Type type, DialectAsmPrinter &os) const {
   llvm::ArrayRef<StringAttr> attrs;
 
-  if (type.isa<TFRAttrType>()) {
+  if (isa<TFRAttrType>(type)) {
     os << "attr";
     return;
   }

@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
@@ -118,7 +119,7 @@ mlir::Attribute GetDeviceOfResource(mlir::func::FuncOp func,
   if (auto* resource_op = resource.getDefiningOp()) {
     return resource_op->getAttr(kDeviceAttr);
   } else {
-    const auto resource_arg = resource.dyn_cast_or_null<BlockArgument>();
+    const auto resource_arg = dyn_cast_or_null<BlockArgument>(resource);
     if (resource_arg && (resource_arg.getOwner() == &(func.front()))) {
       return func.getArgAttrOfType<mlir::StringAttr>(
           resource_arg.getArgNumber(), kFuncDeviceAttr);

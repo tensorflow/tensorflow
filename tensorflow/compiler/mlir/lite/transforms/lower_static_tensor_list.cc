@@ -1336,7 +1336,7 @@ llvm::DenseMap<int, int> MapTensorListResultToArgument(func::FuncOp func) {
         break;
       }
     }
-    if (auto block_arg = parent.dyn_cast<mlir::BlockArgument>()) {
+    if (auto block_arg = dyn_cast<mlir::BlockArgument>(parent)) {
       return block_arg.getArgNumber();
     }
     // Returns -1 if we don't find which this result maps to.
@@ -1547,7 +1547,7 @@ void LowerStaticTensorListPass::runOnOperation() {
   // still.
   auto is_legal = [](Operation *op) {
     auto is_not_variant = [](Type ty) {
-      return !ty.cast<ShapedType>().getElementType().isa<TF::VariantType>();
+      return !isa<TF::VariantType>(cast<ShapedType>(ty).getElementType());
     };
     return llvm::all_of(op->getOperandTypes(), is_not_variant) &&
            llvm::all_of(op->getResultTypes(), is_not_variant);

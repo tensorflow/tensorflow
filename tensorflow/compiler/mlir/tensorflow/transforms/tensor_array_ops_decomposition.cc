@@ -478,7 +478,7 @@ llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> AccessedGradients(
   llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> result;
   llvm::SmallDenseMap<int64_t, llvm::StringSet<>> result_sets;
   auto insert = [&](Value v, const string& source, const Block& func_block) {
-    auto arg = v.dyn_cast<BlockArgument>();
+    auto arg = dyn_cast<BlockArgument>(v);
     if (!arg || arg.getOwner() != &func_block) return;
     auto insert_res = result_sets[arg.getArgNumber()].insert(source);
     if (!insert_res.second) return;
@@ -594,7 +594,7 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
   for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
     if (!ta_arg_buffer_type(i)) continue;
     auto retval = old_body_ret->getOperand(i);
-    auto arg = retval.dyn_cast<BlockArgument>();
+    auto arg = dyn_cast<BlockArgument>(retval);
     if (!arg) {
       return while_op.emitOpError(
           "output tensor array does not alias input in a while loop");
@@ -702,13 +702,13 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
       if_op->getAttrs());
   auto ret_forwards_input = [](func::FuncOp f, int64_t ret_ind) -> int64_t {
     auto retval = f.front().getTerminator()->getOperand(ret_ind);
-    auto arg = retval.dyn_cast<BlockArgument>();
+    auto arg = dyn_cast<BlockArgument>(retval);
     if (!arg) return -1;
     return arg.getArgNumber();
   };
   for (int64_t i = 0; i < if_op.getNumResults(); ++i) {
-    if (!getElementTypeOrSelf(if_op.getResult(i).getType())
-             .isa<TF::ResourceType>()) {
+    if (!isa<TF::ResourceType>(
+            getElementTypeOrSelf(if_op.getResult(i).getType()))) {
       if_op.getResult(i).replaceAllUsesWith(new_if.getResult(i));
       continue;
     }
@@ -811,8 +811,8 @@ LogicalResult HandlePartitionedCallOp(
   }
   for (int64_t i = 0; i < call.getNumResults(); ++i) {
     auto ret = lowered_callee.front().getTerminator()->getOperand(i);
-    if (!getElementTypeOrSelf(ret.getType()).isa<TF::ResourceType>()) continue;
-    auto arg = ret.dyn_cast<BlockArgument>();
+    if (!isa<TF::ResourceType>(getElementTypeOrSelf(ret.getType()))) continue;
+    auto arg = dyn_cast<BlockArgument>(ret);
     if (!arg) continue;
     info.ret_forward_input.emplace_back(i, arg.getArgNumber());
   }
@@ -842,7 +842,7 @@ LogicalResult HandleRegionControlFlowOps(
     llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
         decomposed_partitioned_call_callees) {
   for (OpOperand& operand : op.getOpOperands()) {
-    if (getElementTypeOrSelf(operand.get().getType()).isa<TF::ResourceType>()) {
+    if (isa<TF::ResourceType>(getElementTypeOrSelf(operand.get().getType()))) {
       return op.emitOpError()
              << "found unexpected type " << operand.get().getType()
              << " of operand #" << operand.getOperandNumber()
@@ -851,7 +851,7 @@ LogicalResult HandleRegionControlFlowOps(
     }
   }
   for (OpResult result : op.getResults()) {
-    if (getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>()) {
+    if (isa<TF::ResourceType>(getElementTypeOrSelf(result.getType()))) {
       return op.emitOpError()
              << "found unexpected type " << result.getType() << " of result #"
              << result.getResultNumber()

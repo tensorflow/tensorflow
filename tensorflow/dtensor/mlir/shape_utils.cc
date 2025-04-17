@@ -73,7 +73,7 @@ StatusOr<llvm::ArrayRef<int64_t>> ExtractGlobalInputShape(
         return errors::Internal("global_shape does not have static rank");
       return *global_shape;
     }
-    return ExtractGlobalOutputShape(input_value.get().cast<mlir::OpResult>());
+    return ExtractGlobalOutputShape(cast<mlir::OpResult>(input_value.get()));
   }
 
   // If we reach this point, we're working with a function argument.
@@ -85,7 +85,7 @@ StatusOr<llvm::ArrayRef<int64_t>> ExtractGlobalInputShape(
                       operand_index, op->getName())
             .str());
 
-  auto block_arg = input_value.get().dyn_cast<mlir::BlockArgument>();
+  auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(input_value.get());
   auto global_shape_attr =
       enclosing_function.getArgAttrOfType<mlir::TF::ShapeAttr>(
           block_arg.getArgNumber(), kGlobalShapeDialectAttr);
@@ -303,7 +303,7 @@ StatusOr<llvm::ArrayRef<int64_t>> GetShapeOfValue(const mlir::Value& value,
 
 StatusOr<llvm::ArrayRef<int64_t>> GetGlobalShapeOfValueFromDTensorLayout(
     const mlir::Value& value) {
-  if (value.isa<mlir::OpResult>() &&
+  if (mlir::isa<mlir::OpResult>(value) &&
       mlir::isa<mlir::TF::DTensorLayout>(value.getDefiningOp())) {
     auto layout_op = mlir::cast<mlir::TF::DTensorLayout>(value.getDefiningOp());
     if (layout_op.getGlobalShape()) return layout_op.getGlobalShape().value();

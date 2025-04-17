@@ -221,7 +221,7 @@ class QuantizeSameScaleOpsPattern
       inputs.reserve(quantizing_op->getNumOperands());
       for (const auto& operand : quantizing_op->getOperands()) {
         Type operand_type = operand.getType();
-        if (operand_type.isa<NoneType>()) {
+        if (isa<NoneType>(operand_type)) {
           inputs.push_back(operand);
           continue;
         }
@@ -253,7 +253,7 @@ class QuantizeSameScaleOpsPattern
            llvm::enumerate(quantizing_op->getResults())) {
         Value result = enumerated_result.value();
         Type result_type = result.getType();
-        if (result_type.isa<NoneType>()) {
+        if (isa<NoneType>(result_type)) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result_type);
           continue;
@@ -389,20 +389,20 @@ class QuantizeSameScaleOpsPattern
     bool has_quantized_types = false;
     for (Value input : call_op.getArgs()) {
       if (auto type = input.getType().dyn_cast<TensorType>()) {
-        if (type.getElementType().isa<FloatType>()) {
+        if (isa<FloatType>(type.getElementType())) {
           return false;
         }
-        if (type.getElementType().isa<QuantizedType>()) {
+        if (isa<QuantizedType>(type.getElementType())) {
           has_quantized_types = true;
         }
       }
     }
     for (Value output : call_op.getOutput()) {
       if (auto type = output.getType().dyn_cast<TensorType>()) {
-        if (type.getElementType().isa<FloatType>()) {
+        if (isa<FloatType>(type.getElementType())) {
           return false;
         }
-        if (type.getElementType().isa<QuantizedType>()) {
+        if (isa<QuantizedType>(type.getElementType())) {
           has_quantized_types = true;
         }
       }

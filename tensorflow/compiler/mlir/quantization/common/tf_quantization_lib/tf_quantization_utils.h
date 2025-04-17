@@ -504,7 +504,7 @@ class QuantizationPattern : public RewritePattern {
       inputs.reserve(quantizing_op->getNumOperands());
       for (auto operand : quantizing_op->getOperands()) {
         Type operand_type = operand.getType();
-        if (operand_type.isa<NoneType>()) {
+        if (isa<NoneType>(operand_type)) {
           inputs.push_back(operand);
           continue;
         }
@@ -569,7 +569,7 @@ class QuantizationPattern : public RewritePattern {
           Type result_type = result.getType();
           // Add this to the test coverage once we create test ops with none
           // type results.
-          if (result_type.isa<NoneType>()) {
+          if (isa<NoneType>(result_type)) {
             outputs_replaced.insert({result, enumerated_result.index()});
             output_types.push_back(result_type);
             continue;
@@ -649,11 +649,9 @@ class QuantizationPattern : public RewritePattern {
         }
 
         for (int i = 0, e = quantized_op->getNumResults(); i < e; ++i) {
-          if (!quantizing_op->getResult(i)
-                   .getType()
-                   .cast<ShapedType>()
-                   .getElementType()
-                   .isa<FloatType>()) {
+          if (!isa<FloatType>(
+                  cast<ShapedType>(quantizing_op->getResult(i).getType())
+                      .getElementType())) {
             continue;
           }
           CreateVerifier<VerifierT>(quantizing_op, quantized_op, rewriter, i,

@@ -57,7 +57,8 @@ mlir::Value GetForwardedInput(mlir::Value value) {
   bool value_updated;
   do {
     value_updated = false;
-    if (mlir::BlockArgument argument = value.dyn_cast<mlir::BlockArgument>()) {
+    if (mlir::BlockArgument argument =
+            mlir::dyn_cast<mlir::BlockArgument>(value)) {
       mlir::Region* region = argument.getParentRegion();
       if (region == nullptr) break;
       mlir::Operation* parent_op = region->getParentOp();
@@ -176,7 +177,7 @@ mlir::Value IntConstWithMatchingType(mlir::OpBuilder& builder,
 
 StatusOr<int64_t> ExtractConstIntFromValue(mlir::Value value) {
   value = GetForwardedInput(value);
-  if (value.isa<mlir::BlockArgument>())
+  if (mlir::isa<mlir::BlockArgument>(value))
     return errors::Internal("unable get constant value from block argument");
   mlir::DenseIntElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
@@ -195,7 +196,7 @@ StatusOr<int64_t> ExtractConstIntFromValue(mlir::Value value) {
 absl::Status ExtractConstVectorFromValue(
     mlir::Value value, llvm::SmallVector<int64_t, 4>* out_vector) {
   value = GetForwardedInput(value);
-  if (value.isa<mlir::BlockArgument>())
+  if (mlir::isa<mlir::BlockArgument>(value))
     return errors::Internal("unable get constant value from block argument");
   mlir::DenseIntElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
@@ -289,8 +290,8 @@ StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,
 mlir::Type GetSubtypeOrSelf(mlir::Value val) {
   mlir::Type type = val.getType();
   if (auto type_with_subtype =
-          mlir::getElementTypeOrSelf(val)
-              .dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>()) {
+          mlir::dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>(
+              mlir::getElementTypeOrSelf(val))) {
     if (type_with_subtype.GetSubtypes().size() == 1) {
       type = type_with_subtype.GetSubtypes().front();
     }
@@ -299,10 +300,8 @@ mlir::Type GetSubtypeOrSelf(mlir::Value val) {
 }
 
 bool IsResourceType(mlir::Value val) {
-  return val.getType()
-      .cast<mlir::TensorType>()
-      .getElementType()
-      .isa<mlir::TF::ResourceType>();
+  return mlir::isa<mlir::TF::ResourceType>(
+      mlir::cast<mlir::TensorType>(val.getType()).getElementType());
 }
 
 }  // namespace dtensor

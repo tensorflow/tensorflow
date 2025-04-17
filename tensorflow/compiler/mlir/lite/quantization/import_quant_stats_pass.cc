@@ -106,8 +106,8 @@ class ImportQuantStatsPass
     if (index < 0 || index >= static_cast<int>(op->getNumResults()))
       return false;
     Value res = op->getResult(index);
-    return res.getType().isa<ShapedType>() &&
-           res.getType().cast<ShapedType>().getElementType().isa<FloatType>();
+    return isa<ShapedType>(res.getType()) &&
+           isa<FloatType>(cast<ShapedType>(res.getType()).getElementType());
   }
 
   // A method to retrieve the name for the given op.
