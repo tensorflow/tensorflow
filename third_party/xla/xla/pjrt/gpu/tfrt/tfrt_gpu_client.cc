@@ -2508,7 +2508,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     const RunId& run_id, const ExecuteOptions& options,
     tsl::AsyncValueRef<GpuEvent> last_collective_launch_event, bool fill_future,
     TfrtGpuDevice* device) {
-  tsl::profiler::TraceMe traceme("TfrtGpuExecutable::ExecuteHelper");
+  tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::ExecuteHelper",
+                                          tsl::profiler::ContextType::kPjRt,
+                                          run_id.ToInt());
+
   if (VLOG_IS_ON(2)) {
     LOG(INFO) << "ExecuteHelper " << name() << ": " << options.launch_id
               << "; replica: " << replica << "; partition: " << partition
@@ -2704,8 +2707,12 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   // launch is delayed.
   VLOG(1) << "Going to get compute reservation for " << name() << ": "
           << options.launch_id << "; replica: " << replica;
-  auto compute_reservation = std::make_unique<Semaphore::ScopedReservation>(
-      device->max_inflight_computations_semaphore().ScopedAcquire(1));
+  std::unique_ptr<Semaphore::ScopedReservation> compute_reservation;
+  {
+    tsl::profiler::TraceMe t("waiting for compute reservation");
+    compute_reservation = std::make_unique<Semaphore::ScopedReservation>(
+        device->max_inflight_computations_semaphore().ScopedAcquire(1));
+  }
   VLOG(1) << "Got compute reservation for " << name() << ": "
           << options.launch_id << "; replica: " << replica;
   auto ffi_context =
@@ -2735,7 +2742,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        client = client_](std::vector<ExecutionInput> execution_inputs) mutable {
         VLOG(1) << "execute_fn for " << executable_name << ": " << launch_id
                 << "; replica: " << replica;
-        tsl::profiler::TraceMe traceme("execute_fn");
+        tsl::profiler::TraceMeConsumer activity(
+            "execute_fn", tsl::profiler::ContextType::kPjRt, run_id.ToInt());
         auto set_error = [&](absl::Status status) {
           for (auto& output_buffer : output_buffers) {
             output_buffer.SetError(status);
@@ -2835,8 +2843,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       };
 
   auto prepare_inputs =
-      [blocking_thread_pool = client_->blocking_thread_pool(), device,
-       tracked_buffers(std::move(tracked_buffers)),
+      [blocking_thread_pool = client_->blocking_thread_pool(), run_id(run_id),
+       device, tracked_buffers(std::move(tracked_buffers)),
        buffer_is_donated(std::move(buffer_is_donated)),
        prepare_inputs_avs(CopyAsyncValues(prepare_input_deps)),
        execute_event(execute_event.CopyRef()),
@@ -2847,7 +2855,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        arguments_are_tupled(options.arguments_are_tupled),
        input_buffer_sizes_in_bytes(
            input_buffer_sizes_in_bytes_[executable_idx])]() mutable {
-        tsl::profiler::TraceMe traceme("prepare_inputs");
+        tsl::profiler::TraceMeConsumer activity(
+            "prepare_inputs", tsl::profiler::ContextType::kPjRt,
+            run_id.ToInt());
 
         VLOG(2) << "prepare_inputs";
         DCHECK_EQ(tracked_buffers.size(), buffer_is_donated.size());
