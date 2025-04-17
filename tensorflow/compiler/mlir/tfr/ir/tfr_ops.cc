@@ -114,8 +114,8 @@ class TFRInlinerInterface : public DialectInlinerInterface {
     if (!isa<IntegerType>(input.getType()) || !isa<IntegerType>(result_type)) {
       return nullptr;
     }
-    auto input_itype = input.getType().cast<IntegerType>();
-    auto result_itype = result_type.cast<IntegerType>();
+    auto input_itype = llvm::cast<IntegerType>(input.getType());
+    auto result_itype = llvm::cast<IntegerType>(result_type);
     if (input_itype.getWidth() == result_itype.getWidth()) return nullptr;
     if (input_itype.getWidth() > result_itype.getWidth()) {
       return builder.create<arith::TruncIOp>(conversion_loc, result_type,
@@ -149,10 +149,10 @@ Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
                                            Type type, Location loc) {
   if (arith::ConstantOp::isBuildableWith(value, type))
     return builder.create<arith::ConstantOp>(loc, type,
-                                             value.cast<TypedAttr>());
+                                             llvm::cast<TypedAttr>(value));
   if (func::ConstantOp::isBuildableWith(value, type))
-    return builder.create<func::ConstantOp>(loc, type,
-                                            value.cast<FlatSymbolRefAttr>());
+    return builder.create<func::ConstantOp>(
+        loc, type, llvm::cast<FlatSymbolRefAttr>(value));
   return nullptr;
 }
 
@@ -179,11 +179,11 @@ LogicalResult ConstantTensorOp::verify() {
   auto input_type = op.getArg().getType();
   auto output_type = op.getOut().getType();
 
-  if (auto output_tensor_type = output_type.dyn_cast<TFRTensorType>()) {
+  if (auto output_tensor_type = llvm::dyn_cast<TFRTensorType>(output_type)) {
     return success();
   }
 
-  auto output_tensor_type = output_type.dyn_cast<RankedTensorType>();
+  auto output_tensor_type = llvm::dyn_cast<RankedTensorType>(output_type);
   if (!output_tensor_type || !output_tensor_type.hasStaticShape()) {
     op.emitError("output type should be static and ranked.");
     return failure();
@@ -197,7 +197,7 @@ LogicalResult ConstantTensorOp::verify() {
     return success(same_scalar);
   }
 
-  if (auto input_vector_type = input_type.dyn_cast<VectorType>()) {
+  if (auto input_vector_type = llvm::dyn_cast<VectorType>(input_type)) {
     bool same_element_type = output_tensor_type.getElementType() ==
                              input_vector_type.getElementType();
     bool same_shape =
@@ -229,7 +229,7 @@ LogicalResult TFRFuncOp::verify() {
   for (auto arg : llvm::enumerate(func.getFunctionType().getInputs())) {
     Type arg_type = arg.value();
 
-    if (auto tensor = arg_type.dyn_cast<TFRTensorType>()) {
+    if (auto tensor = llvm::dyn_cast<TFRTensorType>(arg_type)) {
       if (first_tensor == -1) {
         first_tensor = arg.index();
       }
@@ -239,7 +239,7 @@ LogicalResult TFRFuncOp::verify() {
       continue;
     }
 
-    if (auto tensor_list = arg_type.dyn_cast<TFRTensorListType>()) {
+    if (auto tensor_list = llvm::dyn_cast<TFRTensorListType>(arg_type)) {
       if (first_tensor_list == -1) {
         first_tensor_list = arg.index();
       }
@@ -306,7 +306,7 @@ LogicalResult TFRFuncOp::verify() {
   bool seen_tensor_list = false, has_tensor_list_order_error = false,
        has_multiple_tensor_lists_error = false;
   for (auto result_type : func.getFunctionType().getResults()) {
-    if (auto tensor = result_type.dyn_cast<TFRTensorType>()) {
+    if (auto tensor = llvm::dyn_cast<TFRTensorType>(result_type)) {
       if (seen_tensor_list) {
         has_tensor_list_order_error = true;
       } else {
@@ -316,7 +316,7 @@ LogicalResult TFRFuncOp::verify() {
       continue;
     }
 
-    if (auto tensor_list = result_type.dyn_cast<TFRTensorListType>()) {
+    if (auto tensor_list = llvm::dyn_cast<TFRTensorListType>(result_type)) {
       if (seen_tensor_list) {
         has_multiple_tensor_lists_error = true;
       } else {
@@ -412,7 +412,7 @@ class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
     if (matchPattern(cst_tensor_op.getArg(), m_Constant(&array))) {
       llvm::DenseSet<Type> all_types;
       for (auto it : array) {
-        TypedAttr typed_attr = it.dyn_cast<TypedAttr>();
+        TypedAttr typed_attr = llvm::dyn_cast<TypedAttr>(it);
         if (!typed_attr) return failure();
         all_types.insert(typed_attr.getType());
       }
@@ -444,7 +444,7 @@ class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
 };
 
 inline bool isQuantizedType(Type type) {
-  auto tensor_type = type.dyn_cast<TensorType>();
+  auto tensor_type = llvm::dyn_cast<TensorType>(type);
   return (tensor_type &&
           isa<quant::QuantizedType>(tensor_type.getElementType()));
 }
@@ -470,8 +470,8 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
       return failure();
     }
 
-    auto input_tensor_type = input_type.dyn_cast<TensorType>();
-    auto output_tensor_type = output_type.dyn_cast<TensorType>();
+    auto input_tensor_type = llvm::dyn_cast<TensorType>(input_type);
+    auto output_tensor_type = llvm::dyn_cast<TensorType>(output_type);
     if (!input_tensor_type || !output_tensor_type) {
       return failure();
     }
@@ -501,7 +501,7 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
     // with tf.EnsureShape op so it can be removed after shape inference or
     // confirmed at runtime.
     if (isa<UnrankedTensorType>(input_type)) {
-      auto shape = output_type.cast<ShapedType>().getShape();
+      auto shape = llvm::cast<ShapedType>(output_type).getShape();
       auto shape_attr = TF::ShapeAttr::get(rewriter.getContext(), shape);
       rewriter.replaceOpWithNewOp<TF::EnsureShapeOp>(cast_op, output_type,
                                                      input, shape_attr);
@@ -598,10 +598,8 @@ quant::QuantizedType getQuantizedElementType(CastOp cast_op) {
   if (!cast_op || !cast_op.getInputElementType()) {
     return {};
   }
-  return cast_op.getInputElementType()
-      .cast<TypeAttr>()
-      .getValue()
-      .dyn_cast<quant::QuantizedType>();
+  return llvm::dyn_cast<quant::QuantizedType>(
+      llvm::cast<TypeAttr>(cast_op.getInputElementType()).getValue());
 }
 
 class RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
@@ -680,15 +678,15 @@ class RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
     // them to constants.
     rewriter.setInsertionPoint(qparams_op);
     Location loc = qparams_op->getLoc();
-    if (auto qtype = cast_qtype.dyn_cast<quant::UniformQuantizedType>()) {
+    if (auto qtype = llvm::dyn_cast<quant::UniformQuantizedType>(cast_qtype)) {
       scale_op = rewriter.create<TF::ConstOp>(
           loc, RankedTensorType::get({}, rewriter.getF32Type()),
           rewriter.getF32FloatAttr(qtype.getScale()));
       zp_op = rewriter.create<TF::ConstOp>(
           loc, RankedTensorType::get({}, rewriter.getI32Type()),
           rewriter.getI32IntegerAttr(qtype.getZeroPoint()));
-    } else if (auto qtype =
-                   cast_qtype.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+    } else if (auto qtype = llvm::dyn_cast<quant::UniformQuantizedPerAxisType>(
+                   cast_qtype)) {
       SmallVector<float> scales(qtype.getScales().begin(),
                                 qtype.getScales().end());
       SmallVector<int32_t> zps(qtype.getZeroPoints().begin(),
@@ -744,7 +742,7 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
       return failure();
     }
     const double out_scale =
-        out_scale_op.getValue().cast<FloatAttr>().getValueAsDouble();
+        llvm::cast<FloatAttr>(out_scale_op.getValue()).getValueAsDouble();
 
     auto in_scales_op =
         scale_factor_op.getInScales().getDefiningOp<BuildListOp>();
@@ -777,7 +775,8 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
 
     // The shape of scale_type is {} (rank 0) for per-tensor quantized tensor,
     // and {num_channels} (rank 1) for per-channel quantized one.
-    auto scale_type = filter_scale_attr.getType().dyn_cast<RankedTensorType>();
+    auto scale_type =
+        llvm::dyn_cast<RankedTensorType>(filter_scale_attr.getType());
     if (scale_type.getRank() != 0 && scale_type.getRank() != 1) {
       return failure();
     }
@@ -998,10 +997,10 @@ void TFRDialect::printType(Type type, DialectAsmPrinter &os) const {
     os << "attr";
     return;
   }
-  if (auto tensor_ty = type.dyn_cast<TFRTensorType>()) {
+  if (auto tensor_ty = llvm::dyn_cast<TFRTensorType>(type)) {
     attrs = tensor_ty.getAttrKeys();
     os << "tensor";
-  } else if (auto tensor_list_ty = type.dyn_cast<TFRTensorListType>()) {
+  } else if (auto tensor_list_ty = llvm::dyn_cast<TFRTensorListType>(type)) {
     attrs = tensor_list_ty.getAttrKeys();
     os << "tensor_list";
   } else {

@@ -200,7 +200,7 @@ bool QuantizableOpSupportsFloatOutputType(Operation* op);
 
 // Specialized version of location to string for flatbuffer exported locations.
 inline std::string GetTensorNameFromLoc(Location loc) {
-  if (auto name_loc = loc.dyn_cast<NameLoc>()) {
+  if (auto name_loc = llvm::dyn_cast<NameLoc>(loc)) {
     return name_loc.getName().str();
   }
   return "";
@@ -255,7 +255,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
         quant_type = DownCastScale(quant_type, mins, maxs, op->getLoc());
       }
     } else if (auto stats =
-                   op.getLayerStats().dyn_cast<DenseFPElementsAttr>()) {
+                   llvm::dyn_cast<DenseFPElementsAttr>(op.getLayerStats())) {
       // Per tensor quantization
       auto statValues = stats.getValues<APFloat>();
       double rmin = FloatAttr::getValueAsDouble(statValues[0]);
@@ -481,7 +481,7 @@ class QuantizationPattern : public RewritePattern {
       }
 
       if (!nodes_blocklist.empty()) {
-        if (auto name_loc = quantizing_op->getLoc().dyn_cast<NameLoc>()) {
+        if (auto name_loc = llvm::dyn_cast<NameLoc>(quantizing_op->getLoc())) {
           std::string sloc = name_loc.getName().str();
           if (!sloc.empty() &&
               (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
@@ -503,7 +503,7 @@ class QuantizationPattern : public RewritePattern {
       inputs.reserve(quantizing_op->getNumOperands());
       for (auto operand : quantizing_op->getOperands()) {
         Type operand_type = operand.getType();
-        if (operand_type.isa<NoneType>()) {
+        if (llvm::isa<NoneType>(operand_type)) {
           inputs.push_back(operand);
           continue;
         }
@@ -568,7 +568,7 @@ class QuantizationPattern : public RewritePattern {
           Type result_type = result.getType();
           // Add this to the test coverage once we create test ops with none
           // type results.
-          if (result_type.isa<NoneType>()) {
+          if (llvm::isa<NoneType>(result_type)) {
             outputs_replaced.insert({result, enumerated_result.index()});
             output_types.push_back(result_type);
             continue;
@@ -648,11 +648,9 @@ class QuantizationPattern : public RewritePattern {
         }
 
         for (int i = 0, e = quantized_op->getNumResults(); i < e; ++i) {
-          if (!quantizing_op->getResult(i)
-                   .getType()
-                   .cast<ShapedType>()
-                   .getElementType()
-                   .isa<FloatType>()) {
+          if (!llvm::isa<FloatType>(
+                  llvm::cast<ShapedType>(quantizing_op->getResult(i).getType())
+                      .getElementType())) {
             continue;
           }
           CreateVerifier<VerifierT>(quantizing_op, quantized_op, rewriter, i,

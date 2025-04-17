@@ -1639,6 +1639,7 @@ cc_library(
     deps = [
         "tensorflow_side_effects",
         "tensorflow_types",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",

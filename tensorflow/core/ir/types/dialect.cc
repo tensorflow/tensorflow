@@ -164,15 +164,15 @@ Type TFTypeDialect::parseType(DialectAsmParser& parser) const {
 // Entry point for Type parsing, TableGen generated code will handle the
 // dispatch to the individual classes.
 void TFTypeDialect::printType(Type type, DialectAsmPrinter& printer) const {
-#define HANDLE_TF_TYPE(tftype, enumerant, name)          \
-  if (auto derived_ty = type.dyn_cast<tftype##Type>()) { \
-    printer << name;                                     \
-    return;                                              \
+#define HANDLE_TF_TYPE(tftype, enumerant, name)               \
+  if (auto derived_ty = mlir::dyn_cast<tftype##Type>(type)) { \
+    printer << name;                                          \
+    return;                                                   \
   }
-#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)   \
-  if (auto derived_ty = type.dyn_cast<tftype##Type>()) { \
-    Print##tftype##Type(derived_ty, printer);            \
-    return;                                              \
+#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)        \
+  if (auto derived_ty = mlir::dyn_cast<tftype##Type>(type)) { \
+    Print##tftype##Type(derived_ty, printer);                 \
+    return;                                                   \
   }
 // NOLINTNEXTLINE: intended redundant include.
 #include "tensorflow/core/ir/types/types.def"
@@ -584,8 +584,8 @@ TensorFlowType TensorFlowRefType::get(Type type) {
         llvm_unreachable("unexpected integer type");
     }
   }
-#define HANDLE_TF_TYPE(tftype, enumerant, name)        \
-  if (auto derived_ty = type.dyn_cast<tftype##Type>()) \
+#define HANDLE_TF_TYPE(tftype, enumerant, name)             \
+  if (auto derived_ty = mlir::dyn_cast<tftype##Type>(type)) \
     return tftype##RefType::get(ctx);
 
 #define HANDLE_TF_REF_TYPE(tftype, enumerant, name)

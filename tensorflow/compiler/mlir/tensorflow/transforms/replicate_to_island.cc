@@ -94,7 +94,7 @@ LogicalResult GetDeviceOrdinal(const std::optional<DictionaryAttr>& devices,
            << " to be present in 'tf.device.replicate' op";
   }
   llvm::StringRef tpu_device =
-      llvm::cast<StringAttr>(tpu_replica.cast<ArrayAttr>()[replica_id])
+      llvm::cast<StringAttr>(llvm::cast<ArrayAttr>(tpu_replica)[replica_id])
           .getValue();
   return tensorflow::GetDeviceOrdinalFromDeviceString(op->getLoc(), tpu_device,
                                                       &device_ordinal);
@@ -138,8 +138,8 @@ LogicalResult UpdateRegionReplicateVariantOps(
     if (auto launch = dyn_cast<tf_device::LaunchOp>(op))
       if (auto device_by_replica = devices.value().get(launch.getDevice()))
         launch->setAttr(kDeviceAttr,
-                        llvm::cast<StringAttr>(
-                            device_by_replica.cast<ArrayAttr>()[replica_id]));
+                        llvm::cast<StringAttr>(llvm::cast<ArrayAttr>(
+                            device_by_replica)[replica_id]));
 
     return WalkResult::advance();
   });

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -41,11 +42,8 @@ void MarkResourceAsReadAndWrite(
     OpOperand& op_operand,
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
         effects) {
-  if (op_operand.get()
-          .getType()
-          .cast<TensorType>()
-          .getElementType()
-          .isa<ResourceType>()) {
+  if (llvm::isa<ResourceType>(llvm::cast<TensorType>(op_operand.get().getType())
+                                  .getElementType())) {
     effects.emplace_back(MemoryEffects::Read::get(), &op_operand,
                          ResourceEffects::Variable::get());
     effects.emplace_back(MemoryEffects::Write::get(), &op_operand,
@@ -57,11 +55,8 @@ void MarkResourceAsReadOnly(
     OpOperand& op_operand,
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
         effects) {
-  if (op_operand.get()
-          .getType()
-          .cast<TensorType>()
-          .getElementType()
-          .isa<ResourceType>()) {
+  if (llvm::isa<ResourceType>(llvm::cast<TensorType>(op_operand.get().getType())
+                                  .getElementType())) {
     effects.emplace_back(MemoryEffects::Read::get(), &op_operand,
                          ResourceEffects::Variable::get());
   }

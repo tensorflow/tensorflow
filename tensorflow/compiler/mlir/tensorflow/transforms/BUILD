@@ -103,6 +103,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:framework",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )

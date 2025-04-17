@@ -127,7 +127,7 @@ StatusOr<llvm::ArrayRef<int64_t>> ExtractGlobalOutputShape(
             .str());
 
   auto shape_attr = global_shape_attr[output_index];
-  return shape_attr.cast<mlir::TF::ShapeAttr>().getShape();
+  return llvm::cast<mlir::tf_type::ShapeAttr>(shape_attr).getShape();
 }
 
 namespace {
@@ -167,7 +167,7 @@ mlir::LogicalResult InferShapeOfTFOpWithCustomOperandConstantFn(
     for (const auto& inferred_return_type :
          llvm::enumerate(inferred_return_types)) {
       if (auto shaped_type =
-              inferred_return_type.value().dyn_cast<mlir::ShapedType>()) {
+              llvm::dyn_cast<mlir::ShapedType>(inferred_return_type.value())) {
         if (shaped_type.hasRank()) {
           inferred_return_shapes[inferred_return_type.index()] =
               mlir::ShapedTypeComponents(shaped_type.getShape(),
@@ -207,14 +207,14 @@ mlir::LogicalResult InferShapeOfTFOpWithCustomOperandConstantFn(
   auto op_result_as_shape_fn =
       [](shape_inference::InferenceContext& ic,
          mlir::OpResult op_result) -> shape_inference::ShapeHandle {
-    auto rt = op_result.getType().dyn_cast<mlir::RankedTensorType>();
+    auto rt = llvm::dyn_cast<mlir::RankedTensorType>(op_result.getType());
     if (!rt || rt.getRank() != 1 || !rt.hasStaticShape()) return {};
 
     std::vector<shape_inference::DimensionHandle> dims(rt.getDimSize(0),
                                                        ic.UnknownDim());
     mlir::Attribute attr;
     if (matchPattern(op_result, m_Constant(&attr))) {
-      auto elements = attr.dyn_cast<mlir::DenseIntElementsAttr>();
+      auto elements = llvm::dyn_cast<mlir::DenseIntElementsAttr>(attr);
       if (elements)
         for (const auto& element :
              llvm::enumerate(elements.getValues<llvm::APInt>()))
@@ -241,10 +241,8 @@ absl::Status InferSPMDExpandedLocalShapeForResourceOutput(
                         GetGlobalShapeOfValueFromDTensorLayout(*op_result));
     const std::vector<int64_t>& local_shape =
         output_layout.LocalShapeFromGlobalShape(global_shape);
-    auto resource_type = op_result->getType()
-                             .cast<mlir::TensorType>()
-                             .getElementType()
-                             .dyn_cast<mlir::TF::ResourceType>();
+    auto resource_type = llvm::dyn_cast<mlir::tf_type::ResourceType>(
+        op_result->getType().cast<mlir::TensorType>().getElementType());
 
     auto sub_types = resource_type.getSubtypes();
     auto resource_arg_sub_type = sub_types.front();
@@ -274,7 +272,7 @@ mlir::Operation* InferSPMDExpandedLocalShape(mlir::Operation* op) {
     const auto& return_type = std::get<0>(it);
     auto& op_result = std::get<1>(it);
     const auto element_type =
-        op_result.getType().cast<mlir::TensorType>().getElementType();
+        llvm::cast<mlir::TensorType>(op_result.getType()).getElementType();
 
     if (return_type.hasRank()) {
       op_result.setType(
@@ -292,7 +290,7 @@ StatusOr<llvm::ArrayRef<int64_t>> GetShapeOfValue(const mlir::Value& value,
   // Getting the subtype or self allows supporting extracting the underlying
   // shape that variant or resource tensors point to.
   mlir::Type type = GetSubtypeOrSelf(value);
-  if (auto ranked_type = type.dyn_cast<mlir::RankedTensorType>()) {
+  if (auto ranked_type = llvm::dyn_cast<mlir::RankedTensorType>(type)) {
     if (ranked_type.hasStaticShape() || !fail_on_dynamic)
       return ranked_type.getShape();
     else

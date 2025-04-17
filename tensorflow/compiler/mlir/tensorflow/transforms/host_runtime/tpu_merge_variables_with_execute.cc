@@ -148,8 +148,8 @@ bool AddAccessedResourceIds(
 bool IsResourceMergeable(Attribute& resource_attr, Attribute& device_attr) {
   return resource_attr &&
          ((resource_attr == device_attr) ||
-          (resource_attr.cast<mlir::StringAttr>().getValue().find(
-               "COMPOSITE") != llvm::StringRef::npos));
+          (llvm::cast<StringAttr>(resource_attr).getValue().find("COMPOSITE") !=
+           llvm::StringRef::npos));
 }
 
 // Finds the variable access info for a TPUExecute op.

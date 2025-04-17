@@ -93,7 +93,7 @@ NamedAttrList GetAllAttributesFromOperation(Operation* op) {
 // TODO(tlongeri): Should num_elements overflow be handled by the MLIR
 // verifier? Are there other cases?
 std::optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
-  if (auto ranked_type = t.dyn_cast<RankedTensorType>()) {
+  if (auto ranked_type = llvm::dyn_cast<RankedTensorType>(t)) {
     tensorflow::PartialTensorShape shape;
     const absl::Status status =
         tensorflow::PartialTensorShape::BuildPartialTensorShape(
@@ -116,7 +116,7 @@ std::optional<tensorflow::PartialTensorShape> GetShapeFromMlirAttr(Value v) {
 
       // "tf._output_shapes" in certain models may not store the shape as
       // ShapeAttr, ignore them because we don't know how to interpret it.
-      auto shape_attr = attrs[0].dyn_cast<tf_type::ShapeAttr>();
+      auto shape_attr = llvm::dyn_cast<tf_type::ShapeAttr>(attrs[0]);
       if (shape_attr && shape_attr.hasRank())
         return tensorflow::PartialTensorShape(shape_attr.getShape());
     }
@@ -131,7 +131,7 @@ std::unique_ptr<std::vector<
     std::pair<tensorflow::PartialTensorShape, tensorflow::DataType>>>
 GetSubtypesHelper(Type type) {
   auto type_with_subtypes =
-      type.cast<TensorType>().getElementType().dyn_cast<T>();
+      llvm::dyn_cast<T>(llvm::cast<TensorType>(type).getElementType());
   if (!type_with_subtypes || type_with_subtypes.getSubtypes().empty()) {
     return nullptr;
   }
@@ -317,8 +317,8 @@ LogicalResult InferReturnTypeComponentsForTFOp(
       if (input_tensors[input]) continue;
 
       if (c.requested_input_tensor(input)) {
-        if (auto attr = operand_as_constant_fn(op->getOperand(input))
-                            .dyn_cast_or_null<ElementsAttr>()) {
+        if (auto attr = llvm::dyn_cast_if_present<ElementsAttr>(
+                operand_as_constant_fn(op->getOperand(input)))) {
           VLOG(4) << "Requesting " << input << " as constant\n";
           tensorflow::Tensor* input_tensor = &tensors.at(input);
           auto status = ConvertToTensor(attr, input_tensor);

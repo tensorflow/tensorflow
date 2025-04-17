@@ -88,7 +88,8 @@ LogicalResult GetSplitElementTypeAndCount(TF::TensorArraySplitV3Op split,
   if (!lengths_const) return split.emitOpError("non-constant split lengths");
   *count = lengths_const.getValue().getNumElements();
   if (*count <= 0) return split.emitOpError("non-positive split count");
-  auto buffer_type = split.getValue().getType().dyn_cast<RankedTensorType>();
+  auto buffer_type =
+      llvm::dyn_cast<RankedTensorType>(split.getValue().getType());
   if (!buffer_type || !buffer_type.hasStaticShape() ||
       buffer_type.getRank() < 1) {
     return split.emitOpError("unknown or invalid split tensor shape");
@@ -110,7 +111,7 @@ LogicalResult GetSplitElementTypeAndCount(TF::TensorArraySplitV3Op split,
 // Tries to infer the tensor array element shape.
 std::optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
     TF::TensorArrayV3Op ta, ModuleOp module) {
-  auto element_shape = ta.getElementShapeAttr().cast<mlir::TF::ShapeAttr>();
+  auto element_shape = llvm::cast<tf_type::ShapeAttr>(ta.getElementShapeAttr());
   if (element_shape.hasStaticShape()) {
     auto shape = element_shape.getShape();
     // Convert int64 to int64_t.
@@ -142,20 +143,22 @@ std::optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
           // TensorArrayScatter writes vector of tensors to TensorArray. We can
           // deduce the shape of TensorArray by dropping the 0th dim of
           // TensorArrayScatter `value`.
-          auto t = scatter.getValue().getType().dyn_cast<RankedTensorType>();
+          auto t =
+              llvm::dyn_cast<RankedTensorType>(scatter.getValue().getType());
           if (!t || t.getShape().empty()) return std::nullopt;
           return RankedTensorType::get(t.getShape().drop_front(),
                                        t.getElementType());
         } else if (auto gather =
                        llvm::dyn_cast<TF::TensorArrayGatherV3Op>(user)) {
           // Try to infer from result type of gather.
-          auto t = gather.getValue().getType().dyn_cast<RankedTensorType>();
+          auto t =
+              llvm::dyn_cast<RankedTensorType>(gather.getValue().getType());
           if (t && !t.getShape().empty())
             return RankedTensorType::get(t.getShape().drop_front(),
                                          t.getElementType());
           // Try to infer from `element_shape` attribute of gather.
-          auto element_shape = gather.getElementShapeAttr()
-                                   .dyn_cast_or_null<mlir::TF::ShapeAttr>();
+          auto element_shape = llvm::dyn_cast_if_present<tf_type::ShapeAttr>(
+              gather.getElementShapeAttr());
           if (element_shape && element_shape.hasStaticShape()) {
             return RankedTensorType::get(element_shape.getShape(),
                                          gather.getDtype());
@@ -211,7 +214,7 @@ LogicalResult HandleTensorArrayV3Op(
   }
   auto var_type = RankedTensorType::get(
       {}, TF::ResourceType::get(
-              ArrayRef<TensorType>{buffer.getType().cast<TensorType>()},
+              ArrayRef<TensorType>{llvm::cast<TensorType>(buffer.getType())},
               ta.getContext()));
   auto local_var = builder.create<TF::MlirLocalVarOp>(
       ta.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{});
@@ -270,7 +273,7 @@ LogicalResult HandleTensorArrayWriteV3Op(
         cutil::GetElement(index_reshape, buffer, builder, write.getLoc(),
                           /*keep_slice_shape=*/true);
     // Add a size-1 leading dimension to elem.
-    auto slice_type = original_elem.getType().cast<RankedTensorType>();
+    auto slice_type = llvm::cast<RankedTensorType>(original_elem.getType());
     elem = builder.create<TF::ReshapeOp>(
         write.getLoc(), ArrayRef<Type>{slice_type},
         ArrayRef<Value>{elem, cutil::GetR1Const(slice_type.getShape(), builder,
@@ -295,7 +298,7 @@ LogicalResult HandleTensorArrayConcatV3Op(
   }
   OpBuilder builder(concat);
   auto buffer = cutil::ReadLocalVariable(local_var, builder, concat.getLoc());
-  auto buffer_type = buffer.getType().cast<RankedTensorType>();
+  auto buffer_type = llvm::cast<RankedTensorType>(buffer.getType());
   if (buffer_type.getShape().size() <= 1) {
     return concat.emitOpError("cannot concat on scalar-element tensor array");
   }
@@ -369,10 +372,9 @@ LogicalResult HandleTensorArraySizeV3Op(
   if (stats.count(local_var) == 0) {
     return size.emitOpError("unknown tensor array");
   }
-  auto buffer_type = getElementTypeOrSelf(local_var.getType())
-                         .cast<TF::ResourceType>()
-                         .getSubtypes()[0]
-                         .cast<RankedTensorType>();
+  auto buffer_type = llvm::cast<RankedTensorType>(
+      llvm::cast<TF::ResourceType>(getElementTypeOrSelf(local_var.getType()))
+          .getSubtypes()[0]);
   OpBuilder builder(size);
   auto result = cutil::CreateScalarConst(buffer_type.getDimSize(0), builder,
                                          size.getLoc());
@@ -387,10 +389,9 @@ LogicalResult CreateAndInitializeGradVariable(Type local_var_type,
   *var = builder.create<TF::MlirLocalVarOp>(
       op->getLoc(), ArrayRef<Type>{local_var_type}, ArrayRef<Value>{});
   Value buffer;
-  auto buffer_type = getElementTypeOrSelf(local_var_type)
-                         .cast<TF::ResourceType>()
-                         .getSubtypes()[0]
-                         .cast<RankedTensorType>();
+  auto buffer_type = llvm::cast<RankedTensorType>(
+      llvm::cast<TF::ResourceType>(getElementTypeOrSelf(local_var_type))
+          .getSubtypes()[0]);
   if (failed(cutil::CreateInitBufferValue(
           buffer_type.getShape().drop_front(), buffer_type.getDimSize(0), op,
           buffer_type.getElementType(), builder, &buffer))) {
