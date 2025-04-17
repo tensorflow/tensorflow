@@ -219,7 +219,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
   // Thunk creation helper functions.
   absl::StatusOr<std::unique_ptr<Thunk>> CreateAllGatherThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllGatherThunk::Create(
@@ -248,7 +249,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateAllReduceThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllReduceThunk::Create(
@@ -278,7 +280,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateAllToAllThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllToAllThunk::Create(
@@ -307,7 +310,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateReduceScatterThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return ReduceScatterThunk::Create(
@@ -341,12 +345,12 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     TF_ASSIGN_OR_RETURN(called_sequence.emplace_back(), CreateAllReduceThunk());
     TF_ASSIGN_OR_RETURN(called_sequence.emplace_back(), CreateAllToAllThunk());
     return CallThunk::Create(Thunk::Info(),
-                             /*called_sequence=*/
-                             std::move(called_sequence));
+                             /*called_sequence=*/std::move(called_sequence));
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateCollectivePermuteThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return CollectivePermuteThunk::Create(

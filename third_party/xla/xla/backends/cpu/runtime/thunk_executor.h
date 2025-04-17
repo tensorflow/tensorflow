@@ -96,6 +96,7 @@ class ThunkExecutor {
   // We use underlying execution graph nodes to index into the thunk sequence.
   using NodeId = ExecutionGraph::NodeId;
   using NodeDef = ExecutionGraph::NodeDef;
+  using NodeEdge = ExecutionGraph::NodeEdge;
 
   // A ready queue that executes nodes in FIFO order.
   class FifoReadyQueue {
@@ -185,7 +186,7 @@ class ThunkExecutor {
       explicit Node(const NodeDef& node_def);
 
       alignas(kAtomicAlignment) std::atomic<int64_t> counter;
-      absl::Span<const NodeId> out_edges;
+      absl::Span<const NodeEdge> out_edges;
     };
 
     static_assert(std::is_trivially_destructible_v<Node>,

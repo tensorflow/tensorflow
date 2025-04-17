@@ -509,12 +509,14 @@ void ThunkExecutor::ProcessOutEdges(
   bool is_sink = node.out_edges.empty();
 
   // Append ready nodes to the back of the ready queue.
-  for (NodeId out_edge : node.out_edges) {
-    ExecuteState::Node& out_node = state->node(out_edge);
+  for (NodeEdge out_edge : node.out_edges) {
+    ExecuteState::Node& out_node = state->node(out_edge.id);
 
     int64_t cnt = out_node.counter.fetch_sub(1, std::memory_order_release);
     DCHECK_GE(cnt, 1) << "Node counter can't drop below 0";
-    if (cnt == 1) ready_queue.Push(out_edge);
+    if (cnt == 1) {
+      ready_queue.Push(out_edge.id);
+    }
   }
 
   // Drop the pending sink nodes counter if the node is a sink.
@@ -524,7 +526,9 @@ void ThunkExecutor::ProcessOutEdges(
     // remaining memory writes are visible to the consumer of execute event.
     bool is_done =
         state->pending_sink_nodes.fetch_sub(1, std::memory_order_acq_rel) == 1;
-    if (ABSL_PREDICT_TRUE(!is_done)) return;
+    if (ABSL_PREDICT_TRUE(!is_done)) {
+      return;
+    }
 
     // In the unlikely event of an execution error during thunk execution,
     // forward it to the caller via the execute event.
@@ -550,8 +554,9 @@ std::string ThunkExecutor::ToString() const {
   // Collect names of `in_edges`.
   std::vector<std::vector<std::string>> in_edges(num_thunks_);
   for (const auto& node_def : execution_graph_.nodes_defs()) {
-    for (NodeId in_edge : node_def.in_edges) {
-      in_edges[node_def.id].push_back(thunk_sequence_[in_edge]->info().op_name);
+    for (NodeEdge in_edge : node_def.in_edges) {
+      in_edges[node_def.id].push_back(
+          thunk_sequence_[in_edge.id]->info().op_name);
     }
   }
 

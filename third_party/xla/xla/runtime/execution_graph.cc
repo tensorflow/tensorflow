@@ -34,6 +34,27 @@ limitations under the License.
 
 namespace xla {
 
+// Give aliases to the edge kinds to make code more readable.
+static constexpr auto kExecution = ExecutionGraph::NodeEdge::Kind::kExecution;
+static constexpr auto kScheduling = ExecutionGraph::NodeEdge::Kind::kScheduling;
+
+// A helper function to create a predicate that checks if a given node edge
+// points to a given node id.
+static auto EdgePredicate(ExecutionGraph::NodeId id) {
+  return [id](const ExecutionGraph::NodeEdge& edge) { return edge.id == id; };
+}
+
+// If any of the resource uses requires execution edge, we return kExecution
+// edge kind, otherwise we return kScheduling edge kind.
+static auto EdgeKind(absl::Span<const ResourceUse> resource_uses) {
+  auto requires_execution_edge = [](const ResourceUse& resource_use) {
+    auto kind = resource_use.resource()->kind();
+    return ExecutionGraph::NodeEdge::KindOf(kind) == kExecution;
+  };
+  return absl::c_any_of(resource_uses, requires_execution_edge) ? kExecution
+                                                                : kScheduling;
+}
+
 ExecutionGraph::ExecutionGraph(NodesEdges nodes_in_edges,
                                NodesEdges nodes_out_edges,
                                std::vector<NodeDef> nodes_defs)
@@ -57,7 +78,8 @@ ExecutionGraph::ExecutionGraph(NodesEdges nodes_in_edges,
   // Check if constructed execution DAG is sequential: every node depends on the
   // completion of the previous node.
   for (NodeId i = 1; i < nodes_defs_.size() && is_sequential_; ++i) {
-    is_sequential_ &= (absl::c_count(nodes_defs_[i].in_edges, i - 1) != 0);
+    is_sequential_ &=
+        (absl::c_count_if(nodes_defs_[i].in_edges, EdgePredicate(i - 1)) != 0);
   }
 
   VLOG(2) << absl::StreamFormat(
@@ -96,20 +118,30 @@ absl::StatusOr<ExecutionGraph> ExecutionGraph::Create(
     resource_rwsets[i].AddAll(op->ResourceUses());
 
     for (NodeId j = 0; j < i; ++j) {
-      // Check if node `i` must be executed after node `j`.
-      if (buffer_rwsets[j].HasConflicts(buffer_rwsets[i]) ||
-          resource_rwsets[j].HasConflicts(resource_rwsets[i])) {
-        builders[j].out_edges.push_back(i);
-        builders[i].in_edges.push_back(j);
+      if (buffer_rwsets[j].HasConflicts(buffer_rwsets[i])) {
+        // If we have buffer conflicts we must add an execution edge to
+        // guarantee that we don't have data races at run time.
+        builders[j].out_edges.push_back(NodeEdge{kExecution, i});
+        builders[i].in_edges.push_back(NodeEdge{kExecution, j});
+
+      } else if (resource_rwsets[j].HasConflicts(resource_rwsets[i])) {
+        // If we have resource conflicts, we must check resources that are
+        // accessed by both nodes to find out what kind of edge we need to add.
+        auto kind = EdgeKind(resource_rwsets[j].Conflicts(resource_rwsets[i]));
+        builders[j].out_edges.push_back(NodeEdge{kind, i});
+        builders[i].in_edges.push_back(NodeEdge{kind, j});
       }
     }
   }
 
-  // Verify that both in-edges and out-edges are sorted in ascending order as we
-  // use this property later.
+  // Verify that both in-edges and out-edges are sorted in ascending order
+  // according to node id as we use this property later.
   for (NodeId i = 0; i < builders.size(); ++i) {
-    DCHECK(absl::c_is_sorted(builders[i].out_edges));
-    DCHECK(absl::c_is_sorted(builders[i].in_edges));
+    auto by_id = [](const NodeEdge& a, const NodeEdge& b) {
+      return a.id < b.id;
+    };
+    DCHECK(absl::c_is_sorted(builders[i].out_edges, by_id));
+    DCHECK(absl::c_is_sorted(builders[i].in_edges, by_id));
   }
 
   // Erase redundant edges between nodes.
@@ -155,9 +187,9 @@ ExecutionGraph::CreateNodeDefs(std::vector<NodeDefBuilder> builders) {
     nodes_defs.push_back(NodeDef{
         b.id,
         num_in_edges ? absl::MakeConstSpan(&*inserted_in_edges, num_in_edges)
-                     : absl::Span<const NodeId>(),
+                     : absl::Span<const NodeEdge>(),
         num_out_edges ? absl::MakeConstSpan(&*inserted_out_edges, num_out_edges)
-                      : absl::Span<const NodeId>(),
+                      : absl::Span<const NodeEdge>(),
         b.priority,
     });
   }
@@ -172,36 +204,50 @@ int64_t ExecutionGraph::EraseEdge(NodeDefBuilder& from, NodeDefBuilder& to) {
 
   // Short-circuit if out or in-edges are empty.
   if (from.out_edges.empty() || to.in_edges.empty()) {
-    DCHECK_EQ(absl::c_count(from.out_edges, to.id), 0) << "Unexpected out edge";
-    DCHECK_EQ(absl::c_count(to.in_edges, from.id), 0) << "Unexpected in edge";
+    DCHECK_EQ(absl::c_count_if(from.out_edges, EdgePredicate(to.id)), 0)
+        << "Unexpected out edge from " << from.id << " to " << to.id;
+    DCHECK_EQ(absl::c_count_if(to.in_edges, EdgePredicate(from.id)), 0)
+        << "Unexpected in edge from " << from.id << " to " << to.id;
     return 0;
   }
 
   // Short-circuit if out-edges or in-edges don't intersect with `to` or `from`
   // node ids (remember that edges are sorted).
-  if (from.out_edges.back() < to.id || to.in_edges.front() > from.id) {
-    DCHECK_EQ(absl::c_count(from.out_edges, to.id), 0) << "Unexpected out edge";
-    DCHECK_EQ(absl::c_count(to.in_edges, from.id), 0) << "Unexpected in edge";
+  if (from.out_edges.back().id < to.id || to.in_edges.front().id > from.id) {
+    DCHECK_EQ(absl::c_count_if(from.out_edges, EdgePredicate(to.id)), 0)
+        << "Unexpected out edge from " << from.id << " to " << to.id;
+    DCHECK_EQ(absl::c_count_if(to.in_edges, EdgePredicate(from.id)), 0)
+        << "Unexpected in edge from " << from.id << " to " << to.id;
     return 0;
   }
 
+  // Comparator to find a node edge with a given node id.
+  auto less_than = [](const NodeEdge& edge, NodeId id) { return edge.id < id; };
+
   // Check if `from` node has an out edge to `to` node.
-  auto out_edges_it = absl::c_lower_bound(from.out_edges, to.id);
+  auto out_edges_it = absl::c_lower_bound(from.out_edges, to.id, less_than);
   bool has_out_edge =
-      out_edges_it != from.out_edges.end() && *out_edges_it == to.id;
+      out_edges_it != from.out_edges.end() && out_edges_it->id == to.id;
 
   // Short-circuit if there is no out edge from `from` node to `to` node.
   if (!has_out_edge) {
-    DCHECK_EQ(absl::c_count(to.in_edges, from.id), 0) << "Unexpected in edge";
+    DCHECK_EQ(absl::c_count_if(to.in_edges, EdgePredicate(from.id)), 0)
+        << "Unexpected in edge from " << from.id << " to " << to.id;
     return 0;
   }
 
   // Check if `to` node has an in edge from `from` node.
-  auto in_edges_it = absl::c_lower_bound(to.in_edges, from.id);
+  auto in_edges_it = absl::c_lower_bound(to.in_edges, from.id, less_than);
   bool has_in_edge =
-      in_edges_it != to.in_edges.end() && *in_edges_it == from.id;
+      in_edges_it != to.in_edges.end() && in_edges_it->id == from.id;
 
   DCHECK(has_in_edge) << "In-edge must exist if out-edge exists";
+
+  // At this point we must have exactly one edge between `from` and `to` nodes.
+  DCHECK_EQ(absl::c_count_if(from.out_edges, EdgePredicate(to.id)), 1)
+      << "Expected exactly one out edge from " << from.id << " to " << to.id;
+  DCHECK_EQ(absl::c_count_if(to.in_edges, EdgePredicate(from.id)), 1)
+      << "Expected exactly one in edge from " << from.id << " to " << to.id;
 
   from.out_edges.erase(out_edges_it);
   to.in_edges.erase(in_edges_it);
@@ -237,10 +283,12 @@ int64_t ExecutionGraph::RunTransitiveReductionAndUpdatePriorities(
 
     // Initialize stack with nodes reachable via immediate out nodes. We mark
     // immediate out nodes as visited to correctly compute node priority below.
-    for (int64_t out_id : source_node.out_edges) {
-      NodeDefBuilder& out_node = builders[out_id];
-      visited[out_id] = true;
-      for (int64_t start_id : out_node.out_edges) add_to_stack(start_id);
+    for (NodeEdge out_edge : source_node.out_edges) {
+      NodeDefBuilder& out_node = builders[out_edge.id];
+      visited[out_edge.id] = true;
+      for (NodeEdge start_edge : out_node.out_edges) {
+        add_to_stack(start_edge.id);
+      }
     }
 
     // Traverse the graph and delete redundant edges.
@@ -251,7 +299,9 @@ int64_t ExecutionGraph::RunTransitiveReductionAndUpdatePriorities(
       NodeDefBuilder& node = builders[node_id];
       num_erased_edges += EraseEdge(source_node, node);
 
-      for (int64_t out_id : node.out_edges) add_to_stack(out_id);
+      for (NodeEdge out_edge : node.out_edges) {
+        add_to_stack(out_edge.id);
+      }
     }
 
     // Set node priority to the number of visited nodes in the DFS traversal.

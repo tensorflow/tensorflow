@@ -472,8 +472,10 @@ CommandBufferCmdExecutor::Dependencies(const RecordParams& record_params,
   // Collect commands that are dependencies of the command `id`.
   absl::InlinedVector<CommandId, 4> dependencies_ids;
   if (execution_graph_) {
-    dependencies_ids.assign(execution_graph_->in_edges(id).begin(),
-                            execution_graph_->in_edges(id).end());
+    for (const ExecutionGraph::NodeEdge& in_edge :
+         execution_graph_->in_edges(id)) {
+      dependencies_ids.push_back(in_edge.id);
+    }
   } else {
     dependencies_ids.push_back(id - 1);
   }

@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/runtime/resource_use.h"
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -49,7 +51,9 @@ void ResourceUse::ReadWriteSet::Add(ResourceUse use) {
 }
 
 void ResourceUse::ReadWriteSet::AddAll(absl::Span<const ResourceUse> uses) {
-  for (const auto& use : uses) Add(use);
+  for (const auto& use : uses) {
+    Add(use);
+  }
 }
 
 bool ResourceUse::ReadWriteSet::HasConflicts(const ResourceUse& use) const {
@@ -73,6 +77,25 @@ bool ResourceUse::ReadWriteSet::HasConflicts(const ReadWriteSet& other) {
                         [&](const std::shared_ptr<Resource>& resource) {
                           return HasConflicts(ResourceUse::Write(resource));
                         });
+}
+
+std::vector<ResourceUse> ResourceUse::ReadWriteSet::Conflicts(
+    const ReadWriteSet& other) {
+  std::vector<ResourceUse> conflicts;
+
+  for (const std::shared_ptr<Resource>& resource : other.read_) {
+    if (auto read = ResourceUse::Read(resource); HasConflicts(read)) {
+      conflicts.push_back(std::move(read));
+    }
+  }
+
+  for (const std::shared_ptr<Resource>& resource : other.write_) {
+    if (auto write = ResourceUse::Write(resource); HasConflicts(write)) {
+      conflicts.push_back(std::move(write));
+    }
+  }
+
+  return conflicts;
 }
 
 }  // namespace xla
