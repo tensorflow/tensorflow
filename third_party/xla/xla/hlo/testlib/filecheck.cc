@@ -38,7 +38,7 @@ absl::StatusOr<bool> RunFileCheck(const std::string& input,
     return tsl::errors::Internal("couldn't get a pattern file name");
   }
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(env, pattern_path, pattern));
-  // LOG(INFO) << "input: " << input;
+  VLOG(3) << "input: " << input;
   return RunFileCheckWithPatternFile(input, pattern_path);
 }
 
