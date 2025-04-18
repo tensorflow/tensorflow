@@ -11,7 +11,7 @@ visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_SERVICE_CPU_BUILD_DEFS_USERS)
 
 def runtime_copts():
     """Returns copts used for CPU runtime libraries."""
-    return (["-DEIGEN_AVOID_STL_ARRAY"] + select({
+    return (select({
         clean_dep("//xla/tsl:android_arm"): ["-mfpu=neon"],
         "//conditions:default": [],
     }) + select({
