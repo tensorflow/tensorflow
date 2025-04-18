@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/aot/aot_only_var_handle_op.h"
 
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace {
