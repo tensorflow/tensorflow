@@ -630,3 +630,12 @@ py_strict_test(
         "//tensorflow/python/trackable:autotrackable",
     ],
 )
+
+py_strict_test(
+    name = "my_test",
+    srcs = ["my_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:lite",
+    ],
+)

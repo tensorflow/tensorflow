@@ -133,14 +133,6 @@ tensorflow::PyExceptionRegistry::Lookup
 [//tensorflow/python:kernel_registry] # kernel_registry
 tensorflow::swig::TryFindKernelClass
 
-[//tensorflow/lite/toco/python:toco_python_api] # toco_python_api
-toco::TocoConvert
-toco::MlirQuantizeModel
-toco::MlirSparsifyModel
-toco::RegisterCustomOpdefs
-toco::RetrieveCollectedErrors
-toco::FlatBufferFileToMlir
-
 [//tensorflow/tools/graph_transforms:transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph
 tensorflow::graph_transforms::ParseTransformParameters

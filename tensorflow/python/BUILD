@@ -558,24 +558,6 @@ tf_python_pybind_extension(
     ],
 )
 
-tf_python_pybind_extension(
-    name = "_pywrap_toco_api",
-    srcs = [
-        "lite/toco_python_api_wrapper.cc",
-    ],
-    hdrs = ["//tensorflow/lite/toco/python:toco_python_api_hdrs"],
-    enable_stub_generation = True,
-    pytype_srcs = [
-        "_pywrap_toco_api.pyi",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
-        "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",
-        "@pybind11",
-    ] + if_pywrap(["//tensorflow/lite/toco/python:toco_python_api"]),
-)
-
 # TODO(edloper): Remove unused dependency on safe_ptr.  (Blocker: there are
 # targets that depend are relying on cpp_python_util to pull in safe_ptr's
 # third_party/tensorflow/c:c_api_no_xla dependency, which registers
@@ -824,7 +806,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
-        "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/client:tf_session_helper",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/framework:op_def_util_cc",
@@ -946,7 +927,6 @@ pywrap_aware_filegroup(
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
         "//tensorflow/dtensor/cc:dtensor_device_cc",  # DTensor
         "//tensorflow/dtensor/cc:tensor_layout",  # DTensor
-        "//tensorflow/lite/toco/python:toco_python_api",  # toco
         "//tensorflow/python/client:tf_session_helper",  # tf_session
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
         "//tensorflow/python/framework:op_def_util_cc",  # op_def_util
@@ -1647,7 +1627,6 @@ pywrap_library(
         "//tensorflow/python:_pywrap_tensorflow_internal",
         "//tensorflow/python:_pywrap_tfcompile",
         "//tensorflow/python:_pywrap_tfe",
-        "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:flags_pybind",
         "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
         "//tensorflow/python/client:_pywrap_debug_events_writer",
