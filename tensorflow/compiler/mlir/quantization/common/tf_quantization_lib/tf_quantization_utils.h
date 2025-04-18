@@ -227,7 +227,7 @@ struct ConvertStatsToQDQs
       // Per axis quantization (or per channel quantization)
       int stats_num = op.getAxisStats()->getNumElements();
       if (stats_num == 0 || stats_num % 2 != 0) return failure();
-      auto stats = op.getAxisStats()->dyn_cast<DenseFPElementsAttr>();
+      auto stats = llvm::dyn_cast<DenseFPElementsAttr>(*op.getAxisStats());
       if (!stats) return failure();
 
       for (auto it = stats.begin(), e = stats.end(); it != e; ++it) {
@@ -766,14 +766,14 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<QuantizeOpT> {
 
     auto flags = quant::QuantizationFlags::Signed;
     QType new_qtype;
-    if (auto uqtype = qtype.template dyn_cast<quant::UniformQuantizedType>()) {
+    if (auto uqtype = llvm::dyn_cast<quant::UniformQuantizedType>(qtype)) {
       new_qtype = quant::UniformQuantizedType::getChecked(
           op.getLoc(), flags, qtype.getStorageType(), qtype.getExpressedType(),
           uqtype.getScale(), uqtype.getZeroPoint() - offset,
           uqtype.getStorageTypeMin() - offset,
           uqtype.getStorageTypeMax() - offset);
-    } else if (auto aqtype = qtype.template dyn_cast<
-                             quant::UniformQuantizedPerAxisType>()) {
+    } else if (auto aqtype =
+                   llvm::dyn_cast<quant::UniformQuantizedPerAxisType>(qtype)) {
       auto zero_points = aqtype.getZeroPoints();
       llvm::SmallVector<int64_t, 4> new_zero_points(zero_points.begin(),
                                                     zero_points.end());
