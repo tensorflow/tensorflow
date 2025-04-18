@@ -1913,7 +1913,8 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
 absl::Status TfrtGpuClient::DmaMap(void* data, size_t buffer_size) {
   tsl::profiler::TraceMe trace_me("TfrtGpuClient::DmaMap");
   se::StreamExecutor* executor =
-      tensorflow::down_cast<TfrtGpuDevice*>(devices_[0])->executor();
+      tensorflow::down_cast<TfrtGpuDevice*>(addressable_devices_[0])
+          ->executor();
   DCHECK(executor);
   bool success = executor->HostMemoryRegister(data, buffer_size);
   if (!success) {
@@ -1928,7 +1929,8 @@ absl::Status TfrtGpuClient::DmaMap(void* data, size_t buffer_size) {
 absl::Status TfrtGpuClient::DmaUnmap(void* data) {
   tsl::profiler::TraceMe trace_me("TfrtGpuClient::DmaUnmap");
   se::StreamExecutor* executor =
-      tensorflow::down_cast<TfrtGpuDevice*>(devices_[0])->executor();
+      tensorflow::down_cast<TfrtGpuDevice*>(addressable_devices_[0])
+          ->executor();
   DCHECK(executor);
   bool success = executor->HostMemoryUnregister(data);
   if (!success) {

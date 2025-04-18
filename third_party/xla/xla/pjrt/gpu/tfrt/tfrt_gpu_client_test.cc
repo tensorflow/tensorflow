@@ -1420,7 +1420,8 @@ TEST(TfrtGpuClientTest, DmaMapUnmap) {
   void* host_dma_ptr = nullptr;
   // Add cleanup to free the host_dma_ptr if we exit early.
   auto cleanup = absl::MakeCleanup([&host_dma_ptr]() { free(host_dma_ptr); });
-  (void)posix_memalign(&host_dma_ptr, alignment, dma_size);
+  int err = posix_memalign(&host_dma_ptr, alignment, dma_size);
+  CHECK_EQ(err, 0) << "posix_memalign failed: " << strerror(err);
   TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
   EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr, dma_size));
   // IsDmaMapped should keep track of all starting address, try a different
@@ -1464,7 +1465,8 @@ TEST(TfrtGpuClientTest, MultipleDeviceShareDmaMapping) {
   void* host_dma_ptr = nullptr;
   // Add cleanup to free the host_dma_ptr if we exit early.
   auto cleanup = absl::MakeCleanup([&host_dma_ptr]() { free(host_dma_ptr); });
-  (void)posix_memalign(&host_dma_ptr, alignment, dma_size);
+  int err = posix_memalign(&host_dma_ptr, alignment, dma_size);
+  CHECK_EQ(err, 0) << "posix_memalign failed: " << strerror(err);
   TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
 
   auto result = first_buffer->CopyRawToHost(host_dma_ptr, 0, size);
