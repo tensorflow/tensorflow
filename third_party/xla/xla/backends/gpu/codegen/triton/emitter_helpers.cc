@@ -96,10 +96,12 @@ absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
       return b.getI32Type();
     case S16:
       return b.getI16Type();
-    case PRED:
-      return b.getI1Type();
     case S8:
       return b.getI8Type();
+    case S4:
+      return b.getI4Type();
+    case PRED:
+      return b.getI1Type();
     case F8E5M2:
       return b.getType<mlir::Float8E5M2Type>();
     case F8E4M3FN:
@@ -120,6 +122,7 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
   if (t.isInteger(32)) return S32;
   if (t.isInteger(16)) return S16;
   if (t.isInteger(8)) return S8;
+  if (t.isInteger(4)) return S4;
   if (t.isInteger(1)) return PRED;
   if (mlir::isa<mlir::Float8E5M2Type>(t)) return F8E5M2;
   if (mlir::isa<mlir::Float8E4M3FNType>(t)) return F8E4M3FN;

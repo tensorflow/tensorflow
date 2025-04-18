@@ -263,7 +263,7 @@ class TritonSupportTest : public TritonSupportTestBase {
     };
 
     if (IsTritonSupportedInstruction(ti.Instruction(), cc)) {
-      EXPECT_THAT(run_triton_codegen(), IsOk());
+      EXPECT_THAT(run_triton_codegen(), IsOk()) << ti.Module()->ToString();
       return;
     }
     if (failure_mode == ExpectedFailMode::kFail) {
@@ -964,7 +964,17 @@ INSTANTIATE_TEST_SUITE_P(ConcatenateTestSuite, ConcatenateDeviceTest,
 class TritonSupportTestWithTypeAndDeviceAndBoolParam
     : public TritonSupportTest,
       public ::testing::WithParamInterface<
-          std::tuple<PrimitiveType, se::GpuComputeCapability, bool>> {};
+          std::tuple<PrimitiveType, se::GpuComputeCapability, bool>> {
+ public:
+  static std::string ParamToString(
+      const ::testing::TestParamInfo<ParamType>& info) {
+    auto [data_type, cc, use_nested_gemm_fusions] = info.param;
+    return absl::StrCat(PrimitiveType_Name(data_type), "_",
+                        ComputeCapabilityToString(cc), "_",
+                        use_nested_gemm_fusions ? "nested_gemm_fusions"
+                                                : "no_nested_gemm_fusions");
+  }
+};
 
 using ConcatenateTest = TritonSupportTestWithTypeAndDeviceAndBoolParam;
 
@@ -1012,7 +1022,8 @@ INSTANTIATE_TEST_SUITE_P(
     ConcatenateTestSuite, ConcatenateTest,
     ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
                        ::testing::ValuesIn(AllDevicesToTest()),
-                       ::testing::Bool()));
+                       ::testing::Bool()),
+    ConcatenateTest::ParamToString);
 
 using CollectiveTest = TritonSupportTestWithTypeAndDeviceParam;
 
