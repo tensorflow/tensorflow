@@ -769,8 +769,9 @@ def TFL_ArgMaxOp : TFL_Op<"arg_max", [
   let hasOptions = 1;
 
   DerivedTFLiteTypeAttr output_type = DerivedTFLiteTypeAttr<[{
-    return llvm::cast<TensorType>(getResult().getType()).getElementType().
-        cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
+    return llvm::cast<IntegerType>(llvm::cast<TensorType>(
+        getResult().getType()).getElementType()).getWidth() > 32 ?
+            tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
     }], [{
       TypeAttr::get(llvm::cast<TensorType>(getResult().getType()).getElementType())
@@ -801,8 +802,9 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [
   let hasOptions = 1;
 
   DerivedTFLiteTypeAttr output_type = DerivedTFLiteTypeAttr<[{
-    return llvm::cast<TensorType>(getResult().getType()).getElementType().
-        cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
+    return llvm::cast<IntegerType>(llvm::cast<TensorType>(
+        getResult().getType()).getElementType()).getWidth() > 32 ?
+            tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
     }], [{
       TypeAttr::get(llvm::cast<TensorType>(getResult().getType()).getElementType())
@@ -4109,8 +4111,9 @@ value of `input` in the unique output `output`. In other words:
   );
 
   DerivedTFLiteTypeAttr idx_out_type = DerivedTFLiteTypeAttr<[{
-    return llvm::cast<TensorType>(getResult(1).getType()).getElementType().
-        cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
+    return llvm::cast<IntegerType>(llvm::cast<TensorType>(
+        getResult(1).getType()).getElementType()).getWidth() > 32 ?
+            tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
     }], [{
       TypeAttr::get(llvm::cast<TensorType>(getResult(1).getType()).getElementType())

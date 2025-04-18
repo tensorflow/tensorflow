@@ -218,7 +218,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
 
   LogicalResult matchAndRewrite(quantfork::StatisticsOp op,
                                 PatternRewriter& rewriter) const override {
-    Type expressed = op.getType().cast<ShapedType>().getElementType();
+    Type expressed = llvm::cast<ShapedType>(op.getType()).getElementType();
     quant::QuantizedType quant_type;
     SmallVector<double, 4> mins, maxs;
 
@@ -509,7 +509,8 @@ class QuantizationPattern : public RewritePattern {
           continue;
         }
 
-        auto ele_type = operand.getType().cast<TensorType>().getElementType();
+        auto ele_type =
+            llvm::cast<TensorType>(operand.getType()).getElementType();
         if (static_cast<const ConcreteT*>(this)
                 ->AllowDynamicRangeQuantizedOperand(quantizing_op,
                                                     custom_map)) {
@@ -575,7 +576,7 @@ class QuantizationPattern : public RewritePattern {
             continue;
           }
           Type result_ele_type =
-              result.getType().cast<TensorType>().getElementType();
+              llvm::cast<TensorType>(result.getType()).getElementType();
           // If the user is the QuantizeOp, it must be the only user.
           if (result.hasOneUse() &&
               llvm::isa<QuantizeOpT>(*result.user_begin())) {
