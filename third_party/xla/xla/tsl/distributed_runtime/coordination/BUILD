@@ -55,6 +55,7 @@ cc_library(
     deps = [
         ":coordination_client",
         ":coordination_service_error_util",
+        ":key_value_store",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
@@ -196,6 +197,36 @@ cc_library(
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:thread_annotations",
+    ],
+)
+
+cc_library(
+    name = "key_value_store",
+    srcs = ["key_value_store.cc"],
+    hdrs = ["key_value_store.h"],
+    deps = [
+        "//xla/tsl/protobuf:coordination_service_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tsl_cc_test(
+    name = "key_value_store_test",
+    srcs = ["key_value_store_test.cc"],
+    deps = [
+        ":key_value_store",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
