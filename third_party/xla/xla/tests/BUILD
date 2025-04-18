@@ -1124,7 +1124,6 @@ xla_test(
     ],
     deps = [
         ":client_library_test_base",
-        ":hlo_pjrt_test_base",
         ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
@@ -1174,7 +1173,6 @@ xla_test(
     ],
     deps = [
         ":client_library_test_base",
-        ":hlo_pjrt_test_base",
         ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
@@ -1302,7 +1300,6 @@ xla_test(
     ],
     deps = [
         ":client_library_test_base",
-        ":hlo_pjrt_test_base",
         ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
