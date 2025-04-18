@@ -422,6 +422,12 @@ class GpuAsyncHostToDeviceTransferManager
     return stream->DoHostCallback(std::move(cleanup));
   }
 
+  void MarkBufferCompletion(int buffer_index) override {
+    absl::ReleasableMutexLock l(&mu_);
+    last_transfer_started_[buffer_index] = true;
+    l.Release();
+  }
+
   void SetBufferError(int buffer_index, absl::Status error) override {
     {
       absl::MutexLock l(&mu_);
