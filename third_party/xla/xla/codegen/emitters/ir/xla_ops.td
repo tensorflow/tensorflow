@@ -243,7 +243,8 @@ def LoopOp : XLA_Op<"loop", [
   }];
   let arguments = (ins XLA_IndexingMapAttr:$indexing_map_attr,
                        Variadic<Index>:$dims,
-                       Variadic<AnyType>:$inits);
+                       Variadic<AnyType>:$inits,
+                       DefaultValuedAttr<BoolAttr, "false">:$disable_loop_unrolling);
   let results = (outs Variadic<AnyType>);
   let regions = (region SizedRegion<1>:$region);
 
@@ -252,12 +253,14 @@ def LoopOp : XLA_Op<"loop", [
       "mlir::ValueRange":$dims, "mlir::ValueRange":$inits,
       CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location, "
            "/*ivs=*/mlir::ValueRange, /*map_results=*/mlir::ValueRange, "
-           "/*init=*/mlir::ValueRange)>", "nullptr">)>,
-    OpBuilder<(ins "const IndexingMap&":$indexing_map,
+           "/*init=*/mlir::ValueRange)>", "nullptr">,
+           CArg<"bool", "false">:$disable_loop_unrolling)>,
+    OpBuilder<(ins "const IndexingMap& ":$indexing_map,
       "mlir::ValueRange":$dims, "mlir::ValueRange":$inits,
       CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location, "
            "/*ivs=*/mlir::ValueRange, /*map_results=*/mlir::ValueRange, "
-           "/*init=*/mlir::ValueRange)>", "nullptr">)>
+           "/*init=*/mlir::ValueRange)>", "nullptr">,
+           CArg<"bool", "false">:$disable_loop_unrolling)>
   ];
 
   let extraClassDeclaration = [{
