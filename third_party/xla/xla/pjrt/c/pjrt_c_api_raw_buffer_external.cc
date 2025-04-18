@@ -69,14 +69,14 @@ PJRT_Memory* PjRtCApiRawBuffer_GetMemorySpace(
   return args.memory_space;
 }
 
-absl::StatusOr<size_t> PjRtCApiRawBuffer_GetOnDeviceSizeInBytes(
+size_t PjRtCApiRawBuffer_GetOnDeviceSizeInBytes(
     const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
     PJRT_RawBuffer* buffer) {
   PJRT_RawBuffer_GetOnDeviceSizeInBytes_Args args;
   args.struct_size = PJRT_RawBuffer_GetOnDeviceSizeInBytes_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = buffer;
-  RETURN_STATUS_IF_PJRT_ERROR(
+  pjrt::LogFatalIfPjrtError(
       extension->PJRT_RawBuffer_GetOnDeviceSizeInBytes(&args), c_api);
   return args.on_device_size_in_bytes;
 }
@@ -140,7 +140,7 @@ PjRtMemorySpace* PjRtCApiRawBuffer::memory_space() const {
       pjrt::PjRtCApiRawBuffer_GetMemorySpace(c_api_, c_extension_, c_buffer_));
 }
 
-absl::StatusOr<size_t> PjRtCApiRawBuffer::GetOnDeviceSizeInBytes() const {
+size_t PjRtCApiRawBuffer::GetOnDeviceSizeInBytes() const {
   return pjrt::PjRtCApiRawBuffer_GetOnDeviceSizeInBytes(c_api_, c_extension_,
                                                         c_buffer_);
 }

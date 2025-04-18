@@ -37,10 +37,14 @@ class PjRtRawBuffer : public tsl::ReferenceCounted<PjRtRawBuffer> {
   static absl::StatusOr<tsl::RCReference<PjRtRawBuffer>> CreateRawAliasOfBuffer(
       PjRtBuffer* buffer);
 
+  // Memory space that the raw buffer lives on.
   virtual PjRtMemorySpace* memory_space() const = 0;
 
+  // If visible to the host, returns the base pointer for direct access.
+  virtual void* GetHostPointer() const { return nullptr; }
+
   // Returns the number of bytes of the buffer storage on the device.
-  virtual absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const = 0;
+  virtual size_t GetOnDeviceSizeInBytes() const = 0;
 
   // Transfers the buffer to a sub-range of the on-device representation.
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
