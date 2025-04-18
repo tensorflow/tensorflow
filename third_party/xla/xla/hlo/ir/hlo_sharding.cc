@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <map>
@@ -138,9 +139,9 @@ HloSharding HloSharding::Tile1D(const Shape& input_shape, int64_t num_tiles,
 HloSharding HloSharding::PartialTile(
     const TileAssignment& tile_assignment_last_dim_replicate,
     absl::Span<const OpMetadata> metadata) {
+  const size_t num_elements = tile_assignment_last_dim_replicate.num_elements();
   if (tile_assignment_last_dim_replicate.num_dimensions() == 1 ||
-      tile_assignment_last_dim_replicate.dimensions().back() ==
-          tile_assignment_last_dim_replicate.num_elements()) {
+      tile_assignment_last_dim_replicate.dimensions().back() == num_elements) {
     return Replicate(metadata);
   }
   if (tile_assignment_last_dim_replicate.dimensions().back() == 1) {
@@ -172,39 +173,17 @@ HloSharding HloSharding::PartialTile(
           /*replicate_on_last_tile_dim=*/true, metadata);
     }
   }
-  // Full array representation handling.
-  std::vector<int64_t> sorted_groups(
-      tile_assignment_last_dim_replicate.num_elements());
-  const int64_t num_groups =
-      tile_assignment_last_dim_replicate.num_elements() / group_size;
-  std::vector<int32_t> current_group_idx(num_groups, 0);
-  auto get_group_id = [&](absl::Span<const int64_t> indices) {
-    int64_t group_id = 0;
-    for (int64_t i = 0; i < indices.size() - 1; ++i) {
-      group_id *= tile_assignment_last_dim_replicate.dim(i);
-      group_id += indices[i];
-    }
-    return group_id;
-  };
-  tile_assignment_last_dim_replicate.TemplatedEach(
-      [&](absl::Span<const int64_t> indices, const int64_t device) {
-        const int64_t group_id = get_group_id(indices);
-        sorted_groups[group_id * group_size + current_group_idx[group_id]++] =
-            device;
-      });
-  for (int i = 0; i < num_groups; ++i) {
-    std::sort(sorted_groups.begin() + i * group_size,
-              sorted_groups.begin() + (i + 1) * group_size);
+
+  std::shared_ptr<Array<int64_t>> sorted_tile =
+      tile_assignment_last_dim_replicate.shared_array_clone();
+  int64_t* sorted_tile_data = sorted_tile->data();
+  int64_t* sorted_tile_data_end = sorted_tile_data + num_elements;
+  while (sorted_tile_data < sorted_tile_data_end) {
+    std::sort(sorted_tile_data, sorted_tile_data + group_size);
+    sorted_tile_data += group_size;
   }
-  absl::c_fill(current_group_idx, 0);
-  auto sorted_tile = std::make_shared<Array<int64_t>>(
-      tile_assignment_last_dim_replicate.dimensions());
-  sorted_tile->TemplatedEach([&](absl::Span<const int64_t> indices,
-                                 int64_t* device) {
-    const int64_t group_id = get_group_id(indices);
-    *device =
-        sorted_groups[group_id * group_size + current_group_idx[group_id]++];
-  });
+  DCHECK_EQ(sorted_tile_data, sorted_tile_data_end);
+
   return HloSharding(TileAssignment(std::move(sorted_tile)),
                      /*replicate_on_last_tile_dim=*/true, metadata);
 }
