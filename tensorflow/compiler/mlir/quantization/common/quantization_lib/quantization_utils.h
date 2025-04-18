@@ -672,9 +672,7 @@ class QuantizationPattern : public RewritePattern {
   void RewireFloatModelBackbone(Operation* quantized_op,
                                 Operation* float_op) const {
     for (int i = 0, e = quantized_op->getNumResults(); i < e; ++i) {
-      if (!float_op->getResult(i)
-               .getType()
-               .cast<ShapedType>()
+      if (!llvm::cast<ShapedType>(float_op->getResult(i).getType())
                .getElementType()
                .isF32()) {
         continue;
