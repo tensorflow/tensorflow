@@ -26,8 +26,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/numeric/int128.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/array.h"
 #include "xla/hlo/testlib/test.h"

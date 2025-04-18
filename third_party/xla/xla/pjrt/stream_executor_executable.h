@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/compiler.h"
+#include "xla/service/hlo.pb.h"
 
 namespace xla {
 class StreamExecutorExecutable : public PjRtExecutable {
