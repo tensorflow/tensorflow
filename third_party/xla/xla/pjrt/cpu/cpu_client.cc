@@ -1007,14 +1007,11 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(
   if (device->client() != this) {
     return absl::InvalidArgumentError("Device is not attached to this client");
   }
-  // Create a dummy buffer because the rest of the code expects a buffer
-  // regardless of whether the definition event is an error.
-  TF_ASSIGN_OR_RETURN(auto buffer, CpuDeviceMemory::AllocateAvailable(
-                                       ShapeUtil::ByteSizeOf(shape)));
   return std::make_unique<TfrtCpuBuffer>(
       shape,
       std::make_unique<TrackedCpuDeviceBuffer>(
-          /*owns_buffers=*/true, std::move(buffer),
+          /*owns_buffers=*/true, tsl::AsyncValueRef<CpuDeviceMemory>(),
+          ShapeUtil::ByteSizeOf(shape),
           absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>{
               tsl::AsyncValueRef<CpuEvent>(
                   tsl::MakeErrorAsyncValueRef(std::move(error)))}),
