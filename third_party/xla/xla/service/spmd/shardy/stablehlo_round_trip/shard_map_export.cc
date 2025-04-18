@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_export.h"
 
 #include <cassert>
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <numeric>
 #include <tuple>
 #include <utility>
 
@@ -39,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
@@ -63,6 +66,7 @@ namespace sdy {
 
 namespace {
 
+using ::mlir::ArrayRef;
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
 using ::mlir::NamedAttribute;
@@ -76,6 +80,8 @@ using ::mlir::mhlo::CopyOp;
 using ::mlir::stablehlo::CustomCallOp;
 
 namespace sdy = ::mlir::sdy;
+using sdy::AxisRefAttr;
+using sdy::DimensionShardingAttr;
 using sdy::kShardingAttr;
 using sdy::ManualComputationOp;
 using sdy::MeshAttr;
@@ -92,7 +98,7 @@ using ManualComputationToParentManualAxes =
 // recursively. `region` is the concatenation of `parent` and
 // `op.getManualAxes()`.
 struct ManualAxesHierarchy {
-  mlir::ArrayRef<StringAttr> parent;
+  ArrayRef<StringAttr> parent;
   SmallVector<StringAttr> region;
 };
 
@@ -121,6 +127,62 @@ TensorShardingAttr getFirstSharding(ManualComputationOp op) {
     return nullptr;
   }
   return *inOutShardings.begin();
+}
+
+// Given the `sharding` and `manualAxes`, remove any auto axes that would cause
+// padding.
+TensorShardingAttr removeAutoAxesToAvoidPadding(TensorShardingAttr sharding,
+                                                ArrayRef<StringAttr> manualAxes,
+                                                mlir::Type type,
+                                                MeshAttr mesh) {
+  MLIRContext* context = sharding.getContext();
+
+  SmallVector<DimensionShardingAttr> newDimShardings;
+  newDimShardings.reserve(sharding.getRank());
+  for (auto [dimSize, dimSharding] :
+       llvm::zip_equal(mlir::cast<mlir::RankedTensorType>(type).getShape(),
+                       sharding.getDimShardings())) {
+    ArrayRef<AxisRefAttr> dimAxes = dimSharding.getAxes();
+    SmallVector<AxisRefAttr> newDimAxes;
+    ArrayRef<AxisRefAttr>::const_iterator freeAxisIt =
+        llvm::partition_point(dimAxes, [&manualAxes](AxisRefAttr axis) {
+          return llvm::is_contained(manualAxes, axis.getName());
+        });
+
+    // Keep all manual axes.
+    int64_t dimAxesSize = 1;
+    for (const auto* it = dimAxes.begin(); it != freeAxisIt; ++it) {
+      dimAxesSize *= it->getSize(mesh);
+      newDimAxes.push_back(*it);
+    }
+
+    // The manual axes cannot introduce padding. The dimension size must be
+    // divisible by the corresponding manual axes size.
+    assert(dimSize % dimAxesSize == 0);
+    int64_t capacity = dimSize / dimAxesSize;
+
+    // Keep all free axes that divide the dimension size.
+    for (ArrayRef<AxisRefAttr>::const_iterator it = freeAxisIt;
+         it != dimAxes.end() && capacity > 1; ++it) {
+      int64_t gcd = std::gcd(capacity, it->getSize(mesh));
+      if (gcd == it->getSize(mesh)) {
+        newDimAxes.push_back(*it);
+        capacity /= gcd;
+      } else {
+        if (gcd != 1) {
+          newDimAxes.push_back(AxisRefAttr::get(context, it->getName(),
+                                                it->getSubAxisPreSize(), gcd));
+        }
+        break;
+      }
+    }
+
+    newDimShardings.push_back(DimensionShardingAttr::get(
+        context, newDimAxes, dimSharding.getIsClosed(),
+        dimSharding.getPriority()));
+  }
+  return TensorShardingAttr::get(context, sharding.getMeshOrRef(),
+                                 newDimShardings, sharding.getReplicatedAxes());
 }
 
 // Converts the shardings of all operations in `op`'s body to StableHLO
@@ -252,15 +314,18 @@ void convertManualComputationOp(
   for (auto [globalOperand, localArgumentType, inSharding] :
        llvm::zip_equal(op.getOperands(), op.getBody().getArgumentTypes(),
                        op.getInShardings().getShardings())) {
+    TensorShardingAttr newSharding = removeAutoAxesToAvoidPadding(
+        inSharding, manualAxes.region, globalOperand.getType(), mesh);
+
     auto copy = rewriter.create<CopyOp>(loc, globalOperand);
     copy->setAttr(kXlaShardingAttr,
-                  getStringAttr(convertToHloSharding(inSharding, getMeshAttr,
+                  getStringAttr(convertToHloSharding(newSharding, getMeshAttr,
                                                      manualAxes.parent)));
     fullToShardAttributes.back() = rewriter.getNamedAttr(
         kXlaShardingAttr,
         fullyManual ? fullyManualSharding
                     : getStringAttr(convertToHloSharding(
-                          eraseManualAxes(inSharding, manualAxes.region),
+                          eraseManualAxes(newSharding, manualAxes.region),
                           getMeshAttr, manualAxes.region)));
     auto fullToShard = rewriter.create<CustomCallOp>(
         loc, localArgumentType, copy.getResult(), fullToShardAttributes);
@@ -273,16 +338,18 @@ void convertManualComputationOp(
   for (auto [terminatorOperand, opResult, outSharding] :
        llvm::zip_equal(terminator->getOpOperands(), op.getResults(),
                        op.getOutShardings().getShardings())) {
+    TensorShardingAttr newSharding = removeAutoAxesToAvoidPadding(
+        outSharding, manualAxes.region, opResult.getType(), mesh);
     auto copy = rewriter.create<CopyOp>(loc, terminatorOperand.get());
     copy->setAttr(kXlaShardingAttr,
                   fullyManual
                       ? fullyManualSharding
                       : getStringAttr(convertToHloSharding(
-                            eraseManualAxes(outSharding, manualAxes.region),
+                            eraseManualAxes(newSharding, manualAxes.region),
                             getMeshAttr, manualAxes.region)));
     shardToFullAttributes.back() = rewriter.getNamedAttr(
         kXlaShardingAttr, getStringAttr(convertToHloSharding(
-                              outSharding, getMeshAttr, manualAxes.parent)));
+                              newSharding, getMeshAttr, manualAxes.parent)));
     auto shardToFull = rewriter.create<CustomCallOp>(
         loc, opResult.getType(), copy.getResult(), shardToFullAttributes);
     opResult.replaceAllUsesWith(shardToFull.getResult(0));
