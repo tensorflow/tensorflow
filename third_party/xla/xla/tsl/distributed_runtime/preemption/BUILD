@@ -24,7 +24,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -43,7 +43,6 @@ tsl_cc_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:mutex",
     ],
 )
 

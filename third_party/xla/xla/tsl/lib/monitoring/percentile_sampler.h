@@ -85,12 +85,12 @@ PercentileSampler<NumLabels>* PercentileSampler<NumLabels>::New(
 #include <cmath>
 #include <map>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/lib/monitoring/types.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
@@ -128,7 +128,7 @@ class PercentileSamplerCell {
   std::vector<Sample> GetSamples(size_t* total_samples,
                                  long double* accumulator) const;
 
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
   UnitOfMeasure unit_of_measure_;
   const std::vector<double> percentiles_;
   std::vector<Sample> samples_ TF_GUARDED_BY(mu_);
@@ -195,7 +195,7 @@ class PercentileSampler {
         registration_handle_(CollectionRegistry::Default()->Register(
             &metric_def_, [&](MetricCollectorGetter getter) {
               auto metric_collector = getter.Get(&metric_def_);
-              mutex_lock l(mu_);
+              absl::MutexLock l(&mu_);
               for (const auto& cell : cells_) {
                 metric_collector.CollectValue(cell.first, cell.second.value());
               }
@@ -223,7 +223,7 @@ class PercentileSampler {
     }
   }
 
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   absl::Status status_;
 
@@ -274,7 +274,7 @@ PercentileSamplerCell* PercentileSampler<NumLabels>::GetCell(
       "provided in GetCell(...).");
 
   const LabelArray& label_array = {{labels...}};
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   const auto found_it = cells_.find(label_array);
   if (found_it != cells_.end()) {
     return &(found_it->second);

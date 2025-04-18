@@ -122,13 +122,13 @@ class Sampler {
 #include <utility>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/histogram/histogram.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
@@ -246,7 +246,7 @@ class Sampler {
             &metric_def_, [&](MetricCollectorGetter getter) {
               auto metric_collector = getter.Get(&metric_def_);
 
-              tf_shared_lock l(mu_);
+              absl::ReaderMutexLock l(&mu_);
               for (const auto& cell : cells_) {
                 metric_collector.CollectValue(cell.first, cell.second.value());
               }
@@ -260,7 +260,7 @@ class Sampler {
     }
   }
 
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   absl::Status status_;
 
@@ -317,13 +317,13 @@ SamplerCell* Sampler<NumLabels>::GetCell(const Labels&... labels)
 
   const LabelArray& label_array = {{labels...}};
   {
-    tf_shared_lock l(mu_);
+    absl::ReaderMutexLock l(&mu_);
     const auto found_it = cells_.find(label_array);
     if (found_it != cells_.end()) {
       return &(found_it->second);
     }
   }
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   return &(cells_
                .emplace(std::piecewise_construct,
                         std::forward_as_tuple(label_array),

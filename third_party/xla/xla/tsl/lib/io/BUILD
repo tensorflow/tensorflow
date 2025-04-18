@@ -220,9 +220,10 @@ cc_library(
         "cache.h",
     ],
     deps = [
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:raw_coding",
         "@local_tsl//tsl/platform:stringpiece",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
