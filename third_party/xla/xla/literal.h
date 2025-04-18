@@ -67,6 +67,7 @@ namespace xla {
 
 // Forward declare Literal and LiteralSlice class to be used by the creation
 // methods in the base class.
+// Test comment
 class Literal;
 class LiteralSlice;
 
