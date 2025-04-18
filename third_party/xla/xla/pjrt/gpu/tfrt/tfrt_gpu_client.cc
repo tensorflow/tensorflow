@@ -214,6 +214,21 @@ std::string get_platform_version(xla::LocalClient* xla_client) {
   return "<unknown>";
 }
 
+std::string MakeComputeCapabilityString(
+    const stream_executor::DeviceDescription* desc) {
+  stream_executor::GpuComputeCapability cc = desc->gpu_compute_capability();
+  if (std::holds_alternative<stream_executor::CudaComputeCapability>(cc)) {
+    auto nvcc = std::get<stream_executor::CudaComputeCapability>(cc);
+    return absl::StrCat(nvcc.major, ".", nvcc.minor);
+  } else if (std::holds_alternative<stream_executor::RocmComputeCapability>(
+                 cc)) {
+    auto rocmcc = std::get<stream_executor::RocmComputeCapability>(cc);
+    return rocmcc.gfx_version();
+  } else {
+    return "unknown";
+  }
+}
+
 bool IsAllZeros(const DeviceAssignment& assignment) {
   return std::all_of(
       assignment.begin(), assignment.end(),
@@ -927,6 +942,11 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
       description_(options.id, options.process_index, options.platform_version),
       max_inflight_computations_semaphore_(
           /*capacity=*/options.max_inflight_computations) {
+  description_.SetAttributes({
+      {"compute_capability",
+       xla::PjRtDeviceAttribute(options.compute_capability)},
+  });
+
   description_.SetDebugString(absl::StrCat("TFRT_GPU_", id_));
   description_.SetToString(absl::StrCat("GpuDevice(id=", id_, ")"));
 
@@ -1898,6 +1918,7 @@ GetTfrtGpuDevices(LocalClient* xla_client) {
         std::unique_ptr<xla::se::DeviceDescription> desc,
         platform->DescriptionForDevice(options.local_hardware_id.value()));
     options.platform_version = desc->name();
+    options.compute_capability = MakeComputeCapabilityString(desc.get());
 
     auto device = std::make_unique<TfrtGpuDevice>(std::move(options));
     devices.push_back(std::move(device));

@@ -128,6 +128,7 @@ class TfrtGpuDevice final : public PjRtDevice {
     int stream_capacity;
     int max_inflight_computations;
     std::string platform_version;
+    std::string compute_capability;
   };
 
   explicit TfrtGpuDevice(Options&& options);

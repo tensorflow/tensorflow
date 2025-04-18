@@ -1386,5 +1386,28 @@ TEST(TfrtGpuClientTest, OnDoneSafelyDestructTransferManagerAsync) {
   done.WaitForNotification();
 }
 
+TEST(TfrtGpuClientTest, ComputeCapabilityAttribute) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+
+  TfrtGpuDevice* device =
+      tensorflow::down_cast<TfrtGpuDevice*>(client->addressable_devices()[0]);
+
+  ASSERT_EQ(client->platform_name(), "cuda");
+  auto compute_capability =
+      std::get<std::string>(device->Attributes().at("compute_capability"));
+
+  // Gets the expected compute capability.
+  const se::Platform* platform = device->executor()->GetPlatform();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::se::DeviceDescription> desc,
+                          platform->DescriptionForDevice(0));
+  stream_executor::GpuComputeCapability cc = desc->gpu_compute_capability();
+  auto nvcc = std::get<stream_executor::CudaComputeCapability>(cc);
+  std::string expected_compute_capability =
+      absl::StrCat(nvcc.major, ".", nvcc.minor);
+
+  EXPECT_EQ(compute_capability, expected_compute_capability);
+}
+
 }  // namespace
 }  // namespace xla
