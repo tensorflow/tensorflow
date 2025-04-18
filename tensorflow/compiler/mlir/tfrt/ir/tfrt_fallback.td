@@ -31,7 +31,7 @@ def Fallback_Dialect : Dialect {
 
 // This corresponds to tensorflow::Tensor.
 def TFTensorType : DialectType<Fallback_Dialect,
-    CPred<"$_self.isa<::tfrt::fallback::TFTensorType>()">, "!tfrt_fallback.tf_tensor type">,
+    CPred<"isa<::tfrt::fallback::TFTensorType>($_self)">, "!tfrt_fallback.tf_tensor type">,
     BuildableType<"$_builder.getType<::tfrt::fallback::TFTensorType>()"> {
   let description = [{
     `!tfrt_fallback.tf_tensor type` represents a tensorflow::Tensor.
@@ -40,7 +40,7 @@ def TFTensorType : DialectType<Fallback_Dialect,
 
 // This corresponds to tensorflow::Allocator.
 def TFAllocatorType : DialectType<Fallback_Dialect,
-    CPred<"$_self.isa<::tfrt::fallback::TFAllocatorType>()">, "!tfrt_fallback.tf_allocator type">,
+    CPred<"isa<::tfrt::fallback::TFAllocatorType>($_self)">, "!tfrt_fallback.tf_allocator type">,
     BuildableType<"$_builder.getType<::tfrt::fallback::TFAllocatorType>()"> {
   let description = [{
     `!tfrt_fallback.tf_tensor type` represents a tensorflow::Tensor.

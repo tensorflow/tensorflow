@@ -29,7 +29,7 @@ def Mlrt_Dialect : Dialect {
 }
 
 def MlrtFutureType : DialectType<Mlrt_Dialect,
-    CPred<"$_self.isa<::mlrt::compiler::FutureType>()">, "!mlrt.future type">,
+    CPred<"isa<::mlrt::compiler::FutureType>($_self)">, "!mlrt.future type">,
     BuildableType<"$_builder.getType<::mlrt::compiler::FutureType>()"> {
   let description = [{
     `!mlrt.future type` represents a C++ mlrt::Future.
@@ -37,7 +37,7 @@ def MlrtFutureType : DialectType<Mlrt_Dialect,
 }
 
 def MlrtPromiseType : DialectType<Mlrt_Dialect,
-    CPred<"$_self.isa<::mlrt::compiler::PromiseType>()">, "!mlrt.promise type">,
+    CPred<"isa<::mlrt::compiler::PromiseType>($_self)">, "!mlrt.promise type">,
     BuildableType<"$_builder.getType<::mlrt::compiler::PromiseType>()"> {
   let description = [{
     `!mlrt.promise type` represents a C++ mlrt::Promise.
@@ -45,7 +45,7 @@ def MlrtPromiseType : DialectType<Mlrt_Dialect,
 }
 
 def MlrtAsyncHandleType : DialectType<Mlrt_Dialect,
-    CPred<"$_self.isa<::mlrt::compiler::AsyncHandleType>()">, "!mlrt.async_handle type">,
+    CPred<"isa<::mlrt::compiler::AsyncHandleType>($_self)">, "!mlrt.async_handle type">,
     BuildableType<"$_builder.getType<::mlrt::compiler::AsyncHandleType>()"> {
   let description = [{
     `!mlrt.async_handle type` represents a C++ mlrt::AsyncHandle.
