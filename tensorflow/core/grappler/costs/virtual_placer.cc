@@ -14,10 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
+
+#include <map>
+#include <unordered_map>
+#include <unordered_set>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
