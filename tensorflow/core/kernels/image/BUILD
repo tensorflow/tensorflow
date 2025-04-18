@@ -77,7 +77,10 @@ cc_library(
     srcs = ["sampling_kernels.cc"],
     hdrs = ["sampling_kernels.h"],
     visibility = ["//visibility:private"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_cc_test(
@@ -279,7 +282,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scale_and_translate_op",
     prefix = "scale_and_translate_op",
-    deps = IMAGE_DEPS + [":sampling_kernels"],
+    deps = IMAGE_DEPS + [
+        ":sampling_kernels",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 tf_kernel_library(
