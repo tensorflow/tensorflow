@@ -55,7 +55,8 @@ class SortRewriterTest
 
   bool RunModuleAndPass(HloModule* module) {
     auto cloned = module->Clone();
-    bool changed = SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo())
+    bool changed = SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo(),
+                                GetTestPlatform()->Name())
                        .Run(module)
                        .value();
     if (changed) {
@@ -393,7 +394,8 @@ ENTRY %main {
   ROOT %sort = f32[$0,100000] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  auto pass = SortRewriter(TestGpuDeviceInfo::RTXH100SXMDeviceInfo());
+  auto pass = SortRewriter(TestGpuDeviceInfo::RTXH100SXMDeviceInfo(),
+                           GetTestPlatform()->Name());
 
   // Batch 1
   std::string hlo = absl::Substitute(kHloTmpl, "1");
@@ -486,7 +488,9 @@ ENTRY %main {
     // CHECK: %[[CC:.*]] = (u16[1000]{0}, u8[1]{0}) custom-call({{.*}}), custom_call_target="__cub$DeviceRadixSort", metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}, backend_config={"descending":true}
   )";
   RunAndFilecheckHloRewrite(
-      kHlo, SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo()),
+      kHlo,
+      SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo(),
+                   GetTestPlatform()->Name()),
       kExpectedPattern);
 }
 

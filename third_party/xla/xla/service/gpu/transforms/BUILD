@@ -3026,12 +3026,8 @@ xla_cc_test(
 
 cc_library(
     name = "sort_rewriter",
-    srcs = if_gpu_is_configured(
-        ["sort_rewriter.cc"],
-        ["sort_rewriter_stub.cc"],
-    ),
+    srcs = ["sort_rewriter.cc"],
     hdrs = ["sort_rewriter.h"],
-    visibility = ["//xla/service/gpu:__subpackages__"] + if_google(["//learning/brain/engprod/xwatch:__subpackages__"]),
     deps = [
         "//xla:comparison_util",
         "//xla:literal_util",
