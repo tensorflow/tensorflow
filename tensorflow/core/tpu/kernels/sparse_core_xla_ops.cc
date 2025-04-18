@@ -884,15 +884,20 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
     OP_REQUIRES_OK(ctx, ctx->GetAttr("max_valency", &max_valency_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_weights", &num_weights_));
 
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_weight_min", &clip_weight_min_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_weight_max", &clip_weight_max_));
-
-    OP_REQUIRES(ctx, clip_weight_min_ <= clip_weight_max_,
-                absl::InvalidArgumentError(
-                    absl::StrCat("clip_weight_min must be smaller or equal to "
-                                 "clip_weight_max but got clip_weight_min as ",
-                                 clip_weight_min_, " and clip_weight_max as ",
-                                 clip_weight_max_, ".")));
+    // Not all subclasses have the weight range attributes. We parse these
+    // attributes anyway (otherwise we lose the op construction context) and
+    // record possible errors. The main compile method can choose to report
+    // errors or not (depending if the attributes are expected to be present).
+    clip_weight_range_status_.Update(
+        ctx->GetAttr("clip_weight_min", &clip_weight_min_));
+    clip_weight_range_status_.Update(
+        ctx->GetAttr("clip_weight_max", &clip_weight_max_));
+    if (clip_weight_range_status_.ok() && clip_weight_min_ > clip_weight_max_) {
+      clip_weight_range_status_ = absl::InvalidArgumentError(absl::StrCat(
+          "clip_weight_min must be smaller or equal to "
+          "clip_weight_max but got clip_weight_min as ",
+          clip_weight_min_, " and clip_weight_max as ", clip_weight_max_, "."));
+    }
 
     const NameAttrList* name_attr;
     OP_REQUIRES_OK(ctx,
@@ -901,6 +906,12 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("combiner_weights_vjp_computation", &name_attr));
     combiner_weights_custom_vjp_computation_ = *name_attr;
+  }
+
+  virtual absl::Status HandleClipWeightRangeStatus() {
+    // Most subclasses require the weight range attributes, and we return the
+    // status as-is.
+    return clip_weight_range_status_;
   }
 
   // Returns an xla::Tuple of all table-shaped optimizer inputs.
@@ -1142,6 +1153,8 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* builder = ctx->builder();
 
+    OP_REQUIRES_OK(ctx, HandleClipWeightRangeStatus());
+
     // Get the shape of the gradient.
     OP_REQUIRES_VALUE(xla::Shape activation_shape, ctx,
                       ctx->InputXlaShape("activation_gradients"));
@@ -1200,6 +1213,8 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
   NameAttrList combiner_weights_custom_vjp_computation_;
   NameAttrList combiner_lookups_custom_vjp_computation_;
 
+  absl::Status clip_weight_range_status_;
+
  private:
   XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase(
       const XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase&) =
@@ -1222,6 +1237,11 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr("optimizer_custom_computation", &name_attr));
     optimizer_custom_computation_ = *name_attr;
+  }
+
+  absl::Status HandleClipWeightRangeStatus() override {
+    // The custom optimizer BWD op does not require the weight clip range.
+    return absl::OkStatus();
   }
 
   absl::StatusOr<xla::XlaOp> GetTablesInput(XlaOpKernelContext* ctx,
