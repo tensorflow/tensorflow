@@ -20,7 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -28,6 +31,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace bisect {
