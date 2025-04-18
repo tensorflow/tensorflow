@@ -2136,7 +2136,8 @@ TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
   size_t dma_size = 1024;
   size_t alignment = 4096;
   void* host_dma_ptr = nullptr;
-  (void)posix_memalign(&host_dma_ptr, alignment, dma_size);
+  int err = posix_memalign(&host_dma_ptr, alignment, dma_size);
+  CHECK_EQ(err, 0) << "posix_memalign failed: " << strerror(err);
   TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
   EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr, dma_size));
   EXPECT_FALSE(
@@ -2173,7 +2174,8 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
   size_t dma_size = 2 * 1024 * 1024;
   size_t alignment = 1024;
   void* host_dma_ptr = nullptr;
-  (void)posix_memalign(&host_dma_ptr, alignment, dma_size);
+  int err = posix_memalign(&host_dma_ptr, alignment, dma_size);
+  CHECK_EQ(err, 0) << "posix_memalign failed: " << strerror(err);
   TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
 
   auto result = first_buffer->CopyRawToHost(host_dma_ptr, 0, size);

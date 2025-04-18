@@ -332,7 +332,8 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
 TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
   void* host_dma_ptr = nullptr;
   size_t dma_size = 1024 * 1024;
-  ASSERT_EQ(posix_memalign(&host_dma_ptr, dma_size, dma_size), 0);
+  int err = posix_memalign(&host_dma_ptr, dma_size, dma_size);
+  CHECK_EQ(err, 0) << "posix_memalign failed: " << strerror(err);
 
   PJRT_Client_DmaMap_Args dma_args;
   dma_args.struct_size = PJRT_Client_DmaMap_Args_STRUCT_SIZE;
