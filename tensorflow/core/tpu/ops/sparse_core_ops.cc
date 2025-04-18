@@ -117,6 +117,7 @@ REGISTER_OP("XlaSparseDenseMatmulWithCsrInput")
     .Attr("quantization_config_high: float")
     .Attr("quantization_config_num_buckets: int >= 0")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       int input_size;
       TF_RETURN_IF_ERROR(c->GetAttr("input_size", &input_size));
@@ -156,6 +157,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput")
     .Attr("quantization_config_high: float")
     .Attr("quantization_config_num_buckets: int >= 0")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       constexpr int kRowPointersIndex = 0;
       constexpr int kSortedSampleIdsIndex = 1;
@@ -225,6 +227,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithSgdAndCsrInput")
     .Attr("clip_weight_min: float = -inf")
     .Attr("clip_weight_max: float = inf")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       return absl::OkStatus();
@@ -245,6 +248,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradAndCsrInput")
     .Attr("clip_weight_min: float = -inf")
     .Attr("clip_weight_max: float = inf")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
@@ -273,6 +277,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInput")
     .Attr("clip_weight_min: float = -inf")
     .Attr("clip_weight_max: float = inf")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
@@ -301,6 +306,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdamAndCsrInput")
     .Attr("clip_weight_min: float = -inf")
     .Attr("clip_weight_max: float = inf")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
@@ -330,6 +336,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithFtrlAndCsrInput")
     .Attr("clip_weight_min: float = -inf")
     .Attr("clip_weight_max: float = inf")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
@@ -461,6 +468,7 @@ REGISTER_OP("XlaSparseDenseMatmulWithStaticBufferSize")
     .Attr("max_ids_per_sparse_core: int >= 1")
     .Attr("max_unique_ids_per_sparse_core: int >= 1")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       int input_size;
       TF_RETURN_IF_ERROR(c->GetAttr("input_size", &input_size));
@@ -496,6 +504,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithSgdAndStaticBufferSize")
     .Attr("max_ids_per_sparse_core: int >= 1")
     .Attr("max_unique_ids_per_sparse_core: int >= 1")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       return absl::OkStatus();
@@ -518,6 +527,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSize")
     .Attr("max_ids_per_sparse_core: int >= 1")
     .Attr("max_unique_ids_per_sparse_core: int >= 1")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
@@ -548,6 +558,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradMomentumAndStaticBufferSize")
     .Attr("max_ids_per_sparse_core: int >= 1")
     .Attr("max_unique_ids_per_sparse_core: int >= 1")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
@@ -578,6 +589,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdamAndStaticBufferSize")
     .Attr("max_ids_per_sparse_core: int >= 1")
     .Attr("max_unique_ids_per_sparse_core: int >= 1")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
@@ -609,6 +621,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSize")
     .Attr("max_ids_per_sparse_core: int >= 1")
     .Attr("max_unique_ids_per_sparse_core: int >= 1")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
@@ -630,6 +643,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithCsrInput")
     .Attr("M: int >= 1")
     .Attr("custom_computation: func")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       int num_tables;
       TF_RETURN_IF_ERROR(c->GetAttr("N", &num_tables));
