@@ -17,8 +17,8 @@ limitations under the License.
 #if GOOGLE_CUDA
 
 #include "xla/experiments/sm_bandwidth_benchmark/sm_bw_kernels.h"
-
 #include "xla/experiments/sm_bandwidth_benchmark/sm_bw_utils.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace experiments {
 namespace benchmark {
@@ -54,7 +54,7 @@ class Vec {
 
 template <typename VectorType, typename T>
 DFUNC void Store(VectorType vx, T* __restrict__ x, size_t id) {
-  reinterpret_cast<VectorType* __restrict__>(x)[id] = vx;
+  tsl::safe_reinterpret_cast<VectorType* __restrict__>(x)[id] = vx;
 }
 template <>
 DFUNC void Store(Vec<float, 4> vx, float* __restrict__ x, size_t id) {
@@ -65,7 +65,7 @@ DFUNC void Store(Vec<float, 4> vx, float* __restrict__ x, size_t id) {
 
 template <typename VectorType, typename T>
 DFUNC void LoadNc(VectorType& vx, const T* __restrict__ x, size_t id) {
-  vx = reinterpret_cast<const VectorType* __restrict__>(x)[id];
+  vx = tsl::safe_reinterpret_cast<const VectorType* __restrict__>(x)[id];
 }
 
 template <>

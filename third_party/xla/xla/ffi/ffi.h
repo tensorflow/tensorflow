@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -135,17 +136,18 @@ class AnyBuffer {
   T* typed_data() const {
     DCHECK(primitive_util::NativeToPrimitiveType<T>() == element_type())
         << "Template type must match the underlying buffer dtype";
-    return reinterpret_cast<T*>(buf_->data);
+    return tsl::safe_reinterpret_cast<T*>(buf_->data);
   }
 
   template <typename T>
   T* reinterpret_data() const {
-    DCHECK(primitive_util::IsArrayType(element_type()) &&
-           sizeof(T) == primitive_util::ByteWidth(element_type()) &&
-           !(reinterpret_cast<std::uintptr_t>(buf_->data) % alignof(T)))
+    DCHECK(
+        primitive_util::IsArrayType(element_type()) &&
+        sizeof(T) == primitive_util::ByteWidth(element_type()) &&
+        !(tsl::safe_reinterpret_cast<std::uintptr_t>(buf_->data) % alignof(T)))
         << "Requested type must have the same byte width and alignment as the "
            "underlying buffer type";
-    return reinterpret_cast<T*>(buf_->data);
+    return tsl::safe_reinterpret_cast<T*>(buf_->data);
   }
 
   se::DeviceMemoryBase device_memory() const {
@@ -190,7 +192,8 @@ class Buffer {
   void* untyped_data() const { return buf_->data; }
 
   internal::NativeType<dtype>* typed_data() const {
-    return reinterpret_cast<internal::NativeType<dtype>*>(untyped_data());
+    return tsl::safe_reinterpret_cast<internal::NativeType<dtype>*>(
+        untyped_data());
   }
 
   se::DeviceMemory<internal::NativeType<dtype>> device_memory() const {
@@ -264,7 +267,7 @@ struct ArgDecoding<AnyBuffer> {
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
     }
 
-    return AnyBuffer(reinterpret_cast<XLA_FFI_Buffer*>(arg));
+    return AnyBuffer(tsl::safe_reinterpret_cast<XLA_FFI_Buffer*>(arg));
   }
 };
 
@@ -279,7 +282,7 @@ struct ArgDecoding<Buffer<dtype, rank>> {
     }
 
     return internal::DecodeBuffer<dtype, rank>(
-        reinterpret_cast<XLA_FFI_Buffer*>(arg), diagnostic);
+        tsl::safe_reinterpret_cast<XLA_FFI_Buffer*>(arg), diagnostic);
   }
 };
 
@@ -332,7 +335,7 @@ struct RetDecoding<AnyBuffer> {
       return diagnostic.Emit("Wrong result type: expected ")
              << XLA_FFI_RetType_BUFFER << " but got " << type;
     }
-    return AnyBuffer(reinterpret_cast<XLA_FFI_Buffer*>(arg));
+    return AnyBuffer(tsl::safe_reinterpret_cast<XLA_FFI_Buffer*>(arg));
   }
 };
 
@@ -347,7 +350,7 @@ struct RetDecoding<Buffer<dtype, rank>> {
     }
 
     return internal::DecodeBuffer<dtype, rank>(
-        reinterpret_cast<XLA_FFI_Buffer*>(arg), diagnostic);
+        tsl::safe_reinterpret_cast<XLA_FFI_Buffer*>(arg), diagnostic);
   }
 };
 
@@ -390,26 +393,26 @@ struct internal::Decode<internal::RemainingRetsTag> {
 // Attributes decoding
 //===----------------------------------------------------------------------===//
 
-#define XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(T, TYPE)                   \
-  template <>                                                            \
-  struct AttrDecoding<absl::Span<const T>> {                             \
-    using Type = absl::Span<const T>;                                    \
-    static std::optional<Type> Decode(XLA_FFI_AttrType type, void* attr, \
-                                      DiagnosticEngine& diagnostic) {    \
-      if (ABSL_PREDICT_FALSE(type != XLA_FFI_AttrType_ARRAY)) {          \
-        return diagnostic.Emit("Wrong attribute type: expected ")        \
-               << XLA_FFI_AttrType_ARRAY << " but got " << type;         \
-      }                                                                  \
-                                                                         \
-      auto* array = reinterpret_cast<XLA_FFI_Array*>(attr);              \
-      if (ABSL_PREDICT_FALSE(array->dtype != TYPE)) {                    \
-        return diagnostic.Emit("Wrong array data type: expected ")       \
-               << TYPE << " but got " << array->dtype;                   \
-      }                                                                  \
-                                                                         \
-      return absl::Span<const T>(reinterpret_cast<T*>(array->data),      \
-                                 array->size);                           \
-    }                                                                    \
+#define XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(T, TYPE)                        \
+  template <>                                                                 \
+  struct AttrDecoding<absl::Span<const T>> {                                  \
+    using Type = absl::Span<const T>;                                         \
+    static std::optional<Type> Decode(XLA_FFI_AttrType type, void* attr,      \
+                                      DiagnosticEngine& diagnostic) {         \
+      if (ABSL_PREDICT_FALSE(type != XLA_FFI_AttrType_ARRAY)) {               \
+        return diagnostic.Emit("Wrong attribute type: expected ")             \
+               << XLA_FFI_AttrType_ARRAY << " but got " << type;              \
+      }                                                                       \
+                                                                              \
+      auto* array = tsl::safe_reinterpret_cast<XLA_FFI_Array*>(attr);         \
+      if (ABSL_PREDICT_FALSE(array->dtype != TYPE)) {                         \
+        return diagnostic.Emit("Wrong array data type: expected ")            \
+               << TYPE << " but got " << array->dtype;                        \
+      }                                                                       \
+                                                                              \
+      return absl::Span<const T>(tsl::safe_reinterpret_cast<T*>(array->data), \
+                                 array->size);                                \
+    }                                                                         \
   }
 
 XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int8_t, XLA_FFI_DataType_S8);
@@ -432,7 +435,7 @@ struct AttrDecoding<absl::string_view> {
              << XLA_FFI_AttrType_STRING << " but got " << type;
     }
 
-    auto* span = reinterpret_cast<XLA_FFI_ByteSpan*>(attr);
+    auto* span = tsl::safe_reinterpret_cast<XLA_FFI_ByteSpan*>(attr);
     return std::string_view(span->ptr, span->len);
   }
 };
@@ -447,7 +450,7 @@ struct AttrDecoding<Pointer<T>> {
 
   static std::optional<Type> Decode(XLA_FFI_AttrType type, void* attr,
                                     DiagnosticEngine& diagnostic) {
-    auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);
+    auto* scalar = tsl::safe_reinterpret_cast<XLA_FFI_Scalar*>(attr);
     if (ABSL_PREDICT_FALSE(type != XLA_FFI_AttrType_SCALAR ||
                            scalar->dtype != XLA_FFI_DataType_S64)) {
       return diagnostic.Emit("Wrong attribute type: ")
@@ -455,8 +458,8 @@ struct AttrDecoding<Pointer<T>> {
     }
 
     static_assert(sizeof(uintptr_t) == sizeof(int64_t));
-    uintptr_t ptr = *reinterpret_cast<uintptr_t*>(scalar->value);
-    return reinterpret_cast<Type>(ptr);
+    uintptr_t ptr = *tsl::safe_reinterpret_cast<uintptr_t*>(scalar->value);
+    return tsl::safe_reinterpret_cast<Type>(ptr);
   }
 };
 
@@ -499,7 +502,7 @@ struct AttrDecoding<Dictionary> {
       return diagnostic.Emit("Wrong attribute type: expected ")
              << XLA_FFI_AttrType_DICTIONARY << " but got " << type;
     }
-    return Dictionary(reinterpret_cast<XLA_FFI_Attrs*>(attr));
+    return Dictionary(tsl::safe_reinterpret_cast<XLA_FFI_Attrs*>(attr));
   }
 };
 
@@ -518,7 +521,7 @@ struct CtxDecoding<Stream> {
     if (ABSL_PREDICT_FALSE(ptr == nullptr)) {
       return diagnostic.Emit("Failed to decode stream");
     }
-    return reinterpret_cast<Type>(ptr);
+    return tsl::safe_reinterpret_cast<Type>(ptr);
   }
 };
 
@@ -542,7 +545,7 @@ struct CtxDecoding<Allocator> {
                                     DiagnosticEngine&) {
     void* device_allocator =
         api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(ctx);
-    return reinterpret_cast<Type>(device_allocator);
+    return tsl::safe_reinterpret_cast<Type>(device_allocator);
   }
 };
 
@@ -559,8 +562,8 @@ struct CtxDecoding<ScratchAllocator> {
         api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(ctx);
 
     return se::OwningScratchAllocator<>(
-        device_ordinal,
-        reinterpret_cast<se::DeviceMemoryAllocator*>(device_allocator));
+        device_ordinal, tsl::safe_reinterpret_cast<se::DeviceMemoryAllocator*>(
+                            device_allocator));
   }
 };
 
@@ -572,7 +575,7 @@ struct CtxDecoding<CalledComputation> {
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine&) {
     void* ptr = api->internal_api->XLA_FFI_INTERNAL_CalledComputation_Get(ctx);
-    return reinterpret_cast<Type>(ptr);
+    return tsl::safe_reinterpret_cast<Type>(ptr);
   }
 };
 
@@ -585,7 +588,7 @@ struct CtxDecoding<IntraOpThreadPool> {
                                     DiagnosticEngine&) {
     void* intra_op_thread_pool =
         api->internal_api->XLA_FFI_INTERNAL_IntraOpThreadPool_Get(ctx);
-    return reinterpret_cast<Type>(intra_op_thread_pool);
+    return tsl::safe_reinterpret_cast<Type>(intra_op_thread_pool);
   }
 };
 
@@ -620,7 +623,7 @@ struct CtxDecoding<PlatformStream<T>> {
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine& diagnostic) {
     if (auto stream = CtxDecoding<Stream>::Decode(api, ctx, diagnostic)) {
-      return reinterpret_cast<Type>(
+      return tsl::safe_reinterpret_cast<Type>(
           stream.value()->platform_specific_handle().stream);
     }
     return std::nullopt;
@@ -653,8 +656,9 @@ struct CtxDecoding<UserData<T>> {
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine& diagnostic) {
-    auto* execution_context = reinterpret_cast<const ExecutionContext*>(
-        api->internal_api->XLA_FFI_INTERNAL_ExecutionContext_Get(ctx));
+    auto* execution_context =
+        tsl::safe_reinterpret_cast<const ExecutionContext*>(
+            api->internal_api->XLA_FFI_INTERNAL_ExecutionContext_Get(ctx));
 
     if (execution_context == nullptr) {
       return diagnostic.Emit(
@@ -686,7 +690,7 @@ struct CtxDecoding<State<T>> {
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine& diagnostic) {
-    auto* execution_state = reinterpret_cast<const ExecutionState*>(
+    auto* execution_state = tsl::safe_reinterpret_cast<const ExecutionState*>(
         api->internal_api->XLA_FFI_INTERNAL_ExecutionState_Get(ctx));
 
     if (execution_state == nullptr) {
@@ -727,7 +731,7 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
                                XLA_FFI_ExecutionContext* ctx,
                                absl::StatusOr<std::unique_ptr<T>> state) {
     if (ABSL_PREDICT_TRUE(state.ok())) {
-      auto* execution_state = reinterpret_cast<ExecutionState*>(
+      auto* execution_state = tsl::safe_reinterpret_cast<ExecutionState*>(
           api->internal_api->XLA_FFI_INTERNAL_ExecutionState_Get(ctx));
       absl::Status status = execution_state->Set<T>(*std::move(state));
       if (ABSL_PREDICT_TRUE(status.ok())) {

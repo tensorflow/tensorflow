@@ -48,7 +48,10 @@ cc_library(
     name = "api",
     hdrs = [":api_headers"],
     visibility = ["//visibility:private"],
-    deps = [":c_api"],
+    deps = [
+        ":c_api",
+        "//xla/tsl/util:safe_reinterpret_cast",
+    ],
 )
 
 cc_library(
@@ -68,6 +71,7 @@ cc_library(
     deps = [
         ":api",
         ":c_api",
+        "//xla/tsl/util:safe_reinterpret_cast",
     ],
 )
 

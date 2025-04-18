@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/registration.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace mlir {
 namespace interpreter {
@@ -73,7 +74,7 @@ bool TryCall(void* sym, func::FuncOp callee,
 
   static_assert(sizeof...(Args) <= 2);
   using FnType = Ret (*)(Args...);
-  auto fn = reinterpret_cast<FnType>(sym);
+  auto fn = tsl::safe_reinterpret_cast<FnType>(sym);
   constexpr int n = sizeof...(Args);
 
   if constexpr (n == 1) {

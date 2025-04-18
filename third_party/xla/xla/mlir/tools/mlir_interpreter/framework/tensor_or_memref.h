@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace mlir {
 namespace interpreter {
@@ -304,12 +305,12 @@ struct TensorOrMemref {
   }
 
   const T& at(ArrayRef<int64_t> indices) const {
-    return *reinterpret_cast<const T*>(
+    return *tsl::safe_reinterpret_cast<const T*>(
         buffer->at(view.GetPhysicalIndex(indices), sizeof(T)));
   }
 
   T& at(ArrayRef<int64_t> indices) {
-    return *reinterpret_cast<T*>(
+    return *tsl::safe_reinterpret_cast<T*>(
         buffer->at(view.GetPhysicalIndex(indices), sizeof(T)));
   }
 
