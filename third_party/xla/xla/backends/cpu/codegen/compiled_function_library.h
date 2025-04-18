@@ -49,6 +49,16 @@ class CompiledFunctionLibrary : public FunctionLibrary {
   absl::StatusOr<void*> ResolveFunction(TypeId type_id,
                                         absl::string_view name) final;
 
+  // Returns a map from symbol names to compiled function pointers without the
+  // type information. Can be used to construct an AotCompiledFunctionLibrary.
+  absl::flat_hash_map<std::string, void*> GetTypelessSymbolsMap() const {
+    absl::flat_hash_map<std::string, void*> ret;
+    for (const auto& [name, symbol] : symbols_map_) {
+      ret[name] = symbol.ptr;
+    }
+    return ret;
+  }
+
  private:
   std::unique_ptr<ExecutionEngine> execution_engine_;
   // Caches the resolved symbols so we don't have to look them up every time a

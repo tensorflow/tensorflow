@@ -15,14 +15,13 @@ limitations under the License.
 
 #ifndef TENSORFLOW_COMPILER_AOT_CODEGEN_H_
 #define TENSORFLOW_COMPILER_AOT_CODEGEN_H_
-
-#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/aot/compile.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace tfcompile {
@@ -65,10 +64,16 @@ struct MetadataResult {
   // GenerateMetadata.
   string program_shape_access_shim;
 
+  // cpu_executable_access_shim is a C++ expression that constructs
+  // a protobuf required to construct a CpuExecutable.
+  // This is set only for AOT thunks.
+  string cpu_executable_access_shim;
+
   // hlo_profile_printer_data_access_shim is a C++ expression that constructs
   // the xla::HloProfilePrinterData instance for the CompileResult passed to
   // GenerateMetadata.  If the xla::HloProfilePrinterData is null then this is a
   // C++ expression that evaluates to nullptr at runtime.
+  // This is set only for AOT legacy.
   string hlo_profile_printer_data_access_shim;
 
   // The contents of the object (".o") file.
