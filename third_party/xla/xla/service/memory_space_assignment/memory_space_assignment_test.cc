@@ -108,6 +108,65 @@ const auto& ShapeSize = HloCostAnalysis::DefaultShapeSize;
 
 using MemorySpaceAssignmentTest = MemorySpaceAssignmentTestBase;
 
+// A mock MemorySpaceAssignmentRepacker class that accepts a map of
+// (start_time,offset) -> new_offset values. Using this map, the repacker
+// repacks the allocations to the new_offset.
+class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
+ public:
+  explicit FakeMemorySpaceAssignmentRepacker(
+      absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t>& repack_map,
+      std::function<void(absl::Span<AllocationBlock*>)> check_fun = nullptr,
+      bool always_return_modified = false)
+      : MemorySpaceAssignmentRepacker(/*max_size=*/128, /*alignment=*/8),
+        repack_map_(repack_map),
+        check_fun_(check_fun),
+        always_return_modified_(always_return_modified) {}
+
+  absl::StatusOr<bool> Repack(
+      absl::Span<AllocationBlock*> allocations) override {
+    bool modified = false;
+    for (AllocationBlock* block : allocations) {
+      absl::flat_hash_set<int64_t> colocations;
+      std::string colocations_str;
+      for (const AllocationBlock* colocation : block->GetColocations()) {
+        absl::StrAppend(&colocations_str, colocation->id, ", ");
+        colocations.insert(colocation->id);
+      }
+      VLOG(1) << "Alloc id: " << block->id << " time: ["
+              << block->inclusive_start_time << ", " << block->end_time
+              << "] size: " << block->size
+              << " init offset: " << block->initial_offset << " colocations: {"
+              << colocations_str << "}";
+      auto it = repack_map_.find(
+          {block->inclusive_start_time, block->initial_offset});
+      if (it != repack_map_.end()) {
+        modified = true;
+        block->offset = it->second;
+      } else {
+        block->offset = block->initial_offset;
+      }
+      for (AllocationBlock* colocation : block->GetColocations()) {
+        if (it != repack_map_.end()) {
+          colocation->offset = it->second;
+        } else {
+          colocation->offset = colocation->initial_offset;
+        }
+      }
+    }
+    if (check_fun_) {
+      check_fun_(allocations);
+    }
+
+    return always_return_modified_ || modified;
+  }
+
+ private:
+  // A map from (start_time, offset) to new_offset.
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map_;
+  std::function<void(absl::Span<AllocationBlock*>)> check_fun_;
+  bool always_return_modified_;
+};
+
 TEST_F(MemorySpaceAssignmentTest, ParameterOnly) {
   // A module consisting of a single parameter. Inputs/outputs are currently
   // excluded from memory space assignment.
@@ -5369,6 +5428,485 @@ TEST_F(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   EXPECT_THAT(tanh4, op::ShapeWithLayout(shape_in_default_mem));
 }
 
+TEST_F(MemorySpaceAssignmentTest, ColorOutputInAlternateMemory) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[3,4]{1,0} parameter(0)
+  p1 = f32[3,4]{1,0} parameter(1)
+  tanh0 = f32[3,4]{1,0} tanh(p0)
+  negate0 = f32[3,4]{1,0} negate(p1)
+  tanh1 = f32[3,4]{1,0} tanh(negate0)
+  negate1 = f32[3,4]{1,0} add(negate0, p1)
+  tanh2 = f32[3,4]{1,0} tanh(tanh1)
+  negate2 = f32[3,4]{1,0} add(negate1, p1)
+  tanh3 = f32[3,4]{1,0} tanh(tanh2)
+  negate3 = f32[3,4]{1,0} add(negate2, p1)
+  tanh4 = f32[3,4]{1,0} tanh(tanh3)
+  negate4 = f32[3,4]{1,0} add(negate3, tanh0)
+  ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
+  HloPosition tanh0_position{tanh0, {}};
+  memory_space_options.buffer_colorings = {
+      {tanh0_position, kAlternateMemorySpace}};
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "tanh0" }
+      override_options { assign_last: true }
+    }
+  )pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
+                                     std::nullopt, std::nullopt,
+                                     msa_sort_order_overrides);
+  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+  EXPECT_EQ(
+      FindInstruction(module.get(), "tanh0")->shape().layout().memory_space(),
+      kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, ColorInputInAlternateMemory) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[3,4]{1,0} parameter(0)
+  p1 = f32[3,4]{1,0} parameter(1)
+  tanh0 = f32[3,4]{1,0} tanh(p0)
+  negate0 = f32[3,4]{1,0} negate(p1)
+  tanh1 = f32[3,4]{1,0} tanh(negate0)
+  negate1 = f32[3,4]{1,0} add(negate0, p1)
+  tanh2 = f32[3,4]{1,0} tanh(tanh1)
+  negate2 = f32[3,4]{1,0} add(negate1, p1)
+  tanh3 = f32[3,4]{1,0} tanh(tanh2)
+  negate3 = f32[3,4]{1,0} add(negate2, p1)
+  tanh4 = f32[3,4]{1,0} tanh(tanh3)
+  negate4 = f32[3,4]{1,0} add(negate3, tanh0)
+  ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
+  HloUse tanh0_use_during_negate4{negate4, 1, {}};
+  memory_space_options.buffer_colorings = {
+      {tanh0_use_during_negate4, kAlternateMemorySpace}};
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "tanh0" }
+      override_options { assign_last: true }
+    }
+  )pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
+                                     std::nullopt, std::nullopt,
+                                     msa_sort_order_overrides);
+  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+  EXPECT_EQ(FindInstruction(module.get(), "negate4")
+                ->operand(1)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       ColorOutputInDefaultMemoryUseInAlternateMemory) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[3,4]{1,0} parameter(0)
+  p1 = f32[3,4]{1,0} parameter(1)
+  tanh0 = f32[3,4]{1,0} tanh(p0)
+  negate0 = f32[3,4]{1,0} negate(p1)
+  tanh1 = f32[3,4]{1,0} tanh(negate0)
+  negate1 = f32[3,4]{1,0} add(negate0, p1)
+  tanh2 = f32[3,4]{1,0} tanh(tanh1)
+  negate2 = f32[3,4]{1,0} add(negate1, p1)
+  tanh3 = f32[3,4]{1,0} tanh(tanh2)
+  negate3 = f32[3,4]{1,0} add(negate2, p1)
+  tanh4 = f32[3,4]{1,0} tanh(tanh3)
+  negate4 = f32[3,4]{1,0} add(negate3, tanh0)
+  ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
+  HloPosition tanh0_position{tanh0, {}};
+  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
+  HloUse tanh0_use_during_negate4{negate4, 1, {}};
+  memory_space_options.buffer_colorings = {
+      {tanh0_position, kDefaultMemorySpace},
+      {tanh0_use_during_negate4, kAlternateMemorySpace}};
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "tanh0" }
+      override_options { assign_last: true }
+    }
+  )pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
+                                     std::nullopt, std::nullopt,
+                                     msa_sort_order_overrides);
+  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+  EXPECT_EQ(
+      FindInstruction(module.get(), "tanh0")->shape().layout().memory_space(),
+      kDefaultMemorySpace);
+  EXPECT_EQ(FindInstruction(module.get(), "negate4")
+                ->operand(1)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       ColorOutputInAlternateMemoryUseInDefaultMemory) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+p0 = f32[3,4]{1,0} parameter(0)
+p1 = f32[3,4]{1,0} parameter(1)
+tanh0 = f32[3,4]{1,0} tanh(p0)
+negate0 = f32[3,4]{1,0} negate(p1)
+tanh1 = f32[3,4]{1,0} tanh(negate0)
+negate1 = f32[3,4]{1,0} add(negate0, p1)
+tanh2 = f32[3,4]{1,0} tanh(tanh1)
+negate2 = f32[3,4]{1,0} add(negate1, p1)
+tanh3 = f32[3,4]{1,0} tanh(tanh2)
+negate3 = f32[3,4]{1,0} add(negate2, p1)
+tanh4 = f32[3,4]{1,0} tanh(tanh3)
+negate4 = f32[3,4]{1,0} add(negate3, tanh0)
+ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
+  HloPosition tanh0_position{tanh0, {}};
+  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
+  HloUse tanh0_use_during_negate4{negate4, 1, {}};
+  memory_space_options.buffer_colorings = {
+      {tanh0_position, kAlternateMemorySpace},
+      {tanh0_use_during_negate4, kDefaultMemorySpace}};
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "tanh0" }
+      override_options { assign_last: true }
+    }
+  )pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
+                                     std::nullopt, std::nullopt,
+                                     msa_sort_order_overrides);
+  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+  EXPECT_EQ(
+      FindInstruction(module.get(), "tanh0")->shape().layout().memory_space(),
+      kAlternateMemorySpace);
+  EXPECT_EQ(FindInstruction(module.get(), "negate4")
+                ->operand(1)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, ColorAlternateUsesInAlternateMemory) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+p0 = f32[3,4]{1,0} parameter(0)
+p1 = f32[3,4]{1,0} parameter(1)
+tanh0 = f32[3,4]{1,0} tanh(p0)
+negate0 = f32[3,4]{1,0} negate(p1)
+tanh1 = f32[3,4]{1,0} tanh(negate0)
+negate1 = f32[3,4]{1,0} add(negate0, p1)
+tanh2 = f32[3,4]{1,0} tanh(tanh1)
+negate2 = f32[3,4]{1,0} add(negate1, p1)
+tanh3 = f32[3,4]{1,0} tanh(tanh2)
+negate3 = f32[3,4]{1,0} add(negate2, p1)
+tanh4 = f32[3,4]{1,0} tanh(tanh3)
+negate4 = f32[3,4]{1,0} add(negate3, tanh0)
+ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
+  HloPosition negate0_position{negate0, {}};
+  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
+  HloUse negate0_use_during_negate1{negate1, 0, {}};
+  HloInstruction* tanh1 = FindInstruction(module.get(), "tanh1");
+  HloUse negate0_use_during_tanh1{tanh1, 0, {}};
+  memory_space_options.buffer_colorings = {
+      {negate0_position, kAlternateMemorySpace},
+      {negate0_use_during_tanh1, kDefaultMemorySpace},
+      {negate0_use_during_negate1, kAlternateMemorySpace}};
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "tanh0" }
+      override_options { assign_first: true }
+    }
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "negate0" }
+      override_options { assign_last: true }
+    }
+  )pb";
+  TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
+                                     std::nullopt, std::nullopt,
+                                     msa_sort_order_overrides);
+  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+  EXPECT_EQ(
+      FindInstruction(module.get(), "negate0")->shape().layout().memory_space(),
+      kAlternateMemorySpace);
+  EXPECT_EQ(FindInstruction(module.get(), "negate1")
+                ->operand(0)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(FindInstruction(module.get(), "tanh1")
+                ->operand(0)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, ColorBuffersWithoutRepacking) {
+  // Without repacking, the following is the expected layout:
+  // ......  chunk:  3072-4096
+  // #####.  chunk:  2048-3072
+  // #####.  chunk:  1024-2048
+  // .##...  chunk:     0-1024
+  // Since we block a chunk for coloring of negate1, we are not able to allocate
+  // negate3 in alternate memory without repacking.
+  absl::string_view hlo_string = R"(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  /* parameters */
+  p0 = f32[32,16] parameter(0)
+  p1 = f32[16,16] parameter(1)
+  p2 = f32[32,16] parameter(2)
+  
+  negate0 = f32[32,16] negate(p0) // We will set highest priority for this.
+  negate1 = f32[16,16] negate(p1) // We will color this, but set lowest priority.
+  negate2 = f32[16,16] negate(negate1)
+  negate3 = f32[32,16] negate(p2) // We will set second highest priority for this.
+  negate4 = f32[32,16] negate(negate0)
+  negate5 = f32[32,16] negate(negate3)
+
+  ROOT tuple = (f32[16,16], f32[32,16], f32[32,16]) tuple(negate2, negate4, negate5)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          // An arbitrary value that is greater than that for p1, p2, p3, and
+          // p4.
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "negate0") {
+            priority = 1;
+          } else if (x.buffer->instruction()->name() == "negate3") {
+            priority = 2;
+          } else if (x.buffer->instruction()->name() == "negate1") {
+            priority = 1000;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+
+        return lookup(lhs) < lookup(rhs);
+      };
+
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 4 * 1024;
+  options.max_repacks = 0;
+  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
+  HloPosition negate1_position{negate1, {}};
+  options.buffer_colorings = {{negate1_position, kAlternateMemorySpace}};
+
+  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), options);
+  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+
+  EXPECT_EQ(
+      FindInstruction(module.get(), "negate1")->shape().layout().memory_space(),
+      kAlternateMemorySpace);
+
+  EXPECT_EQ(
+      FindInstruction(module.get(), "negate0")->shape().layout().memory_space(),
+      kAlternateMemorySpace);
+
+  EXPECT_EQ(FindInstruction(module.get(), "negate4")
+                ->operand(0)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  // negate3 output and use are both in default memory.
+  EXPECT_EQ(
+      FindInstruction(module.get(), "negate3")->shape().layout().memory_space(),
+      kDefaultMemorySpace);
+
+  EXPECT_EQ(FindInstruction(module.get(), "negate5")
+                ->operand(0)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, ColorBuffersWithRepacking) {
+  // Without repacking, the following is the expected layout:
+  // ......  chunk:  3072-4096
+  // #####.  chunk:  2048-3072
+  // #####.  chunk:  1024-2048
+  // .##...  chunk:     0-1024
+
+  // With repacking, we move negate1 to offset 1024, and negate0 to offset 0.
+  // ...###  chunk:  3072-4096
+  // .#####  chunk:  2048-3072
+  // #####.  chunk:  1024-2048
+  // #####.  chunk:     0-1024
+  // Repacking allows us to allocate negate3 in alternate memory.
+  absl::string_view hlo_string = R"(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  /* parameters */
+  p0 = f32[32,16] parameter(0)
+  p1 = f32[16,16] parameter(1)
+  p2 = f32[32,16] parameter(2)
+  
+  negate0 = f32[32,16] negate(p0) // We will set highest priority for this.
+  negate1 = f32[16,16] negate(p1) // We will color this, but set lowest priority.
+  negate2 = f32[16,16] negate(negate1)
+  negate3 = f32[32,16] negate(p2) // We will set second highest priority for this.
+  negate4 = f32[32,16] negate(negate0)
+  negate5 = f32[32,16] negate(negate3)
+
+  ROOT tuple = (f32[16,16], f32[32,16], f32[32,16]) tuple(negate2, negate4, negate5)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          // An arbitrary value that is greater than that for p1, p2, p3, and
+          // p4.
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "negate0") {
+            priority = 1;
+          } else if (x.buffer->instruction()->name() == "negate3") {
+            priority = 2;
+          } else if (x.buffer->instruction()->name() == "negate1") {
+            priority = 1000;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+
+        return lookup(lhs) < lookup(rhs);
+      };
+
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
+  // Move "negate1" from offset 0 to 1024.
+  repack_map[{4, 0}] = 1024;
+  // Move "negate0" from offset 1024 to 0.
+  repack_map[{3, 1024}] = 0;
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map);
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 4 * 1024;
+  options.max_repacks = 1;
+  options.repacker = &repacker;
+  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
+  HloPosition negate1_position{negate1, {}};
+  options.buffer_colorings = {{negate1_position, kAlternateMemorySpace}};
+
+  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), options);
+  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+
+  EXPECT_EQ(
+      FindInstruction(module.get(), "negate1")->shape().layout().memory_space(),
+      kAlternateMemorySpace);
+
+  EXPECT_EQ(
+      FindInstruction(module.get(), "negate0")->shape().layout().memory_space(),
+      kAlternateMemorySpace);
+
+  EXPECT_EQ(FindInstruction(module.get(), "negate4")
+                ->operand(0)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  // negate3 output and use are both in alternate memory.
+  EXPECT_EQ(
+      FindInstruction(module.get(), "negate3")->shape().layout().memory_space(),
+      kAlternateMemorySpace);
+
+  EXPECT_EQ(FindInstruction(module.get(), "negate5")
+                ->operand(0)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+}
+
 TEST_F(MemorySpaceAssignmentTest,
        MemoryBoundednessOverrideSortOrderAssignFirst) {
   absl::string_view hlo_string = R"(
@@ -7890,65 +8428,6 @@ ENTRY entry {
                   .layout()
                   .memory_space() == kAlternateMemorySpace);
 }
-
-// A mock MemorySpaceAssignmentRepacker class that accepts a map of
-// (start_time,offset) -> new_offset values. Using this map, the repacker
-// repacks the allocations to the new_offset.
-class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
- public:
-  explicit FakeMemorySpaceAssignmentRepacker(
-      absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t>& repack_map,
-      std::function<void(absl::Span<AllocationBlock*>)> check_fun = nullptr,
-      bool always_return_modified = false)
-      : MemorySpaceAssignmentRepacker(/*max_size=*/128, /*alignment=*/8),
-        repack_map_(repack_map),
-        check_fun_(check_fun),
-        always_return_modified_(always_return_modified) {}
-
-  absl::StatusOr<bool> Repack(
-      absl::Span<AllocationBlock*> allocations) override {
-    bool modified = false;
-    for (AllocationBlock* block : allocations) {
-      absl::flat_hash_set<int64_t> colocations;
-      std::string colocations_str;
-      for (const AllocationBlock* colocation : block->GetColocations()) {
-        absl::StrAppend(&colocations_str, colocation->id, ", ");
-        colocations.insert(colocation->id);
-      }
-      VLOG(1) << "Alloc id: " << block->id << " time: ["
-              << block->inclusive_start_time << ", " << block->end_time
-              << "] size: " << block->size
-              << " init offset: " << block->initial_offset << " colocations: {"
-              << colocations_str << "}";
-      auto it = repack_map_.find(
-          {block->inclusive_start_time, block->initial_offset});
-      if (it != repack_map_.end()) {
-        modified = true;
-        block->offset = it->second;
-      } else {
-        block->offset = block->initial_offset;
-      }
-      for (AllocationBlock* colocation : block->GetColocations()) {
-        if (it != repack_map_.end()) {
-          colocation->offset = it->second;
-        } else {
-          colocation->offset = colocation->initial_offset;
-        }
-      }
-    }
-    if (check_fun_) {
-      check_fun_(allocations);
-    }
-
-    return always_return_modified_ || modified;
-  }
-
- private:
-  // A map from (start_time, offset) to new_offset.
-  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map_;
-  std::function<void(absl::Span<AllocationBlock*>)> check_fun_;
-  bool always_return_modified_;
-};
 
 TEST_F(MemorySpaceAssignmentTest, Repack) {
   // We initially perform the following allocations at these offsets.
@@ -10896,7 +11375,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
       HloDataflowAnalysis::Run(*module));
-  LOG(ERROR) << "module: " << module->ToString();
+  LOG(INFO) << "module: " << module->ToString();
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
           module->entry_computation()->parameter_instruction(1), {});
@@ -10988,7 +11467,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchWithOverrideNoReuse) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
       HloDataflowAnalysis::Run(*module));
-  LOG(ERROR) << "module: " << module->ToString();
+  LOG(INFO) << "module: " << module->ToString();
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
           module->entry_computation()->parameter_instruction(0), {});
@@ -11069,7 +11548,7 @@ TEST_F(MemorySpaceAssignmentTest, UserAnnotatedCrossProgramPrefetchNoReuse) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
       HloDataflowAnalysis::Run(*module));
-  LOG(ERROR) << "module: " << module->ToString();
+  LOG(INFO) << "module: " << module->ToString();
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
           module->entry_computation()->parameter_instruction(0), {});
@@ -11168,7 +11647,7 @@ TEST_F(MemorySpaceAssignmentTest,
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
       HloDataflowAnalysis::Run(*module));
-  LOG(ERROR) << "module: " << module->ToString();
+  LOG(INFO) << "module: " << module->ToString();
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
           module->entry_computation()->parameter_instruction(0), {});
@@ -11351,7 +11830,7 @@ TEST_F(MemorySpaceAssignmentTest,
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
       HloDataflowAnalysis::Run(*module));
-  LOG(ERROR) << "module: " << module->ToString();
+  LOG(INFO) << "module: " << module->ToString();
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
           module->entry_computation()->parameter_instruction(1), {});
