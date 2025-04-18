@@ -2769,6 +2769,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   // there was an error.
   auto execute_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
 
+  // `dispatch_event` indicates whether gpu computation is dispatched to the
+  // stream and whether there was an error.
+  auto dispatch_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+
   absl::InlinedVector<TfrtGpuBuffer::DonationTransaction, 4>
       donation_transactions;
 
@@ -2848,7 +2852,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
             << last_collective_launch_event.GetAsyncValue()
             << "; IsAvailable: " << last_collective_launch_event.IsAvailable();
     input_deps.push_back(std::move(last_collective_launch_event));
-    device->SetLastCollectiveLaunchEvent(execute_event);
+    device->SetLastCollectiveLaunchEvent(dispatch_event);
   }
 
   std::vector<tsl::AsyncValueRef<MaybeOwningGpuMemory>> output_buffers;
@@ -2939,7 +2943,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   auto execute_fn =
       [replica, partition, device, launch_id(options.launch_id), run_id(run_id),
        output_buffers(output_buffers), execute_event(execute_event.CopyRef()),
-       untuple_result(untuple_result), result_is_tuple(result_is_tuple),
+       dispatch_event(dispatch_event.CopyRef()), untuple_result(untuple_result),
+       result_is_tuple(result_is_tuple),
        compute_reservation(std::move(compute_reservation)),
        donation_transactions(std::move(donation_transactions)),
        parameter_shapes(on_device_executable_parameter_shapes_[executable_idx]),
@@ -2959,6 +2964,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
             output_buffer.SetError(status);
           }
           execute_event.SetError(status);
+          dispatch_event.SetError(status);
         };
 
         for (const auto& av : inputs_avs) {
@@ -3025,6 +3031,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           return;
         }
 
+        // Set the dispatch event to concrete to indicate that the dispatch has
+        // completed, so that the next execute_fn can start.
+        dispatch_event.SetStateConcrete();
+
         ExecutionOutput& execution_output = result_buffer_or_status.value();
         ScopedShapedBuffer output = execution_output.ConsumeResult();
         if (untuple_result && result_is_tuple) {
@@ -3058,6 +3068,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        buffer_is_donated(std::move(buffer_is_donated)),
        prepare_inputs_avs(CopyAsyncValues(prepare_input_deps)),
        execute_event(execute_event.CopyRef()),
+       dispatch_event(dispatch_event.CopyRef()),
        output_buffers(std::move(output_buffers)),
        execute_fn(std::move(execute_fn)), input_deps(std::move(input_deps)),
        parameter_shapes(on_device_executable_parameter_shapes_[executable_idx]),
@@ -3074,6 +3085,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
 
         auto set_error = [&](absl::Status status) {
           execute_event.SetError(status);
+          dispatch_event.SetError(status);
           for (auto& output_buffer : output_buffers) {
             output_buffer.SetError(status);
           }
