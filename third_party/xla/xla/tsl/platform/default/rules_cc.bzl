@@ -19,12 +19,17 @@ cc_import = _cc_import
 cc_shared_library = _cc_shared_library
 cc_test = _cc_test
 
-def cc_library(name, deps = None, **kwargs):
-    """cc_library that hides side effects of https://github.com/bazelbuild/bazel/issues/21519.
+def cc_library(name, deps = None, copts = None, **kwargs):
+    """cc_library that works around external issues.
+
+    This rule hides side effects of https://github.com/bazelbuild/bazel/issues/21519,
+    and it enables compatibility with a wider set of absl versions and their changes to nullability
+    annotation syntax.
 
     Args:
       name: name of target.
       deps: deps with `xla/tsl:bazel_issue_21519` added.
+      copts: copts to which definitions of absl nullability macros are added.
       **kwargs: passed to native.cc_library.
     """
 
@@ -37,4 +42,13 @@ def cc_library(name, deps = None, **kwargs):
         deps = deps + ["@local_xla//xla/tsl:bazel_issue_21519"]  # buildifier: disable=list-append
         deps = deps + ["@local_tsl//:bazel_issue_21519"]  # buildifier: disable=list-append
 
-    native.cc_library(name = name, deps = deps, **kwargs)
+    if copts == None:
+        copts = []
+
+    # /*absl_nonnull*/, /*absl_nullable*/, and /*absl_nullability_unknown*/ are not yet present in the version
+    # of absl we are using.
+    # This can be removed when the absl version used is bumped to commit 48f0f91 or newer, likely
+    # after July 2025.
+    copts = copts + ["-D/*absl_nonnull*/=''", "-D/*absl_nullable*/=''", "-D/*absl_nullability_unknown*/=''"]
+
+    native.cc_library(name = name, deps = deps, copts = copts, **kwargs)
