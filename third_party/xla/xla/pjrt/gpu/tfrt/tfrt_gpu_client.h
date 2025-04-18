@@ -204,13 +204,12 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   int id_;
   PjRtClient* client_ = nullptr;
-  PjRtLocalDeviceId local_device_id_;
-  PjRtLocalHardwareId local_hardware_id_;
+  const PjRtLocalDeviceId local_device_id_;
+  const PjRtLocalHardwareId local_hardware_id_;
   se::StreamExecutor* executor_;
   BoundedStreamPool stream_pool_;
-  // TODO(b/400541410): Support H2D transfers on compute streams.
-  //   Have a dedicated compute stream pool to avoid blocking the stream pool
-  //   for H2D transfers.
+  //  Have a dedicated compute stream pool to avoid blocking the stream pool
+  //  for H2D transfers.
   BoundedStreamPool compute_stream_pool_;
   std::unique_ptr<tsl::Allocator> allocator_;
   std::unique_ptr<se::DeviceMemoryAllocator> se_allocator_;
@@ -368,6 +367,14 @@ class TfrtGpuClient final : public PjRtClient {
       std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtMemorySpace* memory_space) override;
 
+  // Caller is responsible to ensure that `data` has allocated enough memory
+  // for `buffer_size` to do DMA mapping.
+  absl::Status DmaMap(void* data, size_t buffer_size) override;
+
+  absl::Status DmaUnmap(void* data) override;
+
+  bool IsDmaMapped(const void* data_start, int64_t transfer_size);
+
  private:
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
   // `options` in-place.
@@ -448,6 +455,10 @@ class TfrtGpuClient final : public PjRtClient {
 
   const std::string platform_name_;
   StreamExecutorGpuTopologyDescription topology_;
+
+  absl::Mutex dma_maps_mutex_;
+  // Maps dma mapped start pointers to their sizes.
+  absl::flat_hash_map<void*, size_t> dma_maps_ ABSL_GUARDED_BY(dma_maps_mutex_);
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(

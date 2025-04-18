@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <array>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <numeric>
@@ -28,6 +29,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -1407,6 +1409,81 @@ TEST(TfrtGpuClientTest, ComputeCapabilityAttribute) {
       absl::StrCat(nvcc.major, ".", nvcc.minor);
 
   EXPECT_EQ(compute_capability, expected_compute_capability);
+}
+
+TEST(TfrtGpuClientTest, DmaMapUnmap) {
+  GpuClientOptions options = GpuClientOptions();
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_client, GetTfrtGpuClient(options));
+  auto client = tensorflow::down_cast<TfrtGpuClient*>(gpu_client.get());
+  size_t dma_size = 1024;
+  size_t alignment = 4096;
+  void* host_dma_ptr = nullptr;
+  // Add cleanup to free the host_dma_ptr if we exit early.
+  auto cleanup = absl::MakeCleanup([&host_dma_ptr]() { free(host_dma_ptr); });
+  (void)posix_memalign(&host_dma_ptr, alignment, dma_size);
+  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
+  EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr, dma_size));
+  // IsDmaMapped should keep track of all starting address, try a different
+  // starting address.
+  int kOffset = 5;
+  void* invalid_start_ptr = reinterpret_cast<char*>(host_dma_ptr) + kOffset;
+  EXPECT_FALSE(client->IsDmaMapped(invalid_start_ptr, dma_size));
+  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
+  EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr, dma_size));
+}
+
+TEST(TfrtGpuClientTest, MultipleDeviceShareDmaMapping) {
+  GpuClientOptions options = GpuClientOptions();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(options));
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "Test requires at least two addressable devices.";
+  }
+
+  size_t test_length = 0.5l * 1024 * 1024;
+  std::vector<int32_t> data(test_length);
+  for (int32_t i = 0; i < test_length; ++i) {
+    data[i] = i;
+  }
+  Shape shape = ShapeUtil::MakeShape(S32, {static_cast<int64_t>(data.size())});
+  PjRtDevice* const first_device = client->addressable_devices()[0];
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> first_buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr,
+          first_device->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(int64_t size, first_buffer->GetOnDeviceSizeInBytes());
+
+  size_t dma_size = 2 * 1024 * 1024;
+  size_t alignment = 1024;
+  void* host_dma_ptr = nullptr;
+  // Add cleanup to free the host_dma_ptr if we exit early.
+  auto cleanup = absl::MakeCleanup([&host_dma_ptr]() { free(host_dma_ptr); });
+  (void)posix_memalign(&host_dma_ptr, alignment, dma_size);
+  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
+
+  auto result = first_buffer->CopyRawToHost(host_dma_ptr, 0, size);
+  TF_EXPECT_OK(result.Await());
+
+  PjRtDevice* const second_device = client->addressable_devices()[1];
+
+  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                          client->CreateBuffersForAsyncHostToDevice(
+                              {shape}, second_device->memory_spaces()[0]));
+  auto second_buffer = transfer_manager->RetrieveBuffer(0);
+
+  TF_EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(
+      0, host_dma_ptr, 0, size, true, []() {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, second_buffer->ToLiteralSync());
+  EXPECT_EQ(literal->element_count(), test_length);
+  EXPECT_THAT(literal->data<int32_t>(), ElementsAreArray(data));
+
+  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
 }
 
 }  // namespace
