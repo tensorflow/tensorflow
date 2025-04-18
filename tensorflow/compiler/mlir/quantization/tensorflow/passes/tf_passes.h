@@ -35,6 +35,15 @@ namespace quant {
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTFConvertFakeQuantToQdqPass();
 
+// Apply graph optimizations such as fusing and constant folding to prepare
+// lifting.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTFPrepareLiftingPass(
+    tensorflow::quantization::OpSet target_opset);
+
+// Creates a pass that add QuantizationUnitLoc to quantizable layers.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTFAddQuantizationUnitLocPass();
+
 }  // namespace quant
 }  // namespace mlir
 
