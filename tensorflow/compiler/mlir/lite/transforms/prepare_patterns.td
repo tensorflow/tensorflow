@@ -20,7 +20,7 @@ include "tensorflow/compiler/mlir/lite/utils/utils.td"
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 
 def DenseElementsAttr : ElementsAttrBase<
-  CPred<"$_self.isa<DenseElementsAttr>()">,
+  CPred<"llvm::isa<DenseElementsAttr>($_self)">,
   "non-opaque constant tensor">;
 
 def CreateGatherNdOp : NativeCodeCall<

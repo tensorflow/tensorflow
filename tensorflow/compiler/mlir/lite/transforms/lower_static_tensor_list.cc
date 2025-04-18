@@ -607,7 +607,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
     Type result_type = UnrankedTensorType::get(element_dtype);
     Value leading_dim = GetNumElements(op, adaptor.getOperands(), &rewriter);
     if (auto element_type =
-            op.element_type().template dyn_cast<RankedTensorType>()) {
+            llvm::dyn_cast<RankedTensorType>(op.element_type())) {
       result_rank = element_type.getRank() + 1;
       int64_t leading_dim_v = -1;
       ElementsAttr element_attr;

@@ -123,7 +123,7 @@ mlir::LogicalResult UpdateResourceArgumentType(
   }
 
   auto resource_type = llvm::dyn_cast<mlir::tf_type::ResourceType>(
-      resource_arg.getType().cast<mlir::TensorType>().getElementType());
+      llvm::cast<mlir::TensorType>(resource_arg.getType()).getElementType());
   if (!resource_type) return mlir::success();
 
   auto sub_types = resource_type.getSubtypes();

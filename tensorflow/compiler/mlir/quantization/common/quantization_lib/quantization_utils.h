@@ -218,7 +218,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
 
   LogicalResult matchAndRewrite(quantfork::StatisticsOp op,
                                 PatternRewriter& rewriter) const override {
-    Type expressed = op.getType().cast<ShapedType>().getElementType();
+    Type expressed = llvm::cast<ShapedType>(op.getType()).getElementType();
     quant::QuantizedType quant_type;
     SmallVector<double, 4> mins, maxs;
 
@@ -226,7 +226,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
       // Per axis quantization (or per channel quantization)
       int stats_num = op.getAxisStats()->getNumElements();
       if (stats_num == 0 || stats_num % 2 != 0) return failure();
-      auto stats = op.getAxisStats()->dyn_cast<DenseFPElementsAttr>();
+      auto stats = llvm::dyn_cast<DenseFPElementsAttr>(*op.getAxisStats());
       if (!stats) return failure();
 
       for (auto it = stats.begin(), e = stats.end(); it != e; ++it) {
@@ -508,7 +508,8 @@ class QuantizationPattern : public RewritePattern {
           continue;
         }
 
-        auto ele_type = operand.getType().cast<TensorType>().getElementType();
+        auto ele_type =
+            llvm::cast<TensorType>(operand.getType()).getElementType();
         if (static_cast<const ConcreteT*>(this)
                 ->AllowDynamicRangeQuantizedOperand(quantizing_op,
                                                     custom_map)) {
@@ -574,7 +575,7 @@ class QuantizationPattern : public RewritePattern {
             continue;
           }
           Type result_ele_type =
-              result.getType().cast<TensorType>().getElementType();
+              llvm::cast<TensorType>(result.getType()).getElementType();
           // If the user is the QuantizeOp, it must be the only user.
           if (result.hasOneUse() &&
               llvm::isa<QuantizeOpT>(*result.user_begin())) {
@@ -671,9 +672,7 @@ class QuantizationPattern : public RewritePattern {
   void RewireFloatModelBackbone(Operation* quantized_op,
                                 Operation* float_op) const {
     for (int i = 0, e = quantized_op->getNumResults(); i < e; ++i) {
-      if (!float_op->getResult(i)
-               .getType()
-               .cast<ShapedType>()
+      if (!llvm::cast<ShapedType>(float_op->getResult(i).getType())
                .getElementType()
                .isF32()) {
         continue;
@@ -766,14 +765,14 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<QuantizeOpT> {
 
     auto flags = quant::QuantizationFlags::Signed;
     QType new_qtype;
-    if (auto uqtype = qtype.template dyn_cast<quant::UniformQuantizedType>()) {
+    if (auto uqtype = llvm::dyn_cast<quant::UniformQuantizedType>(qtype)) {
       new_qtype = quant::UniformQuantizedType::getChecked(
           op.getLoc(), flags, qtype.getStorageType(), qtype.getExpressedType(),
           uqtype.getScale(), uqtype.getZeroPoint() - offset,
           uqtype.getStorageTypeMin() - offset,
           uqtype.getStorageTypeMax() - offset);
-    } else if (auto aqtype = qtype.template dyn_cast<
-                             quant::UniformQuantizedPerAxisType>()) {
+    } else if (auto aqtype =
+                   llvm::dyn_cast<quant::UniformQuantizedPerAxisType>(qtype)) {
       auto zero_points = aqtype.getZeroPoints();
       llvm::SmallVector<int64_t, 4> new_zero_points(zero_points.begin(),
                                                     zero_points.end());

@@ -242,7 +242,7 @@ absl::Status InferSPMDExpandedLocalShapeForResourceOutput(
     const std::vector<int64_t>& local_shape =
         output_layout.LocalShapeFromGlobalShape(global_shape);
     auto resource_type = llvm::dyn_cast<mlir::tf_type::ResourceType>(
-        op_result->getType().cast<mlir::TensorType>().getElementType());
+        llvm::cast<mlir::TensorType>(op_result->getType()).getElementType());
 
     auto sub_types = resource_type.getSubtypes();
     auto resource_arg_sub_type = sub_types.front();
