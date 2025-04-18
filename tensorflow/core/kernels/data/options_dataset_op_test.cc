@@ -14,7 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/options_dataset_op.h"
 
+#include <cstdint>
+#include <vector>
+
+#include <gtest/gtest.h>
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 
 namespace tensorflow {
