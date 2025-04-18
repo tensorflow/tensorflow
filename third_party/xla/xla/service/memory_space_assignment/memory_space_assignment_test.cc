@@ -152,7 +152,13 @@ TEST_F(MemorySpaceAssignmentTest, Simple) {
   schedule.set_sequence(computation, {p0, p1, add, sub, mul});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  auto preset_assignments = AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  auto preset_assignments = AssignMemorySpace(module.get(), options);
+
+  // Check that the largest post-module free chunk is set correctly.
+  ASSERT_TRUE(preset_assignments->largest_post_module_free_chunk().has_value());
+  EXPECT_EQ(preset_assignments->largest_post_module_free_chunk()->size,
+            options.max_size_in_bytes);
 
   // Inputs and outputs are currently placed in the default memory. Everything
   // else should be in the alternate memory.
@@ -5993,6 +5999,12 @@ TEST_F(MemorySpaceAssignmentTest,
   XLA_VLOG_LINES(3, module->ToString());
   std::unique_ptr<PresetAssignments> preset_assignments =
       AssignMemorySpace(module.get(), options);
+  // Check that the largest post-module free chunk is set correctly.
+  ASSERT_TRUE(preset_assignments->largest_post_module_free_chunk().has_value());
+  EXPECT_EQ(
+      preset_assignments->largest_post_module_free_chunk()->size,
+      options.max_size_in_bytes - /*size of the program output in alt mem*/ 24);
+
   XLA_VLOG_LINES(3, module->ToString());
   // Ensure that p1 is in the alternate memory and add, which has p1 as an
   // operand, has a direct dependency to p1 (no CopyStart/CopyDone).
@@ -9340,13 +9352,21 @@ TEST_F(MemorySpaceAssignmentTest, HoistCopyStart) {
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.enable_cross_program_prefetch = true;
-  AssignMemorySpace(module.get(), options);
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), options);
 
   // Ensure that get-tuple-element.1 is chosen for cross-program prefetch.
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   ASSERT_EQ(cross_program_prefetches.size(), 1);
   ASSERT_EQ(cross_program_prefetches[0].parameter, 0);
   ASSERT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
+
+  // Check that the preset assignments contains the correct largest post module
+  // free chunk, in the presence of cross-program prefetch.
+  ASSERT_TRUE(preset_assignments->largest_post_module_free_chunk().has_value());
+  EXPECT_EQ(
+      preset_assignments->largest_post_module_free_chunk()->size,
+      options.max_size_in_bytes - /*bytes in the cross-program prefetch*/ 64);
 
   // Check that the async copy-start for get-tuple-element.1 is hoisted
   // after MSA (get-tuple-element.1 was initially the third operation of the
