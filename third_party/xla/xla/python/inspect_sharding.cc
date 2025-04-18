@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/xla_data.pb.h"
 
 namespace jax {
@@ -38,7 +39,7 @@ void InspectShardingSetError(JAX_InspectSharding_Callback_Args* args,
   args->error_txt = tmp_error->c_str();
   args->error_scratch = tmp_error;
   args->free_error = +[](JAX_InspectSharding_Callback_Args* args) {
-    delete reinterpret_cast<std::string*>(args->error_scratch);
+    delete tsl::safe_reinterpret_cast<std::string*>(args->error_scratch);
   };
 }
 std::optional<xla::HloSharding> InspectShardingReadArgs(

@@ -96,6 +96,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/python/lib/core:numpy",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
@@ -139,6 +140,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_sharding_helper",
         "//xla/service/spmd:spmd_partitioner",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/status",
     ],
     # Always register 'InspectSharding' custom partitioning handler.
@@ -167,6 +169,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -392,6 +395,7 @@ cc_library(
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
     deps = [
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/strings:str_format",
         "@local_config_python//:python_headers",
         "@nanobind",
@@ -415,6 +419,7 @@ cc_library(
         # copybara:uncomment_end
         "@local_config_python//:python_headers",
         "//xla/tsl/python/lib/core:numpy",
+        "//xla/tsl/util:safe_reinterpret_cast",
     ],
 )
 
