@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_H_
 #define TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variable.pb.h"
