@@ -209,11 +209,11 @@ class Shape {
   }
 
   // Sets whether or not the given dimension is dynamically-sized.
-  // Precondition: this is an array shape and `dimension` is a valid dimension
-  // index.
-  void set_dynamic_dimension(int dimension, bool is_dynamic) {
-    array_state().dynamic_dimensions[dimension] = is_dynamic;
-  }
+  // Precondition:
+  //   - This is an array shape.
+  //   - `dimension` is a valid dimension index.
+  //   - The dimension's size is valid for the given dynamic-ness.
+  void set_dynamic_dimension(int dimension, bool is_dynamic);
 
   // Returns a span to indicate whether each dimension is dynamic.
   // Precondition: this is an array shape.

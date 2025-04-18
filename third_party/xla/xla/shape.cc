@@ -202,6 +202,13 @@ void Shape::add_dimensions(int64_t value, std::optional<bool> is_dynamic) {
   UnsafeAddDimension(value, inferred_dynamic);
 }
 
+void Shape::set_dynamic_dimension(int dimension, bool is_dynamic) {
+  auto& state = array_state();
+  // Ensure that the dimension size is valid for the new dynamic-ness.
+  CheckDimensionSize(dimension, state.dimensions[dimension], is_dynamic);
+  state.dynamic_dimensions[dimension] = is_dynamic;
+}
+
 void Shape::set_dimensions_minor(int index, int64_t size, bool is_dynamic) {
   CHECK(has_layout());
   auto& state = array_state();
