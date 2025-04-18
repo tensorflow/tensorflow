@@ -16,6 +16,7 @@ limitations under the License.
 #include "tsl/platform/str_util.h"
 
 #include <cctype>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
