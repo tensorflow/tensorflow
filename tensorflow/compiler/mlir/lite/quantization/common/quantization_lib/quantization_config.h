@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
@@ -220,6 +221,14 @@ struct QuantizationSpecs {
   // possible rather than quantizing any op that is possible to quantize.
   bool strict_qdq_mode = false;
 };
+
+// Converts the TensorFlow quantization specs to the TFLite quantization specs.
+QuantizationSpecs ConvertTfToLiteQuantizationSpecs(
+    const quant::QuantizationSpecs& tf_qs);
+
+// Converts the TFLite quantization specs to the TensorFlow quantization specs.
+quant::QuantizationSpecs ConvertLiteToTfQuantizationSpecs(
+    const QuantizationSpecs& tfl_qs);
 
 // Parses the command line flag strings to the CustomOpMap specification.
 void ParseCustomOpSpecs(absl::string_view node_names,

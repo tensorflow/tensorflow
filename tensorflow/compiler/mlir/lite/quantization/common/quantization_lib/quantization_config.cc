@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/strings/numbers.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 // Returns whether the given dtype is a quantization type in TensorFlow.
@@ -52,6 +54,91 @@ bool GetBooleanSpecs(const std::string& bool_val) {
   return result;
 }
 }  // namespace
+
+QuantizationSpecs ConvertTfToLiteQuantizationSpecs(
+    const quant::QuantizationSpecs& tf_qs) {
+  QuantizationSpecs tfl_qs;
+  tfl_qs.target_func = tf_qs.target_func;
+  tfl_qs.post_training_quantization = tf_qs.post_training_quantization;
+  tfl_qs.weight_quantization = tf_qs.weight_quantization;
+  tfl_qs.enable_mlir_dynamic_range_quantizer =
+      tf_qs.enable_mlir_dynamic_range_quantizer;
+  tfl_qs.weight_only_quantization = tf_qs.weight_only_quantization;
+  tfl_qs.legacy_float_scale = tf_qs.legacy_float_scale;
+  tfl_qs.disable_per_channel = tf_qs.disable_per_channel;
+  tfl_qs.disable_per_channel_for_dense_layers =
+      tf_qs.disable_per_channel_for_dense_layers;
+  tfl_qs.disable_infer_tensor_range = tf_qs.disable_infer_tensor_range;
+  tfl_qs.enable_mlir_variable_quantization =
+      tf_qs.enable_mlir_variable_quantization;
+  tfl_qs.inference_type = tf_qs.inference_type;
+  tfl_qs.inference_input_type = tf_qs.inference_input_type;
+  tfl_qs.input_ranges = tf_qs.input_ranges;
+  tfl_qs.disable_set_input_nodes_quantization_params =
+      tf_qs.disable_set_input_nodes_quantization_params;
+  tfl_qs.default_ranges = tf_qs.default_ranges;
+  tfl_qs.serialized_quant_stats = tf_qs.serialized_quant_stats;
+  tfl_qs.support_mask = tf_qs.support_mask;
+  tfl_qs.verify_numeric = tf_qs.verify_numeric;
+  tfl_qs.whole_model_verify = tf_qs.whole_model_verify;
+  tfl_qs.use_fake_quant_num_bits = tf_qs.use_fake_quant_num_bits;
+  tfl_qs.ops_blocklist = tf_qs.ops_blocklist;
+  tfl_qs.nodes_blocklist = tf_qs.nodes_blocklist;
+  tfl_qs.custom_map = std::unordered_map<std::string, CustomOpInfo>();
+  for (const auto& [key, value] : tf_qs.custom_map) {
+    CustomOpInfo new_value;
+    new_value.quantizable_input_indices = value.quantizable_input_indices;
+    new_value.is_weight_only = value.is_weight_only;
+    new_value.no_side_effect = value.no_side_effect;
+    tfl_qs.custom_map[key] = new_value;
+  }
+  tfl_qs.qdq_conversion_mode = QDQConversionMode(tf_qs.qdq_conversion_mode);
+  tfl_qs.strict_qdq_mode = tf_qs.strict_qdq_mode;
+  return tfl_qs;
+}
+
+quant::QuantizationSpecs ConvertLiteToTfQuantizationSpecs(
+    const QuantizationSpecs& tfl_qs) {
+  quant::QuantizationSpecs tf_qs;
+  tf_qs.target_func = tf_qs.target_func;
+  tf_qs.post_training_quantization = tfl_qs.post_training_quantization;
+  tf_qs.weight_quantization = tfl_qs.weight_quantization;
+  tf_qs.enable_mlir_dynamic_range_quantizer =
+      tfl_qs.enable_mlir_dynamic_range_quantizer;
+  tf_qs.weight_only_quantization = tfl_qs.weight_only_quantization;
+  tf_qs.legacy_float_scale = tfl_qs.legacy_float_scale;
+  tf_qs.disable_per_channel = tfl_qs.disable_per_channel;
+  tf_qs.disable_per_channel_for_dense_layers =
+      tfl_qs.disable_per_channel_for_dense_layers;
+  tf_qs.disable_infer_tensor_range = tfl_qs.disable_infer_tensor_range;
+  tf_qs.enable_mlir_variable_quantization =
+      tfl_qs.enable_mlir_variable_quantization;
+  tf_qs.inference_type = tfl_qs.inference_type;
+  tf_qs.inference_input_type = tfl_qs.inference_input_type;
+  tf_qs.input_ranges = tfl_qs.input_ranges;
+  tf_qs.disable_set_input_nodes_quantization_params =
+      tfl_qs.disable_set_input_nodes_quantization_params;
+  tf_qs.default_ranges = tfl_qs.default_ranges;
+  tf_qs.serialized_quant_stats = tfl_qs.serialized_quant_stats;
+  tf_qs.support_mask = tfl_qs.support_mask;
+  tf_qs.verify_numeric = tfl_qs.verify_numeric;
+  tf_qs.whole_model_verify = tfl_qs.whole_model_verify;
+  tf_qs.use_fake_quant_num_bits = tfl_qs.use_fake_quant_num_bits;
+  tf_qs.ops_blocklist = tfl_qs.ops_blocklist;
+  tf_qs.nodes_blocklist = tfl_qs.nodes_blocklist;
+  tf_qs.custom_map = std::unordered_map<std::string, quant::CustomOpInfo>();
+  for (const auto& [key, value] : tfl_qs.custom_map) {
+    quant::CustomOpInfo new_value;
+    new_value.quantizable_input_indices = value.quantizable_input_indices;
+    new_value.is_weight_only = value.is_weight_only;
+    new_value.no_side_effect = value.no_side_effect;
+    tf_qs.custom_map[key] = new_value;
+  }
+  tf_qs.qdq_conversion_mode =
+      quant::QDQConversionMode(tfl_qs.qdq_conversion_mode);
+  tf_qs.strict_qdq_mode = tfl_qs.strict_qdq_mode;
+  return tf_qs;
+}
 
 void ParseCustomOpSpecs(const absl::string_view node_names,
                         const CustomOpUpdateOptions& update_option,

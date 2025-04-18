@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/core/macros.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
@@ -106,8 +107,8 @@ void AddStrictQDQQuantizationPasses(
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreatePrepareQuantizePass(pass_config.quant_specs));
 
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreateQuantizePass(pass_config.quant_specs));
+  pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::TFL::CreateQuantizePass(
+      mlir::TFL::ConvertTfToLiteQuantizationSpecs(pass_config.quant_specs)));
 
   // clean up DRQ FQ decomposition functions
   pass_manager.addPass(mlir::createSymbolDCEPass());
@@ -145,8 +146,8 @@ void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
             default_quant_params_pass_options));
   }
 
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreateQuantizePass(quant_specs));
+  pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::TFL::CreateQuantizePass(
+      mlir::TFL::ConvertTfToLiteQuantizationSpecs(quant_specs)));
   bool emit_quant_adaptor_ops =
       quant_specs.inference_type != quant_specs.inference_input_type;
   pass_manager.addNestedPass<mlir::func::FuncOp>(
@@ -160,7 +161,8 @@ void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
   if (quant_specs.enable_mlir_variable_quantization) {
     pass_manager.addPass(mlir::TFL::CreatePrepareQuantizeVariablesPass());
     pass_manager.addNestedPass<mlir::func::FuncOp>(
-        mlir::TFL::CreateQuantizePass(quant_specs));
+        mlir::TFL::CreateQuantizePass(
+            mlir::TFL::ConvertTfToLiteQuantizationSpecs(quant_specs)));
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
   }
@@ -200,8 +202,8 @@ void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
   const mlir::quant::QuantizationSpecs& quant_specs = pass_config.quant_specs;
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreatePrepareDynamicRangeQuantizePass(quant_specs));
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::CreateQuantizePass(quant_specs));
+  pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::TFL::CreateQuantizePass(
+      mlir::TFL::ConvertTfToLiteQuantizationSpecs(quant_specs)));
   bool emit_quant_adaptor_ops =
       quant_specs.inference_type != quant_specs.inference_input_type;
   pass_manager.addNestedPass<mlir::func::FuncOp>(
@@ -216,7 +218,8 @@ void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
   if (quant_specs.enable_mlir_variable_quantization) {
     pass_manager.addPass(mlir::TFL::CreatePrepareQuantizeVariablesPass());
     pass_manager.addNestedPass<mlir::func::FuncOp>(
-        mlir::TFL::CreateQuantizePass(quant_specs));
+        mlir::TFL::CreateQuantizePass(
+            mlir::TFL::ConvertTfToLiteQuantizationSpecs(quant_specs)));
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
   }
