@@ -104,7 +104,8 @@ cc_library(
     ],
     deps = [
         ":host_stream",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
