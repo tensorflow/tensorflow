@@ -226,7 +226,8 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
       // Per axis quantization (or per channel quantization)
       int stats_num = op.getAxisStats()->getNumElements();
       if (stats_num == 0 || stats_num % 2 != 0) return failure();
-      auto stats = op.getAxisStats()->dyn_cast<DenseFPElementsAttr>();
+      auto stats =
+          llvm::dyn_cast<DenseFPElementsAttr>(op.getAxisStats().value());
       if (!stats) return failure();
 
       for (auto it = stats.begin(), e = stats.end(); it != e; ++it) {
