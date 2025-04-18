@@ -47,10 +47,10 @@ DEFAULT_DISABLED_BACKENDS = []
 _ALL_BACKENDS = ["cpu", "interpreter"] + NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS + list(plugins.keys())
 
 # buildifier: disable=function-docstring
-def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args):
-    # Expand "gpu" backend name into device specific backend names.
+def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, common_tags):
+    # Expand "gpu" backend name into device specific backend names unless it's tagged rocm-only
     new_backends = [name for name in backends if name != "gpu"]
-    if len(new_backends) < len(backends):
+    if len(new_backends) < len(backends) and "rocm-only" not in common_tags:
         new_backends.extend(NVIDIA_GPU_DEFAULT_BACKENDS)
 
     new_disabled_backends = [name for name in disabled_backends if name != "gpu"]
@@ -114,9 +114,11 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
     return new_backends, new_disabled_backends, new_backend_tags, new_backend_args
 
 # buildifier: disable=function-docstring
-def prepare_amd_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args):
+def prepare_amd_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, common_tags):
     new_backends = [name for name in backends if name != "gpu"]
-    if len(new_backends) < len(backends):
+
+    # Expand "gpu" backend name into device specific backend names unless it's tagged cuda-only
+    if len(new_backends) < len(backends) and "cuda-only" not in common_tags:
         new_backends.extend(AMD_GPU_DEFAULT_BACKENDS)
 
     new_disabled_backends = [name for name in disabled_backends if name != "gpu"]
@@ -142,15 +144,13 @@ def prepare_amd_gpu_backend_data(backends, disabled_backends, backend_tags, back
         new_backend_tags.setdefault(key, gpu_backend_tags[:])
 
     for backend in AMD_GPU_DEFAULT_BACKENDS:
-        if "cuda-only" not in gpu_backend_tags:
-            new_backend_tags[backend].append("requires-gpu-amd")
-        new_backend_tags[backend].append("notap")
+        new_backend_tags[backend].append("requires-gpu-amd")
         new_backend_tags[backend].append("rocm-only")
 
     return new_backends, new_disabled_backends, new_backend_tags, backend_args
 
 # buildifier: disable=function-docstring
-def prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args):
+def prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, common_tags):
     nvidia_backends = [
         backend
         for backend in backends
@@ -168,9 +168,9 @@ def prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_
     ]
 
     nvidia_backends, nvidia_disabled_backends, nvidia_backend_tags, nvidia_backend_args = \
-        prepare_nvidia_gpu_backend_data(nvidia_backends, disabled_backends, backend_tags, backend_args)
+        prepare_nvidia_gpu_backend_data(nvidia_backends, disabled_backends, backend_tags, backend_args, common_tags)
     amd_backends, amd_disabled_backends, amd_backend_tags, amd_backend_args = \
-        prepare_amd_gpu_backend_data(amd_backends, disabled_backends, backend_tags, {})
+        prepare_amd_gpu_backend_data(amd_backends, disabled_backends, backend_tags, {}, common_tags)
 
     new_backends = [
         backend
@@ -285,7 +285,7 @@ def xla_test(
 
     # Expand "gpu" backend name to specific GPU backends and update tags.
     backends, disabled_backends, backend_tags, backend_args = \
-        prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args)
+        prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, tags)
 
     backends = [
         backend
