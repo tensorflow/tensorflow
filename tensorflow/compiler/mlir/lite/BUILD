@@ -492,6 +492,7 @@ cc_library(
     hdrs = [
         "ir/tfl_ops.h",
         "transforms/canonicalize_boundary_value_pass.h",
+        "transforms/cleanup_optimization_barrier_pass.h",
         "transforms/optimize_batch_matmul_pass.h",
         "transforms/optimize_broadcast_like_pass.h",
         "transforms/optimize_pass.h",
@@ -510,6 +511,7 @@ cc_library(
     deps = [
         ":attribute_utils",
         ":canonicalize_boundary_value",
+        ":cleanup_optimization_barrier",
         ":converter_inc",
         ":cost_estimators",
         ":optimize_broadcast_like_pass",
@@ -856,6 +858,26 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "cleanup_optimization_barrier",
+    srcs = [
+        "transforms/cleanup_optimization_barrier_pass.cc",
+    ],
+    hdrs = [
+        "transforms/cleanup_optimization_barrier_pass.h",
+    ],
+    deps = [
+        ":pass",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -1827,7 +1849,6 @@ cc_library(
         ":tensorflow_lite_optimize_batch_matmul",  # buildcleaner: keep
         ":tensorflow_lite_push_transpose_through_ewise_pass",  # buildcleaner: keep
         ":tensorflow_lite_quantize",  # buildcleaner: keep
-        ":tensorflow_lite_tf_unfreeze_global_tensors",
         ":variable_freezing_pipeline",
         "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",

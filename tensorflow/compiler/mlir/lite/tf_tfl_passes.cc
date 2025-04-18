@@ -648,6 +648,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
         converter_flags.reduce_type_precision()) {
       pass_manager->addPass(mlir::TFL::CreateReduceTypePrecisionPass());
     }
+    pass_manager->addPass(mlir::TFL::CreateCleanupOptimizationBarrierPass());
 
     // This pass should alway run before the end of the model conversion but
     // not after the CreateSplitMergedOperandsPass below.
