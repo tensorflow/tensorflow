@@ -282,7 +282,9 @@ cc_library(
     hdrs = ["se_gpu_pjrt_compiler.h"],
     deps = [
         ":se_gpu_pjrt_client",
+        ":se_gpu_topology_description",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
@@ -302,13 +304,13 @@ cc_library(
         "//xla/service/gpu:executable_proto_cc",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -46,11 +47,12 @@ limitations under the License.
 #include "xla/service/local_service_utils.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -125,6 +127,8 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   CompileOptions input_options = options;
   if (!options.target_config) {
     if (client != nullptr) {
+      TF_RET_CHECK(IsGpuClient(*client))
+          << "GPU compilation requires a GPU PjRt client.";
       TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
       return client->Compile(computation, options);
     }
