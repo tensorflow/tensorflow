@@ -1576,6 +1576,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
     const auto* rocm_cc = std::get_if<se::RocmComputeCapability>(&gpu_version);
 
+    // Run transpose dimension grouper before new fusions are introduced.
+    pipeline.AddPass<TransposeDimensionGrouper>();
+
     // Make sure that dots have at least 1 contracting dimension in the
     // operands. Needs to happen shortly before the dot rewrite, as otherwise
     // AlgebraicSimplifier will simplify it away again.
@@ -1614,7 +1617,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // also have unsorted update_window_dims.
     pipeline.AddPass<ScatterSimplifier>();
     pipeline.AddPass<BroadcastCanonicalizer>();
-
+    // BroadcastCanonicalizer can create transposes.
     pipeline.AddPass<TransposeDimensionGrouper>();
     pipeline.AddPass<ReductionDegenerateDimRemover>();
     pipeline.AddPass<ReductionLayoutNormalizer>();

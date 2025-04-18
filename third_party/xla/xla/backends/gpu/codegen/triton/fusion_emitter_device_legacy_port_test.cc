@@ -569,33 +569,14 @@ ENTRY e {
                                ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// TODO(b/393299275, b/410085031): requires canonicalizing the transpose in
-// order to be able to go through tile constraints. We end up trying to
-// propagate a tile with sizes (32, 32) upwards through the following ops:
-//
-//   p0 = pred[3,122,96,12]{3,2,1,0} parameter(0)
-//   transpose = pred[3,96,12,122]{3,2,1,0} transpose(p0), dimensions={0,2,3,1}
-//   bitcast = pred[3456,122]{1,0} bitcast(transpose)
-//
-// Unfortunately, there is no way to propagate such tile sizes through the
-// bitcast, since the trailing dimension of the reshaped dimension has size 12,
-// which is not divisible by any power of 2. BUT! The legacy emitter also has to
-// work around this problem, since it has generate a tensor pointer, which
-// requires coming up with a tile-like structure for the parameter load.
-//
-// The reason this works is that we can actually rewrite the HLO to collapse
-// the dimensions of size 96 and 12 at every step, and that those dimensions are
-// initially contiguous:
-//
-//   p0 = pred[3,122,1152]{3,2,1,0} parameter(0)
-//   transpose = pred[3,1152,122]{3,2,1,0} transpose(p0), dimensions={0,2,1}
-//   bitcast = pred[3456,122]{1,0} bitcast(transpose)
-//
-// (with a hoisted bitcast in the caller giving the right logical shape to the
-// parameter). The resulting dimension has length 1152, which is divisible by
-// 128 and therefore allows tile propagation to proceed smoothly. The legacy
-// emitter essentially does this implicitly in code generation instead of
-// materializing it in HLO.
+// TODO(b/393299275): fails due to wrong bitcast hosting with non-default
+// layout by nest_gemm_fusion:
+//   %bitcast.26 = pred[5,122]{1,0} bitcast(%parameter_1)
+//   %convert.15 = f16[5,122]{1,0} convert(%bitcast.26)
+//   %bitcast.27 = f16[122,5]{0,1} bitcast(%convert.15)
+// got hoisted to entry as
+//   %bitcast.38 = pred[5,122]{1,0} bitcast(%bitcast.36)
+//   %bitcast.39 = pred[122,5]{1,0} bitcast(%bitcast.38)
 TEST_F(TritonGemmTest, DISABLED_SplitLhsNoncontractingTransposeRhs) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
@@ -611,9 +592,7 @@ ENTRY e {
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: fusion(
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: __triton_nested_gemm_fusion
 )");
@@ -621,8 +600,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
-// TODO(b/393299275): requires hoisting bitcasts through transposes.
-TEST_F(TritonGemmTest, DISABLED_SplitLhsNoncontracting) {
+TEST_F(TritonGemmTest, SplitLhsNoncontracting) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f32[72,72] parameter(0)
@@ -637,9 +615,7 @@ ENTRY e {
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: fusion(
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: __triton_nested_gemm_fusion
 )");
@@ -663,10 +639,7 @@ ENTRY e {
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: ROOT
-; CHECK-SAME: fusion
+; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
