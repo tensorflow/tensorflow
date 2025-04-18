@@ -202,6 +202,28 @@ void Shape::add_dimensions(int64_t value, std::optional<bool> is_dynamic) {
   UnsafeAddDimension(value, inferred_dynamic);
 }
 
+void Shape::set_dimensions_minor(int index, int64_t size, bool is_dynamic) {
+  CHECK(has_layout());
+  auto& state = array_state();
+  const int physical_index = state.layout->minor_to_major(index);
+  CheckDimensionSize(physical_index, size, is_dynamic);
+  state.dimensions[physical_index] = size;
+  state.dynamic_dimensions[physical_index] = is_dynamic;
+}
+
+void Shape::CheckDimensionSize(int dim_index, int64_t size, bool is_dynamic) {
+  if (is_dynamic) {
+    if (size < 0) {
+      CHECK_EQ(size, kUnboundedSize) << "the " << dim_index
+                                     << "-th dimension is dynamic and must "
+                                        "have size == kUnboundedSize or >= 0.";
+    }
+  } else {
+    CHECK_GE(size, 0) << "the " << dim_index
+                      << "-th dimension is static and must have size >= 0.";
+  }
+}
+
 void Shape::UnsafeAddDimension(int64_t value, bool is_dynamic) {
   auto& state = array_state();
   CHECK_EQ(state.dimensions.size(), state.dynamic_dimensions.size())
@@ -440,8 +462,8 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
   if (!ignore_dynamic_dimension_) {
     for (int i = 0; i < lhs.dimensions().size(); ++i) {
       if (lhs.is_dynamic_dimension(i) != rhs.is_dynamic_dimension(i)) {
-        VLOG(3)
-            << "CompareShapes: lhs and rhs have different dynamic dimensions.";
+        VLOG(3) << "CompareShapes: lhs and rhs have different dynamic "
+                   "dimensions.";
         return false;
       }
     }
