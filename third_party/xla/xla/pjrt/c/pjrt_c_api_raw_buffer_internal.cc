@@ -57,8 +57,8 @@ PJRT_Error* PJRT_RawBuffer_GetOnDeviceSizeInBytes(
       "PJRT_RawBuffer_GetOnDeviceSizeInBytes_Args",
       PJRT_RawBuffer_GetOnDeviceSizeInBytes_Args_STRUCT_SIZE,
       args->struct_size));
-  PJRT_ASSIGN_OR_RETURN(args->on_device_size_in_bytes,
-                        args->buffer->buffer->GetOnDeviceSizeInBytes());
+  args->on_device_size_in_bytes =
+      args->buffer->buffer->GetOnDeviceSizeInBytes();
   return nullptr;
 }
 PJRT_Error* PJRT_RawBuffer_GetMemorySpace(

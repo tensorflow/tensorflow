@@ -2221,8 +2221,7 @@ TEST(TpuLocalClientTest, RawBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto raw_buffer,
                           PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
   ASSERT_EQ(raw_buffer->memory_space(), buffer->memory_space());
-  TF_ASSERT_OK_AND_ASSIGN(size_t on_device_size,
-                          raw_buffer->GetOnDeviceSizeInBytes());
+  size_t on_device_size = raw_buffer->GetOnDeviceSizeInBytes();
   ASSERT_EQ(on_device_size, 1024);
 
   std::vector<int32_t> data2(256);
