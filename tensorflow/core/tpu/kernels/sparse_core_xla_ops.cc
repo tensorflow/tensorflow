@@ -154,8 +154,6 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
 
     // Pack the input tensors as a tuple. This is a intermediate stage before
     // switching to SparseTensor type.
-    xla::XlaOp coo_tensor_input =
-        xla::Tuple(builder, {row_ids, col_ids, values});
 
     new_frontend_attributes.mutable_map()->insert(
         {"_xla_sharding_strategy", "mod"});
@@ -171,7 +169,7 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
 
     xla::XlaOp result = xla::CustomCall(
         builder, "SparseDenseMatmulOp",
-        {coo_tensor_input, embedding_table, offsets, activation_init},
+        {row_ids, col_ids, values, embedding_table, offsets, activation_init},
         xla::ShapeUtil::MakeTupleShape({activation_shape, row_pointers_shape,
                                         sorted_ids_shape, sorted_ids_shape,
                                         sorted_gains_shape}));
