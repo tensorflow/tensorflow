@@ -97,10 +97,70 @@ diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/
      return SDValue();
  
    // Allow targets to opt-out.
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp b/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp
+--- a/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp
++++ b/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp
+@@ -1141,8 +1141,6 @@
+         break;
+       [[fallthrough]];
+     case Intrinsic::abs:
+-    case Intrinsic::uadd_sat:
+-    case Intrinsic::usub_sat:
+       WorkList.push_back(FactOrCheck::getInstFact(DT.getNode(&BB), &I));
+       break;
+     }
+@@ -1893,26 +1891,13 @@
+         AddFact(CmpInst::ICMP_SGE, CB.Inst, X);
+         continue;
+       }
++
+       if (auto *MinMax = dyn_cast<MinMaxIntrinsic>(CB.Inst)) {
+         Pred = ICmpInst::getNonStrictPredicate(MinMax->getPredicate());
+         AddFact(Pred, MinMax, MinMax->getLHS());
+         AddFact(Pred, MinMax, MinMax->getRHS());
+         continue;
+       }
+-      if (auto *USatI = dyn_cast<SaturatingInst>(CB.Inst)) {
+-        switch (USatI->getIntrinsicID()) {
+-        default:
+-          llvm_unreachable("Unexpected intrinsic.");
+-        case Intrinsic::uadd_sat:
+-          AddFact(ICmpInst::ICMP_UGE, USatI, USatI->getLHS());
+-          AddFact(ICmpInst::ICMP_UGE, USatI, USatI->getRHS());
+-          break;
+-        case Intrinsic::usub_sat:
+-          AddFact(ICmpInst::ICMP_ULE, USatI, USatI->getLHS());
+-          break;
+-        }
+-        continue;
+-      }
+     }
+ 
+     Value *A = nullptr, *B = nullptr;
 diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
 --- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
 +++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-@@ -7241,6 +7241,8 @@
+@@ -1888,6 +1888,7 @@
+     LoadEntriesToVectorize.clear();
+     IsGraphTransformMode = false;
+     GatheredLoadsEntriesFirst.reset();
++    CompressEntryToData.clear();
+     ExternalUses.clear();
+     ExternalUsesAsOriginalScalar.clear();
+     for (auto &Iter : BlocksSchedules) {
+@@ -4307,6 +4308,11 @@
+   /// The index of the first gathered load entry in the VectorizeTree.
+   std::optional<unsigned> GatheredLoadsEntriesFirst;
+ 
++  /// Maps compress entries to their mask data for the final codegen.
++  SmallDenseMap<const TreeEntry *,
++                std::tuple<SmallVector<int>, VectorType *, unsigned, bool>>
++      CompressEntryToData;
++
+   /// This POD struct describes one external user in the vectorized tree.
+   struct ExternalUser {
+     ExternalUser(Value *S, llvm::User *U, const TreeEntry &E, int L)
+@@ -7576,6 +7582,8 @@
              return Res.takeVector();
            };
            auto GetNumOperands = [](const TreeEntry *TE) {
@@ -109,7 +169,41 @@ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp 
              if (auto *CI = dyn_cast<CallInst>(TE->getMainOp()); CI)
                return CI->arg_size();
              return TE->getNumOperands();
-@@ -18064,8 +18066,14 @@
+@@ -13411,6 +13419,8 @@
+             *TLI, [](Value *) { return true; }, IsMasked, InterleaveFactor,
+             CompressMask, LoadVecTy);
+         assert(IsVectorized && "Expected to be vectorized");
++        CompressEntryToData.try_emplace(E, CompressMask, LoadVecTy,
++                                        InterleaveFactor, IsMasked);
+         Align CommonAlignment;
+         if (IsMasked)
+           CommonAlignment = computeCommonAlignment<LoadInst>(VL);
+@@ -17972,10 +17982,6 @@
+       if (E->State == TreeEntry::Vectorize) {
+         NewLI = Builder.CreateAlignedLoad(VecTy, PO, LI->getAlign());
+       } else if (E->State == TreeEntry::CompressVectorize) {
+-        bool IsMasked;
+-        unsigned InterleaveFactor;
+-        SmallVector<int> CompressMask;
+-        VectorType *LoadVecTy;
+         SmallVector<Value *> Scalars(E->Scalars.begin(), E->Scalars.end());
+         if (!E->ReorderIndices.empty()) {
+           SmallVector<int> Mask(E->ReorderIndices.begin(),
+@@ -17985,11 +17991,8 @@
+         SmallVector<Value *> PointerOps(Scalars.size());
+         for (auto [I, V] : enumerate(Scalars))
+           PointerOps[I] = cast<LoadInst>(V)->getPointerOperand();
+-        [[maybe_unused]] bool IsVectorized = isMaskedLoadCompress(
+-            Scalars, PointerOps, E->ReorderIndices, *TTI, *DL, *SE, *AC, *DT,
+-            *TLI, [](Value *) { return true; }, IsMasked, InterleaveFactor,
+-            CompressMask, LoadVecTy);
+-        assert(IsVectorized && "Expected to be vectorized");
++        auto [CompressMask, LoadVecTy, InterleaveFactor, IsMasked] =
++            CompressEntryToData.at(E);
+         Align CommonAlignment;
+         if (IsMasked)
+           CommonAlignment = computeCommonAlignment<LoadInst>(E->Scalars);
+@@ -18423,8 +18426,14 @@
    // need to rebuild it.
    EntryToLastInstruction.clear();
    // All blocks must be scheduled before any instructions are inserted.
@@ -156,6 +250,105 @@ diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/pr135821.ll b/llvm/tes
 +}
 +
 +declare void @use(ptr)
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll b/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll
+--- a/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll
++++ b/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll
+@@ -1,43 +0,0 @@
+-; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
+-; RUN: opt -passes=constraint-elimination -S %s | FileCheck %s
+-
+-declare i64 @llvm.uadd.sat.i64(i64, i64)
+-declare i64 @llvm.usub.sat.i64(i64, i64)
+-
+-define i1 @uadd_sat_uge(i64 %a, i64 %b) {
+-; CHECK-LABEL: define i1 @uadd_sat_uge(
+-; CHECK-SAME: i64 [[A:%.*]], i64 [[B:%.*]]) {
+-; CHECK-NEXT:    [[ADD_SAT:%.*]] = call i64 @llvm.uadd.sat.i64(i64 [[A]], i64 [[B]])
+-; CHECK-NEXT:    [[CMP:%.*]] = and i1 true, true
+-; CHECK-NEXT:    ret i1 [[CMP]]
+-;
+-  %add.sat = call i64 @llvm.uadd.sat.i64(i64 %a, i64 %b)
+-  %cmp1 = icmp uge i64 %add.sat, %a
+-  %cmp2 = icmp uge i64 %add.sat, %b
+-  %cmp = and i1 %cmp1, %cmp2
+-  ret i1 %cmp
+-}
+-
+-define i1 @usub_sat_ule_lhs(i64 %a, i64 %b) {
+-; CHECK-LABEL: define i1 @usub_sat_ule_lhs(
+-; CHECK-SAME: i64 [[A:%.*]], i64 [[B:%.*]]) {
+-; CHECK-NEXT:    [[SUB_SAT:%.*]] = call i64 @llvm.usub.sat.i64(i64 [[A]], i64 [[B]])
+-; CHECK-NEXT:    ret i1 true
+-;
+-  %sub.sat = call i64 @llvm.usub.sat.i64(i64 %a, i64 %b)
+-  %cmp = icmp ule i64 %sub.sat, %a
+-  ret i1 %cmp
+-}
+-
+-; Negative test
+-define i1 @usub_sat_not_ule_rhs(i64 %a, i64 %b) {
+-; CHECK-LABEL: define i1 @usub_sat_not_ule_rhs(
+-; CHECK-SAME: i64 [[A:%.*]], i64 [[B:%.*]]) {
+-; CHECK-NEXT:    [[SUB_SAT:%.*]] = call i64 @llvm.usub.sat.i64(i64 [[A]], i64 [[B]])
+-; CHECK-NEXT:    [[CMP:%.*]] = icmp ule i64 [[SUB_SAT]], [[B]]
+-; CHECK-NEXT:    ret i1 [[CMP]]
+-;
+-  %sub.sat = call i64 @llvm.usub.sat.i64(i64 %a, i64 %b)
+-  %cmp = icmp ule i64 %sub.sat, %b
+-  ret i1 %cmp
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll b/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll
+--- a/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll
++++ b/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll
+@@ -0,0 +1,48 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
++; RUN: opt -S --passes=slp-vectorizer -mtriple=aarch64-unknown-linux-gnu < %s | FileCheck %s
++
++declare noalias ptr @malloc()
++
++define void @test() {
++; CHECK-LABEL: define void @test() {
++; CHECK-NEXT:    [[TMP1:%.*]] = call dereferenceable_or_null(16) ptr @malloc()
++; CHECK-NEXT:    [[TMP2:%.*]] = load volatile ptr, ptr null, align 8
++; CHECK-NEXT:    [[TMP3:%.*]] = load <15 x i8>, ptr [[TMP1]], align 1
++; CHECK-NEXT:    [[TMP4:%.*]] = shufflevector <15 x i8> [[TMP3]], <15 x i8> poison, <8 x i32> <i32 0, i32 2, i32 4, i32 6, i32 8, i32 10, i32 12, i32 14>
++; CHECK-NEXT:    store <8 x i8> [[TMP4]], ptr [[TMP2]], align 1
++; CHECK-NEXT:    ret void
++;
++  %1 = call dereferenceable_or_null(16) ptr @malloc()
++  %2 = load volatile ptr, ptr null, align 8
++  %3 = load i8, ptr %1, align 1
++  store i8 %3, ptr %2, align 1
++  %4 = getelementptr i8, ptr %1, i64 2
++  %5 = load i8, ptr %4, align 1
++  %6 = getelementptr i8, ptr %2, i64 1
++  store i8 %5, ptr %6, align 1
++  %7 = getelementptr i8, ptr %1, i64 4
++  %8 = load i8, ptr %7, align 1
++  %9 = getelementptr i8, ptr %2, i64 2
++  store i8 %8, ptr %9, align 1
++  %10 = getelementptr i8, ptr %1, i64 6
++  %11 = load i8, ptr %10, align 1
++  %12 = getelementptr i8, ptr %2, i64 3
++  store i8 %11, ptr %12, align 1
++  %13 = getelementptr i8, ptr %1, i64 8
++  %14 = load i8, ptr %13, align 1
++  %15 = getelementptr i8, ptr %2, i64 4
++  store i8 %14, ptr %15, align 1
++  %16 = getelementptr i8, ptr %1, i64 10
++  %17 = load i8, ptr %16, align 1
++  %18 = getelementptr i8, ptr %2, i64 5
++  store i8 %17, ptr %18, align 1
++  %19 = getelementptr i8, ptr %1, i64 12
++  %20 = load i8, ptr %19, align 1
++  %21 = getelementptr i8, ptr %2, i64 6
++  store i8 %20, ptr %21, align 1
++  %22 = getelementptr i8, ptr %1, i64 14
++  %23 = load i8, ptr %22, align 1
++  %24 = getelementptr i8, ptr %2, i64 7
++  store i8 %23, ptr %24, align 1
++  ret void
++}
 diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/entry-no-bundle-but-extra-use-on-vec.ll b/llvm/test/Transforms/SLPVectorizer/X86/entry-no-bundle-but-extra-use-on-vec.ll
 --- a/llvm/test/Transforms/SLPVectorizer/X86/entry-no-bundle-but-extra-use-on-vec.ll
 +++ b/llvm/test/Transforms/SLPVectorizer/X86/entry-no-bundle-but-extra-use-on-vec.ll
