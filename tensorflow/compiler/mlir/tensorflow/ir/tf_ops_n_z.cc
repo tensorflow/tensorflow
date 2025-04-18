@@ -561,7 +561,7 @@ LogicalResult ParseExampleV2Op::verify() {
 template <typename CallOpClass>
 static LogicalResult VerifyPartitionedCall(CallOpClass op,
                                            SymbolTableCollection &symbolTable) {
-  SymbolRefAttr func = op->getAttr("f").template cast<SymbolRefAttr>();
+  SymbolRefAttr func = llvm::cast<SymbolRefAttr>(op->getAttr("f"));
   auto function = symbolTable.lookupNearestSymbolFrom<func::FuncOp>(op, func);
   if (!function) {
     return op.emitError("'f' attribute refers to an undefined function: ")
