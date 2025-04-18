@@ -601,6 +601,14 @@ message DebugOptions {
   // Filter out kernels that spill registers during autotuning.
   bool xla_gpu_filter_kernels_spilling_registers_on_autotuning = 250;
 
+  // The number of seconds to wait before terminating a rendezvous of the first
+  // call.
+  int32 xla_gpu_first_collective_call_terminate_timeout_seconds = 392;
+
+  // The number of seconds to wait before warning about a first call rendezvous
+  // that has not yet timed out.
+  int32 xla_gpu_first_collective_call_warn_stuck_timeout_seconds = 391;
+
   // Overrides normal multi-threaded compilation setting to use this many
   // threads. Setting to 0 (the default value) means no enforcement.
   int32 xla_gpu_force_compilation_parallelism = 147;

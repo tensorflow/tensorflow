@@ -480,10 +480,21 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
         "first call to collective operation %d; run_id=%d", config().op_id,
         params.collective_params->run_id.ToInt());
 
-    TF_RETURN_IF_ERROR(Rendezvous(first_call_rendezvous_flag_, rendezvous_name,
-                                  rendezvous_key, num_local_participants,
-                                  /*warn_stuck_timeout=*/absl::Seconds(20),
-                                  /*terminate_timeout=*/absl::Seconds(40)));
+    const xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+
+    TF_RETURN_IF_ERROR(Rendezvous(
+        first_call_rendezvous_flag_, rendezvous_name, rendezvous_key,
+        num_local_participants,
+        /*warn_stuck_timeout=*/
+        absl::Seconds(
+            debug_options
+                .xla_gpu_first_collective_call_warn_stuck_timeout_seconds()),
+        /*terminate_timeout=*/
+        absl::Seconds(
+            debug_options
+                .xla_gpu_first_collective_call_terminate_timeout_seconds())
+
+            ));
   }
 
   return absl::OkStatus();

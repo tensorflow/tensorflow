@@ -314,6 +314,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_executable_terminate_timeout_seconds(30);
+
+  opts.set_xla_gpu_first_collective_call_warn_stuck_timeout_seconds(20);
+  opts.set_xla_gpu_first_collective_call_terminate_timeout_seconds(40);
+
   opts.set_xla_gpu_experimental_collective_perf_table_path("");
   opts.set_xla_gpu_experimental_matmul_perf_table_path("");
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
@@ -2184,6 +2188,22 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_executable_terminate_timeout_seconds),
       debug_options->xla_gpu_executable_terminate_timeout_seconds(),
       "Set timeout for Rendezvous termination"));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_first_collective_call_warn_stuck_timeout_seconds",
+      int32_setter_for(
+          &DebugOptions::
+              set_xla_gpu_first_collective_call_warn_stuck_timeout_seconds),
+      debug_options->xla_gpu_first_collective_call_warn_stuck_timeout_seconds(),
+      "Set timeout for First Collective Call Rendezvous stuck warning"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_first_collective_call_terminate_timeout_seconds",
+      int32_setter_for(
+          &DebugOptions::
+              set_xla_gpu_first_collective_call_terminate_timeout_seconds),
+      debug_options->xla_gpu_first_collective_call_terminate_timeout_seconds(),
+      "Set timeout for First Collective Call Rendezvous termination"));
+
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_disable_binary_libraries",
       bool_setter_for(
