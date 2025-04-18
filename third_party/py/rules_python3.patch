@@ -1,0 +1,45 @@
+diff --git a/python/private/python_register_toolchains.bzl b/python/private/python_register_toolchains.bzl
+index 98c8e5bf..fc533001 100644
+--- a/python/private/python_register_toolchains.bzl
++++ b/python/private/python_register_toolchains.bzl
+@@ -86,6 +86,7 @@ def python_register_toolchains(
+     minor_mapping = minor_mapping or MINOR_MAPPING
+
+     python_version = full_version(version = python_version, minor_mapping = minor_mapping)
++    python_version_kind = kwargs.pop("python_version_kind", "")
+
+     toolchain_repo_name = "{name}_toolchains".format(name = name)
+
+@@ -165,6 +166,7 @@ def python_register_toolchains(
+     toolchain_aliases(
+         name = name,
+         python_version = python_version,
++        python_version_kind = python_version_kind,
+         user_repository_name = name,
+         platforms = loaded_platforms,
+     )
+diff --git a/python/private/toolchains_repo.bzl b/python/private/toolchains_repo.bzl
+index d21fb53a..a5271c18 100644
+--- a/python/private/toolchains_repo.bzl
++++ b/python/private/toolchains_repo.bzl
+@@ -130,6 +130,9 @@ def _toolchain_aliases_impl(rctx):
+     (os_name, arch) = _get_host_os_arch(rctx, logger)
+
+     host_platform = _get_host_platform(os_name, arch)
++    python_version_kind = rctx.attr.python_version_kind
++    if python_version_kind == "ft":
++        host_platform += "-freethreaded"
+
+     is_windows = (os_name == WINDOWS_NAME)
+     python3_binary_path = "python.exe" if is_windows else "bin/python3"
+@@ -233,6 +236,10 @@ actions.""",
+             doc = "List of platforms for which aliases shall be created",
+         ),
+         "python_version": attr.string(doc = "The Python version."),
++        "python_version_kind": attr.string(
++            doc = "Python version kind, e.g. ft (free-threaded)",
++            default = ""
++        ),
+         "user_repository_name": attr.string(
+             mandatory = True,
+             doc = "The base name for all created repositories, like 'python38'.",
