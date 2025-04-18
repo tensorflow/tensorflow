@@ -12,5 +12,6 @@ def python_init_rules():
         patches = [
             Label("//third_party/py:rules_python1.patch"),
             Label("//third_party/py:rules_python2.patch"),
+            Label("//third_party/py:rules_python3.patch"),
         ],
     )
