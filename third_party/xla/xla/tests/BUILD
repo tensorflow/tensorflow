@@ -1851,7 +1851,6 @@ xla_test(
     name = "slice_test",
     timeout = "long",
     srcs = ["slice_test.cc"],
-    # placeholder for extra args for slice_test
     shard_count = 40,
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
@@ -2082,7 +2081,6 @@ xla_test(
     name = "reduce_window_test",
     timeout = "long",
     srcs = [],
-    # placeholder for extra args for reduce_window_test
     shard_count = 50,
     tags = [
         "optonly",

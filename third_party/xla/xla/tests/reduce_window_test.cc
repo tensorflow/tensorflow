@@ -311,7 +311,7 @@ XLA_TEST_P(ReduceWindowTest, PrimeWindowsInReductionDimension) {
                            DefaultErrorSpec());
 }
 
-XLA_TEST_P(ReduceWindowTest, ReduceAlongLaneDimension) {
+XLA_TEST_P(ReduceWindowTest, OVERSIZE_ON_GRM(ReduceAlongLaneDimension)) {
   Array4D<float> input_array(19, 17, 8, 256);
   input_array.FillWithMinorDimNum();
 
