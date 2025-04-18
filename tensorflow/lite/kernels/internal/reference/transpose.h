@@ -192,9 +192,12 @@ void Transpose(const TransposeParams& params, const RuntimeShape& input_shape,
   std::array<int, kTransposeMaxDimensions> input_stride, output_stride;
   SetupTransposeStrides(input_stride, input_shape.DimsData(), dims);
   SetupTransposeStrides(output_stride, output_shape.DimsData(), dims);
-  TransposeImpl(0, dims, &params.perm[0], input_data_storage,
-                input_stride.data(), output_data_storage, output_stride.data(),
-                output_shape.DimsData());
+  // Fix the pointer to avoid nullptr with nonzero offset.
+  if (input_data != nullptr) {
+    TransposeImpl(0, dims, &params.perm[0], input_data_storage,
+                  input_stride.data(), output_data_storage,
+                  output_stride.data(), output_shape.DimsData());
+  }
 }
 
 }  // namespace reference_ops
