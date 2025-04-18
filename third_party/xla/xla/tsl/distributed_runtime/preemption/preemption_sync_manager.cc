@@ -172,13 +172,35 @@ absl::Status PreemptionSyncManager::Initialize(
         }
 
         // Trigger protocol in a separate thread: compute max call counter.
-        sync_protocol_thread_ = absl::WrapUnique(env_->StartThread(
-            {}, "PreemptionSyncManager_SyncProtocol",
-            std::bind(&PreemptionSyncManager::ComputeSyncCallCounter, this,
-                      death_time)));
+        {
+          absl::MutexLock l(&mu_);
+          sync_protocol_thread_ = absl::WrapUnique(env_->StartThread(
+              {}, "PreemptionSyncManager_SyncProtocol",
+              std::bind(&PreemptionSyncManager::ComputeSyncCallCounter, this,
+                        death_time)));
+        }
       });
 
   return absl::OkStatus();
+}
+
+void PreemptionSyncManager::Shutdown() {
+  absl::MutexLock l(&mu_);
+  if (shutting_down_) {
+    LOG(INFO) << "PreemptionSyncManager already shut down";
+    return;
+  }
+  shutting_down_ = true;
+
+  LOG(INFO) << "Shutting down PreemptionSyncManager...";
+  shutdown_.Notify();
+  if (call_opts_) {
+    call_opts_->StartCancel();
+  }
+  if (sync_protocol_thread_) {
+    sync_protocol_thread_.reset();
+  }
+  LOG(INFO) << "PreemptionSyncManager shut down.";
 }
 
 void PreemptionSyncManager::ComputeSyncCallCounter(absl::Time death_time) {
