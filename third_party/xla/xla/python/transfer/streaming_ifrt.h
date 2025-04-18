@@ -22,7 +22,9 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
