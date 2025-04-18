@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TESTING_GENERATE_TESTSPEC_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <iostream>
 #include <vector>
