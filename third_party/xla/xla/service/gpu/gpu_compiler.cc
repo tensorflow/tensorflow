@@ -189,7 +189,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/all_reduce_splitter.h"
 #include "xla/service/gpu/transforms/async_wrapper.h"
 #include "xla/service/gpu/transforms/collective_permute_cycle_decomposer.h"
-#include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
 #include "xla/service/gpu/transforms/collective_select_folder.h"
 #include "xla/service/gpu/transforms/collectives/all_gather_combiner.h"
 #include "xla/service/gpu/transforms/collectives/all_reduce_combiner.h"
@@ -645,12 +644,6 @@ absl::Status RunSPMDPasses(
 #else
         std::nullopt);
 #endif  // PLATFORM_GOOGLE
-    if (hlo_module->config()
-            .debug_options()
-            .xla_gpu_unsafe_pipelined_loop_annotator()) {
-      spmd_pipeline.AddPass<WhileLoopTripCountAnnotator>();
-      spmd_pipeline.AddPass<CollectivePermuteValidIterationAnnotator>();
-    }
     return spmd_pipeline.Run(hlo_module).status();
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
@@ -990,17 +983,9 @@ absl::Status RunCollectiveOptimizationPasses(
 
   DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level =
       debug_options.xla_gpu_experimental_pipeline_parallelism_opt_level();
-  if (pipeline_parallelism_opt_level ==
-          DebugOptions::
-              PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER ||
-      debug_options.xla_gpu_enable_pipelined_p2p()) {
+  if (debug_options.xla_gpu_enable_pipelined_p2p()) {
     collectives_pipeline.AddPass<CollectivePermuteCycleDecomposer>(
         debug_options.xla_gpu_collective_permute_decomposer_threshold());
-  }
-
-  if (pipeline_parallelism_opt_level ==
-      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER) {
-    collectives_pipeline.AddPass<CollectiveSelectFolder>();
   }
 
   if (pipeline_parallelism_opt_level !=
