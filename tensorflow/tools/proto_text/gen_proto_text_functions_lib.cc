@@ -28,7 +28,6 @@ limitations under the License.
 using ::tensorflow::protobuf::Descriptor;
 using ::tensorflow::protobuf::EnumDescriptor;
 using ::tensorflow::protobuf::FieldDescriptor;
-using ::tensorflow::protobuf::FieldOptions;
 using ::tensorflow::protobuf::FileDescriptor;
 
 namespace tensorflow {
@@ -108,8 +107,7 @@ class Generator {
   // If <omit_default> is true, then the emitted code will not print zero-valued
   // values.
   // <field_expr> is code that when emitted yields the field's value.
-  void AppendFieldValueAppend(const FieldDescriptor& field,
-                              const bool omit_default,
+  void AppendFieldValueAppend(const FieldDescriptor& field, bool omit_default,
                               const string& field_expr);
 
   // Appends the print code for as single field.
