@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
@@ -47,7 +46,8 @@ absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type);
 // Converts an IFRT dtype to a NumPy dtype.
 absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype);
 
-absl::StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype);
+// Converts a NumPy dtype to an IFRT dtype.
+absl::StatusOr<ifrt::DType> DtypeToIfRtDType(const nb_dtype& dtype);
 
 // Converts an IFRT dtype to a NumPy dtype. It specially converts `kToken` into
 // bool to avoid exposing the token type to the JAX dtype system, expecting JAX
