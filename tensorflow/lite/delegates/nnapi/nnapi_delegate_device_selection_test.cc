@@ -16,11 +16,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <numeric>
-#include <ostream>
 #include <string>
 #include <unordered_set>
 #include <vector>
