@@ -29,6 +29,11 @@ limitations under the License.
 
 namespace tflite {
 
+constexpr const int kOutputReference = 1;
+constexpr const int kVariableReference = 2;
+constexpr const int kInputReference = 3;
+constexpr const int kOpReference = 4;
+
 constexpr int32_t kLastActiveNodeUndefined =
     std::numeric_limits<int32_t>::max();
 constexpr int32_t kNodeNotAssigned = std::numeric_limits<int32_t>::max();
@@ -122,17 +127,10 @@ bool ArenaPlanner::InputTensorCanBeShared(const TfLiteTensor& input_tensor,
     // If there is more than one reference to the input tensor, we cannot
     // share. TODO(b/254230751): The last consumer can share.
     if (refcounts_[input_id] > 1) {
-      return false;
-    }
-  }
-  for (int input : graph_info_->inputs()) {
-    if (input == input_id) {
-      return false;
-    }
-  }
-  for (int output : graph_info_->outputs()) {
-    if (output == output_id) {
-      return false;
+      if (reference_types_[input_id] & kInputReference &&
+          refcounts_[input_id] > 2) {
+        return false;
+      }
     }
   }
   TfLiteAllocationType input_allocation_type = input_tensor.allocation_type;
@@ -193,7 +191,8 @@ void ArenaPlanner::IdentifyInPlaceTensors() {
     }
     int32_t actual_output_tensor_id = FindSharedTensor(input_id);
     if (tensor_changed) {
-      if (refcounts_[actual_output_tensor_id] > 1) {
+      if (refcounts_[actual_output_tensor_id] > 1 &&
+          actual_output_tensor_id != input_id) {
         continue;
       }
     }
@@ -214,6 +213,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
 
   // Keeps track of references to each tensor.
   refcounts_.assign(num_tensors, 0);
+  reference_types_.resize(num_tensors);
 
   auto allocate = [this](int node, int tensor) -> TfLiteStatus {
     if (alloc_node_[tensor] != kNodeNotAssigned) {
@@ -241,6 +241,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   // for deallocation.
   for (int tensor_index : graph_info_->outputs()) {
     if (tensor_index != kTfLiteOptionalTensor) {
+      reference_types_[tensor_index] |= (kOutputReference);
       ++refcounts_[tensor_index];
     }
   }
@@ -250,6 +251,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   for (int tensor_index : graph_info_->variables()) {
     // Increase the reference count for variable tensors by one, so it will
     // never be deallocated.
+    reference_types_[tensor_index] |= (kVariableReference);
     ++refcounts_[tensor_index];
     // `variables` is a subgraph-level list and it should never be
     // kTfLiteOptionalTensor.
@@ -263,6 +265,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   // overwritten.
   for (int tensor_index : graph_info_->inputs()) {
     if (tensor_index != kTfLiteOptionalTensor) {
+      reference_types_[tensor_index] |= (kInputReference);
       ++refcounts_[tensor_index];
       TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
       nodes_to_tensors_[0].insert(tensor_index);
@@ -279,6 +282,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     for (int j = 0; j < node_inputs->size; ++j) {
       int tensor_index = node_inputs->data[j];
       if (tensor_index != kTfLiteOptionalTensor) {
+        reference_types_[tensor_index] |= (kOpReference);
         ++refcounts_[tensor_index];
       }
     }

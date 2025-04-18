@@ -166,6 +166,8 @@ class ArenaPlanner : public MemoryPlanner {
 
   // Store number of references to each tensor.
   std::vector<int> refcounts_;
+  // Store the type of each reference.
+  std::vector<int> reference_types_;
 };
 
 }  // namespace tflite
