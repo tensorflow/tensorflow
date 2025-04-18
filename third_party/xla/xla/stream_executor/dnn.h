@@ -1119,8 +1119,6 @@ using LazyDnnGraph = std::unique_ptr<DnnGraph>;
 // Nets. Note: A false return value of an operation indicates the
 // implementation is not available.
 //
-// TODO(b/118763918): this class (or rather dispatch table) has several
-// problems:
 // * Some overloads are missing. Ideally we want to have template virtual
 //   functions while the template arguments is a closed set. However, we don't
 //   get that from the language.
