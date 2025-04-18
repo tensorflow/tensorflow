@@ -42,7 +42,8 @@ class PluginProgramSerDes
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     return absl::StrCat(kSerializationPrefix,
                         llvm::cast<PluginProgram>(serializable).data);
   }
@@ -79,7 +80,8 @@ class PluginCompileOptionsSerDes
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     return "";
   }
 

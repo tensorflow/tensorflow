@@ -49,7 +49,8 @@ class CustomCallProgramSerDes
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     const CustomCallProgram& program =
         llvm::cast<CustomCallProgram>(serializable);
     CustomCallProgramProto proto;
@@ -124,7 +125,8 @@ class CustomCallCompileOptionsSerDes
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     return "";
   }
 
