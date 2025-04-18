@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -34,10 +34,10 @@ namespace {
 
 // Tests NCCL group execution.
 
-class NcclGroupExecutionTest : public HloPjRtTestBase {
+class NcclGroupExecutionTest : public HloTestBase {
  public:
   NcclGroupExecutionTest() {
-    VLOG(1) << "Running with " << test_runner().device_count() << " devices";
+    VLOG(1) << "Running with " << num_devices() << " devices";
   }
 };
 

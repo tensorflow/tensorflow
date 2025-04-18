@@ -2813,9 +2813,8 @@ xla_test(
     backends = [
         "gpu",
     ],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
-        ":hlo_pjrt_test_base",
+        ":hlo_test_base",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla/hlo/testlib:verified_hlo_module",
