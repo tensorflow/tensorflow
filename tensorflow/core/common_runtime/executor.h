@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -33,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/error_logging.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
