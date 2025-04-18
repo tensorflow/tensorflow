@@ -13,6 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <set>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/cc/ops/const_op.h"
