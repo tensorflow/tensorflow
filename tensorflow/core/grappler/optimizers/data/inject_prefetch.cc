@@ -15,7 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/inject_prefetch.h"
 
+#include <array>
+#include <utility>
+
+#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
