@@ -69,8 +69,11 @@ void MatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs, int64_t m,
   // Matrix multiply is a special case of the "contract" operation where
   // the contraction is performed along dimension 1 of the lhs and dimension
   // 0 of the rhs.
-  XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
-  C.device(*run_options->intra_op_thread_pool()) = A.contract(B, dims);
+  if (run_options) {
+    C.device(*run_options->intra_op_thread_pool()) = A.contract(B, dims);
+  } else {
+    C = A.contract(B, dims);
+  }
 }
 
 template <typename T, Eigen::AlignmentType Alignment>
@@ -108,11 +111,13 @@ void MatMul_Batch(const void* run_options_ptr, T* out, T* lhs, T* rhs,
   // Matrix multiply is a special case of the "contract" operation where
   // the contraction is performed along dimension 1 of the lhs and dimension
   // 0 of the rhs.
-  XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
-
   for (int64_t i = 0; i < batch_size; ++i) {
-    C.chip(i, 2).device(*run_options->intra_op_thread_pool()) =
-        A.chip(i, 2).contract(B.chip(i, 2), dims);
+    if (run_options) {
+      C.chip(i, 2).device(*run_options->intra_op_thread_pool()) =
+          A.chip(i, 2).contract(B.chip(i, 2), dims);
+    } else {
+      C.chip(i, 2) = A.chip(i, 2).contract(B.chip(i, 2), dims);
+    }
   }
 }
 
