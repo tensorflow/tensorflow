@@ -117,12 +117,6 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
                  << test_runner().device_count() << " available)";
   }
 
-  // TODO(b/398888176): Remove this skip once cycle decomposer is removed.
-  if (xla_gpu_experimental_pipeline_parallelism_opt_level_ ==
-      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER) {
-    GTEST_SKIP();
-  }
-
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
@@ -319,12 +313,6 @@ XLA_TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
                  << test_runner().device_count() << " available)";
   }
 
-  // TODO(b/398888176): Remove this skip once cycle decomposer is removed.
-  if (xla_gpu_experimental_pipeline_parallelism_opt_level_ ==
-      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER) {
-    GTEST_SKIP();
-  }
-
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
@@ -449,12 +437,6 @@ XLA_TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
                  << test_runner().device_count() << " available)";
   }
 
-  // TODO(b/398888176): Remove this skip once cycle decomposer is removed.
-  if (xla_gpu_experimental_pipeline_parallelism_opt_level_ ==
-      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER) {
-    GTEST_SKIP();
-  }
-
   // Parse HLO module.
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
@@ -576,12 +558,6 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
   if (test_runner().device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << test_runner().device_count() << " available)";
-  }
-
-  // TODO(b/398888176): Remove this skip once cycle decomposer is removed.
-  if (xla_gpu_experimental_pipeline_parallelism_opt_level_ ==
-      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER) {
-    GTEST_SKIP();
   }
 
   // Parse HLO module.
@@ -2054,10 +2030,8 @@ ENTRY %main.204 (Arg_0.1: f32[4,4096,4096], Arg_1.2: f32[4,5,4096,8192])
 INSTANTIATE_TEST_SUITE_P(
     CollectivePipelineParallelismTestWithAndWithoutOpts,
     CollectivePipelineParallelismTest,
-    ::testing::ValuesIn(
-        {DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE,
-         DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE,
-         DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER}),
+    ::testing::ValuesIn({DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE,
+                         DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE}),
     ::testing::PrintToStringParamName());
 
 }  // namespace
