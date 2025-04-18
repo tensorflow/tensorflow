@@ -32,6 +32,7 @@ KernelRunner = _extension.KernelRunner
 KernelSpec = _extension.KernelSpec
 LlvmIrKernelSource = _extension.LlvmIrKernelSource
 MlirKernelSource = _extension.MlirKernelSource
+ScatterDimensionNumbers = _extension.ScatterDimensionNumbers
 # go/keep-sorted end
 
 # Functions

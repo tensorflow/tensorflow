@@ -60,10 +60,6 @@ absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
 void SetDataLayoutAttribute(mlir::ModuleOp module,
                             const HloFusionInstruction& fusion);
 
-absl::StatusOr<absl::flat_hash_set<int64_t>> SetKernelFunctionAttributes(
-    llvm::Module& module, const BufferAssignment& buffer_assignment,
-    const HloFusionInstruction* fusion);
-
 class CpuFusionEmitterBase {
  public:
   virtual ~CpuFusionEmitterBase() = default;

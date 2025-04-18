@@ -164,50 +164,6 @@ TEST_F(CpuCompilerInternalsTest, JustOneDylibWithThunks) {
                          << "one dylib is allowed.";
 }
 
-TEST_F(CpuCompilerInternalsTest, JustTwoDylibsWithFusionEmitters) {
-  if (!kFusionEmitterScatterEnabled) {
-    GTEST_SKIP() << "Needs scatter fusion emitter since that reserves one of "
-                 << "the dylibs for specific compilation flags.";
-  }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kAddScatterHlo));
-  DebugOptions& debug_options =
-      hlo_module->mutable_config().mutable_debug_options();
-  debug_options.set_xla_cpu_use_thunk_runtime(true);
-  debug_options.set_xla_cpu_use_fusion_emitters(true);
-  debug_options.set_xla_cpu_parallel_codegen_split_count(2);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(hlo_module)));
-
-  int64_t max_seen = -1;
-  auto pre_opt_hook = [&](const llvm::Module& llvm_module) {
-    std::optional<int64_t> dylib_index = GetXlaDylibIndex(llvm_module);
-    if (!dylib_index) return;
-    if (*dylib_index == 0) {
-      std::optional<std::string> extra_opts =
-          GetXlaBackendExtraOptions(llvm_module);
-      ASSERT_TRUE(extra_opts.has_value())
-          << "dylib 0 must have xla_backend_extra_options set.";
-      EXPECT_EQ(*extra_opts, "xla_cpu_disable_loop_unrolling");
-    }
-    max_seen = std::max(max_seen, *dylib_index);
-  };
-
-  LLVMCompiler* compiler = static_cast<LLVMCompiler*>(backend().compiler());
-  compiler->SetPreOptimizationHook(pre_opt_hook);
-  ASSERT_TRUE(compiler
-                  ->RunBackend(std::move(optimized_module),
-                               backend().default_stream_executor(),
-                               /*device_allocator=*/nullptr)
-                  .ok());
-  compiler->RemovePreOptimizationHook();
-
-  EXPECT_EQ(max_seen, 1)
-      << "max dylib_index(" << max_seen << ") != 1, but only "
-      << "one default dylib is allowed (the other one is for overriding "
-      << "compilation flags).";
-}
-
 }  // namespace
 }  // namespace cpu
 }  // namespace xla
