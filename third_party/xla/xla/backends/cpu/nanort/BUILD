@@ -201,6 +201,7 @@ xla_cc_test(
         ":register_nanort_for_ifrt_tests",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:xla_data_proto_cc",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
