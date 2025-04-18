@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <vector>
