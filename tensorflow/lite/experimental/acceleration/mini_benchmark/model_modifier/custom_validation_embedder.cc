@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/custom_validation_embedder.h"
 
-#include <algorithm>
-#include <iostream>
-#include <iterator>
+#include <cstdint>
 #include <string>
 #include <vector>
 
