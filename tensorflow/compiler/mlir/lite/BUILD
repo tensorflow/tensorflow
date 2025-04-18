@@ -1469,6 +1469,7 @@ cc_library(
 tf_native_cc_binary(
     name = "flatbuffer_to_string",
     srcs = ["flatbuffer_to_string.cc"],
+    visibility = ["//third_party/odml/litert/litert:__subpackages__"],
     deps = [
         "//tensorflow/compiler/mlir/lite/core:absl_error_model_builder",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_reflection",
@@ -1731,6 +1732,7 @@ cc_library(
 
 tf_cc_binary(
     name = "flatbuffer_translate",
+    visibility = ["//third_party/odml/litert/litert:__subpackages__"],
     deps = [
         ":flatbuffer_translate_registration",
     ],
@@ -1775,6 +1777,7 @@ tf_cc_binary(
     srcs = [
         ":tf_tfl_translate_main",
     ],
+    visibility = ["//third_party/odml/litert/litert:__subpackages__"],
     deps = [
         ":common",
         ":flatbuffer_translate_lib",
