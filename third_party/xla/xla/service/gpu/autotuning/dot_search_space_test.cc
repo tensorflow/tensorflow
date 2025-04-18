@@ -89,23 +89,10 @@ auto IsValidConfig() {
                NumCtasIs(Ge(1)));
 };
 
-class DotSearchSpaceTest : public HloHardwareIndependentTestBase {
+class DefaultDeviceDotSearchSpaceTest : public HloHardwareIndependentTestBase {
  protected:
-  se::DeviceDescription device_description_;
-
-  DotSearchSpaceTest()
-      : device_description_(se::GpuDeviceInfoProto::default_instance()) {
-    // Using H100 numbers as the most relevant example here.
-    // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#features-and-technical-specifications-technical-specifications-per-compute-capability
-    // https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/#nvidia_h100_gpu_architecture_in-depth
-    device_description_.set_registers_per_block_limit(64 * 1024);
-    device_description_.set_core_count(132);
-    device_description_.set_threads_per_block_limit(1024);
-    device_description_.set_threads_per_warp(32);
-    device_description_.set_shared_memory_per_block_optin(227 * 1024);
-    device_description_.set_gpu_compute_capability(
-        se::CudaComputeCapability::Hopper());
-  }
+  se::DeviceDescription device_description_{
+      se::GpuDeviceInfoProto::default_instance()};
 
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> GetDefaultDotModule(
       int lhs_parallel_dim = 1024, int rhs_parallel_dim = 1024,
@@ -129,6 +116,30 @@ ENTRY e {
 
   TritonDotFusionSearchSpace MakeSearchSpace(VerifiedHloModule* module) {
     return TritonDotFusionSearchSpace(device_description_, GetDot(module));
+  }
+};
+
+TEST_F(DefaultDeviceDotSearchSpaceTest, ReturnsValidConfigList) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          GetDefaultDotModule());
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(search_space.GenerateConfigs(), Not(IsEmpty()));
+}
+
+class DotSearchSpaceTest : public DefaultDeviceDotSearchSpaceTest {
+ protected:
+  DotSearchSpaceTest() {
+    // Using H100 numbers as the most relevant example here.
+    // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#features-and-technical-specifications-technical-specifications-per-compute-capability
+    // https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/#nvidia_h100_gpu_architecture_in-depth
+    device_description_.set_registers_per_block_limit(64 * 1024);
+    device_description_.set_core_count(132);
+    device_description_.set_threads_per_block_limit(1024);
+    device_description_.set_threads_per_warp(32);
+    device_description_.set_shared_memory_per_block_optin(227 * 1024);
+    device_description_.set_gpu_compute_capability(
+        se::CudaComputeCapability::Hopper());
   }
 };
 
