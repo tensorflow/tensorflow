@@ -58,6 +58,9 @@ TfLiteRegistration* Register_LOG_SOFTMAX();
 // Softmax kernel registrations.
 TfLiteRegistration* Register_SOFTMAX_REF();
 TfLiteRegistration* Register_SOFTMAX();
+// Softsign kernel registrations.
+TfLiteRegistration* Register_SOFTSIGN_REF();
+TfLiteRegistration* Register_SOFTSIGN();
 
 // PRelu kernel registrations.
 TfLiteRegistration* Register_PRELU_REF();
@@ -284,6 +287,31 @@ class SoftmaxOpTest : public SingleOpTest {
     return *kSoftmaxKernelMap;
   }
 };
+
+const auto kSoftsignKernelMap = new std::map<string, TfLiteRegistration*>({
+    {"Reference", ops::builtin::Register_SOFTSIGN_REF()},
+});
+
+class SoftsignOpTest : public SingleOpTest {
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
+    return *kSoftsignKernelMap;
+  }
+};
+
+TEST_P(SoftsignOpTest, SoftsignFloat) {
+  FloatActivationsOpModel m(GetRegistration(), BuiltinOperator_SOFTSIGN,
+                            /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
+  m.SetInput({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                 0.0, -0.85714287, 0.6666667, .8,  //
+                                 .75, -0.6666667, 0.90909094, .5,  //
+                             })));
+}
 
 TEST(FloatActivationsOpTest, Elu) {
   FloatActivationsOpModel m(BuiltinOperator_ELU,
@@ -2866,6 +2894,10 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     LeakyReluOpTest, LeakyReluOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kLeakyReluKernelMap)));
+
+INSTANTIATE_TEST_SUITE_P(
+    SoftsignOpTest, SoftsignOpTest,
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kSoftsignKernelMap)));
 
 }  // namespace
 }  // namespace tflite

@@ -579,6 +579,7 @@ cc_library(
         "reference/select.h",
         "reference/slice.h",
         "reference/softmax.h",
+        "reference/softsign.h",
         "reference/space_to_batch_nd.h",
         "reference/space_to_depth.h",
         "reference/strided_slice.h",
