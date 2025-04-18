@@ -23,8 +23,10 @@ namespace xla {
 namespace gpu {
 
 absl::Status CreateTritonPipeline(
-    mlir::OpPassManager* pm, std::string arch_name, int num_warps, int num_ctas,
-    int num_stages, mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info,
+    mlir::OpPassManager* pm,
+    const stream_executor::DeviceDescription& device_info, int num_warps,
+    int num_ctas, int num_stages,
+    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info,
     bool is_xla_fusion) {
   return absl::UnimplementedError("not supported for this build configuration");
 }

@@ -286,10 +286,7 @@ absl::StatusOr<int64_t> GetMaxRegistersPerBlock(hipDevice_t device) {
                                      hipDeviceAttributeMaxRegistersPerBlock);
 }
 
-absl::StatusOr<int64_t> GetThreadsPerWarp(hipDevice_t device) {
-  // TODO(ROCm): This is almost certainly wrong but tests seem to rely on it.
-  return 32;
-}
+absl::StatusOr<int64_t> GetThreadsPerWarp(hipDevice_t device) { return 64; }
 
 absl::Status GetGridLimits(int* x, int* y, int* z, hipDevice_t device) {
   int value;
