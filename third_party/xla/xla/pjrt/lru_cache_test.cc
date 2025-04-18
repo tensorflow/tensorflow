@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/pjrt/lru_cache.h"
 
+#include <optional>
 #include <random>
 
+#include <gtest/gtest.h>
 #include "xla/hlo/testlib/test.h"
 
 namespace xla {
@@ -35,11 +37,13 @@ TEST(LRUCache, Basics) {
   EXPECT_EQ(3, cache.Size());
   EXPECT_EQ(0, cache.GetOrCreateIfAbsent(0, [](int) { return 3; }));
   EXPECT_EQ(3, cache.Size());
+  EXPECT_EQ(1, cache.Get(1).value());
   EXPECT_EQ(4, cache.GetOrCreateIfAbsent(3, [](int) { return 4; }));
   EXPECT_EQ(3, cache.Size());
-  EXPECT_EQ(2, cache.GetOrCreateIfAbsent(2, [](int) { return 5; }));
+  EXPECT_EQ(std::nullopt, cache.Get(2));
+  EXPECT_EQ(5, cache.GetOrCreateIfAbsent(2, [](int) { return 5; }));
   EXPECT_EQ(3, cache.Size());
-  EXPECT_EQ(6, cache.GetOrCreateIfAbsent(1, [](int) { return 6; }));
+  EXPECT_EQ(6, cache.GetOrCreateIfAbsent(0, [](int) { return 6; }));
   EXPECT_EQ(3, cache.Size());
   cache.Clear();
   EXPECT_EQ(0, cache.Size());
