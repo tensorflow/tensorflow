@@ -9,6 +9,7 @@ lit_test_suite(
     name = "tests",
     srcs = glob(["*.mlir"]),
     cfg = "//xla:lit.cfg.py",
+    tags = ["gpu"],
     tools = [
         "//xla/codegen/tools:emitters_opt",
         "@llvm-project//llvm:FileCheck",

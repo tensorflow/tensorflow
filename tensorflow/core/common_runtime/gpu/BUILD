@@ -231,6 +231,7 @@ tf_cuda_library(
         ]),
     ) + if_cuda_or_rocm([
         "@local_tsl//tsl/platform:dso_loader",
+        "@local_xla//xla/backends/gpu/runtime:thunk_runtime_dependencies",
     ]) + if_cuda([
         "@local_xla//xla/stream_executor/cuda:all_runtime",
     ]) + if_rocm([
