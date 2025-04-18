@@ -35,7 +35,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/internal/endian.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -229,6 +228,22 @@ absl::Status Apply(Literal& literal, F&& literal_generator) {
       literal.shape().element_type());
 }
 
+inline void LittleEndianStore32(char* p, uint32_t v) {
+  if constexpr (absl::endian::native != absl::endian::little) {
+    v = absl::byteswap(v);
+  }
+  memcpy(p, &v, sizeof(v));
+}
+
+inline uint32_t LittleEndianLoad32(const char* p) {
+  uint32_t v;
+  memcpy(&v, p, sizeof(v));
+  if constexpr (absl::endian::native != absl::endian::little) {
+    v = absl::byteswap(v);
+  }
+  return v;
+}
+
 absl::Status MakeEvalErrorDueToParamOrInfeed(
     const HloInstruction& eval_instruction) {
   absl::Status error = absl::FailedPreconditionError(absl::StrCat(
@@ -237,10 +252,9 @@ absl::Status MakeEvalErrorDueToParamOrInfeed(
       eval_instruction.parent()->name(), ")."));
   std::string error_payload;
   error_payload.resize(sizeof(internal::EvalErrorDetail));
-  absl::little_endian::Store32(
-      const_cast<char*>(error_payload.data()),
-      static_cast<uint32_t>(
-          internal::EvalErrorDetail::kDynamicValueDependence));
+  LittleEndianStore32(const_cast<char*>(error_payload.data()),
+                      static_cast<uint32_t>(
+                          internal::EvalErrorDetail::kDynamicValueDependence));
   error.SetPayload(internal::kEvalErrorDetailUrl, absl::Cord(error_payload));
   return error;
 }
@@ -584,7 +598,7 @@ std::optional<EvalErrorDetail> ParseEvalErrorDetail(const absl::Status& error) {
     return std::nullopt;
   }
   return static_cast<EvalErrorDetail>(
-      absl::little_endian::Load32(error_detail->Flatten().data()));
+      LittleEndianLoad32(error_detail->Flatten().data()));
 }
 
 }  // namespace internal

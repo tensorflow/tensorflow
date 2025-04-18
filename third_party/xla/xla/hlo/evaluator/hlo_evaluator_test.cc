@@ -17,6 +17,7 @@ limitations under the License.
 #include <array>
 #include <complex>
 #include <cstdint>
+#include <cstring>
 #include <initializer_list>
 #include <limits>
 #include <memory>
@@ -27,9 +28,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/internal/endian.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -75,6 +76,13 @@ namespace xla {
 namespace {
 
 static std::array<bool, 2> use_bf16_params{true, false};
+
+inline void LittleEndianStore32(char* p, uint32_t v) {
+  if constexpr (absl::endian::native != absl::endian::little) {
+    v = absl::byteswap(v);
+  }
+  memcpy(p, &v, sizeof(v));
+}
 
 // Test fixture for the HloEvaluator.
 //
@@ -6222,10 +6230,9 @@ TEST(EvalErrorTest, Payload) {
   absl::Status s = absl::InternalError("hmm");
   std::string payload;
   payload.resize(sizeof(internal::EvalErrorDetail));
-  absl::little_endian::Store32(
-      const_cast<char*>(payload.data()),
-      static_cast<uint32_t>(
-          internal::EvalErrorDetail::kDynamicValueDependence));
+  LittleEndianStore32(const_cast<char*>(payload.data()),
+                      static_cast<uint32_t>(
+                          internal::EvalErrorDetail::kDynamicValueDependence));
   s.SetPayload(internal::kEvalErrorDetailUrl, absl::Cord(payload));
 
   EXPECT_EQ(internal::ParseEvalErrorDetail(s),
