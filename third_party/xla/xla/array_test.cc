@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
@@ -64,6 +65,210 @@ TEST(ArrayTest, InitializerListCtor) {
   EXPECT_EQ(arr(1, 0), 4);
   EXPECT_EQ(arr(1, 1), 5);
   EXPECT_EQ(arr(1, 2), 6);
+}
+
+TEST(ArrayTest, Transpose1DNoOp) {
+  Array<int> arr({3});
+  arr.FillWithMultiples(10);  // {0, 10, 20}
+
+  ASSERT_EQ(arr.num_dimensions(), 1);
+  ASSERT_EQ(arr.dim(0), 3);
+
+  arr.TransposeDimensions({0});
+  ASSERT_EQ(arr.num_dimensions(), 1);
+  ASSERT_EQ(arr.dim(0), 3);
+  EXPECT_EQ(arr(0), 0);
+  EXPECT_EQ(arr(1), 10);
+  EXPECT_EQ(arr(2), 20);
+}
+
+TEST(ArrayTest, Transpose2DNoOp) {
+  Array<int> arr({{0, 10, 20}, {30, 40, 50}});
+  ASSERT_EQ(arr.num_dimensions(), 2);
+  ASSERT_EQ(arr.dim(0), 2);
+  ASSERT_EQ(arr.dim(1), 3);
+
+  arr.TransposeDimensions({0, 1});
+  ASSERT_EQ(arr.num_dimensions(), 2);
+  ASSERT_EQ(arr.dim(0), 2);
+  ASSERT_EQ(arr.dim(1), 3);
+  EXPECT_EQ(arr(0, 0), 0);
+  EXPECT_EQ(arr(0, 1), 10);
+  EXPECT_EQ(arr(0, 2), 20);
+  EXPECT_EQ(arr(1, 0), 30);
+  EXPECT_EQ(arr(1, 1), 40);
+  EXPECT_EQ(arr(1, 2), 50);
+}
+
+TEST(ArrayTest, Transpose2DSwap) {
+  Array<int> arr({{0, 10, 20}, {30, 40, 50}});
+  ASSERT_EQ(arr.num_dimensions(), 2);
+  ASSERT_EQ(arr.dim(0), 2);
+  ASSERT_EQ(arr.dim(1), 3);
+
+  arr.TransposeDimensions({1, 0});
+  ASSERT_EQ(arr.num_dimensions(), 2);
+  ASSERT_EQ(arr.dim(0), 3);
+  ASSERT_EQ(arr.dim(1), 2);
+  EXPECT_EQ(arr(0, 0), 0);
+  EXPECT_EQ(arr(0, 1), 30);
+  EXPECT_EQ(arr(1, 0), 10);
+  EXPECT_EQ(arr(1, 1), 40);
+  EXPECT_EQ(arr(2, 0), 20);
+  EXPECT_EQ(arr(2, 1), 50);
+}
+
+TEST(ArrayTest, Transpose3DNoOp) {
+  Array<int> arr({{{0, 10}, {20, 30}}, {{40, 50}, {60, 70}}});
+  ASSERT_EQ(arr.num_dimensions(), 3);
+  ASSERT_EQ(arr.dim(0), 2);
+  ASSERT_EQ(arr.dim(1), 2);
+  ASSERT_EQ(arr.dim(2), 2);
+
+  arr.TransposeDimensions({0, 1, 2});
+  ASSERT_EQ(arr.num_dimensions(), 3);
+  ASSERT_EQ(arr.dim(0), 2);
+  ASSERT_EQ(arr.dim(1), 2);
+  ASSERT_EQ(arr.dim(2), 2);
+  EXPECT_EQ(arr(0, 0, 0), 0);
+  EXPECT_EQ(arr(0, 0, 1), 10);
+  EXPECT_EQ(arr(0, 1, 0), 20);
+  EXPECT_EQ(arr(0, 1, 1), 30);
+  EXPECT_EQ(arr(1, 0, 0), 40);
+  EXPECT_EQ(arr(1, 0, 1), 50);
+  EXPECT_EQ(arr(1, 1, 0), 60);
+  EXPECT_EQ(arr(1, 1, 1), 70);
+}
+
+TEST(ArrayTest, Transpose3DCyclic) {
+  Array<int> arr({{{0, 10}, {20, 30}, {40, 50}},
+                  {{60, 70}, {80, 90}, {100, 110}},
+                  {{120, 130}, {140, 150}, {160, 170}},
+                  {{180, 190}, {200, 210}, {220, 230}}});
+  ASSERT_EQ(arr.num_dimensions(), 3);
+  ASSERT_EQ(arr.dim(0), 4);
+  ASSERT_EQ(arr.dim(1), 3);
+  ASSERT_EQ(arr.dim(2), 2);
+  Array<int> arr_before_transpose = arr;
+
+  arr.TransposeDimensions({1, 2, 0});
+  ASSERT_EQ(arr.num_dimensions(), 3);
+  ASSERT_EQ(arr.dim(0), 3);
+  ASSERT_EQ(arr.dim(1), 2);
+  ASSERT_EQ(arr.dim(2), 4);
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 2; ++j) {
+      for (int k = 0; k < 4; ++k) {
+        EXPECT_EQ(arr(i, j, k), arr_before_transpose(k, i, j));
+      }
+    }
+  }
+}
+
+Array<int> Make4DArray() {
+  Array<int> arr({2, 4, 8, 16});
+  CHECK_EQ(arr.num_elements(), 1024);
+  arr.FillWithMultiples(10);
+  return arr;
+}
+
+TEST(ArrayTest, Transpose4DNoOp) {
+  Array<int> arr1 = Make4DArray();
+  Array<int> arr2 = arr1;
+  arr2.TransposeDimensions({0, 1, 2, 3});
+  ASSERT_EQ(arr2.num_dimensions(), 4);
+  ASSERT_EQ(arr2.dim(0), 2);
+  ASSERT_EQ(arr2.dim(1), 4);
+  ASSERT_EQ(arr2.dim(2), 8);
+  ASSERT_EQ(arr2.dim(3), 16);
+  for (int i = 0; i < 2; ++i) {
+    for (int j = 0; j < 4; ++j) {
+      for (int k = 0; k < 8; ++k) {
+        for (int l = 0; l < 16; ++l) {
+          EXPECT_EQ(arr1(i, j, k, l), arr2(i, j, k, l));
+        }
+      }
+    }
+  }
+}
+
+TEST(ArrayTest, Transpose4DCyclic) {
+  Array<int> arr1 = Make4DArray();
+  Array<int> arr2 = arr1;
+  arr2.TransposeDimensions({1, 2, 3, 0});
+  ASSERT_EQ(arr2.num_dimensions(), 4);
+  ASSERT_EQ(arr2.dim(0), 4);
+  ASSERT_EQ(arr2.dim(1), 8);
+  ASSERT_EQ(arr2.dim(2), 16);
+  ASSERT_EQ(arr2.dim(3), 2);
+  for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 8; ++j) {
+      for (int k = 0; k < 16; ++k) {
+        for (int l = 0; l < 2; ++l) {
+          EXPECT_EQ(arr2(i, j, k, l), arr1(l, i, j, k));
+        }
+      }
+    }
+  }
+}
+
+TEST(ArrayTest, Transpose4DSomePermutation) {
+  Array<int> arr1 = Make4DArray();
+  Array<int> arr2 = arr1;
+  arr2.TransposeDimensions({3, 1, 0, 2});
+  ASSERT_EQ(arr2.num_dimensions(), 4);
+  ASSERT_EQ(arr2.dim(0), 16);
+  ASSERT_EQ(arr2.dim(1), 4);
+  ASSERT_EQ(arr2.dim(2), 2);
+  ASSERT_EQ(arr2.dim(3), 8);
+  for (int i = 0; i < 16; ++i) {
+    for (int j = 0; j < 4; ++j) {
+      for (int k = 0; k < 2; ++k) {
+        for (int l = 0; l < 8; ++l) {
+          EXPECT_EQ(arr2(i, j, k, l), arr1(k, j, l, i));
+        }
+      }
+    }
+  }
+}
+
+TEST(ArrayTest, Transpose1DEmpty) {
+  Array<int> arr({0});
+
+  ASSERT_EQ(arr.num_dimensions(), 1);
+  ASSERT_EQ(arr.dim(0), 0);
+
+  arr.TransposeDimensions({0});
+  EXPECT_EQ(arr.num_dimensions(), 1);
+  EXPECT_EQ(arr.dim(0), 0);
+}
+
+TEST(ArrayTest, Transpose2DEmpty) {
+  Array<int> arr({0, 2});
+
+  ASSERT_EQ(arr.num_dimensions(), 2);
+  ASSERT_EQ(arr.dim(0), 0);
+  ASSERT_EQ(arr.dim(1), 2);
+
+  arr.TransposeDimensions({1, 0});
+  EXPECT_EQ(arr.num_dimensions(), 2);
+  EXPECT_EQ(arr.dim(0), 2);
+  EXPECT_EQ(arr.dim(1), 0);
+}
+
+TEST(ArrayTest, Transpose3DEmpty) {
+  Array<int> arr({0, 5, 7});
+
+  ASSERT_EQ(arr.num_dimensions(), 3);
+  ASSERT_EQ(arr.dim(0), 0);
+  ASSERT_EQ(arr.dim(1), 5);
+  ASSERT_EQ(arr.dim(2), 7);
+
+  arr.TransposeDimensions({1, 2, 0});
+  EXPECT_EQ(arr.num_dimensions(), 3);
+  EXPECT_EQ(arr.dim(0), 5);
+  EXPECT_EQ(arr.dim(1), 7);
+  EXPECT_EQ(arr.dim(2), 0);
 }
 
 TEST(ArrayTest, InitializerListCtorHalf) {
