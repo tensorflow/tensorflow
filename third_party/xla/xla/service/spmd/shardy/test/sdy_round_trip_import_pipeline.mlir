@@ -209,6 +209,16 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
     return %2 : tensor<16x32xf32>
   }
 
+  // CHECK-LABEL: func @frontend_attr_not_sharding
+  // CHECK-SAME:    %arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh2, [{"b"}, {?}]>},
+  // CHECK-SAME:    %arg1: tensor<16x8xf32> {mhlo.frontend_attributes = {baz = 1 : i32, foo = "bar"}})
+  func.func @frontend_attr_not_sharding(
+    %arg0: tensor<16x8xf32> {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<@mesh2, [{\"b\"}, {?}]>"}},
+    %arg1: tensor<16x8xf32> {mhlo.frontend_attributes = {baz = 1 : i32, foo = "bar"}}) -> tensor<16x8xf32> {
+    %0 = stablehlo.add %arg0, %arg1 : tensor<16x8xf32>
+    return %0 : tensor<16x8xf32>
+  }
+
   // CHECK-NOT: func @local_xla.sdy.manual_computation_body(
   func.func @local_xla.sdy.manual_computation_body(%arg0: tensor<16x8xf32>, %arg1: tensor<16x8xf32>) -> tensor<16x8xf32> {
     %0 = stablehlo.add %arg0, %arg1 : tensor<16x8xf32>
