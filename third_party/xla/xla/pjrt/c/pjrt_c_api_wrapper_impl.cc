@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -982,7 +983,7 @@ PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
     };
   }
   std::optional<std::intptr_t> stream = std::nullopt;
-  if (reinterpret_cast<void*>(args->stream) != nullptr) {
+  if (tsl::safe_reinterpret_cast<void*>(args->stream) != nullptr) {
     stream = args->stream;
   }
   std::unique_ptr<xla::PjRtBuffer> buffer;

@@ -129,6 +129,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -1462,7 +1463,9 @@ static absl::Status CheckAlignment(const BufferAllocation& allocation,
     }
   }();
   if (!buffer.is_null() &&
-      reinterpret_cast<uintptr_t>(buffer.opaque()) % expected_alignment != 0) {
+      tsl::safe_reinterpret_cast<uintptr_t>(buffer.opaque()) %
+              expected_alignment !=
+          0) {
     return Internal(
         "Address of buffer %d must be a multiple of %x, but "
         "was %p",

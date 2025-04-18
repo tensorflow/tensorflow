@@ -123,6 +123,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -984,7 +985,7 @@ TfrtCpuClient::CreateViewOfDeviceBuffer(
     return InvalidArgument(
         "Can't create a view of buffer with unaligned data, ptr: %#x is not "
         "aligned to %d bytes. ",
-        reinterpret_cast<std::uintptr_t>(device_ptr),
+        tsl::safe_reinterpret_cast<std::uintptr_t>(device_ptr),
         cpu_function_runtime::MinAlign());
   }
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
@@ -1587,8 +1588,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           // We assume tuple table allocations will not fail.
           CHECK_OK(CpuDeviceMemoryOwned::AllocateInto(index_table_byte_size,
                                                       tuple_index_table));
-          uintptr_t* index_table =
-              reinterpret_cast<uintptr_t*>(tuple_index_table->untyped_data());
+          uintptr_t* index_table = tsl::safe_reinterpret_cast<uintptr_t*>(
+              tuple_index_table->untyped_data());
           for (int i = 0; i < buffers.size(); ++i) {
             index_table[i] =
                 absl::bit_cast<uintptr_t>(buffers[i]->untyped_data());
