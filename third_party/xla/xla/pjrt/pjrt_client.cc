@@ -15,15 +15,24 @@ limitations under the License.
 
 #include "xla/pjrt/pjrt_client.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/utils.h"
+#include "xla/service/hlo_cost_analysis.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 
@@ -83,7 +92,12 @@ absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
 PjRtLoadedExecutable::GetCostAnalysis() const {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloCostAnalysis> hlo_cost_analysis,
                       client()->GetHloCostAnalysis());
-  return PjRtExecutableUtil::RunHloCostAnalysis(*this, hlo_cost_analysis.get());
+  return PjRtExecutableUtil::RunHloCostAnalysis(*GetExecutable(),
+                                                hlo_cost_analysis.get());
+}
+
+PjRtExecutable* PjRtLoadedExecutable::GetExecutable() const {
+  return executable_forwarder_.get();
 }
 
 }  // namespace xla

@@ -22,16 +22,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
