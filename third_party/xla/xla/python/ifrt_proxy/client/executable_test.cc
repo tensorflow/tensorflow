@@ -49,6 +49,7 @@
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
