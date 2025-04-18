@@ -1248,6 +1248,7 @@ xla_test(
     ],
     deps = [
         "//xla/service:platform_util",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
