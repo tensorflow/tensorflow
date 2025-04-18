@@ -289,7 +289,6 @@ py_strict_library(
         "//tensorflow/python/platform:sysconfig",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler",
-        "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/saved_model",
