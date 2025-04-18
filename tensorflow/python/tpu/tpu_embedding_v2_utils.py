@@ -1189,6 +1189,8 @@ class CustomCombiner(_WithSlotVariables):
   The second table will use the default `mean` combiner.
   """
 
+  CUSTOM_COMBINER_SLOT_NAME = "custom_combiner_variables"
+
   def __init__(
       self,
       combiner_computation: core.PolymorphicFunction,
@@ -1209,7 +1211,7 @@ class CustomCombiner(_WithSlotVariables):
           "When `num_weights` is greater than 0, `initializer` must be set."
       )
 
-    self._slot_names_attr = tuple(["custom_combiner_variables"])
+    self._slot_names_attr = tuple([self.CUSTOM_COMBINER_SLOT_NAME])
     self._slot_initializers_attr = tuple(
         [initializer] if initializer is not None else ()
     )

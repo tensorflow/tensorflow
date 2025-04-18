@@ -650,6 +650,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInput")
     .Input("preserved_vectors: float32")
     .Input("activation_gradients: float32")
     .Input("learning_rate: float32")
+    .Input("combiner_weights_learning_rate: float32")
     .Input("embedding_table: float32")
     .Output("updated_embedding_table: float32")
     .Output("updated_weights: float32")
@@ -665,7 +666,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInput")
       constexpr int kPreservedValenciesIndex = 6;
       constexpr int kPreservedVectorsIndex = 7;
       constexpr int kActivationGradientsIndex = 8;
-      constexpr int kTablesIndex = 10;
+      constexpr int kTablesIndex = 11;
       constexpr int kNumTables = 1;
       TF_RETURN_IF_ERROR(
           ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
@@ -686,6 +687,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInput")
     .Input("preserved_vectors: float32")
     .Input("activation_gradients: float32")
     .Input("learning_rate: float32")
+    .Input("combiner_weights_learning_rate: float32")
     .Input("embedding_table: float32")
     .Input("accumulator: float32")
     .Output("updated_embedding_table: float32")
@@ -703,7 +705,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInput")
       constexpr int kPreservedValenciesIndex = 6;
       constexpr int kPreservedVectorsIndex = 7;
       constexpr int kActivationGradientsIndex = 8;
-      constexpr int kTablesIndex = 10;
+      constexpr int kTablesIndex = 11;
       constexpr int kNumTables = 2;
       TF_RETURN_IF_ERROR(
           ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
@@ -725,6 +727,7 @@ REGISTER_OP(
     .Input("preserved_vectors: float32")
     .Input("activation_gradients: float32")
     .Input("learning_rate: float32")
+    .Input("combiner_weights_learning_rate: float32")
     .Input("embedding_table: float32")
     .Input("accumulator: float32")
     .Input("momenta: float32")
@@ -749,7 +752,7 @@ REGISTER_OP(
       constexpr int kPreservedValenciesIndex = 6;
       constexpr int kPreservedVectorsIndex = 7;
       constexpr int kActivationGradientsIndex = 8;
-      constexpr int kTablesIndex = 10;
+      constexpr int kTablesIndex = 11;
       constexpr int kNumTables = 3;
       TF_RETURN_IF_ERROR(
           ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
@@ -770,6 +773,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInput")
     .Input("preserved_vectors: float32")
     .Input("activation_gradients: float32")
     .Input("learning_rate: float32")
+    .Input("combiner_weights_learning_rate: float32")
     .Input("embedding_table: float32")
     .Input("momenta: float32")
     .Input("velocity: float32")
@@ -793,7 +797,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInput")
       constexpr int kPreservedValenciesIndex = 6;
       constexpr int kPreservedVectorsIndex = 7;
       constexpr int kActivationGradientsIndex = 8;
-      constexpr int kTablesIndex = 10;
+      constexpr int kTablesIndex = 11;
       constexpr int kNumTables = 3;
       TF_RETURN_IF_ERROR(
           ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
@@ -814,6 +818,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInput")
     .Input("preserved_vectors: float32")
     .Input("activation_gradients: float32")
     .Input("learning_rate: float32")
+    .Input("combiner_weights_learning_rate: float32")
     .Input("embedding_table: float32")
     .Input("accumulator: float32")
     .Input("linear: float32")
@@ -838,7 +843,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInput")
       constexpr int kPreservedValenciesIndex = 6;
       constexpr int kPreservedVectorsIndex = 7;
       constexpr int kActivationGradientsIndex = 8;
-      constexpr int kTablesIndex = 10;
+      constexpr int kTablesIndex = 11;
       constexpr int kNumTables = 3;
       TF_RETURN_IF_ERROR(
           ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
