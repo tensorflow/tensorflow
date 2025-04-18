@@ -65,10 +65,7 @@ alias(
 
 alias(
   name = "nccl_headers",
-  actual = select({
-      "@local_config_cuda//cuda:cuda_tools_and_libs": "@cuda_nccl//:headers",
-      "//conditions:default": "@nccl_archive//:nccl_headers",
-  }),
+  actual = "@nccl_archive//:nccl_headers",
   visibility = ["//visibility:public"],
 )
 
@@ -107,10 +104,7 @@ alias(
 
 alias(
   name = "nccl_headers",
-  actual = select({
-      "@local_config_cuda//cuda:cuda_tools_and_libs": "@cuda_nccl//:headers",
-      "//conditions:default": "@nccl_archive//:nccl_headers",
-  }),
+  actual = "@nccl_archive//:nccl_headers",
   visibility = ["//visibility:public"],
 )
 
