@@ -341,7 +341,8 @@ Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
         arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
     new_arrays.push_back(tsl::MakeRef<Array>(
         this, rpc_helper_, arrays[i]->dtype(), arrays[i]->shape(),
-        std::move(new_sharding), ArrayHandle{result_handles[i]}));
+        std::move(new_sharding), ArrayHandle{result_handles[i]},
+        /*layout=*/arrays[i]->layout().value_or(nullptr)));
   }
   return new_arrays;
 }
