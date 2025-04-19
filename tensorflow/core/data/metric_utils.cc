@@ -32,7 +32,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// Safely subtracts `x` from `y` avoiding underflow.
+// Safely subtracts `y` from `x` avoiding underflow.
 uint64_t safe_sub(uint64_t x, uint64_t y) { return x >= y ? x - y : 0; }
 
 }  // namespace
