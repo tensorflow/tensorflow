@@ -2038,6 +2038,7 @@ cuda_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:ragged_all_to_all_kernel",
+        "@com_google_absl//absl/base",
         "@local_config_cuda//cuda:cuda_headers",
     ],
     alwayslink = 1,
