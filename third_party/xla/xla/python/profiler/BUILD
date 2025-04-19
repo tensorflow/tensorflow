@@ -4,10 +4,11 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
+# This file is a little messy in order to resolve some unfortunate issues
 cc_library(
     name = "profile_data_lib",
-    srcs = ["profile_data.cc"],
-    hdrs = ["profile_data.h"],
+    srcs = ["profile_data_lib.cc"],
+    hdrs = ["profile_data_lib.h"],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -29,9 +30,32 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "profile_data_module",
+    srcs = ["build_profile_data_module.cc"],
+    hdrs = ["build_profile_data_module.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = [
+        "//third_party/py/jax/jaxlib/xla:__pkg__",
+        "//visibility:private",  #TODO(zcrank): remove when "profile_data" target is removed.
+        "//xla/python:__pkg__",
+    ],
+    deps = [
+        ":profile_data_lib",
+        "@nanobind",
+    ],
+)
+
+# This target builds a standalone module for profile_data.py, which some existing code depends on.
+# Please do not add new dependencies on this target.
+# TODO(zcrank): remove this target once the existing code (particularly Waymo) is updated.
 tsl_pybind_extension(
     name = "profile_data",
-    srcs = ["py_profile_data.cc"],
+    srcs = ["nb_module_profile_data.cc"],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -39,9 +63,7 @@ tsl_pybind_extension(
     pytype_srcs = ["profile_data.pyi"],
     visibility = ["//visibility:public"],
     deps = [
-        ":profile_data_lib",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        ":profile_data_module",
         "@nanobind",
     ],
 )
@@ -55,7 +77,6 @@ py_strict_test(
     ],
     deps = [
         ":profile_data",
-        # copybara:uncomment "//pyglib:gfile",
         "@absl_py//absl/testing:absltest",
     ],
 )
