@@ -85,6 +85,7 @@ xla_cc_test(
     deps = [
         ":executable_build_options",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/pjrt:compile_options_proto_cc",
         "//xla/service:computation_placer",
         "//xla/service:test_compilation_environment_proto_cc",
