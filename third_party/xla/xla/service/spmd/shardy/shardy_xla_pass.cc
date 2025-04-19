@@ -421,7 +421,7 @@ absl::StatusOr<bool> ShardyXLA::Run(
 
   // Restore entry computation layout.
   *hloModule->mutable_entry_computation_layout() =
-      flattenedEntryComputationLayout;
+      std::move(flattenedEntryComputationLayout);
   hloModule->set_input_output_alias_config(
       std::move(flattenedInputOutputAliasConfig));
   hloModule->set_buffer_donor_config(std::move(flattenedBufferDonorsConfig));
