@@ -675,4 +675,554 @@ diff --ruN a/stablehlo/stablehlo/tests/BUILD.bazel b/stablehlo/stablehlo/tests/B
      tblgen = "@llvm-project//mlir:mlir-tblgen",
      td_file = "TestUtils.td",
      deps = [
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+@@ -1539,8 +1539,8 @@
+ 
+ void populateStablehloHloImportCanonicalizationPatterns(
+     MLIRContext *context, RewritePatternSet *patterns) {
+-  patterns->add<ReshapeIsNoop, TupleIsRepacking, TupleIsUnpacked,
+-                WhileOpImplicitCapture>(context);
++  patterns->add<ReshapeOp_RemoveNoop, GetTupleElementOp_UnpackTuple,
++                TupleIsRepacking, WhileOpImplicitCapture>(context);
+ }
+ 
+ std::unique_ptr<Pass> createStablehloAggressiveSimplificationPass(
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+@@ -136,104 +136,163 @@
+ // AddOp
+ 
+ // Pattern: add(cst, X) -> add(X, cst)
+-def : CanonicalizeConstantToRhs<StableHLO_AddOp>;
++def AddOp_CanonicalizeConstantToRhs
++  : CanonicalizeConstantToRhs<StableHLO_AddOp>;
+ 
+ // Pattern: add(X, 0) -> X
+-def : Pat<(StableHLO_AddOp $lhs, (ConstantLikeMatcher AnyZero:$value)),
+-          (replaceWithValue $lhs)>;
++def AddOp_RemoveNoop
++  : Pat<(StableHLO_AddOp $lhs, (ConstantLikeMatcher AnyZero:$value)),
++        (replaceWithValue $lhs)>;
+ 
+ ////////
+ // AndOp
+ 
+ // Pattern: and(cst, X) -> and(X, cst)
+-def : CanonicalizeConstantToRhs<StableHLO_AndOp>;
++def AndOp_CanonicalizeConstantToRhs
++  : CanonicalizeConstantToRhs<StableHLO_AndOp>;
+ 
+ // Pattern: and(X, 0) -> 0
+-def : Pat<(StableHLO_AndOp $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
+-          (replaceWithValue $zero)>;
++def AndOp_FoldToZero
++  : Pat<(StableHLO_AndOp $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
++        (replaceWithValue $zero)>;
+ 
+ // Pattern: and(X, 1) -> X
+-def : Pat<(StableHLO_AndOp $lhs, (StableHLO_ConstantOp:$one IntAllOnes:$value)),
+-          (replaceWithValue $lhs)>;
++def AndOp_RemoveNoop
++  : Pat<(StableHLO_AndOp $lhs, (StableHLO_ConstantOp:$one IntAllOnes:$value)),
++        (replaceWithValue $lhs)>;
+ 
+ ////////
+ // BroadcastInDimOp
+ 
+ // Pattern: broadcast_in_dim(X, [iota...]) -> X
+-def : Pat<(StableHLO_BroadcastInDimOp:$op $operand, IotaDims:$dims),
+-          (replaceWithValue $operand),
+-          [(TypesEqual $op, $operand)]>;
+-
+-// Pattern: broadcast_in_dim(broadcast_in_dim(X, [dimsA...]), [dimsB...]) -> broadcast_in_dim(X, merge(dimsA, dimsB))
+-def : Pat<(StableHLO_BroadcastInDimOp
++def BroadcastInDimOp_RemoveNoop
++  : Pat<(StableHLO_BroadcastInDimOp:$op $operand, IotaDims:$dims),
++        (replaceWithValue $operand),
++        [(TypesEqual $op, $operand)]>;
++
++// Pattern: broadcast_in_dim(broadcast_in_dim(X, [dimsA...]), [dimsB...])
++//       -> broadcast_in_dim(X, merge(dimsA, dimsB))
++def BroadcastInDimOp_MergeComposition
++  : Pat<(StableHLO_BroadcastInDimOp
+             (StableHLO_BroadcastInDimOp $operand, $dims_parent), $dims),
+-          (StableHLO_BroadcastInDimOp $operand, (MergeBroadcastDims $dims, $dims_parent))>;
+-
+-// Pattern: broadcast_in_dim(X, [sorted...]) -> reshape(X, [sorted...]) [if same numel]
+-def : Pat<(StableHLO_BroadcastInDimOp:$op $operand, SortedDims:$dims),
+-          (StableHLO_ReshapeOpWithShape $op, $operand),
+-          [(NumberOfElementsEqual $op, $operand)]>;
+-
+-// Pattern: broadcast_in_dim(X, [dims...]) -> transpose(X, [dims...]) [if same numel & rank]
+-def : Pat<(StableHLO_BroadcastInDimOp:$op $operand, $dims),
+-          (StableHLO_TransposeOp $operand, $dims),
+-          [(NumberOfElementsEqual $op, $operand), (RankEqual $op, $operand)]>;
++        (StableHLO_BroadcastInDimOp
++            $operand, (MergeBroadcastDims $dims, $dims_parent))>;
++
++// Pattern: broadcast_in_dim(X, [sorted...]) -> reshape(X, [sorted...])
++//          [if same numel]
++def BroadcastInDimOp_ReplaceWithReshape
++  : Pat<(StableHLO_BroadcastInDimOp:$op $operand, SortedDims:$dims),
++        (StableHLO_ReshapeOpWithShape $op, $operand),
++        [(NumberOfElementsEqual $op, $operand)]>;
++
++// Pattern: broadcast_in_dim(X, [dims...]) -> transpose(X, [dims...])
++//          [if same numel & rank]
++def BroadcastInDimOp_ReplaceWithTranspose
++  : Pat<(StableHLO_BroadcastInDimOp:$op $operand, $dims),
++        (StableHLO_TransposeOp $operand, $dims),
++        [(NumberOfElementsEqual $op, $operand), (RankEqual $op, $operand)]>;
+ 
+ ////////
+ // ConvertOp
+ 
+ // Pattern: convert(X, [X.type]) -> X
+-def : Pat<(StableHLO_ConvertOp:$convert $operand),
+-          (replaceWithValue $operand),
+-          [(TypesEqual $convert, $operand)]>;
++def ConvertOp_RemoveNoop
++  : Pat<(StableHLO_ConvertOp:$convert $operand),
++        (replaceWithValue $operand),
++        [(TypesEqual $convert, $operand)]>;
+ 
+ ////////
+ // DynamicBroadcastInDimOp
+ 
+-// Pattern: dynamic_broadcast_in_dim(dynamic_broadcast_in_dim(X, _, [dimsA...]), shape, [dimsB...]) -> dynamic_broadcast_in_dim(X, shape, merge(dimsA, dimsB))
+-// TODO: Think more if the values of known_expanding_dimensions and known_non_expanding_dimensions can be preserved.
+-def : Pat<(StableHLO_DynamicBroadcastInDimOp
+-            (StableHLO_DynamicBroadcastInDimOp $operand, $shape_p, $dims_p, $expanding_p, $nonexpanding_p),
+-             $shape, $dims, $expanding, $nonexpanding),
+-          (StableHLO_DynamicBroadcastInDimOp $operand, $shape, (MergeBroadcastDims $dims, $dims_p), (GetEmptyI64Array), (GetEmptyI64Array))>;
+-
+-// Pattern: dynamic_broadcast_in_dim(X, _, _, [all_nonexpanding...]) -> convert(X)
+-// No-op, but wrap in ConvertOp to preserve dynamic output shape, can be
+-// important if this result is returned, where refining type would require
+-// also updating the funciton signature.
+-def : Pat<(StableHLO_DynamicBroadcastInDimOp:$op $operand, $shape, IotaDims:$dims, $expanding, $nonexpanding),
+-          (StableHLO_ConvertOpWithShape $op, $operand),
+-          [(AllDimsNonExpanding $nonexpanding, $op)]>;
+-
+-// Pattern: dynamic_broadcast_in_dim(dynamic_reshape(X, shape), shape) -> dynamic_reshape(X, shape)
++// Pattern: dynamic_broadcast_in_dim(dynamic_broadcast_in_dim(X, _, [dimsA...]),
++//                                   shape, [dimsB...])
++//       -> dynamic_broadcast_in_dim(X, shape, merge(dimsA, dimsB))
++//
++// TODO: Think more about whether the values of known_expanding_dimensions and
++//       known_non_expanding_dimensions can be preserved.
++def DynamicBroadcastInDimOp_MergeComposition
++  : Pat<(StableHLO_DynamicBroadcastInDimOp
++            (StableHLO_DynamicBroadcastInDimOp
++                $operand, $shape_p, $dims_p, $expanding_p, $nonexpanding_p),
++            $shape,
++            $dims,
++            $expanding,
++            $nonexpanding),
++        (StableHLO_DynamicBroadcastInDimOp
++            $operand,
++            $shape,
++            (MergeBroadcastDims $dims, $dims_p),
++            (GetEmptyI64Array),
++            (GetEmptyI64Array))>;
++
++// Pattern: dynamic_broadcast_in_dim(X, _, _, [all_nonexpanding...])
++//       -> convert(X)
++//
++// No-op, but wrap in ConvertOp to preserve dynamic output shape. This can be
++// important if the result is returned, in which case refining the type would
++// require also updating the funciton signature.
++def DynamicBroadcastInDimOp_ReplaceNoopWithConvert
++  : Pat<(StableHLO_DynamicBroadcastInDimOp:$op
++            $operand, $shape, IotaDims:$dims, $expanding, $nonexpanding),
++        (StableHLO_ConvertOpWithShape $op, $operand),
++        [(AllDimsNonExpanding $nonexpanding, $op)]>;
++
++// Pattern: dynamic_broadcast_in_dim(dynamic_reshape(X, shape), shape)
++//       -> dynamic_reshape(X, shape)
++//
+ // If sharing same shape operand, is dynamic reshape.
+-def : Pat<(StableHLO_DynamicBroadcastInDimOp
+-            (StableHLO_DynamicReshapeOp $operand, $shape), $shape, IotaDims:$dims, $expanding, $nonexpanding),
+-          (StableHLO_DynamicReshapeOp $operand, $shape)>;
++def DynamicBroadcastInDimOp_FoldToDynamicReshape
++  : Pat<(StableHLO_DynamicBroadcastInDimOp
++            (StableHLO_DynamicReshapeOp $operand, $shape),
++            $shape,
++            IotaDims:$dims,
++            $expanding,
++            $nonexpanding),
++        (StableHLO_DynamicReshapeOp $operand, $shape)>;
+ 
+ // Pattern: dynamic_broadcast_in_dim(X, shape_of(X)) -> X
+-def : Pat<(StableHLO_DynamicBroadcastInDimOp
+-            $operand, (Shape_ShapeOfOp $operand), IotaDims:$dims, $expanding, $nonexpanding),
+-          (replaceWithValue $operand)>;
++def DynamicBroadcastInDimOp_RemoveNoop
++  : Pat<(StableHLO_DynamicBroadcastInDimOp
++            $operand,
++            (Shape_ShapeOfOp $operand),
++            IotaDims:$dims,
++            $expanding,
++            $nonexpanding),
++        (replaceWithValue $operand)>;
+ 
+ ////////
+ // DynamicGatherOp
+ 
+ // Pattern: dynamic_gather(x, constant(slice_sizes)) -> gather(x, slice_sizes)
+-def : Pat<(StableHLO_DynamicGatherOp $operand, $start_indices, (StableHLO_ConstantOp DenseIntElementsAttr:$slice_sizes), $dimension_numbers, $indices_are_sorted),
+-          (StableHLO_GatherOp $operand, $start_indices, $dimension_numbers, (ConvertToI64Array $slice_sizes), $indices_are_sorted)>;
++def DynamicGatherOp_ReplaceWithGather
++  : Pat<(StableHLO_DynamicGatherOp
++            $operand,
++            $start_indices,
++            (StableHLO_ConstantOp DenseIntElementsAttr:$slice_sizes),
++            $dimension_numbers,
++            $indices_are_sorted),
++        (StableHLO_GatherOp
++            $operand,
++            $start_indices,
++            $dimension_numbers,
++            (ConvertToI64Array $slice_sizes),
++            $indices_are_sorted)>;
+ 
+ ////////
+ // DynamicPadOp
+ 
+ // Pattern: dynamic_pad(X, low, high, interior) -> pad(X, low, high, interior)
+-//            [if low, high, interior are all constants]
+-def : Pat<(StableHLO_DynamicPadOp $input,
++//          [if low, high, interior are all constants]
++def DynamicPadOp_ReplaceWithPad
++  : Pat<(StableHLO_DynamicPadOp
++            $input,
+             $padding_value,
+             (ConstantLikeMatcher AnyIntElementsAttr:$edge_padding_low),
+             (ConstantLikeMatcher AnyIntElementsAttr:$edge_padding_high),
+             (ConstantLikeMatcher AnyIntElementsAttr:$interior_padding)),
+-          (StableHLO_PadOp $input, $padding_value,
++        (StableHLO_PadOp
++            $input,
++            $padding_value,
+             (ConvertToI64Array $edge_padding_low),
+             (ConvertToI64Array $edge_padding_high),
+             (ConvertToI64Array $interior_padding))>;
+@@ -241,104 +300,127 @@
+ ////////
+ // DynamicReshapeOp
+ 
+-// Pattern: dynamic_reshape(dynamic_reshape(X, _), shape)) -> dynamic_reshape(X, shape)
+-def : Pat<(StableHLO_DynamicReshapeOp (StableHLO_DynamicReshapeOp $operand, $shape_p), $shape),
+-           (StableHLO_DynamicReshapeOp $operand, $shape)>;
++// Pattern: dynamic_reshape(dynamic_reshape(X, _), shape))
++//       -> dynamic_reshape(X, shape)
++def DynamicReshapeOp_MergeComposition
++  : Pat<(StableHLO_DynamicReshapeOp
++            (StableHLO_DynamicReshapeOp $operand, $shape_p), $shape),
++        (StableHLO_DynamicReshapeOp $operand, $shape)>;
+ 
+ // Pattern: shape_of(dynamic_reshape(X, shape)) -> shape
+-def : Pat<(Shape_ShapeOfOp:$op (StableHLO_DynamicReshapeOp $x, $shape)),
+-          (replaceWithValue $shape),
+-          [(TypesEqual $shape, $op)]>;
++def DynamicReshapeOp_FoldComposedOpsToShapeOperand
++  : Pat<(Shape_ShapeOfOp:$op (StableHLO_DynamicReshapeOp $x, $shape)),
++        (replaceWithValue $shape),
++        [(TypesEqual $shape, $op)]>;
+ 
+ ////////
+ // DynamicUpdateSliceOp
+ 
+ // Pattern: dynamic_update_slice(X, update : zero_extent)) -> X
+-def : Pat<(StableHLO_DynamicUpdateSliceOp $operand, (ConstantLikeMatcher ZeroExtent:$update), $start_indices),
+-           (replaceWithValue $operand)>;
++def DynamicUpdateSliceOp_RemoveNoop
++  : Pat<(StableHLO_DynamicUpdateSliceOp
++            $operand, (ConstantLikeMatcher ZeroExtent:$update), $start_indices),
++        (replaceWithValue $operand)>;
+ 
+ // Pattern: dynamic_update_slice(X, update, start_indices : zero)) -> update
+-def : Pat<(StableHLO_DynamicUpdateSliceOp AnyStaticShapeTensor:$operand, AnyStaticShapeTensor:$update, $start_indices),
+-           (replaceWithValue $update),
+-           [(TypesEqual $operand, $update), (AllZero $start_indices)]>;
++def DynamicUpdateSliceOp_FoldToUpdateOperand
++  : Pat<(StableHLO_DynamicUpdateSliceOp
++            AnyStaticShapeTensor:$operand,
++            AnyStaticShapeTensor:$update,
++            $start_indices),
++        (replaceWithValue $update),
++        [(TypesEqual $operand, $update), (AllZero $start_indices)]>;
+ 
+ 
+ ////////
+ // ComplexOp
+ 
+ // Pattern: complex(real(X), imag(X))) -> X
+-def : Pat<(StableHLO_ComplexOp (StableHLO_RealOp $operand), (StableHLO_ImagOp $operand)),
+-          (replaceWithValue $operand)>;
++def ComplexOp_CancelOutComposedOps
++  : Pat<(StableHLO_ComplexOp
++            (StableHLO_RealOp $operand), (StableHLO_ImagOp $operand)),
++        (replaceWithValue $operand)>;
+ 
+ 
+ ////////
+ // ImagOp
+ 
+ // Pattern: imag(complex(R,I)) -> I
+-def : Pat<(StableHLO_ImagOp (StableHLO_ComplexOp $lhs, $rhs)),
+-          (replaceWithValue $rhs)>;
++def ImagOp_CancelOutComposedOps
++  : Pat<(StableHLO_ImagOp (StableHLO_ComplexOp $lhs, $rhs)),
++        (replaceWithValue $rhs)>;
+ 
+ ////////
+ // IotaOp
+ 
+ // Pattern: iota(dim) : type -> constant(0) : type [if type[dim] == 1]
+-def : Pat<(StableHLO_IotaOp:$iota $dim),
+-          (StableHLO_ConstantLike<"0"> $iota),
+-          [(DimSizeEquals<1> $iota, $dim)]>;
++def IotaOp_FoldScalarToZero
++  : Pat<(StableHLO_IotaOp:$iota $dim),
++        (StableHLO_ConstantLike<"0"> $iota),
++        [(DimSizeEquals<1> $iota, $dim)]>;
+ 
+ 
+ ////////
+ // MaxOp
+ 
+ // Pattern: max(cst, X) -> max(X, cst)
+-def : CanonicalizeConstantToRhs<StableHLO_MaxOp>;
++def MaxOp_CanonicalizeConstantToRhs
++  : CanonicalizeConstantToRhs<StableHLO_MaxOp>;
+ 
+ ////////
+ // MinOp
+ 
+ // Pattern: minimum(cst, X) -> minimum(X, cst)
+-def : CanonicalizeConstantToRhs<StableHLO_MinOp>;
++def MinOp_CanonicalizeConstantToRhs
++  : CanonicalizeConstantToRhs<StableHLO_MinOp>;
+ 
+ ////////
+ // MulOp
+ 
+ // Pattern: multiply(cst, X) -> multiply(X, cst)
+-def : CanonicalizeConstantToRhs<StableHLO_MulOp>;
++def MulOp_CanonicalizeConstantToRhs
++  : CanonicalizeConstantToRhs<StableHLO_MulOp>;
+ 
+ // Pattern: multiply(X, 0i) -> 0i
+-// Multiplication by 0. This fold is not trivial for floats in presence of NaNs
+-def : Pat<(StableHLO_MulOp $lhs, (StableHLO_ConstantOp:$zero AnyZero:$value)),
+-          (replaceWithValue $zero)>;
++//
++// Multiplication by 0. This fold is not trivial for floats in presence of NaNs.
++def MulOp_FoldToZero
++  : Pat<(StableHLO_MulOp $lhs, (StableHLO_ConstantOp:$zero AnyZero:$value)),
++        (replaceWithValue $zero)>;
+ 
+ // Pattern: multiply(X, 1i) -> X
+-def : Pat<(StableHLO_MulOp $lhs, (StableHLO_ConstantOp AnyOne:$value)),
+-          (replaceWithValue $lhs)>;
++def MulOp_RemoveNoop
++  : Pat<(StableHLO_MulOp $lhs, (StableHLO_ConstantOp AnyOne:$value)),
++        (replaceWithValue $lhs)>;
+ 
+ ////////
+ // OrOp
+ 
+ // Pattern: or(cst, X) -> or(X, cst)
+-def : CanonicalizeConstantToRhs<StableHLO_OrOp>;
++def OrOp_CanonicalizeConstantToRhs : CanonicalizeConstantToRhs<StableHLO_OrOp>;
+ 
+ // Pattern: or(X, 1) -> 1
+-def : Pat<(StableHLO_OrOp $lhs, (StableHLO_ConstantOp:$one IntAllOnes:$value)),
+-          (replaceWithValue $one)>;
++def OrOp_FoldToOne
++  : Pat<(StableHLO_OrOp $lhs, (StableHLO_ConstantOp:$one IntAllOnes:$value)),
++        (replaceWithValue $one)>;
+ 
+ // Pattern: or(X, 0) -> X
+-def : Pat<(StableHLO_OrOp $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
+-          (replaceWithValue $lhs)>;
++def OrOp_RemoveNoop
++  : Pat<(StableHLO_OrOp $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
++        (replaceWithValue $lhs)>;
+ 
+ ////////
+ // RealDynamicSliceOp
+ 
+ // Pattern: real_dynamic_slice(X, start, limit, strides)
+-//           -> slice(X, start, limit, strides)
++//       -> slice(X, start, limit, strides)
+ //          [if start, limit, strides are all constants]
+-def : Pat<(StableHLO_RealDynamicSliceOp $operand,
++def RealDynamicSliceOp_ReplaceWithSlice
++  : Pat<(StableHLO_RealDynamicSliceOp $operand,
+             (ConstantLikeMatcher DenseIntElementsAttr:$start_indices),
+             (ConstantLikeMatcher DenseIntElementsAttr:$limit_indices),
+             (ConstantLikeMatcher DenseIntElementsAttr:$strides)),
+-          (StableHLO_SliceOp $operand,
++        (StableHLO_SliceOp $operand,
+             (ConvertToI64Array $start_indices),
+             (ConvertToI64Array $limit_indices),
+             (ConvertToI64Array $strides))>;
+@@ -347,86 +429,114 @@
+ // RealOp
+ 
+ // Pattern: real(complex(R,I)) -> X
+-def : Pat<(StableHLO_RealOp (StableHLO_ComplexOp $lhs, $rhs)),
+-          (replaceWithValue $lhs)>;
++def RealOp_CancelOutComposedOps
++  : Pat<(StableHLO_RealOp (StableHLO_ComplexOp $lhs, $rhs)),
++        (replaceWithValue $lhs)>;
+ 
+ ////////
+ // ReduceOp
+ // Note: If modifying region is required, must write pattern in C++
+ 
+ // Pattern: reduce(X..., dims=[], add) -> X...
+-def : Pat<(StableHLO_ReduceOp $operands, $init, EmptyI64Array:$dims),
+-          (replaceWithValue $operands)>;
++def ReduceOp_RemoveNoop
++  : Pat<(StableHLO_ReduceOp $operands, $init, EmptyI64Array:$dims),
++        (replaceWithValue $operands)>;
+ 
+ ////////
+ // ReshapeOp
+ 
+ // Pattern: reshape(reshape(X, _), [shape]) -> reshape(X, [shape])
+-def : Pat<(StableHLO_ReshapeOp:$reshape (StableHLO_ReshapeOp $operand)),
+-          (StableHLO_ReshapeOpWithShape $reshape, $operand)>;
++def ReshapeOp_MergeComposition
++  : Pat<(StableHLO_ReshapeOp:$reshape (StableHLO_ReshapeOp $operand)),
++        (StableHLO_ReshapeOpWithShape $reshape, $operand)>;
+ 
+ // Pattern: reshape(X, [X.shape]) -> X
+-def ReshapeIsNoop
+-    : Pat<(StableHLO_ReshapeOp:$reshape $operand),
+-          (replaceWithValue $operand),
+-          [(TypesEqual $reshape, $operand)]>;
++def ReshapeOp_RemoveNoop
++  : Pat<(StableHLO_ReshapeOp:$reshape $operand),
++        (replaceWithValue $operand),
++        [(TypesEqual $reshape, $operand)]>;
+ 
+ 
+ ////////
+ // SelectOp
+ 
+-// Pattern: select(not(p), t, f) => select(p, f, t)
+-def : Pat<
+-  (StableHLO_SelectOp (StableHLO_NotOp $pred), $on_true, $on_false),
+-  (StableHLO_SelectOp $pred, $on_false, $on_true)>;
+-
+-// Pattern: select(broadcast(not(p)), t, f) => select(broadcast(p), f, t)
+-def : Pat<(StableHLO_SelectOp (StableHLO_BroadcastInDimOp:$b (StableHLO_NotOp $pred), $broadcast_dimensions), $on_true, $on_false),
+-          (StableHLO_SelectOp (StableHLO_BroadcastInDimOp $pred, $broadcast_dimensions, (returnType $b)), $on_false, $on_true),
+-          [(HasOneUse $b)]>;
++// Pattern: select(not(p), t, f) -> select(p, f, t)
++def SelectOp_InvertPredicateAndSwap
++  : Pat<(StableHLO_SelectOp (StableHLO_NotOp $pred), $on_true, $on_false),
++        (StableHLO_SelectOp $pred, $on_false, $on_true)>;
++
++// Pattern: select(broadcast(not(p)), t, f) -> select(broadcast(p), f, t)
++def SelectOp_InvertBroadcastPredicateAndSwap
++  : Pat<(StableHLO_SelectOp
++            (StableHLO_BroadcastInDimOp:$b
++                (StableHLO_NotOp $pred), $broadcast_dimensions),
++            $on_true,
++            $on_false),
++        (StableHLO_SelectOp
++            (StableHLO_BroadcastInDimOp
++                $pred, $broadcast_dimensions, (returnType $b)),
++            $on_false,
++            $on_true),
++        [(HasOneUse $b)]>;
+ 
+ ////////
+ // SubtractOp
+ 
+ // Pattern: subtract(X, X) -> 0
+-// Must be static shape, otherwise would require broadcasting via CHLO_ConstantLike
+-def : Pat<(StableHLO_SubtractOp AnyStaticShapeTensor:$operand, $operand),
+-          (StableHLO_ConstantLike<"0"> $operand)>;
++//
++// Must be static shape, otherwise would require broadcasting via
++// CHLO_ConstantLike.
++def SubtractOp_FoldToZero
++  : Pat<(StableHLO_SubtractOp AnyStaticShapeTensor:$operand, $operand),
++        (StableHLO_ConstantLike<"0"> $operand)>;
+ 
+ // Pattern: subtract(X, 0) -> X
+-def : Pat<(StableHLO_SubtractOp $lhs, (StableHLO_ConstantOp AnyZero:$value)),
+-          (replaceWithValue $lhs)>;
++def SubtractOp_RemoveNoop
++  : Pat<(StableHLO_SubtractOp $lhs, (StableHLO_ConstantOp AnyZero:$value)),
++        (replaceWithValue $lhs)>;
+ 
+ ////////
+ // SliceOp
+ 
+-// Pattern: slice(X, [A:A], [B:B], ...) -> X
+-def : Pat<(StableHLO_SliceOp:$op AnyStaticShapeTensor:$operand, $start_indices, $limit_indices, $strides),
+-          (replaceWithValue $operand),
+-          [(TypesEqual $operand, $op)]>;
++// Pattern: slice(X, :, :, ...) -> X
++def SliceOp_RemoveNoop
++  : Pat<(StableHLO_SliceOp:$op
++            AnyStaticShapeTensor:$operand,
++            $start_indices,
++            $limit_indices,
++            $strides),
++        (replaceWithValue $operand),
++        [(TypesEqual $operand, $op)]>;
+ 
+ ////////
+ // TransposeOp
+ 
+ // Pattern: transpose(X, [iota...]) -> X
+-def : Pat<(StableHLO_TransposeOp $lhs, IotaDims:$dims),
+-          (replaceWithValue $lhs)>;
++def TransposeOp_RemoveNoop
++  : Pat<(StableHLO_TransposeOp $lhs, IotaDims:$dims),
++        (replaceWithValue $lhs)>;
+ 
+ ////////
+ // GetTupleElementOp
+ 
+ // Pattern: get_tuple_element(tuple(X_0, X_1, ...), i) -> X_i
+-def TupleIsUnpacked : Pat<(StableHLO_GetTupleElementOp (StableHLO_TupleOp:$tuple $operands), $idx),
+-          (GetOperandN $tuple, $idx)>;
++def GetTupleElementOp_UnpackTuple
++  : Pat<(StableHLO_GetTupleElementOp
++            (StableHLO_TupleOp:$tuple $operands),
++            $idx),
++        (GetOperandN $tuple, $idx)>;
+ 
+ ////////
+ // XorOp
+ 
+ // Pattern: xor(cst, X) -> xor(X, cst)
+-def : CanonicalizeConstantToRhs<StableHLO_XorOp>;
++def XorOp_CanonicalizeConstantToRhs
++  : CanonicalizeConstantToRhs<StableHLO_XorOp>;
+ 
+ // To consider: xor(X, X) -> 0
+-// Unclear if this is beneficial on hardware vs adding another constant
+-//
+-// def : Pat<(StableHLO_XorOp AnyStaticShapeTensor:$operand, $operand),
+-//           (StableHLO_ConstantLike<"0"> $operand)>;
++//
++// It's unclear if this is beneficial on hardware vs. adding another constant.
++//
++// def XorOp_FoldToZero
++//   : Pat<(StableHLO_XorOp AnyStaticShapeTensor:$operand, $operand),
++//         (StableHLO_ConstantLike<"0"> $operand)>;
 
