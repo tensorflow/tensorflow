@@ -145,9 +145,7 @@ TensorShardingAttr removeAutoAxesToAvoidPadding(TensorShardingAttr sharding,
     ArrayRef<AxisRefAttr> dimAxes = dimSharding.getAxes();
     SmallVector<AxisRefAttr> newDimAxes;
     ArrayRef<AxisRefAttr>::const_iterator freeAxisIt =
-        llvm::partition_point(dimAxes, [&manualAxes](AxisRefAttr axis) {
-          return llvm::is_contained(manualAxes, axis.getName());
-        });
+        sdy::getFirstFreeAxisIter(dimAxes, manualAxes);
 
     // Keep all manual axes.
     int64_t dimAxesSize = 1;
