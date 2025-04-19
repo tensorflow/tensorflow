@@ -67652,6 +67652,10 @@ op {
     type: DT_FLOAT
   }
   input_arg {
+    name: "combiner_weights_learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
     name: "embedding_table"
     type: DT_FLOAT
   }
@@ -67748,6 +67752,10 @@ op {
   }
   input_arg {
     name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "combiner_weights_learning_rate"
     type: DT_FLOAT
   }
   input_arg {
@@ -67875,6 +67883,10 @@ op {
   }
   input_arg {
     name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "combiner_weights_learning_rate"
     type: DT_FLOAT
   }
   input_arg {
@@ -68101,6 +68113,10 @@ op {
     type: DT_FLOAT
   }
   input_arg {
+    name: "combiner_weights_learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
     name: "embedding_table"
     type: DT_FLOAT
   }
@@ -68225,6 +68241,10 @@ op {
   }
   input_arg {
     name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "combiner_weights_learning_rate"
     type: DT_FLOAT
   }
   input_arg {
