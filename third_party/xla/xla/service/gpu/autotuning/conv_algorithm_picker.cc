@@ -160,8 +160,8 @@ absl::StatusOr<se::DeviceMemory<uint8_t>> ScratchAllocator::AllocateBytes(
 }
 
 absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
-    const GpuConvConfig& config, se::Stream* stream, bool use_cudnn_frontend,
-    bool use_fallback, const se::NumericOptions& numeric_options) {
+    const GpuConvConfig& config, se::Stream* stream, bool use_fallback,
+    const se::NumericOptions& numeric_options) {
   TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
                       GetDNNConvKindFromCudnnConvKind(config.kind));
 
@@ -188,7 +188,6 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
       }
       std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
       TF_RETURN_IF_ERROR(dnn->GetFusedConvolveRunners(
-          use_cudnn_frontend,
           // This refers to the kind of convolution op inside the fusion, not
           // the whole fused graph.
           se::dnn::ConvolutionKind::FORWARD, input_type,
@@ -234,8 +233,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
       // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
       // allocator are unused; so, they're all provided as nullptr.
       TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
-          use_cudnn_frontend, kind, input_type, output_type, stream,
-          config.input_descriptor,
+          kind, input_type, output_type, stream, config.input_descriptor,
           /* input_data = */ DeviceMemoryBase(nullptr),
           config.filter_descriptor,
           /* filter_data = */ DeviceMemoryBase(nullptr),
@@ -282,9 +280,8 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
     return absl::InvalidArgumentError("No DNN in stream executor.");
   }
   TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
-      /* use_cudnn_frontend = */ false, kind, dtype, dtype, stream,
-      params.config->input_descriptor, params.input_buf,
-      params.config->filter_descriptor, params.filter_buf,
+      kind, dtype, dtype, stream, params.config->input_descriptor,
+      params.input_buf, params.config->filter_descriptor, params.filter_buf,
       params.config->output_descriptor, params.output_buf,
       params.config->conv_desc,
       /* use_fallback = */ false, scratch_allocator, numeric_options,
@@ -824,7 +821,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
         blas_version, runtime_arguments.canonical_hlo.value());
   }
 
-  const bool cudnn_frontend_enabled = true;
   bool allow_tf32 = true;
   // TODO(b/284371623): Properly set allow_tf32 even if instr==nullptr, which is
   // the case when running an AOT compiled executable with runtime autotuning.
@@ -845,7 +841,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   TF_ASSIGN_OR_RETURN(
       std::vector<GenericConvRunner> runners,
       GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
-                    cudnn_frontend_enabled,
                     /* use_fallback = */ false, numeric_options));
 
   std::vector<AutotuneResult> profile_results;
@@ -869,7 +864,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     TF_ASSIGN_OR_RETURN(
         std::vector<GenericConvRunner> fallback_runners,
         GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
-                      cudnn_frontend_enabled,
                       /* use_fallback = */ true, numeric_options));
 
     for (auto& runner_cache : fallback_runners) {
