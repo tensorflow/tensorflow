@@ -1166,7 +1166,7 @@ ENTRY main.12_spmd {
   EXPECT_EQ(inst->operand(0)->tuple_index(), 5);
   EXPECT_EQ(inst->operand(0)->operand(0), ag_loop);
 
-  EXPECT_EQ(ag_loop->operand(0)->shape().tuple_shapes_size(), 7);
+  EXPECT_EQ(ag_loop->operand(0)->shape().tuple_shapes().size(), 7);
   // The root instruction's first operand should now be a reduction.
   EXPECT_EQ(
       module->entry_computation()->root_instruction()->operand(0)->opcode(),

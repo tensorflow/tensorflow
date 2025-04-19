@@ -242,7 +242,7 @@ absl::Status DataServiceDispatcherImpl::Start() {
   bool end_of_journal = false;
   FileJournalReader reader(env_, JournalDir(config_.work_dir()));
   absl::Status s = reader.Read(update, end_of_journal);
-  if (errors::IsNotFound(s)) {
+  if (absl::IsNotFound(s)) {
     LOG(INFO) << "No journal found. Starting dispatcher from new state.";
   } else if (!s.ok()) {
     return s;
@@ -440,7 +440,7 @@ absl::Status DataServiceDispatcherImpl::WorkerHeartbeat(
     std::vector<std::shared_ptr<const Task>> assigned_tasks;
     absl::Status s = state_.TasksForWorker(worker_address, assigned_tasks);
     if (!s.ok()) {
-      if (!errors::IsNotFound(s)) {
+      if (!absl::IsNotFound(s)) {
         return s;
       }
       VLOG(1) << "Registering new worker at address " << worker_address;
@@ -639,7 +639,7 @@ DataServiceDispatcherImpl::FindDataset(
   absl::Status status =
       state_.DatasetFromId(request.dataset_id(), existing_dataset);
 
-  if (errors::IsNotFound(status)) {
+  if (absl::IsNotFound(status)) {
     return std::optional<std::string>();
   }
   TF_RETURN_IF_ERROR(status);
@@ -706,7 +706,7 @@ absl::Status DataServiceDispatcherImpl::GetOrCreateJob(
     absl::Status s = state_.JobByName(job_name, job);
     if (s.ok()) {
       TF_RETURN_IF_ERROR(ValidateMatchingJob(job, *request));
-    } else if (errors::IsNotFound(s)) {
+    } else if (absl::IsNotFound(s)) {
       TF_RETURN_IF_ERROR(CreateJob(job_name, *request, job));
     } else {
       return s;
@@ -731,10 +731,10 @@ absl::Status DataServiceDispatcherImpl::GetOrCreateIteration(
     TF_RETURN_IF_ERROR(state_.JobFromId(request->job_id(), job));
     IterationKey key(job->job_name, request->repetition());
     absl::Status s = state_.IterationByKey(key, iteration);
-    if (!s.ok() && !errors::IsNotFound(s)) {
+    if (!s.ok() && !absl::IsNotFound(s)) {
       return s;
     }
-    if (errors::IsNotFound(s) || iteration->garbage_collected) {
+    if (absl::IsNotFound(s) || iteration->garbage_collected) {
       TF_RETURN_IF_ERROR(CreateIteration(*request, iteration));
       TF_RETURN_IF_ERROR(CreateTasksForIteration(iteration, tasks));
     }
@@ -757,7 +757,7 @@ absl::Status DataServiceDispatcherImpl::MaybeRemoveTask(
   {
     mutex_lock l(mu_);
     absl::Status s = state_.TaskFromId(request->task_id(), task);
-    if (errors::IsNotFound(s)) {
+    if (absl::IsNotFound(s)) {
       // Task is already removed.
       response->set_removed(true);
       return absl::OkStatus();
@@ -1076,7 +1076,7 @@ absl::Status DataServiceDispatcherImpl::ClientHeartbeat(
   std::shared_ptr<const Iteration> iteration;
   absl::Status s = state_.IterationForIterationClientId(
       request->iteration_client_id(), iteration);
-  if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
+  if (absl::IsNotFound(s) && !config_.fault_tolerant_mode()) {
     return errors::NotFound(
         "Unknown iteration client id ", request->iteration_client_id(),
         ". The dispatcher is not configured to be fault tolerant, so this "
