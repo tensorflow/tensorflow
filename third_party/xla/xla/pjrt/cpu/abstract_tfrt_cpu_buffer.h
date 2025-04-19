@@ -324,6 +324,10 @@ class AbstractAsyncHostToHostMemoryTransferManager
   AsyncWorkRunner* async_work_runner_;
 };
 
+// Helper for copying into potentially sub-byte packed literals.
+void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
+                void* data, int64_t size);
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_CPU_ABSTRACT_TFRT_CPU_BUFFER_H_
