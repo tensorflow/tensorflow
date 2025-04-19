@@ -13,10 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace data {
