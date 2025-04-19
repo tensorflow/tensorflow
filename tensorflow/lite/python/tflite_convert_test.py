@@ -54,7 +54,7 @@ class TestModels(test_util.TensorFlowTestCase):
            expected_ops_in_converted_model=None,
            expected_output_shapes=None):
     output_file = os.path.join(self.get_temp_dir(), 'model.tflite')
-    tflite_bin = resource_loader.get_path_to_datafile('tflite_convert')
+    tflite_bin = resource_loader.get_path_to_datafile('tflite_convert.par')
     cmdline = '{0} --output_file={1} {2}'.format(tflite_bin, output_file,
                                                  flags_str)
 

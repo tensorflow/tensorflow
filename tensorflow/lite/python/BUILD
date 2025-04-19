@@ -135,7 +135,6 @@ py_strict_test(
     srcs = ["tflite_convert_test.py"],
     data = [
         ":tflite_convert.par",
-        "//tensorflow/lite/python:tflite_convert",  # Necessary because the test runs the binary from the command line
         "@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb",
     ],
     # Increased thread count for reducing timeout failures.
