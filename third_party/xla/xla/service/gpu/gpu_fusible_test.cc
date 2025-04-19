@@ -1550,6 +1550,22 @@ TEST_F(GpuFusibleTest, GetSharedMemoryUsage) {
   EXPECT_EQ(cache.GetSharedMemoryUsage(*fusion), 32 * 33 * 2 * 4);
 }
 
+TEST_F(GpuFusibleTest, GetSharedMemoryUsageForPackedTranspose) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    wrapped_transpose {
+      p0 = s8[128,64,10,6] parameter(0)
+      ROOT transpose = s8[128,6,10,64] transpose(p0), dimensions={0,3,2,1}
+    }
+    ENTRY main {
+      p0 = s8[128,64,10,6] parameter(0)
+      ROOT res = s8[128,6,10,64] fusion(p0), kind=kInput, calls=wrapped_transpose
+    })"))
+                    .value();
+  FusionInfoCache cache(device_description());
+  auto fusion = module->entry_computation()->root_instruction();
+  EXPECT_EQ(cache.GetSharedMemoryUsage(*fusion), 32 * 32 * 4 * 4);
+}
+
 TEST_F(GpuFusibleTest, GetSharedMemoryUsageVariadicReduction) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
