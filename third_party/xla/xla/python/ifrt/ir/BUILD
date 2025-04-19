@@ -166,6 +166,7 @@ cc_library(
         "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:basic_device_list",
         "//xla/python/ifrt:serdes",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/tsl/platform:statusor",

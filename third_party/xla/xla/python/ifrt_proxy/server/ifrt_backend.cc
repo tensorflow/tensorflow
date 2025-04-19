@@ -1413,6 +1413,14 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
       }
     }
 
+    if (auto xla_options =
+            llvm::dyn_cast<xla::ifrt::XlaCompileOptions>(options.get())) {
+      // TODO(emilyaf): Need to plumb through execution devices to support MPMD.
+      TF_ASSIGN_OR_RETURN(xla_options->execution_devices,
+                          xla::ifrt::GetIfrtDeviceListFromCompileOptions(
+                              client_.get(), xla_options->compile_options));
+    }
+
     TF_ASSIGN_OR_RETURN(auto executable,
                         client_->GetDefaultCompiler()->Compile(
                             std::move(program), std::move(options)));

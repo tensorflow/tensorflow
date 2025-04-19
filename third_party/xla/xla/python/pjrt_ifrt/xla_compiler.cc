@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -24,8 +26,12 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.pb.h"
+#include "xla/service/computation_placer.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -104,6 +110,47 @@ GetXlaDeserializeExecutableOptions(
   }
   return std::unique_ptr<XlaDeserializeExecutableOptions>(
       static_cast<XlaDeserializeExecutableOptions*>(options.release()));
+}
+
+absl::StatusOr<xla::ifrt::DeviceListRef> GetIfrtDeviceListFromDeviceAssignment(
+    xla::ifrt::Client* ifrt_client,
+    const xla::DeviceAssignment& device_assignment) {
+  std::vector<xla::ifrt::Device*> devices;
+  for (int64_t i = 0; i < device_assignment.replica_count(); ++i) {
+    for (int64_t j = 0; j < device_assignment.computation_count(); ++j) {
+      TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
+                          ifrt_client->LookupDevice(
+                              xla::ifrt::DeviceId(device_assignment(i, j))));
+      devices.push_back(device);
+    }
+  }
+  return ifrt_client->MakeDeviceList(devices);
+}
+
+// TODO(emilyaf): Remove this function once devices are plumbed through from
+// Australis and IFRT Proxy.
+absl::StatusOr<xla::ifrt::DeviceListRef> GetIfrtDeviceListFromCompileOptions(
+    xla::ifrt::Client* ifrt_client,
+    const xla::CompileOptions& compile_options) {
+  if (compile_options.executable_build_options.has_device_assignment()) {
+    return GetIfrtDeviceListFromDeviceAssignment(
+        ifrt_client,
+        compile_options.executable_build_options.device_assignment());
+  }
+  if (compile_options.compile_portable_executable) {
+    return ifrt_client->MakeDeviceList(
+        {ifrt_client->addressable_devices().front()});
+  }
+  auto& build_options = compile_options.executable_build_options;
+  TF_ASSIGN_OR_RETURN(
+      xla::DeviceAssignment default_da,
+      ifrt_client->GetDefaultDeviceAssignment(build_options.num_replicas(),
+                                              build_options.num_partitions()));
+  TF_ASSIGN_OR_RETURN(
+      xla::ifrt::DeviceListRef execution_devices,
+      GetIfrtDeviceListFromDeviceAssignment(ifrt_client, default_da));
+  return ifrt_client->MakeDeviceList(
+      {ifrt_client->addressable_devices().front()});
 }
 
 }  // namespace ifrt

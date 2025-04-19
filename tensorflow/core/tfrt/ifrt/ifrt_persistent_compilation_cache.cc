@@ -53,8 +53,8 @@ IfrtPersistentCompilationCache::LookupLoadedExecutableOrCreate(
         value_fn) {
   // No persistent cache implemented, compile directly.
   auto ifrt_xla_compile_options =
-      std::make_unique<xla::ifrt::XlaCompileOptions>(xla_compile_options,
-                                                     loaded_host_callbacks);
+      std::make_unique<xla::ifrt::XlaCompileOptions>(
+          xla_compile_options, device_list, loaded_host_callbacks);
   return value_fn(std::move(hlo_program), std::move(ifrt_xla_compile_options));
   ;
 }

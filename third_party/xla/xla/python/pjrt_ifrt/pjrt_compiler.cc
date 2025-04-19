@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/program.h"
@@ -97,7 +99,8 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
   return PjRtLoadedExecutable::Create(
       client_, xla_program->mlir_module,
       std::move(xla_compile_options->compile_options),
-      std::move(xla_compile_options->loaded_host_callbacks));
+      std::move(xla_compile_options->loaded_host_callbacks),
+      std::move(xla_compile_options->execution_devices));
 }
 
 absl::StatusOr<std::unique_ptr<Executable>> PjRtCompiler::Compile(
@@ -139,11 +142,32 @@ PjRtCompiler::DeserializeLoadedExecutable(
       client_->pjrt_client()->LoadSerializedExecutable(
           serialized, std::move(xla_deserialize_options->compile_options),
           xla::LoadOptions()));
+  // TODO(emilyaf): Remove this block once devices are plumbed through from
+  // Australis and execution_devices is not optional.
+  DeviceListRef execution_devices;
+  if (xla_deserialize_options->execution_devices.has_value()) {
+    execution_devices =
+        std::move(xla_deserialize_options->execution_devices.value());
+  } else {
+    xla::DeviceAssignment device_assignment =
+        pjrt_loaded_executable->device_assignment();
+    std::vector<xla::ifrt::Device*> devices;
+    for (int64_t i = 0; i < device_assignment.replica_count(); ++i) {
+      for (int64_t j = 0; j < device_assignment.computation_count(); ++j) {
+        TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
+                            client_->LookupDevice(
+                                xla::ifrt::DeviceId(device_assignment(i, j))));
+        devices.push_back(device);
+      }
+    }
+    execution_devices = client_->MakeDeviceList(devices);
+  }
   return PjRtLoadedExecutable::Create(
       client_,
       std::shared_ptr<xla::PjRtLoadedExecutable>(
           std::move(pjrt_loaded_executable)),
-      std::move(xla_deserialize_options->loaded_host_callbacks));
+      std::move(xla_deserialize_options->loaded_host_callbacks),
+      std::move(execution_devices));
 }
 
 }  // namespace ifrt

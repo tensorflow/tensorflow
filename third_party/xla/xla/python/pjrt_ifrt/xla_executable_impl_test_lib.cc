@@ -75,12 +75,14 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       xla::ParseMlirModuleString(mlir_module_str, context));
 
-  auto compile_options =
-      std::make_unique<XlaCompileOptions>(xla::CompileOptions());
+  xla::CompileOptions compile_options;
   ExecutableBuildOptions& build_options =
-      compile_options->compile_options.executable_build_options;
+      compile_options.executable_build_options;
+  DeviceListRef execution_devices;
   if (devices.empty()) {
-    compile_options->compile_options.compile_portable_executable = true;
+    compile_options.compile_portable_executable = true;
+    execution_devices =
+        client->MakeDeviceList({client->addressable_devices().front()});
   } else {
     build_options.set_device_ordinal(devices.front()->Id().value());
     if (replicated) {
@@ -105,9 +107,12 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
       }
       build_options.set_device_assignment(device_assignment);
     }
+    execution_devices = client->MakeDeviceList(devices);
   }
+  auto xla_compile_options =
+      std::make_unique<XlaCompileOptions>(compile_options, execution_devices);
   return compiler->Compile(std::make_unique<HloProgram>(*module),
-                           std::move(compile_options));
+                           std::move(xla_compile_options));
 }
 
 TEST(LoadedExecutableImplTest, GetDonatableInputIndices) {
