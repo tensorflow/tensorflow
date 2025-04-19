@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gtest/gtest.h>
 #include "xla/tests/test_utils.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
