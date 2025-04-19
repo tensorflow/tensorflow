@@ -240,41 +240,6 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   return accum;
 }
 
-/* static */ bool ShapeUtil::FillNewShape(PrimitiveType element_type,
-                                          absl::Span<const int64_t> dimensions,
-                                          Shape* shape) {
-  int64_t dense_shape_size = primitive_util::IsArrayType(element_type)
-                                 ? primitive_util::ByteWidth(element_type)
-                                 : -1;
-
-  // Verify that array-based lookup is consistent with public API.
-  DCHECK_EQ(dense_shape_size, ByteSizeOfPrimitiveType(element_type))
-      << element_type;
-
-  shape->set_element_type(element_type);
-  const int ndims = dimensions.size();
-  auto layout = shape->mutable_layout();
-  auto* minor_to_major = layout->mutable_minor_to_major();
-  int64_t static_extent_product = dense_shape_size;
-  bool any_overflows = false;
-  for (int i = 0; i < ndims; i++) {
-    const int64_t d = dimensions[i];
-    if (d != Shape::kUnboundedSize) {
-      bool overflow;
-      std::tie(static_extent_product, overflow) =
-          OverflowSafeMultiply(static_extent_product, d);
-      any_overflows |= overflow;
-    }
-
-    shape->add_dimensions(d);
-    minor_to_major->push_back(ndims - 1 - i);
-  }
-  if (any_overflows) {
-    return false;
-  }
-  return true;
-}
-
 /* static */ ProgramShape ShapeUtil::MakeProgramShape(
     std::initializer_list<Shape> parameters, Shape result) {
   ProgramShape program_shape;
@@ -285,11 +250,19 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   return program_shape;
 }
 
+static std::vector<bool> MakeDynamicDimensions(
+    absl::Span<const int64_t> dimensions) {
+  std::vector<bool> dynamic_dimensions;
+  dynamic_dimensions.reserve(dimensions.size());
+  for (int64_t dimension : dimensions) {
+    dynamic_dimensions.push_back(dimension == Shape::kUnboundedSize);
+  }
+  return dynamic_dimensions;
+}
+
 /* static */ Shape ShapeUtil::MakeShape(PrimitiveType element_type,
                                         absl::Span<const int64_t> dimensions) {
-  Shape shape;
-  CHECK(FillNewShape(element_type, dimensions, &shape));
-  return shape;
+  return MakeValidatedShape(element_type, dimensions).value();
 }
 
 /* static */ Shape ShapeUtil::MakeScalarShape(PrimitiveType element_type) {
@@ -312,13 +285,8 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
 
 /* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedShape(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
-  Shape shape;
-  if (!FillNewShape(element_type, dimensions, &shape)) {
-    return InvalidArgument("invalid shape type=%d, dims=[%s]",
-                           static_cast<int>(element_type),
-                           absl::StrJoin(dimensions, ","));
-  }
-  return shape;
+  return MakeValidatedShape(element_type, dimensions,
+                            MakeDynamicDimensions(dimensions));
 }
 
 /* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedShape(
@@ -331,18 +299,41 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   }
 
   Shape shape;
-  if (!FillNewShape(element_type, dimensions, &shape)) {
-    return InvalidArgument("invalid shape type=%d, dims=[%s]",
-                           static_cast<int>(element_type),
-                           absl::StrJoin(dimensions, ","));
-  }
-  for (int i = 0, n = dimensions.size(); i < n; i++) {
-    if (shape.dimensions(i) == Shape::kUnboundedSize &&
-        !dynamic_dimensions[i]) {
-      return InvalidArgument(
-          "Cannot mark a dynamic dimension at dim=%d as static", i);
+  int64_t dense_shape_size = primitive_util::IsArrayType(element_type)
+                                 ? primitive_util::ByteWidth(element_type)
+                                 : -1;
+
+  // Verify that array-based lookup is consistent with public API.
+  DCHECK_EQ(dense_shape_size, ByteSizeOfPrimitiveType(element_type))
+      << element_type;
+
+  shape.set_element_type(element_type);
+  const int ndims = dimensions.size();
+  auto layout = shape.mutable_layout();
+  auto* minor_to_major = layout->mutable_minor_to_major();
+  int64_t static_extent_product = dense_shape_size;
+  bool any_overflows = false;
+  for (int i = 0; i < ndims; i++) {
+    const int64_t d = dimensions[i];
+    const bool is_dynamic = dynamic_dimensions[i];
+    if (!Shape::IsValidDimensionSize(d, is_dynamic)) {
+      return InvalidArgument("Invalid dimension size %d, is_dynamic=%s", d,
+                             is_dynamic ? "true" : "false");
     }
-    shape.set_dynamic_dimension(i, dynamic_dimensions[i]);
+    if (d != Shape::kUnboundedSize) {
+      bool overflow;
+      std::tie(static_extent_product, overflow) =
+          OverflowSafeMultiply(static_extent_product, d);
+      any_overflows |= overflow;
+    }
+
+    shape.add_dimensions(d, is_dynamic);
+    minor_to_major->push_back(ndims - 1 - i);
+  }
+
+  if (any_overflows) {
+    return InvalidArgument("overflow in static extent product: dimes=[%s]",
+                           absl::StrJoin(dimensions, ","));
   }
   return shape;
 }
@@ -1207,13 +1198,11 @@ ShapeUtil::PackedFactorFor1DInterleavedArray(const Shape& shape) {
     absl::Span<const int64_t> permutation, const Shape& shape) {
   Shape new_shape = shape;
   new_shape.clear_dimensions();
-  for (auto dim : Permute(shape.dimensions(), permutation)) {
-    new_shape.add_dimensions(dim);
-  }
-  auto inv_permutation = InversePermutation(permutation);
-  for (int64_t i = 0; i < shape.dimensions().size(); i++) {
-    new_shape.set_dynamic_dimension(inv_permutation[i],
-                                    shape.is_dynamic_dimension(i));
+  const auto permuted_dims = Permute(shape.dimensions(), permutation);
+  const auto permuted_dynamic_dims =
+      Permute(shape.dynamic_dimensions(), permutation);
+  for (int i = 0; i < permuted_dims.size(); ++i) {
+    new_shape.add_dimensions(permuted_dims[i], permuted_dynamic_dims[i]);
   }
 
   // If `shape` has a layout, by contract we choose a new layout such that the
@@ -1248,7 +1237,7 @@ ShapeUtil::PackedFactorFor1DInterleavedArray(const Shape& shape) {
     CHECK(LayoutUtil::IsDenseArray(shape));
     Layout* new_layout = new_shape.mutable_layout();
     new_layout->clear_minor_to_major();
-    for (auto index : ComposePermutations(inv_permutation,
+    for (auto index : ComposePermutations(InversePermutation(permutation),
                                           shape.layout().minor_to_major())) {
       new_layout->add_minor_to_major(index);
     }

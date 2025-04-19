@@ -1042,8 +1042,7 @@ TEST(ShapeUtilTest, InvalidDynamicDimension) {
 
   EXPECT_FALSE(error_status.ok());
   EXPECT_THAT(error_status.status().message(),
-              ::testing::HasSubstr(
-                  "Cannot mark a dynamic dimension at dim=1 as static"));
+              ::testing::HasSubstr("Invalid dimension size"));
 }
 
 TEST(ShapeUtilTest, PermuteDynamicDimensions) {

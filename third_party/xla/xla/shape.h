@@ -285,16 +285,11 @@ class Shape {
   //   - `is_dynamic` is the dynamic-ness of the dimension:
   //     - false: the dimension is static.
   //     - true: the dimension is dynamic.
-  //     - nullopt: (legacy behavior) the dimension is assumed to be static,
-  //       and the function will NOT check that `value` is >= 0.
   // Precondition:
   //   - This is an array shape.
   //   - Either `value` is >= 0, or `is_dynamic` is true and `value` is
   //     kUnboundedSize.
-  void add_dimensions(
-      int64_t value,
-      // TODO(b/411121729): change this to be a bool after fixing all callers.
-      std::optional<bool> is_dynamic = std::nullopt);
+  void add_dimensions(int64_t value, bool is_dynamic = false);
 
   // Clears all dimensions (i.e. makes this shape a scalar).
   // Precondition: this is an array shape.

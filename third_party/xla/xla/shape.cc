@@ -185,21 +185,14 @@ bool Shape::AreAllLeavesIntegers() const {
   return primitive_util::IsIntegralType(element_type());
 }
 
-void Shape::add_dimensions(int64_t value, std::optional<bool> is_dynamic) {
-  // For backward compatibility, if `is_dynamic` is nullopt, we treat it as
-  // false.
-  const bool inferred_dynamic = is_dynamic.has_value() && *is_dynamic;
-  if (value < 0 &&
-      // TODO(b/411121729): for backward compatibility, if `is_dynamic` is
-      // nullopt, we don't validate the dimension size - add the validation
-      // when we change `is_dynamic` to be a bool.
-      is_dynamic.has_value()) {
-    CHECK(*is_dynamic) << "static dimension must have size >= 0 instead of "
-                       << value << ".";
+void Shape::add_dimensions(int64_t value, bool is_dynamic) {
+  if (value < 0) {
+    CHECK(is_dynamic) << "static dimension must have size >= 0 instead of "
+                      << value << ".";
     CHECK_EQ(value, kUnboundedSize)
         << "dynamic dimension must have size == kUnboundedSize or >= 0.";
   }
-  UnsafeAddDimension(value, inferred_dynamic);
+  UnsafeAddDimension(value, is_dynamic);
 }
 
 void Shape::set_dynamic_dimension(int dimension, bool is_dynamic) {
