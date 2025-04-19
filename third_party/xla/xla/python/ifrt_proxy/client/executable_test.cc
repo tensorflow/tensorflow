@@ -196,10 +196,6 @@ TEST_F(LoadedExecutableTest, Execute) {
             shardings { type: REPLICATED }
             shardings { type: REPLICATED }
           }
-          output_layouts_list {
-            layouts { minor_to_major: [ 1, 0 ] }
-            layouts { minor_to_major: 0 }
-          }
         }
       )pb",
       &response));
@@ -288,8 +284,7 @@ TEST_F(LoadedExecutableTest, Execute) {
   for (const uint64_t handle : {1000, 1001}) {
     args.push_back(tsl::MakeRef<Array>(
         &client, rpc_helper_, DType(DType::kF32), Shape({2, 2}),
-        OpaqueSharding::Create(devices, MemoryKind()), ArrayHandle{handle},
-        /*layout=*/nullptr));
+        OpaqueSharding::Create(devices, MemoryKind()), ArrayHandle{handle}));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
