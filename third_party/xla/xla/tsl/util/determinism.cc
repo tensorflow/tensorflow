@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/tsl/util/determinism.h"
 
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/platform/mutex.h"
 
 namespace tsl {
 
@@ -27,7 +27,7 @@ class DeterminismState {
  public:
   explicit DeterminismState(absl::string_view env_var) : env_var_(env_var) {}
   bool Required() {
-    mutex_lock l(*mutex_);
+    absl::MutexLock l(mutex_);
 
     if (state_ == Value::NOT_SET) {
       bool env_var_set = false;
@@ -39,14 +39,14 @@ class DeterminismState {
     return state_ == Value::ENABLED;
   }
   void Enable(bool enabled) {
-    mutex_lock l(*mutex_);
+    absl::MutexLock l(mutex_);
     state_ = enabled ? Value::ENABLED : Value::DISABLED;
   }
 
  private:
   absl::string_view env_var_;
   enum class Value { DISABLED, ENABLED, NOT_SET };
-  mutex* mutex_ = new mutex;
+  absl::Mutex* mutex_ = new absl::Mutex;
   Value state_ = Value::NOT_SET;
 };
 

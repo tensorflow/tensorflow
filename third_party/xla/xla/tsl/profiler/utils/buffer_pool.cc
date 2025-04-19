@@ -18,10 +18,10 @@ limitations under the License.
 #include <cstdint>
 #include <ios>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/mutex.h"
 
 namespace tsl {
 namespace profiler {
@@ -34,7 +34,7 @@ BufferPool::~BufferPool() { DestroyAllBuffers(); }
 uint8_t* BufferPool::GetOrCreateBuffer() {
   // Get a relinquished buffer if it exists.
   {
-    mutex_lock lock(buffers_mutex_);
+    absl::MutexLock lock(&buffers_mutex_);
     if (!buffers_.empty()) {
       uint8_t* buffer = buffers_.back();
       buffers_.pop_back();
@@ -63,7 +63,7 @@ uint8_t* BufferPool::GetOrCreateBuffer() {
 }
 
 void BufferPool::ReclaimBuffer(uint8_t* buffer) {
-  mutex_lock lock(buffers_mutex_);
+  absl::MutexLock lock(&buffers_mutex_);
 
   buffers_.push_back(buffer);
   VLOG(3) << "Reclaimed Buffer, buffer=" << std::hex
@@ -71,7 +71,7 @@ void BufferPool::ReclaimBuffer(uint8_t* buffer) {
 }
 
 void BufferPool::DestroyAllBuffers() {
-  mutex_lock lock(buffers_mutex_);
+  absl::MutexLock lock(&buffers_mutex_);
   for (uint8_t* buffer : buffers_) {
     VLOG(3) << "Freeing Buffer, buffer:" << std::hex
             << safe_reinterpret_cast<std::uintptr_t>(buffer) << std::dec;

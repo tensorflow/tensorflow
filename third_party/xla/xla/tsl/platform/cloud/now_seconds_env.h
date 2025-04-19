@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_CLOUD_NOW_SECONDS_ENV_H_
 #define XLA_TSL_PLATFORM_CLOUD_NOW_SECONDS_ENV_H_
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 
 namespace tsl {
 
@@ -29,18 +29,18 @@ class NowSecondsEnv : public EnvWrapper {
 
   /// The current (fake) timestamp.
   uint64 NowSeconds() const override {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     return now_;
   }
 
   /// Set the current (fake) timestamp.
   void SetNowSeconds(uint64 now) {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     now_ = now;
   }
 
   /// Guards access to now_.
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   /// The NowSeconds() value that this Env will return.
   uint64 now_ = 1;

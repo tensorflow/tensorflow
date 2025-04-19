@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/cloud/auth_provider.h"
 #include "xla/tsl/platform/cloud/compute_engine_metadata_client.h"
 #include "xla/tsl/platform/cloud/compute_engine_zone_provider.h"
@@ -222,15 +223,15 @@ class GcsFileSystem : public FileSystem {
   /// These accessors are mainly for testing purposes, to verify that the
   /// environment variables that control these parameters are handled correctly.
   size_t block_size() {
-    tf_shared_lock l(block_cache_lock_);
+    absl::ReaderMutexLock l(&block_cache_lock_);
     return file_block_cache_->block_size();
   }
   size_t max_bytes() {
-    tf_shared_lock l(block_cache_lock_);
+    absl::ReaderMutexLock l(&block_cache_lock_);
     return file_block_cache_->max_bytes();
   }
   uint64 max_staleness() {
-    tf_shared_lock l(block_cache_lock_);
+    absl::ReaderMutexLock l(&block_cache_lock_);
     return file_block_cache_->max_staleness();
   }
   TimeoutConfig timeouts() const { return timeouts_; }
@@ -433,7 +434,7 @@ class GcsFileSystem : public FileSystem {
   // Clear all the caches related to the file with name `filename`.
   void ClearFileCaches(const string& fname);
 
-  mutex mu_;
+  absl::Mutex mu_;
   std::unique_ptr<AuthProvider> auth_provider_ TF_GUARDED_BY(mu_);
   std::shared_ptr<HttpRequest::Factory> http_request_factory_;
   std::unique_ptr<ZoneProvider> zone_provider_;
@@ -443,7 +444,7 @@ class GcsFileSystem : public FileSystem {
 
   // block_cache_lock_ protects the file_block_cache_ pointer (Note that
   // FileBlockCache instances are themselves threadsafe).
-  mutex block_cache_lock_;
+  absl::Mutex block_cache_lock_;
   std::unique_ptr<FileBlockCache> file_block_cache_
       TF_GUARDED_BY(block_cache_lock_);
 

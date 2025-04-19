@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/test_log.pb.h"
-#include "tsl/platform/mutex.h"
 
 namespace tsl {
 

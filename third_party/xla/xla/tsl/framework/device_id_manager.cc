@@ -20,13 +20,14 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 namespace {
@@ -43,7 +44,7 @@ class TfToPlatformDeviceIdMap {
       TF_LOCKS_EXCLUDED(mu_) {
     std::pair<IdMapType::iterator, bool> result;
     {
-      mutex_lock lock(mu_);
+      absl::MutexLock lock(&mu_);
       TypeIdMapType::iterator device_id_map_iter =
           id_map_.insert({type.type_string(), IdMapType()}).first;
       result = device_id_map_iter->second.insert(
@@ -68,7 +69,7 @@ class TfToPlatformDeviceIdMap {
             PlatformDeviceId* platform_device_id) const TF_LOCKS_EXCLUDED(mu_) {
     // TODO(mrry): Consider replacing this with an atomic `is_initialized` bit,
     // to avoid writing to a shared cache line in the tf_shared_lock.
-    tf_shared_lock lock(mu_);
+    absl::ReaderMutexLock lock(&mu_);
     auto type_id_map_iter = id_map_.find(type.type_string());
     if (type_id_map_iter == id_map_.end()) return false;
     auto id_map_iter = type_id_map_iter->second.find(tf_device_id.value());
@@ -80,7 +81,7 @@ class TfToPlatformDeviceIdMap {
   absl::StatusOr<std::vector<TfDeviceId>> GetTfDevicesOnPlatform(
       const DeviceType& type, PlatformDeviceId platform_device_id) const
       TF_LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock lock(mu_);
+    absl::ReaderMutexLock lock(&mu_);
     auto type_id_map_iter = id_map_.find(type.type_string());
     if (type_id_map_iter == id_map_.end()) {
       return absl::NotFoundError(
@@ -100,7 +101,7 @@ class TfToPlatformDeviceIdMap {
   TfToPlatformDeviceIdMap() = default;
 
   void TestOnlyReset() TF_LOCKS_EXCLUDED(mu_) {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     id_map_.clear();
   }
 
@@ -110,7 +111,7 @@ class TfToPlatformDeviceIdMap {
   // We use std::string instead of DeviceType because the key should
   // be default-initializable.
   using TypeIdMapType = std::unordered_map<std::string, IdMapType>;
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
   TypeIdMapType id_map_ TF_GUARDED_BY(mu_);
 
   friend class ::tsl::DeviceIdManager;
