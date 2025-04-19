@@ -130,6 +130,7 @@ def _tf_wheel_impl(ctx):
         inputs = srcs + headers + xla_aot,
         outputs = [output_file],
         executable = executable,
+        use_default_shell_env = True,
     )
     return [DefaultInfo(files = depset(direct = [output_file]))]
 
