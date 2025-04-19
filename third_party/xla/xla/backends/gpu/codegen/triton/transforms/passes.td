@@ -19,11 +19,11 @@ limitations under the License.
 include "mlir/Pass/PassBase.td"
 
 def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-triton", "mlir::ModuleOp"> {
-  let summary = "Convert XLA Triton tile, extract and, insert ops to Triton ops.";
+  let summary = "Convert Triton XLA extract and insert ops to Triton ops.";
   let description = [{
-    This pass converts `triton_xla.extract`, `triton_xla.insert` and
-    `triton_xla.tile` ops to Triton ops. It also rewrites `func` args to
-    `tt.ptr` types and removes function return args.
+    This pass converts `triton_xla.extract` and `triton_xla.insert` ops to
+    Triton ops. It also rewrites `func` args to `tt.ptr` types and removes
+    function return args.
   }];
   let dependentDialects = [
     "triton::TritonDialect",

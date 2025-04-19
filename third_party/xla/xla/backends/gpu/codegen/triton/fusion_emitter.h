@@ -105,10 +105,6 @@ namespace ir_emitter_triton_internal {
 llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
     EmitterLocOpBuilder& b, absl::Span<const int64_t> num_output_tiles_per_dim);
 
-absl::StatusOr<mlir::triton::xla::TileOp> CreateTileOp(
-    EmitterLocOpBuilder& b, mlir::ValueRange tile_multi_index,
-    const TiledHloInstruction& tiled_hlo, mlir::Value parent_base_ptr);
-
 // Dumps the Triton IR to a string.
 //
 // If `dump_annotations` is true, then the function also dumps the loc
