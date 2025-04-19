@@ -145,6 +145,27 @@ class FromConstructor(TestModels):
     self.assertIn(output_warning_message, log.getvalue())
     logging.root.removeHandler(handler)
 
+  def testGetOpNames(self):
+    """Test if the op names are correct."""
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[None, 16, 16, 3], dtype=dtypes.float32, name='in_tensor'
+      )
+      math_ops.add(in_tensor, in_tensor, name='add')
+      sess = session.Session()
+
+    frozen_graph_def = (
+        convert_to_constants.convert_variables_to_constants_from_session_graph(
+            sess, sess.graph_def, ['add']
+        )
+    )
+
+    converter = lite.TFLiteConverter(
+        frozen_graph_def, None, None, [('in_tensor', [2, 16, 16, 3])], ['add']
+    )
+
+    self.assertEqual(converter.get_op_names(), ['add'])
+
   def testShapeOverriding(self):
     """Test a shape overriding case via the constructor."""
     with ops.Graph().as_default():
