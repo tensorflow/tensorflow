@@ -31,6 +31,16 @@ std::vector<RegisterRawBufferFactory::FactoryFuncT>& GetFactoryFuncs() {
   return *funcs;
 }
 
+PjRtFuture<> CommonPjRtRawBuffer::CopyRawHostToDevice(const void* src,
+                                                      int64_t offset,
+                                                      int64_t transfer_size) {
+  auto event = CopyRawHostToDeviceAndReturnEvent(src, offset, transfer_size);
+  if (!event.ok()) {
+    return PjRtFuture<>(event.status());
+  }
+  return (*event)->GetReadyFuture();
+}
+
 absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>
 PjRtRawBuffer::CreateRawAliasOfBuffer(PjRtBuffer* buffer) {
   for (auto* func : GetFactoryFuncs()) {
