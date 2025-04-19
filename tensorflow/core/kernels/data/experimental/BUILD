@@ -610,6 +610,8 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
+        "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
     ],
 )
