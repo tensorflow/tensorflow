@@ -487,7 +487,7 @@ func.func @test_rcp(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 
 // CHECK-LABEL: test_div
 // CHECK-DAG: %[[RESHAPE:.*]] = tosa.reshape %arg1
-// CHECK: %[[VAR0:.*]] = tosa.int_div %arg0, %[[RESHAPE]]
+// CHECK: %[[VAR0:.*]] = tosa.intdiv %arg0, %[[RESHAPE]]
 func.func @test_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<i32>) -> tensor<*xi32> {
   %0 = "tfl.div"(%arg0, %arg1)  {fused_activation_function = "NONE"}  : (tensor<13x21x3xi32>, tensor<i32>) -> tensor<*xi32>
   func.return %0 : tensor<*xi32>
@@ -503,7 +503,7 @@ func.func @test_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<i32>) -> tensor<*x
 // CHECK:           %[[VAL_4:.*]] = "tosa.const"() <{values = dense<1> : tensor<1x1x1xi32>}> : () -> tensor<1x1x1xi32>
 // CHECK:           %[[VAL_5:.*]] = tosa.const_shape  {values = dense<1> : tensor<3xindex>} : () -> !tosa.shape<3>
 // CHECK:           %[[VAL_6:.*]] = tosa.reshape %[[VAL_1]], %[[VAL_5]] : (tensor<i32>, !tosa.shape<3>) -> tensor<1x1x1xi32>
-// CHECK:           %[[VAL_7:.*]] = tosa.int_div %[[VAL_0]], %[[VAL_6]] : (tensor<13x21x3xi32>, tensor<1x1x1xi32>) -> tensor<13x21x3xi32>
+// CHECK:           %[[VAL_7:.*]] = tosa.intdiv %[[VAL_0]], %[[VAL_6]] : (tensor<13x21x3xi32>, tensor<1x1x1xi32>) -> tensor<13x21x3xi32>
 // CHECK:           %[[VAL_8:.*]] = tosa.reshape %[[VAL_1]], %[[VAL_5]] : (tensor<i32>, !tosa.shape<3>) -> tensor<1x1x1xi32>
 // CHECK:           %[[VAL_9:.*]] = tosa.mul %[[VAL_0]], %[[VAL_8]], %[[VAL_2]] : (tensor<13x21x3xi32>, tensor<1x1x1xi32>, tensor<1xi8>) -> tensor<13x21x3xi32>
 // CHECK:           %[[VAL_10:.*]] = tosa.reshape %[[VAL_1]], %[[VAL_5]] : (tensor<i32>, !tosa.shape<3>) -> tensor<1x1x1xi32>
