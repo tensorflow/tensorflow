@@ -264,19 +264,26 @@ class Shape {
 
   // Sets the size of the given dimension if it's static, or sets the upper
   // bound of the dimension size if it's dynamic.
-  // Precondition: this is an array shape, `index` is a valid dimension
-  // index, and value is either >= 0 or kUnboundedSize.
-  void set_dimensions(int index, int64_t value) {
-    array_state().dimensions[index] = value;
-  }
-
-  // Sets the size of the index-th minor dimension.
+  // Arguments:
+  //   - `index` is the index of the dimension.
+  //   - `size` is the size of the dimension if it is static, or the upper
+  //      bound of the dimension size if it is dynamic.
+  //   - `is_dynamic` is the dynamic-ness of the dimension:
+  //     - false: the dimension is static.
+  //     - true: the dimension is dynamic.
+  //     - nullopt: don't change the dynamic-ness of the dimension.
   // Precondition:
   //   - This is an array shape.
-  //   - The shape has a layout.
-  //   - `index` is a valid dimension index,
-  //   - `size` is either >= 0 or, when is_dynamic is true, kUnboundedSize.
-  void set_dimensions_minor(int index, int64_t size, bool is_dynamic = false);
+  //   - `index` is a valid dimension index
+  //   - `size` is either >= 0 or, when the dimension is dynamic,
+  //     kUnboundedSize.
+  void set_dimensions(int index, int64_t size,
+                      std::optional<bool> is_dynamic = std::nullopt);
+
+  // Like set_dimensions, but sets the index-th minor dimension instead of
+  // the index-th dimension.
+  void set_dimensions_minor(int index, int64_t size,
+                            std::optional<bool> is_dynamic = std::nullopt);
 
   // Appends a new dimension with the given size.
   // Arguments:

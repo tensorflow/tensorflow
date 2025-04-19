@@ -190,7 +190,7 @@ TEST_F(ShapeTest, IsDynamic) {
       ->set_dynamic_dimension(1, true);
   EXPECT_FALSE(unbounded_tuple.is_unbounded_dynamic());
   ShapeUtil::GetMutableSubshape(&unbounded_tuple, {2})
-      ->set_dimensions(1, Shape::kUnboundedSize);
+      ->set_dimensions(1, Shape::kUnboundedSize, /*is_dynamic=*/true);
   EXPECT_TRUE(unbounded_tuple.is_unbounded_dynamic());
 }
 

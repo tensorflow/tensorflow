@@ -202,13 +202,20 @@ void Shape::set_dynamic_dimension(int dimension, bool is_dynamic) {
   state.dynamic_dimensions[dimension] = is_dynamic;
 }
 
-void Shape::set_dimensions_minor(int index, int64_t size, bool is_dynamic) {
-  CHECK(has_layout());
+void Shape::set_dimensions(int index, int64_t size,
+                           std::optional<bool> is_dynamic) {
   auto& state = array_state();
-  const int physical_index = state.layout->minor_to_major(index);
-  CheckDimensionSize(physical_index, size, is_dynamic);
-  state.dimensions[physical_index] = size;
-  state.dynamic_dimensions[physical_index] = is_dynamic;
+  const bool dynamic =
+      is_dynamic.has_value() ? *is_dynamic : state.dynamic_dimensions[index];
+  CheckDimensionSize(index, size, dynamic);
+  state.dimensions[index] = size;
+  state.dynamic_dimensions[index] = dynamic;
+}
+
+void Shape::set_dimensions_minor(int index, int64_t size,
+                                 std::optional<bool> is_dynamic) {
+  const int physical_index = layout().minor_to_major(index);
+  set_dimensions(physical_index, size, is_dynamic);
 }
 
 void Shape::CheckDimensionSize(int dim_index, int64_t size, bool is_dynamic) {

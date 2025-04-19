@@ -998,7 +998,11 @@ static void Pass(const Shape& shape, FftType type,
   const absl::StatusOr<Shape> inferred_shape =
       ShapeInference::InferFftShape(shape, type, length);
   ASSERT_IS_OK(inferred_shape.status());
-  ASSERT_TRUE(ShapeUtil::Equal(expected_shape, *inferred_shape));
+  ASSERT_TRUE(ShapeUtil::Equal(expected_shape, *inferred_shape))
+      << "\nshape: " << shape << "\ntype: " << type
+      << "\nlength: " << absl::StrJoin(length, ",")
+      << "\nexpected_shape: " << expected_shape
+      << "\ninferred_shape: " << *inferred_shape;
 }
 
 static void Fail(const Shape& shape, FftType type,
