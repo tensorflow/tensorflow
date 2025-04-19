@@ -17,9 +17,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <memory>
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
