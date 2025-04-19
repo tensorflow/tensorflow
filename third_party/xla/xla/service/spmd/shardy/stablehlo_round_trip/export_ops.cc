@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_ops.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
@@ -114,10 +115,11 @@ class PropagationBarrierPattern
 };
 
 void rewriteCollectiveOp(mlir::Operation* op, mlir::Value input,
-                         TensorShardingAttr sharding,
+                         std::optional<TensorShardingAttr> sharding,
                          ConversionPatternRewriter& rewriter) {
   auto copyOp = rewriter.replaceOpWithNewOp<mhlo::CopyOp>(op, input);
-  mlir::sdy::setShardings(copyOp, sharding);
+  mlir::sdy::setShardings(
+      copyOp, sharding ? *sharding : mlir::ArrayRef<TensorShardingAttr>());
 }
 
 class ReshardPattern : public OpConversionPattern<ReshardOp> {
