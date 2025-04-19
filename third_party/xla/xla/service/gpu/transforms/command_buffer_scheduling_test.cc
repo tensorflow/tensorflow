@@ -1316,5 +1316,26 @@ TEST_F(CommandBufferSchedulingTest,
                                                 /*error=*/std::nullopt));
 }
 
+TEST_F(CommandBufferSchedulingTest, MoveGTEs) {
+const char* hlo = R"(
+  HloModule m, is_scheduled=true
+
+  %fused_computation.1 (param_0: s32[], param_1: s32[]) -> s32[] {
+    %p0 = s32[] parameter(0)
+    %p1 = s32[] parameter(1)
+    ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+  }
+
+  main {
+    x = s32[2,2] parameter(0)
+    t = (s32[], f32[10000]) custom-call()
+    fusion1 = s32[] fusion(x, x), kind=kLoop, calls=%fused_computation
+    t0 = s32[] get-tuple-element(t), index=0
+    ROOT fusion2 = s32[] fusion(fusion1, t0), kind=kLoop, calls=%fused_computation.1
+  }
+)";
+  
+}
+
 }  // namespace
 }  // namespace xla::gpu
