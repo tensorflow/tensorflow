@@ -543,15 +543,16 @@ TEST(TfrtGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
 }
 
 TEST(TfrtGpuClientTest, BufferFromHostBufferPinnedMemory) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetTfrtGpuClient(GpuClientOptions()));
   std::vector<int32_t> data{1, 2, 3, 4};
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
-      auto* pinned_memory_space,
+      PjRtMemorySpace * pinned_memory_space,
       client->addressable_devices()[0]->memory_space_by_kind(
           PinnedHostMemorySpace::kKind));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer,
+      std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostBuffer(
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
@@ -561,19 +562,21 @@ TEST(TfrtGpuClientTest, BufferFromHostBufferPinnedMemory) {
   EXPECT_EQ(buffer->memory_space()->kind(), "pinned_host");
   EXPECT_TRUE(buffer->IsOnCpu());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                          buffer->ToLiteralSync());
   std::vector<int32_t> expected{1, 2, 3, 4};
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
 }
 
 TEST(TfrtGpuClientTest, CopyToPinnedHostMemorySpace) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetTfrtGpuClient(GpuClientOptions()));
   std::vector<int32_t> data{1, 2, 3, 4};
   Shape shape = ShapeUtil::MakeShape(S32, {4});
-  auto device = client->addressable_devices()[0];
+  PjRtDevice* const device = client->addressable_devices()[0];
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer,
+      std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostBuffer(
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
@@ -582,7 +585,7 @@ TEST(TfrtGpuClientTest, CopyToPinnedHostMemorySpace) {
 
   EXPECT_EQ(buffer->memory_space()->kind(), "device");
 
-  auto* pinned_memory_space = device->memory_spaces()[1];
+  PjRtMemorySpace* pinned_memory_space = device->memory_spaces()[1];
   EXPECT_EQ(pinned_memory_space->kind_id(), PinnedHostMemorySpace::kKindId);
   TF_ASSERT_OK_AND_ASSIGN(auto result,
                           buffer->CopyToMemorySpace(pinned_memory_space));
@@ -590,7 +593,8 @@ TEST(TfrtGpuClientTest, CopyToPinnedHostMemorySpace) {
   EXPECT_EQ(result->memory_space()->kind(), "pinned_host");
   EXPECT_TRUE(result->IsOnCpu());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                          result->ToLiteralSync());
   std::vector<int32_t> expected{1, 2, 3, 4};
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
@@ -797,10 +801,11 @@ TEST(TfrtGpuClientTest, FromHostAsync) {
 }
 
 TEST(TfrtGpuClientTest, FromHostAsyncPinnedHost) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetTfrtGpuClient(GpuClientOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
   TF_ASSERT_OK_AND_ASSIGN(
-      auto* pinned_memory_space,
+      PjRtMemorySpace * pinned_memory_space,
       client->addressable_devices()[0]->memory_space_by_kind(
           PinnedHostMemorySpace::kKind));
 
@@ -812,9 +817,11 @@ TEST(TfrtGpuClientTest, FromHostAsyncPinnedHost) {
     src_literals.emplace_back(LiteralUtil::CreateR1<float>(data));
     src_shapes.push_back(src_literals.back().shape());
   }
-  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                          client->CreateBuffersForAsyncHostToDevice(
-                              src_shapes, pinned_memory_space));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>
+          transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice(src_shapes,
+                                                pinned_memory_space));
   std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   for (int i = 0; i < src_shapes.size(); ++i) {
     buffers.emplace_back(transfer_manager->RetrieveBuffer(i));
