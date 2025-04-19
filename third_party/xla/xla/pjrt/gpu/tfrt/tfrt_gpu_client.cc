@@ -1976,7 +1976,7 @@ GetTfrtGpuDevices(LocalClient* xla_client) {
     options.executor = executor;
     options.allocator = std::move(allocator);
     options.stream_capacity = 4;
-    options.max_inflight_computations = 1;
+    options.max_inflight_computations = 32;
     const se::Platform* platform = executor->GetPlatform();
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::se::DeviceDescription> desc,
