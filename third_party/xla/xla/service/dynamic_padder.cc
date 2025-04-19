@@ -962,11 +962,12 @@ HloInstruction* RewriteInputWithDynamicPadding(
             padding_before[dim_index]));
     start_indices[shape_dim] = slicing_start;
 
-    padded_shape.mutable_dimensions()[shape_dim] =
+    padded_shape.set_dimensions(
+        shape_dim,
         window_dim->padding_low() +
-        window_util::DilatedBound(padded_shape.dimensions(shape_dim),
-                                  window_dim->base_dilation()) +
-        window_dim->padding_high();
+            window_util::DilatedBound(padded_shape.dimensions(shape_dim),
+                                      window_dim->base_dilation()) +
+            window_dim->padding_high());
     window_dim->clear_padding_high();
     window_dim->clear_padding_low();
     window_dim->set_base_dilation(1);
