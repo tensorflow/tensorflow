@@ -125,6 +125,13 @@ class AnyBuffer {
     return 0;
   }
 
+  ABSL_ATTRIBUTE_ALWAYS_INLINE size_t size_bits() const {
+    if (ABSL_PREDICT_TRUE(primitive_util::IsArrayType(element_type()))) {
+      return primitive_util::BitWidth(element_type()) * element_count();
+    }
+    return 0;
+  }
+
   ABSL_ATTRIBUTE_ALWAYS_INLINE size_t element_count() const {
     return absl::c_accumulate(dimensions(), int64_t{1}, std::multiplies<>());
   }
@@ -179,6 +186,13 @@ class Buffer {
   ABSL_ATTRIBUTE_ALWAYS_INLINE size_t size_bytes() const {
     if constexpr (primitive_util::IsArrayType(dtype)) {
       return primitive_util::ByteWidth(dtype) * element_count();
+    }
+    return 0;
+  }
+
+  ABSL_ATTRIBUTE_ALWAYS_INLINE size_t size_bits() const {
+    if constexpr (primitive_util::IsArrayType(dtype)) {
+      return primitive_util::BitWidth(element_type()) * element_count();
     }
     return 0;
   }
