@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -31,6 +30,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
@@ -943,7 +943,7 @@ TEST(FfiTest, AttrsAsDictionary) {
 
     ErrorOr<int32_t> i32 = dict.get<int32_t>("i32");
     ErrorOr<float> f32 = dict.get<float>("f32");
-    ErrorOr<std::string_view> str = dict.get<std::string_view>("str");
+    ErrorOr<absl::string_view> str = dict.get<absl::string_view>("str");
 
     EXPECT_TRUE(i32.has_value());
     EXPECT_TRUE(f32.has_value());
@@ -1021,7 +1021,7 @@ TEST(FfiTest, StructAttr) {
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto fn = [&](std::string_view str, PairOfI32AndF32 i32_and_f32) {
+  auto fn = [&](absl::string_view str, PairOfI32AndF32 i32_and_f32) {
     EXPECT_EQ(str, "foo");
     EXPECT_EQ(i32_and_f32.i32, 42);
     EXPECT_EQ(i32_and_f32.f32, 42.0f);
@@ -1029,7 +1029,7 @@ TEST(FfiTest, StructAttr) {
   };
 
   auto handler = Ffi::Bind()
-                     .Attr<std::string_view>("str")
+                     .Attr<absl::string_view>("str")
                      .Attr<PairOfI32AndF32>("i32_and_f32")
                      .To(fn);
 

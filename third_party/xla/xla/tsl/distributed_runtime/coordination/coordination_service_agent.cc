@@ -24,7 +24,6 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -87,11 +86,11 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
     absl::Status s = ShutdownInternal();
     VLOG(3) << "Coordination agent dtor failed with status: " << s;
   }
-  absl::Status Initialize(Env* env, std::string_view job_name, int task_id,
+  absl::Status Initialize(Env* env, absl::string_view job_name, int task_id,
                           const CoordinationServiceConfig& configs,
                           std::unique_ptr<CoordinationClient> leader_client,
                           StatusCallback error_fn, bool recoverable) override;
-  absl::Status Initialize(Env* env, std::string_view job_name, int task_id,
+  absl::Status Initialize(Env* env, absl::string_view job_name, int task_id,
                           const CoordinationServiceConfig& configs,
                           std::unique_ptr<CoordinationClient> leader_client,
                           StatusCallback error_fn) override;
@@ -115,35 +114,35 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   absl::Status Shutdown() override;
   absl::Status Reset() override;
 
-  absl::StatusOr<std::string> GetKeyValue(std::string_view key) override;
-  absl::StatusOr<std::string> GetKeyValue(std::string_view key,
+  absl::StatusOr<std::string> GetKeyValue(absl::string_view key) override;
+  absl::StatusOr<std::string> GetKeyValue(absl::string_view key,
                                           absl::Duration timeout) override;
   std::shared_ptr<CallOptions> GetKeyValueAsync(
-      std::string_view key, StatusOrValueCallback done) override;
-  absl::StatusOr<std::string> TryGetKeyValue(std::string_view key) override;
+      absl::string_view key, StatusOrValueCallback done) override;
+  absl::StatusOr<std::string> TryGetKeyValue(absl::string_view key) override;
   absl::StatusOr<std::vector<KeyValueEntry>> GetKeyValueDir(
-      std::string_view key) override;
-  void GetKeyValueDirAsync(std::string_view key,
+      absl::string_view key) override;
+  void GetKeyValueDirAsync(absl::string_view key,
                            StatusOrValueDirCallback done) override;
-  absl::Status InsertKeyValue(std::string_view key,
-                              std::string_view value) override;
-  absl::Status InsertKeyValue(std::string_view key, std::string_view value,
+  absl::Status InsertKeyValue(absl::string_view key,
+                              absl::string_view value) override;
+  absl::Status InsertKeyValue(absl::string_view key, absl::string_view value,
                               bool allow_overwrite) override;
-  absl::Status DeleteKeyValue(std::string_view key) override;
-  absl::Status UpdateKeyValue(std::string_view key,
-                              std::string_view value) override;
+  absl::Status DeleteKeyValue(absl::string_view key) override;
+  absl::Status UpdateKeyValue(absl::string_view key,
+                              absl::string_view value) override;
 
-  absl::Status StartWatchKey(std::string_view key,
+  absl::Status StartWatchKey(absl::string_view key,
                              ChangedKeyValuesCallback on_change) override;
-  absl::Status StopWatchKey(std::string_view key) override;
+  absl::Status StopWatchKey(absl::string_view key) override;
   absl::Status WaitAtBarrier(
-      std::string_view barrier_id, absl::Duration timeout,
+      absl::string_view barrier_id, absl::Duration timeout,
       const std::vector<CoordinatedTask>& tasks) override;
-  void WaitAtBarrierAsync(std::string_view barrier_id, absl::Duration timeout,
+  void WaitAtBarrierAsync(absl::string_view barrier_id, absl::Duration timeout,
                           const std::vector<CoordinatedTask>& tasks,
                           StatusCallback done) override;
-  absl::Status CancelBarrier(std::string_view barrier_id) override;
-  void CancelBarrierAsync(std::string_view barrier_id,
+  absl::Status CancelBarrier(absl::string_view barrier_id) override;
+  void CancelBarrierAsync(absl::string_view barrier_id,
                           StatusCallback done) override;
   absl::StatusOr<std::vector<tensorflow::CoordinatedTask>> GetAliveTasks(
       const std::vector<tensorflow::CoordinatedTask>& tasks) override;
@@ -154,7 +153,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
  protected:
   void SetError(const absl::Status& error) override;
   absl::Status ActivateWatch(
-      std::string_view key, const std::map<std::string, std::string>&) override;
+      absl::string_view key,
+      const std::map<std::string, std::string>&) override;
   // Returns an error if agent is not running. If `allow_disconnected` is true,
   // returns OK even if the agent is in DISCONNECTED state.
   absl::Status ValidateRunningAgent(bool allow_disconnected = false);
@@ -219,7 +219,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
 };
 
 absl::Status CoordinationServiceAgentImpl::Initialize(
-    Env* env, std::string_view job_name, int task_id,
+    Env* env, absl::string_view job_name, int task_id,
     const CoordinationServiceConfig& configs,
     std::unique_ptr<CoordinationClient> leader_client,
     StatusCallback error_fn) {
@@ -229,7 +229,7 @@ absl::Status CoordinationServiceAgentImpl::Initialize(
 }
 
 absl::Status CoordinationServiceAgentImpl::Initialize(
-    Env* env, std::string_view job_name, int task_id,
+    Env* env, absl::string_view job_name, int task_id,
     const CoordinationServiceConfig& configs,
     std::unique_ptr<CoordinationClient> leader_client, StatusCallback error_fn,
     bool recoverable) {
@@ -864,12 +864,12 @@ absl::Status CoordinationServiceAgentImpl::Reset() {
 }
 
 absl::StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
-    std::string_view key) {
+    absl::string_view key) {
   return GetKeyValue(key, /*timeout=*/absl::InfiniteDuration());
 }
 
 absl::StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
-    std::string_view key, absl::Duration timeout) {
+    absl::string_view key, absl::Duration timeout) {
   auto n = std::make_shared<absl::Notification>();
   auto result = std::make_shared<absl::StatusOr<std::string>>();
   GetKeyValueAsync(
@@ -889,7 +889,7 @@ absl::StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
 }
 
 std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::GetKeyValueAsync(
-    std::string_view key, StatusOrValueCallback done) {
+    absl::string_view key, StatusOrValueCallback done) {
   auto request = std::make_shared<GetKeyValueRequest>();
   request->set_key(key.data(), key.size());
   VLOG(3) << "GetKeyValueRequest: " << request->DebugString();
@@ -925,7 +925,7 @@ std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::GetKeyValueAsync(
 }
 
 absl::StatusOr<std::string> CoordinationServiceAgentImpl::TryGetKeyValue(
-    std::string_view key) {
+    absl::string_view key) {
   absl::Notification n;
   absl::StatusOr<std::string> result;
   TryGetKeyValueRequest request;
@@ -949,7 +949,7 @@ absl::StatusOr<std::string> CoordinationServiceAgentImpl::TryGetKeyValue(
 }
 
 absl::StatusOr<std::vector<KeyValueEntry>>
-CoordinationServiceAgentImpl::GetKeyValueDir(std::string_view key) {
+CoordinationServiceAgentImpl::GetKeyValueDir(absl::string_view key) {
   absl::Notification n;
   absl::StatusOr<std::vector<KeyValueEntry>> result;
   GetKeyValueDirAsync(
@@ -964,7 +964,7 @@ CoordinationServiceAgentImpl::GetKeyValueDir(std::string_view key) {
 }
 
 void CoordinationServiceAgentImpl::GetKeyValueDirAsync(
-    std::string_view key, StatusOrValueDirCallback done) {
+    absl::string_view key, StatusOrValueDirCallback done) {
   auto request = std::make_shared<GetKeyValueDirRequest>();
   request->set_directory_key(key.data(), key.size());
   VLOG(3) << "GetKeyValueDirRequest: " << request->DebugString();
@@ -986,12 +986,12 @@ void CoordinationServiceAgentImpl::GetKeyValueDirAsync(
 }
 
 absl::Status CoordinationServiceAgentImpl::InsertKeyValue(
-    std::string_view key, std::string_view value) {
+    absl::string_view key, absl::string_view value) {
   return InsertKeyValue(key, value, /*allow_overwrite=*/false);
 }
 
 absl::Status CoordinationServiceAgentImpl::InsertKeyValue(
-    std::string_view key, std::string_view value, bool allow_overwrite) {
+    absl::string_view key, absl::string_view value, bool allow_overwrite) {
   InsertKeyValueRequest request;
   request.mutable_kv()->set_key(key.data(), key.size());
   request.mutable_kv()->set_value(value.data(), value.size());
@@ -1012,7 +1012,7 @@ absl::Status CoordinationServiceAgentImpl::InsertKeyValue(
 }
 
 absl::Status CoordinationServiceAgentImpl::DeleteKeyValue(
-    std::string_view key) {
+    absl::string_view key) {
   DeleteKeyValueRequest request;
   request.set_key(key.data(), key.size());
   request.set_is_directory(true);
@@ -1032,19 +1032,19 @@ absl::Status CoordinationServiceAgentImpl::DeleteKeyValue(
 }
 
 absl::Status CoordinationServiceAgentImpl::UpdateKeyValue(
-    std::string_view key, std::string_view value) {
+    absl::string_view key, absl::string_view value) {
   return MakeCoordinationError(absl::UnimplementedError(
       "CoordinationServiceAgent::UpdateKeyValue is not implemented."));
 }
 
 absl::Status CoordinationServiceAgentImpl::StartWatchKey(
-    std::string_view key,
+    absl::string_view key,
     CoordinationServiceAgentImpl::ChangedKeyValuesCallback on_change) {
   return MakeCoordinationError(absl::UnimplementedError(
       "CoordinationServiceAgent::StartWatchKey is not implemented."));
 }
 
-absl::Status CoordinationServiceAgentImpl::StopWatchKey(std::string_view key) {
+absl::Status CoordinationServiceAgentImpl::StopWatchKey(absl::string_view key) {
   return MakeCoordinationError(absl::UnimplementedError(
       "CoordinationServiceAgent::StopWatchKey is not implemented."));
 }
@@ -1061,13 +1061,13 @@ void CoordinationServiceAgentImpl::SetError(const absl::Status& error) {
 }
 
 absl::Status CoordinationServiceAgentImpl::ActivateWatch(
-    std::string_view key, const std::map<std::string, std::string>& kvs) {
+    absl::string_view key, const std::map<std::string, std::string>& kvs) {
   return MakeCoordinationError(absl::UnimplementedError(
       "CoordinationServiceAgent::ActivateWatch is not implemented."));
 }
 
 absl::Status CoordinationServiceAgentImpl::WaitAtBarrier(
-    std::string_view barrier_id, absl::Duration timeout,
+    absl::string_view barrier_id, absl::Duration timeout,
     const std::vector<CoordinatedTask>& tasks) {
   absl::Status status;
   absl::Notification n;
@@ -1080,7 +1080,7 @@ absl::Status CoordinationServiceAgentImpl::WaitAtBarrier(
 }
 
 void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
-    std::string_view barrier_id, absl::Duration timeout,
+    absl::string_view barrier_id, absl::Duration timeout,
     const std::vector<CoordinatedTask>& tasks, StatusCallback done) {
   absl::Status agent_running_status =
       ValidateRunningAgent(/*allow_disconnected=*/true);
@@ -1157,7 +1157,7 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
 }
 
 absl::Status CoordinationServiceAgentImpl::CancelBarrier(
-    std::string_view barrier_id) {
+    absl::string_view barrier_id) {
   absl::Status status;
   absl::Notification n;
   CancelBarrierAsync(barrier_id, [&](const absl::Status& s) {
@@ -1169,7 +1169,7 @@ absl::Status CoordinationServiceAgentImpl::CancelBarrier(
 }
 
 void CoordinationServiceAgentImpl::CancelBarrierAsync(
-    std::string_view barrier_id, StatusCallback done) {
+    absl::string_view barrier_id, StatusCallback done) {
   absl::Status agent_running_status =
       ValidateRunningAgent(/*allow_disconnected=*/true);
   if (!agent_running_status.ok()) {

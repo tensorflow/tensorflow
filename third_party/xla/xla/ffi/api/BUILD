@@ -48,7 +48,10 @@ cc_library(
     name = "api",
     hdrs = [":api_headers"],
     visibility = ["//visibility:private"],
-    deps = [":c_api"],
+    deps = [
+        ":c_api",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 cc_library(
@@ -68,6 +71,7 @@ cc_library(
     deps = [
         ":api",
         ":c_api",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -97,6 +101,7 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",

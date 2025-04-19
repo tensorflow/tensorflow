@@ -16,9 +16,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
-#include <string_view>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tsl/platform/protobuf.h"
 
 namespace tsl {

@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <vector>
 
@@ -47,7 +46,7 @@ static auto GetAnnotationData(const std::atomic<int>& atomic) {
   return std::make_tuple(&data.stack, &data.string, &data.scope_range_id_stack);
 };
 
-void AnnotationStack::PushAnnotation(std::string_view name) {
+void AnnotationStack::PushAnnotation(absl::string_view name) {
   static std::atomic<int64_t> scope_range_counter = 0;
 
   auto [stack, string, scope_range_id_stack] = GetAnnotationData(generation_);
