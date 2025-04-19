@@ -445,7 +445,7 @@ def create_html(tflite_input, input_is_filepath=True):  # pylint: disable=invali
   if input_is_filepath:
     if not os.path.exists(tflite_input):
       raise RuntimeError("Invalid filename %r" % tflite_input)
-    if tflite_input.endswith(".tflite") or tflite_input.endswith(".bin"):
+    if tflite_input.endswith(".tflite") or tflite_input.endswith(".tf_lite") or tflite_input.endswith(".bin"):
       with open(tflite_input, "rb") as file_handle:
         file_data = bytearray(file_handle.read())
       data = CreateDictFromFlatbuffer(file_data)
