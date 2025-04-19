@@ -221,20 +221,17 @@ TEST_F(ShapeTest, IsStaticDimension) {
 
 TEST_F(ShapeTest, ProgramShapeToFromProto) {
   ProgramShape program_shape;
-  *program_shape.add_parameters() = ShapeUtil::MakeShape(F32, {1, 2, 3});
-  *program_shape.add_parameters() = ShapeUtil::MakeTokenShape();
-  *program_shape.add_parameters() = ShapeUtil::MakeShape(S64, {});
-  *program_shape.add_parameters() = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(S32, {}),
-       ShapeUtil::MakeTupleShape({ShapeUtil::MakeTokenShape()}),
-       ShapeUtil::MakeShape(F32, {42, 42})});
+  program_shape.AddParameter(ShapeUtil::MakeShape(F32, {1, 2, 3}), "foo");
+  program_shape.AddParameter(ShapeUtil::MakeTokenShape(), "bar");
+  program_shape.AddParameter(ShapeUtil::MakeShape(S64, {}), "baz");
+  program_shape.AddParameter(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(S32, {}),
+           ShapeUtil::MakeTupleShape({ShapeUtil::MakeTokenShape()}),
+           ShapeUtil::MakeShape(F32, {42, 42})}),
+      "qux qux");
 
   *program_shape.mutable_result() = ShapeUtil::MakeShape(F32, {7});
-
-  program_shape.add_parameter_names("foo");
-  program_shape.add_parameter_names("bar");
-  program_shape.add_parameter_names("baz");
-  program_shape.add_parameter_names("qux qux");
 
   // Create a copy of the program shape by round-tripping through a proto.
   ProgramShape program_shape_copy(program_shape.ToProto());
@@ -248,9 +245,9 @@ TEST_F(ShapeTest, ProgramShapeToFromProto) {
   EXPECT_TRUE(
       ShapeUtil::Equal(program_shape.result(), program_shape_copy.result()));
 
-  ASSERT_EQ(program_shape.parameter_names_size(),
-            program_shape_copy.parameter_names_size());
-  for (int i = 0; i < program_shape.parameter_names_size(); ++i) {
+  ASSERT_EQ(program_shape.parameters_size(),
+            program_shape_copy.parameters_size());
+  for (int i = 0; i < program_shape.parameters_size(); ++i) {
     EXPECT_EQ(program_shape.parameter_names(i),
               program_shape_copy.parameter_names(i));
   }
@@ -271,12 +268,12 @@ TEST_F(ShapeTest, ProgramShapeToString) {
       "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])",
       prog.ToString());
 
-  prog.add_parameter_names("arg0");
-  prog.add_parameter_names("scalar");
-  prog.add_parameter_names("matrix");
-  prog.add_parameter_names("matrix2");
-  prog.add_parameter_names("tuple");
-  prog.add_parameter_names("nested_tuple");
+  prog.set_parameter_names(0, "arg0");
+  prog.set_parameter_names(1, "scalar");
+  prog.set_parameter_names(2, "matrix");
+  prog.set_parameter_names(3, "matrix2");
+  prog.set_parameter_names(4, "tuple");
+  prog.set_parameter_names(5, "nested_tuple");
   EXPECT_EQ(
       "(arg0: opaque[], "
       "scalar: f32[], "

@@ -244,7 +244,7 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
     std::initializer_list<Shape> parameters, Shape result) {
   ProgramShape program_shape;
   for (const Shape& shape : parameters) {
-    *program_shape.add_parameters() = shape;
+    program_shape.AddParameter(shape, "");
   }
   *program_shape.mutable_result() = std::move(result);
   return program_shape;
@@ -755,11 +755,9 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   const auto& shape_parameters = program_shape.parameters();
   if (!shape_parameters.empty()) {
     auto print_one = [&](int i) {
-      if (i < program_shape.parameter_names_size()) {
-        printer->Append(program_shape.parameter_names(i));
-      } else {
-        printer->Append("(unknown)");
-      }
+      printer->Append(program_shape.parameter_names(i).empty()
+                          ? "(unknown)"
+                          : program_shape.parameter_names(i));
       printer->Append(": ");
       PrintHumanString(printer, shape_parameters[i]);
     };

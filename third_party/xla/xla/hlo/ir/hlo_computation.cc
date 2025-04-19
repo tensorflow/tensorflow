@@ -1514,9 +1514,9 @@ ProgramShape HloComputation::ComputeProgramShape(bool include_ids) const {
   ProgramShape program_shape;
 
   for (auto* param_instruction : param_instructions_) {
-    *program_shape.add_parameters() = param_instruction->shape();
-    *program_shape.add_parameter_names() =
-        std::string(PrintName(param_instruction->name(), include_ids));
+    program_shape.AddParameter(
+        param_instruction->shape(),
+        std::string(PrintName(param_instruction->name(), include_ids)));
   }
   *program_shape.mutable_result() = root_instruction_->shape();
 

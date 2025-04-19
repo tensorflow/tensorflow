@@ -143,8 +143,8 @@ std::string ComputationLayout::ToString() const {
 ProgramShape ComputationLayout::ComputeProgramShape() const {
   ProgramShape program_shape;
   for (int64_t i = 0; i < parameter_layouts_.size(); ++i) {
-    *program_shape.add_parameters() = parameter_layouts_[i].shape();
-    *program_shape.add_parameter_names() = absl::StrCat("p", i);
+    program_shape.AddParameter(parameter_layouts_[i].shape(),
+                               absl::StrCat("p", i));
   }
   *program_shape.mutable_result() = result_layout_.shape();
   return program_shape;

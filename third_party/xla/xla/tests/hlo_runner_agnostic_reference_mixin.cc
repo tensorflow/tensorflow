@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
 
+#include <string>
+
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/shape.h"
 
@@ -24,8 +26,7 @@ ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
   ProgramShape program_shape;
   const auto* entry = module.entry_computation();
   for (const auto* param : entry->parameter_instructions()) {
-    *program_shape.add_parameters() = param->shape();
-    *program_shape.add_parameter_names() = param->name();
+    program_shape.AddParameter(param->shape(), std::string(param->name()));
   }
   *program_shape.mutable_result() = entry->root_instruction()->shape();
   return program_shape;
