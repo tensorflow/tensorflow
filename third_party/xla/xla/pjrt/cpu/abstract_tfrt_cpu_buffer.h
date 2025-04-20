@@ -222,7 +222,7 @@ class AbstractTfrtCpuBuffer : public CommonPjRtBuffer {
 
   bool IsEmptyTuple() const {
     return on_device_shape_.IsTuple() &&
-           on_device_shape_.tuple_shapes_size() == 0;
+           on_device_shape_.tuple_shapes().size() == 0;
   }
 
   // Similar to Delete, drops the buffer's reference to its associated device
