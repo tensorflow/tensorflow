@@ -99,6 +99,12 @@ inline constexpr absl::string_view kUncompilableFusion =
 
 inline constexpr absl::string_view kTopKCustomCallTarget = "__gpu$TopK";
 
+// The number of shared memory banks.
+inline constexpr int64_t kNumShmemBanks = 32;
+
+// The bitwidth of a shared memory bank.
+inline constexpr int64_t kBankBitwidth = 32;
+
 // The name of the custom fusion config for dynamic slice fusion with static
 // slices, such that the offset can be computed at compile time.
 inline constexpr absl::string_view
@@ -121,6 +127,10 @@ std::optional<std::string> GetCustomFusionConfigName(
 // Returns true if the given instruction is a custom fusion for dynamic slice
 // fusion. This is determined by checking the name of custom fusion config.
 bool IsDynamicSliceFusion(const HloInstruction* instr);
+
+// Returns the bitwidth of the given primitive type. Unfortunately,
+// primitive_util::BitWidth(PRED) return 1 instead of 8.
+int GetBitwidth(PrimitiveType type);
 
 // Returns true if the given instruction is a dynamic memcpy fusion. This
 // function only checks the fusion kind, which is populated by the
@@ -198,14 +208,17 @@ struct TransposeDescription {
   // Permutations of normalized transpose dimensions.
   absl::InlinedVector<int64_t, 3> permutation;
 
-  TransposeDescription(absl::InlinedVector<int64_t, 3> dimensions,
-                       absl::InlinedVector<int64_t, 3> permutation)
-      : TransposeDescription(/*instr=*/nullptr, dimensions, permutation) {}
+  // Required amount of shared memory in bytes.
+  int64_t shmem_usage = 0;
 
   TransposeDescription(const HloInstruction* instr,
                        absl::InlinedVector<int64_t, 3> dimensions,
-                       absl::InlinedVector<int64_t, 3> permutation)
-      : instr(instr), dimensions(dimensions), permutation(permutation) {}
+                       absl::InlinedVector<int64_t, 3> permutation,
+                       int64_t shmem_usage)
+      : instr(instr),
+        dimensions(dimensions),
+        permutation(permutation),
+        shmem_usage(shmem_usage) {}
 
   // Transpose instruction input shape.
   const Shape& input_shape() const { return instr->operand(0)->shape(); }
@@ -213,7 +226,9 @@ struct TransposeDescription {
   // Returns true, if both descriptions have the same dimensions and
   // permutation, even if they're produced by different instructions.
   bool IsEquivalent(const TransposeDescription& other) const {
-    return dimensions == other.dimensions && permutation == other.permutation;
+    return dimensions == other.dimensions && permutation == other.permutation &&
+           GetBitwidth(instr->shape().element_type()) ==
+               GetBitwidth(other.instr->shape().element_type());
   }
 };
 
@@ -273,6 +288,10 @@ struct TransposeSpec {
 };
 
 TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose);
+
+// Returns the default tile sizes for the packed transpose emitter.
+absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
+    const TransposeSpec& spec);
 
 // Checks if the instruction is elementwise.
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);

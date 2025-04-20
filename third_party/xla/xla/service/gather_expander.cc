@@ -34,6 +34,16 @@ limitations under the License.
 namespace xla {
 
 namespace {
+
+bool IsIota(absl::Span<const int64_t> range) {
+  for (int64_t i = 0; i < range.size(); ++i) {
+    if (range[i] != i) {
+      return false;
+    }
+  }
+  return true;
+}
+
 absl::StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
     HloInstruction* start_indices, int64_t index_vector_dim) {
   const Shape& start_indices_shape = start_indices->shape();
@@ -54,7 +64,8 @@ absl::StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
     }
   }
   permutation.push_back(index_vector_dim);
-  return MakeTransposeHlo(start_indices, permutation);
+  return IsIota(permutation) ? start_indices
+                             : MakeTransposeHlo(start_indices, permutation);
 }
 
 // Canonicalizes the start_indices tensors so that we only have deal with some
@@ -252,7 +263,8 @@ absl::StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
     }
   }
 
-  return MakeTransposeHlo(accumulator, permutation);
+  return IsIota(permutation) ? accumulator
+                             : MakeTransposeHlo(accumulator, permutation);
 }
 
 // Computes how many trips a loop implementing this gather op would take.
