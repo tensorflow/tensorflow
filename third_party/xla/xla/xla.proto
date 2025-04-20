@@ -551,6 +551,10 @@ message DebugOptions {
   // Pre-existing block-level fusions are left unmodified.
   bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
 
+  // Enable NVSHMEM. Must be set via XLA_FLAGS variable before XLA client is
+  // initialized and can't be set just through HLO Config->ExecutionOptions.
+  bool xla_gpu_experimental_enable_nvshmem = 388;
+
   // Enable the pass that splits GEMMs that underutilize the GPU load by
   // splitting the K dimension using a heuristic.
   bool xla_gpu_experimental_enable_split_k_rewrite = 386;
@@ -1214,7 +1218,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 388
+  // Next id: 389
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

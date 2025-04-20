@@ -238,6 +238,56 @@ xla_test(
     ],
 )
 
+# TODO(b/409713313): Move this test to collectives directory.
+xla_test(
+    name = "se_gpu_pjrt_client_nvshmem_test",
+    srcs = ["se_gpu_pjrt_client_nvshmem_test.cc"],
+    backend_tags = {"gpu": [
+        "multi_gpu_h100",
+        "no_oss",
+        "noasan",
+        "notap",  # TODO(b/399931591): Re-enable once flakiness is resolved.
+        "nomsan",
+    ]},
+    backends = ["gpu"],
+    env = {
+        "XLA_FLAGS": "--xla_gpu_experimental_enable_nvshmem=true",
+    },
+    deps = [
+        ":gpu_topology_proto_cc",
+        ":se_gpu_pjrt_client",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:test",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:raw_buffer",
+        "//xla/pjrt/distributed",
+        "//xla/pjrt/distributed:client",
+        "//xla/pjrt/distributed:in_memory_key_value_store",
+        "//xla/pjrt/distributed:service",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/service:platform_util",
+        "//xla/tests:literal_test_util",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 xla_test(
     name = "pjrt_client_test_se_gpu",
     srcs = ["pjrt_client_test_se_gpu.cc"],
