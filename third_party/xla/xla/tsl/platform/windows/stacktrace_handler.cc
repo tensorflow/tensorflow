@@ -28,22 +28,23 @@ limitations under the License.
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
 
+#include "absl/base/const_init.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/stacktrace.h"
 
 namespace tsl {
 
-// This mutex allows us to unblock an alarm thread.
-static mutex alarm_mu(LINKER_INITIALIZED);
+// This absl::Mutex allows us to unblock an alarm thread.
+static absl::Mutex alarm_mu(absl::kConstInit);
 static bool alarm_activated = false;
 
 static void AlarmThreadBody() {
   // Wait until the alarm_activated bool is true, sleep for 60 seconds,
   // then kill the program.
-  alarm_mu.lock();
-  alarm_mu.Await(Condition(&alarm_activated));
-  alarm_mu.unlock();
+  alarm_mu.Lock();
+  alarm_mu.Await(absl::Condition(&alarm_activated));
+  alarm_mu.Unlock();
   Sleep(60000);
 
   // Reinstall the standard signal handler, so that we actually abort the
@@ -124,9 +125,9 @@ static void StacktraceHandler(int sig) {
   // to send an alarm signal killing our process after a set amount of time.
   // Since Windows does not support this, we unblock a sleeping thread meant
   // to abort the program ~60 seconds after waking.
-  alarm_mu.lock();
+  alarm_mu.Lock();
   alarm_activated = true;
-  alarm_mu.unlock();
+  alarm_mu.Unlock();
 
   char buf[128];
   snprintf(buf, sizeof(buf), "*** Received signal %d ***\n", sig);
