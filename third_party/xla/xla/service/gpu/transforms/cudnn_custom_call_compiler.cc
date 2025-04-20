@@ -396,7 +396,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHAF8(
 absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBlockScaledDot(
     se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
   TF_RET_CHECK(custom_call->operand_count() == 4);
-  TF_RET_CHECK(custom_call->shape().tuple_shapes_size() == 2);
+  TF_RET_CHECK(custom_call->shape().tuple_shapes().size() == 2);
 
   TF_ASSIGN_OR_RETURN(TensorDescriptor lhs_data,
                       TensorDescriptorFor(custom_call->operand(0)->shape()));

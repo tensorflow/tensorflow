@@ -326,7 +326,7 @@ BuildStrategyAndCost(
           // loop. Therefore, this followinf relationship is necessary for
           // correctness, and is not merely an optimization.
           is_follow_necessary_for_correctness = true;
-          for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
+          for (size_t i = 0; i < ins->shape().tuple_shapes().size(); ++i) {
             std::unique_ptr<StrategyGroup> child_strategies =
                 MaybeFollowInsStrategyGroup(
                     *while_input_tuple_strategy_group->GetChildren()[i],
@@ -909,7 +909,7 @@ BuildStrategyAndCost(
               if (only_replicated) {
                 if (ins->shape().IsTuple()) {
                   strategy_group = CreateTupleStrategyGroup(instruction_id);
-                  for (size_t i = 0; i < ins->shape().tuple_shapes_size();
+                  for (size_t i = 0; i < ins->shape().tuple_shapes().size();
                        ++i) {
                     std::unique_ptr<StrategyGroup> child_strategies =
                         CreateLeafStrategyGroup(instruction_id, ins,
@@ -980,7 +980,7 @@ BuildStrategyAndCost(
         strategy_group = CreateTupleStrategyGroup(instruction_id);
         const auto& src_strategy_group = *strategy_map.at(ins->operand(0));
         const auto& src_children = src_strategy_group.GetChildren();
-        for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
+        for (size_t i = 0; i < ins->shape().tuple_shapes().size(); ++i) {
           auto child_strategies = MaybeFollowInsStrategyGroup(
               *src_children[i], ins->shape().tuple_shapes().at(i),
               instruction_id, strategy_groups, cluster_env,
@@ -1015,7 +1015,7 @@ BuildStrategyAndCost(
       case HloOpcode::kRecvDone:
       case HloOpcode::kSend: {
         strategy_group = CreateTupleStrategyGroup(instruction_id);
-        for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
+        for (size_t i = 0; i < ins->shape().tuple_shapes().size(); ++i) {
           std::unique_ptr<StrategyGroup> child_strategies =
               CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
                                       strategy_groups);

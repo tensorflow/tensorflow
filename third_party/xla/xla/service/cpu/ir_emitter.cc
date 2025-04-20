@@ -194,7 +194,7 @@ void IrEmitter::EmitThreadLocalFunctionEpilogue(
     llvm::Type* tuple_type =
         llvm_ir::ShapeToIrType(return_shape, module_->getContext());
 
-    for (int i = 0; i < return_shape.tuple_shapes_size(); i++) {
+    for (int i = 0; i < return_shape.tuple_shapes().size(); i++) {
       const Shape& element_shape = return_shape.tuple_shapes(i);
       llvm::Value* destination = llvm_ir::EmitGetTupleElement(
           element_shape,
@@ -517,7 +517,7 @@ absl::Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
     // tuple outer buffer containing pointers to the internal
     // elements.
     std::vector<llvm::Value*> tuple_element_addresses;
-    for (int i = 0; i < data_shape.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < data_shape.tuple_shapes().size(); ++i) {
       TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
                           assignment_.GetUniqueSlice(infeed, {0, i}));
 
@@ -629,7 +629,7 @@ absl::Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
 
   TF_RET_CHECK(!ShapeUtil::IsNestedTuple(operand_shape));
 
-  for (int i = 0; i < operand_shape.tuple_shapes_size(); ++i) {
+  for (int i = 0; i < operand_shape.tuple_shapes().size(); ++i) {
     const Shape& tuple_element_shape =
         ShapeUtil::GetTupleElementShape(operand_shape, i);
     llvm::Value* tuple_element = llvm_ir::EmitGetTupleElement(
@@ -2379,7 +2379,7 @@ absl::Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
   // PadToStatic has a dynamic tensor as input and variadic size of outputs:
   // (static_tensor, dynamic_dim_0, dynamic_dim_1, ... )
   // Dynamic dimension sizes starts from output index 1.
-  for (int i = 1; i < hlo->shape().tuple_shapes_size(); ++i) {
+  for (int i = 1; i < hlo->shape().tuple_shapes().size(); ++i) {
     // Read from the metadata section of the dynamic input (operand 0).
     const Shape& dim_shape = ShapeUtil::GetSubshape(hlo->shape(), {i});
     TF_RET_CHECK(Shape::Equal()(dim_shape, ShapeUtil::MakeScalarShape(S32)));
@@ -4135,7 +4135,7 @@ std::vector<llvm::Value*> IrEmitter::EmitThreadLocalCall(
     allocas_for_returned_scalars.push_back(return_value_buffer);
   } else {
     constexpr int max_tuple_size = 1000;
-    CHECK_LT(return_shape.tuple_shapes_size(), max_tuple_size)
+    CHECK_LT(return_shape.tuple_shapes().size(), max_tuple_size)
         << "Multivalue function can not return more than 1000 elements to avoid"
         << " stack smashing";
     allocas_for_returned_scalars =

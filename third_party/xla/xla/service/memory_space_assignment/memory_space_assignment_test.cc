@@ -7122,7 +7122,7 @@ TEST_F(MemorySpaceAssignmentTest,
 
   // Expect that while tuple shape contains 3 elements like the original.
   const HloInstruction* while_instr = FindInstruction(module.get(), "while");
-  EXPECT_EQ(while_instr->shape().tuple_shapes_size(), 3);
+  EXPECT_EQ(while_instr->shape().tuple_shapes().size(), 3);
 }
 
 TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionInNestedWhile) {
@@ -7258,7 +7258,7 @@ TEST_F(MemorySpaceAssignmentTest, RedundantEvictionEliminationBug) {
   // Expect that redundant eviction elimination doesn't kick in because
   // while{1} is updated within the body.
   const HloInstruction* while_instr = FindInstruction(module.get(), "while");
-  EXPECT_EQ(while_instr->shape().tuple_shapes_size(), 3);
+  EXPECT_EQ(while_instr->shape().tuple_shapes().size(), 3);
   EXPECT_EQ(while_instr->shape().tuple_shapes(1).layout().memory_space(),
             kAlternateMemorySpace);
   const HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
@@ -7339,8 +7339,9 @@ TEST_F(MemorySpaceAssignmentTest, RedundantEvictionEliminationInChainedWhile) {
 
   // Expect that while1 has one more value than while2 in its shape.
   EXPECT_EQ(
-      FindInstruction(module.get(), "while1")->shape().tuple_shapes_size(),
-      FindInstruction(module.get(), "while2")->shape().tuple_shapes_size() + 1);
+      FindInstruction(module.get(), "while1")->shape().tuple_shapes().size(),
+      FindInstruction(module.get(), "while2")->shape().tuple_shapes().size() +
+          1);
 }
 
 TEST_F(MemorySpaceAssignmentTest, AvoidRedundantEvictionAfterWhile) {

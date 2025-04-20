@@ -706,14 +706,14 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
         } else if (instruction->opcode() == HloOpcode::kTuple) {
           // Replace Tuple(GetTupleElement(x), ..., GetTupleElement(x)) pattern
           // with x.
-          bool can_replace =
-              instruction->operand_count() > 0 &&
-              instruction->operand(0)->opcode() ==
-                  HloOpcode::kGetTupleElement &&
-              instruction->operand(0)
-                      ->operand(0)
-                      ->shape()
-                      .tuple_shapes_size() == instruction->operand_count();
+          bool can_replace = instruction->operand_count() > 0 &&
+                             instruction->operand(0)->opcode() ==
+                                 HloOpcode::kGetTupleElement &&
+                             instruction->operand(0)
+                                     ->operand(0)
+                                     ->shape()
+                                     .tuple_shapes()
+                                     .size() == instruction->operand_count();
           for (int operand_number = 0;
                operand_number < instruction->operand_count();
                ++operand_number) {
