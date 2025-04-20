@@ -61,6 +61,7 @@ uint8* Decode(const void* srcdata, int datasize,
               string* error_string, bool expand_animations) {
   int error_code = D_GIF_SUCCEEDED;
   InputBufferInfo info = {reinterpret_cast<const uint8*>(srcdata), datasize};
+  /// NOTE: After this, gif file is mostly not initialized!
   GifFileType* gif_file =
       DGifOpen(static_cast<void*>(&info), &input_callback, &error_code);
   const auto cleanup = gtl::MakeCleanup([gif_file]() {
@@ -76,7 +77,6 @@ uint8* Decode(const void* srcdata, int datasize,
     return nullptr;
   }
 
-  int target_num_frames;
   if (DGifSlurp(gif_file) != GIF_OK) {
     *error_string = absl::StrCat("failed to slurp gif file: ",
                                  GifErrorStringNonNull(gif_file->Error));
@@ -86,14 +86,9 @@ uint8* Decode(const void* srcdata, int datasize,
         gif_file->SavedImages[gif_file->ImageCount - 1].RasterBits == nullptr) {
       return nullptr;
     }
-    // If giflib parses the header correctly but the image data is corrupt,
-    // giflib incorrectly sets ImageCount if it hits an error.
-    target_num_frames = gif_file->ImageCount - 1;
-    LOG(WARNING) << "Decoding" << target_num_frames << " frames due to error.";
     LOG(ERROR) << *error_string;
-  } else {
-    target_num_frames = gif_file->ImageCount;
   }
+  int target_num_frames = gif_file->ImageCount;
 
   if (target_num_frames <= 0) {
     *error_string = "gif file does not contain any image";
