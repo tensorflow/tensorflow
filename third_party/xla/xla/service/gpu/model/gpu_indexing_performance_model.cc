@@ -159,9 +159,15 @@ bool DoesTileFitsInRegisters(int64_t tile_size,
 // may change in the future.
 // TODO(b/332714755): Make it smarter.
 int64_t GetNumWarps(int64_t largest_live_tile_size) {
-  if (largest_live_tile_size <= 256) return 1;
-  if (largest_live_tile_size <= 1024) return 2;
-  if (largest_live_tile_size <= 4096) return 4;
+  if (largest_live_tile_size <= 256) {
+    return 1;
+  }
+  if (largest_live_tile_size <= 1024) {
+    return 2;
+  }
+  if (largest_live_tile_size <= 4096) {
+    return 4;
+  }
   return 8;
 }
 

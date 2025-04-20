@@ -54,8 +54,8 @@ namespace gpu {
     absl::string_view default_profile_name) {
   ProfilesNestedMap profiles_map;
   DeviceHloInstructionProfiles all_device_profiles;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
-      std::string(profiles_text_proto), &all_device_profiles));
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(profiles_text_proto,
+                                                   &all_device_profiles));
   for (const auto& device_profile : all_device_profiles.entries()) {
     for (const auto& entry : device_profile.second.entries()) {
       auto op_code = StringToHloOpcode(entry.instruction().opcode()).value();
@@ -72,7 +72,9 @@ namespace gpu {
 const HloOpProfiles::HloOpProfile& HloOpProfiles::GetProfile(
     const se::DeviceDescription& device_info) const {
   auto it = profiles_.find(GetProfileName(device_info));
-  if (it != profiles_.end()) return it->second;
+  if (it != profiles_.end()) {
+    return it->second;
+  }
   return default_profile_;
 }
 

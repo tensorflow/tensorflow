@@ -252,7 +252,8 @@ float GpuPerformanceModelBase::GetCommonUtilization(
             consumer->fused_parameter(consumer_idx_of_producer));
       }
       return res;
-    } else if (consumer->IsElementwise()) {
+    }
+    if (consumer->IsElementwise()) {
       return 1.f;
     }
   }
