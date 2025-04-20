@@ -13,9 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <array>
-#include <cstdint>
-
+#include "absl/base/casts.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel_lib.cu.h"
