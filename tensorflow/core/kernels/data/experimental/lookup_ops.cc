@@ -172,7 +172,7 @@ void InitializeTableFromDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, iter.Init(ctx));
   absl::Status s =
       table->Initialize(iter, MakeDatasetInitializerSerializer(ctx, dataset));
-  if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
+  if (absl::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table already initialized from dataset.";
     return;
   }
