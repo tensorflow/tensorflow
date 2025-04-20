@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 
@@ -43,7 +44,7 @@ void* TrackingAllocator::AllocateRaw(
   if (allocator_->TracksAllocationSizes()) {
     size_t allocated_bytes = allocator_->AllocatedSize(ptr);
     {
-      mutex_lock lock(mu_);
+      absl::MutexLock lock(&mu_);
       allocated_ += allocated_bytes;
       high_watermark_ = std::max(high_watermark_, allocated_);
       total_bytes_ += allocated_bytes;
@@ -56,7 +57,7 @@ void* TrackingAllocator::AllocateRaw(
     // use the requested size as an approximation.
     size_t allocated_bytes = allocator_->AllocatedSizeSlow(ptr);
     allocated_bytes = std::max(num_bytes, allocated_bytes);
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     next_allocation_id_ += 1;
     Chunk chunk = {num_bytes, allocated_bytes, next_allocation_id_};
     in_use_.emplace(std::make_pair(ptr, chunk));
@@ -66,7 +67,7 @@ void* TrackingAllocator::AllocateRaw(
     allocations_.emplace_back(allocated_bytes, Env::Default()->NowMicros());
     ++ref_;
   } else {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     total_bytes_ += num_bytes;
     allocations_.emplace_back(num_bytes, Env::Default()->NowMicros());
     ++ref_;
@@ -87,7 +88,7 @@ void TrackingAllocator::DeallocateRaw(void* ptr) {
   if (tracks_allocation_sizes) {
     allocated_bytes = allocator_->AllocatedSize(ptr);
   } else if (track_sizes_locally_) {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     auto itr = in_use_.find(ptr);
     if (itr != in_use_.end()) {
       tracks_allocation_sizes = true;
@@ -97,7 +98,7 @@ void TrackingAllocator::DeallocateRaw(void* ptr) {
   }
   Allocator* allocator = allocator_;
   {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     if (tracks_allocation_sizes) {
       CHECK_GE(allocated_, allocated_bytes);
       allocated_ -= allocated_bytes;
@@ -117,7 +118,7 @@ bool TrackingAllocator::TracksAllocationSizes() const {
 
 size_t TrackingAllocator::RequestedSize(const void* ptr) const {
   if (track_sizes_locally_) {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     auto it = in_use_.find(ptr);
     if (it != in_use_.end()) {
       return (*it).second.requested_size;
@@ -130,7 +131,7 @@ size_t TrackingAllocator::RequestedSize(const void* ptr) const {
 
 size_t TrackingAllocator::AllocatedSize(const void* ptr) const {
   if (track_sizes_locally_) {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     auto it = in_use_.find(ptr);
     if (it != in_use_.end()) {
       return (*it).second.allocated_size;
@@ -143,7 +144,7 @@ size_t TrackingAllocator::AllocatedSize(const void* ptr) const {
 
 int64_t TrackingAllocator::AllocationId(const void* ptr) const {
   if (track_sizes_locally_) {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     auto it = in_use_.find(ptr);
     if (it != in_use_.end()) {
       return (*it).second.allocation_id;
@@ -165,7 +166,7 @@ std::tuple<size_t, size_t, size_t> TrackingAllocator::GetSizes() {
   size_t total_bytes;
   size_t still_live_bytes;
   {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     high_watermark = high_watermark_;
     total_bytes = total_bytes_;
     still_live_bytes = allocated_;
@@ -177,7 +178,7 @@ absl::InlinedVector<AllocRecord, 4UL> TrackingAllocator::GetRecordsAndUnRef() {
   bool should_delete;
   absl::InlinedVector<AllocRecord, 4UL> allocations;
   {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     allocations.swap(allocations_);
     should_delete = UnRef();
   }
@@ -190,7 +191,7 @@ absl::InlinedVector<AllocRecord, 4UL> TrackingAllocator::GetRecordsAndUnRef() {
 absl::InlinedVector<AllocRecord, 4UL> TrackingAllocator::GetCurrentRecords() {
   absl::InlinedVector<AllocRecord, 4UL> allocations;
   {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     for (const AllocRecord& alloc : allocations_) {
       allocations.push_back(alloc);
     }

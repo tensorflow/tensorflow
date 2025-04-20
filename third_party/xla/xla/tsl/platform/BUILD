@@ -429,10 +429,10 @@ cc_library(
         ":types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:cord",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:str_util",
@@ -513,13 +513,14 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:stacktrace",
         "@local_tsl//tsl/platform:str_util",
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:stringprintf",
+        "@local_tsl//tsl/platform:thread_annotations",
     ] + tf_platform_deps("status"),
 )
 
@@ -694,7 +695,6 @@ cc_library(
     deps = [
         ":types",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:mutex",
     ],
 )
 

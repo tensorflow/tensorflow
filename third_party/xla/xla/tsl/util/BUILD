@@ -167,7 +167,7 @@ cc_library(
     deps = [
         ":env_var",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = 1,
 )
@@ -241,7 +241,6 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:test_log_proto_cc",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:str_util",
     ],
 )

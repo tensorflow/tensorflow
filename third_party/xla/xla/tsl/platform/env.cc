@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/stringprintf.h"
+#include "tsl/platform/thread_annotations.h"
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -65,14 +67,14 @@ class FileSystemRegistryImpl : public FileSystemRegistry {
       std::vector<std::string>* schemes) override;
 
  private:
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
   mutable std::unordered_map<std::string, std::unique_ptr<FileSystem>> registry_
       TF_GUARDED_BY(mu_);
 };
 
 absl::Status FileSystemRegistryImpl::Register(
     const std::string& scheme, FileSystemRegistry::Factory factory) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   if (!registry_.emplace(scheme, std::unique_ptr<FileSystem>(factory()))
            .second) {
     return errors::AlreadyExists("File factory for ", scheme,
@@ -83,7 +85,7 @@ absl::Status FileSystemRegistryImpl::Register(
 
 absl::Status FileSystemRegistryImpl::Register(
     const std::string& scheme, std::unique_ptr<FileSystem> filesystem) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   if (!registry_.emplace(scheme, std::move(filesystem)).second) {
     return errors::AlreadyExists("File system for ", scheme,
                                  " already registered");
@@ -92,7 +94,7 @@ absl::Status FileSystemRegistryImpl::Register(
 }
 
 FileSystem* FileSystemRegistryImpl::Lookup(const std::string& scheme) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   const auto found = registry_.find(scheme);
   if (found == registry_.end()) {
     return nullptr;
@@ -102,7 +104,7 @@ FileSystem* FileSystemRegistryImpl::Lookup(const std::string& scheme) {
 
 absl::Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
     std::vector<std::string>* schemes) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   for (const auto& e : registry_) {
     schemes->push_back(e.first);
   }

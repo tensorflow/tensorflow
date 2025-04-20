@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/tsl/platform/windows/windows_file_system.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/load_library.h"
+#include "tsl/platform/mutex.h"
 
 #pragma comment(lib, "shlwapi.lib")
 

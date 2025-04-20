@@ -19,7 +19,7 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:thread_annotations",
     ] + if_static([
         ":traceme_recorder_impl",
