@@ -517,7 +517,8 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
     TF_ASSIGN_OR_RETURN(
         std::vector<tsl::RCReference<xla::ifrt::Array>> disassembled_array,
         input_array.DisassembleIntoSingleDeviceArrays(
-            xla::ifrt::ArrayCopySemantics::kDonateInput));
+            xla::ifrt::ArrayCopySemantics::kDonateInput,
+            xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
     int64_t device_id = hlo_sharding.GetUniqueDevice();
 
@@ -551,7 +552,8 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
   TF_ASSIGN_OR_RETURN(
       std::vector<tsl::RCReference<xla::ifrt::Array>> disassembled_array,
       input_array.DisassembleIntoSingleDeviceArrays(
-          xla::ifrt::ArrayCopySemantics::kDonateInput));
+          xla::ifrt::ArrayCopySemantics::kDonateInput,
+          xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
   if (index_domains.size() != disassembled_array.size()) {
     return absl::FailedPreconditionError(absl::StrCat(
