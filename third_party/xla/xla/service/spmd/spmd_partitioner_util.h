@@ -98,7 +98,7 @@ HloInstruction* CreateConstantBase(const Shape& shape, Literal value, T* b,
   }
   auto c = b->AddInstruction(HloInstruction::CreateConstant(
       literal_creator(std::move(value), shape.element_type())));
-  if (shape.dimensions_size() == 0) {
+  if (shape.dimensions().size() == 0) {
     return c;
   }
   return b->AddInstruction(HloInstruction::CreateBroadcast(shape, c, {}));
@@ -217,7 +217,7 @@ HloInstruction* PadToShape(HloInstruction* hlo, const Shape& padded_shape, T* b,
     return hlo;
   }
   PaddingConfig padding_config;
-  for (int64_t i = 0; i < padded_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < padded_shape.dimensions().size(); ++i) {
     auto padding_config_dim = padding_config.add_dimensions();
     padding_config_dim->set_edge_padding_low(0);
     padding_config_dim->set_interior_padding(0);
