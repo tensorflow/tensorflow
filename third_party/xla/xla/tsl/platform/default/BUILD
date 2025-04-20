@@ -174,6 +174,7 @@ cc_library(
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:stringprintf",
+        "@local_tsl//tsl/platform:thread_annotations",
         "@local_tsl//tsl/platform:tracing",
     ],
 )
@@ -192,6 +193,7 @@ cc_library(
         ":env",
         "//xla/tsl/platform:logging",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:load_library",
         "@local_tsl//tsl/platform:strcat",
