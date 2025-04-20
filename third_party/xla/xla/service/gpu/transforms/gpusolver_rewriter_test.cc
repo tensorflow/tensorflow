@@ -15,13 +15,23 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/gpusolver_rewriter.h"
 
+#include <complex>
+#include <cstdint>
+#include <memory>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/stream_executor/cuda/cuda_solver_context.h"
+#include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu_solver_context.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {
@@ -29,10 +39,85 @@ namespace {
 
 namespace m = ::xla::match;
 
+class GpuSolverContextStub : stream_executor::GpuSolverContext {
+ public:
+  GpuSolverContextStub() = default;
+  static absl::StatusOr<std::unique_ptr<GpuSolverContext>> Create() {
+    return absl::WrapUnique(
+        static_cast<GpuSolverContext*>(new GpuSolverContextStub));
+  }
+
+  absl::Status SetStream(stream_executor::Stream* stream) override {
+    return UnimplementedError();
+  }
+
+  absl::Status PotrfBatched(stream_executor::blas::UpperLower uplo, int n,
+                            stream_executor::DeviceMemory<float*> as, int lda,
+                            stream_executor::DeviceMemory<int> lapack_info,
+                            int batch_size) override {
+    return UnimplementedError();
+  }
+  absl::Status PotrfBatched(stream_executor::blas::UpperLower uplo, int n,
+                            stream_executor::DeviceMemory<double*> as, int lda,
+                            stream_executor::DeviceMemory<int> lapack_info,
+                            int batch_size) override {
+    return UnimplementedError();
+  }
+  absl::Status PotrfBatched(
+      stream_executor::blas::UpperLower uplo, int n,
+      stream_executor::DeviceMemory<std::complex<float>*> as, int lda,
+      stream_executor::DeviceMemory<int> lapack_info, int batch_size) override {
+    return UnimplementedError();
+  }
+  absl::Status PotrfBatched(
+      stream_executor::blas::UpperLower uplo, int n,
+      stream_executor::DeviceMemory<std::complex<double>*> as, int lda,
+      stream_executor::DeviceMemory<int> lapack_info, int batch_size) override {
+    return UnimplementedError();
+  }
+
+  absl::Status Potrf(stream_executor::blas::UpperLower uplo, int n,
+                     stream_executor::DeviceMemory<float> a, int lda,
+                     stream_executor::DeviceMemory<int> lapack_info,
+                     stream_executor::DeviceMemory<float> workspace) override {
+    return UnimplementedError();
+  }
+  absl::Status Potrf(stream_executor::blas::UpperLower uplo, int n,
+                     stream_executor::DeviceMemory<double> a, int lda,
+                     stream_executor::DeviceMemory<int> lapack_info,
+                     stream_executor::DeviceMemory<double> workspace) override {
+    return UnimplementedError();
+  }
+  absl::Status Potrf(
+      stream_executor::blas::UpperLower uplo, int n,
+      stream_executor::DeviceMemory<std::complex<float>> a, int lda,
+      stream_executor::DeviceMemory<int> lapack_info,
+      stream_executor::DeviceMemory<std::complex<float>> workspace) override {
+    return UnimplementedError();
+  }
+  absl::Status Potrf(
+      stream_executor::blas::UpperLower uplo, int n,
+      stream_executor::DeviceMemory<std::complex<double>> a, int lda,
+      stream_executor::DeviceMemory<int> lapack_info,
+      stream_executor::DeviceMemory<std::complex<double>> workspace) override {
+    return UnimplementedError();
+  }
+
+  absl::StatusOr<int64_t> PotrfBufferSize(
+      xla::PrimitiveType type, stream_executor::blas::UpperLower uplo, int n,
+      int lda, int batch_size) override {
+    return 0;
+  }
+
+ private:
+  static absl::Status UnimplementedError() {
+    return absl::UnimplementedError("Not needed for the unit test");
+  }
+};
+
 class GpusolverRewriterTest : public HloHardwareIndependentTestBase {
  public:
-  GpusolverRewriter gpusolver_rewriter_{
-      stream_executor::CudaSolverContext::Create};
+  GpusolverRewriter gpusolver_rewriter_{GpuSolverContextStub::Create};
 };
 
 TEST_F(GpusolverRewriterTest, CholeskyTest) {
