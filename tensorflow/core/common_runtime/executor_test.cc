@@ -439,10 +439,10 @@ TEST_F(ExecutorTest, Abort) {
     rendez_->StartAbort(errors::Aborted(""));
     rendez_->Unref();
   });
-  EXPECT_TRUE(errors::IsAborted(Run(rendez_)));
+  EXPECT_TRUE(absl::IsAborted(Run(rendez_)));
   Tensor out = V(-1);
   bool is_dead = false;
-  EXPECT_TRUE(errors::IsAborted(rendez_->Recv(
+  EXPECT_TRUE(absl::IsAborted(rendez_->Recv(
       Key(BOB, kIncarnation, ALICE, "c"), Rendezvous::Args(), &out, &is_dead)));
   // At this point there can still be pending (albeit Aborted) Send
   // closures holding Refs on rendez_.  We need to wait for them, or
@@ -467,10 +467,10 @@ TEST_F(ExecutorTest, RecvInvalidDtype) {
   TF_ASSERT_OK(rendez->Send(Key(ALICE, 1, BOB, "one"), Rendezvous::Args(),
                             VD(1.0), false));
   // Fails due to invalid dtype.
-  EXPECT_TRUE(errors::IsInternal(Run(rendez)));
+  EXPECT_TRUE(absl::IsInternal(Run(rendez)));
   Tensor output;
   bool is_dead;
-  EXPECT_TRUE(errors::IsInternal(rendez->Recv(
+  EXPECT_TRUE(absl::IsInternal(rendez->Recv(
       Key(BOB, 1, ALICE, "two"), Rendezvous::Args(), &output, &is_dead)));
   rendez->Unref();
 }
@@ -482,10 +482,10 @@ TEST_F(ExecutorTest, RecvInvalidRefDtype) {
   test::graph::Send(g.get(), var, "out", BOB, 1, ALICE);
   Create(std::move(g));
   Rendezvous* rendez = NewLocalRendezvous();
-  EXPECT_TRUE(errors::IsInternal(Run(rendez)));
+  EXPECT_TRUE(absl::IsInternal(Run(rendez)));
   Tensor output;
   bool is_dead;
-  EXPECT_TRUE(errors::IsInternal(rendez->Recv(
+  EXPECT_TRUE(absl::IsInternal(rendez->Recv(
       Key(BOB, 1, ALICE, "out"), Rendezvous::Args(), &output, &is_dead)));
   rendez->Unref();
 }
