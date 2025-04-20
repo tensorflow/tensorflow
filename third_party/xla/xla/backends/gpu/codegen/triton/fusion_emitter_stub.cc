@@ -27,16 +27,13 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
-#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
-#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -93,11 +90,6 @@ llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
   return {};
 }
 
-absl::StatusOr<mlir::triton::xla::TileOp> CreateTileOp(
-    EmitterLocOpBuilder& b, mlir::ValueRange tile_multi_index,
-    const TiledHloInstruction& tiled_hlo, mlir::Value parent_base_ptr) {
-  return absl::UnimplementedError("not supported for this build configuration");
-}
 }  // namespace ir_emitter_triton_internal
 
 }  // namespace gpu

@@ -31,8 +31,6 @@ limitations under the License.
 
 #define GET_ATTRDEF_CLASSES
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_attrs.h.inc"
-#define GET_TYPEDEF_CLASSES
-#include "xla/backends/gpu/codegen/triton/ir/triton_xla_types.h.inc"
 #define GET_OP_CLASSES
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h.inc"
 

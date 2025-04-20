@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/LLVMContext.h"
@@ -170,6 +171,101 @@ using ::xla::gpu::triton::TritonType;
 
 namespace {
 
+absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
+    EmitterLocOpBuilder& b, ValueRange tile_multi_index,
+    const TiledHloInstruction& tiled_hlo) {
+  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+                      tiled_hlo.tile_offsets_indexing());
+  return emitters::ApplyIndexing(tile_offsets_indexing,
+                                 /*dims=*/tile_multi_index, /*symbols=*/{}, b);
+}
+
+SmallVector<Value> CreateIndexValues(EmitterLocOpBuilder& builder,
+                                     const ArrayRef<int64_t>& values) {
+  SmallVector<Value> result;
+  result.reserve(values.size());
+  for (int64_t value : values) {
+    result.push_back(
+        CreateConst(builder, builder.getIndexType(), value).UnwrapScalar());
+  }
+  return result;
+}
+
+// Constructs and holds information needed to construct a tile. This information
+// is propagated to Extract/Insert ops to use them to load and store the correct
+// tiles.
+class TileInfo {
+ public:
+  static absl::StatusOr<TileInfo> Construct(
+      EmitterLocOpBuilder& b, ValueRange tile_multi_index,
+      const TiledHloInstruction& tiled_hlo);
+
+  // Tile offsets. Its size is equal to the rank of the output shape.
+  ValueRange offsets() const { return offsets_; }
+
+  // Tile strides. Its size is equal to the rank of the output shape.
+  ValueRange tile_strides() const { return tile_strides_; }
+
+  // The original shape of the tensor.
+  ArrayRef<int64_t> original_shape() const { return original_shape_; }
+
+  // Tile sizes after padding to a power of 2 (Triton requirement).
+  ArrayRef<int64_t> padded_tile_sizes() const { return padded_tile_sizes_; }
+
+  // The layout of the tensor in minor-to-major order.
+  const SmallVector<int64_t>& minor_to_major_layout() const {
+    return minor_to_major_layout_;
+  }
+
+  // The storage type of the tensor. This could be different from the element
+  // type. e.g. predicates are stored as i8 instead of i1.
+  Type storage_type() const { return storage_type_; }
+
+ private:
+  SmallVector<Value> offsets_;
+  SmallVector<Value> tile_strides_;
+  SmallVector<int64_t> original_shape_;
+  SmallVector<int64_t> padded_tile_sizes_;
+  SmallVector<int64_t> minor_to_major_layout_;
+  Type storage_type_;
+
+  explicit TileInfo(SmallVector<Value> offsets, SmallVector<Value> tile_strides,
+                    SmallVector<int64_t> original_shape,
+                    SmallVector<int64_t> padded_tile_sizes,
+                    SmallVector<int64_t> minor_to_major_layout,
+                    Type storage_type)
+      : offsets_(std::move(offsets)),
+        tile_strides_(std::move(tile_strides)),
+        original_shape_(std::move(original_shape)),
+        padded_tile_sizes_(std::move(padded_tile_sizes)),
+        minor_to_major_layout_(std::move(minor_to_major_layout)),
+        storage_type_(std::move(storage_type)) {}
+};
+
+absl::StatusOr<TileInfo> TileInfo::Construct(
+    EmitterLocOpBuilder& b, ValueRange tile_multi_index,
+    const TiledHloInstruction& tiled_hlo) {
+  TF_ASSIGN_OR_RETURN(SmallVector<Value> offsets,
+                      ComputeOffsetsForTile(b, tile_multi_index, tiled_hlo));
+
+  // Triton requires that all block dimensions are a power of 2.
+  auto padded_tile_sizes = GetPaddedTileSizes(tiled_hlo.tile_sizes());
+  SmallVector<int64_t> original_shape;
+  original_shape.assign(tiled_hlo.hlo()->shape().dimensions().begin(),
+                        tiled_hlo.hlo()->shape().dimensions().end());
+
+  const Shape& shape = tiled_hlo.hlo()->shape();
+  TF_ASSIGN_OR_RETURN(Type expected_element_type,
+                      TritonType(b, shape.element_type()));
+  auto storage_type = StorageType(expected_element_type);
+
+  auto tile_strides = CreateIndexValues(b, tiled_hlo.tile_strides());
+  auto minor_to_major_layout = llvm::to_vector(LayoutUtil::MinorToMajor(shape));
+
+  return TileInfo(offsets, tile_strides, original_shape, padded_tile_sizes,
+                  minor_to_major_layout, storage_type);
+}
+
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 
 ScalarOrTensor Broadcast(EmitterLocOpBuilder& b, TensorValue value,
@@ -184,31 +280,21 @@ ScalarOrTensor Range(EmitterLocOpBuilder& b, int32_t limit) {
 }
 
 ScalarOrTensor EmitParameterExtract(EmitterLocOpBuilder& b,
-                                    mlir::triton::xla::TileOp tile_op) {
+                                    const TileInfo& tile_info,
+                                    Value parent_base_ptr) {
   // For a pointer to a scalar or a zero-dimensional tensor, load the base
   // pointer directly. This shortcut is necessary because Triton does not
-  // support 0-D tensors. Looking for the defining make_tensor_ptr op is
-  // sufficient because pointers to 0-D tensors are never modified by e.g.
-  // `tt.advance`.
-
-  auto tiled_tensor_type =
-      mlir::dyn_cast<mtx::TiledTensorType>(tile_op.getResult().getType());
-  CHECK(tiled_tensor_type) << "Expected a TiledTensorType\n";
-
-  if (tiled_tensor_type.getTileShape().empty()) {
+  // support 0-D tensors.
+  if (tile_info.padded_tile_sizes().empty()) {
     return ScalarOrTensor(
-        b.create<mlir::tensor::ExtractOp>(tile_op.getTensor(), {}));
+        b.create<mlir::tensor::ExtractOp>(parent_base_ptr, {}));
   }
 
-  SmallVector<Value> offsets(
-      tile_op.getTiledTensor().getType().getTileShape().size(),
-      CreateConst(b, b.getIndexType(), 0).UnwrapScalar());
-
   return ScalarOrTensor(b.create<mtx::ExtractOp>(
-      mlir::RankedTensorType::get(
-          tiled_tensor_type.getTileShape(),
-          StorageType(tiled_tensor_type.getElementType())),
-      tile_op.getResult(), offsets));
+      mlir::RankedTensorType::get(tile_info.padded_tile_sizes(),
+                                  tile_info.storage_type()),
+      parent_base_ptr, tile_info.offsets(), tile_info.tile_strides(),
+      tile_info.minor_to_major_layout()));
 }
 
 absl::StatusOr<ScalarOrTensor> EmitScope(
@@ -721,19 +807,6 @@ absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder& b,
   return dot_operand_value;
 }
 
-// Computes the base pointer offset for the given tile multi-index and hlo shape
-// taking into account the physical layout of the hlo buffer.
-absl::StatusOr<SmallVector<Value>> ComputeBasePtrOffset(
-    EmitterLocOpBuilder& b, ValueRange tile_multi_index,
-    const TiledHloInstruction& tiled_hlo) {
-  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
-                      tiled_hlo.tile_offsets_indexing());
-
-  return emitters::ApplyIndexing(tile_offsets_indexing,
-                                 /*dims=*/tile_multi_index,
-                                 /*symbols=*/{}, b);
-}
-
 // Returns `shape` without all its unit dimensions, as well as the index of the
 // remaining dimensions in the original `shape`.
 std::pair<SmallVector<int64_t>, SmallVector<int64_t>> CollapseUnitDims(
@@ -1103,11 +1176,10 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     // If the fusion instruction is a user of `hlo`, then `hlo` is an operand
     // to the fusion instruction.
     int64_t arg_index = GetOutermostFusionOperandParameterIndex(fusion, hlo);
-    TF_ASSIGN_OR_RETURN(auto tile_op, ir_emitter_triton_internal::CreateTileOp(
-                                          b, tile_multi_index, tiled_hlo,
-                                          fn.getArgument(arg_index)));
-
-    ScalarOrTensor parameter = EmitParameterExtract(b, tile_op);
+    TF_ASSIGN_OR_RETURN(auto tile_info,
+                        TileInfo::Construct(b, tile_multi_index, tiled_hlo));
+    ScalarOrTensor parameter =
+        EmitParameterExtract(b, tile_info, fn.getArgument(arg_index));
 
     // Some types are stored using different types, e.g. i1 is stored in memory
     // as i8. It's important to type checking that we perform a conversion after
@@ -1339,43 +1411,6 @@ SmallVector<Value, 3> ComputeDelinearizedTileIndex(
                                  /*symbols=*/{}, b);
 }
 
-SmallVector<Value> CreateIndexValues(EmitterLocOpBuilder& builder,
-                                     const ArrayRef<int64_t>& values) {
-  SmallVector<Value> result;
-  result.reserve(values.size());
-  for (int64_t value : values) {
-    result.push_back(
-        CreateConst(builder, builder.getIndexType(), value).UnwrapScalar());
-  }
-  return result;
-}
-
-absl::StatusOr<mlir::triton::xla::TileOp> CreateTileOp(
-    EmitterLocOpBuilder& b, ValueRange tile_multi_index,
-    const TiledHloInstruction& tiled_hlo, Value parent_base_ptr) {
-  TF_ASSIGN_OR_RETURN(SmallVector<Value> ptr_offsets,
-                      ComputeBasePtrOffset(b, tile_multi_index, tiled_hlo));
-
-  // Triton requires that all block dimensions are a power of 2.
-  SmallVector<int64_t> padded_tile_sizes =
-      GetPaddedTileSizes(tiled_hlo.tile_sizes());
-
-  const Shape& shape = tiled_hlo.hlo()->shape();
-  TF_ASSIGN_OR_RETURN(Type expected_element_type,
-                      TritonType(b, shape.element_type()));
-  Type storage_type = StorageType(expected_element_type);
-  auto result_type = mtx::TiledTensorType::get(
-      b.getContext(), padded_tile_sizes,
-      llvm::ArrayRef<int64_t>(shape.dimensions().data(),
-                              shape.dimensions().size()),
-      storage_type);
-
-  return b.create<mtx::TileOp>(
-      result_type, parent_base_ptr, ptr_offsets,
-      CreateIndexValues(b, tiled_hlo.tile_strides()),
-      llvm::to_vector(LayoutUtil::MinorToMajor(shape)));
-}
-
 }  // namespace ir_emitter_triton_internal
 
 namespace {
@@ -1463,25 +1498,20 @@ absl::StatusOr<SmallVector<Value>> EmitGeneric(
 
     CHECK(root->hlo()->shape().IsArray() &&
           !root->hlo()->shape().dimensions().empty());
-    TF_ASSIGN_OR_RETURN(mlir::triton::xla::TileOp tile_op,
-                        ir_emitter_triton_internal::CreateTileOp(
-                            b, tile_multi_index, *root, parent_base_ptr));
+    TF_ASSIGN_OR_RETURN(auto tile_info,
+                        TileInfo::Construct(b, tile_multi_index, *root));
 
     // Should not be scalar at this point.
-    auto tiled_tensor_type =
-        mlir::dyn_cast<mtx::TiledTensorType>(tile_op.getResult().getType());
-    CHECK(tiled_tensor_type) << "Expected a tiled tensor type since scalars "
-                                "should've been handled at this point.";
-
-    SmallVector<Value> offsets(
-        tiled_tensor_type.getTileShape().size(),
-        CreateConst(b, b.getIndexType(), 0).UnwrapScalar());
+    CHECK(!tile_info.padded_tile_sizes().empty())
+        << "Unexpected scalar encountered. Expected padded_tile_sizes() to be "
+           "non-empty.";
 
     insert_results.push_back(
         b.create<mtx::InsertOp>(
-             mlir::RankedTensorType::get(tiled_tensor_type.getOriginalShape(),
+             mlir::RankedTensorType::get(tile_info.original_shape(),
                                          result_storage_type),
-             result.UnwrapTensor(), tile_op.getResult(), offsets)
+             result.UnwrapTensor(), parent_base_ptr, tile_info.offsets(),
+             tile_info.tile_strides(), tile_info.minor_to_major_layout())
             .getResult());
   }
 

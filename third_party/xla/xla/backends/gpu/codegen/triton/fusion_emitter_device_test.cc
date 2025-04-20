@@ -491,8 +491,7 @@ CHECK-DAG:        %[[C1:.*]] = arith.constant 1 : index
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
-CHECK-DAG:        triton_xla.tile %[[P0]][%[[PID_INDEX]], %[[C0]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>} : !triton_xla.tiled_tensor<1x128|125x127xf32>
-CHECK-NEXT:       triton_xla.extract
+CHECK-NEXT:       triton_xla.extract %[[P0]][%[[PID_INDEX]], %[[C0]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>}
 CHECK:            tt.reduce
 CHECK-NEXT:       ^bb0(%[[ARG2:[^:]*]]: f32, %[[ARG3:[^:]*]]: f32):
 CHECK-NEXT:           %[[ADD:.*]] = arith.addf %[[ARG2]], %[[ARG3]] : f32
@@ -500,8 +499,7 @@ CHECK-NEXT:           tt.reduce.return %[[ADD]] : f32
 CHECK-NEXT:       }) : (tensor<1x128xf32>) -> tensor<1xf32>
 CHECK:            arith.mulf
 CHECK-SAME:       tensor<1x128xf32>
-CHECK:            triton_xla.tile %[[P1]][%[[PID_INDEX]], %[[C0]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>} : !triton_xla.tiled_tensor<1x128|125x127xf32>
-CHECK-NEXT:       triton_xla.insert
+CHECK:            triton_xla.insert {{.*}} into %[[P1]][%[[PID_INDEX]], %[[C0]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>}
 CHECK:            return
 CHECK:        }
 )"));
@@ -553,19 +551,15 @@ CHECK-DAG:        %[[C1:.*]] = arith.constant 1 : index
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
-CHECK-DAG:        %[[TILE_0:.*]] = triton_xla.tile %[[P0]][%[[PID_INDEX]], %[[C0]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>} : !triton_xla.tiled_tensor<1x128|125x127xf32>
-CHECK-DAG:        triton_xla.extract %[[TILE_0]][%[[C0]], %[[C0]]] : tensor<125x127xf32> to tensor<1x128xf32>
-CHECK-DAG:        %[[TILE_1:.*]] = triton_xla.tile %[[P1]][%[[C0]]][%[[C1]]] {layout = array<i64:0>} : !triton_xla.tiled_tensor<128|127xf32>
-CHECK-DAG:        triton_xla.extract %[[TILE_1]][%[[C0]]] : tensor<127xf32> to tensor<128xf32>
+CHECK-DAG:        triton_xla.extract %[[P0]][%[[PID_INDEX]], %[[C0]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>} : tensor<125x127xf32> to tensor<1x128xf32>
+CHECK-DAG:        triton_xla.extract %[[P1]][%[[C0]]][%[[C1]]] {layout = array<i64:0>} : tensor<127xf32> to tensor<128xf32>
 CHECK:            tt.reduce
 CHECK-NEXT:       ^bb0(%[[ARG3:[^:]*]]: f32, %[[ARG4:[^:]*]]: f32):
 CHECK-NEXT:           %[[ADD:.*]] = arith.addf %[[ARG3]], %[[ARG4]] : f32
 CHECK-NEXT:           tt.reduce.return %[[ADD]] : f32
 CHECK-NEXT:       }) : (tensor<1x128xf32>) -> tensor<1xf32>
 CHECK:            arith.mulf
-
-CHECK-DAG:        %[[TILE_2:.*]] = triton_xla.tile %[[P2]][%[[PID_INDEX]], %[[C0]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>} : !triton_xla.tiled_tensor<1x128|125x127xf32>
-CHECK-DAG:        triton_xla.insert {{.*}} into %[[TILE_2]][%[[C0]], %[[C0]]] : tensor<1x128xf32> into tensor<125x127xf32>
+CHECK-DAG:        triton_xla.insert {{.*}} into %[[P2]][%[[PID_INDEX]], %[[C0]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>} : tensor<1x128xf32> into tensor<125x127xf32>
 )"));
 }
 
@@ -621,22 +615,15 @@ CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
 CHECK-DAG:        %[[ROW_INDEX:.*]] = xla.apply_indexing #[[MAP]](%[[PID_INDEX]]
 CHECK-DAG:        %[[COL_INDEX:.*]] = xla.apply_indexing #[[MAP1]](%[[PID_INDEX]]
-
-CHECK-DAG:        triton_xla.tile %[[P0]][%[[ROW_INDEX]], %[[COL_INDEX]], %[[C0]]][%[[C1]], %[[C1]], %[[C1]]] {layout = array<i64:2, 1, 0>} : !triton_xla.tiled_tensor<1x1x128|10x125x127xf32>
-CHECK-NEXT:       triton_xla.extract {{.*}} : tensor<10x125x127xf32> to tensor<1x1x128xf32>
-CHECK-DAG:        triton_xla.tile %[[P1]][%[[C0]]][%[[C1]]] {layout = array<i64:0>} : !triton_xla.tiled_tensor<128|127xf32>
-CHECK-NEXT:       triton_xla.extract {{.*}} : tensor<127xf32> to tensor<128xf32>
-
-CHECK-DAG:        triton_xla.tile %[[P2]][%[[ROW_INDEX]], %[[COL_INDEX]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>} : !triton_xla.tiled_tensor<1x1|10x125xf32>
-CHECK-NEXT:       triton_xla.extract {{.*}} : tensor<10x125xf32> to tensor<1x1xf32>
+CHECK:            triton_xla.extract %[[P0]][%[[ROW_INDEX]], %[[COL_INDEX]], %[[C0]]][%[[C1]], %[[C1]], %[[C1]]] {layout = array<i64:2, 1, 0>} : tensor<10x125x127xf32> to tensor<1x1x128xf32>
+CHECK:            triton_xla.extract %[[P1]][%[[C0]]][%[[C1]]] {layout = array<i64:0>} : tensor<127xf32> to tensor<128xf32>
+CHECK:            triton_xla.extract %[[P2]][%[[ROW_INDEX]], %[[COL_INDEX]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>} : tensor<10x125xf32> to tensor<1x1xf32>
 CHECK:            tt.reduce
 CHECK-NEXT:       ^bb0(%[[ARG4:[^:]*]]: f32, %[[ARG5:[^:]*]]: f32):
 CHECK-NEXT:           %[[MAX:.*]] = arith.maximumf %[[ARG4]], %[[ARG5]] : f32
 CHECK-NEXT:           tt.reduce.return %[[MAX]] : f32
 CHECK-NEXT:       }) : (tensor<1x1x128xf32>) -> tensor<1x1xf32>
-
-CHECK-DAG:        triton_xla.tile %[[P3]][%[[ROW_INDEX]], %[[COL_INDEX]], %[[C0]]][%[[C1]], %[[C1]], %[[C1]]] {layout = array<i64:2, 1, 0>} : !triton_xla.tiled_tensor<1x1x128|10x125x127xf32>
-CHECK-NEXT:       triton_xla.insert {{.*}} : tensor<1x1x128xf32> into tensor<10x125x127xf32>
+CHECK:            triton_xla.insert {{.*}} into %[[P3]][%[[ROW_INDEX]], %[[COL_INDEX]], %[[C0]]][%[[C1]], %[[C1]], %[[C1]]] {layout = array<i64:2, 1, 0>} : tensor<1x1x128xf32> into tensor<10x125x127xf32>
 )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
@@ -2154,8 +2141,8 @@ CHECK-DAG:  %[[C8:.*]] = arith.constant 8 : i64
 CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : i64
 CHECK:      {{.*}} = scf.for {{.*}} = %[[C0]] to %[[C8]] step %[[C1]]
 CHECK-SAME: iter_args({{.*}}) -> (tensor<16x64xf32>)  : i64 {
-CHECK-DAG:  triton_xla.tile %[[ARG0]]
-CHECK-DAG:  triton_xla.tile %[[ARG1]]
+CHECK-DAG:  triton_xla.extract %[[ARG0]]
+CHECK-DAG:  triton_xla.extract %[[ARG1]]
 CHECK-DAG:  arith.subf {{.*}} : tensor<16x32xf32>
 CHECK-DAG:  math.absf {{.*}} : tensor<32x64xf32>
 CHECK-DAG:  tt.dot {{.*}} tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32>

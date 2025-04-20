@@ -55,24 +55,6 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
-    name = "triton_xla_types_inc_gen",
-    strip_include_prefix = ".",
-    tbl_outs = {
-        "triton_xla_types.h.inc": [
-            "-gen-typedef-decls",
-            "-typedefs-dialect=triton_xla",
-        ],
-        "triton_xla_types.cc.inc": [
-            "-gen-typedef-defs",
-            "-typedefs-dialect=triton_xla",
-        ],
-    },
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "triton_xla_types.td",
-    deps = [":triton_xla_td_files"],
-)
-
-gentbl_cc_library(
     name = "triton_xla_attrs_inc_gen",
     strip_include_prefix = ".",
     tbl_outs = {
@@ -99,14 +81,12 @@ cc_library(
         "triton_xla_attrs.cc",
         "triton_xla_dialect.cc",
         "triton_xla_ops.cc",
-        "triton_xla_types.cc",
     ],
     hdrs = ["triton_xla_ops.h"],
     deps = [
         ":triton_xla_attrs_inc_gen",
         ":triton_xla_dialect_inc_gen",
         ":triton_xla_ops_inc_gen",
-        ":triton_xla_types_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
