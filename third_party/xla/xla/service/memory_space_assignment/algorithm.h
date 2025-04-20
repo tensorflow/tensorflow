@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
 #include "xla/service/memory_space_assignment/slice.h"
+#include "xla/service/memory_space_assignment/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -312,8 +313,6 @@ class MsaInstructionFingerprint {
 // method which is overridden in this class.
 class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
-  using HloPositionOrUse = std::variant<HloPosition, HloUse>;
-
   MsaAlgorithm(AllocationSequence* allocations, const Options& options,
                const HloAliasAnalysis& alias_analysis,
                const HloLiveRange& hlo_live_range);
@@ -383,6 +382,24 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   struct RepackAllocationBlock : AllocationBlock {
     Allocation* allocation;
   };
+
+  struct ColoredAllocationRequestProperties {
+    // Indicates if the AllocationRequest is for allocating the buffer output
+    // (given by request.start_time == definition_time of the buffer) and the
+    // output has an alternate memory color requirement.
+    bool require_start_colored_in_alternate_memmory = false;
+    // Indicates if the use has an alternate memory color requirement.
+    bool require_end_colored_in_alternate_memory = false;
+    // Indicates if the AllocationRequest is for allocating the buffer output
+    // (given by request.start_time == definition_time of the buffer) and the
+    // output has a default memory color requirement.
+    bool require_start_colored_in_default_memory = false;
+    // Indicates if the use has a default memory color requirement.
+    bool require_end_colored_in_default_memory = false;
+
+    ColoredAllocationRequestProperties() = default;
+  };
+
   // This struct contains mandatory memory assignments at a given time. E.g., an
   // input's required memory assignment time would correspond to the definition
   // time of the parameter instruction, and an output's time would correspond to
@@ -755,17 +772,30 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   AllocationResult AllocateInAlternateMemoryNoCopy(
       const AllocationRequest& request);
 
-  // Try evicting to default memory space.
-  AllocationResult Evict(const AllocationRequest& request);
+  // Try allocating in alternate memory for the minimum time possible.
+  AllocationResult ForceAlternateMemoryAllocationForMinTime(
+      const AllocationRequest& request);
+
+  // Try evicting to default memory space. If force_evict is true, we will
+  // evict even if the resource constraints for an eviction are not met.
+  AllocationResult Evict(const AllocationRequest& request,
+                         bool force_evict = false);
 
   // Returns the time a copy done of a prefetch should be scheduled.
   int64_t FindPrefetchEndTime(const AllocationRequest& request,
                               int64_t earliest_prefetch_time) const;
 
-  // Try prefetching to alternate memory space.
+  // Try prefetching to alternate memory space. If force_prefetch is true, we
+  // will prefetch even if the resource constraints for a prefetch are not met.
   AllocationResult Prefetch(const AllocationRequest& request,
                             Allocation& prev_allocation_in_default_mem,
-                            const Shape* shape = nullptr);
+                            const Shape* shape = nullptr,
+                            bool force_prefetch = false);
+
+  // Prefetch to alternate memory iff the resource constraints are met.
+  AllocationResult PrefetchWithResourceConstraints(
+      const AllocationRequest& request,
+      Allocation& prev_allocation_in_default_mem, const Shape* shape = nullptr);
 
   // Helper methods used to implement Prefetch().
   //
@@ -1082,6 +1112,22 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   void MaybeSplitAllocationValues(
       absl::Span<AllocationValue> allocation_values);
 
+  // Processes the buffer uses that have been colored. Note: Defining position
+  // of a buffer is also considered as a use that can be colored.
+  absl::Status ProcessColoredBuffers();
+
+  // Removes the reserved chunk from the interval_tree_ for the given
+  // allocation (if it is still reserved) and removes the corresponding
+  // RepackAllocationBlock from repack_allocation_blocks_.
+  void ReleaseReservedAllocationForAlternateMemoryColorings(
+      ReservedAllocation* allocation);
+
+  // Returns the coloring properties associated with the given allocation
+  // request. For all the reserved allocations associated with the request,
+  // marks them as free and removes the reserved chunk from interval_tree_.
+  ColoredAllocationRequestProperties
+  UpdateReservedAllocationsAndGetColoringProperties(AllocationRequest& request);
+
   AllocationSequence* allocations_;
   const Options& options_;
   const HloAliasAnalysis& alias_analysis_;
@@ -1169,6 +1215,17 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   std::string buffer_info_str_;
   std::string allocation_info_str_;
   std::string instruction_schedule_str_;
+
+  // Maps an HloPosition to the chunk intervals that are reserved for it in
+  // alternate memory, in order to satisfy buffer coloring requirements.
+  absl::flat_hash_map<HloPosition,
+                      std::vector<std::unique_ptr<ReservedAllocation>>>
+      reserved_allocations_for_alt_mem_colorings_;
+
+  // Maps an HloPosition to the list of times it is required to be in
+  // default memory, to meet buffer coloring requirements.
+  absl::flat_hash_map<HloPosition, std::vector<int64_t>>
+      default_memory_coloring_requirements_;
 };
 
 }  // namespace memory_space_assignment

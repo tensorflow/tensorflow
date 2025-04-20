@@ -78,6 +78,7 @@ using DetermineSplitDimensionFunction =
 using BitcastSplitFn = std::function<absl::StatusOr<int64_t>(
     const HloInstruction* instruction, int64_t split_dim)>;
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
+using HloPositionOrUse = std::variant<HloPosition, HloUse>;
 
 // MSA allows for custom post-allocation transformations. When a post-allocation
 // transformation is performed on an instruction, this result is returned. It
@@ -102,6 +103,12 @@ struct PostAllocationTransformationUpdate {
 enum class WindowPrefetchMode {
   kWindowExposure,
   kWindowPrefetch,
+};
+
+// A struct to specify the memory space coloring of a buffer position or use.
+struct BufferColoring {
+  HloPositionOrUse buffer_position_or_use;  // Buffer position or use to color.
+  int64_t memory_space;                     // How to color the buffer.
 };
 
 // The different options to be passed to the Run() API.
@@ -380,6 +387,8 @@ struct Options {
   ExpandedScopedAlternateMemoryMode::Value
       expanded_scoped_alternate_memory_mode =
           ExpandedScopedAlternateMemoryMode::DISABLED;
+
+  std::vector<BufferColoring> buffer_colorings;
 };
 
 }  // namespace memory_space_assignment
