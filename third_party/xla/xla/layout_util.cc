@@ -205,8 +205,8 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
 }
 
 /* static */ void LayoutUtil::SetToDefaultLayout(ProgramShape* program_shape) {
-  for (auto& parameter_shape : *program_shape->mutable_parameters()) {
-    LayoutUtil::SetToDefaultLayout(&parameter_shape);
+  for (int i = 0; i < program_shape->parameters_size(); ++i) {
+    LayoutUtil::SetToDefaultLayout(program_shape->mutable_parameters(i));
   }
   LayoutUtil::SetToDefaultLayout(program_shape->mutable_result());
 }
@@ -424,8 +424,8 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
 }
 
 /* static */ void LayoutUtil::ClearLayout(ProgramShape* program_shape) {
-  for (auto& parameter_shape : *program_shape->mutable_parameters()) {
-    LayoutUtil::ClearLayout(&parameter_shape);
+  for (int i = 0; i < program_shape->parameters_size(); ++i) {
+    LayoutUtil::ClearLayout(program_shape->mutable_parameters(i));
   }
   LayoutUtil::ClearLayout(program_shape->mutable_result());
 }

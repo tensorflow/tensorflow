@@ -656,58 +656,51 @@ class ProgramShape {
 
   std::string ToString() const;
 
-  // The following methods mirror the protobuf generated code interface for the
-  // message ProgramShapeProto. This enabled easy migration of this data
-  // structure from a proto to a proper C++ class.
-  // TODO(b/29771030): Replace or augment these methods with a more ergonomic
-  // interface.
-
   // Methods for accessing and manipulating the Shape of the parameters.
   int parameters_size() const { return parameters_.size(); }
   const Shape& parameters(int index) const { return parameters_[index]; }
-  Shape* mutable_parameters(int index) { return &parameters_[index]; }
   Shape* add_parameters() {
     parameters_.emplace_back();
     return &parameters_.back();
   }
-  void clear_parameters() { parameters_.clear(); }
+  Shape* mutable_parameters(int index) { return &parameters_[index]; }
+  void AddParameter(Shape shape, std::string name) {
+    parameters_.push_back(std::move(shape));
+    parameter_names_.push_back(std::move(name));
+  }
+
+  void clear_parameters() {
+    parameters_.clear();
+    parameter_names_.clear();
+  }
   const std::vector<Shape>& parameters() const { return parameters_; }
-  std::vector<Shape>* mutable_parameters() { return &parameters_; }
 
   // Methods for accessing and manipulating the Shape of the result.
   const Shape& result() const { return result_; }
   Shape* mutable_result() { return &result_; }
 
   // Methods for accessing and manipulating the names of the parameters.
-  int parameter_names_size() const { return parameter_names_.size(); }
   const std::string& parameter_names(int index) const {
     return parameter_names_[index];
   }
   void set_parameter_names(int index, const std::string& value) {
     parameter_names_[index] = value;
   }
-  std::string* mutable_parameter_names(int index) {
-    return &parameter_names_[index];
+  void clear_parameter_names() {
+    for (auto& name : parameter_names_) {
+      name.clear();
+    }
   }
-  void add_parameter_names(const std::string& value) {
-    parameter_names_.push_back(value);
-  }
-  std::string* add_parameter_names() {
-    parameter_names_.push_back("");
-    return &parameter_names_.back();
-  }
-  void clear_parameter_names() { parameter_names_.clear(); }
   const std::vector<std::string>& parameter_names() const {
     return parameter_names_;
-  }
-  std::vector<std::string>* mutable_parameter_names() {
-    return &parameter_names_;
   }
 
   std::string ShortDebugString() const { return ToProto().ShortDebugString(); }
   std::string DebugString() const { return ToProto().DebugString(); }
 
  private:
+  // Invariant: parameters_ and parameter_names_ have the same size.
+
   // The shapes of the parameters of the computation represented by this object.
   std::vector<Shape> parameters_;
 
