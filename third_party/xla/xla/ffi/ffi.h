@@ -110,7 +110,7 @@ class AnyBuffer {
  public:
   using Dimensions = absl::Span<const int64_t>;
 
-  explicit AnyBuffer(absl::Nonnull<const XLA_FFI_Buffer*> buf) : buf_(buf) {
+  explicit AnyBuffer(const XLA_FFI_Buffer* absl_nonnull buf) : buf_(buf) {
     DCHECK(buf_ != nullptr) << "XLA_FFI_Buffer must be non-null";
   }
 
@@ -165,7 +165,7 @@ class Buffer {
  public:
   using Dimensions = AnyBuffer::Dimensions;
 
-  explicit Buffer(absl::Nonnull<const XLA_FFI_Buffer*> buf) : buf_(buf) {
+  explicit Buffer(const XLA_FFI_Buffer* absl_nonnull buf) : buf_(buf) {
     DCHECK(buf_ != nullptr) << "XLA_FFI_Buffer must be non-null";
   }
 

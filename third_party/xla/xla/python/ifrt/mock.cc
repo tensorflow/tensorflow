@@ -113,7 +113,7 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
       .WillByDefault(
           [this](const void* data, DType dtype, Shape shape,
                  std::optional<absl::Span<const int64_t>> byte_strides,
-                 absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+                 absl_nonnull std::shared_ptr<const Sharding> sharding,
                  HostBufferSemantics semantics,
                  std::function<void()> on_done_with_host_buffer,
                  tsl::RCReference<UserContext> user_context) {
@@ -141,7 +141,7 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, AssembleArrayFromSingleDeviceArrays(_, _, _, _, _, _))
       .WillByDefault(
           [this](DType dtype, Shape shape,
-                 absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+                 absl_nonnull std::shared_ptr<const Sharding> sharding,
                  absl::Span<tsl::RCReference<Array>> arrays,
                  ArrayCopySemantics array_copy_semantics,
                  SingleDeviceShardSemantics single_device_shard_semantics) {
