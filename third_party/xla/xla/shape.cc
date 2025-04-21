@@ -491,13 +491,21 @@ ProgramShape& ProgramShape::operator=(const ProgramShape&) = default;
 ProgramShape& ProgramShape::operator=(ProgramShape&&) = default;
 
 ProgramShape::ProgramShape(const ProgramShapeProto& program_shape_proto) {
-  for (const ShapeProto& shape_proto : program_shape_proto.parameters()) {
-    *add_parameters() = Shape(shape_proto);
+  const int num_params = program_shape_proto.parameters_size();
+  const int num_param_names = program_shape_proto.parameter_names_size();
+  if (num_params != num_param_names) {
+    LOG(ERROR) << "ProgramShapeProto has different numbers of parameters and "
+                  "parameter names: "
+               << num_params << " vs " << num_param_names;
+  }
+  parameters_.reserve(num_params);
+  parameter_names_.reserve(num_params);
+  for (int i = 0; i < num_params; ++i) {
+    const std::string& name =
+        i < num_param_names ? program_shape_proto.parameter_names(i) : "";
+    AddParameter(Shape(program_shape_proto.parameters(i)), name);
   }
   *mutable_result() = Shape(program_shape_proto.result());
-  for (const std::string& name : program_shape_proto.parameter_names()) {
-    add_parameter_names(name);
-  }
 }
 
 ProgramShapeProto ProgramShape::ToProto() const {

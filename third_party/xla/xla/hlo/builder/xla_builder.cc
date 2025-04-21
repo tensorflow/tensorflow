@@ -584,8 +584,7 @@ absl::StatusOr<ProgramShape> XlaBuilder::GetProgramShape(
   // shapes and names to the program shape.
   const int64_t param_count = parameter_numbers_.size();
   for (int64_t i = 0; i < param_count; i++) {
-    program_shape.add_parameters();
-    program_shape.add_parameter_names();
+    program_shape.AddParameter(Shape(), "");
   }
   for (const HloInstructionProto& instr : instructions_) {
     // Parameter number uniqueness is guaranteed in XlaBuilder::Parameter(). So
@@ -596,7 +595,7 @@ absl::StatusOr<ProgramShape> XlaBuilder::GetProgramShape(
       TF_RET_CHECK(index >= 0 && index < param_count)
           << "invalid parameter number: " << index;
       *program_shape.mutable_parameters(index) = Shape(instr.shape());
-      *program_shape.mutable_parameter_names(index) = instr.name();
+      program_shape.set_parameter_names(index, instr.name());
     }
   }
   return program_shape;

@@ -3964,13 +3964,12 @@ class ScatterShapeInferenceTest
     Shape& result = *program_shape.mutable_result();
     result = ShapeUtil::MakeNil();
     result.mutable_tuple_shapes()->reserve(types.size());
-    program_shape.mutable_parameters()->reserve(types.size() * 2);
     for (PrimitiveType type : types) {
-      *program_shape.add_parameters() = scalar(type);
+      program_shape.AddParameter(scalar(type), "");
       *result.add_tuple_shapes() = scalar(type);
     }
     for (PrimitiveType type : types) {
-      *program_shape.add_parameters() = scalar(type);
+      program_shape.AddParameter(scalar(type), "");
     }
     return program_shape;
   }
