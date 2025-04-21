@@ -256,7 +256,7 @@ class TileAssignment {
   const Array<int64_t>& array() const;
   // Similar to array() but returns the underlying shared_ptr to avoid deep
   // copy.
-  const std::shared_ptr<const Array<int64_t>>& shared_array() const;
+  std::shared_ptr<const Array<int64_t>> shared_array() const;
   // Makes a deep copy of shared_array().
   std::shared_ptr<Array<int64_t>> shared_array_clone() const;
 
@@ -282,7 +282,7 @@ class TileAssignment {
   void MaybeMaterializeFullArray() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   static const Array<int64_t>* ReplicatedArray() {
-    static auto* const array = new Array<int64_t>({0});
+    static const auto* const array = new Array<int64_t>({0});
     return array;
   }
 
@@ -292,7 +292,7 @@ class TileAssignment {
   // If iota_ is set, shared_array_ is a lazy cache of the materialized array.
   mutable std::shared_ptr<const Array<int64_t>> shared_array_
       ABSL_GUARDED_BY(mu_);
-  // Pointer to the storage of the fully materialized array format.
+  // Pointer to the storage of the fully materialized array format. Not owned.
   mutable const Array<int64_t>* array_ ABSL_GUARDED_BY(mu_) = nullptr;
 };
 

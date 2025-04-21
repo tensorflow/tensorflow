@@ -399,16 +399,26 @@ TileAssignment::TileAssignment(TileAssignment&& other) {
 }
 
 TileAssignment& TileAssignment::operator=(const TileAssignment& other) {
+  if (this == &other) {
+    // Nothing to do for self-assignment.
+    return *this;
+  }
   iota_ = other.iota_;
   absl::MutexLock other_lock(&other.mu_);
+  absl::MutexLock lock(&mu_);
   shared_array_ = other.shared_array_;
   array_ = other.array_;
   return *this;
 }
 
 TileAssignment& TileAssignment::operator=(TileAssignment&& other) {
-  iota_ = other.iota_;
+  if (this == &other) {
+    // Nothing to do for self-assignment.
+    return *this;
+  }
+  iota_ = std::move(other.iota_);
   absl::MutexLock other_lock(&other.mu_);
+  absl::MutexLock lock(&mu_);
   shared_array_ = std::move(other.shared_array_);
   array_ = other.array_;
   return *this;
@@ -532,8 +542,7 @@ const Array<int64_t>& TileAssignment::array() const {
   MaybeMaterializeFullArray();
   return *array_;
 }
-const std::shared_ptr<const Array<int64_t>>& TileAssignment::shared_array()
-    const {
+std::shared_ptr<const Array<int64_t>> TileAssignment::shared_array() const {
   absl::MutexLock lock(&mu_);
   MaybeMaterializeFullArray();
   return shared_array_;
