@@ -85,7 +85,6 @@ xla_test(
             "//xla:shape_util",
             "//xla/ffi",
             "//xla/ffi:ffi_api",
-            "//xla/tests:hlo_test_base",
             "@com_google_absl//absl/algorithm:container",
             "@com_google_absl//absl/status",
             "@local_tsl//tsl/platform:test",
