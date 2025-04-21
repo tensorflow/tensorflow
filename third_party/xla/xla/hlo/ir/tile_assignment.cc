@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/printer.h"
@@ -383,6 +384,36 @@ int64_t IotaTileAssignment::value_at(absl::Span<const int64_t> index) const {
   return value;
 }
 
+TileAssignment::TileAssignment(const TileAssignment& other) {
+  iota_ = other.iota_;
+  absl::MutexLock other_lock(&other.mu_);
+  shared_array_ = other.shared_array_;
+  array_ = other.array_;
+}
+
+TileAssignment::TileAssignment(TileAssignment&& other) {
+  absl::MutexLock other_lock(&other.mu_);
+  iota_ = other.iota_;
+  shared_array_ = std::move(other.shared_array_);
+  array_ = other.array_;
+}
+
+TileAssignment& TileAssignment::operator=(const TileAssignment& other) {
+  iota_ = other.iota_;
+  absl::MutexLock other_lock(&other.mu_);
+  shared_array_ = other.shared_array_;
+  array_ = other.array_;
+  return *this;
+}
+
+TileAssignment& TileAssignment::operator=(TileAssignment&& other) {
+  iota_ = other.iota_;
+  absl::MutexLock other_lock(&other.mu_);
+  shared_array_ = std::move(other.shared_array_);
+  array_ = other.array_;
+  return *this;
+}
+
 bool TileAssignment::operator==(const TileAssignment& other) const {
   if (iota_ && other.iota_) {
     return *iota_ == *other.iota_;
@@ -391,37 +422,55 @@ bool TileAssignment::operator==(const TileAssignment& other) const {
 }
 
 int64_t TileAssignment::operator()(absl::Span<const int64_t> indexes) const {
+  absl::MutexLock lock(&mu_);
   return array_ ? (*array_)(indexes) : iota_->value_at(indexes);
 }
 
 absl::Span<const int64_t> TileAssignment::dimensions() const {
+  absl::MutexLock lock(&mu_);
   return array_ ? array_->dimensions() : iota_->dims();
 }
 
 int64_t TileAssignment::num_dimensions() const {
+  absl::MutexLock lock(&mu_);
   return array_ ? array_->num_dimensions() : iota_->ndims();
 }
 
 int64_t TileAssignment::dim(int64_t n) const {
+  absl::MutexLock lock(&mu_);
   return array_ ? array_->dim(n) : iota_->dim(n);
 }
 int64_t TileAssignment::num_elements() const {
+  absl::MutexLock lock(&mu_);
   return array_ ? array_->num_elements() : iota_->num_elements();
 }
 
-int64_t TileAssignment::first() const { return array_ ? *array_->begin() : 0; }
+int64_t TileAssignment::first() const {
+  absl::MutexLock lock(&mu_);
+  return array_ ? *array_->begin() : 0;
+}
 
 void TileAssignment::Each(
     absl::FunctionRef<void(absl::Span<const int64_t>, int64_t)> f) const {
-  MaybeMaterializeFullArray();
-  array_->Each(f);
+  Array<int64_t> const* array;
+  {
+    absl::MutexLock lock(&mu_);
+    MaybeMaterializeFullArray();
+    array = array_;
+  }
+  array->Each(f);
 }
 
 absl::Status TileAssignment::EachStatus(
     absl::FunctionRef<absl::Status(absl::Span<const int64_t>, int64_t)> f)
     const {
-  MaybeMaterializeFullArray();
-  return array_->EachStatus(f);
+  Array<int64_t> const* array;
+  {
+    absl::MutexLock lock(&mu_);
+    MaybeMaterializeFullArray();
+    array = array_;
+  }
+  return array->EachStatus(f);
 }
 
 [[nodiscard]] TileAssignment TileAssignment::Reshape(
@@ -433,7 +482,7 @@ absl::Status TileAssignment::EachStatus(
                            iota_->transpose_perm()),
         /*shared_array=*/nullptr);
   }
-  auto reshaped = std::make_shared<Array<int64_t>>(*array_);
+  std::shared_ptr<Array<int64_t>> reshaped = shared_array_clone();
   reshaped->Reshape(new_dimensions);
   return TileAssignment(std::move(reshaped));
 }
@@ -479,16 +528,19 @@ bool TileAssignment::UsesDevice(int64_t device) const {
 }
 
 const Array<int64_t>& TileAssignment::array() const {
+  absl::MutexLock lock(&mu_);
   MaybeMaterializeFullArray();
   return *array_;
 }
 const std::shared_ptr<const Array<int64_t>>& TileAssignment::shared_array()
     const {
+  absl::MutexLock lock(&mu_);
   MaybeMaterializeFullArray();
   return shared_array_;
 }
 
 std::shared_ptr<Array<int64_t>> TileAssignment::shared_array_clone() const {
+  absl::MutexLock lock(&mu_);
   MaybeMaterializeFullArray();
   return std::make_shared<Array<int64_t>>(*array_);
 }
