@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -101,9 +102,11 @@ TEST_F(CompositeTest, TestXNNPACKDelegation) {
                                    interpreter_->subgraph(1));
 
   const auto opt = TfLiteXNNPackDelegateOptionsDefault();
-  TfLiteDelegate* xnnpack_delegate = TfLiteXNNPackDelegateCreate(&opt);
+  std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)> xnnpack_delegate(
+      TfLiteXNNPackDelegateCreate(&opt), TfLiteXNNPackDelegateDelete);
   interpreter_->primary_subgraph().MarkAsDelegationSkippable();
-  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(xnnpack_delegate), kTfLiteOk);
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(std::move(xnnpack_delegate)),
+            kTfLiteOk);
   ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {2, 3}),
             kTfLiteOk);
   ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {2, 3}),
@@ -131,7 +134,6 @@ TEST_F(CompositeTest, TestXNNPACKDelegation) {
 
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
-  TfLiteXNNPackDelegateDelete(xnnpack_delegate);
 }
 
 }  // namespace
