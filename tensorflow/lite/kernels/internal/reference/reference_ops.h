@@ -77,6 +77,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/select.h"
 #include "tensorflow/lite/kernels/internal/reference/slice.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
+#include "tensorflow/lite/kernels/internal/reference/softsign.h"
 #include "tensorflow/lite/kernels/internal/reference/space_to_batch_nd.h"
 #include "tensorflow/lite/kernels/internal/reference/space_to_depth.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"

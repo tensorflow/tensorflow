@@ -3375,6 +3375,44 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   }];
 }
 
+def TFL_SoftsignOp : TFL_Op<"softsign", [
+    Pure,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_OperandHasRankAtLeast<0, 1>,
+    SameOperandsAndResultShape,
+    QuantizableResult,
+    FixedOutputRangeInterface,
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
+  let summary = "Softsign operator";
+
+  let description = [{
+    Computes element-wise softsign activations with the following formula
+
+      input / (abs(input) + 1)
+  }];
+
+  let arguments = (
+    ins TFL_TensorOf<[F32]>:$input
+  );
+
+  let results = (outs TFL_TensorOf<[F32]>:$output);
+
+  let extraClassDeclaration = [{
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    if (bit_width != 8 && bit_width != 16) { return nullptr; }
+    auto result_type = getOutput().getType();
+    // zero_point = 0
+    // scale = 1. / (max_value + 1)
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/1.0 / (bit_width == 8 ? (1<<(bit_width)) : (1<<(bit_width-1))),
+        /*zero_point=*/bit_width == 8 ? -(1<<(bit_width-1)): 0);
+  }
+  }];
+}
+
 def TFL_SqrtOp: TFL_Op<"sqrt", [
     Pure,
     TF_SameOperandsAndResultTypeResolveRef]> {

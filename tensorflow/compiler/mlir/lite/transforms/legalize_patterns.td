@@ -312,6 +312,7 @@ def LegalizeSlice : Pat<(TF_SliceOp $input, $begin, $size),
                         (TFL_SliceOp $input, $begin, $size)>;
 def LegalizeSoftmax : Pat<(TF_SoftmaxOp $arg),
                           (TFL_SoftmaxOp $arg, ConstF32Attr<"1.0">)>;
+def LegalizeSofsign : Pat<(TF_SoftsignOp $arg), (TFL_SoftsignOp $arg)>;
 def LegalizeSoftPlus : Pat<(TF_SoftplusOp F32Tensor:$arg0),
     (TFL_LogOp (TFL_AddOp (TFL_ExpOp $arg0),
                 (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
