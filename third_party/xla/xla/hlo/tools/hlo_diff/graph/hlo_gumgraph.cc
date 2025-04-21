@@ -110,8 +110,9 @@ absl::Status HloGumgraph::ConstructGraph(const HloModule& hlo_module) {
               if (parent == nullptr || child == nullptr) {
                 return absl::InternalError(absl::StrFormat(
                     "Called computation instruction (%s) operand not found "
-                    "in the called computation: %s parameters",
-                    child->GetName(), parent->GetName()));
+                    "in the called computation: %s parameters (%dth parameter)",
+                    child == nullptr ? "nullptr" : child->GetName(),
+                    parent == nullptr ? "nullptr" : parent->GetName(), i));
               }
               AddEdge(parent, child);
             }
