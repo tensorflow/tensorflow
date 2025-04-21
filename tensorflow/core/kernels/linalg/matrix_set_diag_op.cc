@@ -15,6 +15,9 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#include <algorithm>
+#include <cstdint>
+#include <tuple>
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
