@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -238,30 +237,18 @@ absl::Status RunAllToAll(GpuCollectives* collectives, bool has_split_dimension,
       }
     }
 
-    auto event =
-        comm->AllToAll(send_buffers, recv_buffers, element_type,
-                       chunk_element_count, GpuCollectives::On(stream));
+    return comm->AllToAll(send_buffers, recv_buffers, element_type,
+                          chunk_element_count, GpuCollectives::On(stream));
 
-    tsl::BlockUntilReady(event);
-    if (event.IsError()) {
-      return event.GetError();
-    }
   } else {
     for (const DeviceBufferPair& buffer : buffers) {
       send_buffers.push_back(buffer.source_buffer);
       recv_buffers.push_back(buffer.destination_buffer);
     }
 
-    auto event = comm->AllToAll(send_buffers, recv_buffers, element_type,
-                                element_count, GpuCollectives::On(stream));
-
-    tsl::BlockUntilReady(event);
-    if (event.IsError()) {
-      return event.GetError();
-    }
+    return comm->AllToAll(send_buffers, recv_buffers, element_type,
+                          element_count, GpuCollectives::On(stream));
   }
-
-  return absl::OkStatus();
 }
 
 static absl::Status SendPtrToPeer(void* ptr, RankId peer, Communicator* comm,
@@ -270,15 +257,8 @@ static absl::Status SendPtrToPeer(void* ptr, RankId peer, Communicator* comm,
       "RecvPtrFromPeer on device #%d; peer=%d; comm=%p; stream=%p",
       stream.parent()->device_ordinal(), peer.value(), comm, &stream);
 
-  auto event = comm->Send(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1,
-                          peer, GpuCollectives::On(stream));
-
-  tsl::BlockUntilReady(event);
-  if (event.IsError()) {
-    return event.GetError();
-  }
-
-  return absl::OkStatus();
+  return comm->Send(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1, peer,
+                    GpuCollectives::On(stream));
 }
 
 static absl::Status RecvPtrFromPeer(void* ptr, RankId peer, Communicator* comm,
@@ -287,15 +267,8 @@ static absl::Status RecvPtrFromPeer(void* ptr, RankId peer, Communicator* comm,
       "RecvPtrFromPeer on device #%d; peer=%d; comm=%p; stream=%p",
       stream.parent()->device_ordinal(), peer.value(), comm, &stream);
 
-  auto event = comm->Recv(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1,
-                          peer, GpuCollectives::On(stream));
-
-  tsl::BlockUntilReady(event);
-  if (event.IsError()) {
-    return event.GetError();
-  }
-
-  return absl::OkStatus();
+  return comm->Recv(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1, peer,
+                    GpuCollectives::On(stream));
 }
 
 // TODO(b/380457503): Memcpy AllToAll implementation must be moved to

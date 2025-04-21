@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
@@ -90,25 +89,14 @@ ReduceScatterThunk::Execute(const ExecuteParams& params) {
       [&](const RendezvousKey& key, Communicator& comm) {
         CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
 
-        tsl::CountDownAsyncValueRef<Communicator::Event> state(
-            data.source.size());
-
         for (int32_t i = 0; i < data.source.size(); ++i) {
           const Shape& shape = destination_shape(i);
-          auto communicator_event = comm.ReduceScatter(
+          TF_RETURN_IF_ERROR(comm.ReduceScatter(
               data.source[i], data.destination[i], shape.element_type(),
-              ShapeUtil::ElementsIn(shape), reduction_kind_, executor);
-
-          communicator_event.AndThen([state, communicator_event]() mutable {
-            if (ABSL_PREDICT_FALSE(communicator_event.IsError())) {
-              state.CountDown(communicator_event.GetError());
-            } else {
-              state.CountDown();
-            }
-          });
+              ShapeUtil::ElementsIn(shape), reduction_kind_, executor));
         }
 
-        return state.AsRef();
+        return absl::OkStatus();
       });
 }
 
