@@ -5,19 +5,19 @@ tf_class {
   is_instance: "<type \'tuple\'>"
   member {
     name: "allow_missing"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "default_value"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "dtype"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "shape"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"

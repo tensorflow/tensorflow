@@ -29,23 +29,23 @@ tf_class {
   }
   member {
     name: "dtype"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "partitions"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "row_splits_dtype"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "validate"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "value_key"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"

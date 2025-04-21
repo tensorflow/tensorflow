@@ -5,23 +5,23 @@ tf_class {
   is_instance: "<type \'tuple\'>"
   member {
     name: "devices"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "num_cores"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "num_hosts"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "num_of_cores_per_host"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "topology"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"

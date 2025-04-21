@@ -5,19 +5,19 @@ tf_class {
   is_instance: "<type \'tuple\'>"
   member {
     name: "delay_ms"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "device_tracer_level"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "host_tracer_level"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "python_tracer_level"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"

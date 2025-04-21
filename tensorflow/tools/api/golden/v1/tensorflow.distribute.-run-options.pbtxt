@@ -5,15 +5,15 @@ tf_class {
   is_instance: "<type \'tuple\'>"
   member {
     name: "experimental_bucketizing_dynamic_shape"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "experimental_enable_dynamic_batch_size"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "experimental_xla_options"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"

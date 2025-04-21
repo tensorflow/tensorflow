@@ -28,6 +28,7 @@ py_strict_test(
         "//third_party/py/numpy/tf_numpy_api:api_golden",
     ],
     tags = [
+        "DO_NOT_USE_MIGRATION_ONLY_NO_PYTHON_NEXT",
         "no_mac",  # b/198669105
         "no_oss",  # Runs explicitly in OSS
         "no_pip",

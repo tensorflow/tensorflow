@@ -4,7 +4,7 @@ tf_class {
   is_instance: "<type \'tuple\'>"
   member {
     name: "key"
-    mtype: "<class \'collections._tuplegetter\'>"
+    mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
