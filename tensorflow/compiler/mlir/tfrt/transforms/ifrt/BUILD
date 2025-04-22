@@ -24,7 +24,6 @@ package_group(
         "//learning/pathways/serving/tests/...",
         "//learning/brain/tfrt/ifrt/...",
         "//learning/brain/tfrt/tfrt_session/...",
-        "//learning/brain/tfrt/mlir/mlrt/application/pathways/compiler/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//learning/infra/mira/experimental/orbax_model/serving/sidecar/...",
