@@ -46,7 +46,7 @@ TEST(InputBuffer, ReadLine_Empty) {
     TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
     string line;
     io::InputBuffer in(file.get(), buf_size);
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
   }
 }
 
@@ -68,9 +68,9 @@ TEST(InputBuffer, ReadLine1) {
     EXPECT_EQ(line, "line two");
     TF_CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line three");
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
   }
 }
 
@@ -91,9 +91,9 @@ TEST(InputBuffer, ReadLine_NoTrailingNewLine) {
     EXPECT_EQ(line, "line two");
     TF_CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line three");
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
   }
 }
 
@@ -119,9 +119,9 @@ TEST(InputBuffer, ReadLine_EmptyLines) {
     EXPECT_EQ(line, "line two");
     TF_CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line three");
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
   }
 }
 
@@ -147,9 +147,9 @@ TEST(InputBuffer, ReadLine_CRLF) {
     EXPECT_EQ(line, "line two");
     TF_CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line three");
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
   }
 }
 
@@ -178,10 +178,10 @@ TEST(InputBuffer, ReadNBytes) {
     TF_CHECK_OK(in.ReadNBytes(0, &read));
     EXPECT_EQ(read, "");
     EXPECT_EQ(7, in.Tell());
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(5, &read)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadNBytes(5, &read)));
     EXPECT_EQ(read, "789");
     EXPECT_EQ(10, in.Tell());
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(5, &read)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadNBytes(5, &read)));
     EXPECT_EQ(read, "");
     EXPECT_EQ(10, in.Tell());
     TF_CHECK_OK(in.ReadNBytes(0, &read));
@@ -213,11 +213,11 @@ TEST(InputBuffer, ReadNBytes) {
     EXPECT_EQ(absl::string_view(read, 4), "3456");
 
     EXPECT_EQ(7, in.Tell());
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(5, read, &bytes_read)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadNBytes(5, read, &bytes_read)));
     EXPECT_EQ(absl::string_view(read, 3), "789");
 
     EXPECT_EQ(10, in.Tell());
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(5, read, &bytes_read)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadNBytes(5, read, &bytes_read)));
     EXPECT_EQ(absl::string_view(read, 3), "789");
 
     EXPECT_EQ(10, in.Tell());
@@ -253,11 +253,11 @@ TEST(InputBuffer, SkipNBytes) {
     TF_CHECK_OK(in.ReadNBytes(1, &read));
     EXPECT_EQ(read, "7");
     EXPECT_EQ(8, in.Tell());
-    EXPECT_TRUE(errors::IsOutOfRange(in.SkipNBytes(5)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.SkipNBytes(5)));
     EXPECT_EQ(10, in.Tell());
-    EXPECT_TRUE(errors::IsOutOfRange(in.SkipNBytes(5)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.SkipNBytes(5)));
     EXPECT_EQ(10, in.Tell());
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(5, &read)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadNBytes(5, &read)));
     EXPECT_EQ(read, "");
     EXPECT_EQ(10, in.Tell());
   }
@@ -293,7 +293,7 @@ TEST(InputBuffer, Seek) {
     EXPECT_EQ(read, "4567");
 
     TF_CHECK_OK(in.Seek(1 << 25));
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(1, &read)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadNBytes(1, &read)));
 
     EXPECT_TRUE(absl::StrContains(in.Seek(-1).ToString(), "negative position"));
   }
@@ -334,7 +334,7 @@ TEST(InputBuffer, ReadVarint32) {
       TF_ASSERT_OK(in.ReadVarint32(&result));
       EXPECT_EQ(expected, result);
     }
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadVarint32(&result)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadVarint32(&result)));
   }
 }
 
@@ -374,7 +374,7 @@ TEST(InputBuffer, ReadVarint64) {
       TF_ASSERT_OK(in.ReadVarint64(&result));
       EXPECT_EQ(expected, result);
     }
-    EXPECT_TRUE(errors::IsOutOfRange(in.ReadVarint64(&result)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.ReadVarint64(&result)));
   }
 }
 
@@ -415,9 +415,9 @@ TEST(InputBuffer, Hint) {
     TF_CHECK_OK(in.Hint(1 << 25));
 
     TF_CHECK_OK(in.Seek(1 << 25));
-    EXPECT_TRUE(errors::IsOutOfRange(in.Hint(1)));
+    EXPECT_TRUE(absl::IsOutOfRange(in.Hint(1)));
 
-    EXPECT_TRUE(errors::IsInvalidArgument(in.Hint(-1)));
+    EXPECT_TRUE(absl::IsInvalidArgument(in.Hint(-1)));
   }
 }
 

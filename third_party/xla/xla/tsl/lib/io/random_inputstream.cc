@@ -44,7 +44,7 @@ absl::Status RandomAccessInputStream::ReadNBytes(int64_t bytes_to_read,
     memmove(result_buffer, data.data(), data.size());
   }
   result->resize(data.size());
-  if (s.ok() || errors::IsOutOfRange(s)) {
+  if (s.ok() || absl::IsOutOfRange(s)) {
     pos_ += data.size();
   }
   return s;
@@ -58,7 +58,7 @@ absl::Status RandomAccessInputStream::ReadNBytes(int64_t bytes_to_read,
   }
   int64_t current_size = result->size();
   absl::Status s = file_->Read(pos_, bytes_to_read, result);
-  if (s.ok() || errors::IsOutOfRange(s)) {
+  if (s.ok() || absl::IsOutOfRange(s)) {
     pos_ += result->size() - current_size;
   }
   return s;
@@ -80,7 +80,7 @@ absl::Status RandomAccessInputStream::SkipNBytes(int64_t bytes_to_skip) {
     absl::string_view data;
     absl::Status s =
         file_->Read(pos_ + bytes_to_skip - 1, 1, &data, scratch.get());
-    if ((s.ok() || errors::IsOutOfRange(s)) && data.size() == 1) {
+    if ((s.ok() || absl::IsOutOfRange(s)) && data.size() == 1) {
       pos_ += bytes_to_skip;
       return absl::OkStatus();
     }
@@ -90,7 +90,7 @@ absl::Status RandomAccessInputStream::SkipNBytes(int64_t bytes_to_skip) {
     int64_t bytes_to_read = std::min<int64_t>(kMaxSkipSize, bytes_to_skip);
     absl::string_view data;
     absl::Status s = file_->Read(pos_, bytes_to_read, &data, scratch.get());
-    if (s.ok() || errors::IsOutOfRange(s)) {
+    if (s.ok() || absl::IsOutOfRange(s)) {
       pos_ += data.size();
     } else {
       return s;
