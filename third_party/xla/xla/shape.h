@@ -659,10 +659,6 @@ class ProgramShape {
   // Methods for accessing and manipulating the Shape of the parameters.
   int parameters_size() const { return parameters_.size(); }
   const Shape& parameters(int index) const { return parameters_[index]; }
-  Shape* add_parameters() {
-    parameters_.emplace_back();
-    return &parameters_.back();
-  }
   Shape* mutable_parameters(int index) { return &parameters_[index]; }
   void AddParameter(Shape shape, std::string name) {
     parameters_.push_back(std::move(shape));
