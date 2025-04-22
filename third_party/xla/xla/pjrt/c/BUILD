@@ -462,6 +462,7 @@ cc_library(
         "//xla/pjrt:pjrt_future",
         "//xla/service:computation_placer_hdr",
         "//xla/tsl/platform:status",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",

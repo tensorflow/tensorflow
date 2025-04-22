@@ -117,13 +117,9 @@ TEST(StreamExecutorGpuCompilerTest, SuccessXla) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
-  TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          compiler.Compile(xla::CompileOptions(), computation,
-                                           *topology, client.get()));
-  const LoadOptions load_options;
-  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
-                          client->Load(std::move(executable), load_options));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::PjRtLoadedExecutable> loaded_executable,
+      client->CompileAndLoad(computation, xla::CompileOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto result,
                           loaded_executable->Execute(
@@ -188,14 +184,9 @@ TEST(StreamExecutorGpuCompilerTest, SuccessMlir) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
-  TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
   TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler.Compile(xla::CompileOptions(), mlir_module.get(), *topology,
-                       client.get()));
-  const LoadOptions load_options;
-  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
-                          client->Load(std::move(executable), load_options));
+      std::unique_ptr<xla::PjRtLoadedExecutable> loaded_executable,
+      client->CompileAndLoad(mlir_module.get(), xla::CompileOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto result,
                           loaded_executable->Execute(

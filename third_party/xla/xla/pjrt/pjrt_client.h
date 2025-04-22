@@ -58,16 +58,16 @@ limitations under the License.
 #include "xla/tsl/framework/allocator.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
-
 namespace xla {
 
 class PjRtClient;
 class PjRtDevice;
+class PjRtLoadedExecutable;
+class PjRtExecutableForwarder;
+struct CompileOptions;
 
 class PjRtMemorySpace {
  public:
@@ -1269,19 +1269,26 @@ class PjRtBuffer {
 // device-allocated literals. If any input/output alias has been specified in
 // the computation, the parameter containing the input buffer will be donated
 // when passed to the execution.
-class PjRtLoadedExecutable : public PjRtExecutable {
+class PjRtLoadedExecutable {
  public:
-  ~PjRtLoadedExecutable() override = default;
+  PjRtLoadedExecutable() {
+    executable_forwarder_ = std::make_unique<PjRtExecutableForwarder>(this);
+  }
+
+  virtual ~PjRtLoadedExecutable() = default;
 
   virtual PjRtClient* client() const = 0;
 
   virtual const DeviceAssignment& device_assignment() const = 0;
 
+  // Returns the PjRtExecutable that this PjRtLoadedExecutable wraps.
+  virtual PjRtExecutable* GetExecutable() const;
+
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different platforms.
-  absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
-  GetCostAnalysis() const override;
+  virtual absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  GetCostAnalysis() const;
 
   // The replica and partition indices of device_assignment to be run by this
   // client. On single-host platforms without partitioning, this is all replicas
@@ -1410,6 +1417,97 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   // True if on-device resources associated with the executable are freed.
   virtual bool IsDeleted() = 0;
 
+  // These are all forwarding methods for convenience, wrapping the
+  // corresponding methods on the wrapped PjRtExecutable.
+  virtual int num_replicas() const { return GetExecutable()->num_replicas(); }
+
+  virtual int num_partitions() const {
+    return GetExecutable()->num_partitions();
+  }
+
+  virtual int64_t SizeOfGeneratedCodeInBytes() const {
+    return GetExecutable()->SizeOfGeneratedCodeInBytes();
+  }
+
+  // Unique name for this executable, e.g., HloModule name.
+  virtual absl::string_view name() const { return GetExecutable()->name(); }
+
+  // Return an array of HloModule (optimized) per partition.
+  virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
+  GetHloModules() const {
+    return GetExecutable()->GetHloModules();
+  }
+
+  // Returns an output Shape per program, the size should be equal to
+  // `GetHloModules()`.
+  virtual absl::StatusOr<std::vector<Shape>> GetOutputShapes() const {
+    return GetExecutable()->GetOutputShapes();
+  }
+
+  // Returns a list of element types for each output, the size of the outer list
+  // should be equal to `GetHloModules()`.
+  virtual absl::StatusOr<std::vector<std::vector<PrimitiveType>>>
+  GetOutputElementTypes() const {
+    return GetExecutable()->GetOutputElementTypes();
+  }
+
+  // Returns a list of dimensions for each output, the size of the outer list
+  // should be equal to `GetHloModules()`.
+  virtual absl::StatusOr<std::vector<std::vector<DimensionVector>>>
+  GetOutputDimensions() const {
+    return GetExecutable()->GetOutputDimensions();
+  }
+
+  // Returns a list of parameter OpSharding protos.
+  virtual std::optional<std::vector<OpSharding>> GetParameterShardings() const {
+    return GetExecutable()->GetParameterShardings();
+  }
+
+  // Returns a list of output OpSharding protos.
+  virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const {
+    return GetExecutable()->GetOutputShardings();
+  }
+
+  // Return memory stats that allow callers to estimate device memory usage
+  // when running this executable.
+  virtual absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
+    return GetExecutable()->GetCompiledMemoryStats();
+  }
+
+  // Serialize this executable into a string and return the value.
+  virtual absl::StatusOr<std::string> SerializeExecutable() const {
+    return GetExecutable()->SerializeExecutable();
+  }
+
+  virtual absl::StatusOr<std::string> FingerprintExecutable() const {
+    return GetExecutable()->FingerprintExecutable();
+  }
+
+  // Returns the layout of each input parameter.
+  virtual absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetParameterLayouts() const {
+    return GetExecutable()->GetParameterLayouts();
+  }
+
+  // Returns the layout of each output.
+  virtual absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetOutputLayouts() const {
+    return GetExecutable()->GetOutputLayouts();
+  }
+
+  // Returns a list of lists of memory kind strings for output. The returned
+  // should be equal to `GetHloModules()`.
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetOutputMemoryKinds() const {
+    return GetExecutable()->GetOutputMemoryKinds();
+  }
+
+  // Returns the compile options used to compile the executable
+  virtual absl::StatusOr<struct CompileOptions> GetCompileOptions() const {
+    return GetExecutable()->GetCompileOptions();
+  }
+  // end of convenience forwarding methods
+
  protected:
   // Value returned internally from routines that enqueue an execution,
   // combining the result buffers with a future that becomes ready when the
@@ -1418,6 +1516,80 @@ class PjRtLoadedExecutable : public PjRtExecutable {
     std::optional<PjRtFuture<>> future;
     std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   };
+
+ private:
+  std::unique_ptr<PjRtExecutableForwarder> executable_forwarder_;
+};
+
+// This class is used to provide a wrapper around a PjRtLoadedExecutable that
+// implements the PjRtExecutable interface, allowing that PjRtLoadedExecutable
+// to be treated like a PjRtExecutable. This is useful for plugins that do not
+// not support AoT compilation, for example, as they have no concept of an
+// "unloaded" executable.
+class PjRtExecutableForwarder : public PjRtExecutable {
+ public:
+  explicit PjRtExecutableForwarder(const PjRtLoadedExecutable* executable)
+      : executable_(executable) {}
+
+  explicit PjRtExecutableForwarder(
+      std::unique_ptr<PjRtLoadedExecutable> executable)
+      : owned_executable_(std::move(executable)) {
+    executable_ = owned_executable_.get();
+  }
+
+  int num_replicas() const override { return executable_->num_replicas(); }
+
+  int num_partitions() const override { return executable_->num_partitions(); }
+
+  int64_t SizeOfGeneratedCodeInBytes() const override {
+    return executable_->SizeOfGeneratedCodeInBytes();
+  }
+
+  // Unique name for this executable, e.g., HloModule name.
+  absl::string_view name() const override { return executable_->name(); }
+
+  // Return an HloModule (optimized) per partition.
+  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
+      const override {
+    return executable_->GetHloModules();
+  }
+
+  // Returns a list of lists of memory kind strings for output. The returned
+  // value is `[num_programs, num_output]`. The size of the outer list should
+  // be equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetOutputMemoryKinds().front()`.
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetOutputMemoryKinds() const override {
+    return executable_->GetOutputMemoryKinds();
+  }
+
+  // Returns named values for cost properties of this executable (such as
+  // operations, size of input/outputs, and run time estimate). Properties may
+  // differ for different platforms.
+  absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  GetCostAnalysis() const override {
+    return executable_->GetCostAnalysis();
+  }
+
+  absl::StatusOr<std::string> SerializeExecutable() const override {
+    return executable_->SerializeExecutable();
+  }
+
+  absl::StatusOr<struct CompileOptions> GetCompileOptions() const override {
+    return executable_->GetCompileOptions();
+  }
+
+  absl::StatusOr<std::string> FingerprintExecutable() const override {
+    return executable_->FingerprintExecutable();
+  }
+
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    return executable_->GetCompiledMemoryStats();
+  }
+
+ private:
+  const PjRtLoadedExecutable* executable_;
+  std::unique_ptr<PjRtLoadedExecutable> owned_executable_;
 };
 
 }  // namespace xla
