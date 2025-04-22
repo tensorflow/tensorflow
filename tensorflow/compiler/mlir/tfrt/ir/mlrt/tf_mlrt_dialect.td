@@ -37,7 +37,7 @@ class TensorflowMlrt_Op<string mnemonic, list<Trait> traits = []> :
 
 // This corresponds to tensorflow::Tensor.
 def TFTensorType : DialectType<TensorflowMlrt_Dialect,
-    CPred<"isa<::tensorflow::tf_mlrt::TFTensorType>($_self)">, "!tf_mlrt.tensor type">,
+    CPred<"::llvm::isa<::tensorflow::tf_mlrt::TFTensorType>($_self)">, "!tf_mlrt.tensor type">,
     BuildableType<"$_builder.getType<::tensorflow::tf_mlrt::TFTensorType>()"> {
   let description = [{
     `!tf_mlrt.tensor type` represents a tensorflow::Tensor.
@@ -46,7 +46,7 @@ def TFTensorType : DialectType<TensorflowMlrt_Dialect,
 
 // This corresponds to tensorflow::Device* .
 def TFDeviceType : DialectType<TensorflowMlrt_Dialect,
-    CPred<"isa<::tensorflow::tf_mlrt::TFDeviceType>($_self)">, "!tf_mlrt.device type">,
+    CPred<"::llvm::isa<::tensorflow::tf_mlrt::TFDeviceType>($_self)">, "!tf_mlrt.device type">,
     BuildableType<"$_builder.getType<::tensorflow::tf_mlrt::TFDeviceType>()"> {
   let description = [{
     `!tf_mlrt.device type` represents a tensorflow::device.
