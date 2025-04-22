@@ -35,7 +35,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Lift fusion instructions to command buffers.
+// Lift instructions to command buffers.
 //
 // Before the pass:
 //   %fused_computation (param_0: s32[], param_1: s32[]) -> s32[] {

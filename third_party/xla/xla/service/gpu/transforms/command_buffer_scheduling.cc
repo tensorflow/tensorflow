@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/ffi/ffi_api.h"
@@ -77,6 +78,10 @@ static bool IsConstant(const HloInstruction* hlo) {
 
 static bool IsParameter(const HloInstruction* hlo) {
   return HloPredicateIsOp<HloOpcode::kParameter>(hlo);
+}
+
+static bool IsGetTupleElement(const HloInstruction* hlo) {
+  return HloPredicateIsOp<HloOpcode::kGetTupleElement>(hlo);
 }
 
 // Returns true if instruction is no-op at run time and doesn't have a
@@ -361,6 +366,73 @@ static void RemoveTrailingNoOps(HloInstructionSequence& seq) {
       break;
     }
   }
+}
+
+// Moves GetTupleElement instructions to right after the instruction that
+// produces the tuple. Returns whether the computation was changed. This is run
+// before command buffer scheduling.
+//
+// The motivation is to ensure the live range of large elements in the tuple are
+// not extended due to the creation of command buffers. For example, consider
+// the following input HLO to this pass.
+//
+//     x = f32[] parameter(0)
+//     t = (f32[], f32[10000]) custom-call()
+//     ... # Many instructions, none which use t
+//     x_squared = f32[] multiply(x, x)
+//     t0 = f32[] get-tuple-element(t), index=0
+//     y = f32[] add(x_squared, t0)
+//
+// The 10000-element buffer can immediately be freed after the custom-call, as
+// it is unused. However, if `t0` is not moved right after `t`, then the
+// scheudling of command buffers might turn the HLO into the following,
+// extending the live range of the 10000-element buffer as 't' is passed to the
+// command buffer:
+//
+//     command_buffer {
+//       t = (f32[], f32[10000]) paramter(0)
+//       x_squared = f32[] multiply(x, x)
+//       t0 = f32[] get-tuple-element(t), index=0
+//       ROOT y = f32[] add(x_squared, t0)
+//     }
+//
+//     main {
+//       x = f32[] parameter(0)
+//       t = (f32[], f32[10000]) custom-call()
+//       ... # Many instructions, none which use t
+//       ROOT y = f32[] call(t), to_apply=command_buffer
+//     }
+//
+// Moving the GTE right after `t` solves this, as command-buffers never start
+// with a GTE, so it's impossible for a command buffer to contain the GTE but
+// not the custom-call itself.
+static absl::StatusOr<bool> MoveGTEsRightAfterTupleDefinition(
+    HloComputation* computation) {
+  HloInstructionSequence new_sequence;
+  HloSchedule& schedule = computation->parent()->schedule();
+  const HloInstructionSequence sequence =
+      schedule.GetOrCreateSequence(computation);
+
+  absl::flat_hash_set<HloInstruction*> moved_gtes;
+
+  for (HloInstruction* inst : sequence.instructions()) {
+    if (!moved_gtes.contains(inst)) {
+      new_sequence.push_back(inst);
+    }
+    if (!inst->shape().IsTuple()) {
+      continue;
+    }
+    for (HloInstruction* user : inst->users()) {
+      if (IsGetTupleElement(user) && !user->HasControlDependencies()) {
+        new_sequence.push_back(user);
+        moved_gtes.insert(user);
+      }
+    }
+  }
+
+  bool changed = new_sequence != sequence;
+  schedule.set_sequence(computation, std::move(new_sequence));
+  return changed;
 }
 
 //===----------------------------------------------------------------------===//
@@ -898,6 +970,8 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
     if (processed_command_buffers.contains(comp)) continue;
 
     TF_ASSIGN_OR_RETURN(bool changed_, MoveParametersAndConstantsToFront(comp));
+    changed |= changed_;
+    TF_ASSIGN_OR_RETURN(changed_, MoveGTEsRightAfterTupleDefinition(comp));
     changed |= changed_;
 
     std::vector<HloInstructionSequence> sequences =
