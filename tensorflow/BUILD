@@ -1715,6 +1715,7 @@ py_library(
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/authoring",
         "//tensorflow/python:no_contrib",
+        "//tensorflow/python/profiler:profiler_client",
         "@pypi_keras_nightly//:pkg",
         "@pypi_tb_nightly//:pkg",
     ],
