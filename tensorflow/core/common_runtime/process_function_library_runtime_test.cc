@@ -262,7 +262,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
                 done2.Notify();
               });
     done2.WaitForNotification();
-    EXPECT_TRUE(errors::IsNotFound(status)) << "Actual status: " << status;
+    EXPECT_TRUE(absl::IsNotFound(status)) << "Actual status: " << status;
     EXPECT_TRUE(absl::StrContains(status.message(), "not found."));
 
     return absl::OkStatus();
@@ -676,8 +676,7 @@ void TestTwoDeviceMult(
   absl::Status status = fixture->Run("TwoDeviceMult", opts, {{"T", DT_FLOAT}},
                                      inst_opts, {x}, {&y_cpu, &y_gpu});
   if (!error.empty()) {
-    EXPECT_TRUE(errors::IsInvalidArgument(status))
-        << "Actual status: " << status;
+    EXPECT_TRUE(absl::IsInvalidArgument(status)) << "Actual status: " << status;
     EXPECT_TRUE(absl::StrContains(status.message(), error))
         << "Actual error message: " << status.message();
     return;
@@ -836,7 +835,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListInput) {
   absl::Status status = proc_flr_->Instantiate(
       "FuncWithListInput", test::function::Attrs({{"T", DT_FLOAT}, {"N", 1}}),
       MakeOptions("CPU:0", {"CPU:0"}, {}), &handle);
-  ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
+  ASSERT_TRUE(absl::IsInvalidArgument(status)) << "Actual status: " << status;
   ASSERT_TRUE(absl::StrContains(
       status.message(),
       "FuncWithListInput has an input named \"x1\" that is a list of tensors"))
@@ -857,7 +856,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, FullTypeForInt32) {
   absl::Status status =
       proc_flr_->Instantiate("XTimesTwoInt32", test::function::Attrs({}),
                              MakeOptions("CPU:0", {"CPU:0"}, {}), &handle);
-  ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
+  ASSERT_TRUE(absl::IsInvalidArgument(status)) << "Actual status: " << status;
   // Check that the error is found by earlier in ProcessFunctionLibraryRuntime
   // and not later in FunctionLibraryRuntime.
   EXPECT_TRUE(absl::StrContains(
@@ -873,7 +872,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListOutput) {
   absl::Status status = proc_flr_->Instantiate(
       "FuncWithListOutput", test::function::Attrs({{"T", DT_FLOAT}, {"N", 1}}),
       MakeOptions("CPU:0", {}, {"CPU:0"}), &handle);
-  ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
+  ASSERT_TRUE(absl::IsInvalidArgument(status)) << "Actual status: " << status;
   ASSERT_TRUE(absl::StrContains(
       status.message(),
       "FuncWithListOutput has an output named \"y\" that is a list of tensors"))
@@ -1123,7 +1122,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_PlacerError) {
   absl::Status status = proc_flr_->Instantiate(
       "ResourceOutput", test::function::Attrs({{"T", DT_FLOAT}}), inst_opts,
       &handle);
-  ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
+  ASSERT_TRUE(absl::IsInvalidArgument(status)) << "Actual status: " << status;
   ASSERT_TRUE(absl::StrContains(status.message(), "Cannot place"));
 }
 
@@ -1173,7 +1172,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_CreateKernelsEagerly) {
   inst_opts.create_kernels_eagerly = true;
   absl::Status status =
       Instantiate("Broken", {{"T", DT_INT32}}, inst_opts, &handle);
-  EXPECT_TRUE(errors::IsInternal(status));
+  EXPECT_TRUE(absl::IsInternal(status));
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_StateHandle) {
