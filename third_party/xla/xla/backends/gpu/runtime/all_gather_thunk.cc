@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -113,14 +112,9 @@ absl::Status RunAllGather(GpuCollectives* collectives,
   TF_RETURN_IF_ERROR(collectives->GroupStart());
 
   for (DeviceBufferPair& buffer : buffers) {
-    auto event = comm->AllGather(
+    TF_RETURN_IF_ERROR(comm->AllGather(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
-        buffer.element_count, GpuCollectives::On(stream));
-
-    tsl::BlockUntilReady(event);
-    if (event.IsError()) {
-      return event.GetError();
-    }
+        buffer.element_count, GpuCollectives::On(stream)));
   }
 
   TF_RETURN_IF_ERROR(collectives->GroupEnd());

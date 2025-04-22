@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -77,16 +76,11 @@ absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
   for (auto buffer : buffers) {
     se::DeviceMemoryBase src_addr = buffer.source_buffer;
     se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
-    auto event = comm->Broadcast(
+    TF_RETURN_IF_ERROR(comm->Broadcast(
         // Always use rank 0 since we always broadcast from the first id in
         // replica_groups
         src_addr, dest_addr, buffer.element_type, buffer.element_count,
-        RankId(0), GpuCollectives::On(stream));
-
-    tsl::BlockUntilReady(event);
-    if (event.IsError()) {
-      return event.GetError();
-    }
+        RankId(0), GpuCollectives::On(stream)));
   }
   return collectives->GroupEnd();
 }
