@@ -64,6 +64,7 @@ namespace spmd {
 using ::operations_research::MPConstraint;
 using ::operations_research::MPSolver;
 using ::operations_research::MPVariable;
+using EdgeAdjacency = std::vector<std::vector<EdgeIdx>>;
 
 // We need to nudge the maximum cost (if present) slightly, since the constraint
 // solver cannot guarantee exact numerical precision.
@@ -935,6 +936,235 @@ EdgeStrategyIdx GetEdgeStrategy(
   return node_strategies[u] * num_v_strategies + node_strategies[v];
 }
 
+// Stores the active times for each node.
+std::vector<std::vector<LivenessIdx>> GetNodeToActiveTimes(
+    const AutoShardingSolverRequest& request) {
+  std::vector<std::vector<LivenessIdx>> node_to_active_times(
+      request.num_nodes());
+  for (LivenessIdx t = 0; t < request.live_size(); ++t) {
+    for (NodeIdx node : request.live(t).nodes()) {
+      node_to_active_times[node].push_back(t);
+    }
+  }
+  return node_to_active_times;
+}
+
+// Computes the memory slack for each time (i.e., budget - live memory at t)
+std::vector<double> TrackMemorySlack(
+    const AutoShardingSolverRequest& request,
+    const std::vector<NodeStrategyIdx>& node_strategies) {
+  std::vector<double> memory_slack(request.live_size(), 0.0);
+  for (LivenessIdx t = 0; t < request.live_size(); ++t) {
+    double live_memory = 0.0;
+    for (NodeIdx node : request.live(t).nodes()) {
+      live_memory += request.memory_costs(node).costs(node_strategies[node]);
+    }
+    memory_slack[t] = request.memory_budget() - live_memory;
+  }
+  return memory_slack;
+}
+
+std::pair<EdgeAdjacency, EdgeAdjacency> GetAdjacencyMatrix(
+    const AutoShardingSolverRequest& request) {
+  // outward_edges: i-th vector is the edges of the form (i-th node)->v.
+  // inward_edges: i-th vector is the edges of the form v->(i-th node).
+  EdgeAdjacency outward_edges(request.num_nodes());
+  EdgeAdjacency inward_edges(request.num_nodes());
+  for (EdgeIdx edge_idx = 0; edge_idx < request.edges_size(); ++edge_idx) {
+    const auto& edge = request.edges(edge_idx);
+    outward_edges[edge.first()].push_back(edge_idx);
+    inward_edges[edge.second()].push_back(edge_idx);
+  }
+  return {outward_edges, inward_edges};
+}
+
+// Store the edges within the path.
+std::vector<EdgeIdx> GetEdgesWithinPath(
+    const AutoShardingSolverRequest& request, const std::vector<NodeIdx>& path,
+    const EdgeAdjacency& outward_edges) {
+  std::vector<EdgeIdx> edges_within_path;
+  for (const NodeIdx& node : path) {
+    for (const EdgeIdx& edge : outward_edges[node]) {
+      auto it =
+          std::find(path.begin(), path.end(), request.edges(edge).second());
+      if (it != path.end()) {
+        edges_within_path.push_back(edge);
+      }
+    }
+  }
+  return edges_within_path;
+}
+
+// Sample a random path of length `path_length'.
+std::vector<NodeIdx> SamplePath(const AutoShardingSolverRequest& request,
+                                const EdgeAdjacency& outward_edges,
+                                const int path_length, std::mt19937_64& rng) {
+  std::vector<NodeIdx> path;
+  path.reserve(path_length + 1);
+  if (path_length == 0) {  // Sample a random node.
+    std::uniform_int_distribution<> dist(0, request.num_nodes() - 1);
+    path.push_back(dist(rng));
+  } else if (path_length == 1) {  // Sample a random edge.
+    std::uniform_int_distribution<> dist(0, request.edges_size() - 1);
+    EdgeIdx random_edge_idx = dist(rng);
+    path.push_back(request.edges(random_edge_idx).first());
+    path.push_back(request.edges(random_edge_idx).second());
+  } else {  // Path-sampling by concatenating nodes.
+    int scanned_length = 0;
+    std::uniform_int_distribution<> dist(0, request.edges_size() - 1);
+    NodeIdx u = request.edges(dist(rng)).first();
+    path.push_back(u);
+    while (scanned_length < path_length) {
+      // Sample edges from the outward edges of u.
+      if (outward_edges[u].empty()) {
+        break;
+      }
+      scanned_length++;
+      std::uniform_int_distribution<> dist(0, outward_edges[u].size() - 1);
+      EdgeIdx edge_idx = outward_edges[u][dist(rng)];
+      u = request.edges(edge_idx).second();
+      path.push_back(u);
+    }
+  }
+  return path;
+}
+
+// Computes the cost induced by a node and its adjacent edges.
+double AggregateCostAroundNode(
+    const AutoShardingSolverRequest& request,
+    const std::pair<EdgeAdjacency, EdgeAdjacency>& adjacency,
+    const std::vector<NodeStrategyIdx>& node_strategies, const NodeIdx& node) {
+  const EdgeAdjacency& outward_edges = adjacency.first;
+  const EdgeAdjacency& inward_edges = adjacency.second;
+  double cost = 0.0;
+  // Node cost
+  cost += request.computation_costs(node).costs(node_strategies[node]) +
+          request.communication_costs(node).costs(node_strategies[node]);
+
+  // Edge cost
+  for (const EdgeIdx& outward_edge : outward_edges[node]) {
+    cost += request.resharding_costs(outward_edge)
+                .costs(GetEdgeStrategy(request, node_strategies, outward_edge));
+  }
+  for (const EdgeIdx& inward_edge : inward_edges[node]) {
+    cost += request.resharding_costs(inward_edge)
+                .costs(GetEdgeStrategy(request, node_strategies, inward_edge));
+  }
+  return cost;
+}
+
+// Computes the cost induced by a path (cost of nodes and adjacent edges).
+double CostOverPath(const AutoShardingSolverRequest& request,
+                    const std::pair<EdgeAdjacency, EdgeAdjacency>& adjacency,
+                    const std::vector<NodeIdx>& path,
+                    const std::vector<EdgeIdx>& edges_within_path,
+                    std::vector<NodeStrategyIdx>& node_strategies) {
+  double cost = 0.0;
+  for (const NodeIdx& node : path) {
+    cost += AggregateCostAroundNode(request, adjacency, node_strategies, node);
+  }
+  // Subtracting the overcounted edge costs within the path.
+  for (const EdgeIdx& edge : edges_within_path) {
+    EdgeStrategyIdx edge_strategy =
+        GetEdgeStrategy(request, node_strategies, edge);
+    cost -= request.resharding_costs(edge).costs(edge_strategy);
+  }
+  return cost;
+}
+
+// Recursively optimizes over the path.
+std::pair<double, std::vector<NodeStrategyIdx>> _OptimizeOverPath(
+    const AutoShardingSolverRequest& request, const std::vector<NodeIdx>& path,
+    const std::vector<EdgeIdx>& edges_within_path,
+    std::vector<NodeStrategyIdx>& node_strategies,
+    const std::pair<EdgeAdjacency, EdgeAdjacency>& adjacency,
+    int num_remaining_nodes) {
+  double best_cost = std::numeric_limits<double>::infinity();
+  std::vector<NodeStrategyIdx> best_strategy(path.size(), 0);
+  for (int i = 0; i < path.size(); ++i) {
+    best_strategy[i] = node_strategies[path[i]];
+  }
+
+  if (num_remaining_nodes == 1) {  // Base case of the recursion.
+    NodeIdx last_node = path[path.size() - 1];
+    for (NodeStrategyIdx node_strategy = 0;
+         node_strategy < request.computation_costs(last_node).costs_size();
+         ++node_strategy) {
+      node_strategies[last_node] = node_strategy;
+      double path_cost = CostOverPath(request, adjacency, path,
+                                      edges_within_path, node_strategies);
+      if (path_cost < best_cost) {
+        best_cost = path_cost;
+        best_strategy[best_strategy.size() - 1] = node_strategy;
+      }
+    }
+  } else {
+    NodeIdx current_node = path[path.size() - num_remaining_nodes];
+    for (NodeStrategyIdx node_strategy = 0;
+         node_strategy < request.computation_costs(current_node).costs_size();
+         ++node_strategy) {
+      node_strategies[current_node] = node_strategy;
+      auto [path_cost, path_strategy] =
+          _OptimizeOverPath(request, path, edges_within_path, node_strategies,
+                            adjacency, num_remaining_nodes - 1);
+      if (path_cost < best_cost) {
+        best_cost = path_cost;
+        best_strategy = path_strategy;
+      }
+    }
+  }
+  return std::make_pair(best_cost, best_strategy);
+}
+
+// A wrapper function for `_OptimizeOverPath`, which is a recursive
+// function to find the best sharding strategies for the path.
+std::vector<NodeStrategyIdx> OptimizeOverPath(
+    const AutoShardingSolverRequest& request, const std::vector<NodeIdx>& path,
+    std::vector<NodeStrategyIdx>& node_strategies,
+    const std::pair<EdgeAdjacency, EdgeAdjacency>& adjacency) {
+  std::vector<NodeStrategyIdx> old_strategies(path.size(), 0);
+  for (int i = 0; i < path.size(); ++i) {
+    old_strategies[i] = node_strategies[path[i]];
+  }
+  std::vector<EdgeIdx> edges_within_path =
+      GetEdgesWithinPath(request, path, /*outward_edges=*/adjacency.first);
+
+  auto [_, best_path_strategies] =
+      _OptimizeOverPath(request, path, edges_within_path, node_strategies,
+                        adjacency, path.size());
+
+  // node_strategies could change within _OptimizeOverPath, so we restore the
+  // original sharding strategies for the nodes on the path.
+  for (int i = 0; i < path.size(); ++i) {
+    node_strategies[path[i]] = old_strategies[i];
+  }
+  return best_path_strategies;
+}
+
+// Check if a path's new configuration satisfies the memory constraints.
+absl::flat_hash_map<LivenessIdx, double> GetNewMemorySlack(
+    const AutoShardingSolverRequest& request, const std::vector<NodeIdx>& path,
+    const std::vector<NodeStrategyIdx>& path_strategies,
+    const std::vector<NodeStrategyIdx>& node_strategies,
+    const std::vector<std::vector<LivenessIdx>>& node_to_active_times,
+    const std::vector<double>& memory_slack) {
+  absl::flat_hash_map<LivenessIdx, double> new_memory_slack;
+  for (int i = 0; i < path.size(); ++i) {
+    NodeIdx node = path[i];
+    if (!node_to_active_times[node].empty()) {
+      for (LivenessIdx t : node_to_active_times[node]) {
+        if (!new_memory_slack.contains(t)) {
+          new_memory_slack[t] = memory_slack[t];
+        }
+        new_memory_slack[t] -=
+            (request.memory_costs(node).costs(path_strategies[i]) -
+             request.memory_costs(node).costs(node_strategies[node]));
+      }
+    }
+  }
+  return new_memory_slack;
+}
+
 // Checks if the node-sharding strategy has a finite cost and satisfies the
 // peak-memory constraint.
 std::optional<AutoShardingViolationCode> ShardingStrategyHasViolation(
@@ -1021,8 +1251,8 @@ AutoShardingSolverOutput SolveRandom(const AutoShardingSolverRequest& request,
 }
 
 // Greedily selects the node sharding strategies. Valid modes:
-// - "node_cost"
-// - "node_memory"
+// - "node-cost"
+// - "node-memory"
 AutoShardingSolverOutput SolveGreedy(const AutoShardingSolverRequest& request,
                                      const std::string& mode) {
   const int num_nodes = request.num_nodes();
@@ -1058,6 +1288,88 @@ AutoShardingSolverOutput SolveGreedy(const AutoShardingSolverRequest& request,
   return output;
 }
 
+// A local search algorithm that iteratively picks a random path of length
+// `path_length` and computes the best sharding configuration for the path.
+// - `path_length = 0` corresponds to a random node.
+// - `path_length = 1` corresponds to a random edge.
+// It has two `memory_mode` options for how it handles peak-memory constraints:
+// - "inactive": ignores peak-memory constraints
+// - "active": treats the peak-memory usage as a hard constraint
+AutoShardingSolverOutput SolveRandomPathGreedy(
+    const AutoShardingSolverRequest& request, const int path_length,
+    const int num_trials, const std::string& memory_mode) {
+  std::mt19937_64 rng(0);
+  if (memory_mode != "inactive" && memory_mode != "active") {
+    CHECK(false) << absl::Substitute("Memory mode $0 is not implemented.",
+                                     memory_mode);
+  }
+
+  // Initialize each node's sharding strategy with the least-memory usage.
+  std::vector<NodeStrategyIdx> node_strategies =
+      SolveGreedy(request, "node-memory").s_val;
+  const std::pair<EdgeAdjacency, EdgeAdjacency> adjacency =
+      GetAdjacencyMatrix(request);
+  std::vector<std::vector<LivenessIdx>> node_to_active_times;
+  std::vector<double> memory_slack;
+  if (memory_mode == "active") {
+    node_to_active_times = GetNodeToActiveTimes(request);
+    memory_slack = TrackMemorySlack(request, node_strategies);
+  }
+
+  for (int trial = 0; trial < num_trials; ++trial) {
+    std::vector<NodeIdx> path =
+        SamplePath(request, adjacency.first, path_length, rng);
+    if (path.size() != path_length + 1) {
+      continue;
+    }
+    const std::vector<NodeStrategyIdx> new_path_strategies =
+        OptimizeOverPath(request, path, node_strategies, adjacency);
+
+    if (memory_mode == "inactive") {
+      for (int i = 0; i < path.size(); ++i) {
+        node_strategies[path[i]] = new_path_strategies[i];
+      }
+    } else if (memory_mode == "active") {
+      // Check: the new strategy over the path is different from the old one.
+      bool better_sharding = false;
+      for (int i = 0; i < path.size(); ++i) {
+        if (node_strategies[path[i]] != new_path_strategies[i]) {
+          better_sharding = true;
+          break;
+        }
+      }
+
+      if (better_sharding) {
+        // Check: the new strategy satisfies the memory constraints.
+        const auto new_memory_slack_at_times = GetNewMemorySlack(
+            request, path, new_path_strategies, node_strategies,
+            node_to_active_times, memory_slack);
+        bool memory_feasible = true;
+        for (const auto& [time_step, new_slack] : new_memory_slack_at_times) {
+          if (new_slack < 0.0) {
+            memory_feasible = false;
+            break;
+          }
+        }
+        // If feasible, update the sharding strategies and memory slack.
+        if (memory_feasible) {
+          for (const auto& [time_step, new_slack] : new_memory_slack_at_times) {
+            memory_slack[time_step] = new_slack;
+          }
+          for (int i = 0; i < path.size(); ++i) {
+            node_strategies[path[i]] = new_path_strategies[i];
+          }
+        }
+      }
+    }
+  }
+
+  AutoShardingSolverOutput output;
+  output.s_val = node_strategies;
+  output.cost = ComputeShardingStrategyCost(request, node_strategies);
+  return output;
+}
+
 }  // namespace
 
 absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
@@ -1072,6 +1384,10 @@ absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
     output = SolveGreedy(request, "node-cost");
   } else if (algorithm == "greedy-node-memory") {
     output = SolveGreedy(request, "node-memory");
+  } else if (algorithm == "random-path-greedy") {
+    output =
+        SolveRandomPathGreedy(request, /*path_length=*/2,
+                              /*num_trials=*/100000, /*memory_mode=*/"active");
   } else if (algorithm == "brkga") {
     output = SolveBrkga(request);
   } else {
