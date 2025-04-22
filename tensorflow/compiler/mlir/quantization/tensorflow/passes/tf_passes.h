@@ -40,6 +40,10 @@ CreateTFConvertFakeQuantToQdqPass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTFPrepareLiftingPass(
     tensorflow::quantization::OpSet target_opset);
 
+// Creates a pass that add QuantizationUnitLoc to quantizable layers.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTFAddQuantizationUnitLocPass();
+
 }  // namespace quant
 }  // namespace mlir
 
