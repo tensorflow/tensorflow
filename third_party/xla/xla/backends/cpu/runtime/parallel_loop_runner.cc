@@ -237,21 +237,19 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::Parallelize(Dims... dims,
   ScheduleAll(num_tasks, ParallelTask{dims..., std::forward<Task>(task)});
 }
 
-// XNNPACK tends to choose too small tile sizes that create too many tasks. For
-// dynamic versions of parallel loops we can choose tile size to be any multiple
-// of the original tile size. This function ensures that the tile size is at
-// least `min_tile_size`.
-static size_t AdjustTileSize(size_t tile_size, size_t min_tile_size) {
-  size_t adjusted_tile_size = tile_size;
-  while (adjusted_tile_size < min_tile_size) {
-    adjusted_tile_size += tile_size;
-  }
-  return adjusted_tile_size;
-}
-
-static ParallelLoopRunner::TileDim AdjustTileSize(ParallelLoopRunner::TileDim d,
-                                                  size_t min_tile_size) {
-  return {d.range, AdjustTileSize(d.tile, min_tile_size)};
+// Parallelize `task` over dynamic dimensions `dims` using `ParallelTask`.
+template <typename ParallelTask, typename... Dims, typename Task>
+ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::ParallelizeDynamic(
+    Dims... dims, Task&& task) {
+  // We target 4 tasks per thread to enable load balancing and keep task
+  // scheduling overheads low.
+  static constexpr size_t kTasksPerThread = 4;
+  std::apply(
+      [&](auto... dynamic_dims) {
+        Parallelize<ParallelTask, Dims...>(dynamic_dims...,
+                                           std::forward<Task>(task));
+      },
+      DynamicDimensions(kTasksPerThread * num_threads(), dims...));
 }
 
 void ParallelLoopRunner::Parallelize(RangeDim i, Task1D task) {
@@ -267,7 +265,7 @@ void ParallelLoopRunner::Parallelize(TileDim i, Task1DTile1D task) {
 }
 
 void ParallelLoopRunner::ParallelizeDynamic(TileDim i, Task1DTile1D task) {
-  Parallelize(AdjustTileSize(i, 128), std::move(task));
+  ParallelizeDynamic<ParallelTask1DTile1D, TileDim>(i, std::move(task));
 }
 
 void ParallelLoopRunner::Parallelize(RangeDim i, TileDim j, Task2DTile1D task) {
@@ -276,7 +274,8 @@ void ParallelLoopRunner::Parallelize(RangeDim i, TileDim j, Task2DTile1D task) {
 
 void ParallelLoopRunner::ParallelizeDynamic(RangeDim i, TileDim j,
                                             Task2DTile1D task) {
-  Parallelize(i, AdjustTileSize(j, 128), std::move(task));
+  ParallelizeDynamic<ParallelTask2DTile1D, RangeDim, TileDim>(i, j,
+                                                              std::move(task));
 }
 
 void ParallelLoopRunner::Parallelize(TileDim i, TileDim j, Task2DTile2D task) {
@@ -285,7 +284,8 @@ void ParallelLoopRunner::Parallelize(TileDim i, TileDim j, Task2DTile2D task) {
 
 void ParallelLoopRunner::ParallelizeDynamic(TileDim i, TileDim j,
                                             Task2DTile2D task) {
-  Parallelize(AdjustTileSize(i, 128), AdjustTileSize(j, 128), std::move(task));
+  ParallelizeDynamic<ParallelTask2DTile2D, TileDim, TileDim>(i, j,
+                                                             std::move(task));
 }
 
 void ParallelLoopRunner::Parallelize(RangeDim i, RangeDim j, RangeDim k,
@@ -308,8 +308,8 @@ void ParallelLoopRunner::Parallelize(RangeDim i, TileDim j, TileDim k,
 
 void ParallelLoopRunner::ParallelizeDynamic(RangeDim i, TileDim j, TileDim k,
                                             Task3DTile2D task) {
-  Parallelize(i, AdjustTileSize(j, 128), AdjustTileSize(k, 128),
-              std::move(task));
+  ParallelizeDynamic<ParallelTask3DTile2D, RangeDim, TileDim, TileDim>(
+      i, j, k, std::move(task));
 }
 
 void ParallelLoopRunner::Parallelize(RangeDim i, RangeDim j, TileDim k,
@@ -320,8 +320,8 @@ void ParallelLoopRunner::Parallelize(RangeDim i, RangeDim j, TileDim k,
 
 void ParallelLoopRunner::ParallelizeDynamic(RangeDim i, RangeDim j, TileDim k,
                                             TileDim l, Task4DTile2D task) {
-  Parallelize<ParallelTask4DTile2D, RangeDim, RangeDim, TileDim, TileDim>(
-      i, j, AdjustTileSize(k, 128), AdjustTileSize(l, 128), std::move(task));
+  ParallelizeDynamic<ParallelTask4DTile2D, RangeDim, RangeDim, TileDim,
+                     TileDim>(i, j, k, l, std::move(task));
 }
 
 void ParallelLoopRunner::Parallelize(RangeDim i, RangeDim j, RangeDim k,

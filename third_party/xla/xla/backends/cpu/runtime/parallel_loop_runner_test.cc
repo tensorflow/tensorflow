@@ -67,6 +67,33 @@ TEST(ParallelLoopRunnerTest, Delinearize) {
             std::make_tuple(RangeIndex{1}, TileIndex{0, 4}));
 }
 
+TEST(ParallelLoopRunnerTest, DynamicDimensions) {
+  EXPECT_EQ(ParallelLoopRunner::DynamicDimensions(4, TileDim{128, 4}),
+            std::make_tuple(TileDim{128, 128}));
+  EXPECT_EQ(ParallelLoopRunner::DynamicDimensions(4, TileDim{1024, 4}),
+            std::make_tuple(TileDim{1024, 256}));
+  EXPECT_EQ(ParallelLoopRunner::DynamicDimensions(4, TileDim{1024, 512}),
+            std::make_tuple(TileDim{1024, 512}));
+  EXPECT_EQ(ParallelLoopRunner::DynamicDimensions(4, TileDim{1024, 400}),
+            std::make_tuple(TileDim{1024, 400}));
+
+  EXPECT_EQ(
+      ParallelLoopRunner::DynamicDimensions(4, RangeDim{2}, TileDim{1024, 128}),
+      std::make_tuple(RangeDim{2}, TileDim{1024, 512}));
+
+  EXPECT_EQ(ParallelLoopRunner::DynamicDimensions(16, TileDim{1024, 128},
+                                                  TileDim{1024, 128}),
+            std::make_tuple(TileDim{1024, 128}, TileDim{1024, 512}));
+
+  EXPECT_EQ(ParallelLoopRunner::DynamicDimensions(32, TileDim{1024, 128},
+                                                  TileDim{1024, 128}),
+            std::make_tuple(TileDim{1024, 128}, TileDim{1024, 256}));
+
+  EXPECT_EQ(ParallelLoopRunner::DynamicDimensions(
+                32, RangeDim{1}, TileDim{512, 16}, TileDim{12, 5}),
+            std::make_tuple(RangeDim{1}, TileDim{512, 128}, TileDim{12, 12}));
+}
+
 TEST(ParallelLoopRunnerTest, Parallelize1D) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
