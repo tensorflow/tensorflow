@@ -47,7 +47,7 @@ XlaOp AssembleTuple(XlaBuilder* builder, ShapeTree<XlaOp> elements) {
         if (subshape.IsTuple()) {
           absl::InlinedVector<XlaOp, 2> children;
           ShapeIndex child_index = index;
-          for (int i = 0; i < subshape.tuple_shapes_size(); ++i) {
+          for (int i = 0; i < subshape.tuple_shapes().size(); ++i) {
             child_index.push_back(i);
             children.push_back(elements.element(child_index));
             child_index.pop_back();
