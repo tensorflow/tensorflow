@@ -75,3 +75,87 @@ op {
     type: "string"
   }
 }
+op {
+  name: "XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSize"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulator"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_accumulator"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
+    name: "max_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_unique_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+}

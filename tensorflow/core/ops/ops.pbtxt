@@ -68374,6 +68374,13 @@ op {
     name: "table_name"
     type: "string"
   }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "XlaSparseDenseMatmulGradWithAdagradAndCsrInput"
@@ -68438,6 +68445,13 @@ op {
   attr {
     name: "table_name"
     type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {
@@ -68515,6 +68529,13 @@ op {
   attr {
     name: "table_name"
     type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {
@@ -68608,6 +68629,13 @@ op {
   attr {
     name: "table_name"
     type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {
@@ -68714,6 +68742,13 @@ op {
     name: "table_name"
     type: "string"
   }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "XlaSparseDenseMatmulGradWithAdamAndCsrInput"
@@ -68802,6 +68837,13 @@ op {
   attr {
     name: "table_name"
     type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {
@@ -68904,6 +68946,13 @@ op {
     name: "table_name"
     type: "string"
   }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "XlaSparseDenseMatmulGradWithCsrInput"
@@ -68965,6 +69014,13 @@ op {
   attr {
     name: "table_name"
     type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {
@@ -69058,6 +69114,13 @@ op {
   attr {
     name: "table_name"
     type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {
@@ -69164,6 +69227,13 @@ op {
     name: "table_name"
     type: "string"
   }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "XlaSparseDenseMatmulGradWithSgdAndCsrInput"
@@ -69220,6 +69290,13 @@ op {
   attr {
     name: "table_name"
     type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {
@@ -69290,6 +69367,13 @@ op {
     name: "table_name"
     type: "string"
   }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "XlaSparseDenseMatmulWithCsrInput"
@@ -69342,6 +69426,13 @@ op {
   attr {
     name: "table_name"
     type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {
@@ -69407,6 +69498,13 @@ op {
   attr {
     name: "table_name"
     type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {
