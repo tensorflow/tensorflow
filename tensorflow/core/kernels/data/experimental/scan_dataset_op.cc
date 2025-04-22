@@ -237,7 +237,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
             out_tensors->push_back(std::move(state_and_output[i]));
           }
-        } else if (errors::IsOutOfRange(s)) {
+        } else if (absl::IsOutOfRange(s)) {
           if (dataset()->preserve_cardinality_) {
             // To guarantee that the transformation preserves the cardinality of
             // the dataset, we convert `OutOfRange` to `InvalidArgument` as the

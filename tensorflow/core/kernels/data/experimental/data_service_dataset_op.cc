@@ -665,7 +665,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
       iteration_counter_handle.container(), iteration_counter_handle.name(),
       &iteration_counter);
   bool owns_resource = false;
-  if (errors::IsNotFound(s)) {
+  if (absl::IsNotFound(s)) {
     owns_resource = true;
     static std::atomic<int64_t> resource_id_counter(0);
     const std::string& container = ctx->resource_manager()->default_container();
