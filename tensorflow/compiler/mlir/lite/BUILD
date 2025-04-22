@@ -306,6 +306,18 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "utils_test",
+    srcs = ["utils/utils_test.cc"],
+    deps = [
+        ":utils",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 cc_library(
     name = "attribute_utils",
     srcs = ["utils/attribute_utils.cc"],

@@ -20,6 +20,7 @@ limitations under the License.
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -28,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -458,6 +460,136 @@ DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
     }
   }
   llvm_unreachable("unsupported type");
+}
+
+// Checks if reduction axes and broadcast axes are disjoint.
+// Broadcast axes are derived by comparing the shape of `input_val` to the shape
+// represented by `target_shape_attr` according to standard broadcasting rules.
+// Returns true if the sets of axes are disjoint, false otherwise or on error.
+inline bool AreBroadcastAndReductionAxesIndependent(
+    mlir::Value input_val, const mlir::Attribute& indices_attr,
+    const mlir::Attribute& target_shape_attr) {
+  // 1. Get input type and shape.
+  // Use llvm::dyn_cast for safer casting.
+  auto ranked_input_type =
+      llvm::dyn_cast<mlir::RankedTensorType>(input_val.getType());
+  if (!ranked_input_type) {
+    // Consider logging or error emission if builder context is
+    // available/needed.
+    return false;  // Expect ranked type.
+  }
+  llvm::ArrayRef<int64_t> input_shape = ranked_input_type.getShape();
+  const int64_t input_rank = ranked_input_type.getRank();
+
+  // 2. Validate and extract reduction axes.
+  // Use llvm::dyn_cast for safer casting.
+  auto indices = llvm::dyn_cast<mlir::DenseElementsAttr>(indices_attr);
+  if (!indices || !indices.getElementType().isIntOrIndex()) {
+    return false;  // Invalid indices attribute.
+  }
+
+  // Use std::set for efficient storage and lookup of axes.
+  std::set<int64_t> reduction_axes_set;
+  if (!indices.empty()) {  // Only process if there are reduction axes.
+    if (input_rank == 0) {
+      // It's invalid to specify reduction axes for a scalar (rank 0) input.
+      return false;
+    }
+
+    // Iterate using range-based for loop and structured binding (if applicable)
+    // or direct value access.
+    for (const mlir::APInt& axis_val : indices.getValues<mlir::APInt>()) {
+      int64_t axis =
+          axis_val.getSExtValue();  // Use sign extension for neg axes.
+
+      // Normalize axis and check bounds.
+      if (axis < -input_rank || axis >= input_rank) {
+        return false;  // Axis out of bounds.
+      }
+      if (axis < 0) {
+        axis += input_rank;  // Convert negative axis to positive.
+      }
+      reduction_axes_set.insert(axis);
+    }
+  }
+
+  // If there are no reduction axes, they are trivially independent of any
+  // broadcast axes.
+  if (reduction_axes_set.empty()) {
+    return true;
+  }
+
+  // 3. Validate and extract target shape for broadcast.
+  // Use llvm::dyn_cast for safer casting.
+  auto target_shape_value_attr =
+      llvm::dyn_cast<mlir::DenseElementsAttr>(target_shape_attr);
+  if (!target_shape_value_attr ||
+      !target_shape_value_attr.getElementType().isIntOrIndex()) {
+    return false;  // Invalid target shape attribute.
+  }
+
+  // Use llvm::SmallVector for efficient shape storage.
+  llvm::SmallVector<int64_t, 4> target_shape_vec;
+  target_shape_vec.reserve(
+      target_shape_value_attr.getNumElements());  // Pre-allocate
+  for (const mlir::APInt& shape_val :
+       target_shape_value_attr.getValues<mlir::APInt>()) {
+    // Assuming shape dimensions should be non-negative, consider getZExtValue.
+    // However, getSExtValue is safe if intermediate calculations handle signs.
+    target_shape_vec.push_back(shape_val.getSExtValue());
+  }
+  // Use llvm::ArrayRef for safe, non-owning view of the shape vector.
+  llvm::ArrayRef<int64_t> target_shape = target_shape_vec;
+  const int64_t target_rank = target_shape.size();
+
+  // 4. Determine broadcast axes based on standard broadcasting rules.
+  std::set<int64_t> broadcast_axes_set;
+  const int64_t max_rank = std::max(input_rank, target_rank);
+
+  // Iterate through dimensions, aligning from the right (trailing dimensions).
+  for (int64_t i = 0; i < max_rank; ++i) {
+    // Calculate indices relative to the end of the shape arrays.
+    const int64_t input_dim_idx = input_rank - 1 - i;
+    const int64_t target_dim_idx = target_rank - 1 - i;
+
+    // Treat dimensions missing due to lower rank as having size 1.
+    const int64_t input_dim =
+        (input_dim_idx >= 0) ? input_shape[input_dim_idx] : 1;
+    const int64_t target_dim =
+        (target_dim_idx >= 0) ? target_shape[target_dim_idx] : 1;
+
+    // Check for incompatible shapes (dimensions differ and neither is 1).
+    // This indicates an invalid broadcast according to NumPy rules.
+    if (input_dim != target_dim && input_dim != 1 && target_dim != 1) {
+      // Consider if the specific broadcast op allows other behaviors (e.g.,
+      // -1). For standard rules, this is an incompatibility.
+      return false;
+    }
+
+    // An axis in the *input* tensor is involved in broadcasting if its size is
+    // 1 and the corresponding target dimension size is greater than 1.
+    if (input_dim == 1 && target_dim > 1) {
+      // Ensure the axis index is valid for the input tensor's rank.
+      if (input_dim_idx >= 0) {
+        broadcast_axes_set.insert(input_dim_idx);
+      }
+      // Note: If input_dim_idx < 0, broadcasting occurs due to rank difference,
+      // but it doesn't correspond to an axis *within* the original input
+      // tensor.
+    }
+  }
+
+  // 5. Check for intersection between the set of reduction axes and the set of
+  //    broadcast axes derived above.
+  for (int64_t reduction_axis : reduction_axes_set) {
+    if (broadcast_axes_set.count(reduction_axis)) {
+      // Found an axis that is present in both sets.
+      return false;
+    }
+  }
+
+  // 6. No overlapping axes were found.
+  return true;
 }
 
 }  // namespace TFL

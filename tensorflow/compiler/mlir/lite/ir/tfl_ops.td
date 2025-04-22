@@ -2496,6 +2496,11 @@ def TFL_SumOp: TFL_Op<"sum", [
 
   let hasFolder = 1;
 
+  let builders = [
+    OpBuilder<(ins "Value":$input, "Value":$axes,
+      "BoolAttr":$keep_dims)>
+  ];
+
   // TODO(b/215655380): Re-enable this once there is 16-bit MLIR quantizer.
   //
   //let extraClassDeclaration = [{

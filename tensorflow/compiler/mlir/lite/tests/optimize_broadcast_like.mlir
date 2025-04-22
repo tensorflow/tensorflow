@@ -1190,3 +1190,45 @@ func.func @broadcast_mul_dynamic_lhs(%arg0: tensor<1x7xf32>, %arg1: tensor<?x7xf
   func.return %1 : tensor<?x7xf32>
   // UNSAFE-DYNAMIC-CHECK: %0 = tfl.mul(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1x7xf32>, tensor<?x7xf32>) -> tensor<?x7xf32>
 }
+
+// CHECK-LABEL: @move_broadcast_through_sum
+func.func @move_broadcast_through_sum(%arg0: tensor<1x1x40x100x40x3xf32>) -> tensor<1x4x100x40x3xf32> {
+  %cst_0 = arith.constant dense<[1, 4, 40, 100, 40, 3]> : tensor<6xi64>
+  %cst_1 = arith.constant dense<2> : tensor<1xi32>
+  %0 = "tfl.broadcast_to"(%arg0, %cst_0) : (tensor<1x1x40x100x40x3xf32>, tensor<6xi64>) -> tensor<1x4x40x100x40x3xf32>
+  %1 = "tfl.sum"(%0, %cst_1) <{keep_dims = false}> : (tensor<1x4x40x100x40x3xf32>, tensor<1xi32>) -> tensor<1x4x100x40x3xf32>
+  return %1 : tensor<1x4x100x40x3xf32>
+  // CHECK: %cst = arith.constant dense<[1, 4, 100, 40, 3]> : tensor<5xi32>
+  // CHECK: %cst_0 = arith.constant dense<2> : tensor<1xi32>
+  // CHECK: %0 = "tfl.sum"(%arg0, %cst_0) <{keep_dims = false}> : (tensor<1x1x40x100x40x3xf32>, tensor<1xi32>) -> tensor<1x1x100x40x3xf32>
+  // CHECK: %1 = "tfl.broadcast_to"(%0, %cst) : (tensor<1x1x100x40x3xf32>, tensor<5xi32>) -> tensor<1x4x100x40x3xf32>
+  // CHECK: return %1 : tensor<1x4x100x40x3xf32>
+}
+
+// CHECK-LABEL: @move_broadcast_through_sum_keep_dims
+func.func @move_broadcast_through_sum_keep_dims(%arg0: tensor<1x1x40x100x40x3xf32>) -> tensor<1x4x1x100x40x3xf32> {
+  %cst_0 = arith.constant dense<[1, 4, 40, 100, 40, 3]> : tensor<6xi64>
+  %cst_1 = arith.constant dense<2> : tensor<1xi32>
+  %0 = "tfl.broadcast_to"(%arg0, %cst_0) : (tensor<1x1x40x100x40x3xf32>, tensor<6xi64>) -> tensor<1x4x40x100x40x3xf32>
+  %1 = "tfl.sum"(%0, %cst_1) <{keep_dims = true}> : (tensor<1x4x40x100x40x3xf32>, tensor<1xi32>) -> tensor<1x4x1x100x40x3xf32>
+  return %1 : tensor<1x4x1x100x40x3xf32>
+  // CHECK: %cst = arith.constant dense<[1, 4, 1, 100, 40, 3]> : tensor<6xi32>
+  // CHECK: %cst_0 = arith.constant dense<2> : tensor<1xi32>
+  // CHECK: %0 = "tfl.sum"(%arg0, %cst_0) <{keep_dims = true}> : (tensor<1x1x40x100x40x3xf32>, tensor<1xi32>) -> tensor<1x1x1x100x40x3xf32>
+  // CHECK: %1 = "tfl.broadcast_to"(%0, %cst) : (tensor<1x1x1x100x40x3xf32>, tensor<6xi32>) -> tensor<1x4x1x100x40x3xf32>
+  // CHECK: return %1 : tensor<1x4x1x100x40x3xf32>
+}
+
+// CHECK-LABEL: @move_broadcast_through_sum_neg
+func.func @move_broadcast_through_sum_neg(%arg0: tensor<1x1x40x100x40x3xf32>) -> tensor<1x40x100x40x3xf32> {
+  %cst_0 = arith.constant dense<[1, 4, 40, 100, 40, 3]> : tensor<6xi64>
+  %cst_1 = arith.constant dense<1> : tensor<1xi32>
+  %0 = "tfl.broadcast_to"(%arg0, %cst_0) : (tensor<1x1x40x100x40x3xf32>, tensor<6xi64>) -> tensor<1x4x40x100x40x3xf32>
+  %1 = "tfl.sum"(%0, %cst_1) <{keep_dims = false}> : (tensor<1x4x40x100x40x3xf32>, tensor<1xi32>) -> tensor<1x40x100x40x3xf32>
+  return %1 : tensor<1x40x100x40x3xf32>
+  // CHECK: %cst = arith.constant dense<[1, 4, 40, 100, 40, 3]> : tensor<6xi64>
+  // CHECK: %cst_0 = arith.constant dense<1> : tensor<1xi32>
+  // CHECK: %0 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<1x1x40x100x40x3xf32>, tensor<6xi64>) -> tensor<1x4x40x100x40x3xf32>
+  // CHECK: %1 = "tfl.sum"(%0, %cst_0) <{keep_dims = false}> : (tensor<1x4x40x100x40x3xf32>, tensor<1xi32>) -> tensor<1x40x100x40x3xf32>
+  // CHECK: return %1 : tensor<1x40x100x40x3xf32>
+}
