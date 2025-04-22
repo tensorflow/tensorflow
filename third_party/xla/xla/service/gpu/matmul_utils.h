@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
@@ -57,6 +58,10 @@ absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(
 // emitters cannot handle some dots, e.g., i8[] x i8[] -> i32[] dots,
 // so we need to always use cuBLAS or Triton for those.
 bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot);
+
+// Returns the accumulator type for the given dot instruction (either extracted
+// from the dot algorithm or inferred from the output type).
+PrimitiveType GetGemmAccumulatorType(HloDotInstruction* dot);
 
 // extending plain MatrixLayout struct with creator functions
 struct MatrixLayout : public se::gpu::MatrixLayout {
