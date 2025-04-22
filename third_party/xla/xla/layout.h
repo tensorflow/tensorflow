@@ -472,7 +472,7 @@ class Layout {
   // We store a single inlined vector to hold
   struct DimInfo {
     DimInfo()
-        : dim_level_type(DIM_DENSE), dim_unique(false), dim_ordered(false) {}
+        : dim_level_type(DIM_DENSE), dim_unique(true), dim_ordered(true) {}
 
     DimLevelType dim_level_type : 6;
     bool dim_unique : 1;

@@ -132,5 +132,23 @@ TEST_F(LayoutTest, LayoutToFromProto) {
                        .add_split_configs(SplitConfig(1, {0, 4})));
 }
 
+TEST(Layout, DimensionIsUniqueByDefault) {
+  Layout layout({0, 1});
+  layout.add_dim_level_type(DIM_DENSE);
+  EXPECT_TRUE(layout.dim_unique(0));
+
+  layout.add_dim_level_type(DIM_COMPRESSED);
+  EXPECT_TRUE(layout.dim_unique(1));
+}
+
+TEST(Layout, DimensionIsOrderedByDefault) {
+  Layout layout({0, 1});
+  layout.add_dim_level_type(DIM_DENSE);
+  EXPECT_TRUE(layout.dim_ordered(0));
+
+  layout.add_dim_level_type(DIM_COMPRESSED);
+  EXPECT_TRUE(layout.dim_ordered(1));
+}
+
 }  // namespace
 }  // namespace xla
