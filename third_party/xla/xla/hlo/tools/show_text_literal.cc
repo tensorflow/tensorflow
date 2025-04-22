@@ -18,9 +18,9 @@ limitations under the License.
 #include <stdio.h>
 
 #include <algorithm>
-#include <memory>
 #include <string>
 
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "xla/literal.h"
 #include "xla/text_literal_reader.h"

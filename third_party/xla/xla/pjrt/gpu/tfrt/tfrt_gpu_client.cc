@@ -948,9 +948,18 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
       description_(options.id, options.process_index, options.platform_version),
       max_inflight_computations_semaphore_(
           /*capacity=*/options.max_inflight_computations) {
+  std::array<int, 1> coords = {local_device_id_.value()};
+  description_.SetCoords(coords);
+  std::vector<int64_t> v_coords(description_.coords().begin(),
+                                description_.coords().end());
+
   description_.SetAttributes({
+      {"coords", xla::PjRtDeviceAttribute(v_coords)},
+      {"device_vendor", options.device_vendor},
+      {"slice_index", static_cast<int64_t>(options.slice_index)},
       {"compute_capability",
        xla::PjRtDeviceAttribute(options.compute_capability)},
+      {"core_count", static_cast<int64_t>(options.core_count)},
   });
 
   description_.SetDebugString(absl::StrCat("TFRT_GPU_", id_));
@@ -1971,6 +1980,7 @@ GetTfrtGpuDevices(LocalClient* xla_client) {
     options.id = i;
     // TODO: b/382117736 - Support multi-host
     options.process_index = 0;
+    options.slice_index = 0;
     options.local_device_id = PjRtLocalDeviceId(i);
     options.local_hardware_id = PjRtLocalHardwareId(i);
     options.executor = executor;
@@ -1982,7 +1992,9 @@ GetTfrtGpuDevices(LocalClient* xla_client) {
         std::unique_ptr<xla::se::DeviceDescription> desc,
         platform->DescriptionForDevice(options.local_hardware_id.value()));
     options.platform_version = desc->name();
+    options.device_vendor = desc->device_vendor();
     options.compute_capability = MakeComputeCapabilityString(desc.get());
+    options.core_count = desc->core_count();
 
     auto device = std::make_unique<TfrtGpuDevice>(std::move(options));
     devices.push_back(std::move(device));

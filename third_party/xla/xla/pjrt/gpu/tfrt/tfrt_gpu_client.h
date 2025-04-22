@@ -121,6 +121,7 @@ class TfrtGpuDevice final : public PjRtDevice {
   struct Options {
     int id;
     int32_t process_index;
+    int slice_index;
     PjRtLocalDeviceId local_device_id;
     PjRtLocalHardwareId local_hardware_id;
     se::StreamExecutor* executor;
@@ -129,6 +130,8 @@ class TfrtGpuDevice final : public PjRtDevice {
     int max_inflight_computations;
     std::string platform_version;
     std::string compute_capability;
+    std::string device_vendor;
+    int core_count;
   };
 
   explicit TfrtGpuDevice(Options&& options);

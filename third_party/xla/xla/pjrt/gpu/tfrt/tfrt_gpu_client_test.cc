@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -69,7 +70,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -1388,27 +1391,48 @@ TEST(TfrtGpuClientTest, OnDoneSafelyDestructTransferManagerAsync) {
   done.WaitForNotification();
 }
 
-TEST(TfrtGpuClientTest, ComputeCapabilityAttribute) {
+TEST(TfrtGpuClientTest, DeviceAttributes) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
-  TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client->addressable_devices()[0]);
-
   ASSERT_EQ(client->platform_name(), "cuda");
-  auto compute_capability =
-      std::get<std::string>(device->Attributes().at("compute_capability"));
 
-  // Gets the expected compute capability.
-  const se::Platform* platform = device->executor()->GetPlatform();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::se::DeviceDescription> desc,
-                          platform->DescriptionForDevice(0));
-  stream_executor::GpuComputeCapability cc = desc->gpu_compute_capability();
-  auto nvcc = std::get<stream_executor::CudaComputeCapability>(cc);
-  std::string expected_compute_capability =
-      absl::StrCat(nvcc.major, ".", nvcc.minor);
+  for (int device_index = 0;
+       device_index < client->addressable_devices().size(); ++device_index) {
+    TfrtGpuDevice* device = tensorflow::down_cast<TfrtGpuDevice*>(
+        client->addressable_devices()[device_index]);
 
-  EXPECT_EQ(compute_capability, expected_compute_capability);
+    // Attribute `compute_capability`.
+    auto compute_capability =
+        std::get<std::string>(device->Attributes().at("compute_capability"));
+
+    // Gets the expected compute capability.
+    const se::Platform* platform = device->executor()->GetPlatform();
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::se::DeviceDescription> desc,
+                            platform->DescriptionForDevice(0));
+    stream_executor::GpuComputeCapability cc = desc->gpu_compute_capability();
+    auto nvcc = std::get<stream_executor::CudaComputeCapability>(cc);
+    std::string expected_compute_capability =
+        absl::StrCat(nvcc.major, ".", nvcc.minor);
+    EXPECT_EQ(compute_capability, expected_compute_capability);
+
+    // Attribute `coords`.
+    EXPECT_EQ(device->description().coords()[0], device_index);
+
+    // Attribute `device_vendor`.
+    auto device_vendor =
+        std::get<std::string>(device->Attributes().at("device_vendor"));
+    EXPECT_EQ(device_vendor, desc->device_vendor());
+
+    // Attribute `slice_index`.
+    auto slice_index =
+        std::get<int64_t>(device->Attributes().at("slice_index"));
+    EXPECT_EQ(slice_index, 0);
+
+    // Attribute `core_count`.
+    auto core_count = std::get<int64_t>(device->Attributes().at("core_count"));
+    EXPECT_EQ(core_count, desc->core_count());
+  }
 }
 
 TEST(TfrtGpuClientTest, DmaMapUnmap) {
