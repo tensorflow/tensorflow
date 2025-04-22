@@ -2579,5 +2579,62 @@ PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,
   return PartitionedHlo(copy_hlo, phlo.base_shape(), phlo.state());
 }
 
+DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
+    const HloInstruction* hlo) {
+  CHECK(!hlo->sharding().IsTileMaximal());
+
+  DynamicUpdateSliceAnalysis analysis;
+
+  bool update_on_a_single_partition = true;
+  bool has_partitioned_slice_dim_with_dynamic_index = false;
+  for (int64_t i = 0; i < hlo->shape().dimensions_size(); ++i) {
+    if (hlo->operand(1)->shape().dimensions(i) == hlo->shape().dimensions(i)) {
+      continue;
+    }
+    analysis.slice_dims.push_back(i);
+
+    if (hlo->sharding().tile_assignment().dim(i) == 1) {
+      continue;
+    }
+    analysis.partitioned_slice_dims.push_back(i);
+
+    int64_t slice_size = hlo->operand(1)->shape().dimensions(i);
+    if (slice_size == 1) {
+      continue;
+    }
+
+    if (hlo->operand(i + 2)->IsConstant()) {
+      const PrimitiveType elemType =
+          hlo->operand(i + 2)->shape().element_type();
+      int64_t start_index =
+          elemType == S64 ? hlo->operand(i + 2)->literal().Get<int64_t>({})
+                          : hlo->operand(i + 2)->literal().Get<int>({});
+      int64_t end_index = start_index + slice_size - 1;
+
+      int64_t per_partition_size = CeilOfRatio(
+          hlo->shape().dimensions(i), hlo->sharding().tile_assignment().dim(i));
+      if (start_index / per_partition_size != end_index / per_partition_size) {
+        update_on_a_single_partition = false;
+      }
+    } else {
+      update_on_a_single_partition = false;
+      has_partitioned_slice_dim_with_dynamic_index = true;
+    }
+  }
+
+  if (analysis.partitioned_slice_dims.empty()) {
+    analysis.method = DynamicUpdateSliceMethod::kDefault;
+  } else if (update_on_a_single_partition) {
+    analysis.method = DynamicUpdateSliceMethod::kUpdateOnASinglePartition;
+  } else if (has_partitioned_slice_dim_with_dynamic_index) {
+    analysis.method = DynamicUpdateSliceMethod::kDefault;
+  } else {
+    analysis.method =
+        DynamicUpdateSliceMethod::kAllPartitionedSliceDimsHaveConstantIndices;
+  }
+
+  return analysis;
+}
+
 }  // namespace spmd
 }  // namespace xla

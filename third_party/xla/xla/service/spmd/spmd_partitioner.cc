@@ -3765,53 +3765,14 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
     }
   }
 
-  // We always keep the sharding axes along the batch dimensions. There are two
-  // methods to handle the partitioned slice dimensions.
-  // 1. Replicate the slice dimensions for all involved tensors.
-  // 2. If we ensure that the update is fully contained in a single partition,
-  //    we can keep the sharding for input and output. There are two cases:
-  //    (1) The slice size is 1.
-  //    (2) The index is a constant. The start index and the end index reside in
-  //    the same partition.
-  std::vector<int64_t> partitioned_slice_dims;
-  std::vector<int64_t> slice_dims;
-  bool will_replicate_slice_dims = false;
-  for (int64_t i = 0; i < hlo->shape().dimensions_size(); ++i) {
-    if (hlo->operand(1)->shape().dimensions(i) == hlo->shape().dimensions(i)) {
-      continue;
-    }
-
-    slice_dims.push_back(i);
-    int64_t slice_size = hlo->operand(1)->shape().dimensions(i);
-    if (hlo->sharding().tile_assignment().dim(i) != 1) {
-      partitioned_slice_dims.push_back(i);
-      if (slice_size == 1) {
-        continue;
-      }
-      if (hlo->operand(i + 2)->IsConstant()) {
-        const PrimitiveType elemType =
-            hlo->operand(i + 2)->shape().element_type();
-        int64_t start_index =
-            elemType == S64 ? hlo->operand(i + 2)->literal().Get<int64_t>({})
-                            : hlo->operand(i + 2)->literal().Get<int>({});
-        int64_t end_index = start_index + slice_size - 1;
-
-        int64_t per_partition_size =
-            CeilOfRatio(hlo->shape().dimensions(i),
-                        hlo->sharding().tile_assignment().dim(i));
-        if (start_index / per_partition_size !=
-            end_index / per_partition_size) {
-          // The update is not fully contained in a single partition.
-          will_replicate_slice_dims = true;
-        }
-      } else {
-        will_replicate_slice_dims = true;
-      }
-    }
-  }
+  DynamicUpdateSliceAnalysis analysis = AnalyzeDynamicUpdateSlice(hlo);
 
   // Method 1. Replicate the slice dimensions for all involved tensors.
-  if (will_replicate_slice_dims || partitioned_slice_dims.empty()) {
+  // TODO(b/407610806). Add support if all partitioned slice dimensions have
+  // constant indices.
+  if (analysis.method == DynamicUpdateSliceMethod::kDefault ||
+      analysis.method == DynamicUpdateSliceMethod::
+                             kAllPartitionedSliceDimsHaveConstantIndices) {
     const HloSharding& input_sharding = hlo->operand(0)->sharding();
     const HloSharding& output_sharding = hlo->sharding();
     const HloSharding& better_sharding =
@@ -3821,7 +3782,7 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
 
     HloSharding replicated_sharding =
         hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-            better_sharding, slice_dims);
+            better_sharding, analysis.slice_dims);
     auto base = GetPartitionedHlo(hlo->operand(0)).Reshard(replicated_sharding);
     auto operand =
         GetPartitionedHlo(hlo->operand(1)).Reshard(replicated_sharding);
@@ -3835,6 +3796,8 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
 
   // Method 2. Keep the sharding for input and output since the update is fully
   // contained in a single partition.
+  CHECK(analysis.method == DynamicUpdateSliceMethod::kUpdateOnASinglePartition);
+
   auto add_hlo = [&](std::unique_ptr<HloInstruction> to_add) {
     return b_.AddInstruction(std::move(to_add));
   };
@@ -3845,8 +3808,8 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
       GetPartitionedHlo(hlo->operand(0)).Reshard(dus_sharding).hlo();
 
   auto update_sharding =
-      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(dus_sharding,
-                                                               slice_dims);
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+          dus_sharding, analysis.slice_dims);
 
   // TODO(wangtao): use collective permute for sharded update.
   HloInstruction* replicate_update =
@@ -3858,7 +3821,7 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
   HloInstruction* all_dims_within_partition = add_hlo(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
 
-  for (int64_t dim : partitioned_slice_dims) {
+  for (int64_t dim : analysis.partitioned_slice_dims) {
     // Calculate per partition size.
     const int64_t per_partition_size = partitioned_shape.dimensions(dim);
 

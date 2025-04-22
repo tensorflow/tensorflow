@@ -960,6 +960,42 @@ absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
 PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,
                                                    SpmdBuilder* b);
 
+// For dynamic-update-slice, we focus on the partitioned slice dimensions,
+// ignoring batch dimensions and replicated slice dimensions. We have three
+// methods to handle the partitioned slice dimensions.
+//
+// 1. **Default.** Replicate all tensors along the slice dimensions.
+// 2. **Single Partition Update.** The update is entirely contained within a
+//    single partition. All partitioned slice dimensions satisfy
+//    2.1 The slice size is 1, OR
+//    2.2 The update indices are compile-time constants, and the start and end
+//        indices reside in the same partition.
+// 3. **Constant Indices.** All partitioned slice dimensions have compile-time
+//    constant indices.
+//
+// If both optimizations (2 and 3) are feasible, we prioritize (2) over (3).
+// Refer to go/dus-spmd for more details.
+enum class DynamicUpdateSliceMethod {
+  // Replicate all tensors along the slice dimensions.
+  kDefault,
+
+  // The update is fully contained in a single partition.
+  kUpdateOnASinglePartition,
+
+  // All partitioned slice dimensions have compile-time constant indices.
+  kAllPartitionedSliceDimsHaveConstantIndices,
+};
+
+struct DynamicUpdateSliceAnalysis {
+  DynamicUpdateSliceMethod method;
+  // All slice dimensions of the dynamic update slice instruction.
+  std::vector<int64_t> slice_dims;
+  // The slice dimensions that are partitioned.
+  std::vector<int64_t> partitioned_slice_dims;
+};
+
+DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(const HloInstruction* hlo);
+
 }  // namespace spmd
 }  // namespace xla
 
