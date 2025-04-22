@@ -53,7 +53,8 @@ class TupleUtil {
   // get-tuple-elements and a new tuple instruction. Returns the root of the
   // graph of instructions generated.
   static HloInstruction* Duplicate(HloInstruction* input_tuple) {
-    return ExtractPrefix(input_tuple, input_tuple->shape().tuple_shapes_size());
+    return ExtractPrefix(input_tuple,
+                         input_tuple->shape().tuple_shapes().size());
   }
 
   // Descend to the shape_index element of the tuple and replace that with
