@@ -400,17 +400,31 @@ TileAssignment::TileAssignment(TileAssignment&& other) {
 
 TileAssignment& TileAssignment::operator=(const TileAssignment& other) {
   iota_ = other.iota_;
-  absl::MutexLock other_lock(&other.mu_);
-  shared_array_ = other.shared_array_;
-  array_ = other.array_;
+  std::shared_ptr<const Array<int64_t>> shared_array;
+  const Array<int64_t>* array;
+  {
+    absl::MutexLock other_lock(&other.mu_);
+    shared_array = other.shared_array_;
+    array = other.array_;
+  }
+  absl::MutexLock lock(&mu_);
+  shared_array_ = shared_array;
+  array_ = array;
   return *this;
 }
 
 TileAssignment& TileAssignment::operator=(TileAssignment&& other) {
   iota_ = other.iota_;
-  absl::MutexLock other_lock(&other.mu_);
-  shared_array_ = std::move(other.shared_array_);
-  array_ = other.array_;
+  std::shared_ptr<const Array<int64_t>> shared_array;
+  const Array<int64_t>* array;
+  {
+    absl::MutexLock other_lock(&other.mu_);
+    shared_array = std::move(other.shared_array_);
+    array = other.array_;
+  }
+  absl::MutexLock lock(&mu_);
+  shared_array_ = shared_array;
+  array_ = array;
   return *this;
 }
 
@@ -532,8 +546,7 @@ const Array<int64_t>& TileAssignment::array() const {
   MaybeMaterializeFullArray();
   return *array_;
 }
-const std::shared_ptr<const Array<int64_t>>& TileAssignment::shared_array()
-    const {
+std::shared_ptr<const Array<int64_t>> TileAssignment::shared_array() const {
   absl::MutexLock lock(&mu_);
   MaybeMaterializeFullArray();
   return shared_array_;

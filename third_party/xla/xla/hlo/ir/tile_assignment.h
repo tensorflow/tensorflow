@@ -256,7 +256,7 @@ class TileAssignment {
   const Array<int64_t>& array() const;
   // Similar to array() but returns the underlying shared_ptr to avoid deep
   // copy.
-  const std::shared_ptr<const Array<int64_t>>& shared_array() const;
+  std::shared_ptr<const Array<int64_t>> shared_array() const;
   // Makes a deep copy of shared_array().
   std::shared_ptr<Array<int64_t>> shared_array_clone() const;
 
