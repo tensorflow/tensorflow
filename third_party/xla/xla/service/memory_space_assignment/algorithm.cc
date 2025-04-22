@@ -49,6 +49,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -2862,6 +2863,8 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
       if (use.hlo_use.instruction->opcode() != HloOpcode::kBitcast ||
           use.hlo_use.instruction ==
               use.hlo_use.instruction->parent()->root_instruction()) {
+        UpdateRequestWithAlternateMemoryColoringRequirements(request);
+        UpdateRequestWithDefaultMemoryColoringRequirements(request);
         AllocationResult allocate_segment_result = AllocateSegment(request);
         VLOG(2) << "AllocateSegment result: "
                 << ResultToString(allocate_segment_result);
@@ -3277,7 +3280,6 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
   request.end_time = use_time;
   request.only_extend_existing_allocation = only_extend_existing_allocation;
   request.processed_allocation_values = processed_allocation_values;
-
   return request;
 }
 
@@ -4890,15 +4892,46 @@ void MsaAlgorithm::ReleaseReservedAllocationForAlternateMemoryColorings(
   CHECK_EQ(original_size - repack_allocation_blocks_.size(), 1);
 }
 
-MsaAlgorithm::ColoredAllocationRequestProperties
-MsaAlgorithm::UpdateReservedAllocationsAndGetColoringProperties(
+void MsaAlgorithm::FreeAlternateMemoryColoringReservedAllocations(
     AllocationRequest& request) {
+  if (!request.require_start_colored_in_alternate_memmory &&
+      !request.require_end_colored_in_alternate_memory) {
+    return;
+  }
+  const HloPosition& defining_position =
+      request.allocation_value->defining_position();
+  auto reserved_allocations_it =
+      reserved_allocations_for_alt_mem_colorings_.find(defining_position);
+  CHECK(reserved_allocations_it !=
+        reserved_allocations_for_alt_mem_colorings_.end());
+
+  int64_t inclusive_start_time = request.inclusive_start_time;
+  int64_t use_time = request.end_time;
+  for (std::unique_ptr<ReservedAllocation>& reserved_allocation_ptr :
+       reserved_allocations_it->second) {
+    if (request.require_start_colored_in_alternate_memmory &&
+        reserved_allocation_ptr->start_time() == inclusive_start_time) {
+      ReleaseReservedAllocationForAlternateMemoryColorings(
+          reserved_allocation_ptr.get());
+    }
+    if (request.require_end_colored_in_alternate_memory &&
+        reserved_allocation_ptr->end_time() == use_time) {
+      ReleaseReservedAllocationForAlternateMemoryColorings(
+          reserved_allocation_ptr.get());
+    }
+  }
+}
+
+void MsaAlgorithm::UpdateRequestWithAlternateMemoryColoringRequirements(
+    AllocationRequest& request) {
+  if (!request.allocation_value) {
+    return;
+  }
   const HloPosition& defining_position =
       request.allocation_value->defining_position();
   int64_t definition_time =
       hlo_live_range_.instruction_schedule().at(defining_position.instruction);
 
-  ColoredAllocationRequestProperties properties;
   int64_t inclusive_start_time = request.inclusive_start_time;
   int64_t use_time = request.end_time;
 
@@ -4910,17 +4943,27 @@ MsaAlgorithm::UpdateReservedAllocationsAndGetColoringProperties(
          reserved_allocations_it->second) {
       if (inclusive_start_time == definition_time &&
           reserved_allocation_ptr->start_time() == definition_time) {
-        properties.require_start_colored_in_alternate_memmory = true;
-        ReleaseReservedAllocationForAlternateMemoryColorings(
-            reserved_allocation_ptr.get());
+        request.require_start_colored_in_alternate_memmory = true;
       }
       if (reserved_allocation_ptr->end_time() == use_time) {
-        properties.require_end_colored_in_alternate_memory = true;
-        ReleaseReservedAllocationForAlternateMemoryColorings(
-            reserved_allocation_ptr.get());
+        request.require_end_colored_in_alternate_memory = true;
       }
     }
   }
+}
+
+void MsaAlgorithm::UpdateRequestWithDefaultMemoryColoringRequirements(
+    AllocationRequest& request) {
+  if (!request.allocation_value) {
+    return;
+  }
+  const HloPosition& defining_position =
+      request.allocation_value->defining_position();
+  int64_t definition_time =
+      hlo_live_range_.instruction_schedule().at(defining_position.instruction);
+
+  int64_t inclusive_start_time = request.inclusive_start_time;
+  int64_t use_time = request.end_time;
 
   auto default_memory_colorings_it =
       default_memory_coloring_requirements_.find(defining_position);
@@ -4929,14 +4972,13 @@ MsaAlgorithm::UpdateReservedAllocationsAndGetColoringProperties(
     for (int64_t coloring_time : default_memory_colorings_it->second) {
       if (inclusive_start_time == definition_time &&
           coloring_time == definition_time) {
-        properties.require_start_colored_in_default_memory = true;
+        request.require_start_colored_in_default_memory = true;
       }
       if (coloring_time == use_time) {
-        properties.require_end_colored_in_default_memory = true;
+        request.require_end_colored_in_default_memory = true;
       }
     }
   }
-  return properties;
 }
 
 AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
@@ -5058,15 +5100,12 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
       << "; required memory assignment at end: "
       << OptionalRequiredMemoryAssignmentToString(required_assignment_at_end);
 
-  ColoredAllocationRequestProperties colored_allocation_request_properties =
-      UpdateReservedAllocationsAndGetColoringProperties(request);
+  FreeAlternateMemoryColoringReservedAllocations(request);
 
   AllocationResult allocation_result = AllocationResult::kSuccess;
   // First try keeping the allocation entirely in the alternate memory.
-  if (!colored_allocation_request_properties
-           .require_start_colored_in_default_memory &&
-      !colored_allocation_request_properties
-           .require_end_colored_in_default_memory &&
+  if (!request.require_start_colored_in_default_memory &&
+      !request.require_end_colored_in_default_memory &&
       required_memory_space_at_start != MemorySpace::kDefault &&
       required_memory_space_at_end != MemorySpace::kDefault &&
       request.allow_no_copy_alternate_mem_allocation &&
@@ -5085,8 +5124,7 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
 
   CHECK(!request.require_no_copy_alternate_mem_allocation);
 
-  if (colored_allocation_request_properties
-          .require_start_colored_in_alternate_memmory) {
+  if (request.require_start_colored_in_alternate_memmory) {
     // Since no-copy-allocation failed, continuous allocation is not possible in
     // the alternate memory.
     CHECK(!request.allocation_value->requires_contiguous_allocation());
@@ -5112,9 +5150,9 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
         (*prev_allocation_it)->defining_position() == defining_position) {
       // If there was an allocation for this HloValue that was in the alternate
       // memory space, we also need to perform an eviction.
-      AllocationResult eviction_result =
-          Evict(request, /*force_evict=*/colored_allocation_request_properties
-                             .require_start_colored_in_alternate_memmory);
+      AllocationResult eviction_result = Evict(
+          request,
+          /*force_evict=*/request.require_start_colored_in_alternate_memmory);
       if (eviction_result != AllocationResult::kSuccess) {
         // A non-success eviction requires us to uncommit previous allocations.
         return result_mark(AllocationResult::kFailRequiresUncommit,
@@ -5133,10 +5171,8 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   } else if (prev_allocation_in_default_mem_it == allocation_sequence->rend()) {
     VLOG(3) << "Allocation requires contiguous allocation, but it wasn't "
                "possible to find one.";
-    CHECK(!colored_allocation_request_properties
-               .require_start_colored_in_default_memory);
-    CHECK(!colored_allocation_request_properties
-               .require_end_colored_in_default_memory);
+    CHECK(!request.require_start_colored_in_default_memory);
+    CHECK(!request.require_end_colored_in_default_memory);
     return result_mark(AllocationResult::kFailRequiresUncommit,
                        allocation_result);
   }
@@ -5163,8 +5199,7 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
       !request.allocation_value->requires_contiguous_allocation() &&
       !request.only_extend_existing_allocation &&
       required_memory_space_at_end != MemorySpace::kDefault &&
-      !colored_allocation_request_properties
-           .require_end_colored_in_default_memory) {
+      !request.require_end_colored_in_default_memory) {
     if (request.require_copy_allocation && !request.required_copy_for_slice) {
       auto it = std::find_if(
           allocation_sequence->begin(), allocation_sequence->end(),
@@ -5191,8 +5226,7 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
     AllocationResult prefetch_result =
         Prefetch(request, **prev_allocation_in_default_mem_it, nullptr,
                  /*force_prefetch=*/
-                 colored_allocation_request_properties
-                     .require_end_colored_in_alternate_memory);
+                 request.require_end_colored_in_alternate_memory);
     if (prefetch_result == AllocationResult::kSuccess) {
       if (request.preferred_prefetch_time) {
         // Warn if the prefetch time picked doesn't match the preferred prefetch
@@ -5236,8 +5270,7 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
     result_mark(prefetch_result, allocation_result);
   }
 
-  CHECK(!colored_allocation_request_properties
-             .require_end_colored_in_alternate_memory);
+  CHECK(!request.require_end_colored_in_alternate_memory);
 
   // If the end assignment was required to be in alternate memory but that
   // wasn't possible, then this allocation is invalid.

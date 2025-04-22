@@ -275,6 +275,18 @@ struct AllocationRequest {
   // done some of the heap allocation for us. So this request picks up where it
   // left off.
   std::optional<int64_t> no_copy_chunk_inclusive_start_time;
+  // Indicates if the AllocationRequest start time (definition time) has an
+  // alternate memory color requirement.
+  bool require_start_colored_in_alternate_memmory = false;
+  // Indicates if the AllocationRequest end time (use time) has an alternate
+  // memory color requirement.
+  bool require_end_colored_in_alternate_memory = false;
+  // Indicates if the AllocationRequest start time (definition time) has a
+  // default memory color requirement.
+  bool require_start_colored_in_default_memory = false;
+  // Indicates if the AllocationRequest end time (use time) has a default
+  // memory color requirement.
+  bool require_end_colored_in_default_memory = false;
 };
 
 // Result of an allocation, prefetch, eviction etc. request.  The result is

@@ -383,23 +383,6 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     Allocation* allocation;
   };
 
-  struct ColoredAllocationRequestProperties {
-    // Indicates if the AllocationRequest is for allocating the buffer output
-    // (given by request.start_time == definition_time of the buffer) and the
-    // output has an alternate memory color requirement.
-    bool require_start_colored_in_alternate_memmory = false;
-    // Indicates if the use has an alternate memory color requirement.
-    bool require_end_colored_in_alternate_memory = false;
-    // Indicates if the AllocationRequest is for allocating the buffer output
-    // (given by request.start_time == definition_time of the buffer) and the
-    // output has a default memory color requirement.
-    bool require_start_colored_in_default_memory = false;
-    // Indicates if the use has a default memory color requirement.
-    bool require_end_colored_in_default_memory = false;
-
-    ColoredAllocationRequestProperties() = default;
-  };
-
   // This struct contains mandatory memory assignments at a given time. E.g., an
   // input's required memory assignment time would correspond to the definition
   // time of the parameter instruction, and an output's time would correspond to
@@ -1122,11 +1105,20 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   void ReleaseReservedAllocationForAlternateMemoryColorings(
       ReservedAllocation* allocation);
 
-  // Returns the coloring properties associated with the given allocation
-  // request. For all the reserved allocations associated with the request,
-  // marks them as free and removes the reserved chunk from interval_tree_.
-  ColoredAllocationRequestProperties
-  UpdateReservedAllocationsAndGetColoringProperties(AllocationRequest& request);
+  // Frees the reserved allocations that are used to satisfy alternate memory
+  // coloring requirements, for the given allocation request.
+  void FreeAlternateMemoryColoringReservedAllocations(
+      AllocationRequest& request);
+
+  // Sets the alternate memory coloring requirements for the given allocation
+  // request.
+  void UpdateRequestWithAlternateMemoryColoringRequirements(
+      AllocationRequest& request);
+
+  // Sets the default memory coloring requirements for the given allocation
+  // request.
+  void UpdateRequestWithDefaultMemoryColoringRequirements(
+      AllocationRequest& request);
 
   AllocationSequence* allocations_;
   const Options& options_;
