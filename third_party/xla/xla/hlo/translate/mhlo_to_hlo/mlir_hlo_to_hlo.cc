@@ -283,6 +283,18 @@ static xla::FftType Convert_fft_type(mlir::mhlo::FftType fft_type) {
   return fft_type_enum;
 }
 
+// Converts StringRef to xla FftType enum
+static xla::FftType Convert_fft_type(mlir::stablehlo::FftType fft_type) {
+  xla::FftType fft_type_enum;
+  // Illegal fft_type string would be caught by the verifier, so 'FftType_Parse'
+  // call below should never return false.
+  if (!FftType_Parse(std::string(mlir::stablehlo::stringifyFftType(fft_type)),
+                     &fft_type_enum))
+    return xla::FftType::FFT;
+
+  return fft_type_enum;
+}
+
 static std::vector<std::pair<int64_t, int64_t>> Convert_padding(
     std::optional<mlir::DenseIntElementsAttr> padding) {
   return xla::ConvertNx2Attribute(padding).value();
@@ -351,6 +363,13 @@ static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
       .value();
 }
 
+// Converts StringRef to xla Transpose enum.
+static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
+    mlir::stablehlo::Transpose transpose) {
+  return xla::ConvertTranspose(mlir::stablehlo::stringifyTranspose(transpose))
+      .value();
+}
+
 static xla::Layout ExtractLayout(
     mlir::Operation* op, int rank,
     llvm::StringRef attr_name = kDefaultLayoutAttrName) {
@@ -406,6 +425,7 @@ I64_ARRAY_ATTR_TO_VECTOR(broadcast_sizes);
 I64_ELEMENTS_ATTR_TO_VECTOR(broadcast_dimensions);
 I64_ARRAY_ATTR_TO_VECTOR(broadcast_dimensions);
 I64_ELEMENTS_ATTR_TO_VECTOR(permutation);
+I64_ARRAY_ATTR_TO_VECTOR(permutation);
 I64_ELEMENTS_ATTR_TO_VECTOR(start_indices);
 I64_ARRAY_ATTR_TO_VECTOR(start_indices);
 I64_ELEMENTS_ATTR_TO_VECTOR(limit_indices);
@@ -415,7 +435,9 @@ I64_ARRAY_ATTR_TO_VECTOR(strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(slice_sizes);
 I64_ARRAY_ATTR_TO_VECTOR(slice_sizes);
 I64_ELEMENTS_ATTR_TO_VECTOR(fft_length);
+I64_ARRAY_ATTR_TO_VECTOR(fft_length);
 I64_ELEMENTS_ATTR_TO_VECTOR(dimensions);
+I64_ARRAY_ATTR_TO_VECTOR(dimensions);
 I64_ELEMENTS_ATTR_TO_VECTOR(window_strides);
 I64_ARRAY_ATTR_TO_VECTOR(window_strides);
 I64_ELEMENTS_ATTR_TO_VECTOR(lhs_dilation);
@@ -595,8 +617,8 @@ static xla::ComparisonDirection Convert_comparison_direction(
       .value();
 }
 
-static xla::GatherDimensionNumbers Convert_dimension_numbers(
-    mlir::mhlo::GatherDimensionNumbersAttr input) {
+template <typename T>
+static xla::GatherDimensionNumbers Convert_dimension_numbers(T input) {
   xla::GatherDimensionNumbers output;
 
   auto offset_dims = input.getOffsetDims();
@@ -627,6 +649,12 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(
 
   output.set_index_vector_dim(input.getIndexVectorDim());
   return output;
+}
+
+static xla::GatherDimensionNumbers Convert_dimension_numbers(
+    mlir::mhlo::GatherDimensionNumbersAttr input) {
+  return Convert_dimension_numbers<mlir::mhlo::GatherDimensionNumbersAttr>(
+      input);
 }
 
 static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
