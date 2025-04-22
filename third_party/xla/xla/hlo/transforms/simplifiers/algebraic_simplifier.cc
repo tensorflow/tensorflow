@@ -4294,9 +4294,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
     if (info.should_transform) {
       Shape gather_shape = gather->shape();
       for (int64_t padded_dim : padded_dims) {
-        gather_shape.mutable_dimensions()
-            [gather_operand_passthrough_operand_to_output_dims[padded_dim]] =
-            pad->operand(0)->shape().dimensions()[padded_dim];
+        gather_shape.set_dimensions(
+            gather_operand_passthrough_operand_to_output_dims[padded_dim],
+            pad->operand(0)->shape().dimensions()[padded_dim]);
       }
       auto gather_inst = Cast<HloGatherInstruction>(gather);
       std::vector<int64_t> slice_sizes;
@@ -4384,11 +4384,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
         Shape gather_shape = gather->shape();
         for (int64_t padded_dim : padded_dims) {
           int64_t to_dim = reshape_unmodified_dims[padded_dim];
-          reshape_shape.mutable_dimensions()[to_dim] =
-              pad->operand(0)->shape().dimensions()[padded_dim];
-          gather_shape.mutable_dimensions()
-              [gather_operand_passthrough_operand_to_output_dims[to_dim]] =
-              pad->operand(0)->shape().dimensions()[padded_dim];
+          reshape_shape.set_dimensions(
+              to_dim, pad->operand(0)->shape().dimensions()[padded_dim]);
+          gather_shape.set_dimensions(
+              gather_operand_passthrough_operand_to_output_dims[to_dim],
+              pad->operand(0)->shape().dimensions()[padded_dim]);
         }
         HloInstruction* result =
             gather->AddInstruction(HloInstruction::CreateReshape(

@@ -219,7 +219,7 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
     Shape* dst_shape = copies[i].second;
     int32_t* dst = h2d_memcpy_dsts[i];
     for (int64_t j = 0; j < dst_shape->dimensions().size(); j++) {
-      dst_shape->mutable_dimensions()[j] = dst[j];
+      dst_shape->set_dimensions(j, dst[j]);
     }
   }
 
