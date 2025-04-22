@@ -132,11 +132,11 @@ message AlgorithmProto {
   reserved 3;
 
   map<int64, int64> tuning_knobs = 4;
-  // Legacy algorithm enums and cuDNN Frontend engine numbers need to coexist in
-  // the same proto medium-term, until we can be confident of no longer needing
-  // the legacy cuDNN convolution API.  Once the migration is complete, we can
-  // stop producing legacy algorithm enums and remove this field.
-  bool is_cudnn_frontend = 5;
+
+  // DEPRECATED: This field is a no-op. The cuDNN frontend API is always used.
+  // Retained for backward compatibility.
+  // TODO(b/400841229): Remove this field.
+  bool is_cudnn_frontend = 5 [deprecated = true];
 
   // For ROCm only, it's impossible to re-query the required workspace size
   // after running the algorithm search, so we must store the workspace size

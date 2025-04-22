@@ -4528,11 +4528,6 @@ static absl::StatusOr<cudnn_frontend::ExecutionPlan> GetExecPlanFromHeuristics(
 static absl::StatusOr<cudnn_frontend::ExecutionPlan> RebuildExecutionPlan(
     const CudnnHandle& cudnn, const dnn::AlgorithmDesc& desc,
     const cudnn_frontend::OperationGraph& op_graph) {
-  if (!desc.is_cudnn_frontend()) {
-    return tsl::errors::Internal(
-        "Got legacy cuDNN algorithm enum in RebuildExecutionPlan.");
-  }
-
   // Errors encountered when building a cuDNN operation graph are surfaced in an
   // unprecedented and innovative way: they're written into a field of the
   // contained engine object, but then clobbered by the object's move
@@ -6357,40 +6352,6 @@ CudnnSupport::ConvolveRunnerFromDesc(
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor) {
-  if (!algorithm_desc.is_cudnn_frontend()) {
-    CudnnConvolutionDescriptor conv(
-        convolution_descriptor,
-        ToCudnnDataType(GetConvAccumulatorType(input_type)));
-    conv.set_use_tensor_op_math(algorithm_desc.tensor_ops_enabled());
-
-    if (filter_descriptor.layout() ==
-        dnn::FilterLayout::kOutputInputYX32_CudnnReordered) {
-      CHECK_CUDNN_OK(
-          cudnnSetConvolutionReorderType(conv.handle(), CUDNN_NO_REORDER));
-    }
-
-    TF_ASSIGN_OR_RETURN(
-        auto runner,
-        CudnnLegacyConvRunner::Create(
-            parent_, stream, cudnn_.get(), algorithm_desc, input_type,
-            output_type, kind,
-            /* input_nd = */
-            CudnnTensorDescriptor(
-                input_descriptor,
-                ToCudnnDataType(input_type, input_descriptor.layout())),
-            /* output_nd = */
-            CudnnTensorDescriptor(
-                output_descriptor,
-                ToCudnnDataType(output_type, output_descriptor.layout())),
-            /* filter = */
-            CudnnFilterDescriptor(
-                filter_descriptor,
-                ToCudnnDataType(input_type, filter_descriptor.layout())),
-            std::move(conv)));
-
-    return {std::make_unique<CudnnLegacyConvRunner>(std::move(runner))};
-  }
-
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   TF_ASSIGN_OR_RETURN(
@@ -6420,11 +6381,6 @@ CudnnSupport::GraphConvolveRunnerFromDesc(
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     std::string serialized_graph) {
-  if (!algorithm_desc.is_cudnn_frontend()) {
-    return tsl::errors::Internal(
-        "cuDNN graph execution requires the use of the cuDNN frontend.");
-  }
-
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   TF_ASSIGN_OR_RETURN(
@@ -6634,49 +6590,6 @@ CudnnSupport::FusedConvolveRunnerFromDesc(
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::ActivationMode activation_mode) {
-  if (!algorithm_desc.is_cudnn_frontend()) {
-    CudnnTensorDescriptor conv_input_nd(
-        input_descriptor,
-        ToCudnnDataType(input_type, input_descriptor.layout()));
-    CudnnTensorDescriptor output_nd(
-        output_descriptor,
-        ToCudnnDataType(output_type, input_descriptor.layout()));
-    CudnnFilterDescriptor filter(
-        filter_descriptor,
-        ToCudnnDataType(input_type, filter_descriptor.layout()));
-    CudnnTensorDescriptor bias_nd(bias_descriptor, ToCudnnDataType(bias_type));
-
-    CudnnConvolutionDescriptor conv(
-        convolution_descriptor,
-        ToCudnnDataType(GetConvAccumulatorType(input_type)));
-    conv.set_use_tensor_op_math(algorithm_desc.tensor_ops_enabled());
-
-    if (filter_descriptor.layout() ==
-        dnn::FilterLayout::kOutputInputYX32_CudnnReordered) {
-      CHECK_CUDNN_OK(
-          cudnnSetConvolutionReorderType(conv.handle(), CUDNN_NO_REORDER));
-    }
-
-    // CUDNN v6 only supports CUDNN_NOT_PROPAGATE_NAN as the reluNanOpt for
-    // activation descriptor. Note that this will change the nan propagation
-    // behavior from separate conv, bias, and relu (which by default is
-    // CUDNN_PROPAGATE_NAN).
-    //
-    // TODO(awpr): reevaluate this for newer cuDNN versions.
-    CudnnActivationDescriptor activation_desc(activation_mode,
-                                              CUDNN_NOT_PROPAGATE_NAN,
-                                              output_descriptor.value_max());
-
-    TF_ASSIGN_OR_RETURN(
-        auto runner,
-        CudnnLegacyFusedConvRunner::Create(
-            parent_, stream, cudnn_.get(), algorithm_desc, input_type,
-            conv_scale, side_input_scale, std::move(conv_input_nd),
-            std::move(output_nd), std::move(filter), std::move(bias_nd),
-            std::move(conv), std::move(activation_desc)));
-    return {std::make_unique<CudnnLegacyFusedConvRunner>(std::move(runner))};
-  }
-
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   TF_ASSIGN_OR_RETURN(auto op_graph,
