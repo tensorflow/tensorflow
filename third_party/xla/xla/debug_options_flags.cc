@@ -842,7 +842,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_cpu_enable_fast_min_max",
       bool_setter_for(&DebugOptions::set_xla_cpu_enable_fast_min_max),
       debug_options->xla_cpu_enable_fast_min_max(),
-      "Enable fast floating point min/max lowering that always propagates "
+      "Enable fast floating point min/max lowering that might not propagate "
       "NaNs."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_fast_min_max",

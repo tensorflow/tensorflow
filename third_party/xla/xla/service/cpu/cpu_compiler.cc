@@ -460,9 +460,9 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
 
   AlgebraicSimplifierOptions options;
   options.set_enable_dot_strength_reduction(false);
-  // TODO(b/209827141): XLA:CPU doesn't propagate NaN through min/max, but
-  // other platforms do, so it should be changed.
-  options.set_minmax_propagate_nan(false);
+  // "slow" minmax means we propagate nan.
+  options.set_minmax_propagate_nan(
+      !module->config().debug_options().xla_cpu_enable_fast_min_max());
   options.set_supports_non_canonical_dots(false);
   options.set_executing_on_cpu(true);
   pipeline->AddPass<AlgebraicSimplifier>(options);
@@ -863,7 +863,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   // Run this to a fixed point.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-       "simplification after layout assignment")] {
+       "simplification after layout assignment"),
+   &module] {
     AddHloVerifier(
         &pipeline,
         HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
@@ -873,9 +874,9 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     options.set_is_layout_sensitive(true);
     options.set_supports_non_canonical_dots(false);
     options.set_enable_dot_strength_reduction(false);
-    // TODO(b/209827141): XLA:CPU doesn't propagate NaN through min/max, but
-    // other platforms do, so it should be changed.
-    options.set_minmax_propagate_nan(false);
+    // "slow" minmax means we propagate nan.
+    options.set_minmax_propagate_nan(
+        !module->config().debug_options().xla_cpu_enable_fast_min_max());
     options.set_executing_on_cpu(true);
     pipeline.AddPass<AlgebraicSimplifier>(options);
     pipeline.AddPass<HloDCE>();
