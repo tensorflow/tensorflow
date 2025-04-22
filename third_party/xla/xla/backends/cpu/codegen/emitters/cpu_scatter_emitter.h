@@ -17,20 +17,17 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "llvm/IR/LLVMContext.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
-#include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
@@ -39,27 +36,14 @@ namespace xla {
 namespace cpu {
 
 // Generic scatter fusion. Lowers to LLVM via MLIR.
-class CpuScatterFusion : public CpuFusionEmitterBase {
+class CpuScatterFusion final : public KernelEmitter {
  public:
-  explicit CpuScatterFusion(mlir::MLIRContext* mlir_context,
-                            llvm::LLVMContext* llvm_context,
-                            const BufferAssignment& buffer_assignment,
+  explicit CpuScatterFusion(const BufferAssignment& buffer_assignment,
                             const HloFusionInstruction* fusion);
 
-  int64_t num_threads() const override;
+  absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
 
-  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override;
-
-  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const override;
-
-  std::string BackendExtraOptions() override;
-
-  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Emit() const final;
-
- protected:
+ private:
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
       const emitters::CallTargetProvider& call_targets,
@@ -70,11 +54,16 @@ class CpuScatterFusion : public CpuFusionEmitterBase {
       const HloFusionInstruction& fusion,
       mlir::MLIRContext* mlir_context) const;
 
- private:
   mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
 
-  mlir::MLIRContext* mlir_context_;
-  llvm::LLVMContext* llvm_context_;
+  // These two methods do not seem to be used @ecg?
+  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
+      int64_t root_index, mlir::MLIRContext* ctx) const;
+
+  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
+      int64_t root_index, int64_t hero_operand_index,
+      mlir::MLIRContext* ctx) const;
+
   const BufferAssignment& buffer_assignment_;
   const HloFusionInstruction* fusion_;
 

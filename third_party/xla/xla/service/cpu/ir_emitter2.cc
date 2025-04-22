@@ -196,52 +196,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
       KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
-absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionWithFusionEmitters(
-    const HloFusionInstruction* fusion) {
-  std::unique_ptr<mlir::MLIRContext> mlir_context =
-      FusionCompiler::CreateContext();
-  FusionEmitterKind fusion_emitter_kind = AnalyzeHloFusion(fusion);
-  std::unique_ptr<CpuFusionEmitterBase> emitter;
-  switch (fusion_emitter_kind) {
-    case FusionEmitterKind::kScatter:
-      emitter = std::make_unique<CpuScatterFusion>(
-          mlir_context.get(), &module_->getContext(),
-          nested_ir_emitter_->assignment(), fusion);
-      break;
-    default:
-      return Internal("Unimplemented fusion kind %d for instruction: %s",
-                      fusion_emitter_kind, fusion->ToString());
-  }
-
-  TF_ASSIGN_OR_RETURN(auto mlir_module, emitter->Emit());
-
-  FusionCompiler compiler(FusionCompiler::Options{});
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<llvm::Module> llvm_module,
-      compiler.Compile(module_->getContext(), mlir_module.get()));
-
-  // TODO(willfroom): This should be done as part of the fusion emitter and
-  // lowered by the above compiler.
-  TF_ASSIGN_OR_RETURN(
-      absl::flat_hash_set<int64_t> invariant_arguments,
-      SetKernelFunctionAttributes(*llvm_module,
-                                  nested_ir_emitter_->assignment(), fusion));
-
-  // Match data layouts to avoid warning messages.
-  llvm_module->setDataLayout(module_->getDataLayout());
-  // We need to clear the module flags so that they don't pollute the linked
-  // module (this will not be required when we migrate to the kernel API).
-  llvm_module->getModuleFlagsMetadata()->eraseFromParent();
-  if (llvm::Linker::linkModules(*module_, std::move(llvm_module))) {
-    return Internal("Cannot link additional LLVM module for fusion %s",
-                    fusion->name());
-  }
-  return kernels_.emplace_back(
-      KernelInfo(std::string(fusion->name()), se::BlockDim(),
-                 se::ThreadDim(emitter->num_threads()), invariant_arguments,
-                 emitter->BackendExtraOptions()));
-}
-
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emit fusion host kernel: " << fusion->name();
@@ -254,10 +208,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
   if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
     return Internal("Unsupported fusion kind for instruction: %s",
                     fusion->ToString());
-  }
-
-  if (IsSupportedByFusionEmitter(fusion)) {
-    return EmitFusionWithFusionEmitters(fusion);
   }
 
   TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,

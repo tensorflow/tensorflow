@@ -28,10 +28,12 @@ KernelRunner = _extension.KernelRunner
 LlvmIrKernelEmitter = _extension.LlvmIrKernelEmitter
 MLIRContext = _extension.MLIRContext
 MlirKernelEmitter = _extension.MlirKernelEmitter
+ScatterKernelEmitter = _extension.ScatterKernelEmitter
 TargetMachineFeatures = _extension.TargetMachineFeatures
 # go/keep-sorted end
 
 # Free functions.
 # go/keep-sorted start
 lower_to_llvm = _extension.lower_to_llvm
+run_fusion_wrapper_pass = _extension.run_fusion_wrapper_pass
 # go/keep-sorted end

@@ -146,6 +146,7 @@ tsl_pybind_extension(
         "//xla/backends/cpu/codegen/dot:dot_kernel_emitter",
         "//xla/backends/cpu/codegen/elemental:concatenate_kernel_emitter",
         "//xla/backends/cpu/codegen/elemental:elemental_kernel_emitter",
+        "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitters",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:llvm_ir_kernel_source",
@@ -155,7 +156,9 @@ tsl_pybind_extension(
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:cpu_compiler_pure",
+        "//xla/service/cpu:fusion_wrapper",
         "//xla/stream_executor:launch_dim",
+        "@local_tsl//tsl/platform:casts",
     ],
 )
 

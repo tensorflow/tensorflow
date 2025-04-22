@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -58,12 +59,15 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_attrs.h.inc"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::cpu {
@@ -202,6 +206,15 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
   llvm_module->setDataLayout(llvm_module->getDataLayout());
 
   return llvm_module;
+}
+
+// Compile a MLIR kernel source to a LLVM kernel source.
+absl::StatusOr<LlvmIrKernelSource> FusionCompiler::Compile(
+    MlirKernelSource mlir_kernel_source) {
+  auto llvm_context = std::make_unique<llvm::LLVMContext>();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
+                      Compile(*llvm_context, mlir_kernel_source.module()));
+  return LlvmIrKernelSource(std::move(llvm_context), std::move(llvm_module));
 }
 
 std::unique_ptr<mlir::MLIRContext> FusionCompiler::CreateContext() {

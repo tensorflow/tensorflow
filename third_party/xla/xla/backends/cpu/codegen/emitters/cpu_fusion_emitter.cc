@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -127,6 +129,33 @@ bool Needs64BitIndices(const HloComputation* computation) {
     }
   }
   return false;
+}
+
+absl::Status SetKernelFunctionAttributes(const HloFusionInstruction& fusion,
+                                         mlir::Builder& builder,
+                                         mlir::func::FuncOp& func) {
+  const HloModule* hlo_module = fusion.GetModule();
+  if (hlo_module == nullptr) {
+    return Internal("HloModule is null");
+  }
+
+  mlir::MLIRContext* context = func->getContext();
+
+  // This is a hack until https://github.com/llvm/llvm-project/pull/135811 is
+  // merged, the value "2" corresponds to the default enum value.
+  mlir::ArrayAttr uwtable_attr = builder.getStrArrayAttr({"uwtable", "2"});
+  int32_t vector_width =
+      hlo_module->config().debug_options().xla_cpu_prefer_vector_width();
+  mlir::ArrayAttr prefer_vector_width_attr = builder.getStrArrayAttr(
+      {"prefer-vector-width", absl::StrCat(vector_width)});
+  func->setAttr("passthrough",
+                builder.getArrayAttr({uwtable_attr, prefer_vector_width_attr}));
+  func->setAttr(
+      "frame_pointer",
+      mlir::LLVM::FramePointerKindAttr::get(
+          context, mlir::LLVM::framePointerKind::FramePointerKind::All));
+
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -239,6 +268,10 @@ absl::StatusOr<mlir::func::FuncOp> EmitFusionKernelApi(
       loc, fusion.name(),
       builder.getFunctionType(/*arg_types=*/{call_frame_type},
                               /*result_types=*/{error_type}));
+
+  TF_RETURN_IF_ERROR(
+      SetKernelFunctionAttributes(fusion, builder, call_frame_func));
+
   builder.setInsertionPointToStart(call_frame_func.addEntryBlock());
   mlir::Value call_frame_arg = call_frame_func.getArgument(0);
   SmallVector<mlir::Value> extracted_values;
@@ -322,39 +355,6 @@ void SetDataLayoutAttribute(mlir::ModuleOp module,
   module->setAttr(
       mlir::DLTIDialect::kDataLayoutAttrName,
       mlir::DataLayoutSpecAttr::get(module->getContext(), {index_layout}));
-}
-
-absl::StatusOr<absl::flat_hash_set<int64_t>> SetKernelFunctionAttributes(
-    llvm::Module& module, const BufferAssignment& buffer_assignment,
-    const HloFusionInstruction* fusion) {
-  const HloModule* hlo_module = fusion->GetModule();
-  if (hlo_module == nullptr) {
-    return Internal("HloModule is null");
-  }
-
-  // Create a Kernel API Builder and a throwaway kernel prototype in order to
-  // extract useful info from them, e.g. noalias, invariant_arguments and
-  // entry function attributes.
-  // TODO(ecg): find a way to obtain the same info without wasting work by
-  // creating a throwaway module. All of this additional info should probably be
-  // explicit in the generated MLIR, not added afterwards like we're doing here.
-  // TODO(ecg): some attributes on the final loads are missing wrt those
-  // generated via KernelApiIrBuilder, e.g. noalias. Add them.
-  llvm::LLVMContext& context = module.getContext();
-  KernelApiIrBuilder kernel_api_ir_builder(
-      context,
-      KernelApiIrBuilder::Options::FromHloModuleConfig(hlo_module->config()));
-  std::unique_ptr<llvm::Module> throwaway_llvm_module =
-      KernelApiIrBuilder::CreateModule(
-          absl::StrCat(fusion->name(), "_throwaway_module"), context);
-  TF_ASSIGN_OR_RETURN(KernelApiIrBuilder::KernelPrototype kernel_prototype,
-                      kernel_api_ir_builder.EmitKernelPrototype(
-                          *throwaway_llvm_module, fusion, &buffer_assignment,
-                          "_throwaway_kernel_prototype"));
-  llvm::Function* kernel_function = module.getFunction(fusion->name());
-  kernel_api_ir_builder.SetKernelFunctionAttributes(kernel_function);
-
-  return kernel_prototype.invariant_arguments;
 }
 
 int64_t CeilDiv(int64_t a, int64_t b) { return (a + b - 1) / b; }

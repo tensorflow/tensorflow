@@ -13,14 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
-
-#include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
@@ -32,6 +29,9 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
+#include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace cpu {
@@ -62,8 +63,6 @@ std::string MlirModuleToString(const mlir::ModuleOp& module) {
 
 class CpuFusionEmitterTest : public HloTestBase {
  protected:
-  CpuFusionEmitterTest() : mlir_context_(FusionCompiler::CreateContext()) {}
-
   absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
       const HloModule& hlo) {
     return BufferAssigner::Run(
@@ -71,9 +70,6 @@ class CpuFusionEmitterTest : public HloTestBase {
         backend().compiler()->BufferSizeBytesFunction(),
         [](LogicalBuffer::Color) { return /*alignment=*/1; });
   }
-
-  std::unique_ptr<mlir::MLIRContext> mlir_context_;
-  llvm::LLVMContext llvm_context_;
 };
 
 static constexpr absl::string_view kScatterHlo = R"(
@@ -136,10 +132,12 @@ TEST_F(CpuFusionEmitterTest, ScatterMlir) {
                           RunBufferAssignment(*hlo_module));
   auto fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  CpuScatterFusion emitter(mlir_context_.get(), &llvm_context_,
-                           *buffer_assignment, fusion);
-  TF_ASSERT_OK_AND_ASSIGN(auto mlir_module, emitter.Emit());
-  auto mlir_dump = MlirModuleToString(*mlir_module);
+  CpuScatterFusion emitter(*buffer_assignment, fusion);
+  TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
+                          emitter.EmitKernelDefinition());
+  const auto& mlir_source =
+      tsl::down_cast<const MlirKernelSource&>(kernel_definition.source());
+  auto mlir_dump = mlir_source.ToString();
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                           RunFileCheck(mlir_dump, kExpected));
   EXPECT_TRUE(filecheck_matched);
@@ -162,17 +160,15 @@ TEST_F(CpuFusionEmitterTest, ScatterLlvm) {
                           RunBufferAssignment(*hlo_module));
   auto fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  CpuScatterFusion emitter(mlir_context_.get(), &llvm_context_,
-                           *buffer_assignment, fusion);
-  TF_ASSERT_OK_AND_ASSIGN(auto mlir_module, emitter.Emit());
+  CpuScatterFusion emitter(*buffer_assignment, fusion);
+  TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
+                          emitter.EmitKernelDefinition());
+  auto [spec, source] = std::move(kernel_definition).release();
+  auto& mlir_source = tsl::down_cast<MlirKernelSource&>(*source);
   FusionCompiler compiler(FusionCompiler::Options{});
-  llvm::LLVMContext llvm_context;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<llvm::Module> llvm_module,
-                          compiler.Compile(llvm_context, mlir_module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(
-      absl::flat_hash_set<int64_t> invariant_arguments,
-      SetKernelFunctionAttributes(*llvm_module, *buffer_assignment, fusion));
-  auto llvm_dump = LlvmModuleToString(*llvm_module);
+  TF_ASSERT_OK_AND_ASSIGN(LlvmIrKernelSource llvm_source,
+                          compiler.Compile(std::move(mlir_source)));
+  auto llvm_dump = llvm_source.ToString();
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                           RunFileCheck(llvm_dump, kExpected));
   EXPECT_TRUE(filecheck_matched);
