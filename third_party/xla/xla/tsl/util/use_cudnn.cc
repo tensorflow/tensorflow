@@ -38,9 +38,6 @@ namespace tsl {
     return value;                                                \
   }
 
-// TODO(b/400841229): Remove this function.
-bool CudnnUseFrontend() { return true; }
-
 // Whether to enable Cudnn runtime compiled kernels which are able to support
 // more general fusion patterns but might increase the warmup time.
 // TODO(kaixih@nvidia): we can make it default when Cudnn further improves the

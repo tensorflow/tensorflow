@@ -275,21 +275,6 @@ class CudnnSupport : public dnn::DnnSupport {
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans)
       override;
 
-  // Deprecated - temporarily retained for backward compatibility.
-  absl::Status GetConvolveRunners(
-      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
-      dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      bool use_fallback, ScratchAllocator* scratch_allocator,
-      const NumericOptions& numeric_options,
-      std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans)
-      override;
-
   absl::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::ConvolutionKind kind, dnn::DataType input_type,
@@ -333,37 +318,10 @@ class CudnnSupport : public dnn::DnnSupport {
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans)
       override;
 
-  // Deprecated - temporarily retained for backward compatibility.
-  absl::Status GetFusedConvolveRunners(
-      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
-      dnn::DataType input_type, dnn::DataType bias_type,
-      dnn::DataType output_type, double conv_scale, double side_input_scale,
-      double leakyrelu_alpha, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const dnn::BatchDescriptor& bias_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      bool use_fallback, dnn::ActivationMode activation_mode,
-      const NumericOptions& numeric_options,
-      std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans)
-      override;
-
   absl::Status GetFusedMatmulRunners(
       dnn::DataType input_type, dnn::DataType bias_type,
       dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
       uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
-      dnn::ActivationMode activation_mode, bool use_fallback,
-      const NumericOptions& numeric_options,
-      std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
-          out_exec_plans) override;
-
-  // Deprecated - temporarily retained for backward compatibility.
-  absl::Status GetFusedMatmulRunners(
-      bool use_cudnn_frontend, dnn::DataType input_type,
-      dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
-      bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
-      int64_t lda, int64_t ldb, int64_t ldc,
       dnn::ActivationMode activation_mode, bool use_fallback,
       const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*

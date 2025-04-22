@@ -1499,18 +1499,6 @@ class DnnSupport {
       const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const ConvRunner>>* out_exec_plans);
 
-  // Deprecated - temporarily retained for backward compatibility.
-  virtual absl::Status GetConvolveRunners(
-      bool use_cudnn_frontend, ConvolutionKind kind, DataType input_type,
-      DataType output_type, Stream* stream,
-      const BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-      const FilterDescriptor& filter_descriptor, DeviceMemoryBase filter_data,
-      const BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
-      const ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-      ScratchAllocator* scratch_allocator,
-      const NumericOptions& numeric_options,
-      std::vector<std::unique_ptr<const ConvRunner>>* out_exec_plans);
-
   virtual absl::StatusOr<std::unique_ptr<const ConvRunner>>
   ConvolveRunnerFromDesc(Stream* stream, const AlgorithmDesc& algorithm_desc,
                          ConvolutionKind kind, DataType element_type,
@@ -1552,32 +1540,10 @@ class DnnSupport {
       ActivationMode activation_mode, const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const FusedConvRunner>>* out_exec_plans);
 
-  // Deprecated - temporarily retained for backward compatibility.
-  virtual absl::Status GetFusedConvolveRunners(
-      bool use_cudnn_frontend, ConvolutionKind kind, DataType element_type,
-      DataType bias_type, DataType output_type, double conv_input_scale,
-      double side_input_scale, double leakyrelu_alpha, Stream* stream,
-      const BatchDescriptor& input_descriptor,
-      const FilterDescriptor& filter_descriptor,
-      const BatchDescriptor& bias_descriptor,
-      const BatchDescriptor& output_descriptor,
-      const ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-      ActivationMode activation_mode, const NumericOptions& numeric_options,
-      std::vector<std::unique_ptr<const FusedConvRunner>>* out_exec_plans);
-
   virtual absl::Status GetFusedMatmulRunners(
       DataType element_type, DataType bias_type, DataType output_type,
       Stream* stream, bool trans_a, bool trans_b, uint64_t m, uint64_t n,
       uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
-      ActivationMode activation_mode, bool use_fallback,
-      const NumericOptions& numeric_options,
-      std::vector<std::unique_ptr<const FusedMatmulRunner>>* out_exec_plans);
-
-  // Deprecated - temporarily retained for backward compatibility.
-  virtual absl::Status GetFusedMatmulRunners(
-      bool use_cudnn_frontend, DataType element_type, DataType bias_type,
-      DataType output_type, Stream* stream, bool trans_a, bool trans_b,
-      uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
       ActivationMode activation_mode, bool use_fallback,
       const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const FusedMatmulRunner>>* out_exec_plans);
