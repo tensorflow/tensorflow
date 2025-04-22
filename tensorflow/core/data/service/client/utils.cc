@@ -53,7 +53,7 @@ absl::StatusOr<DataServiceMetadata> GetDataServiceMetadata(
                        "with dispatcher at $1.",
                        dataset_id, address),
       absl::ToUnixMicros(deadline));
-  if (errors::IsNotFound(status)) {
+  if (absl::IsNotFound(status)) {
     return errors::NotFound(
         "Dataset id ", dataset_id,
         " not found. It must be registered with `register_dataset` before "
