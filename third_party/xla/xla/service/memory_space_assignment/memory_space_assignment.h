@@ -180,6 +180,7 @@ Useful logging and error messages
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -200,6 +201,7 @@ Useful logging and error messages
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -393,6 +395,8 @@ class MemorySpaceAssignment {
   std::unique_ptr<PresetAssignments> preset_assignments_;
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>>
       alternate_memory_assignments_;
+  // Maps from a defining position to a shape if the tensor is split.
+  absl::flat_hash_map<HloPosition, const Layout*> split_map_;
   std::vector<std::pair<HloInstruction*, HeapSimulator::Chunk>>
       scoped_memory_assignments_;
   int64_t alternate_memory_size_ = 0;

@@ -97,7 +97,8 @@ class Allocation {
   void set_split_shape(const std::optional<Shape>& split_shape) {
     split_shape_ = split_shape;
   }
-  std::optional<Shape> mutable_split_shape() { return split_shape_; }
+  const std::optional<Shape>& split_shape() const { return split_shape_; }
+  std::optional<Shape>& mutable_split_shape() { return split_shape_; }
 
   // Allocation timing methods
   // --------------------------------------------------------------------------

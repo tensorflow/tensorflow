@@ -509,7 +509,14 @@ absl::Status MemorySpaceAssignment::Process(
           allocation->defining_position(), allocation->chunk());
       alternate_memory_size_ =
           std::max(alternate_memory_size_, allocation->chunk().chunk_end());
-
+      if (allocation->split_shape().has_value()) {
+        auto result = split_map_.insert({allocation->defining_position(),
+                                         &allocation->split_shape()->layout()});
+        if (!result.second) {
+          CHECK_EQ(*result.first->second,
+                   allocation->split_shape().value().layout());
+        }
+      }
       if (allocation->cross_program_prefetch_index().has_value()) {
         TF_RETURN_IF_ERROR(module_->SetCrossProgramPrefetchOffset(
             *allocation->cross_program_prefetch_index(),
@@ -589,6 +596,7 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
   for (const auto& defining_position_and_chunk :
        preset_assignments_->chunks()) {
     const HloPosition& defining_position = defining_position_and_chunk.first;
+    auto split_result = split_map_.find(defining_position);
     for (auto& buffer : alias_analysis.ComputeBuffersAt(
              defining_position.instruction, defining_position.index)) {
       for (auto& value : buffer->values()) {
@@ -600,6 +608,11 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
                                   << position.ToString();
           shape->mutable_layout()->set_memory_space(
               options_.alternate_memory_space);
+          if (split_result != split_map_.end()) {
+            CHECK_EQ(shape->layout().split_configs_size(), 0);
+            shape->mutable_layout()->add_split_configs(
+                split_result->second->split_configs(0));
+          }
         }
       }
     }
