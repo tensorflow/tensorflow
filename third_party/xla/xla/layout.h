@@ -49,7 +49,6 @@ class Tile {
     return Tile(tile_proto.dimensions());
   }
   TileProto ToProto() const;
-  void SetProto(TileProto& tile_proto) const;
 
   bool operator==(const Tile& other) const {
     return dimensions() == other.dimensions();

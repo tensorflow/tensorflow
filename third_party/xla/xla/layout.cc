@@ -37,15 +37,10 @@ namespace xla {
 
 TileProto Tile::ToProto() const {
   TileProto tile_proto;
-  SetProto(tile_proto);
-  return tile_proto;
-}
-
-void Tile::SetProto(TileProto& tile_proto) const {
-  tile_proto.Clear();
   for (int64_t i : dimensions()) {
     tile_proto.add_dimensions(i);
   }
+  return tile_proto;
 }
 
 void Tile::Print(Printer* printer) const {
@@ -263,7 +258,7 @@ void Layout::SetProto(LayoutProto& proto) const {
     proto.add_minor_to_major(dimension);
   }
   for (const Tile& tile : tiles()) {
-    tile.SetProto(*proto.add_tiles());
+    *proto.add_tiles() = tile.ToProto();
   }
   proto.set_tail_padding_alignment_in_elements(
       tail_padding_alignment_in_elements());
