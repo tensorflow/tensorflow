@@ -66,7 +66,7 @@ absl::StatusOr<bool> SliceConcatForwarding(HloInstruction* slice) {
     return false;
   }
 
-  if (slice->shape().dimensions_size() != 1) {
+  if (slice->shape().dimensions().size() != 1) {
     // Slice concat forwarding only work for size 1 tensor.
     return false;
   }
@@ -105,15 +105,15 @@ absl::StatusOr<bool> ReshapeBroadcastForwarding(HloInstruction* reshape) {
     return false;
   }
 
-  if (reshape->shape().dimensions_size() != 0) {
+  if (reshape->shape().dimensions().size() != 0) {
     return false;
   }
 
-  if (broadcast->shape().dimensions_size() != 1) {
+  if (broadcast->shape().dimensions().size() != 1) {
     return false;
   }
 
-  if (broadcast->mutable_operand(0)->shape().dimensions_size() != 0) {
+  if (broadcast->mutable_operand(0)->shape().dimensions().size() != 0) {
     return false;
   }
 
