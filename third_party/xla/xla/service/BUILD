@@ -582,16 +582,6 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
-    name = "hlo_opcode_test",
-    srcs = ["hlo_opcode_test.cc"],
-    deps = [
-        "//xla/hlo/ir:hlo",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
 cc_library(
     name = "sharding_propagation",
     srcs = [

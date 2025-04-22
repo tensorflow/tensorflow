@@ -126,6 +126,16 @@ cc_library(
 )
 
 xla_cc_test(
+    name = "hlo_opcode_test",
+    srcs = ["hlo_opcode_test.cc"],
+    deps = [
+        ":hlo",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
     name = "hlo_computation_test",
     srcs = ["hlo_computation_test.cc"],
     deps = [
