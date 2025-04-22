@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
@@ -18,6 +19,12 @@ package_group(
     ],
 )
 
+# Allows to explicitely disable nvshmem collectives using invocation flag.
+bool_flag(
+    name = "nvshmem_enabled",
+    build_setting_default = True,
+)
+
 config_setting(
     name = "nvshmem_supported",
     constraint_values = [
@@ -25,6 +32,9 @@ config_setting(
         "@platforms//cpu:x86_64",
         "@platforms//os:linux",
     ],
+    flag_values = {
+        ":nvshmem_enabled": "True",
+    },
 )
 
 # Build target that registers all available GPU collectives implementations with the collectives
