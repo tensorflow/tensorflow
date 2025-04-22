@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string_view>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -139,8 +140,10 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
     // `SendOp` and `RecvOp` can have a sharding when doing TPU callbacks
     // through JAX.
     if (mlir::isa<stablehlo::SendOp, stablehlo::RecvOp>(op)) {
-      op->setAttr(kShardingAttr, parseStringAttr<TensorShardingPerValueAttr>(
-                                     dictAttr, kShardingRoundTripAttr));
+      auto sharding = parseStringAttr<TensorShardingPerValueAttr>(
+          dictAttr, kShardingRoundTripAttr);
+      CHECK(sharding) << "Expect sharding to exist for SendOp/RecvOp.";
+      op->setAttr(kShardingAttr, sharding);
     }
     // NOTE: we are only setting the sharding on known custom-calls. For any
     // other op that has a `kShardingRoundTripAttr` we discard it. XLA sometimes
