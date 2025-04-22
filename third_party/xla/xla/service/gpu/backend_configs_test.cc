@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -34,7 +34,7 @@ namespace {
 using ::testing::IsFalse;
 using ::tsl::testing::IsOk;
 
-using BackendConfigsTest = HloTestBase;
+using BackendConfigsTest = HloHardwareIndependentTestBase;
 
 TEST_F(BackendConfigsTest, DefaultCollectiveBackendConfig) {
   constexpr absl::string_view kHloString = R"(

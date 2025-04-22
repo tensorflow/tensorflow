@@ -147,8 +147,8 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
@@ -270,8 +270,8 @@ xla_cc_test(
     deps = [
         ":hlo_slicer",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
@@ -380,7 +380,7 @@ xla_cc_test(
     srcs = ["hlo_module_loader_test.cc"],
     deps = [
         ":hlo_module_loader",
-        "//xla/tests:hlo_test_base",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest",
@@ -413,8 +413,8 @@ xla_cc_test(
     deps = [
         ":prepare_reference_module",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
-        "//xla/tests:hlo_test_base",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -605,14 +605,13 @@ xla_cc_test(
     srcs = ["hlo_control_flow_flattening_test.cc"],
     deps = [
         ":hlo_control_flow_flattening",
-        "//xla:literal_util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/transforms:despecializer",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:collective_ops_utils",
         "//xla/service:hlo_verifier",
         "//xla/service/spmd:spmd_partitioner",
-        "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/log",

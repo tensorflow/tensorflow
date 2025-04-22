@@ -21,9 +21,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -31,7 +31,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class SplitkRewriterTest : public HloTestBase {
+class SplitkRewriterTest : public HloHardwareIndependentTestBase {
  public:
   SplitkRewriterTest()
       : rewriter_(se::DeviceDescription(

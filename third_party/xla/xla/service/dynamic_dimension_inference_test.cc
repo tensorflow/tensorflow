@@ -23,12 +23,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -37,11 +37,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class DynamicDimensionInferenceTest : public HloTestBase {
+class DynamicDimensionInferenceTest : public HloHardwareIndependentTestBase {
  protected:
-  DynamicDimensionInferenceTest() : HloTestBase() {
-    module_ = CreateNewVerifiedModule();
-  }
+  DynamicDimensionInferenceTest() { module_ = CreateNewVerifiedModule(); }
 
   absl::Status RunInference(
       OpSupportsDynamismHandler op_supports_dynamism_handler = nullptr,
@@ -295,7 +293,7 @@ TEST_F(DynamicDimensionInferenceTest, DotTest) {
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto dot = builder.AddInstruction(
       HloInstruction::CreateDot(xz_dynamic_shape, a_param, b_param, dot_dnums,
-                                HloTestBase::DefaultPrecisionConfig(2)));
+                                DefaultPrecisionConfig(2)));
 
   module_->AddEntryComputation(builder.Build());
 
@@ -331,9 +329,8 @@ TEST_F(DynamicDimensionInferenceTest, DotTestBatch) {
   dot_dnums.add_lhs_batch_dimensions(2);
   dot_dnums.add_rhs_batch_dimensions(0);
   dot_dnums.add_rhs_batch_dimensions(2);
-  auto dot = builder.AddInstruction(
-      HloInstruction::CreateDot(output_shape, a_param, b_param, dot_dnums,
-                                HloTestBase::DefaultPrecisionConfig(2)));
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      output_shape, a_param, b_param, dot_dnums, DefaultPrecisionConfig(2)));
 
   module_->AddEntryComputation(builder.Build());
 
@@ -379,9 +376,8 @@ TEST_F(DynamicDimensionInferenceTest, DotTestMultiContracting) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   dot_dnums.add_rhs_contracting_dimensions(1);
-  auto dot = builder.AddInstruction(
-      HloInstruction::CreateDot(output_shape, a_param, b_param, dot_dnums,
-                                HloTestBase::DefaultPrecisionConfig(2)));
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      output_shape, a_param, b_param, dot_dnums, DefaultPrecisionConfig(2)));
 
   module_->AddEntryComputation(builder.Build());
 
@@ -429,8 +425,7 @@ TEST_F(DynamicDimensionInferenceTest, ConvolutionTest) {
 
   auto* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       zx_shape_dynamic, a_param, b_param, /*feature_group_count=*/1,
-      /*batch_group_count=*/1, window, dnums,
-      HloTestBase::DefaultPrecisionConfig(2)));
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
   module_->AddEntryComputation(builder.Build());
 

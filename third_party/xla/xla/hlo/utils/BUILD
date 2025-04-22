@@ -219,9 +219,9 @@ xla_cc_test(
     deps = [
         ":hlo_traversal",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:pattern_matcher",
-        "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:string_view",

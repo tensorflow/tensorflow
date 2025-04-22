@@ -26,13 +26,13 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -43,7 +43,7 @@ namespace {
 
 using ::tsl::testing::IsOkAndHolds;
 
-class TritonEmitterConstraintsTest : public HloTestBase {
+class TritonEmitterConstraintsTest : public HloHardwareIndependentTestBase {
  public:
   std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
       HloModule* module, bool with_triton_emitter_specific_constraints = true) {

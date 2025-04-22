@@ -28,10 +28,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -58,7 +58,7 @@ int64_t CountInstructions(HloModule& module, HloOpcode opcode) {
   return count;
 }
 
-using GpuLoopDoubleBufferTransformerTest = HloTestBase;
+using GpuLoopDoubleBufferTransformerTest = HloHardwareIndependentTestBase;
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
        AutoUnrollLoopWhenCollectivesArePresent) {

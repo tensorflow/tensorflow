@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -58,7 +58,7 @@ using ::testing::ContainerEq;
 using ::testing::HasSubstr;
 using ::testing::StrEq;
 
-class MinimumMemoryForSequenceTest : public HloTestBase {};
+class MinimumMemoryForSequenceTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   auto module = CreateNewVerifiedModule();
@@ -421,7 +421,7 @@ class HeapSimulatorTracker {
   HeapSimulator::Result<HloValue> result_;
 };
 
-class HeapSimulatorTest : public HloTestBase {
+class HeapSimulatorTest : public HloHardwareIndependentTestBase {
  protected:
   HeapSimulatorTest() {}
   ~HeapSimulatorTest() override {}

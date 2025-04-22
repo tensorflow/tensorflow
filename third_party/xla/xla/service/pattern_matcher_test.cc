@@ -25,13 +25,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -40,7 +40,7 @@ namespace xla {
 namespace {
 
 namespace m = match;
-using PatternMatcherTest = HloTestBase;
+using PatternMatcherTest = HloHardwareIndependentTestBase;
 
 TEST_F(PatternMatcherTest, AddOp) {
   constexpr char kModuleStr[] = R"(HloModule two_plus_two_module

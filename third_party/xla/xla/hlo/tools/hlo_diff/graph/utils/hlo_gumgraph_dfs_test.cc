@@ -20,10 +20,10 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -32,7 +32,7 @@ namespace {
 
 using ::testing::ElementsAre;
 
-class HloGumgraphDfsTest : public HloTestBase {};
+class HloGumgraphDfsTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloGumgraphDfsTest, DfsPreOrderWorks) {
   // Create a module with entry computation containing the following structure:

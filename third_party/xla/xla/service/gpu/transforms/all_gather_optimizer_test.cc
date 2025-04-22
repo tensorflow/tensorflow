@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -34,7 +34,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class GpuAllGatherOptimizerTest : public HloTestBase {
+class GpuAllGatherOptimizerTest : public HloHardwareIndependentTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, int64_t num_replicas,

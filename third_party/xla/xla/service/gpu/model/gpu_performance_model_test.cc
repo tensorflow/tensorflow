@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -49,7 +49,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class GpuPerformanceModelTest : public HloTestBase {
+class GpuPerformanceModelTest : public HloHardwareIndependentTestBase {
  public:
   GpuPerformanceModel::RunTimes EstimateRunTimes(
       const HloInstruction* producer,
@@ -81,8 +81,6 @@ class GpuPerformanceModelTest : public HloTestBase {
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
       &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
       &mlir_context_};
-
-  GpuPerformanceModelTest() : HloTestBase() {}
 };
 
 TEST_F(GpuPerformanceModelTest, LargeWrite) {

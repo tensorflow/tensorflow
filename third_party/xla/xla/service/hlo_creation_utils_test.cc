@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -44,7 +44,7 @@ namespace {
 
 namespace m = match;
 
-class HloCreationUtilsTest : public HloTestBase {
+class HloCreationUtilsTest : public HloHardwareIndependentTestBase {
  protected:
   std::unique_ptr<VerifiedHloModule> CreateModuleWithProgramShape(
       PrimitiveType primitive_type, absl::Span<const int64_t> input_shape_dims,

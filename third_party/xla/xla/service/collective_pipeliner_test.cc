@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/service/scheduling_annotations_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
@@ -58,7 +58,7 @@ using ::testing::_;
 using ::tsl::testing::IsOkAndHolds;
 namespace op = xla::testing::opcode_matchers;
 
-class CollectivePipelinerTest : public HloTestBase {
+class CollectivePipelinerTest : public HloHardwareIndependentTestBase {
  public:
   CollectivePipelinerTest() {
     const int64_t kNumReplicas = 4;

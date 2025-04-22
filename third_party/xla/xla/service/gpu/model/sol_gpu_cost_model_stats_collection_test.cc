@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -34,9 +34,10 @@ namespace {
 
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
 
-class SolGpuCostModelStatsCollectionTest : public HloTestBase {
+class SolGpuCostModelStatsCollectionTest
+    : public HloHardwareIndependentTestBase {
  public:
-  explicit SolGpuCostModelStatsCollectionTest() : HloTestBase() {
+  explicit SolGpuCostModelStatsCollectionTest() {
     ShapeSizeFn shape_size_bytes =
         [&shape_size_bytes](const Shape& shape) -> int64_t {
       int64_t shape_size = 0;

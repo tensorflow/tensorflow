@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -52,7 +52,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-class CudnnSimplifyPaddingTest : public HloTestBase {
+class CudnnSimplifyPaddingTest : public HloHardwareIndependentTestBase {
  protected:
   // Runs the whole relevant pass pipeline starting at CudnnPadForConvolutions.
   // This lets us test that we're matching the patterns that actually get

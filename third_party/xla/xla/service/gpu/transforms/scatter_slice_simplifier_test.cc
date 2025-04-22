@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -29,7 +29,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-using ScatterSliceSimplifierTest = HloTestBase;
+using ScatterSliceSimplifierTest = HloHardwareIndependentTestBase;
 
 TEST_F(ScatterSliceSimplifierTest, Scatter1D) {
   auto module = ParseAndReturnVerifiedModule(R"(

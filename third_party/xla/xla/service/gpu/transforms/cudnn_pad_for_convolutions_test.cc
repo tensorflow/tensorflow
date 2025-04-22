@@ -18,10 +18,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -30,7 +30,7 @@ namespace {
 
 namespace m = xla::match;
 
-class CudnnPadForConvolutionsTest : public HloTestBase {};
+class CudnnPadForConvolutionsTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(CudnnPadForConvolutionsTest, DoNotPadF16ForwardConvWhenGrouped) {
   auto module = ParseAndReturnVerifiedModule(R"(

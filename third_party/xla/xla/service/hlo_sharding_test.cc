@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/types/span.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -53,7 +53,7 @@ std::vector<OpMetadata> ListMetadata() {
   return {GetMetadata("b"), GetMetadata("c")};
 }
 
-class HloShardingTest : public HloTestBase {};
+class HloShardingTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloShardingTest, Replicate) {
   HloSharding sharding = HloSharding::Replicate();

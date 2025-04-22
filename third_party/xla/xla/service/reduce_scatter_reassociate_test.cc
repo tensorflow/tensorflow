@@ -17,15 +17,15 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
 
 namespace m = xla::testing::opcode_matchers;
 
-class ReduceScatterReassociateTest : public HloTestBase {
+class ReduceScatterReassociateTest : public HloHardwareIndependentTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, bool expect_change) {

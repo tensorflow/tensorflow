@@ -33,8 +33,8 @@ xla_cc_test(
     deps = [
         ":hlo_gumgraph_renderer_util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

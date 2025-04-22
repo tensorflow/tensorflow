@@ -17,10 +17,10 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -28,7 +28,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
-using WhileLoopConstantSinkingTest = HloTestBase;
+using WhileLoopConstantSinkingTest = HloHardwareIndependentTestBase;
 
 TEST_F(WhileLoopConstantSinkingTest, SinkOneConstant) {
   const char* const hlo_string = R"(

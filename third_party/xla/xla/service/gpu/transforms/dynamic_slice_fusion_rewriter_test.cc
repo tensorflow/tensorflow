@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/hlo.pb.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -42,7 +42,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-class DynamicSliceFusionRewriterTest : public HloTestBase {};
+class DynamicSliceFusionRewriterTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemm) {
   const char* hlo = R"(

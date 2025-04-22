@@ -20,10 +20,10 @@ limitations under the License.
 #include <utility>
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -32,7 +32,7 @@ namespace gpu {
 namespace {
 
 namespace m = ::xla::match;
-using SanitizeConstantNamesTest = HloTestBase;
+using SanitizeConstantNamesTest = HloHardwareIndependentTestBase;
 
 TEST_F(SanitizeConstantNamesTest, InstructionNameWithHyphenSanitized) {
   const char *const kHloString = R"(

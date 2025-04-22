@@ -23,11 +23,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
 namespace xla::gpu {
@@ -54,7 +54,7 @@ struct SimpleGemmPattern : public CustomKernelFusionPattern {
 
 //===----------------------------------------------------------------------===//
 
-class CustomKernelFusionRewriterTest : public HloTestBase {};
+class CustomKernelFusionRewriterTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(CustomKernelFusionRewriterTest, SimpleGemm) {
   const char* hlo = R"(

@@ -17,8 +17,8 @@ limitations under the License.
 #include <optional>
 
 #include <gtest/gtest.h>
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
@@ -31,10 +31,8 @@ auto MakeDeviceDescription() {
   return device_description;
 }
 
-class FusionWrapperTest : public HloTestBase {
+class FusionWrapperTest : public HloHardwareIndependentTestBase {
  public:
-  using HloTestBase::HloTestBase;
-
   const stream_executor::DeviceDescription& device_description() const {
     return device_description_;
   }

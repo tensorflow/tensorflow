@@ -21,10 +21,10 @@
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -38,7 +38,7 @@ using ::testing::Pointee;
 using ::testing::Property;
 using ::testing::UnorderedElementsAre;
 
-class HloGumgraphTest : public HloTestBase {};
+class HloGumgraphTest : public HloHardwareIndependentTestBase {};
 
 const HloInstructionNode* SelectNodeByName(const HloGumgraph& graph,
                                            absl::string_view name) {

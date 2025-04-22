@@ -22,16 +22,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/side_effect_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-using ExplicitCollectivesGroupAsyncWrapperTest = HloTestBase;
+using ExplicitCollectivesGroupAsyncWrapperTest = HloHardwareIndependentTestBase;
 
 TEST_F(ExplicitCollectivesGroupAsyncWrapperTest, AnnotatedOpIsWrapped) {
   const absl::string_view hlo_string = R"(
@@ -49,7 +49,7 @@ TEST_F(ExplicitCollectivesGroupAsyncWrapperTest, AnnotatedOpIsWrapped) {
   }
   )";
 
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  auto debug_options = HloHardwareIndependentTestBase::GetDebugOptionsForTest();
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ExplicitCollectivesGroupAsyncWrapper wrapper_pass;
 
@@ -81,7 +81,7 @@ TEST_F(ExplicitCollectivesGroupAsyncWrapperTest,
   }
   )";
 
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  auto debug_options = HloHardwareIndependentTestBase::GetDebugOptionsForTest();
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ExplicitCollectivesGroupAsyncWrapper wrapper_pass;
 
@@ -123,7 +123,7 @@ TEST_F(ExplicitCollectivesGroupAsyncWrapperTest, ManyCollectivesGroups) {
   }
   )";
 
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  auto debug_options = HloHardwareIndependentTestBase::GetDebugOptionsForTest();
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ExplicitCollectivesGroupAsyncWrapper wrapper_pass;
 

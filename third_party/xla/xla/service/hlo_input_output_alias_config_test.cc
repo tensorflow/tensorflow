@@ -24,16 +24,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
-class HloInputOutputAliasConfigTest : public HloTestBase {
+class HloInputOutputAliasConfigTest : public HloHardwareIndependentTestBase {
  protected:
   void expect_aliased(const ShapeIndex& output_index, int64_t param_number,
                       const ShapeIndex& param_index,
@@ -216,7 +216,7 @@ ENTRY main {
       /*param_index=*/{}));
 }
 
-class HloBufferDonorConfigTest : public HloTestBase {};
+class HloBufferDonorConfigTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloBufferDonorConfigTest, SimpleBufferDonor) {
   const std::string module_str = R"(

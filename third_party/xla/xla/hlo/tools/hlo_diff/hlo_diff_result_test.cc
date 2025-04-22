@@ -21,12 +21,12 @@
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 #include "xla/hlo/tools/hlo_diff/utils/test_util.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -38,7 +38,7 @@ using ::testing::Pointee;
 using ::testing::Property;
 using ::testing::UnorderedElementsAre;
 
-class HloDiffTest : public HloTestBase {};
+class HloDiffTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloDiffTest, MatchedDifferentShapeMarkAsChanged) {
   // Create left module with entry computation containing the following

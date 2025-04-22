@@ -20,12 +20,12 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
@@ -40,10 +40,8 @@ auto MakeDeviceDescription() {
   return device_description;
 }
 
-class ReductionSplitterTest : public HloTestBase {
+class ReductionSplitterTest : public HloHardwareIndependentTestBase {
  public:
-  using HloTestBase::HloTestBase;
-
   auto MakeReductionSplitter(bool ignore_small_dims) const {
     return ReductionSplitter{device_description_,
                              /*ignore_small_dims=*/ignore_small_dims};

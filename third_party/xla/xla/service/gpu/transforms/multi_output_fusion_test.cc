@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
@@ -34,14 +35,13 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
 
 namespace m = ::xla::match;
 
-class MultiOutputFusionTest : public HloTestBase {
+class MultiOutputFusionTest : public HloHardwareIndependentTestBase {
  public:
   MultiOutputFusion mof_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
                          HloCostAnalysis::DefaultShapeSize};

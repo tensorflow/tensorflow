@@ -47,10 +47,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -61,7 +61,7 @@ namespace {
 
 using ::testing::HasSubstr;
 
-class ElementalHloToMlirTest : public HloTestBase {
+class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
  public:
   ElementalHloToMlirTest() {
     context_.loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,

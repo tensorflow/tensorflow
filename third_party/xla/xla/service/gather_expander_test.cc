@@ -21,15 +21,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 
 namespace xla {
 namespace {
 
-class GatherExpanderTest : public HloTestBase {
+class GatherExpanderTest : public HloHardwareIndependentTestBase {
  protected:
   void CheckWhileBody(HloModule* module, absl::string_view expected) {
     std::vector<HloInstruction*> while_instructions =

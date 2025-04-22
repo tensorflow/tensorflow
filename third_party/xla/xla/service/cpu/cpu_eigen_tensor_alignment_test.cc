@@ -16,10 +16,10 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace cpu {
@@ -28,7 +28,7 @@ namespace {
 // Test that we don't call into Eigen with tensors too small to be aligned
 // reliably.
 
-using CpuEigenTensorAlignmentTest = HloTestBase;
+using CpuEigenTensorAlignmentTest = HloHardwareIndependentTestBase;
 
 TEST_F(CpuEigenTensorAlignmentTest, EigenConvAlignment) {
   std::string hlo_string = R"(

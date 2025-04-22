@@ -26,10 +26,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -40,7 +40,7 @@ namespace {
 using ::testing::ElementsAre;
 using ::tsl::testing::StatusIs;
 
-class TritonFusionTest : public HloTestBase {};
+class TritonFusionTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(TritonFusionTest,
        TritonFusionWithBlockLevelFusionConfig_LaunchConfigIsCorrect) {

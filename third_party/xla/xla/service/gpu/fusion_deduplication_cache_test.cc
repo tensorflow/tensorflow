@@ -19,7 +19,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -64,7 +64,7 @@ HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
 
 bool IsFusible(const HloInstruction& instruction) { return true; }
 
-using FusionDeduplicationCacheTest = HloTestBase;
+using FusionDeduplicationCacheTest = HloHardwareIndependentTestBase;
 
 TEST_F(FusionDeduplicationCacheTest, IdenticalInstructions_EqualId) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(

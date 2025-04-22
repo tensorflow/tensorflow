@@ -18,16 +18,16 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-class FusionAnalysisCacheTest : public HloTestBase {
+class FusionAnalysisCacheTest : public HloHardwareIndependentTestBase {
  public:
   stream_executor::DeviceDescription device_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo()};

@@ -592,8 +592,8 @@ xla_cc_test(
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/strings:string_view",
@@ -611,7 +611,7 @@ xla_cc_test(
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
-        "//xla/tests:hlo_test_base",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",

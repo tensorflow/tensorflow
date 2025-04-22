@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_utils.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -37,7 +37,7 @@ using ::tsl::testing::IsOkAndHolds;
 
 namespace op = xla::testing::opcode_matchers;
 
-using GpuAllReduceCombinerTest = HloTestBase;
+using GpuAllReduceCombinerTest = HloHardwareIndependentTestBase;
 
 TEST_F(GpuAllReduceCombinerTest,
        CombinesPipelinedCollectivesUpToSuggestedThreshold) {

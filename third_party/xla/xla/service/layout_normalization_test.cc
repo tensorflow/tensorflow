@@ -20,15 +20,15 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/scatter_simplifier.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class LayoutNormalizationTest : public HloTestBase {
+class LayoutNormalizationTest : public HloHardwareIndependentTestBase {
  public:
   void CheckLayoutNormalization(
       absl::string_view hlo, std::optional<absl::string_view> expected,

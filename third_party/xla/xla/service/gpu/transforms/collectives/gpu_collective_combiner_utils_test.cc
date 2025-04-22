@@ -25,20 +25,20 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_pipeliner.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
 namespace {
 
-using CollectiveCombinerUtilsTest = HloTestBase;
+using CollectiveCombinerUtilsTest = HloHardwareIndependentTestBase;
 
 TEST_F(CollectiveCombinerUtilsTest,
        ComputeSuggestedCombinerThresholdReturnsMemoryThresholdForDeviceInfo) {

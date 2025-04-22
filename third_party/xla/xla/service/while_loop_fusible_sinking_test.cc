@@ -22,16 +22,16 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
-using WhileLoopFusibleSinkingTest = HloTestBase;
+using WhileLoopFusibleSinkingTest = HloHardwareIndependentTestBase;
 
 TEST_F(WhileLoopFusibleSinkingTest, SinkOneFusible) {
   const char* const hlo_string = R"(

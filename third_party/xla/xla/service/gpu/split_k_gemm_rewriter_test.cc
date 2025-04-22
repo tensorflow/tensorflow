@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/layout.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/service/layout_assignment.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -66,15 +66,16 @@ TEST(HasDivisibleSuffixAllowingSplitTest, AllTests) {
   EXPECT_FALSE(HasDivisibleSuffixAllowingSplit({2, 3}, 2));
 }
 
-using SplitKTest = HloTestBase;
+using SplitKTest = HloHardwareIndependentTestBase;
 
 // TODO(b/409940111): Remove these tests once the flag is deprecated.
 class SplitKTestWithLowPreciseReduction
-    : public HloTestBase,
+    : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<int> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(
         false);
     return debug_options;
@@ -82,11 +83,12 @@ class SplitKTestWithLowPreciseReduction
 };
 
 class SplitKTestWithMorePreciseReduction
-    : public HloTestBase,
+    : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<int> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(
         true);
     return debug_options;

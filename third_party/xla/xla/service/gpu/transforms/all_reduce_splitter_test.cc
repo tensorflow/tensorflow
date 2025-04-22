@@ -31,9 +31,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/transforms/reduce_scatter_creator.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -44,7 +44,7 @@ namespace {
 
 using ::tsl::testing::IsOkAndHolds;
 
-class AllReduceSplitterTest : public HloTestBase {
+class AllReduceSplitterTest : public HloHardwareIndependentTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PrepareModule(
       absl::string_view hlo_module, int64_t num_replicas,

@@ -18,7 +18,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -31,7 +31,7 @@ using ::mlir::bindDims;
 using ::mlir::bindSymbols;
 using ::testing::ElementsAre;
 
-class AffineMapEvaluator : public HloTestBase {
+class AffineMapEvaluator : public HloHardwareIndependentTestBase {
  public:
   mlir::MLIRContext mlir_context_;
 };

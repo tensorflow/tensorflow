@@ -26,9 +26,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -38,7 +38,8 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class AllGatherDynamicSliceSimplifierTest : public HloTestBase {
+class AllGatherDynamicSliceSimplifierTest
+    : public HloHardwareIndependentTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, int64_t num_replicas,

@@ -19,12 +19,12 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla {
 namespace gpu {
 
-class RenameFusionsTest : public HloTestBase {
+class RenameFusionsTest : public HloHardwareIndependentTestBase {
  protected:
   RenameFusions rename_fusions_;
 };

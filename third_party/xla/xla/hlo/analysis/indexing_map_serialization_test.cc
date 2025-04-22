@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -30,7 +30,7 @@ namespace {
 
 using ::testing::HasSubstr;
 
-class IndexingMapSerializationTest : public HloTestBase {
+class IndexingMapSerializationTest : public HloHardwareIndependentTestBase {
  public:
   mlir::MLIRContext mlir_context_;
   void ParseAndCheck(absl::string_view indexing_map_str) {

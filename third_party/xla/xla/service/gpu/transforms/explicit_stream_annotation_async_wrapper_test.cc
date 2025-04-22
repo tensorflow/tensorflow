@@ -22,16 +22,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/side_effect_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-using ExplicitStreamAnnotationAsyncWrapperTest = HloTestBase;
+using ExplicitStreamAnnotationAsyncWrapperTest = HloHardwareIndependentTestBase;
 
 TEST_F(ExplicitStreamAnnotationAsyncWrapperTest, AnnotatedOpIsWrapped) {
   const absl::string_view hlo_string = R"(
@@ -48,7 +48,7 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest, AnnotatedOpIsWrapped) {
     %call1 = f32[] call(f32[] %lhs), to_apply=%sub, frontend_attributes={_xla_stream_annotation="1"}
   })";
 
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  auto debug_options = HloHardwareIndependentTestBase::GetDebugOptionsForTest();
   debug_options.set_xla_gpu_experimental_stream_annotation(true);
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   module->mutable_config().set_debug_options(debug_options);
@@ -92,7 +92,7 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest, OverlappingGemms) {
     ROOT %call2 =  f32[2048,2048]{1,0} call(f32[2048,2048]{1,0} %x, f32[2048,2048]{1,0} %y), to_apply=%gemm2, frontend_attributes={_scheduling_group_id="1", _xla_stream_annotation="1"}
   })";
 
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  auto debug_options = HloHardwareIndependentTestBase::GetDebugOptionsForTest();
   debug_options.set_xla_gpu_experimental_stream_annotation(true);
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   module->mutable_config().set_debug_options(debug_options);

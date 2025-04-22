@@ -23,13 +23,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -67,7 +67,7 @@ MATCHER_P(OutputTileSizesIs, matcher, "") {
   return ExplainMatchResult(matcher, output_tile_sizes, result_listener);
 }
 
-class NestGemmFusionTest : public HloTestBase {
+class NestGemmFusionTest : public HloHardwareIndependentTestBase {
  protected:
   const se::GpuComputeCapability compute_capability_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(se::CudaComputeCapability::Ampere())

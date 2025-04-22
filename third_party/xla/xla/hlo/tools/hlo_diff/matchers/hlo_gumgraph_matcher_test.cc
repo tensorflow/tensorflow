@@ -19,11 +19,11 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 #include "xla/hlo/tools/hlo_diff/utils/test_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -33,7 +33,7 @@ namespace {
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
-class HloMatcherTest : public HloTestBase {};
+class HloMatcherTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloMatcherTest, SubGraphExactMatcherEntryChange) {
   // Create left module with entry computation containing the following

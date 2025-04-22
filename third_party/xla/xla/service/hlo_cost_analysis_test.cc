@@ -30,11 +30,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/local_service.h"
 #include "xla/service/service.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
@@ -724,7 +724,7 @@ TEST_F(HloCostAnalysisTest, LatencyBoundedOptimalTime) {
   EXPECT_EQ(cost_analysis.optimal_seconds(), clock_cycle_seconds);
 }
 
-using FusionCostAnalysis = HloTestBase;
+using FusionCostAnalysis = HloHardwareIndependentTestBase;
 
 TEST_F(FusionCostAnalysis, LoopFusionDynUpdateSlice) {
   // Test for b/234935631.
@@ -1350,7 +1350,7 @@ TEST_F(HloCostAnalysisTest, TupleCost) {
             HloCostAnalysis::kDefaultPointerSize * 2);
 }
 
-using DomainCostAnalysis = HloTestBase;
+using DomainCostAnalysis = HloHardwareIndependentTestBase;
 TEST_F(DomainCostAnalysis, DomainCost) {
   HloCostAnalysis analysis;
 

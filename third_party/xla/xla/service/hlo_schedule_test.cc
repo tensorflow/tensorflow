@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -40,7 +40,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class HloScheduleTest : public HloTestBase {};
+class HloScheduleTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloScheduleTest, UpdateScheduleUnchangedModule) {
   // Updating the schedule of an unchanged HLO module should not affect the

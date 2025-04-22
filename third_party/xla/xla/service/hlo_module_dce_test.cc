@@ -19,8 +19,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -29,7 +29,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class HloModuleDceTest : public HloTestBase {
+class HloModuleDceTest : public HloHardwareIndependentTestBase {
  protected:
   HloModuleDceTest() {}
 

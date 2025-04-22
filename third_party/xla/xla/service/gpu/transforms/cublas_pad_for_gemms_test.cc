@@ -19,10 +19,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -32,7 +32,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class CublasGemmPadForTensorCoresTest : public HloTestBase {
+class CublasGemmPadForTensorCoresTest : public HloHardwareIndependentTestBase {
  protected:
   bool PadForF16Gemms(HloModule* module) {
     return CublasPadForGemms(se::CudaComputeCapability(7, 0),
@@ -42,7 +42,8 @@ class CublasGemmPadForTensorCoresTest : public HloTestBase {
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     // Some pads would not be added if we detect that Triton will handle the
     // given dot operation.
     debug_options.set_xla_gpu_triton_gemm_any(false);

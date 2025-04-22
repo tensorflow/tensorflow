@@ -33,11 +33,11 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -48,7 +48,7 @@ namespace m = xla::match;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
 
-class GpuP2PPipelinerTest : public HloTestBase {
+class GpuP2PPipelinerTest : public HloHardwareIndependentTestBase {
  public:
   GpuP2PPipelinerTest() {
     const int64_t kNumReplicas = 1;

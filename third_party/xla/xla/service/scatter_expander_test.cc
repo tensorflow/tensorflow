@@ -24,18 +24,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 
 namespace xla {
 namespace {
 
-class ScatterExpanderTest : public HloTestBase {
+class ScatterExpanderTest : public HloHardwareIndependentTestBase {
  protected:
   // The HLO parser changes all no layout shapes from the input to have a
   // default layout. Clear the layout of the scatter operand for testing.

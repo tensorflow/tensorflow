@@ -18,15 +18,15 @@ limitations under the License.
 #include <optional>
 
 #include "absl/strings/string_view.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 
 namespace {
 
-class TreeReductionRewriterTest : public HloTestBase {
+class TreeReductionRewriterTest : public HloHardwareIndependentTestBase {
  public:
   void CheckTreeRewriter(absl::string_view hlo,
                          std::optional<absl::string_view> expected) {

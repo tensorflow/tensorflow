@@ -29,8 +29,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/latency_hiding_scheduler.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
@@ -86,7 +86,7 @@ absl::StatusOr<bool> RunScheduler(
 
 }  // namespace
 
-class LatencyHidingSchedulerTest : public HloTestBase,
+class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase,
                                    public ::testing::WithParamInterface<bool> {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> ParseHloText(
@@ -165,7 +165,7 @@ ENTRY entry {
 INSTANTIATE_TEST_SUITE_P(LatencyHidingSchedulerTest, LatencyHidingSchedulerTest,
                          ::testing::Bool());
 
-using ProfileGuidedLatencyEstimatorTest = HloTestBase;
+using ProfileGuidedLatencyEstimatorTest = HloHardwareIndependentTestBase;
 
 TEST_F(ProfileGuidedLatencyEstimatorTest,
        TestProfileGuidedLatencyEstimatorWithAsyncInstruction) {

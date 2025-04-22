@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -48,7 +48,7 @@ HloInstruction* FindFirstWhile(HloModule* m) {
   return *absl::c_find_if(instrs, HloPredicateIsOp<HloOpcode::kWhile>);
 }
 
-class WhileLoopSimplifierTest : public HloTestBase {
+class WhileLoopSimplifierTest : public HloHardwareIndependentTestBase {
  protected:
   // Makes an HloModule that contains a loop with `num_iters` iteration.
   [[nodiscard]] std::unique_ptr<VerifiedHloModule> MakeModuleWithSimpleLoop(

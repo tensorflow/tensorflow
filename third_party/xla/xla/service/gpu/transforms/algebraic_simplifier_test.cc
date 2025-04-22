@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/statusor.h"
 
@@ -35,7 +35,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-class GpuAlgebraicSimplifierTest : public HloTestBase {
+class GpuAlgebraicSimplifierTest : public HloHardwareIndependentTestBase {
  public:
   se::CudaComputeCapability Ampere() {
     return se::CudaComputeCapability::Ampere();

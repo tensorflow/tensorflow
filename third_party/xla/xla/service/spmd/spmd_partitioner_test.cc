@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout_util.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "xla/service/spmd/sharding_format_picker.h"
 #include "xla/service/spmd/spmd_prepare.h"
 #include "xla/shape.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -66,7 +66,7 @@ using ::xla::test_only::ShardingFormatPicker;
 namespace op = xla::testing::opcode_matchers;
 
 class SpmdPartitioningTest
-    : public HloTestBase,
+    : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<ShardingFormatPicker::ShardingType> {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(

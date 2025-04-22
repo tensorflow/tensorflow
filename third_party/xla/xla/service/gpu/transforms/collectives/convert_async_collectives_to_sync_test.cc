@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -37,7 +37,8 @@ using ::testing::IsTrue;
 // Note: The pass only processes modules that are already scheduled. If the test
 // does not work as expected, make sure to check if "is_scheduled=true" is added
 // to the HLO module string.
-class GpuConvertAsyncCollectivesToSyncTest : public HloTestBase {
+class GpuConvertAsyncCollectivesToSyncTest
+    : public HloHardwareIndependentTestBase {
  public:
   absl::Status RunPass(HloModule *module, bool expect_change) {
     TF_ASSIGN_OR_RETURN(bool changed,

@@ -23,8 +23,8 @@
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -35,7 +35,7 @@ using ::testing::Pair;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
 
-class HloDiffRendererUtilTest : public HloTestBase {};
+class HloDiffRendererUtilTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloDiffRendererUtilTest, GroupInstructionsByOpcode) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,

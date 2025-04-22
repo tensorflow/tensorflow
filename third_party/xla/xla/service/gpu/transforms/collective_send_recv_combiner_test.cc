@@ -23,13 +23,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-using CollectiveSendRecvCombinerTest = HloTestBase;
+using CollectiveSendRecvCombinerTest = HloHardwareIndependentTestBase;
 
 TEST_F(CollectiveSendRecvCombinerTest, TransformedWithSourceTargetPairs) {
   const char* kHloStr = R"(

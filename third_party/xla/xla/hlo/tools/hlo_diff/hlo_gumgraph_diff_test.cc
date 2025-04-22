@@ -17,15 +17,15 @@
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_diff {
 namespace {
 
-class HloDiffTest : public HloTestBase {};
+class HloDiffTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloDiffTest, ComputeDiffWorksWithoutEval) {
   // Create a module with entry computation containing the following structure:

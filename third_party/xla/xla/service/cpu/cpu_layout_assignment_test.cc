@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -47,7 +47,7 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
-class CpuLayoutAssignmentTest : public HloTestBase {
+class CpuLayoutAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
   void AssignLayouts(HloModule* module,
                      ComputationLayout* entry_computation_layout) {

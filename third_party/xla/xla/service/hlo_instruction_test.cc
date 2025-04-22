@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
@@ -67,7 +67,7 @@ using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 
-class HloInstructionTest : public HloTestBase {
+class HloInstructionTest : public HloHardwareIndependentTestBase {
  protected:
   Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
 };

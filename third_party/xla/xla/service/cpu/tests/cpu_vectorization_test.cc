@@ -29,10 +29,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -87,7 +87,8 @@ class CpuVectorizationTest
 
  private:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     HloTestBase::SetAotFastMathDebugOptions(&debug_options);
     return debug_options;
   }
@@ -240,7 +241,8 @@ TEST_F(DefaultMaxIsaTest, NeonForOssAArch64) {
   if (!tsl::port::IsAarch64CPU()) {
     GTEST_SKIP() << "This test is for AArch64 CPUs.";
   }
-  DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+  DebugOptions debug_options =
+      HloHardwareIndependentTestBase::GetDebugOptionsForTest();
   EXPECT_EQ(debug_options.xla_cpu_max_isa(), "NEON");
 }
 
@@ -265,7 +267,8 @@ class JitVectorizationTest
  private:
   DebugOptions GetDebugOptionsForTest() const override {
     JitVectorizationTestSpec spec = GetParam();
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_cpu_max_isa(spec.max_isa);
     // For AVX512, we have to override the default `prefer_vector_width=256`
     // setting. Otherwise, LLVM won't generate AVX512.

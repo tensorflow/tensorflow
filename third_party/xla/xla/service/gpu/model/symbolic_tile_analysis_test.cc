@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/constraint_expression.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -114,7 +114,7 @@ class FakeEmitterSpecificConstraints : public EmitterSpecificConstraints {
   int64_t dim0_tile_size_;
 };
 
-class SymbolicTileAnalysisTest : public HloTestBase {
+class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
       HloModule* module,

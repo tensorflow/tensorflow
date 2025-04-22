@@ -25,10 +25,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/spmd/shardy/constants.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -39,7 +39,7 @@ namespace sdy {
 
 namespace {
 
-using ShardyXLATest = xla::HloTestBase;
+using ShardyXLATest = HloHardwareIndependentTestBase;
 
 void runShardy(VerifiedHloModule* module, bool stablehloImport) {
   FrontendAttributes attrs;

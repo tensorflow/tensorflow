@@ -16,13 +16,13 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
 
 #include <gtest/gtest.h>
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using ConverterTest = HloTestBase;
+using ConverterTest = HloHardwareIndependentTestBase;
 
 TEST_F(ConverterTest, CustomCallGetsConvertedToCustomFusion) {
   RunAndFilecheckHloRewrite(R"(

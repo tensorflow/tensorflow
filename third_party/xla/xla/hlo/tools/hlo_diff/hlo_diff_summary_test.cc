@@ -22,12 +22,12 @@
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 #include "xla/hlo/tools/hlo_diff/utils/test_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -40,7 +40,7 @@ using ::testing::Pointee;
 using ::testing::Property;
 using ::testing::UnorderedElementsAre;
 
-class HloDiffTest : public HloTestBase {};
+class HloDiffTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloDiffTest, FindMainMatchedComputationWorks) {
   // Create a module with entry computation containing the following structure:

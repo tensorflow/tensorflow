@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/shape.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -54,7 +54,8 @@ using ::testing::IsEmpty;
 
 constexpr int64_t kAlternateMemorySpace = 1;
 
-class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
+class MemorySpaceAssignmentSimulatorTest
+    : public HloHardwareIndependentTestBase {
  protected:
   absl::Status Initialize(absl::string_view hlo_string) {
     TF_ASSIGN_OR_RETURN(module_, ParseAndReturnVerifiedModule(hlo_string));

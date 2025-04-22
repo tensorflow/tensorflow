@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -32,7 +32,7 @@ limitations under the License.
 namespace xla::memory_space_assignment {
 namespace {
 
-class AllocationTest : public HloTestBase {};
+class AllocationTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(AllocationTest, CopyAllocationProcessSimple) {
   absl::string_view hlo_string = R"(
