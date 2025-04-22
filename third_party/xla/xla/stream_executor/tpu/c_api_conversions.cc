@@ -283,7 +283,7 @@ void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape) {
   }
 
   c_shape->ntuple_shapes =
-      xla_shape.IsTuple() ? xla_shape.tuple_shapes_size() : 0;
+      xla_shape.IsTuple() ? xla_shape.tuple_shapes().size() : 0;
   if (c_shape->ntuple_shapes > 0) {
     c_shape->tuple_shapes = new XLA_Shape[c_shape->ntuple_shapes];
     for (int i = 0; i < c_shape->ntuple_shapes; ++i) {
