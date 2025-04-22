@@ -493,6 +493,7 @@ Build(
     ),
     options=_DEFAULT_BAZEL_OPTIONS,
     repo_env={"HERMETIC_PYTHON_VERSION": "3.10"},
+    extra_setup_commands=(["nvidia-smi"],),
 )
 
 tensorflow_tag_filters = (
@@ -622,6 +623,7 @@ Build(
             "-maxdepth", "1", "-exec", "cp", "-r", "{}",
             f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party", ";",
         ],
+        ["nvidia-smi"],
     ),
 )
 
