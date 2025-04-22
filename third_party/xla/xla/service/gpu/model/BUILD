@@ -971,56 +971,47 @@ cc_library(
     ],
 )
 
-[
-    xla_test(
-        name = "hlo_op_profiler_run_" + sm,
-        timeout = "eternal",
-        srcs = ["hlo_op_profiler_run.cc"],
-        # Disable backend optimizations (in particular reassociate and instcombine) which would optimize
-        # expressions like integer add and multiply.
-        args = ["--xla_backend_optimization_level=0"],
-        backends = ["gpu"],
-        # This is a development tool, not a normal test, and thus should only be run
-        # manually with --config=cuda.
-        tags = [
-            "gpu",
-            "manual",
-            "notap",
-            "requires-gpu-" + sm + "-only",
-        ],
-        deps = [
-            ":hlo_op_profile_proto_cc",
-            ":hlo_op_profiler_lib",
-            ":hlo_op_profiles",
-            "//xla:debug_options_flags",
-            "//xla:xla_data_proto_cc",
-            "//xla/hlo/ir:hlo",
-            "//xla/service:hlo_runner",
-            "//xla/service:platform_util",
-            "//xla/stream_executor:device_description",
-            "//xla/tsl/util:command_line_flags",
-            "@com_google_absl//absl/log",
-            "@com_google_absl//absl/strings",
-            "@com_google_absl//absl/strings:str_format",
-            "@local_tsl//tsl/platform:env",
-            "@local_tsl//tsl/platform:path",
-            "@local_tsl//tsl/platform:platform_port",
-            "@local_tsl//tsl/platform:protobuf",
-            "@local_tsl//tsl/platform:status",
-        ],
-    )
-    for sm in [
-        "sm60",
-        "sm70",
-        "sm80",
-        "sm90",
-    ]
-]
+xla_test(
+    name = "hlo_op_profiler_run",
+    timeout = "eternal",
+    srcs = ["hlo_op_profiler_run.cc"],
+    # Disable backend optimizations (in particular reassociate and instcombine) which would optimize
+    # expressions like integer add and multiply.
+    args = ["--xla_backend_optimization_level=0"],
+    backends = ["gpu"],
+    # This is a development tool, not a normal test, and thus should only be run
+    # manually with --config=cuda.
+    tags = [
+        "gpu",
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":hlo_op_profile_proto_cc",
+        ":hlo_op_profiler_lib",
+        ":hlo_op_profiles",
+        "//xla:debug_options_flags",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_runner",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:status",
+    ],
+)
 
 build_test(
     name = "hlo_op_profiler_build_test",
     targets = [
-        ":hlo_op_profiler_run_sm80",
+        ":hlo_op_profiler_run",
     ],
 )
 
