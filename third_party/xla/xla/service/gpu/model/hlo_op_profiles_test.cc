@@ -33,6 +33,13 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
     value {
       entries {
         instruction {
+          opcode: "multiply"
+          shape { element_type: F32 }
+        }
+        clock_cycles: 32
+      }
+      entries {
+        instruction {
           opcode: "divide"
           shape { element_type: F32 }
         }
@@ -58,8 +65,7 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
 using HloOpProfilesTest = ::testing::Test;
 
 TEST_F(HloOpProfilesTest, GetProfile) {
-  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfiles,
-                                             /*default_profile_name=*/"sm_80");
+  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfiles);
   auto device_info_sm_90 = TestGpuDeviceInfo::RTXA6000DeviceInfo(
       stream_executor::CudaComputeCapability(9, 0));
 
@@ -72,18 +78,17 @@ TEST_F(HloOpProfilesTest, GetProfile) {
 }
 
 TEST_F(HloOpProfilesTest, GetProfileDefault) {
-  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfiles,
-                                             /*default_profile_name=*/"sm_80");
+  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfiles);
   auto device_info_sm_85 = TestGpuDeviceInfo::RTXA6000DeviceInfo(
       stream_executor::CudaComputeCapability(8, 5));
 
-  // hlo_op_profiles only has sm_80 and sm_90, should return the default sm_80.
+  // hlo_op_profiles only has sm_80 and sm_90, should return the latest sm_90.
   const auto& op_profile = hlo_op_profiles->GetProfile(device_info_sm_85);
   ASSERT_TRUE(op_profile.contains(
       std::make_pair(HloOpcode::kMultiply, PrimitiveType::F32)));
   EXPECT_EQ(
       op_profile.at(std::make_pair(HloOpcode::kMultiply, PrimitiveType::F32)),
-      64);
+      32);
 }
 
 }  // namespace
