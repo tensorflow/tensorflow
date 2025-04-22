@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/utility/utility.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/nccl_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -55,7 +56,8 @@ using ::tsl::testing::StatusIs;
 constexpr absl::string_view kCudaError = "unhandled cuda error";
 
 // Creates a non-blocking NCCL communicator.
-absl::StatusOr<NcclCommunicator> CreateNonBlockingCommunicator() {
+absl::StatusOr<NcclCommunicator> CreateNonBlockingCommunicator(
+    NcclCollectives* collectives) {
   // Create a unique NCCL Id.
   ncclUniqueId id;
   TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclGetUniqueId(&id)));
@@ -85,11 +87,13 @@ absl::StatusOr<NcclCommunicator> CreateNonBlockingCommunicator() {
   TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(state));
 
   // Wrap and return the communicator.
-  return absl::StatusOr<NcclCommunicator>(absl::in_place_t(), comm);
+  return absl::StatusOr<NcclCommunicator>(absl::in_place_t(), collectives,
+                                          comm);
 }
 
 TEST(NcclCommunicator, AbortSucceeds) {
-  absl::StatusOr<NcclCommunicator> comm = CreateNonBlockingCommunicator();
+  NcclCollectives coll;
+  absl::StatusOr<NcclCommunicator> comm = CreateNonBlockingCommunicator(&coll);
   if (comm.status().message() == kCudaError) {
     GTEST_SKIP() << "unhandled cuda error";
   }
@@ -98,7 +102,8 @@ TEST(NcclCommunicator, AbortSucceeds) {
 }
 
 TEST(NcclCommunicator, DoubleAbortFails) {
-  absl::StatusOr<NcclCommunicator> comm = CreateNonBlockingCommunicator();
+  NcclCollectives coll;
+  absl::StatusOr<NcclCommunicator> comm = CreateNonBlockingCommunicator(&coll);
   if (comm.status().message() == kCudaError) {
     GTEST_SKIP() << "unhandled cuda error";
   }
@@ -132,7 +137,8 @@ TEST(NcclCommunicator, OperationsFailAfterAbort) {
 
   // Execute NcclCommunicator operations. They should all immediately fail
   // because the communicator has been aborted.
-  absl::StatusOr<NcclCommunicator> comm = CreateNonBlockingCommunicator();
+  NcclCollectives coll;
+  absl::StatusOr<NcclCommunicator> comm = CreateNonBlockingCommunicator(&coll);
   if (comm.status().message() == kCudaError) {
     GTEST_SKIP() << "unhandled cuda error";
   }
