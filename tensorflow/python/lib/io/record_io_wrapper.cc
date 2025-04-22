@@ -255,7 +255,7 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
                py::gil_scoped_release release;
                status = self->ReadNextRecord(&record);
              }
-             if (tensorflow::errors::IsOutOfRange(status)) {
+             if (absl::IsOutOfRange(status)) {
                // Don't close because the file being read could be updated
                // in-between
                // __next__ calls.
@@ -294,7 +294,7 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
                py::gil_scoped_release release;
                status = self->ReadRecord(&temp_offset, &record);
              }
-             if (tensorflow::errors::IsOutOfRange(status)) {
+             if (absl::IsOutOfRange(status)) {
                throw py::index_error(tensorflow::strings::StrCat(
                    "Out of range at reading offset ", offset));
              }
