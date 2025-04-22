@@ -21,52 +21,13 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
 
-def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
-
-def NullChannelHandleAttr : NativeCodeCall<"mhlo::ChannelHandleAttr()">;
-
 def CastIntElementsAttr : NativeCodeCall<"cast<DenseIntElementsAttr>($0)">;
-
-class ConstantSplat<string value> : NativeCodeCall<
-    "hlo::getSplat(&$_builder, $0, " # value # ")">;
-
-class MHLO_ConstantLike<string value> : NativeCodeCall<
-    "chlo::getConstantLike($_builder, $_loc, " # value # ", $0)">;
-
-def MHLO_ConstantLikeMaxFiniteValue : NativeCodeCall<
-    "chlo::getConstantLikeMaxFiniteValue($_builder, $_loc, $0)">;
-
-def MHLO_ConstantLikePosInfValue : NativeCodeCall<
-    "chlo::getConstantLikeInfValue($_builder, $_loc, $0, /*negative=*/false)">;
-
-def MHLO_ConstantLikeNegInfValue : NativeCodeCall<
-    "chlo::getConstantLikeInfValue($_builder, $_loc, $0, /*negative=*/true)">;
-
-def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
-
-def NullDenseI64ArrayAttr : NativeCodeCall<"DenseI64ArrayAttr()">;
-
-def BinBroadcastDimensions : NativeCodeCall<
-    "hlo::getBroadcastDimensionsAttr(&$_builder, $0, $1)">;
-
-def BinBroadcastDimensionsNonEmpty : NativeCodeCall<
-    "hlo::getBroadcastDimensionsAttr(&$_builder, $0, $1, /*allow_empty=*/false)">;
-
-// Here, the element type can be any integer or float type. But, note that only
-// 32 bit integers are supported for the value.
-class GetScalarOfType<int value> : NativeCodeCall<
-  "hlo::getScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
 // Constraint that Attr has values [0, 1, ...].
 def IdentityBroadcastDims : AttrConstraint<
     CPred<"hlo::isSequenceStartingWith0($_self)">>;
 
-def ComplexElementType : Type<
-  CPred<"isa<ComplexType>(cast<ShapedType>($_self).getElementType())">,
-  "Complex element type">;
-
-def NonComplexElementType : Type<
-  CPred<"!isa<ComplexType>(cast<ShapedType>($_self).getElementType())">,
-  "Non-complex element type">;
+class ConstantSplat<string value> : NativeCodeCall<
+    "hlo::getSplat(&$_builder, $0, " # value # ")">;
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_UTILS
