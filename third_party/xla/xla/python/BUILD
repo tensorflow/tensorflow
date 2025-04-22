@@ -45,7 +45,7 @@ pytype_strict_library(
     name = "xla_extension",
     srcs = ["xla_extension.py"],
     visibility = ["//visibility:public"],
-    deps = if_google(["//third_party/py/jax/jaxlib/xla:xla_extension"]),
+    deps = if_google(["//third_party/py/jax/jaxlib/xla:_jax"]),
 )
 
 tsl_pybind_extension(
