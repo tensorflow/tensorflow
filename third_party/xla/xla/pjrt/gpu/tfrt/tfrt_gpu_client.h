@@ -707,6 +707,8 @@ class TfrtGpuExecutable final : public PjRtLoadedExecutable {
     return addressable_devices_;
   }
 
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override;
+
   using PjRtLoadedExecutable::Execute;
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,

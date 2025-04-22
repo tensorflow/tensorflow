@@ -3484,6 +3484,24 @@ absl::Status TfrtGpuExecutable::SetUpDonation(bool tuple_inputs) {
   return absl::OkStatus();
 }
 
+absl::StatusOr<CompiledMemoryStats> TfrtGpuExecutable::GetCompiledMemoryStats()
+    const {
+  if (executables_.size() != 1) {
+    return Unimplemented(
+        "Retrieving CompiledMemoryStats is not supported for multiple "
+        "executables.");
+  }
+  CompiledMemoryStats memory_stats = CompiledMemoryStats();
+  memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
+  const HloProto* proto = executables_[0]->executable()->hlo_proto();
+  if (proto != nullptr) {
+    memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+  }
+  memory_stats.PopulateBufferStatsFromAllocations(
+      executables_[0]->executable()->GetAllocations());
+  return memory_stats;
+}
+
 absl::StatusOr<TfrtGpuBuffer::DonationTransaction>
 TfrtGpuBuffer::AcquireDonation() {
   absl::MutexLock lock(&mu_);
