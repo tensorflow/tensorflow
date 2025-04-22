@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -131,28 +132,8 @@ absl::StatusOr<HloInstruction*> MakeSparseMetaOperand(
 PrimitiveType GetAccumulatorType(bool disable_reduced_precision_reduction,
                                  HloDotInstruction* dot,
                                  HloInstruction* instr) {
-  if (!disable_reduced_precision_reduction) {
-    return instr->shape().element_type();
-  }
-
-  // Return the accumulator type if it is explicitly specified as dot algorithm.
-  auto accumulator_type = algorithm_util::GetDotAccumulatorType(
-      dot->precision_config().algorithm());
-  if (accumulator_type.ok()) {
-    return accumulator_type.value();
-  }
-  // Otherwise, return the default accumulator type for the output type.
-  PrimitiveType output_type = dot->shape().element_type();
-  switch (output_type) {
-    case PrimitiveType::F16:
-    case PrimitiveType::BF16:
-      return PrimitiveType::F32;
-    case PrimitiveType::F32:
-    case PrimitiveType::F64:
-    case PrimitiveType::S32:
-    default:
-      return output_type;
-  }
+  return disable_reduced_precision_reduction ? GetGemmAccumulatorType(dot)
+                                             : instr->shape().element_type();
 }
 
 }  // namespace

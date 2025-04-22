@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
@@ -164,7 +166,12 @@ TEST_F(GpuKernelTest, ArrayArgByValue) {
     )";
 
   MultiKernelLoaderSpec spec(/*arity=*/2);
-  spec.AddCudaPtxInMemory(copy_kernel, "copy_kernel");
+  if (executor_->GetPlatform()->id() ==
+      stream_executor::rocm::kROCmPlatformId) {
+    spec.AddInProcessSymbol(internal::GetCopyKernel(), "copy_kernel");
+  } else {
+    spec.AddCudaPtxInMemory(copy_kernel, "copy_kernel");
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
   TF_ASSERT_OK_AND_ASSIGN(auto kernel, executor_->LoadKernel(spec));
@@ -174,17 +181,14 @@ TEST_F(GpuKernelTest, ArrayArgByValue) {
   DeviceMemory<char> dst = executor_->AllocateArray<char>(kLength, 0);
   TF_ASSERT_OK(stream->MemZero(&dst, kLength));
 
-  struct ByValArg {
-    std::byte storage[16];
-  };
-  ByValArg arg;
+  std::array<std::byte, 16> storage;
   int i = 0;
-  for (auto& element : arg.storage) {
+  for (auto& element : storage) {
     element = static_cast<std::byte>(i++);
   }
 
   // Launch kernel.
-  auto args = stream_executor::PackKernelArgs(/*shmem_bytes=*/0, dst, arg);
+  auto args = stream_executor::PackKernelArgs(/*shmem_bytes=*/0, dst, storage);
   TF_ASSERT_OK(kernel->Launch(ThreadDim(), BlockDim(), stream.get(), *args));
 
   // Copy data back to host.
@@ -192,7 +196,7 @@ TEST_F(GpuKernelTest, ArrayArgByValue) {
   TF_ASSERT_OK(stream->Memcpy(dst_host, dst, kLength));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
-  EXPECT_THAT(dst_host, ::testing::ElementsAreArray(arg.storage));
+  EXPECT_THAT(dst_host, ::testing::ElementsAreArray(storage));
 }
 }  // namespace
 }  // namespace stream_executor::gpu

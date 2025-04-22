@@ -98,6 +98,8 @@ void* GetIncAndCmpKernel();
 // StreamExecutor arguments packing for custom C++ types.
 void* GetAddI32Ptrs3Kernel();
 
+void* GetCopyKernel();
+
 }  // namespace internal
 
 // Returns an in-process kernel loader spec for the `AddI32` kernel above.
