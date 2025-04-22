@@ -23,7 +23,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <limits>
-#include <numeric>
 #include <sstream>
 #include <string>
 #include <tuple>
