@@ -377,7 +377,7 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
   return Unimplemented("Unimplemented primitive type %s", dtype.DebugString());
 }
 
-absl::StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype) {
+absl::StatusOr<ifrt::DType> DtypeToIfRtDType(const nb_dtype& dtype) {
   // String does not have a corresponding XLA primitive type.
   if (dtype.kind() == 'T') {
     return ifrt::DType(ifrt::DType::kString);
