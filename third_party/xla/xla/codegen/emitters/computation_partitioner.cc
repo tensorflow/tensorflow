@@ -59,7 +59,7 @@ namespace emitters {
 namespace {
 
 int Arity(const Shape& shape) {
-  return shape.IsTuple() ? shape.tuple_shapes_size() : 1;
+  return shape.IsTuple() ? shape.tuple_shapes().size() : 1;
 }
 
 const Shape& TupleShape(const Shape& shape, int index) {
