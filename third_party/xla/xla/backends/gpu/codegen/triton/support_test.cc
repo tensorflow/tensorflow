@@ -239,7 +239,7 @@ class TritonSupportTest : public TritonSupportTestBase {
                 root_instruction->shape().dimensions().size());
     } else if (root_instruction->shape().IsTuple()) {
       ASSERT_EQ(output_tile_sizes.size(),
-                root_instruction->shape().tuple_shapes_size());
+                root_instruction->shape().tuple_shapes().size());
       for (int64_t i = 0; i < output_tile_sizes.size(); ++i) {
         const auto& shape = root_instruction->shape().tuple_shapes(i);
         if (shape.IsTuple() || shape.IsToken()) {
