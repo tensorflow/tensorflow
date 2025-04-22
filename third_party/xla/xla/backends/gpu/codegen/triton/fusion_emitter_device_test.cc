@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -25,7 +24,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -44,6 +42,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -1995,6 +1996,36 @@ ENTRY entry_computation {
                           ParseAndReturnVerifiedModule(hlo_text));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), kExactMatch));
+}
+
+TEST_F(TritonEmitterTest, ConvertS4ToS8Exhaustive) {
+  constexpr absl::string_view kHloText = R"(
+computation {
+  p0 = s4[16] parameter(0)
+  ROOT convert = s8[16] convert(p0)
+}
+
+ENTRY entry_computation {
+  p0 = s4[16] parameter(0)
+  ROOT fusion = s8[16] fusion(p0), kind=kCustom,
+    calls=computation,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  auto values = {s4(-8), s4(-7), s4(-6), s4(-5), s4(-4), s4(-3), s4(-2), s4(-1),
+                 s4(0),  s4(1),  s4(2),  s4(3),  s4(4),  s4(5),  s4(6),  s4(7)};
+  Literal literal = LiteralUtil::CreateR1<s4>(values);
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module), {&literal}, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, FP8ToFP8EndToEnd) {

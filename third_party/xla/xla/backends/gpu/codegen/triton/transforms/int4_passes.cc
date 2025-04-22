@@ -408,10 +408,14 @@ std::vector<Operation *> FindInt4ExtSIOp(const ModuleOp &module) {
 // We relay on the fact that shape and strides are the const values.
 int GetPackedDimIdx(MLIRContext *ctx, const std::vector<Operation *> &ops) {
   for (auto *op : ops) {
-    if (!isa<MakeTensorPtrOp>(op)) continue;
-
     auto make_tensor_ptr = dyn_cast<MakeTensorPtrOp>(op);
+    if (!make_tensor_ptr) {
+      continue;
+    }
     auto shape = make_tensor_ptr.getShape();
+    if (shape.size() < 2) {
+      return 0;
+    }
     auto strides = make_tensor_ptr.getStrides();
     int stride_0 = GetConstValue(strides[0]).value_or(1);
     int stride_1 = GetConstValue(strides[1]).value_or(1);
