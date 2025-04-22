@@ -89,6 +89,8 @@ extern const char kXlaMultiRecvCountAttr[];
 
 // XLA frontend attribute for specifying the scheduling group id annotations.
 extern const char kXlaSchedulingGroupIdAttr[];
+// XLA frontend attribute value for a group that will not actually be scheduled.
+extern const char kXlaNoOpSchedulingGroup[];
 
 // XLA frontend attributes for specifying fusion directives.
 // MUST_FUSE: all ops labeled so should form as single fusion,

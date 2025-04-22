@@ -263,6 +263,12 @@ absl::Status CheckGapBetweenAnnotatedInstructions(
 
 bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
     HloInstruction* instr) {
+  const auto& attrs = instr->frontend_attributes().map();
+  if (attrs.contains(kXlaSchedulingGroupIdAttr) &&
+      attrs.at(kXlaSchedulingGroupIdAttr) == kXlaNoOpSchedulingGroup) {
+    return false;
+  }
+
   return IsSupportedAsyncOp(instr) || config_.keep_sync_annotation(instr);
 }
 
@@ -278,8 +284,8 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
   // desired sync ops. Annotations in all async ops are kept.
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instr : computation->instructions()) {
-      if (!instr->frontend_attributes().map().contains(
-              "_scheduling_group_id") ||
+      const auto& attrs = instr->frontend_attributes().map();
+      if (!attrs.contains(kXlaSchedulingGroupIdAttr) ||
           KeepSchedulingAnnotation(instr)) {
         continue;
       }
