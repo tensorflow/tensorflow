@@ -1,0 +1,35 @@
+# Copyright 2025 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+
+# Default registry for XLA benchmarks.
+
+configs: [
+  {
+    config_id: "gemma3_1b_flax_call_gpu_b200_1_host_1_device"
+    name: "gemma3_1b_flax_call"
+    description: "Benchmarks Gemma3 1b in Flax using B200 GPUs."
+    owner: "juliagmt-google@"
+    # Using gs:// format for GCS paths
+    hlo_gcs_bucket_path: "https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo"
+    model_source_info: ["Gemma3 1B"]
+    hardware_category: GPU_B200
+    topology: { num_hosts: 1, num_devices_per_host: 1 }
+    target_metrics: [GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME]
+    run_frequencies: [MANUAL]
+    update_frequency_policy: PERMANENT
+    runtime_flags: ["--num_repeat=5"]
+    github_labels: ["blocking_presubmit_test"] # Github label for manual triggering
+  }
+]

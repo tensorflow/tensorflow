@@ -1,0 +1,118 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla;
+
+// Enum defining the target hardware platform category.
+enum HardwareCategory {
+  HARDWARE_CATEGORY_UNSPECIFIED = 0;
+  CPU_X86 = 1;    // Standard x86 CPU
+  CPU_ARM64 = 2;  // ARM64 CPU
+  GPU_L4 = 3;     // L4 GPU
+  GPU_B200 = 4;   // B200 GPU
+}
+
+// Enum defining how frequently or under what conditions the benchmark runs.
+enum RunFrequency {
+  RUN_FREQUENCY_UNSPECIFIED = 0;
+  PRESUBMIT = 1;   // Runs on pull requests before merging.
+  POSTSUBMIT = 2;  // Runs after commits are merged to the main branch.
+  SCHEDULED = 3;   // Runs on a regular schedule (e.g., nightly, weekly).
+  MANUAL = 4;      // Triggered manually (e.g., for bisecting).
+}
+
+// Defines the execution topology (single/multi host/device).
+message ExecutionTopology {
+  int32 num_hosts = 1;             // Specify number of hosts
+  int32 num_devices_per_host = 2;  // Specify devices per host
+  bool multi_host = 3;
+  bool multi_device = 4;
+}
+
+// Enum defining how frequently the hlo should be updated/reviewed for retention
+// purposes.
+enum UpdateFrequency {
+  UPDATE_FREQUENCY_UNSPECIFIED = 0;
+  WEEKLY = 1;
+  MONTHLY = 2;
+  QUARTERLY = 3;
+}
+
+// Defines a specific benchmark configuration.
+message BenchmarkConfig {
+  // REQUIRED: Unique identifier for this specific benchmark configuration.
+  // Convention: e.g., "{name}_{hardware}_{topology_simplified}".
+  // Example: "gemma3_1b_flax_call_gpu_b200_1h1d"
+  // Should be unique within the registry file.
+  string config_id = 1;
+
+  // REQUIRED: Hlo file name (logical name, path resolved relative to hlo_dir).
+  // Example: "gemma3_1b_flax_call"
+  string name = 2;
+
+  // REQUIRED: Detailed description of the benchmark's purpose.
+  string description = 3;
+
+  // REQUIRED: Contact information (e.g., GitHub handle, email, team alias) for
+  // the owner/maintainer.
+  string owner = 4;
+
+  // REQUIRED: Specifies the location of the HLO module(s).
+  oneof hlo_source {
+    // Path to HLO file(s) relative to a base HLO directory (e.g.,
+    // xla/tools/benchmarks/hlo).
+    string hlo_path = 5;
+    // GCS path (gs://bucket/path/to/hlo) for larger HLOs.
+    string hlo_gcs_bucket_path = 6;
+  }
+
+  // REQUIRED: Reference to the original model/source
+  // (e.g., "Llama2-7B Attention Layer").
+  repeated string model_source_info = 7;
+
+  // REQUIRED: Specifies the primary hardware category needed.
+  HardwareCategory hardware_category = 8;
+
+  // REQUIRED: Defines the host/device topology required.
+  ExecutionTopology topology = 9;
+
+  // REQUIRED: Defines when this benchmark configuration should run.
+  repeated RunFrequency run_frequencies = 10;
+
+  // REQUIRED: Metadata about how often this definition should be
+  // reviewed/updated.
+  UpdateFrequency update_frequency_policy = 11;
+
+  // Optional: List of XLA compilation flags to enable/disable.
+  // Example: ["--xla_gpu_enable_cudnn_fusion=false",
+  // "--xla_gpu_triton_gemm_any=True"]
+  repeated string xla_compilation_flags = 12;
+
+  // Optional: List of flags for the benchmark runner itself
+  // (e.g., specific flags for multihost_hlo_runner).
+  repeated string runtime_flags = 13;
+
+  // Optional: List of GitHub labels used for filtering/triggering.
+  // e.g., If a PR has 'ci:nvidia-benchmarks', run configs with this label.
+  repeated string github_labels = 14;
+}
+
+// Represents a collection of benchmark configurations, typically loaded
+// from a single YAML file.
+message BenchmarkSuite {
+  repeated BenchmarkConfig configs = 1;
+}
