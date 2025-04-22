@@ -167,7 +167,7 @@ TEST_F(PreemptNotifierTest, DestructorCancelsPendingCalls) {
   n.WaitForNotification();
 
   // Verify that pending callbacks are cancelled.
-  EXPECT_TRUE(errors::IsCancelled(result.status()));
+  EXPECT_TRUE(absl::IsCancelled(result.status()));
 }
 }  // namespace
 }  // namespace tsl
