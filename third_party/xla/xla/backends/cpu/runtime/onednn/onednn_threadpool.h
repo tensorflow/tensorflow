@@ -52,7 +52,9 @@ inline uint64_t OneDnnThreadPool::get_flags() const { return 0; }
 
 inline void OneDnnThreadPool::parallel_for(
     int n, const std::function<void(int, int)>& fn) {
-  runner_->Parallelize(n, [fn, n](size_t task_index) { fn(task_index, n); });
+  runner_->Parallelize(
+      ParallelLoopRunner::RangeDim{static_cast<size_t>(n)},
+      [fn, n](ParallelLoopRunner::RangeIndex i) { fn(i.offset, n); });
 }
 
 }  // namespace xla::cpu

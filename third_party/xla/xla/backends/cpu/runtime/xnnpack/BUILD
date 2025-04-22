@@ -33,6 +33,7 @@ cc_library(
     hdrs = ["xnn_threadpool.h"],
     # copybara:uncomment_begin(google-only)
     # local_defines = select({
+    # # TODO(ezhulenev): Replace with //third_party/tensorflow/compiler/xla/tsl:linux_any
     # "@pthreadpool:pthreadpool_header_only_explicit_true": [
     # "XLA_CPU_USE_CUSTOM_PTHREADPOOL",
     # ],
@@ -46,6 +47,9 @@ cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:str_format",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:platform_port",
         "@pthreadpool",

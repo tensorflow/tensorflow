@@ -16,12 +16,17 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_PARALLEL_LOOP_RUNNER_H_
 #define XLA_BACKENDS_CPU_RUNTIME_PARALLEL_LOOP_RUNNER_H_
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <functional>
+#include <tuple>
 
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
+#include "xla/tsl/lib/math/math_util.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -65,68 +70,151 @@ class ParallelLoopRunner {
   static tsl::AsyncValueRef<tsl::Chain> TakeDoneEvent(
       ParallelLoopRunner&& runner);
 
-  using Task1D = std::function<void(size_t offset)>;
+  //===--------------------------------------------------------------------===//
+  // Parallel dimensions and task coordinates APIs.
+  //===--------------------------------------------------------------------===//
 
-  using Task1DTile1D = std::function<void(size_t offset, size_t extent)>;
-  using Task1DTile1DDynamic = std::function<void(size_t offset, size_t count)>;
+  // Parallel dimension iterated in [0, range) range in parallel.
+  struct RangeDim {
+    size_t range;
+  };
 
-  using Task2DTile1D =
-      std::function<void(size_t offset_i, size_t offset_j, size_t extent_j)>;
-  using Task2DTile1DDynamic =
-      std::function<void(size_t offset_i, size_t offset_j, size_t count_j)>;
+  // Tiled dimension iterated in [0, range) range in `tile`-sized chunks.
+  struct TileDim {
+    size_t range;
+    size_t tile;
+  };
+
+  // Parallel task index along the range dimension.
+  struct RangeIndex {
+    size_t offset;
+  };
+
+  // Parallel task index along the tile dimension.
+  struct TileIndex {
+    size_t offset;
+    size_t count;
+  };
+
+  // clang-format off
+  template <typename Dim> struct TaskIndex;
+  template <> struct TaskIndex<RangeDim> { using Index = RangeIndex; };
+  template <> struct TaskIndex<TileDim>  { using Index = TileIndex; };
+  // clang-format on
+
+  template <typename Dim>
+  using task_index_t = typename TaskIndex<Dim>::Index;
+
+  static size_t DimSize(RangeDim dim) { return dim.range; }
+
+  static size_t DimSize(TileDim dim) {
+    return tsl::MathUtil::CeilOfRatio(dim.range, dim.tile);
+  }
+
+  // Returns the number of tasks to be launched for the given dimensions.
+  template <typename... Dims>
+  static size_t NumTasks(Dims... dims);
+
+  // Delinearizes linear `task_index` into the parallel task coordinates.
+  template <typename... Dims>
+  static std::tuple<task_index_t<Dims>...> Delinearize(size_t task_index,
+                                                       Dims... dims);
+
+  //===--------------------------------------------------------------------===//
+  // Parallel loop APIs.
+  //===--------------------------------------------------------------------===//
+
+  using Task1D = std::function<void(RangeIndex i)>;
+
+  using Task2D = std::function<void(RangeIndex i, RangeIndex j)>;
+
+  using Task3D = std::function<void(RangeIndex i, RangeIndex j, RangeIndex k)>;
+
+  using Task1DTile1D = std::function<void(TileIndex i)>;
+
+  using Task2DTile1D = std::function<void(RangeIndex i, TileIndex j)>;
+
+  using Task2DTile2D = std::function<void(TileIndex i, TileIndex j)>;
+
+  using Task3DTile1D =
+      std::function<void(RangeIndex i, RangeIndex j, TileIndex k)>;
 
   using Task3DTile2D =
-      std::function<void(size_t offset_i, size_t offset_j, size_t offset_k,
-                         size_t extent_j, size_t extent_k)>;
-  using Task3DTile2DDynamic =
-      std::function<void(size_t offset_i, size_t offset_j, size_t offset_k,
-                         size_t count_j, size_t count_k)>;
+      std::function<void(RangeIndex i, TileIndex j, TileIndex k)>;
+
+  using Task4DTile2D =
+      std::function<void(RangeIndex i, RangeIndex j, TileIndex k, TileIndex l)>;
+
+  using Task5D = std::function<void(RangeIndex i, RangeIndex j, RangeIndex k,
+                                    RangeIndex l, RangeIndex m)>;
+
+  using Task5DTile2D = std::function<void(
+      RangeIndex i, RangeIndex j, RangeIndex k, TileIndex l, TileIndex m)>;
 
   // IMPORTANT: For `dynamic` versions of the parallel loops, the runner is free
   // to adjust `count` for tiled dimensions to minimize the number of launched
   // tasks. Today we don't take advantage of this feature, and always launch the
   // same number of tasks as in regular parallel loops.
 
-  // This function implements a parallel version of a following loop:
-  //
-  //   for (size_t i = 0; i < range; i++)
-  //     task(i);
-  void Parallelize(size_t range, Task1D task);
+  // Launches `task` in parallel for each element of the `i` dimension.
+  void Parallelize(RangeDim i, Task1D task);
 
-  // This function implements a parallel version of a following loop:
-  //
-  //   for (size_t i = 0; i < range; i += tile)
-  //     task(i, std::min(range - i, tile));
-  void Parallelize(size_t range, size_t tile, Task1DTile1D task);
+  // Launches `task` in parallel for each element of the `i` and `j` dimensions.
+  void Parallelize(RangeDim i, RangeDim j, Task2D task);
 
-  // Implements a parallel version of 1D loop with dynamic task count.
-  void ParallelizeDynamic(size_t range, size_t tile, Task1DTile1DDynamic task);
+  // Launches `task` in parallel for each element of the `i` dimension.
+  void Parallelize(TileDim i, Task1DTile1D task);
 
-  // This function implements a parallel version of a following loop:
-  //
-  //   for (size_t i = 0; i < range_i; i++)
-  //     for (size_t j = 0; j < range_j; j += tile_j)
-  //       task(i, j, min(range_j - j, tile_j));
-  void Parallelize(size_t range_i, size_t range_j, size_t tile_j,
-                   Task2DTile1D task);
+  // Launches `task` in parallel for each element of the `i` dimension.
+  void ParallelizeDynamic(TileDim i, Task1DTile1D task);
 
-  // Implements a parallel version of 2D loop with dynamic task count.
-  void ParallelizeDynamic(size_t range_i, size_t range_j, size_t tile_j,
-                          Task2DTile1DDynamic task);
+  // Launches `task` in parallel for each element of the `i` and `j` dimensions.
+  void Parallelize(RangeDim i, TileDim j, Task2DTile1D task);
 
-  // This function implements a parallel version of a following loop:
-  //
-  //   for (size_t i = 0; i < range_i; i++)
-  //     for (size_t j = 0; j < range_j; j += tile_j)
-  //       for (size_t k = 0; k < range_k; k += tile_k)
-  //         task(i, j, k, min(range_j - j, tile_j), min(range_k - k, tile_k));
-  void Parallelize(size_t range_i, size_t range_j, size_t range_k,
-                   size_t tile_j, size_t tile_k, Task3DTile2D task);
+  // Launches `task` in parallel for each element of the `i` and `j` dimensions.
+  void ParallelizeDynamic(RangeDim i, TileDim j, Task2DTile1D task);
 
-  // Implements a parallel version of 3D loop with dynamic task count.
-  void ParallelizeDynamic(size_t range_i, size_t range_j, size_t range_k,
-                          size_t tile_j, size_t tile_k,
-                          Task3DTile2DDynamic task);
+  // Launches `task` in parallel for each element of the `i` and `j` dimensions.
+  void Parallelize(TileDim i, TileDim j, Task2DTile2D task);
+
+  // Launches `task` in parallel for each element of the `i` and `j` dimensions.
+  void ParallelizeDynamic(TileDim i, TileDim j, Task2DTile2D task);
+
+  // Launches `task` in parallel for each element of the `i`, `j` and `k`
+  // dimensions.
+  void Parallelize(RangeDim i, RangeDim j, RangeDim k, Task3D task);
+
+  // Launches `task` in parallel for each element of the `i`, `j` and `k`
+  // dimensions.
+  void Parallelize(RangeDim i, RangeDim j, TileDim k, Task3DTile1D task);
+
+  // Launches `task` in parallel for each element of the `i`, `j` and `k`
+  // dimensions.
+  void Parallelize(RangeDim i, TileDim j, TileDim k, Task3DTile2D task);
+
+  // Launches `task` in parallel for each element of the `i`, `j` and `k`
+  // dimensions.
+  void ParallelizeDynamic(RangeDim i, TileDim j, TileDim k, Task3DTile2D task);
+
+  // Launches `task` in parallel for each element of the `i`, `j`, `k` and `l`
+  // dimensions.
+  void Parallelize(RangeDim i, RangeDim j, TileDim k, TileDim l,
+                   Task4DTile2D task);
+
+  // Launches `task` in parallel for each element of the `i`, `j`, `k` and `l`
+  // dimensions.
+  void ParallelizeDynamic(RangeDim i, RangeDim j, TileDim k, TileDim l,
+                          Task4DTile2D task);
+
+  // Launches `task` in parallel for each element of the `i`, `j`, `k`, `l` and
+  // `m` dimensions.
+  void Parallelize(RangeDim i, RangeDim j, RangeDim k, RangeDim l, RangeDim m,
+                   Task5D task);
+
+  // Launches `task` in parallel for each element of the `i`, `j`, `k`, `l` and
+  // `m` dimensions.
+  void Parallelize(RangeDim i, RangeDim j, RangeDim k, TileDim l, TileDim m,
+                   Task5DTile2D task);
 
   // Resets the parallel loop runner `done_event` and returns the previous one
   // to the caller.
@@ -146,9 +234,16 @@ class ParallelLoopRunner {
  private:
   // Forward declarations of the parallel tasks.
   struct ParallelTask1D;
+  struct ParallelTask2D;
+  struct ParallelTask3D;
+  struct ParallelTask5D;
   struct ParallelTask1DTile1D;
   struct ParallelTask2DTile1D;
+  struct ParallelTask2DTile2D;
+  struct ParallelTask3DTile1D;
   struct ParallelTask3DTile2D;
+  struct ParallelTask4DTile2D;
+  struct ParallelTask5DTile2D;
 
   // Schedules `task` as the AndThen callback of the `done_event_`. Updates
   // `done_event_` to the new completion event.
@@ -160,6 +255,10 @@ class ParallelLoopRunner {
   // to the new completion event.
   template <typename ParallelTask>
   void ScheduleAll(size_t num_tasks, ParallelTask&& parallel_task);
+
+  // Internal implementation of the parallel loop APIs.
+  template <typename ParallelTask, typename... Dims, typename Task>
+  void Parallelize(Dims... dims, Task&& task);
 
   // Async value that signals completion of the last scheduled parallel loop.
   tsl::AsyncValueRef<tsl::Chain> done_event_;
@@ -174,6 +273,98 @@ class ParallelLoopRunner {
   // them from run to run.
   std::atomic<const Eigen::ThreadPoolDevice*> device_;
 };
+
+//===----------------------------------------------------------------------===//
+// Parallel dimensions and task coordinates APIs.
+//===----------------------------------------------------------------------===//
+
+namespace internal {
+
+template <typename Dim>
+auto TaskStrides(Dim dim) {
+  return std::array<size_t, 1>{1};
+}
+
+template <typename Dim, typename... Dims>
+auto TaskStrides(Dim dim, Dims... dims) {
+  std::array<size_t, 1 + sizeof...(Dims)> strides = {
+      ParallelLoopRunner::NumTasks(dims...)};
+  absl::c_copy(TaskStrides(dims...), &strides[1]);
+  return strides;
+}
+
+template <size_t n>
+auto TaskCoordinate(size_t task_index, std::array<size_t, n> strides) {
+  std::array<size_t, n> coordinate;
+  for (size_t d = 0; d < n; ++d) {
+    coordinate[d] = task_index / strides[d];
+    task_index %= strides[d];
+  }
+  return coordinate;
+}
+
+}  // namespace internal
+
+template <typename... Dims>
+size_t ParallelLoopRunner::NumTasks(Dims... dims) {
+  return (DimSize(dims) * ...);
+}
+
+template <typename... Dims>
+auto ParallelLoopRunner::Delinearize(size_t task_index, Dims... dims)
+    -> std::tuple<typename TaskIndex<Dims>::Index...> {
+  // Convert linear task index into the multidimensional parallel task index.
+  auto strides = internal::TaskStrides(dims...);
+  auto coord = internal::TaskCoordinate(task_index, strides);
+
+  size_t d = 0;
+  auto to_task_index = [&](auto dim) {
+    size_t dim_index = coord[d++];
+    DCHECK_LE(dim_index, DimSize(dim)) << "Dimension index is out of bounds";
+
+    if constexpr (std::is_same_v<decltype(dim), RangeDim>) {
+      return RangeIndex{dim_index};
+    } else if constexpr (std::is_same_v<decltype(dim), TileDim>) {
+      size_t offset = dim_index * dim.tile;
+      return TileIndex{offset, std::min(dim.range - offset, dim.tile)};
+    } else {
+      static_assert(sizeof(decltype(dim)) == 0, "Unsupported dimension type");
+    }
+  };
+
+  return std::make_tuple(to_task_index(dims)...);
+}
+
+constexpr bool operator==(ParallelLoopRunner::RangeIndex a,
+                          ParallelLoopRunner::RangeIndex b) {
+  return a.offset == b.offset;
+}
+
+constexpr bool operator==(ParallelLoopRunner::TileIndex a,
+                          ParallelLoopRunner::TileIndex b) {
+  return a.offset == b.offset && a.count == b.count;
+}
+
+template <typename Sink>
+void AbslStringify(Sink& sink, ParallelLoopRunner::RangeDim dim) {
+  absl::Format(&sink, "RangeDim{range=%zu}", dim.range);
+}
+
+template <typename Sink>
+void AbslStringify(Sink& sink, ParallelLoopRunner::TileDim dim) {
+  absl::Format(&sink, "TileDim{range=%zu, tile=%zu}", dim.range, dim.tile);
+}
+
+template <typename Sink>
+void AbslStringify(Sink& sink, ParallelLoopRunner::RangeIndex index) {
+  absl::Format(&sink, "RangeIndex{offset=%zu}", index.offset);
+}
+
+template <typename Sink>
+void AbslStringify(Sink& sink, ParallelLoopRunner::TileIndex index) {
+  absl::Format(&sink, "TileIndex{offset=%zu, count=%zu}", index.offset,
+               index.count);
+}
 
 }  // namespace xla::cpu
 
