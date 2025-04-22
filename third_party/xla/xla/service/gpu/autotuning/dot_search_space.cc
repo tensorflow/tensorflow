@@ -321,8 +321,9 @@ int TritonDotFusionSearchSpace::GetMaxWarpsPerCta(OutputTile tile) const {
   // also holds for wgmma: the warp-group level instruction is at least
   // 64x8, and split 4-ways across the 4 warps in the group).
   constexpr OutputTile kMmaSubTile = {16, 8};
-  const int max_warps = device_description_.threads_per_block_limit() /
-                        device_description_.threads_per_warp();
+  const int max_warps =
+      device_description_.threads_per_block_limit() /
+      std::max<int>(device_description_.threads_per_warp(), 1);
   const int lhs_warps = CeilOfRatio(tile.lhs_dim, kMmaSubTile.lhs_dim);
   const int rhs_warps = CeilOfRatio(tile.rhs_dim, kMmaSubTile.rhs_dim);
   return std::max(min_warps_per_cta_,
@@ -335,7 +336,7 @@ int TritonDotFusionSearchSpace::GetMinContractingTileSize() const {
   // https://docs.nvidia.com/cuda/parallel-thread-execution/#asynchronous-warpgroup-level-matrix-shape
   constexpr int kMmaContractingBitwidth = 128;
   /// TODO: b/395572776 - Triton currently requires at least 16 elements, but we
-  // shouldbe able to relax this and remove this limit here.
+  // should be able to relax this and remove this limit here.
   constexpr int kTritonLowerLimit = 16;
   const int min_contracting_tile_size =
       std::max(kMmaContractingBitwidth / operand_bitwidth_, kTritonLowerLimit);
@@ -387,16 +388,15 @@ int TritonDotFusionSearchSpace::GetContractingSizeLimitToFitSharedMemory(
 int TritonDotFusionSearchSpace::GetMaxContractingTileSize(
     OutputTile output_tile, int contracting_split) const {
   const int64_t available_size = contracting_size_ / contracting_split;
-  const int64_t size_limit =
-      GetContractingSizeLimitToFitSharedMemory(output_tile);
-  const int64_t max_size =
+  const int size_limit = GetContractingSizeLimitToFitSharedMemory(output_tile);
+  const int max_size =
       std::min(NextPowerOfTwo(available_size), PreviousPowerOfTwo(size_limit));
   VLOG(5) << "Computing max_contracting_tile_size for tiling BxMxN = "
           << contracting_split << "x" << output_tile.lhs_dim << "x"
           << output_tile.rhs_dim << ": limit based on problem is "
           << available_size << ", limit based on available shared memory is "
           << size_limit << ", max_contracting_tile_size = " << max_size;
-  return max_size;
+  return std::max(min_contracting_tile_size_, max_size);
 }
 
 int TritonDotFusionSearchSpace::GetMaxNumStages(OutputTile output_tile,
@@ -404,9 +404,9 @@ int TritonDotFusionSearchSpace::GetMaxNumStages(OutputTile output_tile,
                                                 int contracting_split) const {
   const int64_t available_stages = CeilOfRatio<int64_t>(
       contracting_size_, contracting_split * contracting_tile_size);
-  const int64_t stage_limit =
-      CeilOfRatio(GetContractingSizeLimitToFitSharedMemory(output_tile),
-                  contracting_tile_size);
+  const int64_t stage_limit = std::max(
+      1, CeilOfRatio(GetContractingSizeLimitToFitSharedMemory(output_tile),
+                     contracting_tile_size));
   // Number of stages is basically a replacement for oversubscription, so
   // the maximum number we want is also limited by kMaxWarpsPerScheduler.
   const int stages = std::min({available_stages, stage_limit,
