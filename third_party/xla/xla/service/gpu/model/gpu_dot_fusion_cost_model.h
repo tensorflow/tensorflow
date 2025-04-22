@@ -43,13 +43,13 @@ struct DotProblemDimensions {
 // Returns OkStatus if the dot operation is supported by the cost model.
 absl::Status IsSupported(const HloDotInstruction* dot);
 
-// Estimates the run time for a GPU DOT operation with the given set ofblock
+// Estimates the run time for a GPU DOT operation with the given set of block
 // parameters.
 absl::StatusOr<absl::Duration> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info);
 
-// Estimates the run time for a GPU DOT operation,
+// Estimates the run time for a GPU DOT operation.
 absl::StatusOr<absl::Duration> EstimateRunTimeForDotOp(
     const HloDotInstruction* dot, const se::DeviceDescription& device_info);
 
