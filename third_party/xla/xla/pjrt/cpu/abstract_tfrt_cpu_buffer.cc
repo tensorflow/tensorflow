@@ -548,8 +548,6 @@ PjRtFuture<> AbstractTfrtCpuBuffer::GetReadyFuture() {
   }
 }
 
-namespace {
-
 void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
                 void* data, int64_t size) {
   if (primitive_util::IsSubByteNonPredType(element_type)) {
@@ -563,8 +561,6 @@ void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
     std::memcpy(data, literal.untyped_data(), size);
   }
 }
-
-}  // namespace
 
 // The buffer's memory should have been allocated before calling this function.
 void AbstractTfrtCpuBuffer::CopyFromLiteral(
