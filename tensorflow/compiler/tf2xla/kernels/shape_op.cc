@@ -326,7 +326,7 @@ class SqueezeOp : public XlaOpKernel {
         ctx->builder()->GetShape(ctx->Input(0));
     OP_REQUIRES_OK(ctx, input_shape.status());
     xla::Shape shape = input_shape.value();
-    int64_t rank = shape.dimensions_size();
+    int64_t rank = shape.dimensions().size();
 
     absl::flat_hash_set<int32_t> wrapped_squeeze_dims;
     wrapped_squeeze_dims.reserve(squeeze_dims_.size());
@@ -402,8 +402,8 @@ class ZerosLikeOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, list_shape_or.status());
       const xla::Shape& list_shape = list_shape_or.value();
       std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
-      list_dynamic_dims.reserve(list_shape.tuple_shapes_size() - 1);
-      for (int i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+      list_dynamic_dims.reserve(list_shape.tuple_shapes().size() - 1);
+      for (int i = 0; i < list_shape.tuple_shapes().size() - 1; ++i) {
         // Set dynamic dimension size to 0 for initialization value.
         std::vector<xla::XlaOp> dynamic_dims;
         const xla::Shape& shape = list_shape.tuple_shapes(i);

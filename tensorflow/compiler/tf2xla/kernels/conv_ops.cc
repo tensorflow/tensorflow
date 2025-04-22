@@ -83,7 +83,7 @@ class ConvNDOp : public XlaOpKernel {
     // Need to know input rank ahead of time to determine type of convolution.
     OP_REQUIRES_VALUE(xla::Shape input_shape, ctx, ctx->InputXlaShape(0));
     int num_spatial_dims =
-        input_shape.dimensions_size() - 1 - attrs_.batch_dims;
+        input_shape.dimensions().size() - 1 - attrs_.batch_dims;
     OP_REQUIRES_OK(ctx,
                    CheckValidPadding(attrs_.padding, attrs_.explicit_paddings,
                                      /*num_dims=*/num_spatial_dims + 2,
@@ -106,7 +106,7 @@ class ConvNDOp : public XlaOpKernel {
     if (attrs_.batch_dims == 0) {
       // Expand dummy batch dimension.
       xla::Shape expanded_input_shape(input_shape);
-      for (int i = 0; i < expanded_input_shape.dimensions_size() - 1; ++i) {
+      for (int i = 0; i < expanded_input_shape.dimensions().size() - 1; ++i) {
         expanded_input_shape.set_dimensions(i + 1, input_shape.dimensions(i));
       }
       expanded_input_shape.set_dimensions(0, 1);
@@ -134,7 +134,8 @@ class ConvNDOp : public XlaOpKernel {
       out = xla::Reshape(out, no_batch_shape.dimensions());
     } else if (attrs_.batch_dims > 1) {
       xla::Shape expanded_out_shape(input_shape);
-      for (int i = attrs_.batch_dims; i < input_shape.dimensions_size(); ++i) {
+      for (int i = attrs_.batch_dims; i < input_shape.dimensions().size();
+           ++i) {
         expanded_out_shape.set_dimensions(
             i, out_shape.dimensions(i - (attrs_.batch_dims - 1)));
       }
@@ -189,11 +190,11 @@ class ConvBackpropInputOp : public XlaOpKernel {
     xla::Shape input_shape =
         TensorShapeToXLAShape(ctx->input_xla_type(1), input_tensor_shape);
     OP_REQUIRES(
-        ctx, input_shape.dimensions_size() == attrs_.num_spatial_dims + 2,
+        ctx, input_shape.dimensions().size() == attrs_.num_spatial_dims + 2,
         errors::InvalidArgument("The rank of the specified input shape must be "
                                 "num_spatial_dims + 2. Expected ",
                                 attrs_.num_spatial_dims + 2, " got ",
-                                input_shape.dimensions_size()));
+                                input_shape.dimensions().size()));
     xla::XlaOp input_sizes = ctx->Input(0);
     absl::StatusOr<xla::XlaOp> in_backprop = MakeXlaBackpropInputConvOp(
         ctx->op_kernel().type_string(), input_shape, ctx->Input(1),
