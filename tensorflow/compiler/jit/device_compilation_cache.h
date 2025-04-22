@@ -107,8 +107,8 @@ class DeviceCompilationCache {
     const mutex_lock lock(compile_cache_mu_);
     absl::erase_if(
         cache_,
-        [&](std::pair<const Key, absl::Nullable<std::unique_ptr<Entry>>>& kv) {
-          const absl::Nullable<Entry*> entry = kv.second.get();
+        [&](std::pair<const Key, /*absl_nullable*/ std::unique_ptr<Entry>>& kv) {
+          Entry* /*absl_nullable*/ const entry = kv.second.get();
           if (entry == nullptr) {
             return true;
           }

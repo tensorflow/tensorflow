@@ -104,8 +104,8 @@ absl::Status RunCalibrationPasses(
 }
 
 CalibrationComponent::CalibrationComponent(
-    absl::Nonnull<MLIRContext*> ctx,
-    absl::Nonnull<const PyFunctionLibrary*> py_function_lib,
+    MLIRContext* /*absl_nonnull*/ ctx,
+    const PyFunctionLibrary* /*absl_nonnull*/ py_function_lib,
     const absl::string_view src_saved_model_path,
     absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases,
     std::unordered_set<std::string> tags,
