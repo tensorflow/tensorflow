@@ -954,7 +954,7 @@ class FileSystemRegistry {
 /// \brief An abstraction for enforcing ACL checks in FileSystem.
 class FileAcl {
  public:
-  virtual absl::Status CheckAccess(std::string_view path) = 0;
+  virtual absl::Status CheckAccess(absl::string_view path) = 0;
   virtual ~FileAcl() = default;
 };
 

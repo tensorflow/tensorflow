@@ -10,7 +10,10 @@ cc_library(
     name = "api",
     hdrs = ["//xla/ffi/api:api_headers"],
     visibility = ["//visibility:private"],
-    deps = ["//xla/ffi/api:c_api"],
+    deps = [
+        "//xla/ffi/api:c_api",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 cc_library(
@@ -178,6 +181,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -191,6 +195,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

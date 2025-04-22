@@ -20,12 +20,12 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
@@ -84,12 +84,12 @@ class CoordinationServiceAgent {
 
   // Initialize coordination service agent.
   virtual absl::Status Initialize(
-      tsl::Env* env, std::string_view job_name, int task_id,
+      tsl::Env* env, absl::string_view job_name, int task_id,
       const tensorflow::CoordinationServiceConfig& configs,
       std::unique_ptr<CoordinationClient> leader_client,
       StatusCallback error_fn, bool recoverable) = 0;
   virtual absl::Status Initialize(
-      tsl::Env* env, std::string_view job_name, int task_id,
+      tsl::Env* env, absl::string_view job_name, int task_id,
       const tensorflow::CoordinationServiceConfig& configs,
       std::unique_ptr<CoordinationClient> leader_client,
       StatusCallback error_fn) = 0;
@@ -191,17 +191,17 @@ class CoordinationServiceAgent {
   // If the key-value is not inserted yet, this is a blocking call that waits
   // until the corresponding key is inserted.
   //   - DeadlineExceeded: timed out waiting for key.
-  virtual absl::StatusOr<std::string> GetKeyValue(std::string_view key) = 0;
-  virtual absl::StatusOr<std::string> GetKeyValue(std::string_view key,
+  virtual absl::StatusOr<std::string> GetKeyValue(absl::string_view key) = 0;
+  virtual absl::StatusOr<std::string> GetKeyValue(absl::string_view key,
                                                   absl::Duration timeout) = 0;
   // Note: Cancel the underlying RPC call with `call_opts->StartCancel()` and
   // `call_opts->ClearCancelCallback()`.
   virtual std::shared_ptr<CallOptions> GetKeyValueAsync(
-      std::string_view, StatusOrValueCallback done) = 0;
+      absl::string_view, StatusOrValueCallback done) = 0;
 
   // Get config key-value from the service.
   //   - NotFound: the requested key does not exist.
-  virtual absl::StatusOr<std::string> TryGetKeyValue(std::string_view key) = 0;
+  virtual absl::StatusOr<std::string> TryGetKeyValue(absl::string_view key) = 0;
 
   // Get all values under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
@@ -209,31 +209,31 @@ class CoordinationServiceAgent {
   // This is not a blocking call. If no keys are found, an empty vector is
   // returned immediately.
   virtual absl::StatusOr<std::vector<tensorflow::KeyValueEntry>> GetKeyValueDir(
-      std::string_view key) = 0;
-  virtual void GetKeyValueDirAsync(std::string_view key,
+      absl::string_view key) = 0;
+  virtual void GetKeyValueDirAsync(absl::string_view key,
                                    StatusOrValueDirCallback done) = 0;
 
   // Insert config key-value to the service.
   //   - AlreadyExists: key is already set.
-  virtual absl::Status InsertKeyValue(std::string_view key,
-                                      std::string_view value) = 0;
+  virtual absl::Status InsertKeyValue(absl::string_view key,
+                                      absl::string_view value) = 0;
 
-  virtual absl::Status InsertKeyValue(std::string_view key,
-                                      std::string_view value,
+  virtual absl::Status InsertKeyValue(absl::string_view key,
+                                      absl::string_view value,
                                       bool allow_overwrite) = 0;
 
   // Delete config keys in the coordination service.
-  virtual absl::Status DeleteKeyValue(std::string_view key) = 0;
+  virtual absl::Status DeleteKeyValue(absl::string_view key) = 0;
 
   // Update the value of a config key.
-  virtual absl::Status UpdateKeyValue(std::string_view key,
-                                      std::string_view value) = 0;
+  virtual absl::Status UpdateKeyValue(absl::string_view key,
+                                      absl::string_view value) = 0;
 
   // Register a callback that will be invoked when the key or keys under the key
   // directory are changed (inserted, deleted, or updated).
-  virtual absl::Status StartWatchKey(std::string_view key,
+  virtual absl::Status StartWatchKey(absl::string_view key,
                                      ChangedKeyValuesCallback on_change) = 0;
-  virtual absl::Status StopWatchKey(std::string_view key) = 0;
+  virtual absl::Status StopWatchKey(absl::string_view key) = 0;
 
   // Blocks until all (or a subset of) tasks are at the barrier or the barrier
   // fails.
@@ -269,11 +269,11 @@ class CoordinationServiceAgent {
   //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state, or the
   //       same barrier id is still being invoked.
   virtual absl::Status WaitAtBarrier(
-      std::string_view barrier_id, absl::Duration timeout,
+      absl::string_view barrier_id, absl::Duration timeout,
       const std::vector<tensorflow::CoordinatedTask>& tasks) = 0;
 
   virtual void WaitAtBarrierAsync(
-      std::string_view barrier_id, absl::Duration timeout,
+      absl::string_view barrier_id, absl::Duration timeout,
       const std::vector<tensorflow::CoordinatedTask>& tasks,
       StatusCallback done) = 0;
 
@@ -283,8 +283,8 @@ class CoordinationServiceAgent {
   // Possible service errors:
   //   - Internal: Coordination service has shut down.
   //   - FailedPrecondition: Barrier is non-existent or not ongoing.
-  virtual absl::Status CancelBarrier(std::string_view barrier_id) = 0;
-  virtual void CancelBarrierAsync(std::string_view barrier_id,
+  virtual absl::Status CancelBarrier(absl::string_view barrier_id) = 0;
+  virtual void CancelBarrierAsync(absl::string_view barrier_id,
                                   StatusCallback done) = 0;
 
   // Returns the set of currently alive tasks. More specifically, given a set of
@@ -334,7 +334,7 @@ class CoordinationServiceAgent {
 
   // Activate the key-value callback watch.
   virtual absl::Status ActivateWatch(
-      std::string_view, const std::map<std::string, std::string>&) = 0;
+      absl::string_view, const std::map<std::string, std::string>&) = 0;
 
  private:
   friend class CoordinationServiceRpcHandler;

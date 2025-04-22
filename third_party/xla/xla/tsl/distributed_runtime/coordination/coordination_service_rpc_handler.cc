@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -25,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
@@ -232,7 +232,7 @@ void CoordinationServiceRpcHandler::GetKeyValueAsync(
   service_->GetKeyValueAsync(
       request->key(),
       [response, done = std::move(done)](
-          const absl::StatusOr<std::string_view>& status_or_value) {
+          const absl::StatusOr<absl::string_view>& status_or_value) {
         if (status_or_value.ok()) {
           auto value = status_or_value.value();
           response->mutable_kv()->set_value(value.data(), value.size());

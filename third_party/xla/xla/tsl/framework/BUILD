@@ -470,6 +470,7 @@ tsl_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/util:device_name_utils",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

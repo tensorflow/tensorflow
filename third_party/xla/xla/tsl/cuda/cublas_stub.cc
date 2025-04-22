@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string_view>
+#include "absl/strings/string_view.h"
 
 #if CUBLAS_VER_MAJOR >= 11
 #include "third_party/gpus/cuda/include/cublas_v2.h"
@@ -56,8 +56,8 @@ const char *kSymbols[] = {
 
 constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char *);
 
-absl::flat_hash_set<std::string_view> const &FatalErrorSymbols() {
-  static auto *syms = new absl::flat_hash_set<std::string_view>{
+absl::flat_hash_set<absl::string_view> const &FatalErrorSymbols() {
+  static auto *syms = new absl::flat_hash_set<absl::string_view>{
       "cublasGetCudartVersion",
       "cublasXerbla",
       "cublasSnrm2",

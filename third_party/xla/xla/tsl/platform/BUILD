@@ -369,7 +369,9 @@ cc_library(
         "file_system_helper.h",
         "threadpool.h",
     ],
-    deps = tf_windows_aware_platform_deps("env") + if_static([":env_impl"]),
+    deps = tf_windows_aware_platform_deps("env") + if_static([":env_impl"]) + [
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 cc_library(
@@ -429,6 +431,7 @@ cc_library(
         ":types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform",

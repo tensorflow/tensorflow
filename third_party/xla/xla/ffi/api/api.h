@@ -31,12 +31,13 @@ limitations under the License.
 #include <ostream>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
+
+#include "absl/strings/string_view.h"
 
 // This is a header-only base C++ library that defines templates for decoding
 // XLA FFI call frames and invoking corresponding C++ functions. This must have
@@ -241,14 +242,16 @@ class Ffi {
   // Registers FFI handler bundle with an XLA runtime under the given name on a
   // given platform.
   static XLA_FFI_Error* RegisterStaticHandler(
-      const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
-      XLA_FFI_Handler_Bundle bundle, XLA_FFI_Handler_Traits traits = 0);
+      const XLA_FFI_Api* api, absl::string_view name,
+      absl::string_view platform, XLA_FFI_Handler_Bundle bundle,
+      XLA_FFI_Handler_Traits traits = 0);
 
   // Registers FFI execute handler with an XLA runtime under the given name on a
   // given platform.
   static XLA_FFI_Error* RegisterStaticHandler(
-      const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
-      XLA_FFI_Handler* execute, XLA_FFI_Handler_Traits traits = 0) {
+      const XLA_FFI_Api* api, absl::string_view name,
+      absl::string_view platform, XLA_FFI_Handler* execute,
+      XLA_FFI_Handler_Traits traits = 0) {
     return RegisterStaticHandler(
         api, name, platform,
         XLA_FFI_Handler_Bundle{nullptr, nullptr, nullptr, execute}, traits);
@@ -260,7 +263,7 @@ class Ffi {
   // are not allowed. When successful, a unique ID will be returned by updating
   // `type_id`.
   static XLA_FFI_Error* RegisterTypeId(const XLA_FFI_Api* api,
-                                       std::string_view name,
+                                       absl::string_view name,
                                        XLA_FFI_TypeId* type_id);
 
  protected:
@@ -276,17 +279,16 @@ class Ffi {
                                         std::string message);
 
   static XLA_FFI_Error* CheckStructSize(const XLA_FFI_Api* api,
-                                        std::string_view struct_name,
+                                        absl::string_view struct_name,
                                         size_t expected, size_t actual);
 
-  static XLA_FFI_Error* StructSizeIsGreaterOrEqual(const XLA_FFI_Api* api,
-                                                   std::string_view struct_name,
-                                                   size_t expected,
-                                                   size_t actual);
+  static XLA_FFI_Error* StructSizeIsGreaterOrEqual(
+      const XLA_FFI_Api* api, absl::string_view struct_name, size_t expected,
+      size_t actual);
 };
 
 inline XLA_FFI_Error* Ffi::RegisterStaticHandler(
-    const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
+    const XLA_FFI_Api* api, absl::string_view name, absl::string_view platform,
     XLA_FFI_Handler_Bundle bundle, XLA_FFI_Handler_Traits traits) {
   XLA_FFI_Handler_Register_Args args;
   args.struct_size = XLA_FFI_Handler_Register_Args_STRUCT_SIZE;
@@ -299,7 +301,7 @@ inline XLA_FFI_Error* Ffi::RegisterStaticHandler(
 }
 
 inline XLA_FFI_Error* Ffi::RegisterTypeId(const XLA_FFI_Api* api,
-                                          std::string_view name,
+                                          absl::string_view name,
                                           XLA_FFI_TypeId* type_id) {
   XLA_FFI_TypeId_Register_Args args;
   args.struct_size = XLA_FFI_TypeId_Register_Args_STRUCT_SIZE;
@@ -336,7 +338,7 @@ inline XLA_FFI_Error* Ffi::InvalidArgument(const XLA_FFI_Api* api,
 }
 
 inline XLA_FFI_Error* Ffi::CheckStructSize(const XLA_FFI_Api* api,
-                                           std::string_view struct_name,
+                                           absl::string_view struct_name,
                                            size_t expected, size_t actual) {
   if (expected != actual) {
     return InvalidArgument(
@@ -347,7 +349,7 @@ inline XLA_FFI_Error* Ffi::CheckStructSize(const XLA_FFI_Api* api,
 }
 
 inline XLA_FFI_Error* Ffi::StructSizeIsGreaterOrEqual(
-    const XLA_FFI_Api* api, std::string_view struct_name, size_t expected,
+    const XLA_FFI_Api* api, absl::string_view struct_name, size_t expected,
     size_t actual) {
   if (actual < expected) {
     return InvalidArgument(
@@ -644,7 +646,7 @@ struct RetBinding {
 //   template <>
 //   struct AttrBinding<MyAttr> {
 //     using Attr = MyAttr;
-//     static constexpr std::string_view name() { return "my_attr"; }
+//     static constexpr absl::string_view name() { return "my_attr"; }
 //   };
 //
 template <typename T>
@@ -833,7 +835,7 @@ class Attr {
 template <typename T, const char* attr_name>
 struct AttrBinding<Attr<T, attr_name>> {
   using Attr = T;
-  static constexpr std::string_view name() { return attr_name; }
+  static constexpr absl::string_view name() { return attr_name; }
 };
 
 // Default attributes binding for `Dictionary` parameters.
@@ -1100,7 +1102,7 @@ struct Decode<AttrTag<T>> {
     // we could safely ignore extra attributes. Relax this if needed.
 
     // Attribute name does not match.
-    std::string_view attr_name_view = {attr_name->ptr, attr_name->len};
+    absl::string_view attr_name_view = {attr_name->ptr, attr_name->len};
     if (attr_name_view != ctx.attrs_names[i]) {
       return diagnostic.Emit("Attribute name mismatch: ")
              << attr_name_view << " vs " << ctx.attrs_names[i];
@@ -1193,14 +1195,14 @@ class DictionaryBase {
 
   size_t size() const { return attrs_->size; }
 
-  bool contains(std::string_view name) const { return Find(name).has_value(); }
+  bool contains(absl::string_view name) const { return Find(name).has_value(); }
 
  protected:
   template <typename T, typename... Ts>
   friend struct DecodeDictionaryAttr;
 
   template <typename T>
-  std::optional<T> get(std::string_view name,
+  std::optional<T> get(absl::string_view name,
                        DiagnosticEngine& diagnostic) const {
     std::optional<size_t> idx = Find(name);
     if (XLA_FFI_PREDICT_FALSE(!idx.has_value())) {
@@ -1213,16 +1215,16 @@ class DictionaryBase {
   }
 
  private:
-  std::optional<size_t> Find(std::string_view name) const {
+  std::optional<size_t> Find(absl::string_view name) const {
     XLA_FFI_ByteSpan** begin = attrs_->names;
     XLA_FFI_ByteSpan** end = begin + attrs_->size;
 
-    auto eq = [](XLA_FFI_ByteSpan* a, std::string_view b) {
-      return std::string_view{a->ptr, a->len} == b;
+    auto eq = [](XLA_FFI_ByteSpan* a, absl::string_view b) {
+      return absl::string_view{a->ptr, a->len} == b;
     };
 
-    auto cmp = [](XLA_FFI_ByteSpan* a, std::string_view b) {
-      return std::string_view{a->ptr, a->len} < b;
+    auto cmp = [](XLA_FFI_ByteSpan* a, absl::string_view b) {
+      return absl::string_view{a->ptr, a->len} < b;
     };
 
     // Lower bound can be `end` if the attribute is not found, or the first
@@ -1488,11 +1490,11 @@ class Handler : public Ffi {
       if (call_frame->attrs.size > 0) {
         msg << " with name(s): ";
         for (int64_t n = 0; n < call_frame->attrs.size - 1; ++n) {
-          msg << std::string_view(call_frame->attrs.names[n]->ptr,
-                                  call_frame->attrs.names[n]->len)
+          msg << absl::string_view(call_frame->attrs.names[n]->ptr,
+                                   call_frame->attrs.names[n]->len)
               << ", ";
         }
-        msg << std::string_view(
+        msg << absl::string_view(
             call_frame->attrs.names[call_frame->attrs.size - 1]->ptr,
             call_frame->attrs.names[call_frame->attrs.size - 1]->len);
       }
@@ -1710,8 +1712,8 @@ template <typename T>
 struct StructMember {
   using Type = T;
 
-  explicit StructMember(std::string_view name) : name(name) {}
-  std::string_view name;
+  explicit StructMember(absl::string_view name) : name(name) {}
+  absl::string_view name;
 };
 
 namespace internal {
@@ -1724,14 +1726,14 @@ struct DecodeDictionaryAttr {
 
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<T> Decode(const XLA_FFI_Attrs* attrs,
-                                 std::array<std::string_view, kSize> names,
+                                 std::array<absl::string_view, kSize> names,
                                  DiagnosticEngine& diagnostic) {
     return Decode(attrs, names, std::make_index_sequence<kSize>{}, diagnostic);
   }
 
   template <size_t... Is>
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<T> Decode(
-      const XLA_FFI_Attrs* attrs, std::array<std::string_view, kSize> names,
+      const XLA_FFI_Attrs* attrs, std::array<absl::string_view, kSize> names,
       std::index_sequence<Is...>, DiagnosticEngine& diagnostic) {
     if (XLA_FFI_PREDICT_FALSE(kSize != attrs->size)) {
       return diagnostic.Emit("Wrong number of attributes: expected ")
@@ -1759,7 +1761,7 @@ struct DecodeDictionaryAttr {
 
 template <typename... Members>
 auto StructMemberNames(Members... m) {
-  return std::array<std::string_view, sizeof...(Members)>{m.name...};
+  return std::array<absl::string_view, sizeof...(Members)>{m.name...};
 }
 
 template <typename T, typename... Members>
