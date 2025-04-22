@@ -103,13 +103,11 @@ RemoveSignTypeConverter::RemoveSignTypeConverter() {
   addConversion(convertInteger);
   addConversion(convertShapedType);
 
-  addArgumentMaterialization(materializeCastFromIllegal);
   addSourceMaterialization(materializeCastToIllegal);
   addTargetMaterialization(materializeCastFromIllegal);
 }
 
 LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
-  addArgumentMaterialization(scalarToTensor);
   addSourceMaterialization(scalarToTensor);
   addTargetMaterialization(scalarToTensor);
 }

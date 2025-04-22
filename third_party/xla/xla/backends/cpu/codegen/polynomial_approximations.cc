@@ -426,29 +426,29 @@ static constexpr absl::string_view kTanhV16F16Sym = "__xla_cpu_TanhV16F16";
 std::vector<llvm::VecDesc> TanhVectorization() {
   return {
       {"tanhf", kTanhV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       "_ZGV_LLVM_N4v"},
+       "_ZGV_LLVM_N4v", std::nullopt},
       {"llvm.tanh.f32", kTanhV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       "_ZGV_LLVM_N4v"},
+       "_ZGV_LLVM_N4v", std::nullopt},
 
       {"tanhf", kTanhV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       "_ZGV_LLVM_N8v", std::nullopt},
       {"llvm.tanh.f32", kTanhV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       "_ZGV_LLVM_N8v", std::nullopt},
 
       {"tanhf", kTanhV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       "_ZGV_LLVM_N16v", std::nullopt},
       {"llvm.tanh.f32", kTanhV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       "_ZGV_LLVM_N16v", std::nullopt},
 
       {"tanhf", kTanhV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       "_ZGV_LLVM_N8v", std::nullopt},
       {"llvm.tanh.f16", kTanhV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       "_ZGV_LLVM_N8v", std::nullopt},
 
       {"tanhf", kTanhV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       "_ZGV_LLVM_N16v", std::nullopt},
       {"llvm.tanh.f16", kTanhV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       "_ZGV_LLVM_N16v", std::nullopt},
   };
 }
 
@@ -466,29 +466,29 @@ static constexpr absl::string_view kExpV16F16Sym = "__xla_cpu_ExpV16F16";
 std::vector<llvm::VecDesc> ExpVectorization() {
   return {
       {"expf", kExpV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       "_ZGV_LLVM_N4v"},
+       "_ZGV_LLVM_N4v", std::nullopt},
       {"llvm.exp.f32", kExpV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       "_ZGV_LLVM_N4v"},
+       "_ZGV_LLVM_N4v", std::nullopt},
 
       {"expf", kExpV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       "_ZGV_LLVM_N8v", std::nullopt},
       {"llvm.exp.f32", kExpV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       "_ZGV_LLVM_N8v", std::nullopt},
 
       {"expf", kExpV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       "_ZGV_LLVM_N16v", std::nullopt},
       {"llvm.exp.f32", kExpV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       "_ZGV_LLVM_N16v", std::nullopt},
 
       {"expf", kExpV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N16v"},
+       "_ZGV_LLVM_N16v", std::nullopt},
       {"llvm.exp.f16", kExpV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       "_ZGV_LLVM_N8v", std::nullopt},
 
       {"expf", kExpV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       "_ZGV_LLVM_N16v", std::nullopt},
       {"llvm.exp.f16", kExpV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       "_ZGV_LLVM_N16v", std::nullopt},
   };
 }
 
@@ -506,29 +506,29 @@ static constexpr absl::string_view kLogV16F16Sym = "__xla_cpu_LogV16F16";
 std::vector<llvm::VecDesc> LogVectorization() {
   return {
       {"logf", kLogV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       "_ZGV_LLVM_N4v"},
+       "_ZGV_LLVM_N4v", std::nullopt},
       {"llvm.log.f32", kLogV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       "_ZGV_LLVM_N4v"},
+       "_ZGV_LLVM_N4v", std::nullopt},
 
       {"logf", kLogV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       "_ZGV_LLVM_N8v", std::nullopt},
       {"llvm.log.f32", kLogV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       "_ZGV_LLVM_N8v", std::nullopt},
 
       {"logf", kLogV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       "_ZGV_LLVM_N16v", std::nullopt},
       {"llvm.log.f32", kLogV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       "_ZGV_LLVM_N16v", std::nullopt},
 
       {"logf", kLogV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       "_ZGV_LLVM_N8v", std::nullopt},
       {"llvm.log.f16", kLogV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       "_ZGV_LLVM_N8v", std::nullopt},
 
       {"logf", kLogV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       "_ZGV_LLVM_N16v", std::nullopt},
       {"llvm.log.f16", kLogV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       "_ZGV_LLVM_N16v", std::nullopt},
   };
 }
 
