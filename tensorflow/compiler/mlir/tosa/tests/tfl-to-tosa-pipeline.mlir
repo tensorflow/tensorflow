@@ -674,6 +674,33 @@ func.func @test_logical_or(%arg0: tensor<13x1x3xi1>, %arg1: tensor<13x21x3xi1>) 
 
 // -----
 
+// CHECK-LABEL: test_bitwise_xor_int8
+// CHECK: %[[VAR0:.*]] = tosa.bitwise_xor %arg0, %arg1 : (tensor<1x11x5xi8>, tensor<29x11x5xi8>) -> tensor<29x11x5xi8>
+func.func @test_bitwise_xor_int8(%arg0: tensor<1x11x5xi8>, %arg1: tensor<29x11x5xi8>) -> tensor<29x11x5xi8> {
+  %0 = "tfl.bitwise_xor"(%arg0, %arg1) : (tensor<1x11x5xi8>, tensor<29x11x5xi8>) -> tensor<29x11x5xi8>
+  func.return %0 : tensor<29x11x5xi8>
+}
+
+// -----
+
+// CHECK-LABEL: test_bitwise_xor_int16
+// CHECK: %[[VAR0:.*]] = tosa.bitwise_xor %arg0, %arg1 : (tensor<1x11x5xi16>, tensor<29x11x5xi16>) -> tensor<29x11x5xi16>
+func.func @test_bitwise_xor_int16(%arg0: tensor<1x11x5xi16>, %arg1: tensor<29x11x5xi16>) -> tensor<*xi16> {
+  %0 = "tfl.bitwise_xor"(%arg0, %arg1) : (tensor<1x11x5xi16>, tensor<29x11x5xi16>) -> tensor<*xi16>
+  func.return %0 : tensor<*xi16>
+}
+
+// -----
+
+// CHECK-LABEL: test_bitwise_xor_int32
+// CHECK: %[[VAR0:.*]] = tosa.bitwise_xor %arg0, %arg1 : (tensor<4x16x1xi32>, tensor<1x16x1xi32>) -> tensor<4x16x1xi32>
+func.func @test_bitwise_xor_int32(%arg0: tensor<4x16x1xi32>, %arg1: tensor<1x16x1xi32>) -> tensor<4x16x1xi32> {
+  %0 = "tfl.bitwise_xor"(%arg0, %arg1) : (tensor<4x16x1xi32>, tensor<1x16x1xi32>) -> tensor<4x16x1xi32>
+  func.return %0 : tensor<4x16x1xi32>
+}
+
+// -----
+
 // CHECK-LABEL: test_logical_not
 // CHECK: %[[VAR0:.*]] = tosa.logical_not %arg0
 func.func @test_logical_not(%arg0: tensor<1x21x3xi1>) -> tensor<1x21x3xi1> {
