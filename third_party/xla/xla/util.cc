@@ -553,6 +553,11 @@ std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
   CHECK_GT(size, 0) << "size must be positive";
 #ifdef _WIN32
   void* raw_ptr = _aligned_malloc(size, alignment);  // Note argument order
+#elif defined(__ANDROID__) && __ANDROID_API__ < 28
+  // Use posix_memalign as a fallback for older Android APIs
+  void* raw_ptr;
+  int result = posix_memalign(&raw_ptr, alignment, size);
+  CHECK_EQ(result, 0) << "posix_memalign failed with error code: " << result;
 #else
   void* raw_ptr = std::aligned_alloc(alignment, size);
 #endif
