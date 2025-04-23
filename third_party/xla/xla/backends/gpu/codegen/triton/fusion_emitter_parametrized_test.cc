@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <tuple>
-#include <variant>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -58,61 +57,65 @@ struct MixTypeParams {
 };
 
 class MixedTypeTest : public GpuCodegenTest,
-                      public ::testing::WithParamInterface<MixTypeParams> {
- public:
-  se::GpuComputeCapability GetGpuComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
-  }
+                      public ::testing::WithParamInterface<MixTypeParams> {};
 
-  void SetUp() override {
-    if (std::holds_alternative<se::RocmComputeCapability>(
-            GetGpuComputeCapability())) {
-      GTEST_SKIP()
-          << "Related fusions are not performed on ROCm without Triton.";
-    }
-  }
-
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    // We are testing Triton, remove cuBLAS fallback for these tests.
-    debug_options.set_xla_gpu_cublas_fallback(false);
-    // Always rewrite Gemms with Triton regardless of size.
-    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
-    return debug_options;
-  }
-};
-
-TEST_P(MixedTypeTest, DISABLED_MixedTypeDotProducesCorrectResult) {
+// TODO(b/393299275): there is a significant amount of overlap between this test
+// and tests for ALG_UNSET in `fusion_emitter_device_test.cc`. We should
+// eventually unify them by outlining whatever needs to be a special case here,
+// if anything. (I suspect this whole test suite can just be deleted, but
+// keeping it for now for the sake of the migration to the new emitter.)
+TEST_P(MixedTypeTest, MixedTypeDotProducesCorrectResult) {
   MixTypeParams params = GetParam();
   const std::string hlo_string_template = R"(
-HloModule m
-
-ENTRY e {
+lhs {
   p0 = $0[$2,$3] parameter(0)
-  p0c = $1[$2,$3] convert(p0)
+  ROOT convert = $1[$2,$3] convert(p0)
+}
+
+rhs {
+  ROOT p0 = $1[$3,$4] parameter(0)
+}
+
+dot {
+  p0 = $0[$2,$3] parameter(0)
   p1 = $1[$3,$4] parameter(1)
-  ROOT _ = $1[$2,$4] dot(p0c, p1),
+  lhs = $1[$2,$3] fusion(p0), kind=kCustom, calls=lhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16", "16"]}]
+    }}}
+  rhs = $1[$3,$4]{1,0} fusion(p1), kind=kCustom, calls=rhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16", "16"]}]
+    }}}
+  ROOT dot = $1[$2,$4] dot(lhs, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = $0[$2,$3] parameter(0)
+  p1 = $1[$3,$4] parameter(1)
+  ROOT fusion = $1[$2,$4] fusion(p0, p1),
+    kind=kCustom, calls=dot, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16","16"]}],
+          "num_warps":"1", "num_ctas":"1", "num_stages":"1"
+    }}}
 })";
+
   std::string hlo_string = absl::Substitute(
       hlo_string_template,
       primitive_util::LowercasePrimitiveTypeName(params.lhs_ty),
       primitive_util::LowercasePrimitiveTypeName(params.rhs_ty), params.m,
       params.k, params.n);
-  MatchOptimizedHlo(hlo_string, R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: kCustom
-)");
 
-  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{params.aabs, params.arel}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_string,
+                                       ErrorSpec{params.aabs, params.arel}));
 }
 
-std::string GemmTestParamsParamsToString(
+std::string DotTestParamsToString(
     const ::testing::TestParamInfo<MixTypeParams>& data) {
   return absl::StrCat(
       primitive_util::LowercasePrimitiveTypeName(data.param.lhs_ty), "_",
@@ -132,27 +135,19 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, MixedTypeTest,
                              MixTypeParams{S8, F32, 101, 32, 303, 0.1, 0.1},
                              MixTypeParams{S8, F32, 101, 2048, 303, 0.5, 0.1},
                              MixTypeParams{S8, F32, 101, 2555, 303, 0.5, 0.1},
-                             // Is supported but overflows.
-                             //  GemmTestParams{S32, F16},
                              MixTypeParams{S16, F16, 30, 19, 12},
                              MixTypeParams{S32, F32, 4, 4, 4, 1, 1e-2},
                              MixTypeParams{F16, BF16, 16, 32, 8},
                              MixTypeParams{F16, F32, 16, 32, 8, 1e-3, 1e-6},
                              MixTypeParams{BF16, F16, 16, 32, 8, 1e-3, 1e-6},
                              MixTypeParams{BF16, F32, 16, 32, 8, 1e-3, 1e-6},
-                             // Supported but disabled because narrowing
-                             // converts should rather belong to producers.
-                             // TODO(b/266862493): Move these to CompareTest.
-                             // TritonRewriteTest2Params{S32, BF16},
-                             //  TritonRewriteTest2Params{F32, F16},
-                             //  TritonRewriteTest2Params{F32, BF16},
                              MixTypeParams{S8, BF16, 24, 40, 8},
                              MixTypeParams{S8, F16, 80, 16, 32, 1e-3, 1e-6},
                              MixTypeParams{F16, F32, 127, 3, 300, 1e-2, 1e-2},
                              MixTypeParams{F16, BF16, 544, 96, 16, 1e-3, 1e-3},
                              MixTypeParams{BF16, F32, 77, 500, 333, 3e-3, 3e-3},
                          }),
-                         GemmTestParamsParamsToString);
+                         DotTestParamsToString);
 
 class TritonTest : public GpuCodegenTest {
  public:
