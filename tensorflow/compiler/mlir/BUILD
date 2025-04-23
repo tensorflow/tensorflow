@@ -67,12 +67,11 @@ genrule(
     outs = ["tosa_includes.h"],
     cmd = select({
         ":tosa_enabled": """
-            echo > $@ << EOF 
+            cat > $@ << EOF 
                 #include "tensorflow/compiler/mlir/tosa/tf_passes.h"
                 #include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
                 #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
                 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
-                EOF
           """,
         "//conditions:default": "touch $@",
     }),
@@ -84,12 +83,11 @@ genrule(
     outs = ["tosa_registrations.inc"],
     cmd = select({
         ":tosa_enabled": """
-            echo > $@ << EOF 
+            cat > $@ << EOF 
                 mlir::tosa::registerLegalizeTosaPasses();
                 mlir::tosa::registerTFtoTOSALegalizationPipeline();
                 mlir::tosa::registerTFLtoTOSALegalizationPipeline();
                 mlir::tosa::registerTFTFLtoTOSALegalizationPipeline();
-                EOF
           """,
         "//conditions:default": "touch $@",
     }),
