@@ -1687,7 +1687,7 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
   // If we cannot compute input-to-output indexing, we return std::nullopt for
   // every op result.
   int64_t num_results =
-      instr->shape().IsTuple() ? instr->shape().tuple_shapes_size() : 1;
+      instr->shape().IsTuple() ? instr->shape().tuple_shapes().size() : 1;
   return CreateUnknownIndexing(num_results);
 }
 
