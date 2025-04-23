@@ -36,6 +36,25 @@ module @call_with_sharding {
 
 // -----
 
+module @call_twice_no_duplication {
+  func.func @main(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
+    // CHECK: %inner{{.[0-9+]}} (Arg_0.{{[0-9+]}}: s32[8,2]) -> s32[8,2] {
+    // CHECK-NOT: %inner{{.[0-9+]}} (Arg_0.{{[0-9+]}}: s32[8,2]) -> s32[8,2] {
+    // CHECK: ENTRY %main{{.[0-9+]}} (Arg_0.{{[0-9+]}}: s32[8,2]) -> s32[8,2] {
+    %0 = call @inner(%arg0) : (tensor<8x2xi32>) -> tensor<8x2xi32>
+    %1 = call @inner(%0) : (tensor<8x2xi32>) -> tensor<8x2xi32>
+    return %1 : tensor<8x2xi32>
+  }
+
+  func.func private @inner(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
+    %0 = mhlo.multiply %arg0, %arg0 : tensor<8x2xi32>
+    return %0 : tensor<8x2xi32>
+  }
+}
+
+
+// -----
+
 module @call_with_sharding_multiple_results {
   func.func @main(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
     // CHECK:               ENTRY %main.{{[0-9]+}} ([[ARG0:Arg_0.[0-9]+]]: s32[8,2]) -> s32[8,2] {

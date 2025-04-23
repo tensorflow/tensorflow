@@ -402,6 +402,60 @@ TEST(XlaBuilderTest, Call) {
                                 m::Call(m::Constant(), m::Constant()))));
 }
 
+TEST(XlaBuilderTest, CallSharedSubcomputation) {
+  XlaBuilder b(TestName());
+
+  auto b_call = b.CreateSubBuilder("the_only_to_apply");
+  auto p0 = Parameter(b_call.get(), 0, ShapeUtil::MakeShape(F32, {}), "p0");
+  auto p1 = Parameter(b_call.get(), 1, ShapeUtil::MakeShape(F32, {}), "p1");
+  Add(p0, p1);
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputationId call, b_call->BuildSubComputation());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "x");
+  auto y = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {}), "y");
+  auto one = ConstantR0<float>(&b, 1);
+  auto two = ConstantR0<float>(&b, 2);
+  Add(Call(&b, call, {x, y}), Call(&b, call, {one, two}));
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  // The callee should not be duplicated.
+  EXPECT_EQ(module->computation_count(), 2);
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Add(m::Call(m::Parameter(), m::Parameter()),
+                                m::Call(m::Constant(), m::Constant()))));
+}
+
+TEST(XlaBuilderTest, BuildFromSubcomputation) {
+  XlaBuilder b_root(TestName());
+
+  auto b_call = b_root.CreateSubBuilder("the_only_to_apply");
+  auto p0 = Parameter(b_call.get(), 0, ShapeUtil::MakeShape(F32, {}), "p0");
+  auto p1 = Parameter(b_call.get(), 1, ShapeUtil::MakeShape(F32, {}), "p1");
+  Add(p0, p1);
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputationId call, b_call->BuildSubComputation());
+
+  auto b = b_root.CreateSubBuilder("main");
+
+  auto x = Parameter(b.get(), 0, ShapeUtil::MakeShape(F32, {}), "x");
+  auto y = Parameter(b.get(), 1, ShapeUtil::MakeShape(F32, {}), "y");
+  auto one = ConstantR0<float>(b.get(), 1);
+  auto two = ConstantR0<float>(b.get(), 2);
+  Add(Call(b.get(), call, {x, y}), Call(b.get(), call, {one, two}));
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputationId main, b->BuildSubComputation());
+
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b_root.Build(main));
+  const HloModuleProto& proto = computation.proto();
+  TF_ASSERT_OK_AND_ASSIGN(const auto& config,
+                          HloModule::CreateModuleConfigFromProto(
+                              proto, GetDebugOptionsFromFlags()));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          HloModule::CreateFromProto(proto, config));
+
+  // The callee should not be duplicated.
+  EXPECT_EQ(module->computation_count(), 2);
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Add(m::Call(m::Parameter(), m::Parameter()),
+                                m::Call(m::Constant(), m::Constant()))));
+}
+
 TEST(XlaBuilderTest, CompositeCall) {
   XlaBuilder b(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {});
