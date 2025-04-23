@@ -26,7 +26,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -52,7 +51,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -217,27 +215,7 @@ CollectiveThunk::ExecuteWithCommunicator(
       Communicator * communicator,
       AcquireCommunicator(collectives, clique_key, RankId(rank)));
 
-  tsl::AsyncValueRef<Communicator::Event> communicator_event =
-      callback(key, *communicator);
-
-  auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
-
-  // Keeps communicator event alive until the event is ready.
-  event.AndThen([communicator_event]() {});
-
-  // Set the event to concrete state once the communicator event is ready.
-  communicator_event.AndThen(
-      // We pass `communicator_event` as a pointer because `event` will keep it
-      // alive.
-      [event, communicator_event_ptr = communicator_event.AsPtr()]() {
-        if (ABSL_PREDICT_FALSE(communicator_event_ptr.IsError())) {
-          event.SetError(communicator_event_ptr.GetError());
-        }
-
-        event.SetStateConcrete();
-      });
-
-  return event;
+  return callback(key, *communicator);
 }
 
 const BufferAllocation::Slice& CollectiveThunk::source_buffer(
