@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/mlir_to_graph_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tosa_includes.h"
+#include "tensorflow/compiler/mlir/tosa/tosa_passes.h"
 #include "xla/mlir/framework/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
@@ -61,8 +61,7 @@ int main(int argc, char **argv) {
   tensorflow::RegisterMlProgramPasses();
   mlir::TFTPU::registerRuntimeLoweringPasses();
   mlir::TFDevice::registerSparseCorePasses();
-
-  #include "tensorflow/compiler/mlir/tosa_registrations.inc"
+  mlir::tosa::registerOptionalTosaPasses();
 
   tensorflow::tfrt_compiler::RegisterTPULowerClusterToRuntimeOpsPassPipeline();
   tensorflow::tfrt_compiler::

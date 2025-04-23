@@ -8,7 +8,6 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,16 +21,6 @@ package_group(
 )
 
 exports_files(glob(["g3doc/*.md"] + ["g3doc/_includes/tf_passes.md"]))
-
-bool_flag(
-    name = "enable_tosa",
-    build_setting_default = False,
-)
-
-config_setting(
-    name = "tosa_enabled",
-    flag_values = {":enable_tosa": "True"}
-)
 
 # To reference all tablegen files here when checking for updates to them.
 filegroup(
@@ -52,52 +41,6 @@ cc_library(
     ],
 )
 
-tosa_deps = select({
-    "//conditions:default":[], 
-    ":tosa_enabled":[
-        "//tensorflow/compiler/mlir/tosa:tf_passes",
-        "//tensorflow/compiler/mlir/tosa:tf_tfl_passes",
-        "//tensorflow/compiler/mlir/tosa:tfl_passes",
-        "@local_xla//xla/mlir/framework/ir:xla_framework",
-]})
-
-genrule(
-    name = "tosa_includes",
-    srcs = [],
-    outs = ["tosa_includes.h"],
-    cmd = select({
-        ":tosa_enabled": """
-            cat > $@ << EOF 
-                #include "tensorflow/compiler/mlir/tosa/tf_passes.h"
-                #include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
-                #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
-                #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
-          """,
-        "//conditions:default": "touch $@",
-    }),
-)
-
-genrule(
-    name = "tosa_registrations",
-    srcs = [],
-    outs = ["tosa_registrations.inc"],
-    cmd = select({
-        ":tosa_enabled": """
-            cat > $@ << EOF 
-                mlir::tosa::registerLegalizeTosaPasses();
-                mlir::tosa::registerTFtoTOSALegalizationPipeline();
-                mlir::tosa::registerTFLtoTOSALegalizationPipeline();
-                mlir::tosa::registerTFTFLtoTOSALegalizationPipeline();
-          """,
-        "//conditions:default": "touch $@",
-    }),
-)
-cc_library(
-    name = "tosa_passes_includes",
-    hdrs = ["tosa_includes.h", "tosa_registrations.inc"],
-    deps = [":tosa_includes", ":tosa_registrations"]
-)
-
 cc_library(
     name = "tf_mlir_opt_main",
     testonly = True,
@@ -106,7 +49,6 @@ cc_library(
         ":init_mlir",
         ":passes",
         ":register_common_dialects",
-        ":tosa_passes_includes",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tf_tfl_passes",  # buildcleaner:keep
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
@@ -123,13 +65,14 @@ cc_library(
         "//tensorflow/compiler/mlir/tf2xla/internal/passes:mlir_to_graph_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
+        "//tensorflow/compiler/mlir/tosa:tosa_passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir/framework/transforms:passes",
         "@local_xla//xla/mlir_hlo:all_passes",
-    ] + tosa_deps,
+    ],
 )
 
 cc_library(

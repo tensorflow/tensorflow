@@ -3,6 +3,7 @@
 #   https://developer.mlplatform.org/w/tosa/
 #   https://github.com/llvm/llvm-project/blob/main/mlir/docs/Dialects/TOSA.md
 
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
@@ -18,6 +19,35 @@ package_group(
     packages = [
         "//tensorflow/compiler/mlir/tosa/...",
     ],
+)
+
+bool_flag(
+    name = "enable_tosa",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "tosa_enabled",
+    flag_values = {":enable_tosa": "True"},
+)
+
+cc_library(
+    name = "tosa_passes",
+    hdrs = ["tosa_passes.h"],
+    copts = select({
+        "//conditions:default": [],
+        ":tosa_enabled": ["-DTF_TOSA_ENABLED"],
+    }),
+    tags = ["tf_tosa"],
+    deps = select({
+        "//conditions:default": [],
+        ":tosa_enabled": [
+            "//tensorflow/compiler/mlir/tosa:tf_passes",
+            "//tensorflow/compiler/mlir/tosa:tf_tfl_passes",
+            "//tensorflow/compiler/mlir/tosa:tfl_passes",
+            "@local_xla//xla/mlir/framework/ir:xla_framework",
+        ],
+    }),
 )
 
 filegroup(
@@ -85,6 +115,7 @@ cc_library(
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/lite/kernels/internal:reference_base",
         "@com_google_absl//absl/status",
+        "@gemmlowp",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithUtils",
@@ -99,7 +130,6 @@ cc_library(
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@gemmlowp",
         "@local_xla//xla/tsl/framework/fixedpoint",
     ],
 )

@@ -9,10 +9,7 @@ package(
 glob_lit_tests(
     name = "all_tests",
     data = [":test_utilities"],
-    default_tags = select({
-        "//conditions:default": ["tf_tosa"],
-        "//tensorflow/compiler/mlir:tosa_enble": [],
-    }),
+    default_tags = ["tf_tosa"],
     driver = "@llvm-project//mlir:run_lit.sh",
     size_override = {
         "tf-to-tosa-pipeline.mlir": "medium",
