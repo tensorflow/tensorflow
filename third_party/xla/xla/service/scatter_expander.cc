@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "xla/service/scatter_utils.h"
 #include "xla/service/while_util.h"
 #include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
