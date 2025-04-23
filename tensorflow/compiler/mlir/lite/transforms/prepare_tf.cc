@@ -84,6 +84,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalize_tf_with_tf2xla_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/transforms/rewriters.h"
+#include "xla/mlir_hlo/mhlo/utils/type_conversion.h"
 
 #define DEBUG_TYPE "tf-tfl-legalization"
 
@@ -1371,6 +1373,11 @@ LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext *context) {
   mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   mlir::odml::PopulateLegalizeHloToTfPatterns(&patterns, context);
   mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
+
+  // mhlo::PopulateLegalizeTfPatterns emits StableHLO ops, until this pipeline
+  // handles StableHLO ops directly, we need to convert them to MHLO ops.
+  stablehlo::StablehloToHloTypeConverter hlo_converter;
+  stablehlo::populateStablehloToHloPatterns(&patterns, &hlo_converter, context);
 
   return applyPartialConversion(func, target, std::move(patterns));
 }

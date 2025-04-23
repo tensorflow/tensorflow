@@ -1116,6 +1116,8 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
+        "@local_xla//xla/mlir_hlo:type_conversion",
+        "@local_xla//xla/mlir_hlo:unfuse_batch_norm",
         "@stablehlo//:stablehlo_ops",
     ],
 )

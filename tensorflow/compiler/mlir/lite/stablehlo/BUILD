@@ -132,6 +132,8 @@ gentbl_cc_library(
         "@llvm-project//mlir:FuncTdFiles",
         "@llvm-project//mlir:TensorOpsTdFiles",
         "@local_xla//xla/mlir_hlo:hlo_ops_td_files",
+        "@stablehlo//:chlo_ops_td_files",
+        "@stablehlo//:stablehlo_ops_td_files",
     ],
 )
 
@@ -175,6 +177,7 @@ cc_library(
         "@local_xla//xla/mlir_hlo:convert_op_folder",
         "@local_xla//xla/tsl/platform:status",
         "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_ops",
     ] + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
 )
 

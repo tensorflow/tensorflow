@@ -407,6 +407,9 @@ def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b, $grad_a, $grad_b),
 // Lower `tf.ZerosLike`
 //===----------------------------------------------------------------------===//
 
+class MHLO_ConstantLike<string value> : NativeCodeCall<
+    "chlo::getConstantLike($_builder, $_loc, " # value # ", $0)">;
+
 def : Pat<(TF_ZerosLikeOp AnyTensor:$arg),
           (MHLO_ConstantLike<"0"> $arg)>;
 
