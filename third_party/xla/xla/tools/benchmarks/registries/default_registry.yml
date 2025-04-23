@@ -17,19 +17,30 @@
 
 configs: [
   {
-    config_id: "gemma3_1b_flax_call_gpu_b200_1_host_1_device"
     name: "gemma3_1b_flax_call"
     description: "Benchmarks Gemma3 1b in Flax using B200 GPUs."
     owner: "juliagmt-google@"
-    # Using gs:// format for GCS paths
     hlo_gcs_bucket_path: "https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo"
     model_source_info: ["Gemma3 1B"]
     hardware_category: GPU_B200
     topology: { num_hosts: 1, num_devices_per_host: 1 }
-    target_metrics: [GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME]
-    run_frequencies: [MANUAL]
-    update_frequency_policy: PERMANENT
+    run_frequencies: [POSTSUBMIT]
+    update_frequency_policy: QUARTERLY
     runtime_flags: ["--num_repeat=5"]
-    github_labels: ["blocking_presubmit_test"] # Github label for manual triggering
+    github_labels: ["blocking_presubmit_test"] # Github label for presubmit triggering
+  },
+  {
+    name: "gemma2_2b_keras_jax"
+    description: "Gemma2 2B in Keras on x86 CPU."
+    owner: "company-A@"
+    hlo_path: "benchmarks/hlo/gemma2_2b_keras_jax.hlo"
+    model_source_info: ["Gemma2 2B"]
+    hardware_category: CPU_X86
+    topology: { num_hosts: 1, num_devices_per_host: 1 }
+    target_metrics: [CPU_TIME, PEAK_CPU_MEMORY]
+    run_frequencies: [PRESUBMIT, POSTSUBMIT]
+    update_frequency_policy: QUARTERLY
+    runtime_flags: ["--num_repeat=5"]
+    github_labels: ["blocking_presubmit_test"] # Github label for presubmit triggering
   }
 ]
