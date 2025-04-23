@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/InitAllPasses.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/InitAllPasses.h"               // from @llvm-project
+#include "mlir/Support/LogicalResult.h"       // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"           // from @llvm-project
 #include "tensorflow//compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -33,11 +33,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/mlir_to_graph_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tosa/tosa_passes.h"
+#include "tensorflow/compiler/mlir/tosa/passes.h"
 #include "xla/mlir/framework/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
   mlir::registerAllPasses();

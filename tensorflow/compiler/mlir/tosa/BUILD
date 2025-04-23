@@ -32,8 +32,9 @@ config_setting(
 )
 
 cc_library(
-    name = "tosa_passes",
-    hdrs = ["tosa_passes.h"],
+    name = "passes",
+    hdrs = ["passes.h"],
+    srcs = ["passes.cc"],
     copts = select({
         "//conditions:default": [],
         ":tosa_enabled": ["-DTF_TOSA_ENABLED"],
