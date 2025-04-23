@@ -752,23 +752,44 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
         // Found a broadcast.
         found_broadcast = true;
         HloInstruction* broadcast_user = instruction_and_shape.instruction;
-        const auto operand_indices =
-            broadcast_user->OperandIndices(predecessor_instruction);
-        CHECK(!operand_indices.empty())
-            << "We could only have the broadcast as a predecessor if it is an "
-               "operand of this instruction; something is wrong.";
         HloInstruction* allocate_buffer =
             predecessor_instruction->parent()->AddInstruction(
                 HloInstruction::CreateCustomCall(
                     predecessor_instruction->shape(), {}, "AllocateBuffer"));
-        VLOG(1) << absl::StreamFormat(
-            "Created new AllocateBuffer instruction \"%s\"",
-            allocate_buffer->ToString());
         SetMemorySpace(allocate_buffer->mutable_shape(),
                        Layout::kHostMemorySpace);
-        for (int64_t index : operand_indices) {
-          TF_RETURN_IF_ERROR(
-              broadcast_user->ReplaceOperandWith(index, allocate_buffer));
+        VLOG(1) << absl::StreamFormat(
+            "Created new AllocateBuffer instruction \"%s\" to replace "
+            "broadcast \"%s\"'s use at index %s in user \"%s\"",
+            allocate_buffer->ToString(), predecessor_instruction->name(),
+            instruction_and_shape.shape_index.ToString(),
+            broadcast_user->name());
+        if (instruction_and_shape.shape_index.size() == 1) {
+          // Have a shape index, this broadcast must be going into a tuple
+          // (because the shape index is meant to be a tuple index, not a use
+          // index). Use only the index from which we arrived here, as any other
+          // index might not be expecting host memory.
+          CHECK_EQ(instruction->opcode(), HloOpcode::kTuple)
+              << "Expecting a tuple when shape index has ndim>0";
+          TF_RETURN_IF_ERROR(broadcast_user->ReplaceOperandWith(
+              instruction_and_shape.shape_index[0], allocate_buffer));
+        } else {
+          // Any shape index larger than 1 would mean that the broadcast
+          // produces a tuple, which is not possible.
+          CHECK_EQ(instruction_and_shape.shape_index.size(), 0)
+              << "Only other supported shape index ndim is 0";
+          // Ideally, we'd like to know via which index we arrived here, but we
+          // do not. We'll look up at which indices this broadcast is used.
+          const auto operand_indices =
+              broadcast_user->OperandIndices(predecessor_instruction);
+          // 0 uses would be a hard error, as that would mean there is a bug in
+          // the GetPredecessors function. If there are more than 1 uses, we do
+          // not know via which use we arrived here and setting all uses as host
+          // memory space could be incorrect.
+          CHECK_EQ(operand_indices.size(), 1)
+              << "Only a single use it currently supported";
+          TF_RETURN_IF_ERROR(broadcast_user->ReplaceOperandWith(
+              operand_indices[0], allocate_buffer));
         }
         if (predecessor_instruction->user_count() == 0) {
           // No remaining users. Remove the broadcast.
