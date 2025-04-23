@@ -271,6 +271,11 @@ absl::Status CheckBufferCompatibilities(
   return absl::OkStatus();
 }
 
+template <typename MemorySpaceKind>
+bool IsMemorySpaceKind(const PjRtMemorySpace* memory_space) {
+  return memory_space->kind_id() == MemorySpaceKind::kKindId;
+}
+
 class TfrtGpuAsyncHostToDeviceTransferManager final
     : public PjRtClient::AsyncHostToDeviceTransferManager {
  public:
@@ -1512,6 +1517,11 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
         "Memory space is not attached to this client");
   }
 
+  if (IsMemorySpaceKind<UnpinnedHostMemorySpace>(memory_space)) {
+    return absl::InvalidArgumentError(
+        "Error buffers are not supported for unpinned host memory yet");
+  }
+
   TfrtGpuDevice* device =
       tensorflow::down_cast<TfrtGpuDevice*>(memory_space->devices().front());
   if (VLOG_IS_ON(1)) {
@@ -1519,17 +1529,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
               << " device: " << device->DebugString() << " error: " << error;
   }
 
-  // Create a dummy buffer because the rest of the code expects a buffer
-  // regardless of whether the definition event is an error.
-  int64_t byte_size = ShapeUtil::ByteSizeOf(shape);
-  void* device_ptr = device->allocator()->AllocateRaw(
-      tsl::Allocator::kAllocatorAlignment, byte_size);
-  se::DeviceMemoryBase device_memory(device_ptr, byte_size);
-  auto gpu_buffer =
-      MaybeOwningGpuMemory(device->allocator(), std::move(device_memory));
-  auto buffer_async_value_ref =
-      tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
-          std::move(gpu_buffer));
+  auto buffer_async_value_ref = tsl::MakeErrorAsyncValueRef(error);
   auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
       std::move(buffer_async_value_ref),
       /*definition_event=*/tsl::MakeErrorAsyncValueRef(std::move(error)));
