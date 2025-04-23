@@ -33,9 +33,18 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/mlir_to_graph_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tosa/passes.h"
 #include "xla/mlir/framework/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+
+#if defined(TF_TOSA_ENABLED)
+#include "tensorflow/compiler/mlir/tosa/passes.h"
+#else
+namespace mlir {
+namespace tosa {
+void registerOptionalTosaPasses() {}
+}  // namespace tosa
+}  // namespace mlir
+#endif
 
 int main(int argc, char** argv) {
   tensorflow::InitMlir y(&argc, &argv);

@@ -1,6 +1,7 @@
 # Description:
 #   TensorFlow/TensorFlow Lite/XLA MLIR dialects and tools.
 
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -28,6 +29,16 @@ filegroup(
     srcs = glob(["**/*.td"]),
 )
 
+bool_flag(
+    name = "enable_tosa",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "tosa_enabled",
+    flag_values = {":enable_tosa": "True"},
+)
+
 cc_library(
     name = "op_or_arg_name_mapper",
     srcs = ["op_or_arg_name_mapper.cc"],
@@ -45,6 +56,10 @@ cc_library(
     name = "tf_mlir_opt_main",
     testonly = True,
     srcs = ["tf_mlir_opt_main.cc"],
+    copts = select({
+        "//conditions:default": [],
+        ":tosa_enabled": ["-DTF_TOSA_ENABLED"],
+    }),
     deps = [
         ":init_mlir",
         ":passes",
@@ -65,14 +80,16 @@ cc_library(
         "//tensorflow/compiler/mlir/tf2xla/internal/passes:mlir_to_graph_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
-        "//tensorflow/compiler/mlir/tosa:passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir/framework/transforms:passes",
         "@local_xla//xla/mlir_hlo:all_passes",
-    ],
+    ] + select({
+        "//conditions:default": [],
+        ":tosa_enabled": ["//tensorflow/compiler/mlir/tosa:passes"],
+    }),
 )
 
 cc_library(

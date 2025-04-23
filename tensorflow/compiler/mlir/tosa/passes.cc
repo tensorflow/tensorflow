@@ -15,24 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/passes.h"
 
-#if defined(TF_TOSA_ENABLED)
 #include "tensorflow/compiler/mlir/tosa/tf_passes.h"
 #include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
-#else
-#endif
 
 namespace mlir {
 namespace tosa {
 
 void registerOptionalTosaPasses() {
-#if defined(TF_TOSA_ENABLED)
-  mlir::tosa::registerLegalizeTosaPasses();
-  mlir::tosa::registerTFtoTOSALegalizationPipeline();
-  mlir::tosa::registerTFLtoTOSALegalizationPipeline();
-  mlir::tosa::registerTFTFLtoTOSALegalizationPipeline();
-#endif
+  registerLegalizeTosaPasses();
+  registerTFtoTOSALegalizationPipeline();
+  registerTFLtoTOSALegalizationPipeline();
+  registerTFTFLtoTOSALegalizationPipeline();
 }
 }  // namespace tosa
 }  // namespace mlir

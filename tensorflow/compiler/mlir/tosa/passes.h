@@ -13,16 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_REGISTRATION_H_
-#define TENSORFLOW_COMPILER_MLIR_TOSA_REGISTRATION_H_
-
-#if defined(TF_TOSA_ENABLED)
-#include "tensorflow/compiler/mlir/tosa/tf_passes.h"
-#include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
-#include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
-#include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
-#else
-#endif
+#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_TOSA_PASSES_H_
 
 namespace mlir {
 namespace tosa {
@@ -31,4 +23,4 @@ void registerOptionalTosaPasses();
 
 }  // namespace tosa
 }  // namespace mlir
-#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_REGISTRATION_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_PASSES_H_
