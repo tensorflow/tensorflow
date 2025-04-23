@@ -19,6 +19,7 @@ limitations under the License.
 #include <iomanip>
 #include <ios>
 #include <memory>
+#include <sstream>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -56,14 +57,35 @@ void MemoryLatencyLogger::Stop(absl::string_view log_message) {
   int space_count =
       35 - log_message.size();  // used for better user readability.
   std::string space(std::max(space_count, 0), '-');
-  TFLITE_LOG(INFO) << log_message << " " << space << " latency: " << std::fixed
-                   << std::setprecision(1)
-                   << absl::ToDoubleMilliseconds(stop - start_)
-                   << " ms, peak alloc: " << mem_monitor_->GetPeakMemUsageInMB()
-                   << " MB, peak in-use: "
-                   << mem_monitor_->GetPeakInUseMemoryInMB()
-                   << " MB, current in-use: "
+  std::stringstream message_stream;
+  message_stream << log_message << " " << space << " latency: " << std::fixed
+                 << std::setprecision(1)
+                 << absl::ToDoubleMilliseconds(stop - start_) << " ms,";
+
+  // Check each value before logging. If the value is not available, or if
+  // the value is < 0, log "unknown". Sometimes this can happen on machines that
+  // only support mallinfo() and not mallinfo2(). mallinfo() uses an int to
+  // store the current in-use memory, which can overflow if the program
+  // allocates more than 2GB of memory.
+  if (mem_monitor_->GetPeakMemUsageInMB() < 0) {
+    message_stream << " peak alloc: unknown,";
+  } else {
+    message_stream << " peak alloc: " << mem_monitor_->GetPeakMemUsageInMB()
+                   << " MB,";
+  }
+  if (mem_monitor_->GetPeakInUseMemoryInMB() < 0) {
+    message_stream << " peak in-use: unknown,";
+  } else {
+    message_stream << " peak in-use: " << mem_monitor_->GetPeakInUseMemoryInMB()
+                   << " MB,";
+  }
+  if (mem_monitor_->GetCurrentInUseMemoryInMB() < 0) {
+    message_stream << " current in-use: unknown";
+  } else {
+    message_stream << " current in-use: "
                    << mem_monitor_->GetCurrentInUseMemoryInMB() << " MB";
+  }
+  TFLITE_LOG(INFO) << message_stream.str();
 }
 
 }  // namespace memory
