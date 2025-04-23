@@ -230,10 +230,9 @@ std::optional<SortComputationAnalysis> AnalyzeSortOp(
 
 // Create runner for CUB sort operation.
 absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateRunner(
-    const SortComputationAnalysis& sort_analysis,
-    absl::string_view platform_name) {
-  return CubSortRunnerInterface::Create(
-      sort_analysis.key_type, sort_analysis.value_type, platform_name);
+    const SortComputationAnalysis& sort_analysis) {
+  return CubSortRunnerInterface::Create(sort_analysis.key_type,
+                                        sort_analysis.value_type);
 }
 
 // Restore the result shape after sorting a pair of tensors.
@@ -384,8 +383,7 @@ bool ShouldRewriteCompatibleSort(se::DeviceDescription device_description,
 }
 
 bool IsCubCompatibleSort(const se::DeviceDescription& device_description,
-                         const HloSortInstruction* sort_op,
-                         absl::string_view platform_name) {
+                         const HloSortInstruction* sort_op) {
   VLOG(1) << "Sort instruction: " << sort_op->name();
   if (sort_op->operand_count() != 1 && sort_op->operand_count() != 2) {
     VLOG(2) << "Unsupported operand count: " << sort_op->operand_count();
@@ -415,7 +413,7 @@ bool IsCubCompatibleSort(const se::DeviceDescription& device_description,
     VLOG(2) << "Only simple compare computations are supported";
     return false;
   }
-  if (!CreateRunner(*sort_analysis, platform_name).ok()) {
+  if (!CreateRunner(*sort_analysis).ok()) {
     VLOG(2) << "Unsupported operand types (no compiled CUB kernels): "
             << PrimitiveType_Name(sort_analysis->key_type) << " "
             << (sort_analysis->value_type.has_value()
@@ -440,7 +438,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   int64_t batch_size = Product(operand_shape.dimensions()) /
                        operand_shape.dimensions(sort_op->sort_dimension());
 
-  TF_ASSIGN_OR_RETURN(auto runner, CreateRunner(sort_analysis, platform_name_));
+  TF_ASSIGN_OR_RETURN(auto runner, CreateRunner(sort_analysis));
   TF_ASSIGN_OR_RETURN(
       int64_t scratch_size,
       runner->GetScratchSize(Product(operand_shape.dimensions()), batch_size));
@@ -517,8 +515,7 @@ absl::StatusOr<bool> SortRewriter::RunOnComputation(
   std::vector<HloSortInstruction*> sort_ops;
   for (auto* inst : computation->instructions()) {
     HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
-    if (sort != nullptr &&
-        IsCubCompatibleSort(device_description_, sort, platform_name_)) {
+    if (sort != nullptr && IsCubCompatibleSort(device_description_, sort)) {
       sort_ops.push_back(sort);
     }
   }

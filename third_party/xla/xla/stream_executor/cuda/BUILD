@@ -4,7 +4,6 @@ load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
 )
-load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -1122,7 +1121,7 @@ cc_library(
         "//xla/tsl/cuda:cusolver",
         "//xla/tsl/cuda:cusparse",
         "//xla/tsl/cuda:tensorrt_rpath",
-    ] + [":cub_sort_kernel_cuda_" + suffix for suffix in get_cub_sort_kernel_types()],
+    ],
     alwayslink = 1,
 )
 
@@ -2066,23 +2065,3 @@ cuda_library(
     ],
     alwayslink = 1,
 )
-
-[cuda_library(
-    name = "cub_sort_kernel_cuda_{}".format(typename),
-    srcs = ["cub_sort_kernel_cuda.cu.cc"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    local_defines = ["CUB_TYPE_" + typename.upper()],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        "//xla/ffi",
-        "//xla/ffi:ffi_api",
-        "//xla/stream_executor/cuda:cuda_status",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/status",
-        "@local_config_cuda//cuda:cub_headers",
-    ],
-    alwayslink = 1,
-) for typename in get_cub_sort_kernel_types()]
