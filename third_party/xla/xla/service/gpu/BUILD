@@ -1555,6 +1555,7 @@ cc_library(
         "//xla/service/gpu/transforms:windowed_einsum_handler",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/service/llvm_ir:llvm_util",
+        "//xla/service/spmd/shardy:shardy_xla_pass",
         "//xla/service/spmd:collective_permute_motion",
         "//xla/service/spmd:schedule_aware_collective_ops_cse",
         "//xla/service:all_reduce_promotion",

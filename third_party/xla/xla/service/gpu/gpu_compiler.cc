@@ -258,6 +258,7 @@ limitations under the License.
 #include "xla/service/sharding_remover.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
+#include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/service/while_loop_all_reduce_code_motion.h"
@@ -656,6 +657,11 @@ absl::Status RunSPMDPasses(
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
     // Remove redundant sharding ops when partition_count == 1.
     sharding_removal_pipeline.AddPass<ShardingRemover>();
+    // Run ShardyXLA without propagation, which enforces use-tuple-args.
+    if (hlo_module->config().use_shardy_partitioner()) {
+      sharding_removal_pipeline.AddPass<sdy::ShardyXLA>(
+          /*runSdyShardingPropagation=*/false);
+    }
     sharding_removal_pipeline.AddPass<HloDCE>();
     return sharding_removal_pipeline.Run(hlo_module).status();
   }
