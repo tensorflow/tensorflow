@@ -70,14 +70,14 @@ bool IsEinsumSupportedByXlaDotV2(StringAttr equation_attr);
 // `absl::InternalError` when parsing the attribute to `Method` failed.
 // `op` must be non-null.
 absl::StatusOr<::stablehlo::quantization::Method> GetQuantizationMethod(
-    Operation* /*absl_nonnull*/ op);
+    Operation* absl_nonnull op);
 
 // Gets the quantization method from `op`. It is retrieved from the
 // `kQuantizationMethodAttr` string attribute. Returns a default instance of
 // `Method` iff the attribute doesn't exist or the attribute contains an invalid
 // textproto for `Method`. `op` must be non-null.
 ::stablehlo::quantization::Method GetQuantizationMethodOrDefault(
-    Operation* /*absl_nonnull*/ op);
+    Operation* absl_nonnull op);
 
 // Creates a function to wrap the section between arguments and results.
 // The generated function call op type will be decided by the given call_op_type

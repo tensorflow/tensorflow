@@ -51,8 +51,8 @@ class StaticRangePtqComponent : public Component {
   // `CalibrationComponent`. For detailed explanation of each argument, see the
   // comment of `CalibrationComponent`'s constructor.
   StaticRangePtqComponent(
-      MLIRContext* /*absl_nonnull*/ ctx,
-      const tensorflow::quantization::PyFunctionLibrary* /*absl_nonnull*/
+      MLIRContext* absl_nonnull ctx,
+      const tensorflow::quantization::PyFunctionLibrary* absl_nonnull
       py_function_library,
       absl::string_view src_saved_model_path,
       std::vector<std::string> signature_keys,
@@ -69,7 +69,7 @@ class StaticRangePtqComponent : public Component {
  private:
   // A non-owning `MLIRContext`. This `MLIRContext` should exceed the lifetime
   // of `StaticRangePtqComponent`.
-  MLIRContext* /*absl_nonnull*/ ctx_;
+  MLIRContext* absl_nonnull ctx_;
   // This component consists of three sub-components, `PreCalibrationComponent`,
   // `CalibrationComponent`, and `PostCalibrationComponent`.
   std::array<std::unique_ptr<Component>, 3> sub_components_;

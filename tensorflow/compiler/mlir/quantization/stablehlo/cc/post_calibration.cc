@@ -38,7 +38,7 @@ using ::stablehlo::quantization::QuantizationSpecs;
 using ::tensorflow::quantization::RunPasses;
 
 PostCalibrationComponent::PostCalibrationComponent(
-    MLIRContext* /*absl_nonnull*/ ctx)
+    MLIRContext* absl_nonnull ctx)
     : ctx_(ABSL_DIE_IF_NULL(ctx)) {}  // Crash OK
 
 absl::StatusOr<ModuleOp> PostCalibrationComponent::Run(

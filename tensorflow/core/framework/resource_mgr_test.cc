@@ -67,7 +67,7 @@ class Other : public ResourceBase {
 
 class Finalizable : public ResourceBase {
  public:
-  explicit Finalizable(int* /*absl_nonnull*/ finalize_count)
+  explicit Finalizable(int* absl_nonnull finalize_count)
       : finalize_count_(*finalize_count) {}
   ~Finalizable() override = default;
 

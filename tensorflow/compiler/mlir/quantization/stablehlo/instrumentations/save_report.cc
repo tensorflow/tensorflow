@@ -38,8 +38,8 @@ std::optional<std::string> OptionalStringViewToOptionalString(
 }
 
 // Whether the pass is `QuantizeCompositeFunctionPass`.
-bool IsQuantizeCompositeFunctionPass(Pass* /*absl_nullable*/ pass,
-                                     Operation* /*absl_nullable*/ op) {
+bool IsQuantizeCompositeFunctionPass(Pass* absl_nullable pass,
+                                     Operation* absl_nullable op) {
   // It is known that `op` is `ModuleOp` when `pass` is
   // `QuantizeCompositeFunctionPass`, but the check is still performed to be
   // defensive.
@@ -52,7 +52,7 @@ bool IsQuantizeCompositeFunctionPass(Pass* /*absl_nullable*/ pass,
 // * After running `QuantizeCompositeFunctionPass`.
 // * The pass is run on `ModuleOp`.
 // * `file_path` is not `nullopt`.
-bool ShouldSaveReport(Pass* /*absl_nullable*/ pass, Operation* /*absl_nullable*/ op,
+bool ShouldSaveReport(Pass* absl_nullable pass, Operation* absl_nullable op,
                       const std::optional<std::string>& file_path) {
   return file_path != std::nullopt && IsQuantizeCompositeFunctionPass(pass, op);
 }

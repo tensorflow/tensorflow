@@ -406,7 +406,7 @@ absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileAsynchronous(
 template <typename ExecutableType, typename ClientType>
 void DeviceCompiler<ExecutableType, ClientType>::Finalize() {
   const mutex_lock lock(cluster_mutexes_mu_);
-  std::vector<mutex* /*absl_nonnull*/> cluster_mutexes;
+  std::vector<mutex* absl_nonnull> cluster_mutexes;
   cluster_mutexes.reserve(cluster_mutexes_.size());
   for (auto& [_, mutex] : cluster_mutexes_) {
     if (mutex != nullptr) {
@@ -420,7 +420,7 @@ void DeviceCompiler<ExecutableType, ClientType>::Finalize() {
   absl::c_sort(cluster_mutexes);
   std::vector<mutex_lock> cluster_mutex_locks;
   cluster_mutex_locks.reserve(cluster_mutexes.size());
-  for (mutex* /*absl_nonnull*/ const mutex : cluster_mutexes) {
+  for (mutex* absl_nonnull const mutex : cluster_mutexes) {
     cluster_mutex_locks.emplace_back(*mutex);
   }
 

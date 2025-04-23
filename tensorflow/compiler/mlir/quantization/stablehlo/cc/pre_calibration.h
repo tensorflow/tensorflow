@@ -38,14 +38,14 @@ class PreCalibrationComponent : public Component {
   // debugging purposes.
   static constexpr absl::string_view kName = "quant_ptq_pre_calibration";
 
-  explicit PreCalibrationComponent(MLIRContext* /*absl_nonnull*/ ctx);
+  explicit PreCalibrationComponent(MLIRContext* absl_nonnull ctx);
 
   absl::StatusOr<ModuleOp> Run(
       ModuleOp,
       const ::stablehlo::quantization::QuantizationConfig& config) override;
 
  private:
-  MLIRContext* /*absl_nonnull*/ ctx_;
+  MLIRContext* absl_nonnull ctx_;
 };
 
 }  // namespace mlir::quant::stablehlo

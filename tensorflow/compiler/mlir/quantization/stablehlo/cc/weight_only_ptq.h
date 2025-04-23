@@ -42,14 +42,14 @@ class WeightOnlyPtqComponent : public Component {
   // Used for debugging purposes.
   static constexpr absl::string_view kName = "quant_ptq_weight_only";
 
-  explicit WeightOnlyPtqComponent(MLIRContext* /*absl_nonnull*/ ctx);
+  explicit WeightOnlyPtqComponent(MLIRContext* absl_nonnull ctx);
 
   absl::StatusOr<ModuleOp> Run(
       ModuleOp module_op,
       const ::stablehlo::quantization::QuantizationConfig& config) override;
 
  private:
-  MLIRContext* /*absl_nonnull*/ ctx_;
+  MLIRContext* absl_nonnull ctx_;
 };
 
 // Runs weight-only quantization on a SavedModel at

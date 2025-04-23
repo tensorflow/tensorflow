@@ -493,7 +493,7 @@ bool IsEinsumSupportedByXlaDotV2(StringAttr equation_attr) {
          rhs_out_idx_start >= batch_dim_size;
 }
 
-absl::StatusOr<Method> GetQuantizationMethod(Operation* /*absl_nonnull*/ op) {
+absl::StatusOr<Method> GetQuantizationMethod(Operation* absl_nonnull op) {
   const auto quantization_method_attr =
       op->getAttrOfType<StringAttr>(kQuantizationMethodAttr);
   if (!quantization_method_attr) {
@@ -511,7 +511,7 @@ absl::StatusOr<Method> GetQuantizationMethod(Operation* /*absl_nonnull*/ op) {
   return quantization_method;
 }
 
-Method GetQuantizationMethodOrDefault(Operation* /*absl_nonnull*/ op) {
+Method GetQuantizationMethodOrDefault(Operation* absl_nonnull op) {
   absl::StatusOr<Method> method = GetQuantizationMethod(op);
   if (method.status().code() == absl::StatusCode::kInternal) {
     // This indicates that the `Method` protobuf string is corrupt, but this

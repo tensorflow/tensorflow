@@ -57,8 +57,8 @@ class CalibrationComponent : public Component {
   // `representative_dataset_file_map` contains information about the
   // calibration dataset.
   CalibrationComponent(
-      MLIRContext* /*absl_nonnull*/ ctx,
-      const tensorflow::quantization::PyFunctionLibrary* /*absl_nonnull*/
+      MLIRContext* absl_nonnull ctx,
+      const tensorflow::quantization::PyFunctionLibrary* absl_nonnull
       py_function_lib,
       absl::string_view src_saved_model_path,
       absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases,
@@ -88,11 +88,11 @@ class CalibrationComponent : public Component {
   absl::StatusOr<ModuleOp> ImportCalibratedSavedModel(
       absl::string_view calibrated_saved_model_path);
 
-  MLIRContext* /*absl_nonnull*/ ctx_;
+  MLIRContext* absl_nonnull ctx_;
 
   // Contains function implementations from the python layer. Should be injected
   // from the python level using pybind11.
-  const tensorflow::quantization::PyFunctionLibrary* /*absl_nonnull*/
+  const tensorflow::quantization::PyFunctionLibrary* absl_nonnull
   py_function_lib_;
 
   // Path to the pre-calibrated SavedModel.

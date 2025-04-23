@@ -48,7 +48,7 @@ using ::mlir::stablehlo::TransposeOp;
 
 // Returns `success()` if `op` is a `TransposeOp` with permutation attribute
 // equivalent to `permuation`.
-LogicalResult IsTransposeOpWithPermuation(Operation* /*absl_nullable*/ op,
+LogicalResult IsTransposeOpWithPermuation(Operation* absl_nullable op,
                                           const ArrayRef<int64_t> permutation) {
   auto transpose_op = dyn_cast_or_null<TransposeOp>(op);
   return success(transpose_op != nullptr && transpose_op.getPermutation() ==
@@ -90,8 +90,8 @@ void DeferRhsTransposeForBinaryOp(OpT op, PatternRewriter& rewriter) {
 // "Climbs up" the `op` if `op` is a `BraodcastInDimOp` and returns the defining
 // op of its operand. Returns `op` otherwise. May return `nullptr` when the
 // `BroadcastInDimOp`'s operand is a block argument.
-Operation* /*absl_nullable*/ SkipUpwardsOptionalBroadcastInDimOp(
-    Operation* /*absl_nonnull*/ op) {
+Operation* absl_nullable SkipUpwardsOptionalBroadcastInDimOp(
+    Operation* absl_nonnull op) {
   if (auto broadcast_in_dim_op = dyn_cast_or_null<BroadcastInDimOp>(op);
       broadcast_in_dim_op != nullptr) {
     return broadcast_in_dim_op.getOperand().getDefiningOp();

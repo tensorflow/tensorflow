@@ -56,8 +56,8 @@ using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 
 StaticRangePtqComponent::StaticRangePtqComponent(
-    MLIRContext* /*absl_nonnull*/ ctx,
-    const PyFunctionLibrary* /*absl_nonnull*/ py_function_library,
+    MLIRContext* absl_nonnull ctx,
+    const PyFunctionLibrary* absl_nonnull py_function_library,
     const absl::string_view src_saved_model_path,
     std::vector<std::string> signature_keys,
     std::unordered_set<std::string> tags,
