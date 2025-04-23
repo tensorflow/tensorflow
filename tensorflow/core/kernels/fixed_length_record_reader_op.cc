@@ -95,7 +95,7 @@ class FixedLengthRecordReader : public ReaderBase {
         absl::Status s =
             buffered_inputstream_->SkipNBytes(hop_bytes_ - cache_size);
         if (!s.ok()) {
-          if (!errors::IsOutOfRange(s)) {
+          if (!absl::IsOutOfRange(s)) {
             return s;
           }
           *at_end = true;
@@ -109,7 +109,7 @@ class FixedLengthRecordReader : public ReaderBase {
     absl::Status s = buffered_inputstream_->ReadNBytes(bytes_to_read, value);
     if (!s.ok()) {
       value->clear();
-      if (!errors::IsOutOfRange(s)) {
+      if (!absl::IsOutOfRange(s)) {
         return s;
       }
       *at_end = true;
