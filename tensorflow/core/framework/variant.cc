@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/variant.h"
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/log/log.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
