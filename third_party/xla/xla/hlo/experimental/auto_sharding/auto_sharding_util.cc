@@ -2131,10 +2131,12 @@ int64_t ByteSizeOfShapeIfShardedAcrossDevices(
           return;
         }
         int64_t byte_size = ByteSizeOfShape(subshape);
-        absl::Span<const int64_t> subshape_dims = subshape.dimensions();
-        auto max_dim_it = absl::c_max_element(subshape_dims);
-        if (max_dim_it != subshape_dims.end() && *max_dim_it >= num_devices) {
-          byte_size /= num_devices;
+        if (subshape.IsArray()) {
+          const absl::Span<const int64_t> subshape_dims = subshape.dimensions();
+          const auto max_dim_it = absl::c_max_element(subshape_dims);
+          if (max_dim_it != subshape_dims.end() && *max_dim_it >= num_devices) {
+            byte_size /= num_devices;
+          }
         }
         total_size += byte_size;
       });
