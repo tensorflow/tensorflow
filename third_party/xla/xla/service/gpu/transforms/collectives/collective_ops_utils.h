@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 
+#include <optional>
+
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -40,10 +42,14 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
 bool IsGPUSyncCollective(const HloInstruction& instr);
 
 // Returns true if the topology is multi-host. Currently this function is
-// heuristic based. Will return false on any platform other than Hopper and
-// Ampere.
-bool IsMultiHostTopology(const HloModuleConfig& config,
-                         const se::DeviceDescription& device_description);
+// heuristic based: it can be the case it will not detect a multi host case when
+// a user decides to use < 8 GPUs per host. Moreover it tells nothing about how
+// fast the interconnect between hosts is (Infiniband, NVLINK, DCN, etc.).
+//
+// Will return `std::nullopt` on any platform other than Hopper and Ampere.
+std::optional<bool> IsMultiHostTopology(
+    const HloModuleConfig& config,
+    const se::DeviceDescription& device_description);
 
 }  // namespace gpu
 }  // namespace xla
