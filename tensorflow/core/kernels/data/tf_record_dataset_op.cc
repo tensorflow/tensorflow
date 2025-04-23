@@ -155,7 +155,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
             return absl::OkStatus();
           }
           out_tensors->pop_back();
-          if (!errors::IsOutOfRange(s)) {
+          if (!absl::IsOutOfRange(s)) {
             // In case of other errors e.g., DataLoss, we still move forward
             // the file index so that it works with ignore_errors.
             // Otherwise the same file will repeat.
@@ -197,7 +197,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
             *end_of_sequence = false;
             return absl::OkStatus();
           }
-          if (!errors::IsOutOfRange(s)) {
+          if (!absl::IsOutOfRange(s)) {
             // In case of other errors e.g., DataLoss, we still move forward
             // the file index so that it works with ignore_errors.
             // Otherwise the same file will repeat.

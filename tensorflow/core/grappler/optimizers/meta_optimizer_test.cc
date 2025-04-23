@@ -896,7 +896,7 @@ TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnInvalidGraph) {
   MetaOptimizer optimizer_with_post_verifiers(nullptr, config_proto);
   absl::Status status =
       optimizer_with_post_verifiers.Optimize(nullptr, item, &output);
-  EXPECT_TRUE(errors::IsInvalidArgument(status));
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
   EXPECT_TRUE(absl::StrContains(
       status.message(),
       "NodeDef expected inputs 'float' do not match 3 inputs specified"));

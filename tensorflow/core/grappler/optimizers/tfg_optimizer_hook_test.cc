@@ -119,7 +119,7 @@ TEST(TFGOptimizerTest, TestImportErrorReturnsAborted) {
 
   // Expect an aborted error.
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(errors::IsAborted(status));
+  EXPECT_TRUE(absl::IsAborted(status));
 }
 
 TEST(TFGOptimizerTest, TestPassErrorIsFatal) {
@@ -139,8 +139,8 @@ TEST(TFGOptimizerTest, TestPassErrorIsFatal) {
 
   // Expect a non-aborted, non-timeout error.
   EXPECT_FALSE(status.ok());
-  EXPECT_FALSE(errors::IsAborted(status));
-  EXPECT_TRUE(errors::IsInvalidArgument(status));
+  EXPECT_FALSE(absl::IsAborted(status));
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
 }
 
 TEST(TFGOptimizerTest, TestImportErrorMetaOptimizerIsNotFatal) {
