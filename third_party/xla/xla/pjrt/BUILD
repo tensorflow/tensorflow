@@ -1142,10 +1142,22 @@ cc_library(
 )
 
 cc_library(
+    name = "device_event",
+    hdrs = ["device_event.h"],
+    deps = [
+        ":pjrt_future",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "raw_buffer",
     srcs = ["raw_buffer.cc"],
     hdrs = ["raw_buffer.h"],
     deps = [
+        ":device_event",
         ":pjrt_client",
         ":pjrt_future",
         "//xla/tsl/concurrency:ref_count",

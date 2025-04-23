@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/pjrt/raw_buffer.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -29,6 +31,16 @@ std::vector<RegisterRawBufferFactory::FactoryFuncT>& GetFactoryFuncs() {
   static auto* const funcs =
       new std::vector<RegisterRawBufferFactory::FactoryFuncT>;
   return *funcs;
+}
+
+PjRtFuture<> CommonPjRtRawBuffer::CopyRawHostToDevice(const void* src,
+                                                      int64_t offset,
+                                                      int64_t transfer_size) {
+  auto event = CopyRawHostToDeviceAndReturnEvent(src, offset, transfer_size);
+  if (!event.ok()) {
+    return PjRtFuture<>(event.status());
+  }
+  return (*event)->GetReadyFuture();
 }
 
 absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>
