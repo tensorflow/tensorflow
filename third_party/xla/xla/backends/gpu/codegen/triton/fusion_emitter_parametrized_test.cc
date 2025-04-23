@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <variant>
@@ -26,20 +27,25 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/comparison_util.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+constexpr ErrorSpec kExactMatch{/*aabs=*/0, /*arel=*/0};
 
 struct MixTypeParams {
   PrimitiveType lhs_ty;
@@ -551,103 +557,59 @@ std::string CompareTestParamsToString(
                       "_", ComparisonDirectionToString(direction));
 }
 
-TEST_P(CompareTest, DISABLED_CompareFusionExecutesCorrectly) {
-  PrimitiveType data_type;
-  Comparison::Direction direction;
-  std::tie(data_type, direction) = GetParam();
+TEST_P(CompareTest, CompareExecutesCorrectly) {
+  auto [data_type, direction] = GetParam();
 
   const std::string kHloTestTemplate = R"(
-triton_gemm___computation {
-  parameter_0 = f32[92,11]{1,0} parameter(0)
-  parameter_1 = $0[11,63]{1,0} parameter(1)
-  parameter_2 = $0[11,63]{1,0} parameter(2)
-  f1.1 = pred[11,63]{1,0} compare(parameter_1, parameter_2), direction=$1
-  c.1 = f32[11,63]{1,0} convert(f1.1)
-  ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, c.1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+triton_computation {
+  p0 = $0[11,63]{1,0} parameter(0)
+  p1 = $0[11,63]{1,0} parameter(1)
+  ROOT compare = pred[11,63]{1,0} compare(p0, p1), direction=$1
 }
 
 ENTRY e {
-  p0 = f32[92,11]{1,0} parameter(0)
+  p0 = $0[11,63]{1,0} parameter(0)
   p1 = $0[11,63]{1,0} parameter(1)
-  p2 = $0[11,63]{1,0} parameter(2)
-  ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0, p1, p2), kind=kCustom,
-    calls=triton_gemm___computation, backend_config={
+  ROOT fusion = pred[11,63]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_computation, backend_config={
       "fusion_backend_config":{
-      "kind":"__triton_gemm",
-      "triton_gemm_config": {
-        "block_m":"16",
-        "block_n":"64",
-        "block_k":"16",
-        "split_k":"1",
-        "num_stages":"3",
-        "num_warps":"2",
-        "num_ctas":"1"}}}
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
       ComparisonDirectionToString(direction));
 
-  const std::string kHloRefTemplate = R"(
-fused_computation {
-  p0 = $0[11,63]{1,0} parameter(0)
-  p1 = $0[11,63]{1,0} parameter(1)
-  f.1 = pred[11,63]{1,0} compare(p0, p1), direction=$1
-  ROOT convert.1 = f32[11,63]{1,0} convert(f.1)
-}
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_test));
 
-ENTRY e {
-  p2 = $0[11,63]{1,0} parameter(2)
-  p1 = $0[11,63]{1,0} parameter(1)
-  p0 = f32[92,11]{1,0} parameter(0)
-  fusion = f32[11,63]{1,0} fusion(p1, p2), kind=kLoop, calls=fused_computation
-  gemm = (f32[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
-    custom_call_target="__cublas$$gemm",
-    backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
-      {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
-      "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
-      "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
-  ROOT get-tuple-element = f32[92,63]{1,0} get-tuple-element((f32[92,63]{1,0}, s8[0]{0}) gemm), index=0
-})";
-  const std::string hlo_ref = absl::Substitute(
-      kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
-      ComparisonDirectionToString(direction));
+  HloInstruction* compare =
+      module->entry_computation()->root_instruction()->fused_expression_root();
 
-  float tolerance;
-  switch (data_type) {
-    case F32:
-      tolerance = 1e-6;
-      break;
-    case F16:
-      tolerance = 2e-4;
-      break;
-    case PRED:
-    case S8:
-      tolerance = 3e-2;
-      break;
-    case S16:
-      tolerance = 1e-3;
-      break;
-    case S32:
-      tolerance = 1e-5;
-      break;
-    default:
-      ABSL_UNREACHABLE();
+  // We generate all possible instruction combinations, but we need to skip
+  // those that are known to not be supported by the backend on the relevant
+  // chip.
+  if (!IsTritonSupportedInstruction(*compare, se::GpuComputeCapability())) {
+    GTEST_SKIP() << "Unsupported type combination for comparison, skipping.";
   }
-  EXPECT_TRUE(RunAndCompareTwoModules(
-      hlo_ref, hlo_test, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance},
-      /*run_hlo_passes=*/false));
-}
 
-using cd = Comparison::Direction;
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_test, kExactMatch));
+}
 
 INSTANTIATE_TEST_SUITE_P(
     CompareTestSuite, CompareTest,
-    ::testing::Combine(::testing::Values(PRED, S8, S16, S32, F16, F32),
-                       ::testing::Values(cd::kEq, cd::kNe, cd::kGe, cd::kGt,
-                                         cd::kLe, cd::kLt)),
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::Values(Comparison::Direction::kEq,
+                                         Comparison::Direction::kNe,
+                                         Comparison::Direction::kGe,
+                                         Comparison::Direction::kGt,
+                                         Comparison::Direction::kLe,
+                                         Comparison::Direction::kLt)),
     CompareTestParamsToString);
 
 class SelectTest : public TritonTest,
