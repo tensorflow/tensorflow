@@ -177,7 +177,7 @@ LogicalResult ConvertTFReluOp::matchAndRewrite(
   }
 
   mlir::Attribute min_val, max_val;
-  if (element_type.isa<mlir::FloatType>()) {
+  if (mlir::isa<mlir::FloatType>(element_type)) {
     min_val = rewriter.getFloatAttr(element_type, 0.0f);
     max_val =
         rewriter.getFloatAttr(element_type, std::numeric_limits<float>::max());
@@ -208,7 +208,7 @@ LogicalResult ConvertTFRelu6Op::matchAndRewrite(
   }
 
   mlir::Attribute min_val, max_val;
-  if (element_type.isa<mlir::FloatType>()) {
+  if (mlir::isa<mlir::FloatType>(element_type)) {
     min_val = rewriter.getFloatAttr(element_type, 0.0f);
     max_val = rewriter.getFloatAttr(element_type, 6.0f);
   } else {
@@ -1447,7 +1447,7 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
   auto epsilon_const = CreateOpAndInfer<tosa::ConstOp>(
       rewriter, op->getLoc(), epsilon_type, epsilon_attr);
 
-  variance_type = variance.getType().cast<RankedTensorType>();
+  variance_type = mlir::cast<RankedTensorType>(variance.getType());
   Value op2_add_var_epsilon = CreateOpAndInfer<tosa::AddOp>(
       rewriter, op->getLoc(), variance_type, variance, epsilon_const);
 
@@ -1778,7 +1778,7 @@ LogicalResult ConvertTFPadV2Op::matchAndRewrite(
   auto tf_pad_op = cast<TF::PadV2Op>(op);
 
   RankedTensorType output_type =
-      tf_pad_op.getResult().getType().dyn_cast<RankedTensorType>();
+      mlir::dyn_cast<RankedTensorType>(tf_pad_op.getResult().getType());
   if (!output_type) {
     return rewriter.notifyMatchFailure(op, "output type not a ranked tensor");
   }
