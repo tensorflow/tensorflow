@@ -1205,8 +1205,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([":friends"]),
     deps = [
+        ":util",
         "//xla/backends/cpu:alignment",
-        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base:dynamic_annotations",
     ],
 )
