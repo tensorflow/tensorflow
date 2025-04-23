@@ -29,15 +29,13 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
-#include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_client.h"
-#include "xla/pjrt/cpu/cpu_device.h"
-#include "xla/pjrt/cpu/cpu_event.h"
-#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
@@ -45,7 +43,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -127,17 +124,38 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                              absl::Span<const Literal* const> args,
                              StrToStrMapping replacements,
                              const HloBenchmarkOptions& benchmark_options) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      ParseAndReturnUnverifiedModule(
+                          absl::StrReplaceAll(hlo_module, replacements),
+                          HloModuleConfig() /* unused */));
+  return RunHloBenchmark(state, std::move(module), args, benchmark_options);
+}
+
+absl::Status RunHloBenchmark(benchmark::State& state,
+                             std::unique_ptr<HloComputation> hlo_computation,
+                             absl::Span<const Literal* const> args,
+                             const HloBenchmarkOptions& benchmark_options) {
+  std::unique_ptr<HloModule> module = std::make_unique<VerifiedHloModule>(
+      "test", HloModuleConfig() /* unused */,
+      /*verifier_layout_sensitive=*/false,
+      /*allow_mixed_precision_in_hlo_verifier=*/true,
+      ShapeUtil::ByteSizeOfElements);
+  module->AddEntryComputation(std::move(hlo_computation));
+
+  return RunHloBenchmark(state, std::move(module), args, benchmark_options);
+}
+
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
+absl::Status RunHloBenchmark(benchmark::State& state,
+                             std::unique_ptr<HloModule> module,
+                             absl::Span<const Literal* const> args,
+                             const HloBenchmarkOptions& benchmark_options) {
   xla::CpuClientOptions client_options;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                       xla::GetXlaPjrtCpuClient(client_options));
   PjRtDevice* device = client->devices().front();
   TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
                       device->default_memory_space());
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      ParseAndReturnUnverifiedModule(
-                          absl::StrReplaceAll(hlo_module, replacements),
-                          HloModuleConfig() /* unused */));
 
   XlaComputation computation(module->ToProto());
 
