@@ -273,6 +273,10 @@ INSTANTIATE_TEST_SUITE_P(HloEvaluatorTest_Instantiation, HloEvaluatorBf16Test,
 // Verifies that HloEvaluator evaluates a HLO instruction that performs clamp
 // with 3 operands.
 TEST_P(HloEvaluatorBf16Test, DoesClamp) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto low = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
   auto value = LiteralUtil::CreateR2<float>({{0.f, 5.f}, {0.f, 4.f}});
   auto high = LiteralUtil::CreateR2<float>({{2.f, 4.f}, {4.f, 4.f}});
@@ -295,6 +299,10 @@ TEST_P(HloEvaluatorBf16Test, DoesClamp) {
 
 // Verifies that clamping of int64_t does not cause loss of precision
 TEST_P(HloEvaluatorBf16Test, DoesClampInt64) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto ones = [](int bits) { return (int64_t{1} << bits) - 1; };
 
   auto low =
@@ -321,6 +329,10 @@ TEST_P(HloEvaluatorBf16Test, DoesClampInt64) {
 }
 
 TEST_P(HloEvaluatorBf16Test, DISABLED_DoesClampSpecialBroadcast) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto low = LiteralUtil::CreateR0<float>(0.f);
   auto value = LiteralUtil::CreateR2<float>({{-1.f, 0.f}, {1.f, 2.f}});
   auto high = LiteralUtil::CreateR0<float>(1.f);
@@ -344,6 +356,10 @@ TEST_P(HloEvaluatorBf16Test, DISABLED_DoesClampSpecialBroadcast) {
 // Verifies that HloEvaluator evaluates a HLO instruction that performs select
 // with 3 operands.
 TEST_P(HloEvaluatorBf16Test, DoesSelect) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto pred = LiteralUtil::CreateR2<bool>({{true, false}, {false, true}});
   auto on_true = LiteralUtil::CreateR2<float>({{2.f, 4.f}, {4.f, 4.f}});
   auto on_false = LiteralUtil::CreateR2<float>({{0.f, 5.f}, {0.f, 4.f}});
@@ -369,6 +385,10 @@ TEST_P(HloEvaluatorBf16Test, DoesSelect) {
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise addition with 2 operands.
 TEST_F(HloEvaluatorTest, DoesAdd) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto lhs = LiteralUtil::CreateR2<int64_t>({{1, 0}, {-100, 4}});
   auto rhs = LiteralUtil::CreateR2<int64_t>({{2, 4}, {4, 4}});
   auto expected = LiteralUtil::CreateR2<int64_t>({{3, 4}, {-96, 8}});
@@ -378,6 +398,10 @@ TEST_F(HloEvaluatorTest, DoesAdd) {
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise and with 2 operands.
 TEST_P(HloEvaluatorBf16Test, DoesAnd) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto lhs = LiteralUtil::CreateR2<int64_t>({{1, 0}, {-100, 4}});
   auto rhs = LiteralUtil::CreateR2<int64_t>({{2, 4}, {4, 4}});
   auto expected = LiteralUtil::CreateR2<int64_t>({{0, 0}, {4, 4}});
@@ -387,6 +411,10 @@ TEST_P(HloEvaluatorBf16Test, DoesAnd) {
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise or with 2 operands.
 TEST_F(HloEvaluatorTest, DoesOr) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto lhs = LiteralUtil::CreateR2<int64_t>({{1, 0}, {-100, 4}});
   auto rhs = LiteralUtil::CreateR2<int64_t>({{2, 4}, {4, 4}});
   auto expected = LiteralUtil::CreateR2<int64_t>({{3, 4}, {-100, 4}});
@@ -396,6 +424,10 @@ TEST_F(HloEvaluatorTest, DoesOr) {
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise or with 2 operands.
 TEST_F(HloEvaluatorTest, DoesXor) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto lhs = LiteralUtil::CreateR2<int64_t>({{1, 0}, {-100, 4}});
   auto rhs = LiteralUtil::CreateR2<int64_t>({{2, 4}, {4, 4}});
   auto expected = LiteralUtil::CreateR2<int64_t>({{3, 4}, {-104, 0}});
@@ -405,6 +437,10 @@ TEST_F(HloEvaluatorTest, DoesXor) {
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise multiply with 2 operands.
 TEST_F(HloEvaluatorTest, DoesMultiply) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto lhs = LiteralUtil::CreateR2<int32_t>({{-1, 0}, {-100, 4}});
   auto rhs = LiteralUtil::CreateR2<int32_t>(
       {{std::numeric_limits<int32_t>::min(), 4}, {4, 4}});
@@ -416,6 +452,10 @@ TEST_F(HloEvaluatorTest, DoesMultiply) {
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise divide with 2 operands.
 TEST_F(HloEvaluatorTest, DoesDivideInt64) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto lhs = LiteralUtil::CreateR2<int64_t>({{1, 0}, {-100, 4}});
   auto rhs = LiteralUtil::CreateR2<int64_t>({{2, 4}, {4, 4}});
   auto expected = LiteralUtil::CreateR2<int64_t>({{0, 0}, {-25, 1}});
@@ -424,6 +464,10 @@ TEST_F(HloEvaluatorTest, DoesDivideInt64) {
 }
 
 TEST_F(HloEvaluatorTest, DoesClampS64) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto low = LiteralUtil::CreateR1<int64_t>(
       {-8616761059752331528LL, 6780561065411491190LL, -8616761059752331528LL});
   auto value = LiteralUtil::CreateR1<int64_t>(
@@ -437,6 +481,10 @@ TEST_F(HloEvaluatorTest, DoesClampS64) {
 }
 
 TEST_P(HloEvaluatorBf16Test, DoesDivideDouble) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto lhs = LiteralUtil::CreateR2<double>({{1.0, 0.0}, {-100.0, 4.0}});
   auto rhs = LiteralUtil::CreateR2<double>({{2.2, 4.0}, {4.0, 4.0}});
   auto expected =
@@ -448,28 +496,48 @@ TEST_P(HloEvaluatorBf16Test, DoesDivideDouble) {
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise abs op with 1 operand.
 TEST_F(HloEvaluatorTest, DoesAbsR2) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto operand = LiteralUtil::CreateR2<int64_t>({{1, -20}, {-100, 4}});
   auto expected = LiteralUtil::CreateR2<int64_t>({{1, 20}, {100, 4}});
   TestUnaryOp(HloOpcode::kAbs, std::move(expected), std::move(operand));
 }
 TEST_P(HloEvaluatorBf16Test, DoesAbsR0) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto operand = LiteralUtil::CreateR0<float>(-1.0f);
   auto expected = LiteralUtil::CreateR0<float>(1.0f);
   TestUnaryOp(HloOpcode::kAbs, std::move(expected), std::move(operand));
 }
 TEST_P(HloEvaluatorBf16Test, DoesAbsR1WithZeroSize) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto operand = LiteralUtil::CreateR1<float>({});
   auto expected = LiteralUtil::CreateR1<float>({});
   TestUnaryOp(HloOpcode::kAbs, std::move(expected), std::move(operand));
 }
 
 TEST_F(HloEvaluatorTest, DoesAbsC128) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto x = LiteralUtil::CreateR0<complex128>({1, 2});
   auto expected_real = LiteralUtil::CreateR0<double>(2.23607);
   TestUnaryOp(HloOpcode::kAbs, std::move(expected_real), std::move(x), 3e-06);
 }
 
 TEST_F(HloEvaluatorTest, DoesNegateR2) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto operand = LiteralUtil::CreateR2<int32_t>(
       {{0, std::numeric_limits<int32_t>::min()}, {-1, 4}});
   auto expected = LiteralUtil::CreateR2<int32_t>(
@@ -477,24 +545,40 @@ TEST_F(HloEvaluatorTest, DoesNegateR2) {
   TestUnaryOp(HloOpcode::kNegate, std::move(expected), std::move(operand));
 }
 TEST_P(HloEvaluatorBf16Test, DoesCosR2) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto operand = LiteralUtil::CreateR2<float>({{0, M_PI}, {-M_PI, 2 * M_PI}});
   auto expected = LiteralUtil::CreateR2<float>({{1, -1}, {-1, 1}});
   TestUnaryOp(HloOpcode::kCos, std::move(expected), std::move(operand),
               use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
 }
 TEST_P(HloEvaluatorBf16Test, DoesSinR2) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto operand = LiteralUtil::CreateR2<float>({{0, M_PI}, {-M_PI, 2 * M_PI}});
   auto expected = LiteralUtil::CreateR2<float>({{0, 0}, {0, 0}});
   TestUnaryOp(HloOpcode::kSin, std::move(expected), std::move(operand),
               use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
 }
 TEST_P(HloEvaluatorBf16Test, DoesTanR2) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto operand = LiteralUtil::CreateR2<float>({{0, M_PI}, {-M_PI, 2 * M_PI}});
   auto expected = LiteralUtil::CreateR2<float>({{0, 0}, {0, 0}});
   TestUnaryOp(HloOpcode::kTan, std::move(expected), std::move(operand),
               use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
 }
 TEST_F(HloEvaluatorTest, DoesNotR2) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto operand =
       LiteralUtil::CreateR2<int32_t>({{0, std::numeric_limits<int>::min()},
                                       {-1, std::numeric_limits<int>::max()}});
@@ -505,24 +589,40 @@ TEST_F(HloEvaluatorTest, DoesNotR2) {
 }
 
 TEST_F(HloEvaluatorTest, DoesRealC128) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto x = LiteralUtil::CreateR1<complex128>({{1, 0}, {-100, 4}});
   auto expected_real = LiteralUtil::CreateR1<double>({1, -100});
   TestUnaryOp(HloOpcode::kReal, std::move(expected_real), std::move(x));
 }
 
 TEST_F(HloEvaluatorTest, DoesImagC128) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto x = LiteralUtil::CreateR1<complex128>({{1, 0}, {-100, 4}});
   auto expected_imag = LiteralUtil::CreateR1<double>({0, 4});
   TestUnaryOp(HloOpcode::kImag, std::move(expected_imag), std::move(x));
 }
 
 TEST_P(HloEvaluatorBf16Test, DoesImagF32AndBf16) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto x = LiteralUtil::CreateR1<float>({1, -100});
   auto expected_imag = LiteralUtil::CreateR1<float>({0, 0});
   TestUnaryOp(HloOpcode::kImag, std::move(expected_imag), std::move(x));
 }
 
 TEST_F(HloEvaluatorTest, DoesImagF64) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto x = LiteralUtil::CreateR1<double>({1, -100});
   auto expected_imag = LiteralUtil::CreateR1<double>({0, 0});
   TestUnaryOp(HloOpcode::kImag, std::move(expected_imag), std::move(x));
@@ -531,6 +631,10 @@ TEST_F(HloEvaluatorTest, DoesImagF64) {
 // Verifies that HloEvaluator evaluates a HLO Computation with non-parameter nor
 // constant operands.
 TEST_F(HloEvaluatorTest, DoesTraverseInstructions) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto lhs = LiteralUtil::CreateR2<int64_t>({{1, 0}, {-100, 4}});
   auto rhs = LiteralUtil::CreateR2<int64_t>({{2, 4}, {4, 4}});
   auto rhs2 = LiteralUtil::CreateR2<int64_t>({{1, -20}, {-100, 4}});
@@ -561,6 +665,10 @@ TEST_F(HloEvaluatorTest, DoesTraverseInstructions) {
 
 // Verifies Reshape operation is correctly evaluated.
 TEST_F(HloEvaluatorTest, DoesReshape) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
   const int64_t dimensions[] = {11, 8, 7, 5, 9};
   TF_ASSERT_OK_AND_ASSIGN(auto literal,
@@ -588,6 +696,10 @@ TEST_F(HloEvaluatorTest, DoesReshape) {
 
 // Verifies Broadcast operation is correctly evaluated.
 TEST_F(HloEvaluatorTest, DoesBroadcast) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
   auto input_literal = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}, {5, 6}});
   auto output_literal = LiteralUtil::CreateR3<int32_t>(
@@ -604,6 +716,10 @@ TEST_F(HloEvaluatorTest, DoesBroadcast) {
 }
 
 TEST_F(HloEvaluatorTest, DoesBroadcastScalar) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
   auto input_literal = LiteralUtil::CreateR0<int32_t>(111);
   auto output_literal = LiteralUtil::CreateR2<int32_t>(
@@ -623,6 +739,10 @@ TEST_F(HloEvaluatorTest, DoesBroadcastScalar) {
 }
 
 TEST_F(HloEvaluatorTest, DoesConcatenateSimple) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   HloInstruction* operand1 = b.AddInstruction(HloInstruction::CreateConstant(
@@ -645,6 +765,10 @@ TEST_F(HloEvaluatorTest, DoesConcatenateSimple) {
 }
 
 TEST_F(HloEvaluatorTest, ConcatenateHandlesShapeWithZeroElement) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   HloInstruction* operand1 = b.AddInstruction(HloInstruction::CreateConstant(
@@ -666,6 +790,10 @@ TEST_F(HloEvaluatorTest, ConcatenateHandlesShapeWithZeroElement) {
 }
 
 TEST_P(HloEvaluatorBf16Test, ConvertWithSameLayout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   auto input_literal = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}, {5, 6}});
@@ -685,6 +813,10 @@ TEST_P(HloEvaluatorBf16Test, ConvertWithSameLayout) {
 }
 
 TEST_P(HloEvaluatorBf16Test, ConvertWithDifferentLayout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   auto input_literal = LiteralUtil::CreateR2WithLayout<int32_t>(
@@ -718,6 +850,10 @@ PaddingConfig CreatePaddingConfig(
 }
 
 TEST_F(HloEvaluatorTest, Pad2DIntegerArrayWithZeroDimension) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto operand = LiteralUtil::CreateR2<int32_t>({{}, {}});
   HloComputation::Builder b(TestName());
   auto operand_instruction =
@@ -743,6 +879,10 @@ TEST_F(HloEvaluatorTest, Pad2DIntegerArrayWithZeroDimension) {
 }
 
 TEST_P(HloEvaluatorBf16Test, Pad4DFloatArrayWithInteriorPadding) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   Array4D<float> input_array(3, 2, 1, 1, {1, 2, 3, 4, 5, 6});
@@ -778,6 +918,10 @@ TEST_P(HloEvaluatorBf16Test, Pad4DFloatArrayWithInteriorPadding) {
 }
 
 TEST_P(HloEvaluatorBf16Test, NegativePadding2D) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // input_array:
@@ -820,6 +964,10 @@ TEST_P(HloEvaluatorBf16Test, NegativePadding2D) {
 }
 
 TEST_P(HloEvaluatorBf16Test, NegativeAndInteriorPadding2D) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // f32[4,3] {
@@ -859,6 +1007,10 @@ TEST_P(HloEvaluatorBf16Test, NegativeAndInteriorPadding2D) {
 }
 
 TEST_F(HloEvaluatorTest, Pad2DFloatArrayDifferentTypes) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
   b.AddInstruction(HloInstruction::CreatePad(
       ShapeUtil::MakeShape(BF16, {5, 2}),
@@ -883,6 +1035,10 @@ TEST_F(HloEvaluatorTest, Pad2DFloatArrayDifferentTypes) {
 }
 
 TEST_P(HloEvaluatorBf16Test, DotRank2AndRank1) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // lhs:
@@ -929,6 +1085,10 @@ TEST_P(HloEvaluatorBf16Test, DotRank2AndRank1) {
 }
 
 TEST_P(HloEvaluatorBf16Test, DotRank1AndRank2) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // lhs:
@@ -967,6 +1127,10 @@ TEST_P(HloEvaluatorBf16Test, DotRank1AndRank2) {
 }
 
 TEST_P(HloEvaluatorBf16Test, DotRank2AndRank2) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // lhs:
@@ -1017,6 +1181,10 @@ TEST_P(HloEvaluatorBf16Test, DotRank2AndRank2) {
 }
 
 TEST_P(HloEvaluatorBf16Test, DotRank4AndRank4) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   auto lhs_array = std::make_unique<Array4D<float>>(2, 2, 3, 1);
@@ -1062,6 +1230,10 @@ TEST_P(HloEvaluatorBf16Test, DotRank4AndRank4) {
 }
 
 TEST_P(HloEvaluatorBf16Test, SimpleConv1D) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   Array3D<float> lhs_array = {{{1, 2, 3}}};
@@ -1111,6 +1283,10 @@ TEST_P(HloEvaluatorBf16Test, SimpleConv1D) {
 }
 
 TEST_P(HloEvaluatorBf16Test, Simple4x4Conv2DWith2x2Kernel) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   Array4D<float> lhs_array(1, 1, 4, 4);
@@ -1174,6 +1350,10 @@ TEST_P(HloEvaluatorBf16Test, Simple4x4Conv2DWith2x2Kernel) {
 }
 
 TEST_P(HloEvaluatorBf16Test, Conv2DGeneralDimensionsReversed) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // clang-format off
@@ -1255,6 +1435,10 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGeneralDimensionsReversed) {
 }
 
 TEST_P(HloEvaluatorBf16Test, Conv2DGeneralDimensions) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // clang-format off
@@ -1333,6 +1517,10 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGeneralDimensions) {
 }
 
 TEST_P(HloEvaluatorBf16Test, DilatedBaseConv2DWithHighPadding) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   Array4D<float> lhs_array(1, 1, 4, 4);
@@ -1397,6 +1585,10 @@ TEST_P(HloEvaluatorBf16Test, DilatedBaseConv2DWithHighPadding) {
 }
 
 TEST_P(HloEvaluatorBf16Test, DilatedBaseConv2DWithLowAndHighPadding) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   Array4D<float> lhs_array(1, 1, 4, 4);
@@ -1461,8 +1653,12 @@ TEST_P(HloEvaluatorBf16Test, DilatedBaseConv2DWithLowAndHighPadding) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
-TEST_P(HloEvaluatorBf16Test,
-       DilatedWindowAndBaseConv2DWithDifferentLowAndHighPaddingAndStrides) {
+TEST_P(
+    HloEvaluatorBf16Test,
+    if (IsCuda() &&
+        !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+      GTEST_SKIP() << "Test times out on Turing.";
+    } DilatedWindowAndBaseConv2DWithDifferentLowAndHighPaddingAndStrides) {
   HloComputation::Builder b(TestName());
 
   Array4D<float> lhs_array(1, 1, 4, 4);
@@ -1535,6 +1731,10 @@ TEST_P(HloEvaluatorBf16Test,
 }
 
 TEST_P(HloEvaluatorBf16Test, Conv2DGroupedConvolution) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
   std::vector<int64_t> input_dims = {1, 2, 2, 4};
   std::vector<int64_t> filter_dims = {2, 2, 2, 8};
@@ -1678,6 +1878,10 @@ void HloEvaluatorTest::InitializeFftData() {
 // Simple FFT tests:
 
 TEST_F(HloEvaluatorTest, 1D_FFT_4_on_c64x4) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1697,6 +1901,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 1D_IFFT_4_on_c64x4) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1716,6 +1924,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 1D_RFFT_4_on_f32x4) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1734,6 +1946,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 1D_IRFFT_4_on_c64x3) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1754,6 +1970,10 @@ ENTRY main {
 // 1D FFT tests:
 
 TEST_F(HloEvaluatorTest, 1D_FFT_8_on_c64x2x4x8) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1769,6 +1989,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 1D_IFFT_8_on_c64x2x4x8) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1784,6 +2008,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 1D_RFFT_8_on_f32x8) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1806,6 +2034,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 1D_IRFFT_8_on_c64x5) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1828,6 +2060,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 1D_RFFT_9_on_f32x9) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1850,6 +2086,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 1D_IRFFT_9_on_c64x5) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1874,6 +2114,10 @@ ENTRY main {
 // 2D FFT tests:
 
 TEST_F(HloEvaluatorTest, 2D_FFT_4x8_on_c64x2x4x8) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1889,6 +2133,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 2D_IFFT_4x8_on_c64x2x4x8) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1904,6 +2152,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 2D_RFFT_3x8_on_f32x3x8) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1938,6 +2190,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 2D_IRFFT_3x8_on_c64x3x5) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -1972,6 +2228,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 2D_RFFT_3x9_on_f32x3x9) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2006,6 +2266,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 2D_IRFFT_3x9_on_c64x3x5) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2042,6 +2306,10 @@ ENTRY main {
 // 3D FFT tests:
 
 TEST_F(HloEvaluatorTest, 3D_FFT_2x4x8_on_c64x2x4x8) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2057,6 +2325,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 3D_IFFT_2x4x8_on_c64x2x4x8) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2072,6 +2344,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 3D_RFFT_3x3x4_on_f32x3x3x4) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2103,6 +2379,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 3D_IRFFT_3x3x4_on_c64x3x3x3) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2134,6 +2414,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 3D_RFFT_3x3x5_on_f32x3x3x5) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2168,6 +2452,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 3D_IRFFT_3x3x5_on_c64x3x3x3) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2204,6 +2492,10 @@ ENTRY main {
 // FFT tests with non-default data layout:
 
 TEST_F(HloEvaluatorTest, 1D_FFT_8_on_c64x2x4x8_with_layout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2220,6 +2512,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 2D_FFT_4x8_on_c64x2x4x8_with_layout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2236,6 +2532,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, 3D_FFT_2x4x8_on_c64x2x4x8_with_layout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2256,6 +2556,10 @@ ENTRY main {
 
 // Zero-length transform.
 TEST_F(HloEvaluatorTest, 1D_FFT_0_on_c64x1x1x1x1) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2274,6 +2578,10 @@ ENTRY main {
 
 // Zero-length axis.
 TEST_F(HloEvaluatorTest, 1D_FFT_1_on_c64x1x1x1x0) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2293,6 +2601,10 @@ ENTRY main {
 
 // Some/all dimensions have length 1.
 TEST_F(HloEvaluatorTest, 1D_FFT_1_on_c64x1x1x1x1) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2310,6 +2622,10 @@ ENTRY main {
 
 // Zero-length transform.
 TEST_F(HloEvaluatorTest, 3D_FFT_1x0x1_on_c64x1x1x1x1) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2328,6 +2644,10 @@ ENTRY main {
 
 // Zero-length axis.
 TEST_F(HloEvaluatorTest, 3D_FFT_1x1x1_on_c64x0x1x0x1) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2347,6 +2667,10 @@ ENTRY main {
 
 // Some/all dimensions have length 1.
 TEST_F(HloEvaluatorTest, 3D_FFT_1x1x1_on_c64x1x1x1x1) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2364,6 +2688,10 @@ ENTRY main {
 
 // Some/all dimensions have length 1.
 TEST_F(HloEvaluatorTest, 3D_FFT_3x1x1_on_c64x1x3x1x1) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2386,6 +2714,10 @@ ENTRY main {
 
 // Some/all dimensions have length 1.
 TEST_F(HloEvaluatorTest, 3D_IFFT_3x1x1_on_c64x1x3x1x1) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2407,6 +2739,10 @@ ENTRY main {
 
 // Odd transform length.
 TEST_F(HloEvaluatorTest, 1D_FFT_5_on_c64x5) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2430,6 +2766,10 @@ ENTRY main {
 
 // Odd transform length.
 TEST_F(HloEvaluatorTest, 1D_IFFT_5_on_c64x5) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2453,6 +2793,10 @@ ENTRY main {
 
 // All input values are zero.
 TEST_F(HloEvaluatorTest, 1D_FFT_4_on_zero_c64x4) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2471,6 +2815,10 @@ ENTRY main {
 
 // All input values are zero.
 TEST_F(HloEvaluatorTest, 3D_FFT_3x3x4_on_zero_c64x3x3x4) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2497,6 +2845,10 @@ ENTRY main {
 
 // All input values are zero.
 TEST_F(HloEvaluatorTest, 3D_IFFT_3x3x4_on_zero_c64x3x3x4) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2523,6 +2875,10 @@ ENTRY main {
 
 // All input values are zero.
 TEST_F(HloEvaluatorTest, 3D_RFFT_3x3x4_on_zero_f32x3x3x4) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2553,6 +2909,10 @@ ENTRY main {
 
 // All input values are zero.
 TEST_F(HloEvaluatorTest, 3D_IRFFT_3x3x4_on_zero_c64x3x3x3) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2583,6 +2943,10 @@ ENTRY main {
 
 // Input values, for which IRFFT discards non-zero imaginary parts.
 TEST_F(HloEvaluatorTest, 2D_IRFFT_3x4_on_c64x3x3) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule Fft
 
@@ -2610,6 +2974,10 @@ class HloEvaluatorPreciseReduceTest : public HloHardwareIndependentTestBase {};
 // Tests that Reduce doesn't lose precision when adding many numbers (because
 // it accumulates its result in a double).
 TEST_F(HloEvaluatorPreciseReduceTest, AddReductionPrecisionTest) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder b(TestName());
 
@@ -2641,6 +3009,10 @@ TEST_F(HloEvaluatorPreciseReduceTest, AddReductionPrecisionTest) {
 }
 
 TEST_P(HloEvaluatorBf16Test, ReduceAdd) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // arg:
@@ -2683,6 +3055,10 @@ TEST_P(HloEvaluatorBf16Test, ReduceAdd) {
 }
 
 TEST_P(HloEvaluatorBf16Test, ReduceWindowMax) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // arg:
@@ -2725,6 +3101,10 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowMax) {
 }
 
 TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaWindowDilation) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto expected = LiteralUtil::CreateR2<float>({{10, 11}, {14, 15}});
   ReduceWindowMaxIotaTest(
       /*window_size=*/2,
@@ -2736,6 +3116,10 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaWindowDilation) {
 }
 
 TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaStrideWindowDilation) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto expected = LiteralUtil::CreateR2<float>({{10}});
   ReduceWindowMaxIotaTest(
       /*window_size=*/2,
@@ -2747,6 +3131,10 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaStrideWindowDilation) {
 }
 
 TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaBaseDilation) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto expected = LiteralUtil::CreateR2<float>({{0, 1, 1, 2, 2, 3},
                                                 {4, 5, 5, 6, 6, 7},
                                                 {4, 5, 5, 6, 6, 7},
@@ -2763,6 +3151,10 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaBaseDilation) {
 }
 
 TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaStrideBaseDilation) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto expected =
       LiteralUtil::CreateR2<float>({{0, 1, 2}, {4, 5, 6}, {8, 9, 10}});
   ReduceWindowMaxIotaTest(
@@ -2775,6 +3167,10 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaStrideBaseDilation) {
 }
 
 TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaStrideBothDilation) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   auto expected =
       LiteralUtil::CreateR2<float>({{5, 6, 7}, {9, 10, 11}, {13, 14, 15}});
   ReduceWindowMaxIotaTest(
@@ -2787,6 +3183,10 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaStrideBothDilation) {
 }
 
 TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaPaddingStrideBaseDilation) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   // The base is dilated first, and then padding is applied, hence this result.
   auto expected =
       LiteralUtil::CreateR2<float>({{0, 2, 3}, {8, 10, 11}, {12, 14, 15}});
@@ -2800,6 +3200,10 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaPaddingStrideBaseDilation) {
 }
 
 TEST_P(HloEvaluatorBf16Test, ReduceWindowAdd) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // arg:
@@ -2857,6 +3261,10 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowAdd) {
 }
 
 TEST_P(HloEvaluatorBf16Test, ReduceWindowAdd6D) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // arg: f32[4,4,4,4,4,4] full of ones. Using small dims to limit run-time.
@@ -2920,6 +3328,10 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowAdd6D) {
 }
 
 TEST_P(HloEvaluatorBf16Test, Min3In5Stride2Tuple) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder builder("main");
   auto input1 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({10000, 1000, 100, 10, 1})));
@@ -2971,6 +3383,10 @@ TEST_P(HloEvaluatorBf16Test, Min3In5Stride2Tuple) {
 }
 
 TEST_P(HloEvaluatorBf16Test, Min3In5Stride2TupleDiffInput) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder builder("main");
   auto input1 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({10000, 1000, 100, 10, 1})));
@@ -3023,6 +3439,10 @@ TEST_P(HloEvaluatorBf16Test, Min3In5Stride2TupleDiffInput) {
 }
 
 TEST_P(HloEvaluatorBf16Test, StridedSlice) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // arg:
@@ -3057,6 +3477,10 @@ TEST_P(HloEvaluatorBf16Test, StridedSlice) {
 }
 
 TEST_P(HloEvaluatorBf16Test, DynamicSlice) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // arg:
@@ -3095,6 +3519,10 @@ TEST_P(HloEvaluatorBf16Test, DynamicSlice) {
 // Verifies that the HloEvaluator's implementation goes along with existing
 // backends' behavior, although this is not required by the spec.
 TEST_P(HloEvaluatorBf16Test, DynamicSliceModSlice) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // arg:
@@ -3131,6 +3559,10 @@ TEST_P(HloEvaluatorBf16Test, DynamicSliceModSlice) {
 }
 
 TEST_P(HloEvaluatorBf16Test, DynamicSliceUpdate) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // arg:
@@ -3170,6 +3602,10 @@ TEST_P(HloEvaluatorBf16Test, DynamicSliceUpdate) {
 }
 
 TEST_P(HloEvaluatorBf16Test, SetAndGetTuples) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // arg:
@@ -3206,6 +3642,10 @@ TEST_P(HloEvaluatorBf16Test, SetAndGetTuples) {
 }
 
 TEST_P(HloEvaluatorBf16Test, SetAndGetNestedTuples) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // arg:
@@ -3245,6 +3685,10 @@ TEST_P(HloEvaluatorBf16Test, SetAndGetNestedTuples) {
 }
 
 TEST_P(HloEvaluatorBf16Test, Reverse) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   // Input shape is float[4x3x2x1].
@@ -3298,6 +3742,10 @@ TEST_P(HloEvaluatorBf16Test, Reverse) {
 }
 
 TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutions) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4});
 
@@ -3318,9 +3766,22 @@ TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutions) {
                                               {square, &square_literal}}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({11, 22, 33, 44}), result));
+
+  // Evaluate again, with a different substitution. This verifies we don't
+  // accidentally cache anything.
+  Literal param0_literal2 = LiteralUtil::CreateR1<float>({5, 6, 7, 8});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result2,
+      evaluator.Evaluate(add, {}, true, {{param0, &param0_literal2}}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({30, 42, 56, 72}), result2));
 }
 
 TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsRecursive) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo = R"(
   HloModule test
 
@@ -3347,6 +3808,10 @@ TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsRecursive) {
 
 TEST_F(HloEvaluatorTest,
        EvaluateWithSubstitutionsRecursiveWithDeepSubstitutions) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo = R"(
   HloModule test
   ENTRY main {
@@ -3374,6 +3839,10 @@ TEST_F(HloEvaluatorTest,
 // Check that EvaluateWithSubstitutions works if one of the operands to the op
 // we're evaluating is a constant.
 TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutionsWithConstantOperand) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4});
 
@@ -3399,6 +3868,10 @@ TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutionsWithConstantOperand) {
 // Check that EvaluateWithSubstitutions works if the thing we're evaluating is
 // being substituted.
 TEST_P(HloEvaluatorBf16Test, EvaluateSubstitutedInstruction) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4});
 
@@ -3415,6 +3888,10 @@ TEST_P(HloEvaluatorBf16Test, EvaluateSubstitutedInstruction) {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsLiteralBase) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
   Shape shape = ShapeUtil::MakeShape(S64, {3});
 
@@ -3437,6 +3914,10 @@ TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsLiteralBase) {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateGather_TensorFlowGatherV1) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowGatherV1
 
@@ -3461,6 +3942,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateGather_TensorFlowGatherV2) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowGatherV2
 
@@ -3485,6 +3970,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateGather_TensorFlowGatherMultipleBatchDims) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowGatherMultipleBatchDims
 
@@ -3511,6 +4000,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateGather_TensorFlowGatherNd) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowGatherNd
 
@@ -3538,6 +4031,10 @@ ENTRY main {
 
 TEST_F(HloEvaluatorTest,
        EvaluateGather_TensorFlowGatherNdNonDefaultIndexVectorDim) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowGatherNd
 
@@ -3564,6 +4061,14 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateGather_DynamicSlice) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule DynamicSlice
 
@@ -3588,6 +4093,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateGather_BatchDynamicSlice) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule BatchDynamicSlice
 
@@ -3612,6 +4121,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateGather_ZeroDimBounds) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowGatherV1
 
@@ -3635,6 +4148,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateGather_NoOutputWindowDims) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const std::string hlo_text = R"(
 HloModule GatherXd
 
@@ -3660,6 +4177,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateGather_ExplicitBatchDims) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const std::string hlo_text = R"(
 HloModule gather
 
@@ -3692,6 +4213,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateGather_GetDiagonal) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const std::string hlo_text = R"(
 HloModule module
 
@@ -3717,6 +4242,10 @@ ENTRY %module {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterV1_Update) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -3751,6 +4280,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterV2_Update) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowScatterV2
 
@@ -3785,6 +4318,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_Add) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowScatter
 
@@ -3820,6 +4357,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_Mul) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowScatter
 
@@ -3856,6 +4397,10 @@ ENTRY main {
 }
 
 TEST_P(HloEvaluatorBf16Test, EvaluateScatter_TensorFlowScatter_F32) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowScatter
 
@@ -3892,6 +4437,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_RepeatedIndices) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowScatter
 
@@ -3927,6 +4476,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_MultipleBatchDims) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowScatterMultipleBatchDims
 
@@ -3963,6 +4516,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterNd) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowScatterNd
 
@@ -3999,8 +4556,12 @@ ENTRY main {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
-TEST_F(HloEvaluatorTest,
-       EvaluateScatter_TensorFlowScatterNd_NonDefaultIndexVectorDim) {
+TEST_F(
+    HloEvaluatorTest,
+    if (IsCuda() &&
+        !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+      GTEST_SKIP() << "Test times out on Turing.";
+    } EvaluateScatter_TensorFlowScatterNd_NonDefaultIndexVectorDim) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatterNdNonDefaultIndexVectorDim
 
@@ -4038,6 +4599,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_DynamicUpdateSlice) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule DynamicUpdateSlice
 
@@ -4071,6 +4636,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_BatchDynamicUpdateSlice) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule BatchDynamicUpdateSlice
 
@@ -4104,6 +4673,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_ZeroDimBounds) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowScatter_ZeroDimBounds
 
@@ -4134,6 +4707,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_NoUpdateWindowDims) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const std::string hlo_text = R"(
 HloModule Scatter_NoUpdateWindowDims
 
@@ -4168,6 +4745,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_NegativeIndices) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowScatter_NegativeIndices
 
@@ -4204,6 +4785,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_OobIndices) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const std::string hlo_text = R"(
 HloModule BatchDynamicUpdateSlice
 
@@ -4240,6 +4825,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_OobUpdateWindow) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule TensorFlowScatterNd_OobUpdateWindow
 
@@ -4277,6 +4866,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_Multioutput) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
 HloModule MultioutputScatter
 
@@ -4328,6 +4921,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateScatter_ExplicitBatchDims) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const char* hlo_text = R"(
   HloModule ScatterExplicitBatchDims
   add_s32 {
@@ -4391,6 +4988,10 @@ TEST_F(HloEvaluatorTest, EvaluateScatter_ExplicitBatchDims) {
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise comparison with 2 bfloat16 operands.
 TEST_F(HloEvaluatorTest, DoesCompareBF16) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   // lhs >= rhs
   auto lhs = LiteralUtil::CreateR2<bfloat16>(
       {{bfloat16(0.25), bfloat16(0.35), bfloat16(0.125)},
@@ -4413,6 +5014,10 @@ TEST_F(HloEvaluatorTest, DoesCompareBF16) {
 }
 
 TEST_P(HloEvaluatorBf16Test, Bf16Reduction) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const std::string hlo_text = R"(
 HloModule Bf16Reduction
 
@@ -4438,6 +5043,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, MixedPrecisionReduction) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const std::string hlo_text = R"(
 HloModule MixedPrecisionReduction
 
@@ -4461,7 +5070,40 @@ ENTRY main {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, Reduction2D) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
+  const std::string hlo_text = R"(
+HloModule Reduction2D
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  arg0 = f32[2,4] parameter(0)
+  init = f32[] constant(0)
+  ROOT %reduce = f32[2] reduce(arg0, init), dimensions={1}, to_apply=add_f32
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal arg = LiteralUtil::CreateR2<float>(
+      {{1.0f, 3.0f, -2.0f, 42.0f}, {4.0f, 5.0f, 6.0f, 7.0f}});
+  Literal expected = LiteralUtil::CreateR1<float>({44.0f, 22.0f});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&arg}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_F(HloEvaluatorTest, DontFailOnCallUnimplementedOps) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   // Outfeed triggers unimplemented error within HandleCall, and we verify that
   // the Evaluator does fail in such case.
   const std::string hlo_text = R"(
@@ -4483,6 +5125,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, DontFailOnFusionWithUnimplementedOps) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   // Outfeed triggers unimplemented error within HandleFusion, and we verify
   // that the Evaluator does fail in such case.
   const std::string hlo_text = R"(
@@ -4504,6 +5150,10 @@ ENTRY main {
 }
 
 TEST_P(HloEvaluatorBf16Test, SliceWithDifferentLayout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   // Regression test for b/114735354.
   const std::string hlo_text = R"(
 HloModule SliceWithDifferentLayout
@@ -4523,6 +5173,10 @@ ENTRY main {
 }
 
 TEST_P(HloEvaluatorBf16Test, Bitcast) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   // Regression test for b/114735354.
   const absl::string_view hlo_text_base = R"(
 HloModule Bitcast
@@ -4550,6 +5204,10 @@ ENTRY main {
 }
 
 TEST_P(HloEvaluatorBf16Test, BitcastWithoutLayout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text_base = R"(
 HloModule Bitcast
 
@@ -4583,6 +5241,10 @@ ENTRY main {
 }
 
 TEST_P(HloEvaluatorBf16Test, EffectiveScalarBitcastWithoutLayout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text_base = R"(
 HloModule Bitcast
 
@@ -4616,6 +5278,10 @@ ENTRY main {
 
 // Check that s32 under/overflow doesn't trigger a ubsan failure.
 TEST_F(HloEvaluatorTest, Int32Overflow) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
 HloModule Test
 
@@ -4651,6 +5317,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, GetDimensionSize) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
 HloModule Test
 
@@ -4682,6 +5352,10 @@ ENTRY main {
 
 // Check that we get a useful error if we pass inputs of the wrong shape.
 TEST_F(HloEvaluatorTest, EvaluateWithWrongInputShapes) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
 HloModule Test
 
@@ -4707,6 +5381,10 @@ ENTRY main {
 
 // Check that we get a useful error if we pass too many or too few inputs.
 TEST_F(HloEvaluatorTest, EvaluateWithWrongNumberOfInputs) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
 HloModule Test
 
@@ -4728,6 +5406,10 @@ ENTRY main {
 }
 
 TEST_F(HloEvaluatorTest, PreserveFusionInputLayout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
     HloModule FusionInputLayout
 
@@ -4750,6 +5432,10 @@ TEST_F(HloEvaluatorTest, PreserveFusionInputLayout) {
 }
 
 TEST_F(HloEvaluatorTest, PreserveFusionOutputLayout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
     HloModule FusionOutputLayout
 
@@ -4771,6 +5457,10 @@ TEST_F(HloEvaluatorTest, PreserveFusionOutputLayout) {
 }
 
 TEST_F(HloEvaluatorTest, PreserveMOFusionOutputLayout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
     HloModule MOFusionOutputLayout
 
@@ -4794,8 +5484,54 @@ TEST_F(HloEvaluatorTest, PreserveMOFusionOutputLayout) {
       absl::c_equal(args[0].data<float>(), actual_literals[0].data<float>()));
 }
 
+TEST_F(HloEvaluatorTest, ConvolutionWithNestedFusionWithoutLayout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
+  // This is a regression test for a case where missing layouts weren't handled
+  // correctly
+  const absl::string_view hlo_text = R"(
+    copy_fusion {
+      p0 = f32[16,4] parameter(0)
+      ROOT copy = f32[16,4] copy(p0)
+    }
+
+    conv_fusion {
+      p0 = f32[8,16] parameter(0)
+      p1 = f32[16,4] parameter(1)
+      p1_copy = f32[16,4] fusion(p1), kind=kLoop, calls=copy_fusion
+      ROOT conv = f32[8,4] convolution(p0, p1_copy), dim_labels=bf_io->bf
+    }
+
+    ENTRY main {
+      p0 = f32[8,16] parameter(0)
+      p1 = f32[16,4] parameter(1)
+      ROOT fusion.2 = f32[8,4] fusion(p0, p1), kind=kOutput, calls=conv_fusion
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  // Layout assignment would clear the layout on the copy fusion. We do it
+  // manually to avoid the dependency.
+  auto* conv_fusion = m_->GetComputationWithName("conv_fusion");
+  auto* p1_copy = conv_fusion->GetInstructionWithName("p1_copy");
+  p1_copy->mutable_shape()->clear_layout();
+
+  auto args = MakeFakeArguments(m_.get()).value();
+  absl::Status evaluate_status = Evaluate({&args[0], &args[1]}).status();
+  // Just verify this executes correctly. We are testing for issues around the
+  // handling of missing layouts here, which will cause the entire evaluation
+  // to fail.
+  EXPECT_IS_OK(evaluate_status);
+}
+
 // Tests that custom_calls fail to evaluate when no handler is specified.
 TEST_F(HloEvaluatorTest, EvaluateCustomCall_NoHandler) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
     HloModule EvaluateCustomCall_NoHandler
     ENTRY kernel_entry {
@@ -4813,6 +5549,10 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_NoHandler) {
 
 // Tests when a custom_call handler returns an error.
 TEST_F(HloEvaluatorTest, EvaluateCustomCall_HandlerError) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
     HloModule EvaluateCustomCall_HandlerError
     ENTRY kernel_entry {
@@ -4837,6 +5577,10 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_HandlerError) {
 // We sum the operands so that we can verify the operand and output literals
 // are properly mapped for access.
 TEST_F(HloEvaluatorTest, EvaluateCustomCall_ManyInputs) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
     HloModule EvaluateCustomCall_ManyInputs
     ENTRY kernel_entry {
@@ -4873,6 +5617,10 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_ManyInputs) {
 }
 
 TEST_F(HloEvaluatorTest, EvaluateCustomCallInFusion) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
 fusion1 {
   p = f32[] parameter(0)
@@ -4897,6 +5645,10 @@ ENTRY e {
 }
 
 TEST_F(HloEvaluatorTest, IsFiniteF16) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
   HloModule test
 
@@ -4914,6 +5666,10 @@ TEST_F(HloEvaluatorTest, IsFiniteF16) {
 }
 
 TEST_F(HloEvaluatorTest, IsFiniteBf16) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
   HloModule test
 
@@ -4933,6 +5689,10 @@ TEST_F(HloEvaluatorTest, IsFiniteBf16) {
 // Check that evaluating `f32[<huge>, 0] iota` doesn't oom (it's an empty
 // array!).
 TEST_F(HloEvaluatorTest, ZeroSizedIotaWithHugeDimension) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
   HloModule test
   ENTRY t {
@@ -4946,6 +5706,10 @@ TEST_F(HloEvaluatorTest, ZeroSizedIotaWithHugeDimension) {
 }
 
 TEST_F(HloEvaluatorTest, CopyStartCopyDone) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
   HloModule test
   ENTRY CopyStartCopyDone {
@@ -4962,6 +5726,10 @@ TEST_F(HloEvaluatorTest, CopyStartCopyDone) {
 }
 
 TEST_F(HloEvaluatorTest, CopyDifferentTypes) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(/*hlo_text=*/R"(
   HloModule test
 
@@ -4977,6 +5745,10 @@ TEST_F(HloEvaluatorTest, CopyDifferentTypes) {
 }
 
 TEST_F(HloEvaluatorTest, AsyncOps) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
   HloModule test
   ENTRY AsyncOps {
@@ -4993,7 +5765,32 @@ TEST_F(HloEvaluatorTest, AsyncOps) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, AsyncOpsWithLayout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
+  const absl::string_view hlo_text = R"(
+  HloModule test
+  ENTRY AsyncOps {
+    init = f32[2,2]{0,1} constant({{1.0, 2.0}, {3.0, 4.0}})
+    async-start = ((f32[2,2]{0,1}), f32[2,2]{0,1}, u32[]) negate-start(init)
+    async-update = ((f32[2,2]{0,1}), f32[2,2]{0,1}, u32[]) negate-update(async-start)
+    ROOT async-done = f32[2,2]{0,1} negate-done(async-update)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR2<float>({{-1.0, -2.0}, {-3.0, -4.0}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_F(HloEvaluatorTest, MapBF16) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
   HloModule test
 
@@ -5016,6 +5813,10 @@ TEST_F(HloEvaluatorTest, MapBF16) {
 }
 
 TEST_F(HloEvaluatorTest, MapS16) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
   HloModule test
 
@@ -5038,6 +5839,10 @@ TEST_F(HloEvaluatorTest, MapS16) {
 }
 
 TEST_F(HloEvaluatorTest, MapU16) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
   HloModule test
 
@@ -5060,6 +5865,10 @@ TEST_F(HloEvaluatorTest, MapU16) {
 }
 
 TEST_F(HloEvaluatorTest, MapMixed) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
   HloModule test
 
@@ -5084,6 +5893,10 @@ TEST_F(HloEvaluatorTest, MapMixed) {
 }
 
 TEST_F(HloEvaluatorTest, DotUpcast) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
   HloModule test
   ENTRY DotUpcast {
@@ -5125,6 +5938,10 @@ TEST_F(HloEvaluatorTest, DotUpcast) {
 }
 
 TEST_F(HloEvaluatorTest, SortC64) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
   HloModule m
 
@@ -5150,6 +5967,10 @@ TEST_F(HloEvaluatorTest, SortC64) {
 }
 
 TEST_F(HloEvaluatorTest, ConvertC128ToC64) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
   HloModule m
 
@@ -5169,6 +5990,10 @@ TEST_F(HloEvaluatorTest, ConvertC128ToC64) {
 // Tests that HloEvaluator can evaluate an instruction even when its operands
 // are not constant.
 TEST_F(HloEvaluatorTest, RecursivelyEvaluateNonConstantOperands) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   Literal c0_literal = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
   Literal c1_literal = LiteralUtil::CreateR2<float>({{0.f, 5.f}, {0.f, 4.f}});
   Literal c2_literal = LiteralUtil::CreateR2<float>({{2.f, 4.f}, {4.f, 4.f}});
@@ -5198,6 +6023,10 @@ TEST_F(HloEvaluatorTest, RecursivelyEvaluateNonConstantOperands) {
 // Tuple instruction cannot be fully evaluated. Note that this requires that the
 //  tuple element at the given tuple index can be evaluated.
 TEST_F(HloEvaluatorTest, GetTupleElementOnPartiallyKnownTupleSucceeds) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   Literal c0_literal = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
 
   Shape shape = c0_literal.shape();
@@ -5221,6 +6050,10 @@ TEST_F(HloEvaluatorTest, GetTupleElementOnPartiallyKnownTupleSucceeds) {
 
 // Tests that Infeed cannot be evaluated.
 TEST_F(HloEvaluatorTest, InfeedFailure) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
   HloInstruction* token = b.AddInstruction(HloInstruction::CreateToken());
   HloInstruction* infeed = b.AddInstruction(HloInstruction::CreateInfeed(
@@ -5233,6 +6066,10 @@ TEST_F(HloEvaluatorTest, InfeedFailure) {
 // Tests that GetTupleElement cannot be evaluated if the corresponding tuple
 // element cannot be evaluated.
 TEST_F(HloEvaluatorTest, GetUnknownTupleElementFails) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   Literal c0_literal = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
 
   Shape shape = c0_literal.shape();
@@ -5255,6 +6092,10 @@ TEST_F(HloEvaluatorTest, GetUnknownTupleElementFails) {
 
 // Tests that partial evaluation works for nested tuples.
 TEST_F(HloEvaluatorTest, GetTupleElementFromNestedTupleSucceeds) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   Literal c0_literal = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
 
   Shape shape = c0_literal.shape();
@@ -5283,6 +6124,10 @@ TEST_F(HloEvaluatorTest, GetTupleElementFromNestedTupleSucceeds) {
 // Tests that partial evaluation works when the GetTupleElement is interleaved
 // with other Tuple instructions.
 TEST_F(HloEvaluatorTest, GetTupleElementInterleavedWithTupleSucceeds) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   Literal c0_literal = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
 
   Shape shape = c0_literal.shape();
@@ -5316,6 +6161,10 @@ TEST_F(HloEvaluatorTest, GetTupleElementInterleavedWithTupleSucceeds) {
 
 // Tests that we can evaluate a parameter instruction through the call graph.
 TEST_F(HloEvaluatorTest, ParameterThroughCallSucceeds) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   constexpr absl::string_view kHloModule = R"(
     HloModule parameter_through_call
 
@@ -5350,6 +6199,10 @@ TEST_F(HloEvaluatorTest, ParameterThroughCallSucceeds) {
 
 // As above, but with analyses precomputed.
 TEST_F(HloEvaluatorTest, ParameterThroughCallSucceedsWithPrecomputation) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   constexpr absl::string_view kHloModule = R"(
     HloModule parameter_through_call
 
@@ -5390,6 +6243,10 @@ TEST_F(HloEvaluatorTest, ParameterThroughCallSucceedsWithPrecomputation) {
 class PatternMatchParseWhileLoopTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedInsideOfCond) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce
 
@@ -5436,8 +6293,12 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedInsideOfCond) {
   EXPECT_EQ(parsed_while_loop->static_while_loop->loop_bound, 5);
 }
 
-TEST_F(PatternMatchParseWhileLoopTest,
-       LoopBoundDefinedInsideOfCondWithPrecomputation) {
+TEST_F(
+    PatternMatchParseWhileLoopTest,
+    if (IsCuda() &&
+        !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+      GTEST_SKIP() << "Test times out on Turing.";
+    } LoopBoundDefinedInsideOfCondWithPrecomputation) {
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce
 
@@ -5490,6 +6351,10 @@ TEST_F(PatternMatchParseWhileLoopTest,
 }
 
 TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedOutsideOfCond) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce
 
@@ -5539,6 +6404,10 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedOutsideOfCond) {
 }
 
 TEST_F(PatternMatchParseWhileLoopTest, LoopBoundComputedOutsideOfCond) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce
 
@@ -5590,6 +6459,10 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundComputedOutsideOfCond) {
 }
 
 TEST_F(PatternMatchParseWhileLoopTest, StepSizeNotOne) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce
 
@@ -5642,6 +6515,10 @@ TEST_F(PatternMatchParseWhileLoopTest, StepSizeNotOne) {
 
 // The loop condition comparison is computed by a call to another computation.
 TEST_F(PatternMatchParseWhileLoopTest, RecursiveCond) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce
 
@@ -5701,6 +6578,10 @@ TEST_F(PatternMatchParseWhileLoopTest, RecursiveCond) {
 // The called computation could be calling another computation and could use
 // get-tuple-element to extract the result.
 TEST_F(PatternMatchParseWhileLoopTest, RecursiveCondGetTupleElement) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce
 
@@ -5763,6 +6644,10 @@ TEST_F(PatternMatchParseWhileLoopTest, RecursiveCondGetTupleElement) {
 }
 
 TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDependsOnAnotherLoop) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce
 
@@ -5850,6 +6735,10 @@ TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDependsOnAnotherLoop) {
 }
 
 TEST_F(PatternMatchParseWhileLoopTest, DynamicLoop) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce
 
@@ -5895,6 +6784,10 @@ TEST_F(PatternMatchParseWhileLoopTest, DynamicLoop) {
 
 // The loop condition comparison is computed by a call to another computation.
 TEST_F(PatternMatchParseWhileLoopTest, BooleanCond) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce
     %while_condition {
@@ -5938,6 +6831,10 @@ TEST_F(PatternMatchParseWhileLoopTest, BooleanCond) {
 }
 
 TEST_F(PatternMatchParseWhileLoopTest, NestedLoop) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce
 
@@ -6019,6 +6916,10 @@ TEST_F(PatternMatchParseWhileLoopTest, NestedLoop) {
 }
 
 TEST_F(PatternMatchParseWhileLoopTest, CopiedLoopCond) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce
 
@@ -6068,6 +6969,10 @@ TEST_F(PatternMatchParseWhileLoopTest, CopiedLoopCond) {
 }
 
 TEST_F(HloEvaluatorTest, DotTraced) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   const absl::string_view hlo_text = R"(
   HloModule test
   ENTRY DotUpcast {
@@ -6124,6 +7029,10 @@ TEST_F(HloEvaluatorTest, DotTraced) {
 }
 
 TEST_F(HloEvaluatorTest, SimpleConvTraced) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
   HloComputation::Builder b(TestName());
 
   Array4D<float> lhs_array(1, 1, 4, 4);
@@ -6207,6 +7116,45 @@ TEST_F(HloEvaluatorTest, SimpleConvTraced) {
   };
 
   EXPECT_EQ(macs_traced, macs_expected);
+}
+
+TEST_F(HloEvaluatorTest, Simple4x4Conv2DWith2x2KernelNoOutputLayout) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Turing())) {
+    GTEST_SKIP() << "Test times out on Turing.";
+  }
+  const char* hlo_text = R"(
+    ENTRY main {
+      lhs = f32[1,1,4,4] constant(
+          {{{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}, {13, 14, 15, 16}}}})
+      rhs = f32[1,1,2,2] constant({{{{5, 6}, {7, 8}}}})
+      ROOT conv = f32[1,1,4,4] convolution(lhs, rhs),
+          window={size=2x2 pad=0_1x0_1}, dim_labels=bf01_oi01->bf01
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  // Explicitly clear the layout, like it would be done by LayoutAssignment if
+  // the convolution was in a fusion.
+  m_->entry_computation()->root_instruction()->mutable_shape()->clear_layout();
+
+  // The multiply-accumulate handler computes a linear index, which requires a
+  // layout.
+  evaluator_.set_trace_mac_handler([](int64_t result_index, int64_t lhs_index,
+                                      int64_t rhs_index) -> void {});
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  Array4D<float> expected_array(1, 1, 4, 4);
+  // clang-format off
+  expected_array.FillWithYX(Array2D<float>({
+    {100, 126, 152,  76},
+    {204, 230, 256, 124},
+    {308, 334, 360, 172},
+    {149, 160, 171,  80},
+  }));
+  // clang-format on
+  auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST(EvalErrorTest, OK) {
