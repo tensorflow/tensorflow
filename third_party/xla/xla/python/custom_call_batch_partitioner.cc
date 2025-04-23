@@ -166,7 +166,7 @@ std::pair<Shape, HloSharding> ComputeResultShapeAndSharding(
     auto result_shape = spmd::MakePartitionedShape(shape, result_sharding);
     return std::make_pair(result_shape, result_sharding);
   }
-  int num_results = shape.tuple_shapes_size();
+  int num_results = shape.tuple_shapes().size();
   std::vector<Shape> result_shapes;
   result_shapes.reserve(num_results);
   std::vector<HloSharding> result_shardings;
