@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
+#include "tensorflow/compiler/mlir/stablehlo/transforms/tf_stablehlo_pass.h"
 
 #include <memory>
 #include <utility>
@@ -33,7 +33,6 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_passes.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalize_tf_with_tf2xla_passes.h"

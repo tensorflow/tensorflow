@@ -17,7 +17,6 @@ package_group(
     packages = [
         "//platforms/darwinn/tools/visualization/graph_conversions/...",
         "//tensorflow/compiler/mlir/lite/...",
-        "//tensorflow/compiler/mlir/lite/stablehlo/...",
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/quantization/tensorflow/...",
         "//tensorflow/compiler/tests/...",
@@ -89,6 +88,42 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tf_stablehlo",
+    srcs = [
+        "transforms/tf_stablehlo_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tf_stablehlo_pass.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/stablehlo:legalize_tf",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:lower_tf_lib",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf_with_tf2xla",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir_hlo",
+        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
+        "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@local_xla//xla/mlir_hlo:type_conversion",
+        "@stablehlo//:chlo_ops",
+        "@stablehlo//:register",
     ],
     alwayslink = 1,
 )
