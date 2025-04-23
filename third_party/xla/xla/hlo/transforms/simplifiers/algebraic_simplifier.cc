@@ -6650,7 +6650,7 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReverse(
 }
 
 absl::StatusOr<bool> AlgebraicSimplifierVisitor::RemoveRedundantStride(
-    absl::Nonnull<HloInstruction*> slice) {
+    HloInstruction* absl_nonnull slice) {
   CHECK(slice->opcode() == HloOpcode::kSlice);
 
   std::vector<int64_t> index_to_change;

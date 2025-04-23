@@ -84,7 +84,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
 
  protected:
   explicit HloRunnerAgnosticTestBase(
-      absl::Nonnull<std::unique_ptr<HloRunnerInterface>> test_runner,
+      absl_nonnull std::unique_ptr<HloRunnerInterface> test_runner,
       bool verifier_layout_sensitive = false,
       bool allow_mixed_precision_in_hlo_verifier = true,
       HloPredicate instruction_can_change_layout_func = {});

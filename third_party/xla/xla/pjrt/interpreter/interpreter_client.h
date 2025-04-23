@@ -88,7 +88,7 @@ class InterpreterDescription final : public PjRtDeviceDescription {
 
 class InterpreterMemorySpace final : public PjRtMemorySpace {
  public:
-  explicit InterpreterMemorySpace(absl::Nonnull<PjRtClient*> client)
+  explicit InterpreterMemorySpace(PjRtClient* absl_nonnull client)
       : client_(ABSL_DIE_IF_NULL(client)) {}
 
   PjRtClient* client() const override { return client_; }
@@ -115,7 +115,7 @@ class InterpreterMemorySpace final : public PjRtMemorySpace {
 
 class InterpreterDevice final : public PjRtDevice {
  public:
-  explicit InterpreterDevice(absl::Nonnull<PjRtClient*> client)
+  explicit InterpreterDevice(PjRtClient* absl_nonnull client)
       : client_(ABSL_DIE_IF_NULL(client)) {}
 
   // Return the client that owns this device.
@@ -169,14 +169,14 @@ class InterpreterDevice final : public PjRtDevice {
 // A buffer that wraps a Literal.
 class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
  public:
-  InterpreterLiteralWrapperBuffer(absl::Nonnull<PjRtClient*> client,
-                                  absl::Nonnull<PjRtMemorySpace*> memory_space,
+  InterpreterLiteralWrapperBuffer(PjRtClient* absl_nonnull client,
+                                  PjRtMemorySpace* absl_nonnull memory_space,
                                   const LiteralSlice& literal)
       : client_(client),
         memory_space_(memory_space),
         literal_(literal.Clone()) {}
-  InterpreterLiteralWrapperBuffer(absl::Nonnull<PjRtClient*> client,
-                                  absl::Nonnull<PjRtMemorySpace*> memory_space,
+  InterpreterLiteralWrapperBuffer(PjRtClient* absl_nonnull client,
+                                  PjRtMemorySpace* absl_nonnull memory_space,
                                   Literal literal)
       : client_(client),
         memory_space_(memory_space),
@@ -291,7 +291,7 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
 class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
  public:
   explicit InterpreterLoadedExecutable(
-      absl::Nonnull<PjRtClient*> client, std::unique_ptr<HloModule> hlo_module,
+      PjRtClient* absl_nonnull client, std::unique_ptr<HloModule> hlo_module,
       std::unique_ptr<HloEvaluator> hlo_evaluator,
       std::optional<DynamicDimensionInference> dynamic_dimension_inference,
       std::shared_ptr<DeviceAssignment> device_assignment,

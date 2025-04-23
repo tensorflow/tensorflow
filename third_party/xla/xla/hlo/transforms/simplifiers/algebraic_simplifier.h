@@ -817,7 +817,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // slice instruction is replaced).
   // - For example in slices=([0:X:X]), where X == dimension
   absl::StatusOr<bool> RemoveRedundantStride(
-      absl::Nonnull<HloInstruction*> slice);
+      HloInstruction* absl_nonnull slice);
 
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.

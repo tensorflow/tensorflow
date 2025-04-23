@@ -67,8 +67,8 @@ struct NodePairSimilarity {
 };
 
 // Returns true if the two subgraphs have a diff.
-bool HasDiff(absl::Nonnull<const HloInstructionNode*> left, int left_graph_size,
-             absl::Nonnull<const HloInstructionNode*> right,
+bool HasDiff(const HloInstructionNode* absl_nonnull left, int left_graph_size,
+             const HloInstructionNode* absl_nonnull right,
              int right_graph_size) {
   if (left->props.subgraph_fingerprint != right->props.subgraph_fingerprint) {
     return true;
@@ -103,9 +103,9 @@ bool HasDiff(absl::Nonnull<const HloInstructionNode*> left, int left_graph_size,
 };
 
 // Maps the two subgraphs starting from the given nodes.
-void MapSubgraph(absl::Nonnull<const HloInstructionNode*> left,
+void MapSubgraph(const HloInstructionNode* absl_nonnull left,
                  int left_graph_size,
-                 absl::Nonnull<const HloInstructionNode*> right,
+                 const HloInstructionNode* absl_nonnull right,
                  int right_graph_size, const MatcherType matcher_type,
                  HloGumgraphMappings& mappings) {
   std::vector<const HloInstructionNode*> left_subgraph = GetAllNodesInBfsOrder(
@@ -153,8 +153,8 @@ void RecursiveTopDownMatcher(const HloInstructionNode* left,
 
 // DiceSim similarity score between two subgraphs. Subgraphs are limited to
 // first max_subgraph_size nodes of BFS starting from the given nodes.
-double DiceSimLimitedSubgraph(absl::Nonnull<const HloInstructionNode*> left,
-                              absl::Nonnull<const HloInstructionNode*> right,
+double DiceSimLimitedSubgraph(const HloInstructionNode* absl_nonnull left,
+                              const HloInstructionNode* absl_nonnull right,
                               HloGumgraphMappings& mappings,
                               int max_subgraph_size, int left_graph_size,
                               int right_graph_size) {
@@ -191,9 +191,8 @@ double DiceSimLimitedSubgraph(absl::Nonnull<const HloInstructionNode*> left,
 // fingerprint, name and generation of the nodes. This set of parameters
 // together with min_similarity threshold = 0.75 works the best so far, and
 // might need to be tuned later.
-double NodeAttributesSimilarity(
-    absl::Nonnull<const HloInstructionNode*> left,
-    absl::Nonnull<const HloInstructionNode*> right) {
+double NodeAttributesSimilarity(const HloInstructionNode* absl_nonnull left,
+                                const HloInstructionNode* absl_nonnull right) {
   double sim_score = 0.0;
 
   if (right->props.fingerprint == left->props.fingerprint) {

@@ -50,7 +50,7 @@ class HloGumgraph {
   // Instantiates a HloGumgraph from a HloModule, pre-processing and caching
   // various graph properties such as height, siblings per node etc.
   static absl::StatusOr<std::unique_ptr<const HloGumgraph>> Create(
-      absl::Nonnull<const HloModule*> hlo_module,
+      const HloModule* absl_nonnull hlo_module,
       const HloGumgraphFingerprintOptions& fingerprint_options = {});
 
   // HloGumgraph is neither copyable nor movable as it can be really large.
@@ -66,7 +66,7 @@ class HloGumgraph {
   // Returns graph node corresponding to the given HloInstruction. Returns
   // nullptr if the instruction is not in the graph.
   inline HloInstructionNode* GetNode(
-      absl::Nonnull<const HloInstruction*> instruction) const {
+      const HloInstruction* absl_nonnull instruction) const {
     if (auto it = instruction_to_node_.find(instruction);
         it != instruction_to_node_.end()) {
       return it->second.get();

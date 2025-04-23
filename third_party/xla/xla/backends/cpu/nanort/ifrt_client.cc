@@ -384,7 +384,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
 
   const ifrt::Sharding& sharding() const override { return *sharding_; }
 
-  absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> shared_ptr_sharding()
+  absl_nonnull std::shared_ptr<const ifrt::Sharding> shared_ptr_sharding()
       const override {
     return sharding_;
   }
@@ -600,7 +600,7 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
 
   const ifrt::Sharding& sharding() const override { return *sharding_; }
 
-  absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> shared_ptr_sharding()
+  absl_nonnull std::shared_ptr<const ifrt::Sharding> shared_ptr_sharding()
       const override {
     return sharding_;
   }
@@ -1249,7 +1249,7 @@ absl::StatusOr<tsl::RCReference<ifrt::Array>>
 NanoIfrtClient::MakeArrayFromHostBuffer(
     const void* data, ifrt::DType dtype, ifrt::Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides,
-    absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> sharding,
+    absl_nonnull std::shared_ptr<const ifrt::Sharding> sharding,
     HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer,
     tsl::RCReference<xla::ifrt::UserContext> user_context) {
@@ -1292,7 +1292,7 @@ NanoIfrtClient::MakeErrorArrays(
 absl::StatusOr<tsl::RCReference<ifrt::Array>>
 NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
     ifrt::DType dtype, ifrt::Shape shape,
-    absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> sharding,
+    absl_nonnull std::shared_ptr<const ifrt::Sharding> sharding,
     absl::Span<tsl::RCReference<ifrt::Array>> arrays,
     ifrt::ArrayCopySemantics array_copy_semantics,
     ifrt::SingleDeviceShardSemantics single_device_shard_semantics) {

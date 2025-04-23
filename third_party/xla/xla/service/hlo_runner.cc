@@ -68,7 +68,7 @@ namespace xla {
 namespace {
 class HloRunnerExecutable : public OpaqueExecutable {
  public:
-  HloRunnerExecutable(absl::Nonnull<const HloRunner*> creator,
+  HloRunnerExecutable(const HloRunner* absl_nonnull creator,
                       std::unique_ptr<Executable> executable)
       : OpaqueExecutable(creator), executable_(std::move(executable)) {}
 
@@ -78,12 +78,12 @@ class HloRunnerExecutable : public OpaqueExecutable {
   }
 
   static absl::StatusOr<HloRunnerExecutable*> TryUnwrap(
-      const HloRunner& runner, absl::Nonnull<OpaqueExecutable*> const wrapped) {
+      const HloRunner& runner, OpaqueExecutable* absl_nonnull const wrapped) {
     return OpaqueExecutable::TryUnwrap<HloRunnerExecutable>(runner, wrapped);
   }
   static absl::StatusOr<const HloRunnerExecutable*> TryUnwrap(
       const HloRunner& runner,
-      absl::Nonnull<const OpaqueExecutable*> const wrapped) {
+      const OpaqueExecutable* absl_nonnull const wrapped) {
     return OpaqueExecutable::TryUnwrap<HloRunnerExecutable>(runner, wrapped);
   }
 
@@ -117,7 +117,7 @@ se::DeviceMemoryAllocator* HloRunner::GetAllocator() {
 
 absl::StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
     const Literal& literal,
-    absl::Nullable<const ComputationLayout*> entry_computation_layout,
+    const ComputationLayout* absl_nullable entry_computation_layout,
     int64_t param_no) {
   auto shape_representation_fn = [this, entry_computation_layout,
                                   param_no](const Shape& shape) {
@@ -161,7 +161,7 @@ absl::StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
 absl::StatusOr<std::vector<ScopedShapedBuffer>>
 HloRunner::TransferLiteralsToDevice(
     absl::Span<const Literal* const> literals,
-    absl::Nullable<const ComputationLayout*> entry_computation_layout) {
+    const ComputationLayout* absl_nullable entry_computation_layout) {
   std::vector<ScopedShapedBuffer> buffers;
   buffers.reserve(literals.size());
   for (auto i = 0; i < literals.size(); i++) {
@@ -826,7 +826,7 @@ std::unique_ptr<OpaqueExecutable> HloRunner::WrapExecutable(
   return std::make_unique<HloRunnerExecutable>(this, std::move(executable));
 }
 
-absl::StatusOr<absl::Nonnull<const HloModule*>> HloRunner::HloModuleFromWrapped(
+absl::StatusOr<const HloModule* absl_nonnull> HloRunner::HloModuleFromWrapped(
     const OpaqueExecutable* wrapped) const {
   TF_ASSIGN_OR_RETURN(const HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, wrapped));
@@ -836,7 +836,7 @@ absl::StatusOr<absl::Nonnull<const HloModule*>> HloRunner::HloModuleFromWrapped(
   return &hlo_runner_executable->executable()->module();
 }
 
-absl::StatusOr<absl::Nonnull<const HloProto*>> HloRunner::HloProtoFromWrapped(
+absl::StatusOr<const HloProto* absl_nonnull> HloRunner::HloProtoFromWrapped(
     const OpaqueExecutable* wrapped) const {
   TF_ASSIGN_OR_RETURN(const HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, wrapped));

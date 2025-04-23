@@ -196,7 +196,7 @@ absl::StatusOr<uint64_t> PrepareAndExecuteLoadedHostCallback(
 // executions.
 class LoadedExecutable::OutputSpecCache {
  public:
-  explicit OutputSpecCache(absl::Nonnull<LoadedExecutable*> parent)
+  explicit OutputSpecCache(LoadedExecutable* absl_nonnull parent)
       : parent_(parent) {}
 
   // Returns the cached output spec if already cached, and std::nullopt if not.

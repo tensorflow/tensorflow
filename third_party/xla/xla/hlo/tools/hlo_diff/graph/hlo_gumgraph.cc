@@ -302,7 +302,7 @@ void HloGumgraph::PrecomputeDfsPosition() {
 }
 
 absl::StatusOr<std::unique_ptr<const HloGumgraph>> HloGumgraph::Create(
-    absl::Nonnull<const HloModule*> hlo_module,
+    const HloModule* absl_nonnull hlo_module,
     const HloGumgraphFingerprintOptions& fingerprint_options) {
   CHECK(hlo_module != nullptr) << "Expected a non-null hlo module";
   CHECK(hlo_module->entry_computation() != nullptr)

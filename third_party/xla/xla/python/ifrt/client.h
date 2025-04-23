@@ -119,7 +119,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+      absl_nonnull std::shared_ptr<const Sharding> sharding,
       HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer,
       tsl::RCReference<UserContext> user_context) = 0;
@@ -129,7 +129,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+      absl_nonnull std::shared_ptr<const Sharding> sharding,
       HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) {
     return MakeArrayFromHostBuffer(data, dtype, shape, byte_strides, sharding,
@@ -221,14 +221,14 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::StatusOr<tsl::RCReference<Array>>
   AssembleArrayFromSingleDeviceArrays(
       DType dtype, Shape shape,
-      absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+      absl_nonnull std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<Array>> arrays,
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) = 0;
 
   ABSL_DEPRECATE_AND_INLINE()
   absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
-      Shape shape, absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+      Shape shape, absl_nonnull std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<Array>> arrays,
       ArrayCopySemantics semantics) {
     return AssembleArrayFromSingleDeviceArrays(
@@ -238,7 +238,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
 
   ABSL_DEPRECATE_AND_INLINE()
   absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
-      Shape shape, absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
+      Shape shape, absl_nonnull std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<Array>> arrays,
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) {

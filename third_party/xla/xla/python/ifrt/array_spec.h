@@ -39,8 +39,8 @@ class Client;
 struct ArraySpec {
   DType dtype;
   Shape shape;
-  absl::Nonnull<std::shared_ptr<const Sharding>> sharding;
-  absl::Nullable<std::shared_ptr<const xla::PjRtLayout>> layout;
+  absl_nonnull std::shared_ptr<const Sharding> sharding;
+  absl_nullable std::shared_ptr<const xla::PjRtLayout> layout;
 
   bool operator==(const ArraySpec& other) const {
     auto are_pointees_equal = [](auto* lhs, auto* rhs) {
@@ -61,7 +61,7 @@ struct ArraySpec {
   friend H AbslHashValue(H h, const ArraySpec& value) {
     h = H::combine(std::move(h), value.dtype, value.shape);
     // The current implementation gracefully handles null sharding even if it's
-    // invalid (see `absl::Nonnull` annotation) since we don't enforce such
+    // invalid (see `absl_nonnull` annotation) since we don't enforce such
     // properties at ArraySpec creation time. Once we have a constructor that
     // crashes with a null sharding, we can remove this null check.
     if (value.sharding != nullptr) {

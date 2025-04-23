@@ -57,7 +57,7 @@ limitations under the License.
 namespace xla {
 
 HloRunnerAgnosticTestBase::HloRunnerAgnosticTestBase(
-    absl::Nonnull<std::unique_ptr<HloRunnerInterface>> test_runner,
+    absl_nonnull std::unique_ptr<HloRunnerInterface> test_runner,
     const bool verifier_layout_sensitive,
     const bool allow_mixed_precision_in_hlo_verifier,
     const HloPredicate instruction_can_change_layout_func)

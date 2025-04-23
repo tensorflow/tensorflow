@@ -72,7 +72,7 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   virtual DType dtype() const = 0;
   virtual const Shape& shape() const = 0;
   virtual const Sharding& sharding() const = 0;
-  virtual absl::Nonnull<std::shared_ptr<const Sharding>> shared_ptr_sharding()
+  virtual absl_nonnull std::shared_ptr<const Sharding> shared_ptr_sharding()
       const = 0;
   // The device memory layout for each shard of the Array. All shards are
   // assumed to have the same layout. Cannot be nullptr; implementations should
