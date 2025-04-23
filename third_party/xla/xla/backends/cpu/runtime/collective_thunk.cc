@@ -232,9 +232,9 @@ CollectiveThunk::ExecuteWithCommunicator(
       [event, communicator_event_ptr = communicator_event.AsPtr()]() {
         if (ABSL_PREDICT_FALSE(communicator_event_ptr.IsError())) {
           event.SetError(communicator_event_ptr.GetError());
+        } else {
+          event.SetStateConcrete();
         }
-
-        event.SetStateConcrete();
       });
 
   return event;
