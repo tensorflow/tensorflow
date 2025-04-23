@@ -166,9 +166,9 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
   HloInstruction* bc_to_orig;
   if (normalized_conv->shape().IsTuple()) {
     std::vector<HloInstruction*> tuple_elements(
-        normalized_conv->shape().tuple_shapes_size());
+        normalized_conv->shape().tuple_shapes().size());
 
-    for (int i = 0; i < normalized_conv->shape().tuple_shapes_size(); ++i) {
+    for (int i = 0; i < normalized_conv->shape().tuple_shapes().size(); ++i) {
       TF_ASSIGN_OR_RETURN(HloInstruction * normalized_out,
                           MakeGetTupleElementHlo(normalized_conv, i));
       tuple_elements[i] =

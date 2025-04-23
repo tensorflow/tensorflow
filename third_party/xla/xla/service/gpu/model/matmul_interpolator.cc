@@ -75,13 +75,13 @@ InterpolationSpecification ExtractDotSpec(const DotDimensionNumbers& dot_dims,
     k *= ShapeUtil::GetDimension(lhs, dim);
   }
   m *= ShapeUtil::ByteSizeOfPrimitiveType(lhs.element_type());
-  for (int dim : GetNonContractingDims(lhs.dimensions_size(),
+  for (int dim : GetNonContractingDims(lhs.dimensions().size(),
                                        dot_dims.lhs_contracting_dimensions(),
                                        dot_dims.lhs_batch_dimensions())) {
     m *= ShapeUtil::GetDimension(lhs, dim);
   }
   n *= ShapeUtil::ByteSizeOfPrimitiveType(rhs.element_type());
-  for (int dim : GetNonContractingDims(rhs.dimensions_size(),
+  for (int dim : GetNonContractingDims(rhs.dimensions().size(),
                                        dot_dims.rhs_contracting_dimensions(),
                                        dot_dims.rhs_batch_dimensions())) {
     n *= ShapeUtil::GetDimension(rhs, dim);

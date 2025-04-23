@@ -150,7 +150,7 @@ TEST_F(AllToAllTest, WrongFirstDimensionSize) {
       absl::Status status = RunCollective(test_env_.get(), col_params.get(),
                                           device, &tensors[i], &tensors[i]);
       counter.DecrementCount();
-      EXPECT_TRUE(errors::IsInvalidArgument(status));
+      EXPECT_TRUE(absl::IsInvalidArgument(status));
     });
   }
   counter.Wait();

@@ -407,7 +407,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
         *end_of_sequence = false;
         return absl::OkStatus();
       }
-      if (errors::IsOutOfRange(result->status)) {
+      if (absl::IsOutOfRange(result->status)) {
         // `predicate` may deliberately raise `errors::OutOfRange` to indicate
         // that we should terminate the iteration early.
         return errors::InvalidArgument(
