@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/hlo/ir/ptrvec.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/map_util.h"
 #include "xla/service/hlo_buffer.h"
@@ -1224,8 +1223,8 @@ class LatencyHidingScheduler : public HloModulePass {
   };
 
   LatencyHidingScheduler(
-      std::unique_ptr<LatencyEstimator> latency_estimator,
-      std::unique_ptr<AsyncTracker> async_tracker,
+      std::shared_ptr<LatencyEstimator> latency_estimator,
+      std::shared_ptr<AsyncTracker> async_tracker,
       std::unique_ptr<SchedulerCore> scheduler_core,
       const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes)
       : latency_estimator_(std::move(latency_estimator)),
@@ -1252,8 +1251,8 @@ class LatencyHidingScheduler : public HloModulePass {
   virtual void LogScheduleStatistics(const HloComputation* computation);
 
  private:
-  std::unique_ptr<LatencyEstimator> latency_estimator_;
-  std::unique_ptr<AsyncTracker> async_tracker_;
+  std::shared_ptr<LatencyEstimator> latency_estimator_;
+  std::shared_ptr<AsyncTracker> async_tracker_;
   std::unique_ptr<SchedulerCore> scheduler_core_;
   const HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   absl::flat_hash_set<HloComputation*> computations_to_schedule_;
