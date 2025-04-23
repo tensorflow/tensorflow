@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
 
