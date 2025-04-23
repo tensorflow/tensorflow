@@ -2068,7 +2068,6 @@ cc_library(
 xla_cc_test(
     name = "cpu_float_support_test",
     srcs = ["cpu_float_support_test.cc"],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":cpu_float_support",
         "//xla:shape_util",
