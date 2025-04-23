@@ -33,8 +33,7 @@ cc_library(
     hdrs = ["xnn_threadpool.h"],
     # copybara:uncomment_begin(google-only)
     # local_defines = select({
-    # # TODO(ezhulenev): Replace with //third_party/tensorflow/compiler/xla/tsl:linux_any
-    # "@pthreadpool:pthreadpool_header_only_explicit_true": [
+    # "//xla/tsl:linux_any": [
     # "XLA_CPU_USE_CUSTOM_PTHREADPOOL",
     # ],
     # "//conditions:default": [],
@@ -63,10 +62,12 @@ xla_cc_test(
         ":xnn_threadpool",
         "//xla/backends/cpu/runtime:parallel_loop_runner",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@XNNPACK",
         "@com_google_absl//absl/algorithm:container",
+        "@eigen_archive//:eigen3",
         "@pthreadpool",
     ],
 )

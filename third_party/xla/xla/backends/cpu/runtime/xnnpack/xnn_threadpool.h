@@ -24,6 +24,11 @@ namespace xla::cpu {
 // Creates a `pthreadpool` that uses the given `runner` to execute work.
 pthreadpool_t CreateCustomPthreadpool(xla::cpu::ParallelLoopRunner* runner);
 
+// Destroys the given `pthreadpool`.
+//
+// IMPORTANT: Thread pool must be created with `CreateCustomPthreadpool`.
+void DestroyCustomPthreadpool(pthreadpool_t threadpool);
+
 // Returns the parallel loop runner associated with the given `pthreadpool`.
 //
 // IMPORTANT: Thread pool must be created with `CreateCustomPthreadpool`.
