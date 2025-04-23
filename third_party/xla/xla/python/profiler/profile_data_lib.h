@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_PROFILER_PROFILE_DATA_H_
-#define XLA_PYTHON_PROFILER_PROFILE_DATA_H_
+#ifndef XLA_PYTHON_PROFILER_PROFILE_DATA_LIB_H_
+#define XLA_PYTHON_PROFILER_PROFILE_DATA_LIB_H_
 
 #include <nanobind/nanobind.h>
 
@@ -190,4 +190,4 @@ ProfileData from_file(const std::string& proto_file_path);
 
 }  // namespace tensorflow::profiler::python
 
-#endif  // XLA_PYTHON_PROFILER_PROFILE_DATA_H_
+#endif  // XLA_PYTHON_PROFILER_PROFILE_DATA_LIB_H_
