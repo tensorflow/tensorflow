@@ -1114,7 +1114,7 @@ void ComplexTestFixture::RunTest() {
   if (restrict_to_tpu_nodes_ && mark_outer_loop_tpu_ && !mark_inner_loop_tpu_) {
     // This case violates the precondition of `FunctionalizeControlFlow`, we
     // expect an internal error.
-    ASSERT_EQ(errors::IsInternal(status1), true);
+    ASSERT_EQ(absl::IsInternal(status1), true);
     return;
   } else {
     // Supported cases, no error expected.
