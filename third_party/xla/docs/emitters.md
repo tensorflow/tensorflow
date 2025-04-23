@@ -489,10 +489,11 @@ coalesced writes to the output.
 
 ### Reproducer
 
-In order to see the IR after every pass of the compilation pipeline, one can launch `run_hlo_module` with the `--v=5` flag.
+In order to see the IR after every pass of the compilation pipeline, one can
+launch `run_hlo_module` with the `--xla_dump_hlo_pass_re=fusion-emitter` flag.
 
 ```
-run_hlo_module --platform=CUDA --xla_disable_all_hlo_passes --reference_platform="" --v=5 /tmp/gelu.hlo
+run_hlo_module --platform=CUDA --xla_disable_all_hlo_passes --reference_platform="" /tmp/gelu.hlo --xla_dump_hlo_pass_re=fusion-emitter --xla_dump_to=<some_directory>
 ```
 
 where `/tmp/gelu.hlo` contains
