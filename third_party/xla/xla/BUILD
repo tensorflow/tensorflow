@@ -791,6 +791,7 @@ cc_library(
     hdrs = ["array.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        ":permutation_util",
         ":types",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
