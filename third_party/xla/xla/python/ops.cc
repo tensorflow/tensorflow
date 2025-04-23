@@ -43,9 +43,9 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/literal_type_casters.h"  // IWYU pragma: keep
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/nb_helpers.h"
-#include "xla/python/types.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/xla_data.pb.h"
 
