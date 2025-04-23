@@ -847,7 +847,7 @@ bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
                kMaxConcatArgumentsForUnrolling;
       case HloOpcode::kReduce: {
         const Shape& shape = node.instruction().shape();
-        return shape.IsTuple() && shape.tuple_shapes_size() > 1;
+        return shape.IsTuple() && shape.tuple_shapes().size() > 1;
       }
       default:
         return false;

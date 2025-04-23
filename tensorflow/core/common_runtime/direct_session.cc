@@ -904,7 +904,7 @@ absl::Status DirectSession::Run(
     }
   }
   const absl::Status s = call_frame.SetArgs(feed_args);
-  if (errors::IsInternal(s)) {
+  if (absl::IsInternal(s)) {
     return errors::InvalidArgument(s.message());
   } else if (!s.ok()) {
     return s;
@@ -925,7 +925,7 @@ absl::Status DirectSession::Run(
     std::vector<Tensor> sorted_outputs;
     const absl::Status s = call_frame.ConsumeRetvals(
         &sorted_outputs, /* allow_dead_tensors = */ false);
-    if (errors::IsInternal(s)) {
+    if (absl::IsInternal(s)) {
       return errors::InvalidArgument(s.message());
     } else if (!s.ok()) {
       return s;

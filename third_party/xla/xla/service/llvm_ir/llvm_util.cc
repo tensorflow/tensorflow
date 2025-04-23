@@ -285,7 +285,8 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context) {
       PrimitiveTypeToIrType(shape.element_type(), context);
   if (shape.IsTuple()) {
     // A tuple buffer is an array of pointers.
-    result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
+    result_type =
+        llvm::ArrayType::get(result_type, shape.tuple_shapes().size());
   } else if (shape.IsArray()) {
     for (int64_t dimension : LayoutUtil::MinorToMajor(shape)) {
       result_type =

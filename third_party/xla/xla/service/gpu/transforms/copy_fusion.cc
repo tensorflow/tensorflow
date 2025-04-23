@@ -119,7 +119,7 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
     // Skip dynamic update slice fusions which might be emitted in-place.
     if (!dynamic_update_slices.empty() &&
         (HloPredicateIsNotOp<HloOpcode::kTuple>(root) ||
-         dynamic_update_slices.size() == root->shape().tuple_shapes_size())) {
+         dynamic_update_slices.size() == root->shape().tuple_shapes().size())) {
       continue;
     }
     changed = true;

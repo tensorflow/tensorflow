@@ -253,7 +253,7 @@ struct TransposeSpec {
   const Shape& input_shape() const { return transpose->operand(0)->shape(); }
   const Shape& output_shape() const { return transpose->shape(); }
 
-  int64_t rank() const { return input_shape().dimensions_size(); }
+  int64_t rank() const { return input_shape().dimensions().size(); }
   int64_t canonical_rank() const { return canonical_input_shape.size(); }
 
   int64_t dim_A() const { return canonical_input_shape[dim_A_id()]; }

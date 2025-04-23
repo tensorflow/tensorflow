@@ -4133,11 +4133,10 @@ class Subgraph {
       case BuiltinOperator_SIN:
       case BuiltinOperator_SQRT:
       case BuiltinOperator_SQUARE:
-      case BuiltinOperator_TANH:
         TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
             logging_context, input_tensor, input_id, node_index));
         TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
-            logging_context, input_tensor, input_id, node_index));
+            logging_context, output_tensor, output_id, node_index));
         break;
       case BuiltinOperator_DEQUANTIZE:
         TF_LITE_ENSURE_STATUS(CheckTensorQInt8OrQUInt8Type(
@@ -4146,10 +4145,16 @@ class Subgraph {
             logging_context, output_tensor, output_id, node_index));
         break;
       case BuiltinOperator_ELU:
-      case BuiltinOperator_LOGISTIC:
         TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt8Type(
             delegate, logging_context, input_tensor, input_id, node_index));
         TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt8Type(
+            delegate, logging_context, output_tensor, output_id, node_index));
+        break;
+      case BuiltinOperator_LOGISTIC:
+      case BuiltinOperator_TANH:
+        TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
+            delegate, logging_context, input_tensor, input_id, node_index));
+        TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
             delegate, logging_context, output_tensor, output_id, node_index));
         break;
       case BuiltinOperator_LEAKY_RELU: {

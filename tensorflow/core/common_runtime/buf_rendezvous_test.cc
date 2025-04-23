@@ -267,7 +267,7 @@ TEST_F(BufRendezvousTest, DeviceIncarnationMismatch) {
       },
       /*cancellation_manager=*/nullptr);
   note.WaitForNotification();
-  EXPECT_TRUE(errors::IsFailedPrecondition(cons_status));
+  EXPECT_TRUE(absl::IsFailedPrecondition(cons_status));
 }
 
 TEST_F(BufRendezvousTest, ProvideThenCancel) {
@@ -282,7 +282,7 @@ TEST_F(BufRendezvousTest, ProvideThenCancel) {
       &cm_);
   cm_.StartCancel();
   note.WaitForNotification();
-  EXPECT_TRUE(errors::IsCancelled(status));
+  EXPECT_TRUE(absl::IsCancelled(status));
   EXPECT_NE(
       status.message().find(absl::StrCat(
           "Operation was cancelled for BufRendezvous key ", *kDefaultKey)),
@@ -301,7 +301,7 @@ TEST_F(BufRendezvousTest, CancelThenProvide) {
       },
       &cm_);
   note.WaitForNotification();
-  EXPECT_TRUE(errors::IsCancelled(status));
+  EXPECT_TRUE(absl::IsCancelled(status));
   EXPECT_NE(
       status.message().find(absl::StrCat(
           "Operation was cancelled for BufRendezvous key ", *kDefaultKey)),
@@ -320,7 +320,7 @@ TEST_F(BufRendezvousTest, ConsumeThenCancel) {
       &cm_);
   cm_.StartCancel();
   note.WaitForNotification();
-  EXPECT_TRUE(errors::IsCancelled(status));
+  EXPECT_TRUE(absl::IsCancelled(status));
   EXPECT_NE(
       status.message().find(absl::StrCat(
           "Operation was cancelled for BufRendezvous key ", *kDefaultKey)),
@@ -339,7 +339,7 @@ TEST_F(BufRendezvousTest, CancelThenConsume) {
       },
       &cm_);
   note.WaitForNotification();
-  EXPECT_TRUE(errors::IsCancelled(status));
+  EXPECT_TRUE(absl::IsCancelled(status));
   EXPECT_NE(
       status.message().find(absl::StrCat(
           "Operation was cancelled for BufRendezvous key ", *kDefaultKey)),
@@ -392,23 +392,23 @@ TEST_F(BufRendezvousTest, CancelThenProvideConsume) {
       *kDefaultKey, default_device_, fake_device_context_, &a_, aa_,
       [&prod_status, &prod_callback_called](const absl::Status& s) {
         prod_status = s;
-        EXPECT_TRUE(errors::IsCancelled(prod_status));
+        EXPECT_TRUE(absl::IsCancelled(prod_status));
         prod_callback_called = true;
       },
       &cm_);
   EXPECT_TRUE(prod_callback_called);
-  EXPECT_TRUE(errors::IsCancelled(prod_status));
+  EXPECT_TRUE(absl::IsCancelled(prod_status));
   br_->ConsumeBuf(
       *kDefaultKey, *kDefaultDeviceName, kDefaultIncarnation,
       [&cons_status, &cons_callback_called](const absl::Status& s,
                                             BufRendezvous::Hook* h) {
         cons_status = s;
-        EXPECT_TRUE(errors::IsCancelled(cons_status));
+        EXPECT_TRUE(absl::IsCancelled(cons_status));
         cons_callback_called = true;
       },
       &cm_);
   EXPECT_TRUE(cons_callback_called);
-  EXPECT_TRUE(errors::IsCancelled(cons_status));
+  EXPECT_TRUE(absl::IsCancelled(cons_status));
 }
 
 }  // namespace

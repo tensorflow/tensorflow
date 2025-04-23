@@ -816,7 +816,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed2, &seed2));
     RandomSeeds seeds(seed, seed2);
     bool owns_resource = false;
-    if (errors::IsNotFound(s)) {
+    if (absl::IsNotFound(s)) {
       owns_resource = true;
       OP_REQUIRES_OK(
           ctx,
@@ -848,7 +848,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     absl::Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);
     bool owns_resource = false;
-    if (errors::IsNotFound(s)) {
+    if (absl::IsNotFound(s)) {
       owns_resource = true;
       LOG(WARNING) << "Failed to find seed generator resource. Falling back to "
                       "using a non-deterministically seeded generator and "
@@ -1076,7 +1076,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
     absl::Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);
     bool owns_resource = false;
-    if (errors::IsNotFound(s)) {
+    if (absl::IsNotFound(s)) {
       owns_resource = true;
       OP_REQUIRES_OK(
           ctx,

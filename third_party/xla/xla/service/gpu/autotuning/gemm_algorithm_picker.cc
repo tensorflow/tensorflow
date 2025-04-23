@@ -151,8 +151,8 @@ class GemmAutotuner {
 
   absl::StatusOr<AutotuneResult> TuneGpuBlasLt(const HloInstruction* gemm,
                                                const GemmConfig& gemm_config) {
-    auto workspace_buffer =
-        rz_buffers_.output_buffers().at(gemm->shape().tuple_shapes_size() - 1);
+    auto workspace_buffer = rz_buffers_.output_buffers().at(
+        gemm->shape().tuple_shapes().size() - 1);
 
     GpuBackendConfig gpu_config =
         gemm->backend_config<GpuBackendConfig>().value();

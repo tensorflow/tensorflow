@@ -346,7 +346,7 @@ TEST(GrpcSessionTest, DisableOutputPartitionGraphs) {
     RunMetadata run_metadata;
     absl::Status s = session->Run(run_options, {}, {}, {node_names[2]}, nullptr,
                                   &run_metadata);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(
         absl::StrContains(s.message(), "disable_output_partition_graphs"));
   }
