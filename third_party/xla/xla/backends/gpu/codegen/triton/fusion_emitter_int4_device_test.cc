@@ -185,9 +185,16 @@ TEST_F(TritonTest, FuseSubchannelDequantization) {
           rhs_contracting_dims={2}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  // TODO(b/401515387): Remove this once emitter handles non-standard layouts.
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(false);
+  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
+                          GetOptimizedModule(std::move(module)));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
-      std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+      std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonTest, FuseChannelDequantization) {
@@ -217,7 +224,14 @@ TEST_F(TritonTest, FuseChannelDequantization) {
           rhs_contracting_dims={4}
     }
   )";
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  // TODO(b/401515387): Remove this once emitter handles non-standard layouts.
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(false);
+  EXPECT_TRUE(RunAndCompare(std::move(module),
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonTest, FuseSubchannelDequantizationFused) {
@@ -415,15 +429,22 @@ TEST_F(TritonTest, FuseBroadcastBitcastMultiplyInPrologue) {
         rhs_contracting_dims={0}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  // TODO(b/401515387): Remove this once emitter handles non-standard layouts.
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(false);
+  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
+                          GetOptimizedModule(std::move(module)));
+  EXPECT_TRUE(*RunFileCheck(optimized_module->ToString(), R"(
     CHECK:    %[[broadcast:.*]] = bf16[2,128,1024]{2,1,0} broadcast
     CHECK:    %[[bitcast:.*]] = bf16[256,1024]{1,0} bitcast
     CHECK:    %[[multiply:.*]] = [[type:.*]][256,1024]{1,0} multiply
     CHECK:    %[[dot:.*]] = f32[1024,512]{1,0} dot
     CHECK:    ENTRY %main
   )"));
-  EXPECT_TRUE(RunAndCompare(std::move(module),
+  EXPECT_TRUE(RunAndCompare(std::move(optimized_module),
                             ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
@@ -558,9 +579,16 @@ TEST_F(TritonTest, FuseMultiplyInPrologue) {
         rhs_contracting_dims={1}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  // TODO(b/401515387): Remove this once emitter handles non-standard layouts.
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(false);
+  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
+                          GetOptimizedModule(std::move(module)));
   // On Ampere the multiply result type is f32, on Hopper it is bf16.
-  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+  EXPECT_TRUE(*RunFileCheck(optimized_module->ToString(), R"(
     CHECK:    %[[multiply:.*]] = [[type:.*]][32,64,128]{2,1,0} multiply
     CHECK:    %[[dot:.*]] = f32[32,128,256]{2,1,0} dot
     CHECK:    ENTRY %main

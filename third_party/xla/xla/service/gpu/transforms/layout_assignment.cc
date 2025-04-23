@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <initializer_list>
 #include <memory>
 #include <tuple>
@@ -25,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -315,12 +317,35 @@ bool DotCanSupportShapeWithLayout(const HloInstruction* dot,
       .ok();
 }
 
+// Checks whether some of the instruction predecessors (going up a chain of
+// unary or elementwise binary operations) are packed. An instruction is
+// considered packed if it results in a sub-byte type.
 bool IsPackedInstruction(const HloInstruction* instruction) {
-  return primitive_util::IsSubByteNonPredType(
-             instruction->shape().element_type()) ||
-         (instruction->opcode() == HloOpcode::kConvert &&
-          primitive_util::IsSubByteNonPredType(
-              instruction->operand(0)->shape().element_type()));
+  absl::flat_hash_set<const HloInstruction*> visited_instructions;
+  std::function<bool(const HloInstruction*)> is_packed_instruction =
+      [&](const HloInstruction* instruction) {
+        // Going up the chain of unary operations.
+        while (true) {
+          if (!visited_instructions.insert(instruction).second) {
+            return false;
+          }
+          // If the instruction results in a sub-byte type, then it is packed.
+          if (primitive_util::IsSubByteNonPredType(
+                  instruction->shape().element_type())) {
+            return true;
+          }
+          if (instruction->operand_count() != 1) {
+            break;
+          }
+          instruction = instruction->operand(0);
+        }
+        if (instruction->IsElementwiseBinary()) {
+          return is_packed_instruction(instruction->operand(0)) ||
+                 is_packed_instruction(instruction->operand(1));
+        }
+        return false;
+      };
+  return is_packed_instruction(instruction);
 }
 
 bool IsCustomCallToMemoryPlacement(const HloInstruction* hlo) {
