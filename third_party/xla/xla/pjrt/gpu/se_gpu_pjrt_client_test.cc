@@ -2147,16 +2147,13 @@ TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
       tensorflow::down_cast<PjRtStreamExecutorClient*>(gpu_client.get());
   size_t dma_size = 1024;
   size_t alignment = 4096;
-  void* host_dma_ptr = nullptr;
-  int err = posix_memalign(&host_dma_ptr, alignment, dma_size);
-  CHECK_EQ(err, 0) << "posix_memalign failed: " << strerror(err);
-  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
-  EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr, dma_size));
-  EXPECT_FALSE(
-      client->IsDmaMapped(reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
-  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
-  EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr, dma_size));
-  free(host_dma_ptr);
+  auto host_dma_ptr = xla::AlignedAlloc(alignment, dma_size);
+  TF_EXPECT_OK(client->DmaMap(host_dma_ptr.get(), dma_size));
+  EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr.get(), dma_size));
+  EXPECT_FALSE(client->IsDmaMapped(
+      reinterpret_cast<char*>(host_dma_ptr.get()) + 5, dma_size));
+  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr.get()));
+  EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr.get(), dma_size));
 }
 
 TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
@@ -2185,12 +2182,10 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
 
   size_t dma_size = 2 * 1024 * 1024;
   size_t alignment = 1024;
-  void* host_dma_ptr = nullptr;
-  int err = posix_memalign(&host_dma_ptr, alignment, dma_size);
-  CHECK_EQ(err, 0) << "posix_memalign failed: " << strerror(err);
-  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
+  auto host_dma_ptr = xla::AlignedAlloc(alignment, dma_size);
+  TF_EXPECT_OK(client->DmaMap(host_dma_ptr.get(), dma_size));
 
-  auto result = first_buffer->CopyRawToHost(host_dma_ptr, 0, size);
+  auto result = first_buffer->CopyRawToHost(host_dma_ptr.get(), 0, size);
   TF_EXPECT_OK(result.Await());
 
   PjRtDevice* const second_device = client->addressable_devices()[1];
@@ -2201,13 +2196,12 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
   auto second_buffer = transfer_manager->RetrieveBuffer(0);
 
   TF_EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(
-      0, host_dma_ptr, 0, size, true, []() {}));
+      0, host_dma_ptr.get(), 0, size, true, []() {}));
   TF_ASSERT_OK_AND_ASSIGN(auto literal, second_buffer->ToLiteralSync());
   EXPECT_EQ(literal->element_count(), test_length);
   EXPECT_THAT(literal->data<int32_t>(), ElementsAreArray(data));
 
-  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
-  free(host_dma_ptr);
+  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr.get()));
 }
 
 TEST(TpuLocalClientTest, RawBuffer) {

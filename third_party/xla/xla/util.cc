@@ -20,10 +20,11 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iterator>
 #include <limits>
-#include <numeric>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -542,6 +543,22 @@ std::string PrintAllFields(const tsl::protobuf::Message& message) {
     }
   }
   return result.str();
+}
+
+std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
+                                                std::size_t size) {
+  CHECK_GT(alignment, 0) << "alignment must be positive";
+  CHECK(IsPowerOf2(alignment))
+      << "alignment must be a power of 2, but got " << alignment;
+  CHECK_GT(size, 0) << "size must be positive";
+#ifdef _WIN32
+  void* raw_ptr = _aligned_malloc(size, alignment);  // Note argument order
+#else
+  void* raw_ptr = std::aligned_alloc(alignment, size);
+#endif
+  CHECK_NE(raw_ptr, nullptr) << "aligned_alloc failed";
+  // Return unique_ptr managing the memory.
+  return std::unique_ptr<void, FreeDeleter>(raw_ptr, FreeDeleter());
 }
 
 }  // namespace xla
