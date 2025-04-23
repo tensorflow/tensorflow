@@ -1360,7 +1360,7 @@ PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args) {
   }
   const xla::Shape& shape = output_shapes[0];
   if (shape.IsTuple()) {
-    args->num_outputs = shape.tuple_shapes_size();
+    args->num_outputs = shape.tuple_shapes().size();
   } else {
     // The output size is 1, as it is not a tuple.
     args->num_outputs = 1;

@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/service/shaped_buffer.h"
 
+#include <cstdint>
+#include <cstdlib>
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 

@@ -414,7 +414,7 @@ absl::Status CreateRootTuple(
     DataflowPathsView sliced_user_paths,
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
         instr_mapping) {
-  unsigned tuple_size = hero->shape().tuple_shapes_size();
+  unsigned tuple_size = hero->shape().tuple_shapes().size();
 
   std::vector<HloInstruction*> sliced_elems(tuple_size, nullptr);
   for (auto& sliced_user_path : sliced_user_paths) {
@@ -487,7 +487,7 @@ absl::StatusOr<HloComputation*> CreateFusionBody(
 
   // Create a tuple if the hero is a tuple to make sure there's a buffer
   // assigned for each of the elements. Make sure the tuple is not nil first.
-  if (hero->shape().IsTuple() && hero->shape().tuple_shapes_size() > 0) {
+  if (hero->shape().IsTuple() && hero->shape().tuple_shapes().size() > 0) {
     TF_RETURN_IF_ERROR(
         CreateRootTuple(hero, builder, sliced_user_paths, instr_mapping));
   }

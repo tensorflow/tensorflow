@@ -586,7 +586,7 @@ ENTRY entry {
   XLA_VLOG_LINES(1, module->ToString());
   HloInstruction* while_instr =
       FindInstruction(module.get(), HloOpcode::kWhile);
-  EXPECT_EQ(while_instr->shape().tuple_shapes_size(), 5);
+  EXPECT_EQ(while_instr->shape().tuple_shapes().size(), 5);
 }
 
 TEST_F(CollectivePipelinerTest, TransformIncrementIndexByOneNotFirstIdx) {

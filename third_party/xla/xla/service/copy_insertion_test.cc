@@ -790,7 +790,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
           while_hlo->mutable_operand(0)));
   HloInstruction* outer_param = outer_while_body->parameter_instruction(0);
   std::vector<HloInstruction*> materialized_gtes;
-  for (int i = 0; i < outer_param->shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < outer_param->shape().tuple_shapes().size(); ++i) {
     materialized_gtes.push_back(
         outer_while_body->AddInstruction(HloInstruction::CreateGetTupleElement(
             outer_param->shape().tuple_shapes(i), outer_param, i)));
@@ -916,7 +916,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]{0}, s32[], f32[8]{0}, s
           while_hlo->mutable_operand(0)));
   HloInstruction* outer_param = outer_while_body->parameter_instruction(0);
   std::vector<HloInstruction*> materialized_gtes;
-  for (int i = 0; i < outer_param->shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < outer_param->shape().tuple_shapes().size(); ++i) {
     materialized_gtes.push_back(
         outer_while_body->AddInstruction(HloInstruction::CreateGetTupleElement(
             outer_param->shape().tuple_shapes(i), outer_param, i)));

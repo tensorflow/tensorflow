@@ -231,7 +231,7 @@ absl::StatusOr<HloInstruction*> ShiftDequantizationF8(
     TF_ASSIGN_OR_RETURN(
         HloInstruction * operand_scale,
         MakeGetTupleElementHlo(
-            body_param, body_param->shape().tuple_shapes_size() - 2 + k));
+            body_param, body_param->shape().tuple_shapes().size() - 2 + k));
 
     // Also add the scaling factor to the output tuple of the while body.
     while_root->AppendOperand(operand_scale);
@@ -349,7 +349,7 @@ static int64_t GetAgActivationCacheIndex(const HloInstruction* while_loop) {
   const HloInstruction* loop_tuple = while_loop->operand(0);
   const Shape& tuple_shape = loop_tuple->shape();
   CHECK(tuple_shape.IsTuple());
-  return tuple_shape.tuple_shapes_size() - 1;
+  return tuple_shape.tuple_shapes().size() - 1;
 }
 
 bool FindDusSliceForCachedActivation(HloInstruction* inst,
@@ -649,7 +649,7 @@ absl::Status MoveAccumulationOutsideLoop(
   // The final reduction
   HloInstruction* concat_result_gte =
       comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-          loop, (loop->operand(0)->shape().tuple_shapes_size() - 1)));
+          loop, (loop->operand(0)->shape().tuple_shapes().size() - 1)));
   HloInstruction* reduced_result =
       comp->AddInstruction(HloInstruction::CreateReduce(
           partial_accumulations[0]->shape(), concat_result_gte, zero, {0},

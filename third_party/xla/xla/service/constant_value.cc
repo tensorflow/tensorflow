@@ -27,7 +27,7 @@ namespace xla {
 
 absl::StatusOr<ConstantValue> ConstantValue::FromLiteral(
     const Literal& literal) {
-  CHECK_EQ(literal.shape().dimensions_size(), 0) << "Expected scalar literal";
+  CHECK_EQ(literal.shape().dimensions().size(), 0) << "Expected scalar literal";
   return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<ConstantValue>>(
       [&](auto primitive_type_constant) -> absl::StatusOr<ConstantValue> {
         if constexpr (primitive_util::IsIntegralType(primitive_type_constant)) {

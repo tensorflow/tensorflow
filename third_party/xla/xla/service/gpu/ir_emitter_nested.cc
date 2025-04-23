@@ -211,7 +211,7 @@ absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
       llvm::Type* tuple_type =
           llvm_ir::ShapeToIrType(return_shape, module_->getContext());
 
-      for (int i = 0; i < return_shape.tuple_shapes_size(); i++) {
+      for (int i = 0; i < return_shape.tuple_shapes().size(); i++) {
         const Shape& element_shape = return_shape.tuple_shapes(i);
         llvm::Value* destination = llvm_ir::EmitGetTupleElement(
             element_shape,
