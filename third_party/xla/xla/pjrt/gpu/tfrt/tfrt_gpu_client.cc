@@ -3038,12 +3038,26 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           std::move(donation_transaction).Commit();
         }
 
+        if (VLOG_IS_ON(1)) {
+          VLOG(1) << "Start calling RunAsync for executable " << executable_name
+                  << " on device " << device->DebugString();
+        }
+
         absl::StatusOr<ExecutionOutput> result_buffer_or_status =
             gpu_executable->RunAsync(std::move(execution_inputs), run_options);
-        VLOG(1) << "Replica " << replica << " partition " << partition
-                << " completed; ok=" << result_buffer_or_status.ok();
+
+        if (VLOG_IS_ON(1)) {
+          VLOG(1) << "Finish calling RunAsync for executable "
+                  << executable_name << " on device " << device->DebugString()
+                  << ", replica " << replica << ", partition " << partition
+                  << ", status=" << result_buffer_or_status.status();
+        }
 
         if (!result_buffer_or_status.ok()) {
+          LOG(ERROR) << "Calling RunAsync failed for executable "
+                     << executable_name << " on device "
+                     << device->DebugString()
+                     << ", status = " << result_buffer_or_status.status();
           set_error(result_buffer_or_status.status());
           return;
         }
