@@ -14,6 +14,7 @@ pybind_extension(
     name = "format_converter_wrapper_pybind11",
     srcs = ["format_converter_wrapper_pybind11.cc"],
     common_lib_packages = [
+        "litert/python",
         "third_party/tensorflow/lite/python",
     ],
     copts = [
