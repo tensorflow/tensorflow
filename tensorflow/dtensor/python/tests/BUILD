@@ -5,8 +5,6 @@ load(
     "//tensorflow/dtensor:build_defs.bzl",
     "ALL_BACKENDS",
     "GPU_2DEVS_BACKEND",
-    "PATHWAYS",
-    "PATHWAYS_V3_DONUT_BACKEND",
     "TPU_V3_DONUT_BACKEND",
     "TPU_V4_DONUT_BACKEND",
     "dtensor_test",
@@ -192,13 +190,10 @@ dtensor_test(
     additional_backends = [
         TPU_V3_DONUT_BACKEND,
         GPU_2DEVS_BACKEND,
-        PATHWAYS,
-        PATHWAYS_V3_DONUT_BACKEND,
     ],
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
-        "//tensorflow/dtensor/python:config",
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
@@ -230,7 +225,6 @@ dtensor_test(
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
-        "//tensorflow/dtensor/python:config",
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:dtensor_device",
         "//tensorflow/dtensor/python:layout",
