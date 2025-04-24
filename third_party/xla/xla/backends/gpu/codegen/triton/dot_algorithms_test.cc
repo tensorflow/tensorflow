@@ -18,13 +18,10 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
-#include <iomanip>
-#include <ios>
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -32,6 +29,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -42,6 +40,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/kernel_name_tracer.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
@@ -1471,6 +1470,74 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
   }
 }
 
+// Applies elementwise absolute value to all arguments to make them
+// non-negative.
+void MakeNonNegative(std::vector<Literal>& fake_arguments) {
+  for (Literal& literal : fake_arguments) {
+    literal.MutableEachCell<float>([](absl::Span<const int64_t> indices,
+                                      float value) { return std::abs(value); });
+  }
+}
+
+std::vector<const Literal*> GetLiteralPointers(
+    const std::vector<Literal>& fake_arguments) {
+  std::vector<const Literal*> fake_argument_ptrs;
+  fake_argument_ptrs.reserve(fake_arguments.size());
+  for (const Literal& literal : fake_arguments) {
+    fake_argument_ptrs.push_back(&literal);
+  }
+  return fake_argument_ptrs;
+}
+
+// Returns the maximum relative error for the algorithm, assuming that the
+// majority of the error comes from rounding to narrower type, and not error
+// due to floating point arithmetic calculation. I.e., we assume that:
+//    <contracting dimension> << <narrowing error> / <fp arithmetic error>
+// E.g., for BF16xBF16 -> F32, this would mean k << 2^-7 / 2^-23 = 64k
+double GetMaxRelErrorForSmallContractingDim(PC::Algorithm algorithm) {
+  // With `ulp` denoting the "unit in the last place", and proper floating point
+  // implementation, the test does k multiplications and then k-1 additions per
+  // output element. However, we also get an initial error per element due to
+  // rounding to bf16, or tf32, depending on the algorithm.
+  //
+  // Our total error then ends up being k*ulp_f32 + 2*ulp_bf16/tf32.  We can
+  // look at an example of a dot product of 2-value vectors [a,b] and [x,y], to
+  // get an intuition for it:
+  //  (1+ulp_f32)((1+ulp_f32)((1+ulp_bf16)a * (1+ulp_bf16)x)
+  //      + (1+ulp_f32)((1+ulp_bf16)b * (1+ulp_bf16)y))
+  //   = (1+ulp_f32)(1+ulp_f32)(1+ulp_bf16)(1+ulp_bf16)(ax+by)
+  //  ~= (1+2ulp_f32+2ulp_bf16)(ax+by)
+  //
+  // In the last equality we discard any higher-order errors because they are
+  // orders of magnitude smaller than the 1st-order term.
+  //
+  // Thus, we get 2*ulp_bf16 because the multiplication adds up the errors of
+  // the factors, and addition just factors a single error term out. Then we get
+  // k*ulp_f32 because each "layer" of operations adds another rounding error
+  // (and we have 1 layer of multiplications and k-1 layers of additions).
+  //
+  // If we have a small k, such as k=8 then the error bounds are:
+  //
+  // BF16xBF16 -> F32: 8*2^-23 + 2*2^-7 = 2^-20 + 2^-6 ~= 1.6e-2
+  // TF32xTF32 -> F32: 8*2^-23 + 2*2^-10 = 2^-20 + 2^-9 ~= 2.0e-3
+  //
+  // Thus, they do not actually depend on k, since f32 has much higher precision
+  // than the rounding mode.
+  const absl::flat_hash_map<PC::Algorithm, double> kMaxMeanRelError = {
+      {PC::ALG_DOT_BF16_BF16_F32, 1.6e-2},
+      {PC::ALG_DOT_TF32_TF32_F32, 2.0e-3},
+      // TODO: b/407744579 - Understand what the expected error is with various
+      // precision-recovering algorithms. For now we just use the errors that
+      // we got assuming that the implementation is correct.
+      {PC::ALG_DOT_BF16_BF16_F32_X3, 3e-5},
+      {PC::ALG_DOT_BF16_BF16_F32_X6, 4e-7},
+      {PC::ALG_DOT_BF16_BF16_F32_X9, 4e-7},
+      {PC::ALG_DOT_TF32_TF32_F32_X3, 5e-7}};
+  auto max_rel_error_it = kMaxMeanRelError.find(algorithm);
+  CHECK(max_rel_error_it != kMaxMeanRelError.end());
+  return max_rel_error_it->second;
+}
+
 INSTANTIATE_TEST_SUITE_P(
     TritonAndBlasSupportForDifferentTensorSizes,
     TritonAndBlasSupportForDifferentTensorSizes,
@@ -1484,30 +1551,20 @@ INSTANTIATE_TEST_SUITE_P(
 class PrecisionTestsForTriton : public TritonAlgorithmTest,
                                 public NumericTestsArguments,
                                 public WithParamInterface<PC::Algorithm> {
- public:
-  PrecisionTestsForTriton() : TritonAlgorithmTest() {
-    algorithm_ = AlgorithmToString(GetParam());
-  }
-
-  std::string test_hlo_text() const {
-    return absl::StrReplaceAll(kHloText, {{"${test_name}", HloModuleTestName()},
-                                          {"${algorithm}", algorithm_}});
-  }
-  std::string reference_hlo_text() const {
-    return absl::StrReplaceAll(kHloText, {{"${test_name}", HloModuleTestName()},
-                                          {"${algorithm}", "dot_f32_f32_f32"}});
-  }
-
-  absl::string_view algorithm() const { return algorithm_; }
-
-  static constexpr absl::string_view kPattern = R"(CHECK: __triton_gemm)";
-
-  absl::StatusOr<std::unique_ptr<HloModule>> GetModule(
-      const std::string& hlo_text) {
+ protected:
+  absl::StatusOr<std::unique_ptr<HloModule>> GetSimpleDotModule(
+      int lhs_outer_dim, int rhs_outer_dim, int contracting_dim,
+      PC::Algorithm algorithm) {
+    std::string hlo_text = absl::StrReplaceAll(
+        kHloTextPattern, {{"${test_name}", HloModuleTestName()},
+                          {"${m}", absl::StrCat(lhs_outer_dim)},
+                          {"${n}", absl::StrCat(rhs_outer_dim)},
+                          {"${k}", absl::StrCat(contracting_dim)},
+                          {"${algorithm}", AlgorithmToString(algorithm)}});
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         GetOptimizedModule(hlo_text));
-    auto module_text = module->ToString();
-    TF_ASSIGN_OR_RETURN(auto ok, RunFileCheck(module_text, kPattern));
+    TF_ASSIGN_OR_RETURN(
+        bool ok, RunFileCheck(module->ToString(), "CHECK: __triton_gemm"));
     if (!ok) {
       return absl::InternalError(
           "The module does not contain the pattern __triton_gemm.");
@@ -1516,83 +1573,72 @@ class PrecisionTestsForTriton : public TritonAlgorithmTest,
   }
 
  private:
-  static constexpr absl::string_view kHloText = R"(
+  static constexpr absl::string_view kHloTextPattern = R"(
     HloModule ${test_name}
 
     ENTRY main {
-      p0 = f32[1024,1024]{1,0} parameter(0)
-      p1 = f32[1024,1024]{1,0} parameter(1)
-      ROOT %dot = f32[1024,1024]{1,0} dot(p0, p1),
+      p0 = f32[${m},${k}]{1,0} parameter(0)
+      p1 = f32[${k},${n}]{1,0} parameter(1)
+      ROOT %dot = f32[${m},${n}]{1,0} dot(p0, p1),
         lhs_contracting_dims={1},
         rhs_contracting_dims={0},
         algorithm=${algorithm}
     }
   )";
-  std::string algorithm_;
 };
+
+MATCHER_P(RelativeDifferenceIsWithin, max_rel_difference, "") {
+  double got = std::get<0>(arg);
+  double expected = std::get<1>(arg);
+  double rel_difference = std::abs((got - expected) / expected);
+  *result_listener << "has relative difference " << rel_difference << " = ("
+                   << got << " - " << expected << ") / " << expected
+                   << " that should be within " << max_rel_difference;
+  return rel_difference <= max_rel_difference;
+}
 
 TEST_P(PrecisionTestsForTriton, PrecisionCheck) {
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Precision tests is unknown for ROCM.";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto test_module, GetModule(test_hlo_text()));
-  TF_ASSERT_OK_AND_ASSIGN(auto ref_module, GetModule(reference_hlo_text()));
-
-  // Prepare arguments.
-  absl::StatusOr<std::vector<Literal>> fake_arguments = MakeFakeArguments(
-      test_module.get(), /*pseudo_random=*/true, /*use_large_range=*/false,
-      /*treat_gte_as_data_formatting=*/false, 23);
-  CHECK_OK(fake_arguments);
-
-  // abs the arguments.
-  for (auto& literal : *fake_arguments) {
-    literal.MutableEachCell<float>([](absl::Span<const int64_t> indices,
-                                      float value) { return std::abs(value); });
-  }
-  std::vector<Literal*> fake_argument_ptrs;
-  absl::c_transform(
-      *fake_arguments, std::back_inserter(fake_argument_ptrs),
-      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
-
-  // Run the test and reference modules.
+  PC::Algorithm algorithm = GetParam();
+  // Use small contracting dimensions to avoid false-negatives due to changing
+  // contracting dimension tiling factors.
+  constexpr int kLhsOuterDim = 1024;
+  constexpr int kRhsOuterDim = 1024;
+  constexpr int kContractingDim = 8;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> test_module,
+                          GetSimpleDotModule(kLhsOuterDim, kRhsOuterDim,
+                                             kContractingDim, algorithm));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto test_result,
-      test_runner().Execute(std::move(test_module), fake_argument_ptrs, false));
+      std::unique_ptr<HloModule> ref_module,
+      GetSimpleDotModule(kLhsOuterDim, kRhsOuterDim, kContractingDim,
+                         PC::ALG_DOT_F32_F32_F32));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto ref_result,
-      test_runner().Execute(std::move(ref_module), fake_argument_ptrs, false));
+      std::vector<Literal> fake_arguments,
+      MakeFakeArguments(test_module.get(), /*pseudo_random=*/true,
+                        /*use_large_range=*/false,
+                        /*treat_gte_as_data_formatting=*/false,
+                        /*max_bits_of_precision=*/23));
+  // Ensure there are no negative arguments to avoid unbounded relative errors
+  // due to subtracting two similarly large numbers.
+  MakeNonNegative(fake_arguments);
+  std::vector<const Literal*> fake_argument_ptrs =
+      GetLiteralPointers(fake_arguments);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal ref_result,
+      test_runner().Execute(std::move(ref_module), fake_argument_ptrs,
+                            /*run_hlo_passes=*/false));
 
-  // Calculate the relative and absolute errors.
-  absl::Span<const float> test_data = test_result.data<float>();
-  absl::Span<const float> ref_data = ref_result.data<float>();
-  float abs_error = 0.0f;
-  float rel_error = 0.0f;
-  for (int i = 0; i < test_data.size(); ++i) {
-    abs_error += std::abs(test_data[i] - ref_data[i]);
-    rel_error += std::abs((test_data[i] - ref_data[i]) / ref_data[i]);
-  }
-  abs_error /= test_data.size();
-  rel_error /= test_data.size();
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal test_result,
+      test_runner().Execute(std::move(test_module), fake_argument_ptrs,
+                            /*run_hlo_passes=*/false));
 
-  std::unordered_map<PC::Algorithm, float> max_mean_rel_error = {
-      {PC::ALG_DOT_BF16_BF16_F32, 6e-5},
-      {PC::ALG_DOT_TF32_TF32_F32, 2e-5},
-      {PC::ALG_DOT_BF16_BF16_F32_X3, 7e-6},
-      {PC::ALG_DOT_BF16_BF16_F32_X6, 4e-7},
-      {PC::ALG_DOT_BF16_BF16_F32_X9, 4e-7},
-      {PC::ALG_DOT_TF32_TF32_F32_X3, 5e-7}};
-
-  LOG(INFO) << "mean(abs_error):    " << abs_error;
-  LOG(ERROR) << "mean(rel_error):    " << std::fixed << std::setprecision(9)
-             << rel_error;
-  LOG(ERROR) << "max_mean_rel_error: " << std::fixed << std::setprecision(9)
-             << max_mean_rel_error[GetParam()];
-
-  ASSERT_TRUE(max_mean_rel_error.find(GetParam()) != max_mean_rel_error.end())
-      << "No precision test for algorithm " << algorithm();
-  EXPECT_LT(rel_error, max_mean_rel_error[GetParam()])
-      << "mean(rel_error) is too high.";
+  EXPECT_THAT(llvm::zip(test_result.data<float>(), ref_result.data<float>()),
+              ::testing::Each(RelativeDifferenceIsWithin(
+                  GetMaxRelErrorForSmallContractingDim(algorithm))));
 }
 
 INSTANTIATE_TEST_SUITE_P(PrecisionTestsForTriton, PrecisionTestsForTriton,
