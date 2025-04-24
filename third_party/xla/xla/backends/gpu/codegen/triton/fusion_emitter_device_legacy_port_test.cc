@@ -519,8 +519,7 @@ ENTRY entry {
   EXPECT_GT(result.shmem_bytes, device_info.shared_memory_per_block());
 }
 
-// TODO(b/393299275): there is a miscompile here.
-TEST_F(TritonGemmTest, DISABLED_MultipleDims) {
+TEST_F(TritonGemmTest, MultipleDims) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -535,7 +534,7 @@ ENTRY e {
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
 ; CHECK-NOT:  convert
-; CHECK-NEXT: fusion(
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "__triton_nested_gemm_fusion"
   )");
@@ -569,18 +568,7 @@ ENTRY e {
                                ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// TODO(b/393299275): fails due to wrong bitcast hoisting with non-default
-// layout by nest_gemm_fusion:
-//   %bitcast.26 = pred[5,122]{1,0} bitcast(%parameter_1)
-//   %convert.15 = f16[5,122]{1,0} convert(%bitcast.26)
-//   %bitcast.27 = f16[122,5]{0,1} bitcast(%convert.15)
-// got hoisted to the entry computation as
-//   %bitcast.38 = pred[5,122]{1,0} bitcast(%bitcast.36)
-//   %bitcast.39 = pred[122,5]{1,0} bitcast(%bitcast.38)
-//
-// When enabling the test consider to update the FileCheck test to be more
-// specific.
-TEST_F(TritonGemmTest, DISABLED_SplitLhsNoncontractingTransposeRhs) {
+TEST_F(TritonGemmTest, SplitLhsNoncontractingTransposeRhs) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -599,7 +587,6 @@ ENTRY e {
 ; CHECK: ENTRY
 ; CHECK-NOT: transpose
 ; CHECK: fusion(
-
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: __triton_nested_gemm_fusion
 )");
@@ -1689,8 +1676,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-// TODO(b/393299275): looks like another miscompile.
-TEST_F(TritonGemmTest, DISABLED_ParameterAfterDotIsFused) {
+TEST_F(TritonGemmTest, ParameterAfterDotIsFused) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }

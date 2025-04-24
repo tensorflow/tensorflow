@@ -497,14 +497,15 @@ PlanHoistBitcastToCallers(const HloInstruction* bitcast) {
     for (HloInstruction* instruction : instructions) {
       auto it = to_update.find(instruction);
       // Only update the dimensions keeping the type intact.
-      Shape updated_shape = ShapeUtil::MakeShape(
-          instruction->shape().element_type(), shape.dimensions());
+      Shape updated_shape(shape);
+      updated_shape.set_element_type(instruction->shape().element_type());
       if (it == to_update.end()) {
         to_update.emplace(instruction, updated_shape);
       } else if (it->second != updated_shape) {
         return absl::FailedPreconditionError(absl::StrCat(
             "Conflicting shape assignment for ", instruction->ToString(),
-            " got ", it->second.ToString(), " and ", shape.ToString()));
+            " got ", ShapeUtil::HumanStringWithLayout(it->second), " and ",
+            ShapeUtil::HumanStringWithLayout(shape)));
       }
     }
     return absl::OkStatus();
@@ -529,12 +530,11 @@ PlanHoistBitcastToCallers(const HloInstruction* bitcast) {
       continue;
     }
     Shape& shape = it->second;
-    // TODO(b/393299275): check that the type of the instruction shape type
-    // matches the target shape.
     result.emplace_back(instruction, shape);
-    VLOG(2) << absl::StrCat("updating the shape of ", instruction->ToString(),
-                            " from ", instruction->shape().ToString(), " to ",
-                            shape.ToString());
+    VLOG(2) << absl::StrCat(
+        "updating the shape of ", instruction->ToString(), " from ",
+        ShapeUtil::HumanStringWithLayout(instruction->shape()), " to ",
+        ShapeUtil::HumanStringWithLayout(shape));
     switch (instruction->opcode()) {
       case HloOpcode::kParameter:
       case HloOpcode::kConstant:
@@ -571,9 +571,10 @@ absl::Status HoistBitcastUpwardsToCallers(
     HloInstruction* bitcast, const std::vector<HloInstruction*>& callers) {
   TF_ASSIGN_OR_RETURN(auto rewrite_plan, PlanHoistBitcastToCallers(bitcast));
   for (auto [instruction, shape] : rewrite_plan) {
-    VLOG(2) << absl::StrCat("rewriting shape of ", instruction->ToString(),
-                            " from ", instruction->shape().ToString(), " to ",
-                            shape.ToString());
+    VLOG(2) << absl::StrCat(
+        "rewriting shape of ", instruction->ToString(), " from ",
+        ShapeUtil::HumanStringWithLayout(instruction->shape()), " to ",
+        ShapeUtil::HumanStringWithLayout(shape));
     switch (instruction->opcode()) {
       case HloOpcode::kParameter: {
         // Create a new bitcast in callers.
@@ -625,7 +626,13 @@ absl::Status HoistBitcastDownwardsToCallers(
   // Adjust the shape of of every consumer instruction.
   Shape shape = bitcast->operand(0)->shape();
   for (HloInstruction* instruction : consumers) {
-    *instruction->mutable_shape() = shape;
+    Shape updated_shape(shape);
+    updated_shape.set_element_type(instruction->shape().element_type());
+    VLOG(2) << absl::StrCat(
+        "rewriting shape of ", instruction->ToString(), " from ",
+        ShapeUtil::HumanStringWithLayout(instruction->shape()), " to ",
+        ShapeUtil::HumanStringWithLayout(updated_shape));
+    *instruction->mutable_shape() = updated_shape;
   }
 
   // Insert new bitcast for each caller's result.
