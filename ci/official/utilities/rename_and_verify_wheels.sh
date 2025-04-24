@@ -69,7 +69,11 @@ fi
 # TODO(b/366266944) Remove the check after tf docker image upgrade for NumPy 2
 # and numpy 1 support is dropped b/361369076.
 if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
-  "$python" -m pip install numpy==1.26.0
+  if [[ "$TFCI_PYTHON_VERSION" == "3.13" ]]; then
+    "$python" -m pip install numpy==1.26.4
+  else
+    "$python" -m pip install numpy==1.26.0
+  fi
 fi
 "$python" -m pip install *.whl $TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS
 if [[ "$TFCI_WHL_IMPORT_TEST_ENABLE" == "1" ]]; then
