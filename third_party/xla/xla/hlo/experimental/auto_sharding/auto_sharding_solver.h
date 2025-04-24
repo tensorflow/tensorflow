@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "ortools/linear_solver/linear_solver.h"
@@ -44,9 +45,11 @@ double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request);
 
 struct AutoShardingSolverParams {
   std::vector<std::vector<double>> departure_costs;
+  bool deterministic_mode = false;
   std::optional<double> max_departures;
   bool minimize_departures = false;
   std::optional<double> overbudget_coeff;
+  absl::Duration solver_timeout = absl::InfiniteDuration();
 };
 
 AutoShardingSolverParams GetParams(const AutoShardingSolverRequest& request);
