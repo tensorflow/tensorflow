@@ -127,8 +127,7 @@ void ApplyTacFilter(
   }
 
   auto should_filter_op = [](mlir::Operation* op) {
-    return IsNonConstOp(op) && NotTFLQuantDequantizeOp(op) &&
-           !IsTerminatorOp(op) &&
+    return IsNonConstOp(op) && !IsTerminatorOp(op) &&
            !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op);
   };
 
