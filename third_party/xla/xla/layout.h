@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_LAYOUT_H_
 #define XLA_LAYOUT_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -341,58 +342,45 @@ class Layout {
   // interface.
 
   // Methods for accessing the DimLevelType array.
-  int dim_level_types_size() const { return n_dim_level_types_; }
+  int dim_level_types_size() const {
+    return std::max(minor_to_major_.size(), dim_attributes_.size());
+  }
   DimLevelType dim_level_type(int index) const {
-    return dim_attributes_[index].dim_level_type;
+    return index >= dim_attributes_.size()
+               ? DIM_DENSE
+               : dim_attributes_[index].dim_level_type;
   }
-  Layout& set_dim_level_type(int index, DimLevelType dim_level_type) {
-    dim_attributes_[index].dim_level_type = dim_level_type;
-    return *this;
-  }
-  Layout& add_dim_level_type(DimLevelType dim_level_type) {
-    while (n_dim_level_types_ >= dim_attributes_.size()) {
-      dim_attributes_.push_back(DimInfo());
-    }
-    dim_attributes_[n_dim_level_types_].dim_level_type = dim_level_type;
-    n_dim_level_types_++;
-    return *this;
-  }
-  Layout& clear_dim_level_types() {
-    n_dim_level_types_ = 0;
+  Layout& set_dim_level_type(int index, DimLevelType dlt) {
+    GrowDimAttributesAsNeeded(index);
+    dim_attributes_[index].dim_level_type = dlt;
     return *this;
   }
 
   // Methods for accessing the dim_unique array.
-  int dim_unique_size() const { return n_dim_unique_; }
-  bool dim_unique(int index) const { return dim_attributes_[index].dim_unique; }
-  Layout& set_dim_unique(int index, bool unique) {
-    dim_attributes_[index].dim_unique = unique;
-    return *this;
+  int dim_unique_size() const {
+    return std::max(minor_to_major_.size(), dim_attributes_.size());
   }
-  Layout& add_dim_unique(bool unique) {
-    while (n_dim_unique_ >= dim_attributes_.size()) {
-      dim_attributes_.push_back(DimInfo());
-    }
-    dim_attributes_[n_dim_unique_].dim_unique = unique;
-    n_dim_unique_++;
+  bool dim_unique(int index) const {
+    return index >= dim_attributes_.size() ? true
+                                           : dim_attributes_[index].dim_unique;
+  }
+  Layout& set_dim_unique(int index, bool unique) {
+    GrowDimAttributesAsNeeded(index);
+    dim_attributes_[index].dim_unique = unique;
     return *this;
   }
 
   // Methods for accessing the dim_ordered array.
-  int dim_ordered_size() const { return n_dim_ordered_; }
+  int dim_ordered_size() const {
+    return std::max(minor_to_major_.size(), dim_attributes_.size());
+  }
   bool dim_ordered(int index) const {
-    return dim_attributes_[index].dim_ordered;
+    return index >= dim_attributes_.size() ? true
+                                           : dim_attributes_[index].dim_ordered;
   }
   Layout& set_dim_ordered(int index, bool ordered) {
+    GrowDimAttributesAsNeeded(index);
     dim_attributes_[index].dim_ordered = ordered;
-    return *this;
-  }
-  Layout& add_dim_ordered(bool ordered) {
-    while (n_dim_ordered_ >= dim_attributes_.size()) {
-      dim_attributes_.push_back(DimInfo());
-    }
-    dim_attributes_[n_dim_ordered_].dim_ordered = ordered;
-    n_dim_ordered_++;
     return *this;
   }
 
@@ -533,11 +521,16 @@ class Layout {
     bool dim_ordered : 1;
   };
 
-  absl::InlinedVector<DimInfo, InlineRank()> dim_attributes_;
+  // Ensures that dim_attributes_ has enough elements to hold the given index
+  // by growing it as needed.
+  void GrowDimAttributesAsNeeded(int index) {
+    CHECK_GE(index, 0);
+    while (dim_attributes_.size() <= index) {
+      dim_attributes_.push_back(DimInfo());
+    }
+  }
 
-  uint8_t n_dim_level_types_ = 0;
-  uint8_t n_dim_unique_ = 0;
-  uint8_t n_dim_ordered_ = 0;
+  absl::InlinedVector<DimInfo, InlineRank()> dim_attributes_;
 
   // The primitive type to use for sparse array indices and pointers.  Each of
   // these must either be INVALID, or an unsigned integer type.

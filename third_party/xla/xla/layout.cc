@@ -122,27 +122,21 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
       dynamic_shape_metadata_prefix_bytes_(
           dynamic_shape_metadata_prefix_bytes) {
   // Grow dim_attributes_ to the maximum length of "dim_level_types",
-  // "dim_unique", and "dim_ordered", and then initialize the attributes that
+  // "dim_unique", and "dim_ordered", and initialize the attributes that
   // should exist.
-  n_dim_level_types_ = dim_level_types.size();
-  n_dim_unique_ = dim_unique.size();
-  n_dim_ordered_ = dim_ordered.size();
-  const int n_attributes = std::max<int>(
-      n_dim_level_types_, std::max<int>(n_dim_unique_, n_dim_ordered_));
-  dim_attributes_.resize(n_attributes);
-  for (int i = 0; i < n_attributes; i++) {
-    if (i < n_dim_level_types_)
-      dim_attributes_[i].dim_level_type = dim_level_types[i];
-    if (i < n_dim_unique_) dim_attributes_[i].dim_unique = dim_unique[i];
-    if (i < n_dim_ordered_) dim_attributes_[i].dim_ordered = dim_ordered[i];
+  for (int i = 0; i < dim_level_types.size(); i++) {
+    set_dim_level_type(i, dim_level_types[i]);
+  }
+  for (int i = 0; i < dim_unique.size(); i++) {
+    set_dim_unique(i, dim_unique[i]);
+  }
+  for (int i = 0; i < dim_ordered.size(); i++) {
+    set_dim_ordered(i, dim_ordered[i]);
   }
 }
 
 Layout::Layout(const Layout& other)
     : dim_attributes_(other.dim_attributes_),
-      n_dim_level_types_(other.n_dim_level_types_),
-      n_dim_unique_(other.n_dim_unique_),
-      n_dim_ordered_(other.n_dim_ordered_),
       index_primitive_type_(other.index_primitive_type_),
       pointer_primitive_type_(other.pointer_primitive_type_),
       memory_space_(other.memory_space_),
@@ -165,9 +159,6 @@ Layout::~Layout() = default;
 Layout& Layout::operator=(const Layout& other) {
   if (this != &other) {
     dim_attributes_ = other.dim_attributes_;
-    n_dim_level_types_ = other.n_dim_level_types_;
-    n_dim_unique_ = other.n_dim_unique_;
-    n_dim_ordered_ = other.n_dim_ordered_;
     minor_to_major_ = other.minor_to_major_;
     tiles_ = other.tiles_;
     tail_padding_alignment_in_elements_ =
@@ -193,14 +184,15 @@ Layout& Layout::operator=(Layout&& other) = default;
 /* static */ absl::StatusOr<Layout> Layout::FromProto(
     const LayoutProto& proto) {
   Layout layout;
-  for (int dim_level_type : proto.dim_level_types()) {
-    layout.add_dim_level_type(static_cast<DimLevelType>(dim_level_type));
+  for (int i = 0; i < proto.dim_level_types_size(); ++i) {
+    layout.set_dim_level_type(
+        i, static_cast<DimLevelType>(proto.dim_level_types(i)));
   }
-  for (bool dim_unique : proto.dim_unique()) {
-    layout.add_dim_unique(dim_unique);
+  for (int i = 0; i < proto.dim_unique_size(); ++i) {
+    layout.set_dim_unique(i, proto.dim_unique(i));
   }
-  for (bool dim_ordered : proto.dim_ordered()) {
-    layout.add_dim_ordered(dim_ordered);
+  for (int i = 0; i < proto.dim_ordered_size(); ++i) {
+    layout.set_dim_ordered(i, proto.dim_ordered(i));
   }
   layout.minor_to_major_.reserve(proto.minor_to_major_size());
   for (const int64_t dimension : proto.minor_to_major()) {
@@ -235,13 +227,13 @@ Layout& Layout::operator=(Layout&& other) = default;
 LayoutProto Layout::ToProto() const {
   LayoutProto proto;
   proto.Clear();
-  for (int i = 0; i < n_dim_level_types_; i++) {
+  for (int i = 0; i < dim_level_types_size(); i++) {
     proto.add_dim_level_types(dim_level_type(i));
   }
-  for (int i = 0; i < n_dim_unique_; i++) {
+  for (int i = 0; i < dim_unique_size(); i++) {
     proto.add_dim_unique(dim_unique(i));
   }
-  for (int i = 0; i < n_dim_ordered_; i++) {
+  for (int i = 0; i < dim_ordered_size(); i++) {
     proto.add_dim_ordered(dim_ordered(i));
   }
   proto.mutable_minor_to_major()->Reserve(minor_to_major_size());
@@ -307,17 +299,17 @@ void Layout::Print(Printer* printer) const {
   if (LayoutUtil::IsSparse(*this)) {
     auto print_one = [&](int i) {
       printer->Append(DimLevelTypeAbbrev(dim_level_type(i)));
-      if (n_dim_unique_ > 0 && !dim_unique(i)) {
+      if (!dim_unique(i)) {
         printer->Append("+");
       }
-      if (n_dim_ordered_ > 0 && !dim_ordered(i)) {
+      if (!dim_ordered(i)) {
         printer->Append("~");
       }
     };
     print_colon_if_have_not();
     printer->Append("D(");
     print_one(0);
-    for (int i = 1; i < n_dim_level_types_; ++i) {
+    for (int i = 1; i < dim_level_types_size(); ++i) {
       printer->Append(",");
       print_one(i);
     }
@@ -532,16 +524,7 @@ Layout& Layout::DeleteDimension(int dim_to_delete) {
     }
     ++i;
   }
-  // Delete the corresponding dim level types.
-  if (dim_to_delete < n_dim_level_types_) {
-    n_dim_level_types_--;
-  }
-  if (dim_to_delete < n_dim_unique_) {
-    n_dim_unique_--;
-  }
-  if (dim_to_delete < n_dim_ordered_) {
-    n_dim_ordered_--;
-  }
+  // Delete the corresponding dim attributes.
   if (dim_to_delete < dim_attributes_.size()) {
     dim_attributes_.erase(dim_attributes_.begin() + dim_to_delete);
   }

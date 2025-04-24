@@ -41,47 +41,47 @@ TEST(Layout, ToStringForMinorToMajorOnly) {
 
 TEST(Layout, ToStringForDimensionAttributes) {
   // If all dimensions are dense, the dimension attributes are omitted.
-  EXPECT_EQ(Layout({0}).add_dim_level_type(DIM_DENSE).ToString(), "{0}");
+  EXPECT_EQ(Layout({0}).set_dim_level_type(0, DIM_DENSE).ToString(), "{0}");
   EXPECT_EQ(Layout({1, 0})
-                .add_dim_level_type(DIM_DENSE)
-                .add_dim_level_type(DIM_DENSE)
+                .set_dim_level_type(0, DIM_DENSE)
+                .set_dim_level_type(1, DIM_DENSE)
                 .ToString(),
             "{1,0}");
 
   // Test other dimension level type abbreviations.
-  EXPECT_EQ(Layout({0}).add_dim_level_type(DIM_COMPRESSED).ToString(),
+  EXPECT_EQ(Layout({0}).set_dim_level_type(0, DIM_COMPRESSED).ToString(),
             "{0:D(C)}");
-  EXPECT_EQ(Layout({0}).add_dim_level_type(DIM_SINGLETON).ToString(),
+  EXPECT_EQ(Layout({0}).set_dim_level_type(0, DIM_SINGLETON).ToString(),
             "{0:D(S)}");
-  EXPECT_EQ(Layout({0}).add_dim_level_type(DIM_LOOSE_COMPRESSED).ToString(),
+  EXPECT_EQ(Layout({0}).set_dim_level_type(0, DIM_LOOSE_COMPRESSED).ToString(),
             "{0:D(H)}");
 
   // Test the ordered attribute.
   EXPECT_EQ(Layout({0})
-                .add_dim_level_type(DIM_COMPRESSED)
-                .add_dim_ordered(false)
+                .set_dim_level_type(0, DIM_COMPRESSED)
+                .set_dim_ordered(0, false)
                 .ToString(),
             "{0:D(C~)}");
 
   // Test the unique attribute.
   EXPECT_EQ(Layout({0})
-                .add_dim_level_type(DIM_COMPRESSED)
-                .add_dim_unique(false)
+                .set_dim_level_type(0, DIM_COMPRESSED)
+                .set_dim_unique(0, false)
                 .ToString(),
             "{0:D(C+)}");
 
   // Test the combination of ordered and unique attributes.
   EXPECT_EQ(Layout({0})
-                .add_dim_level_type(DIM_COMPRESSED)
-                .add_dim_ordered(false)
-                .add_dim_unique(false)
+                .set_dim_level_type(0, DIM_COMPRESSED)
+                .set_dim_ordered(0, false)
+                .set_dim_unique(0, false)
                 .ToString(),
             "{0:D(C+~)}");
 
   // Test multiple dimension attributes.
   EXPECT_EQ(Layout({1, 0})
-                .add_dim_level_type(DIM_DENSE)
-                .add_dim_level_type(DIM_COMPRESSED)
+                .set_dim_level_type(0, DIM_DENSE)
+                .set_dim_level_type(1, DIM_COMPRESSED)
                 .ToString(),
             "{1,0:D(D,C)}");
 }
@@ -245,28 +245,28 @@ TEST(Layout, LayoutToFromProto) {
 
 TEST(Layout, DimensionIsUniqueByDefault) {
   Layout layout({0, 1});
-  layout.add_dim_level_type(DIM_DENSE);
+  layout.set_dim_level_type(0, DIM_DENSE);
   EXPECT_TRUE(layout.dim_unique(0));
 
-  layout.add_dim_level_type(DIM_COMPRESSED);
+  layout.set_dim_level_type(1, DIM_COMPRESSED);
   EXPECT_TRUE(layout.dim_unique(1));
 }
 
 TEST(Layout, DimensionIsOrderedByDefault) {
   Layout layout({0, 1});
-  layout.add_dim_level_type(DIM_DENSE);
+  layout.set_dim_level_type(0, DIM_DENSE);
   EXPECT_TRUE(layout.dim_ordered(0));
 
-  layout.add_dim_level_type(DIM_COMPRESSED);
+  layout.set_dim_level_type(1, DIM_COMPRESSED);
   EXPECT_TRUE(layout.dim_ordered(1));
 }
 
 TEST(Layout, DeleteDimensionWorksForDeletingLastDimFromDenseLayout) {
   Layout layout({0, 1});
-  layout.add_dim_level_type(DIM_DENSE);
-  layout.add_dim_level_type(DIM_DENSE);
-  layout.add_dim_unique(false);
-  layout.add_dim_unique(true);
+  layout.set_dim_level_type(0, DIM_DENSE);
+  layout.set_dim_level_type(1, DIM_DENSE);
+  layout.set_dim_unique(0, false);
+  layout.set_dim_unique(1, true);
   ASSERT_TRUE(LayoutUtil::IsDense(layout));
   ASSERT_EQ(layout.minor_to_major().size(), 2);
   ASSERT_EQ(layout.dim_unique_size(), 2);
@@ -281,10 +281,10 @@ TEST(Layout, DeleteDimensionWorksForDeletingLastDimFromDenseLayout) {
 
 TEST(Layout, DeleteDimensionWorksForDeletingNonLastDimFromDenseLayout) {
   Layout layout({1, 0});
-  layout.add_dim_level_type(DIM_DENSE);
-  layout.add_dim_level_type(DIM_DENSE);
-  layout.add_dim_unique(false);
-  layout.add_dim_unique(true);
+  layout.set_dim_level_type(0, DIM_DENSE);
+  layout.set_dim_level_type(1, DIM_DENSE);
+  layout.set_dim_unique(0, false);
+  layout.set_dim_unique(1, true);
   ASSERT_TRUE(LayoutUtil::IsDense(layout));
   ASSERT_EQ(layout.minor_to_major().size(), 2);
   ASSERT_EQ(layout.dim_unique_size(), 2);
@@ -299,10 +299,10 @@ TEST(Layout, DeleteDimensionWorksForDeletingNonLastDimFromDenseLayout) {
 
 TEST(Layout, DeleteDimensionWorksForDeletingLastDimFromSparseLayout) {
   Layout layout({0, 1});
-  layout.add_dim_level_type(DIM_COMPRESSED);
-  layout.add_dim_level_type(DIM_DENSE);
-  layout.add_dim_unique(false);
-  layout.add_dim_unique(true);
+  layout.set_dim_level_type(0, DIM_COMPRESSED);
+  layout.set_dim_level_type(1, DIM_DENSE);
+  layout.set_dim_unique(0, false);
+  layout.set_dim_unique(1, true);
   ASSERT_TRUE(LayoutUtil::IsSparse(layout));
   ASSERT_EQ(layout.minor_to_major().size(), 2);
   ASSERT_EQ(layout.dim_unique_size(), 2);
@@ -317,10 +317,10 @@ TEST(Layout, DeleteDimensionWorksForDeletingLastDimFromSparseLayout) {
 
 TEST(Layout, DeleteDimensionWorksForDeletingNonLastDimFromSparseLayout) {
   Layout layout({1, 0});
-  layout.add_dim_level_type(DIM_COMPRESSED);
-  layout.add_dim_level_type(DIM_DENSE);
-  layout.add_dim_unique(false);
-  layout.add_dim_unique(true);
+  layout.set_dim_level_type(0, DIM_COMPRESSED);
+  layout.set_dim_level_type(1, DIM_DENSE);
+  layout.set_dim_unique(0, false);
+  layout.set_dim_unique(1, true);
   ASSERT_TRUE(LayoutUtil::IsSparse(layout));
   ASSERT_EQ(layout.minor_to_major().size(), 2);
   ASSERT_EQ(layout.dim_unique_size(), 2);
