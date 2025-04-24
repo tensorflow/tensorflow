@@ -126,8 +126,7 @@ class GpuCompilerTest : public HloTestBase {
   }
 };
 
-// TODO(b/399912696): Fix and enable this test.
-TEST_F(GpuCompilerTest, DISABLED_CompiledProgramsCount) {
+TEST_F(GpuCompilerTest, CompiledProgramsCount) {
   const char* hlo_text = R"(
 HloModule test
 
