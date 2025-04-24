@@ -57,8 +57,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_passes.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/utils.h"
+#include "tensorflow/compiler/mlir/stablehlo/transforms/legalize_tf_passes.h"
+#include "tensorflow/compiler/mlir/stablehlo/transforms/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
@@ -6845,7 +6845,7 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
 
 // Keep all these in the odml namespace to avoid collisions with the tf2xla
 // version for now.
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_legalize_tf.inc"
+#include "tensorflow/compiler/mlir/stablehlo/transforms/generated_legalize_tf.inc"
 
 void PopulatePatterns(MLIRContext *context, RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
