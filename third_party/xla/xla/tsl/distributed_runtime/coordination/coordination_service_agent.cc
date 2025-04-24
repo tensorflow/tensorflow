@@ -28,7 +28,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
@@ -52,8 +51,6 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
-#include "tsl/platform/random.h"
-#include "tsl/platform/thread_annotations.h"
 
 // TODO(b/342448688): Expose via config and API instead of flag.
 ABSL_FLAG(
@@ -79,146 +76,9 @@ constexpr absl::Duration kDefaultHeartbeatTimeout = absl::Seconds(10);
 constexpr absl::Duration kDefaultShutdownTimeout = absl::Seconds(10);
 constexpr char kHeartbeatThread[] = "CoordinationServiceHeartbeatLoop";
 
-class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
- public:
-  CoordinationServiceAgentImpl() = default;
-  ~CoordinationServiceAgentImpl() override {
-    absl::Status s = ShutdownInternal();
-    VLOG(3) << "Coordination agent dtor failed with status: " << s;
-  }
-  absl::Status Initialize(Env* env, absl::string_view job_name, int task_id,
-                          const CoordinationServiceConfig& configs,
-                          std::unique_ptr<CoordinationClient> leader_client,
-                          StatusCallback error_fn, bool recoverable) override;
-  absl::Status Initialize(Env* env, absl::string_view job_name, int task_id,
-                          const CoordinationServiceConfig& configs,
-                          std::unique_ptr<CoordinationClient> leader_client,
-                          StatusCallback error_fn) override;
-  absl::Status Initialize(Env* env, const CoordinatedTask& task,
-                          const CoordinationServiceConfig& configs,
-                          std::unique_ptr<CoordinationClient> leader_client,
-                          StatusCallback error_fn) override;
-  bool IsInitialized() override;
-  bool IsConnected() override;
-  bool IsError() override;
+}  // namespace
 
-  absl::Status Connect() override;
-  absl::Status WaitForAllTasks(const DeviceInfo& local_devices) override;
-  const DeviceInfo& GetClusterDeviceInfo() override;
-  absl::StatusOr<CoordinatedTask> GetOwnTask() override;
-  absl::StatusOr<std::vector<CoordinatedTaskStateInfo>> GetTaskState(
-      const std::vector<CoordinatedTask>& task) override;
-  absl::StatusOr<std::vector<CoordinatedTaskStateInfo>> GetJobState(
-      absl::string_view job_name) override;
-  absl::Status ReportError(const absl::Status& error) override;
-  absl::Status Shutdown() override;
-  absl::Status Reset() override;
-
-  absl::StatusOr<std::string> GetKeyValue(absl::string_view key) override;
-  absl::StatusOr<std::string> GetKeyValue(absl::string_view key,
-                                          absl::Duration timeout) override;
-  std::shared_ptr<CallOptions> GetKeyValueAsync(
-      absl::string_view key, StatusOrValueCallback done) override;
-  absl::StatusOr<std::string> TryGetKeyValue(absl::string_view key) override;
-  absl::StatusOr<std::vector<KeyValueEntry>> GetKeyValueDir(
-      absl::string_view key) override;
-  void GetKeyValueDirAsync(absl::string_view key,
-                           StatusOrValueDirCallback done) override;
-  absl::Status InsertKeyValue(absl::string_view key,
-                              absl::string_view value) override;
-  absl::Status InsertKeyValue(absl::string_view key, absl::string_view value,
-                              bool allow_overwrite) override;
-  absl::Status DeleteKeyValue(absl::string_view key) override;
-  absl::Status UpdateKeyValue(absl::string_view key,
-                              absl::string_view value) override;
-
-  absl::Status StartWatchKey(absl::string_view key,
-                             ChangedKeyValuesCallback on_change) override;
-  absl::Status StopWatchKey(absl::string_view key) override;
-  absl::Status WaitAtBarrier(
-      absl::string_view barrier_id, absl::Duration timeout,
-      const std::vector<CoordinatedTask>& tasks) override;
-  void WaitAtBarrierAsync(absl::string_view barrier_id, absl::Duration timeout,
-                          const std::vector<CoordinatedTask>& tasks,
-                          StatusCallback done) override;
-  absl::Status CancelBarrier(absl::string_view barrier_id) override;
-  void CancelBarrierAsync(absl::string_view barrier_id,
-                          StatusCallback done) override;
-  absl::StatusOr<std::vector<tensorflow::CoordinatedTask>> GetAliveTasks(
-      const std::vector<tensorflow::CoordinatedTask>& tasks) override;
-  void AddJobStateCallback(JobStateCallback callback) override;
-
-  absl::StatusOr<Env*> GetEnv() override;
-
- protected:
-  void SetError(const absl::Status& error) override;
-  absl::Status ActivateWatch(
-      absl::string_view key,
-      const std::map<std::string, std::string>&) override;
-  // Returns an error if agent is not running. If `allow_disconnected` is true,
-  // returns OK even if the agent is in DISCONNECTED state.
-  absl::Status ValidateRunningAgent(bool allow_disconnected = false);
-  void StopHeartbeat();
-
- private:
-  absl::Status ShutdownInternal();
-  // Starts sending heartbeats to the coordination service.
-  void StartSendingHeartbeats();
-  // Use long polling to get error from the coordination service.
-  void PollForErrorAsync(StatusCallback done);
-
-  // Starts polling for error from the coordination service.
-  void StartPollingForError();
-  // Cancels the error polling request and stops the error polling thread.
-  void StopErrorPolling();
-  // Resets the cancellation manager for error polling.
-  void ResetCancellationManager();
-
-  // Watches the state of this job.
-  void WatchJobState();
-  // Stops watching the state of this job.
-  void StopWatchingJobState();
-
-  Env* env_ = nullptr;  // Not owned.
-  const uint64_t incarnation_id_ = random::New64();
-  CoordinatedTask task_;
-  CoordinationServiceConfig configs_;
-  StatusCallback error_fn_;
-
-  mutable absl::Mutex state_mu_;
-  CoordinatedTaskState state_ ABSL_GUARDED_BY(state_mu_) =
-      CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
-  absl::Status status_ ABSL_GUARDED_BY(state_mu_) = absl::OkStatus();
-  // Tracks the number of times a barrier has been used, keyed by id.
-  absl::flat_hash_map<std::string, int64_t> barrier_counter_
-      ABSL_GUARDED_BY(state_mu_);
-  absl::flat_hash_set<std::string> ongoing_barriers_ ABSL_GUARDED_BY(state_mu_);
-
-  uint64_t leader_incarnation_ = 0;
-  DeviceInfo cluster_devices_;
-
-  absl::Mutex shutdown_mu_;
-  bool shutting_down_ ABSL_GUARDED_BY(shutdown_mu_) = false;
-  std::unique_ptr<Thread> heartbeat_thread_;
-
-  absl::Mutex job_state_watcher_mu_;
-  std::vector<JobStateCallback> job_state_callbacks_
-      ABSL_GUARDED_BY(job_state_watcher_mu_);
-  std::unique_ptr<Thread> job_state_watcher_thread_
-      ABSL_GUARDED_BY(job_state_watcher_mu_);
-
-  // Must outlive coordination client which may need to access it within
-  // GetKeyValueAsync() callbacks.
-  CancellationManager cancellation_manager_;
-  std::unique_ptr<CancellationManager> error_polling_cancellation_manager_ =
-      std::make_unique<CancellationManager>();
-  std::unique_ptr<CoordinationClient> leader_client_;
-
-  CoordinationServiceAgentImpl(const CoordinationServiceAgentImpl&) = delete;
-  void operator=(const CoordinationServiceAgentImpl&) = delete;
-};
-
-absl::Status CoordinationServiceAgentImpl::Initialize(
+absl::Status CoordinationServiceAgent::Initialize(
     Env* env, absl::string_view job_name, int task_id,
     const CoordinationServiceConfig& configs,
     std::unique_ptr<CoordinationClient> leader_client,
@@ -228,7 +88,7 @@ absl::Status CoordinationServiceAgentImpl::Initialize(
                     /*recoverable=*/false);
 }
 
-absl::Status CoordinationServiceAgentImpl::Initialize(
+absl::Status CoordinationServiceAgent::Initialize(
     Env* env, absl::string_view job_name, int task_id,
     const CoordinationServiceConfig& configs,
     std::unique_ptr<CoordinationClient> leader_client, StatusCallback error_fn,
@@ -247,7 +107,7 @@ absl::Status CoordinationServiceAgentImpl::Initialize(
   return Initialize(env, task, configs, std::move(leader_client), error_fn);
 }
 
-absl::Status CoordinationServiceAgentImpl::Initialize(
+absl::Status CoordinationServiceAgent::Initialize(
     Env* env, const CoordinatedTask& task,
     const CoordinationServiceConfig& configs,
     std::unique_ptr<CoordinationClient> leader_client,
@@ -276,22 +136,22 @@ absl::Status CoordinationServiceAgentImpl::Initialize(
   return absl::OkStatus();
 }
 
-bool CoordinationServiceAgentImpl::IsInitialized() {
+bool CoordinationServiceAgent::IsInitialized() {
   absl::MutexLock l(&state_mu_);
   return state_ != CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
 }
 
-bool CoordinationServiceAgentImpl::IsConnected() {
+bool CoordinationServiceAgent::IsConnected() {
   absl::MutexLock l(&state_mu_);
   return state_ == CoordinatedTaskState::TASKSTATE_CONNECTED;
 }
 
-bool CoordinationServiceAgentImpl::IsError() {
+bool CoordinationServiceAgent::IsError() {
   absl::MutexLock l(&state_mu_);
   return state_ == CoordinatedTaskState::TASKSTATE_ERROR;
 }
 
-void CoordinationServiceAgentImpl::StopHeartbeat() {
+void CoordinationServiceAgent::StopHeartbeat() {
   {
     absl::MutexLock l(&shutdown_mu_);
     shutting_down_ = true;
@@ -299,16 +159,16 @@ void CoordinationServiceAgentImpl::StopHeartbeat() {
   heartbeat_thread_ = nullptr;
 }
 
-void CoordinationServiceAgentImpl::StopErrorPolling() {
+void CoordinationServiceAgent::StopErrorPolling() {
   // Cancel pending error polling RPC call.
   error_polling_cancellation_manager_->StartCancel();
 }
 
-void CoordinationServiceAgentImpl::ResetCancellationManager() {
+void CoordinationServiceAgent::ResetCancellationManager() {
   error_polling_cancellation_manager_ = std::make_unique<CancellationManager>();
 }
 
-void CoordinationServiceAgentImpl::WatchJobState() {
+void CoordinationServiceAgent::WatchJobState() {
   // Converts a CoordinatedTaskStateInfo into a tuple.
   auto tuplify = [](const CoordinatedTaskStateInfo& x) {
     return std::make_tuple(x.task().job_name(), x.task().task_id(),
@@ -396,7 +256,7 @@ void CoordinationServiceAgentImpl::WatchJobState() {
   }
 }
 
-void CoordinationServiceAgentImpl::StopWatchingJobState() {
+void CoordinationServiceAgent::StopWatchingJobState() {
   {
     absl::MutexLock l(&shutdown_mu_);
     shutting_down_ = true;
@@ -407,7 +267,7 @@ void CoordinationServiceAgentImpl::StopWatchingJobState() {
   }
 }
 
-absl::Status CoordinationServiceAgentImpl::Connect() {
+absl::Status CoordinationServiceAgent::Connect() {
   VLOG(3) << "Agent has started trying to Connect().";
   {
     absl::MutexLock l(&state_mu_);
@@ -482,7 +342,7 @@ absl::Status CoordinationServiceAgentImpl::Connect() {
   LOG(INFO) << "Coordination agent has successfully connected.";
   heartbeat_thread_.reset(env_->StartThread(
       ThreadOptions(), kHeartbeatThread,
-      absl::bind_front(&CoordinationServiceAgentImpl::StartSendingHeartbeats,
+      absl::bind_front(&CoordinationServiceAgent::StartSendingHeartbeats,
                        this)));
   if (configs_.poll_for_error_from_service_at_startup()) {
     StartPollingForError();
@@ -490,7 +350,7 @@ absl::Status CoordinationServiceAgentImpl::Connect() {
   return absl::OkStatus();
 }
 
-void CoordinationServiceAgentImpl::StartSendingHeartbeats() {
+void CoordinationServiceAgent::StartSendingHeartbeats() {
   HeartbeatRequest request;
   *request.mutable_source_task() = task_;
   request.set_incarnation(incarnation_id_);
@@ -550,7 +410,7 @@ void CoordinationServiceAgentImpl::StartSendingHeartbeats() {
   }
 }
 
-void CoordinationServiceAgentImpl::StartPollingForError() {
+void CoordinationServiceAgent::StartPollingForError() {
   LOG(INFO) << "Polling for error from coordination service. This is a "
                "long-running RPC that will return only if an error is "
                "encountered or cancelled (e.g. due to shutdown).";
@@ -570,7 +430,7 @@ void CoordinationServiceAgentImpl::StartPollingForError() {
   });
 }
 
-void CoordinationServiceAgentImpl::PollForErrorAsync(StatusCallback done) {
+void CoordinationServiceAgent::PollForErrorAsync(StatusCallback done) {
   auto call_opts = std::make_shared<CallOptions>();
 
   absl::Status agent_running_status =
@@ -606,7 +466,7 @@ void CoordinationServiceAgentImpl::PollForErrorAsync(StatusCallback done) {
       });
 }
 
-absl::Status CoordinationServiceAgentImpl::WaitForAllTasks(
+absl::Status CoordinationServiceAgent::WaitForAllTasks(
     const DeviceInfo& local_devices) {
   absl::Status agent_running_status = ValidateRunningAgent();
   if (!agent_running_status.ok()) {
@@ -635,11 +495,11 @@ absl::Status CoordinationServiceAgentImpl::WaitForAllTasks(
   return absl::OkStatus();
 }
 
-const DeviceInfo& CoordinationServiceAgentImpl::GetClusterDeviceInfo() {
+const DeviceInfo& CoordinationServiceAgent::GetClusterDeviceInfo() {
   return cluster_devices_;
 }
 
-absl::StatusOr<CoordinatedTask> CoordinationServiceAgentImpl::GetOwnTask() {
+absl::StatusOr<CoordinatedTask> CoordinationServiceAgent::GetOwnTask() {
   if (!IsInitialized()) {
     return MakeCoordinationError(absl::FailedPreconditionError(
         "Agent has not been initialized; we do not "
@@ -649,7 +509,7 @@ absl::StatusOr<CoordinatedTask> CoordinationServiceAgentImpl::GetOwnTask() {
 }
 
 absl::StatusOr<std::vector<CoordinatedTaskStateInfo>>
-CoordinationServiceAgentImpl::GetTaskState(
+CoordinationServiceAgent::GetTaskState(
     const std::vector<CoordinatedTask>& tasks) {
   GetTaskStateRequest request;
   *request.mutable_source_task() = {tasks.begin(), tasks.end()};
@@ -672,7 +532,7 @@ CoordinationServiceAgentImpl::GetTaskState(
 }
 
 absl::StatusOr<std::vector<CoordinatedTaskStateInfo>>
-CoordinationServiceAgentImpl::GetJobState(absl::string_view job_name) {
+CoordinationServiceAgent::GetJobState(absl::string_view job_name) {
   GetJobStateRequest request;
   request.set_job_name(std::string(job_name));
   GetJobStateResponse response;
@@ -695,8 +555,7 @@ CoordinationServiceAgentImpl::GetJobState(absl::string_view job_name) {
   return result;
 }
 
-absl::Status CoordinationServiceAgentImpl::ReportError(
-    const absl::Status& error) {
+absl::Status CoordinationServiceAgent::ReportError(const absl::Status& error) {
   {
     absl::MutexLock l(&state_mu_);
     if (state_ == CoordinatedTaskState::TASKSTATE_UNINITIALIZED) {
@@ -739,11 +598,9 @@ absl::Status CoordinationServiceAgentImpl::ReportError(
   return absl::OkStatus();
 }
 
-absl::Status CoordinationServiceAgentImpl::Shutdown() {
-  return ShutdownInternal();
-}
+absl::Status CoordinationServiceAgent::Shutdown() { return ShutdownInternal(); }
 
-absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
+absl::Status CoordinationServiceAgent::ShutdownInternal() {
   absl::Status status = absl::OkStatus();
   bool is_connected = false;
   {
@@ -819,7 +676,7 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
   return status;
 }
 
-absl::Status CoordinationServiceAgentImpl::Reset() {
+absl::Status CoordinationServiceAgent::Reset() {
   {
     absl::MutexLock l(&state_mu_);
     if (state_ != CoordinatedTaskState::TASKSTATE_ERROR) {
@@ -863,12 +720,12 @@ absl::Status CoordinationServiceAgentImpl::Reset() {
   return status;
 }
 
-absl::StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
+absl::StatusOr<std::string> CoordinationServiceAgent::GetKeyValue(
     absl::string_view key) {
   return GetKeyValue(key, /*timeout=*/absl::InfiniteDuration());
 }
 
-absl::StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
+absl::StatusOr<std::string> CoordinationServiceAgent::GetKeyValue(
     absl::string_view key, absl::Duration timeout) {
   auto n = std::make_shared<absl::Notification>();
   auto result = std::make_shared<absl::StatusOr<std::string>>();
@@ -888,7 +745,7 @@ absl::StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
   return *result;
 }
 
-std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::GetKeyValueAsync(
+std::shared_ptr<CallOptions> CoordinationServiceAgent::GetKeyValueAsync(
     absl::string_view key, StatusOrValueCallback done) {
   auto request = std::make_shared<GetKeyValueRequest>();
   request->set_key(key.data(), key.size());
@@ -924,7 +781,7 @@ std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::GetKeyValueAsync(
   return call_opts;
 }
 
-absl::StatusOr<std::string> CoordinationServiceAgentImpl::TryGetKeyValue(
+absl::StatusOr<std::string> CoordinationServiceAgent::TryGetKeyValue(
     absl::string_view key) {
   absl::Notification n;
   absl::StatusOr<std::string> result;
@@ -949,7 +806,7 @@ absl::StatusOr<std::string> CoordinationServiceAgentImpl::TryGetKeyValue(
 }
 
 absl::StatusOr<std::vector<KeyValueEntry>>
-CoordinationServiceAgentImpl::GetKeyValueDir(absl::string_view key) {
+CoordinationServiceAgent::GetKeyValueDir(absl::string_view key) {
   absl::Notification n;
   absl::StatusOr<std::vector<KeyValueEntry>> result;
   GetKeyValueDirAsync(
@@ -963,7 +820,7 @@ CoordinationServiceAgentImpl::GetKeyValueDir(absl::string_view key) {
   return result;
 }
 
-void CoordinationServiceAgentImpl::GetKeyValueDirAsync(
+void CoordinationServiceAgent::GetKeyValueDirAsync(
     absl::string_view key, StatusOrValueDirCallback done) {
   auto request = std::make_shared<GetKeyValueDirRequest>();
   request->set_directory_key(key.data(), key.size());
@@ -985,13 +842,14 @@ void CoordinationServiceAgentImpl::GetKeyValueDirAsync(
       });
 }
 
-absl::Status CoordinationServiceAgentImpl::InsertKeyValue(
-    absl::string_view key, absl::string_view value) {
+absl::Status CoordinationServiceAgent::InsertKeyValue(absl::string_view key,
+                                                      absl::string_view value) {
   return InsertKeyValue(key, value, /*allow_overwrite=*/false);
 }
 
-absl::Status CoordinationServiceAgentImpl::InsertKeyValue(
-    absl::string_view key, absl::string_view value, bool allow_overwrite) {
+absl::Status CoordinationServiceAgent::InsertKeyValue(absl::string_view key,
+                                                      absl::string_view value,
+                                                      bool allow_overwrite) {
   InsertKeyValueRequest request;
   request.mutable_kv()->set_key(key.data(), key.size());
   request.mutable_kv()->set_value(value.data(), value.size());
@@ -1011,8 +869,7 @@ absl::Status CoordinationServiceAgentImpl::InsertKeyValue(
   return status;
 }
 
-absl::Status CoordinationServiceAgentImpl::DeleteKeyValue(
-    absl::string_view key) {
+absl::Status CoordinationServiceAgent::DeleteKeyValue(absl::string_view key) {
   DeleteKeyValueRequest request;
   request.set_key(key.data(), key.size());
   request.set_is_directory(true);
@@ -1031,25 +888,25 @@ absl::Status CoordinationServiceAgentImpl::DeleteKeyValue(
   return absl::OkStatus();
 }
 
-absl::Status CoordinationServiceAgentImpl::UpdateKeyValue(
-    absl::string_view key, absl::string_view value) {
+absl::Status CoordinationServiceAgent::UpdateKeyValue(absl::string_view key,
+                                                      absl::string_view value) {
   return MakeCoordinationError(absl::UnimplementedError(
       "CoordinationServiceAgent::UpdateKeyValue is not implemented."));
 }
 
-absl::Status CoordinationServiceAgentImpl::StartWatchKey(
+absl::Status CoordinationServiceAgent::StartWatchKey(
     absl::string_view key,
-    CoordinationServiceAgentImpl::ChangedKeyValuesCallback on_change) {
+    CoordinationServiceAgent::ChangedKeyValuesCallback on_change) {
   return MakeCoordinationError(absl::UnimplementedError(
       "CoordinationServiceAgent::StartWatchKey is not implemented."));
 }
 
-absl::Status CoordinationServiceAgentImpl::StopWatchKey(absl::string_view key) {
+absl::Status CoordinationServiceAgent::StopWatchKey(absl::string_view key) {
   return MakeCoordinationError(absl::UnimplementedError(
       "CoordinationServiceAgent::StopWatchKey is not implemented."));
 }
 
-void CoordinationServiceAgentImpl::SetError(const absl::Status& error) {
+void CoordinationServiceAgent::SetError(const absl::Status& error) {
   assert(!error.ok());
   absl::MutexLock l(&state_mu_);
   if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return;
@@ -1060,13 +917,13 @@ void CoordinationServiceAgentImpl::SetError(const absl::Status& error) {
   error_fn_(trimmed_error);
 }
 
-absl::Status CoordinationServiceAgentImpl::ActivateWatch(
+absl::Status CoordinationServiceAgent::ActivateWatch(
     absl::string_view key, const std::map<std::string, std::string>& kvs) {
   return MakeCoordinationError(absl::UnimplementedError(
       "CoordinationServiceAgent::ActivateWatch is not implemented."));
 }
 
-absl::Status CoordinationServiceAgentImpl::WaitAtBarrier(
+absl::Status CoordinationServiceAgent::WaitAtBarrier(
     absl::string_view barrier_id, absl::Duration timeout,
     const std::vector<CoordinatedTask>& tasks) {
   absl::Status status;
@@ -1079,7 +936,7 @@ absl::Status CoordinationServiceAgentImpl::WaitAtBarrier(
   return status;
 }
 
-void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
+void CoordinationServiceAgent::WaitAtBarrierAsync(
     absl::string_view barrier_id, absl::Duration timeout,
     const std::vector<CoordinatedTask>& tasks, StatusCallback done) {
   absl::Status agent_running_status =
@@ -1156,7 +1013,7 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
       });
 }
 
-absl::Status CoordinationServiceAgentImpl::CancelBarrier(
+absl::Status CoordinationServiceAgent::CancelBarrier(
     absl::string_view barrier_id) {
   absl::Status status;
   absl::Notification n;
@@ -1168,8 +1025,8 @@ absl::Status CoordinationServiceAgentImpl::CancelBarrier(
   return status;
 }
 
-void CoordinationServiceAgentImpl::CancelBarrierAsync(
-    absl::string_view barrier_id, StatusCallback done) {
+void CoordinationServiceAgent::CancelBarrierAsync(absl::string_view barrier_id,
+                                                  StatusCallback done) {
   absl::Status agent_running_status =
       ValidateRunningAgent(/*allow_disconnected=*/true);
   if (!agent_running_status.ok()) {
@@ -1203,7 +1060,7 @@ void CoordinationServiceAgentImpl::CancelBarrierAsync(
 }
 
 absl::StatusOr<std::vector<tensorflow::CoordinatedTask>>
-CoordinationServiceAgentImpl::GetAliveTasks(
+CoordinationServiceAgent::GetAliveTasks(
     const std::vector<CoordinatedTask>& tasks) {
   // Validate the agent.
   if (absl::Status s = ValidateRunningAgent(/*allow_disconnected=*/true);
@@ -1235,8 +1092,7 @@ CoordinationServiceAgentImpl::GetAliveTasks(
       response->alive_tasks().begin(), response->alive_tasks().end());
 }
 
-void CoordinationServiceAgentImpl::AddJobStateCallback(
-    JobStateCallback callback) {
+void CoordinationServiceAgent::AddJobStateCallback(JobStateCallback callback) {
   // Add the callback.
   absl::MutexLock lock(&job_state_watcher_mu_);
   job_state_callbacks_.push_back(std::move(callback));
@@ -1249,7 +1105,7 @@ void CoordinationServiceAgentImpl::AddJobStateCallback(
 }
 
 // Returns an error if agent is not running.
-absl::Status CoordinationServiceAgentImpl::ValidateRunningAgent(
+absl::Status CoordinationServiceAgent::ValidateRunningAgent(
     bool allow_disconnected) {
   absl::MutexLock l(&state_mu_);
   switch (state_) {
@@ -1275,7 +1131,7 @@ absl::Status CoordinationServiceAgentImpl::ValidateRunningAgent(
   }
 }
 
-absl::StatusOr<Env*> CoordinationServiceAgentImpl::GetEnv() {
+absl::StatusOr<Env*> CoordinationServiceAgent::GetEnv() {
   if (!IsInitialized()) {
     return MakeCoordinationError(absl::FailedPreconditionError(
         "Coordination service agent has not been initialized."));
@@ -1288,10 +1144,8 @@ absl::StatusOr<Env*> CoordinationServiceAgentImpl::GetEnv() {
   return env_;
 }
 
-}  // namespace
-
 std::unique_ptr<CoordinationServiceAgent> CreateCoordinationServiceAgent() {
-  return std::make_unique<CoordinationServiceAgentImpl>();
+  return std::make_unique<CoordinationServiceAgent>();
 }
 
 }  // namespace tsl
