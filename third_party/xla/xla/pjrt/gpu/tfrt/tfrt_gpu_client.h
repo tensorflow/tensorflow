@@ -449,7 +449,9 @@ class TfrtGpuClient final : public PjRtClient {
   std::unique_ptr<tsl::thread::ThreadPool> blocking_thread_pool_;
   std::unique_ptr<tsl::thread::ThreadPool> non_blocking_thread_pool_;
 
-  std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
+  // TODO(caojx): Make gpu run options configurable.
+  std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_ =
+      std::make_unique<gpu::GpuExecutableRunOptions>();
 
   // A cache for transpose plans. We use transposes to convert
   // (possibly strided) buffers provided to BufferFromHostBuffer into dense
