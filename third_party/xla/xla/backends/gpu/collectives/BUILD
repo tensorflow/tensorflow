@@ -387,3 +387,33 @@ xla_cc_test(
         "@local_config_cuda//cuda:cuda_headers",
     ],
 )
+
+cc_library(
+    name = "worker_thread",
+    srcs = ["worker_thread.cc"],
+    hdrs = ["worker_thread.h"],
+    deps = [
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "worker_thread_test",
+    srcs = ["worker_thread_test.cc"],
+    deps = [
+        ":worker_thread",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
