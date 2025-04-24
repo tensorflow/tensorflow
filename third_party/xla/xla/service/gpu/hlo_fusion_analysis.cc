@@ -282,7 +282,7 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
         break;
       }
     }
-    if (valid_shapes && !has_subtype_type) {
+    if (valid_shapes) {
       return EmitterFusionKind::kReduction;
     }
   }
