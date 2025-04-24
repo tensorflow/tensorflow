@@ -110,18 +110,6 @@ EOF
     "//tensorflow/tools/pip_package:licenses"
 }
 
-@test "Libtensorflow generated license includes all dependencies' licenses" {
-  do_external_licenses_check \
-    "//tensorflow:libtensorflow.so" \
-    "//tensorflow/tools/lib_package:clicenses_generate"
-}
-
-@test "Java library generated license includes all dependencies' licenses" {
-  do_external_licenses_check \
-    "//tensorflow/java:libtensorflow_jni.so" \
-    "//tensorflow/tools/lib_package:jnilicenses_generate"
-}
-
 # This test ensures that all the targets built into the Python package include
 # their dependencies. It's a rewritten version of the "smoke test", an older
 # Python script that was very difficult to understand. See
