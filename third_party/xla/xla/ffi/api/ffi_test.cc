@@ -943,7 +943,7 @@ TEST(FfiTest, AttrsAsDictionary) {
 
     ErrorOr<int32_t> i32 = dict.get<int32_t>("i32");
     ErrorOr<float> f32 = dict.get<float>("f32");
-    ErrorOr<absl::string_view> str = dict.get<absl::string_view>("str");
+    ErrorOr<std::string_view> str = dict.get<std::string_view>("str");
 
     EXPECT_TRUE(i32.has_value());
     EXPECT_TRUE(f32.has_value());
@@ -1021,7 +1021,7 @@ TEST(FfiTest, StructAttr) {
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto fn = [&](absl::string_view str, PairOfI32AndF32 i32_and_f32) {
+  auto fn = [&](std::string_view str, PairOfI32AndF32 i32_and_f32) {
     EXPECT_EQ(str, "foo");
     EXPECT_EQ(i32_and_f32.i32, 42);
     EXPECT_EQ(i32_and_f32.f32, 42.0f);
@@ -1029,7 +1029,7 @@ TEST(FfiTest, StructAttr) {
   };
 
   auto handler = Ffi::Bind()
-                     .Attr<absl::string_view>("str")
+                     .Attr<std::string_view>("str")
                      .Attr<PairOfI32AndF32>("i32_and_f32")
                      .To(fn);
 
