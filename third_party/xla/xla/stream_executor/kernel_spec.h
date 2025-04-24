@@ -54,6 +54,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
