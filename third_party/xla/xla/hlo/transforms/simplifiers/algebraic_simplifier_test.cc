@@ -3928,6 +3928,39 @@ TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcatWithDifferentShapes) {
                         m::Reduce(m::Parameter(2), m::Constant()))));
 }
 
+TEST_F(AlgebraicSimplifierTest, SimplifyMultiOutputReduce) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule TupleReduce
+
+    max_argmax {
+      value = f32[] parameter(2)
+      prev_max = f32[] parameter(0)
+      is_next_larger = pred[] compare(f32[] value, f32[] prev_max), direction=GE
+      max = f32[] select(is_next_larger, value, prev_max)
+      index = s32[] parameter(3)
+      prev_argmax = s32[] parameter(1)
+      argmax = s32[] select(is_next_larger, index, prev_argmax)
+      ROOT pair = (f32[], s32[]) tuple(max, argmax)
+    }
+
+    ENTRY reduce_entry {
+      values = f32[1024]{0} parameter(0)
+      indices = s32[1024]{0} parameter(1)
+      init_value = f32[] constant(-inf)
+      init_index = s32[] constant(-1)
+      ROOT result = (f32[], s32[]) reduce(values, indices, init_value, init_index), dimensions={0}, to_apply=max_argmax
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Map(m::Map(m::Reduce(m::Parameter(0), m::Constant()),
+                               m::Reduce(m::Parameter(1), m::Constant())),
+                        m::Reduce(m::Parameter(2), m::Constant()))));
+}
+
 // Test that reduce of concat is not simplified if the concat operand shapes
 // differ and enable_unconditional_reduce_of_concat_replacement() is false.
 TEST_F(AlgebraicSimplifierTest,
