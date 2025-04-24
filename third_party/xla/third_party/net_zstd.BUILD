@@ -29,3 +29,8 @@ cc_library(
         "*.h",
     ]),
 )
+
+alias(
+    name = "zstd",
+    actual = ":zstdlib",
+)
