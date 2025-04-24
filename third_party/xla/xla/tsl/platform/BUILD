@@ -840,3 +840,15 @@ tsl_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "mock_writable_file",
+    testonly = True,
+    hdrs = ["mock_writable_file.h"],
+    deps = [
+        ":env",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_for_library",
+    ],
+)
