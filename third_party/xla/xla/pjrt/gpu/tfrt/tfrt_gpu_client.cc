@@ -121,6 +121,13 @@ limitations under the License.
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
 
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace xla {
 namespace {
 
@@ -201,20 +208,6 @@ void EnqueueWorkWhenReady(
     VLOG(2) << "EnqueueWork: pool: " << pool;
     EnqueueWork(pool, std::move(callee));
   });
-}
-
-std::string get_platform_version(xla::LocalClient* xla_client) {
-  const stream_executor::DeviceDescription& device =
-      xla_client->backend().default_stream_executor()->GetDeviceDescription();
-  if (std::holds_alternative<stream_executor::RocmComputeCapability>(
-          device.gpu_compute_capability())) {
-    return absl::StrCat("rocm ", device.runtime_version());
-  }
-  if (std::holds_alternative<stream_executor::CudaComputeCapability>(
-          device.gpu_compute_capability())) {
-    return absl::StrCat("cuda ", device.runtime_version());
-  }
-  return "<unknown>";
 }
 
 std::string MakeComputeCapabilityString(
@@ -1087,7 +1080,6 @@ TfrtGpuClient::TfrtGpuClient(
     std::shared_ptr<const GpuTopology> gpu_topology)
     : process_index_(process_index),
       xla_client_(CHECK_NOTNULL(xla_client)),
-      platform_version_(get_platform_version(xla_client)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
       host_memory_allocator_(std::make_unique<HostMemoryAllocator>(
@@ -1161,6 +1153,20 @@ TfrtGpuClient::TfrtGpuClient(
 }
 
 TfrtGpuClient::~TfrtGpuClient() { LOG(INFO) << "TfrtGpuClient destroyed."; }
+
+absl::string_view TfrtGpuClient::platform_version() const {
+#define STRINGIFY2(X) #X
+#define STRINGIFY(X) STRINGIFY2(X)
+#if TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)  // rocm
+  // TF_ROCM_VERSION format may change in future. Use it
+  // cautiously
+  return "rocm " STRINGIFY(TF_ROCM_VERSION);
+#elif GOOGLE_CUDA && defined(CUDART_VERSION)  // cuda
+  return "cuda " STRINGIFY(CUDART_VERSION);
+#else
+  return "<unknown>";
+#endif  // TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)
+}
 
 absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupDevice(
     PjRtGlobalDeviceId global_device_id) const {

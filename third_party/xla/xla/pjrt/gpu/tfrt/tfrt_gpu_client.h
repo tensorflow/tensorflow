@@ -292,9 +292,7 @@ class TfrtGpuClient final : public PjRtClient {
 
   absl::string_view platform_name() const override { return platform_name_; }
 
-  absl::string_view platform_version() const override {
-    return platform_version_;
-  }
+  absl::string_view platform_version() const override;
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -424,7 +422,6 @@ class TfrtGpuClient final : public PjRtClient {
   int process_index_;
 
   xla::LocalClient* xla_client_;
-  const std::string platform_version_;
 
   bool should_stage_host_to_device_transfers_;
   // Allocator to be used for staging memory transfers to devices.
