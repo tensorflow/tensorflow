@@ -101,7 +101,6 @@ bool IsTritonSupportedDotOutputType(
 };
 
 // Data types that are supported by the Triton emitters.
-// TODO(b/266862493): Support more data types (F8, F64, etc.).
 bool IsTritonSupportedDataType(PrimitiveType type,
                                const se::GpuComputeCapability& gpu_version) {
   if (IsTritonSupportedDotOutputType(type, gpu_version)) {
@@ -263,7 +262,6 @@ CodegenDecision AreDotInputAndOutputTypesSupportedAndCompatible(
   auto lhs_type = dot.operand(0)->shape().element_type();
   auto rhs_type = dot.operand(1)->shape().element_type();
 
-  // TODO(b/266862493): Support more output types.
   if (!IsTritonSupportedDotOutputType(output_type, gpu_version)) {
     return CodegenDecision::Forbid("Unsupported output data type for Dot op.");
   }

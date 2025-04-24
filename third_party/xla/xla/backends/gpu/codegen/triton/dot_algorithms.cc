@@ -450,7 +450,6 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
 
 }  // namespace
 
-// TODO(b/266862493): Add support for more types as needed.
 absl::StatusOr<Type> GetDotAccumulatorType(EmitterLocOpBuilder& b,
                                            const HloDotInstruction& dot) {
   const PrecisionConfig::Algorithm algorithm =
