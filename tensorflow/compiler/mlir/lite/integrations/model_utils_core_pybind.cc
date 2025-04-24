@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -193,6 +194,15 @@ PYBIND11_MODULE(model_utils_core_pybind, m) {
 
     std::vector<std::string> attr_names;
     for (auto attr : op->getAttrDictionary()) {
+      attr_names.push_back(attr.getName().str());
+    }
+    return attr_names;
+  });
+
+  m.def("get_dictionary_attr_names", [](MlirAttribute c_attr) {
+    auto attr = mlir::cast<mlir::DictionaryAttr>(unwrap(c_attr));
+    std::vector<std::string> attr_names;
+    for (auto attr : attr) {
       attr_names.push_back(attr.getName().str());
     }
     return attr_names;
