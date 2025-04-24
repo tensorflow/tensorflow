@@ -1,5 +1,13 @@
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 load("//xla:py_strict.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//xla:xla.default.bzl", "xla_cc_binary")
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -71,15 +79,7 @@ xla_cc_binary(
     visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
     deps = [
         ":test_lib",
-        "//xla:debug_options_flags",
-        "//xla:error_spec",
-        "//xla:shape_util",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:indexing_test_utils",
-        "//xla/service:gpu_plugin",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/tests:hlo_test_base",
-        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_googletest//:gtest",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -87,10 +87,25 @@ xla_cc_binary(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
+        "//xla:debug_options_flags",
+        "//xla:error_spec",
+        "//xla:shape_util",
+        # Tool doesn't need to run actual cross GPU collectives.
+        # Otherwise NCCL library should be linked like it's done for lit library when target is built with RBE.
+        "//xla/backends/gpu/collectives:gpu_collectives_stub",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:indexing_test_utils",
+        "//xla/service:gpu_plugin_without_collectives",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
-    ],
+    ] + if_cuda_is_configured([
+        "//xla/stream_executor/cuda:all_runtime",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor/rocm:all_runtime",
+    ]),
 )
 
 xla_cc_binary(

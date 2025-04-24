@@ -138,7 +138,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:ir_headers",
     ] + if_gpu_is_configured([
-        "//xla/service:gpu_plugin",
+        "//xla/service:gpu_plugin_without_collectives",
         "//xla/service/gpu:gpu_executable",
     ]) + if_cuda_is_configured([
         "//xla/stream_executor:cuda_platform",

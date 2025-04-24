@@ -1331,6 +1331,16 @@ cc_library(
     name = "gpu_plugin_impl",
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":gpu_plugin_without_collectives",
+    ] + if_gpu_is_configured([
+        "//xla/backends/gpu/runtime:thunk_runtime_dependencies",
+    ]),
+)
+
+cc_library(
+    name = "gpu_plugin_without_collectives",
+    compatible_with = get_compatible_with_portable(),
+    deps = [
     ] + if_gpu_is_configured([
         ":service",
         "//xla/service/gpu:gpu_compiler",
