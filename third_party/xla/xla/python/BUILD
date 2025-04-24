@@ -5,6 +5,7 @@ load(
     "xla_cc_test",
     "xla_py_test_deps",
 )
+load("//xla/python:pywrap.bzl", "nanobind_pywrap_extension")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
@@ -34,11 +35,18 @@ package_group(
     ],
 )
 
+exports_files(
+    srcs = ["pyinit_stub.c"],
+    visibility = [":friends"],
+)
+
 pytype_strict_library(
     name = "xla_client",
     srcs = ["xla_client.py"],
     visibility = ["//visibility:public"],
-    deps = if_google(["//third_party/py/jax/jaxlib/xla:xla_client"]),
+    deps = if_google([
+        "//third_party/py/jax/jaxlib/xla:xla_client",
+    ]),
 )
 
 pytype_strict_library(
@@ -225,6 +233,8 @@ cc_library(
         # placeholder for index annotation deps
         "@com_google_absl//absl/types:span",
         "@nanobind",
+        "//xla:literal",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
@@ -239,6 +249,15 @@ cc_library(
         "//xla/hlo/builder/lib:svd",
         "//xla/pjrt:status_casters",
         "//xla/service:hlo_proto_cc",
+    ],
+)
+
+nanobind_pywrap_extension(
+    name = "_ops",
+    srcs = ["_ops.cc"],
+    deps = [
+        ":ops",
+        "@nanobind",
     ],
 )
 
@@ -328,6 +347,16 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+nanobind_pywrap_extension(
+    name = "_profiler",
+    srcs = ["_profiler.cc"],
+    pytype_srcs = ["_profiler.pyi"],
+    deps = [
+        ":profiler",
+        "@nanobind",
     ],
 )
 

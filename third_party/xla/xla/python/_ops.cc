@@ -1,4 +1,4 @@
-/* Copyright 2020 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_PROFILER_H_
-#define XLA_PYTHON_PROFILER_H_
-
-// placeholder for index annotation headers
 #include "nanobind/nanobind.h"
+#include "xla/python/ops.h"
 
 namespace xla {
 
-void BuildProfilerModule(nanobind::module_& m);
-void BuildProfilerSubmodule(nanobind::module_& m);
+NB_MODULE(_ops, m) { BuildOpsModule(m); }
 
 }  // namespace xla
-
-#endif  // XLA_PYTHON_PROFILER_H_
