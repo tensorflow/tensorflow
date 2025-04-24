@@ -260,6 +260,7 @@ cc_library(
         ":gpu_codegen_backend",
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
@@ -293,6 +294,7 @@ xla_test(
     deps = [
         ":custom_kernel",
         "//xla:autotuning_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
@@ -325,6 +327,7 @@ cc_library(
         ":gpu_codegen_backend",
         "//xla:autotuning_proto_cc",
         "//xla:util",
+        "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
@@ -369,6 +372,7 @@ xla_test(
     deps = [
         ":fission",
         "//xla:autotuning_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",

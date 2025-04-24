@@ -319,8 +319,9 @@ absl::Status MaybeBuildBoundedDynamicArgValues(
                   [](bool v) { return v; })) {
     xla::PrimitiveType primitive_type;
     TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(arg.type, &primitive_type));
-    arg.shape = xla::ShapeUtil::MakeShape(primitive_type, shape.dim_sizes(),
-                                          is_dynamic_dim);
+    arg.shape = xla::ShapeUtil::MakeValidatedShape(
+                    primitive_type, shape.dim_sizes(), is_dynamic_dim)
+                    .value();
   }
   return absl::OkStatus();
 }

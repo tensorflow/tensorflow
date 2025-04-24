@@ -53,7 +53,7 @@ static void BM_ReduceAddF32(benchmark::State& state,
 
   std::minstd_rand0 engine;
 
-  auto shape = ShapeUtil::MakeShape(F32, {1, 2, 1, d0, 256});
+  auto shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 1, d0, 256}).value();
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
 
   std::vector<const Literal*> args = {&p0};
@@ -83,7 +83,7 @@ static void BM_ReduceAddBF16(benchmark::State& state,
 
   std::minstd_rand0 engine;
 
-  auto shape = ShapeUtil::MakeShape(BF16, {1, 2, 1, d0, 256});
+  auto shape = ShapeUtil::MakeValidatedShape(BF16, {1, 2, 1, d0, 256}).value();
   auto p0 = *LiteralUtil::CreateRandomLiteral<BF16>(shape, &engine, 1.0f, 0.1f);
 
   std::vector<const Literal*> args = {&p0};

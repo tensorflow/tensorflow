@@ -37,7 +37,7 @@ static void BM_ConcatenateTwoR3F32(benchmark::State& state,
                                    HloBenchmarkOptions options) {
   bool disable_parallel_backend = !static_cast<bool>(state.range(0));
   int64_t dims[3] = {state.range(1), state.range(2), state.range(3)};
-  Shape shape = ShapeUtil::MakeShape(F32, dims);
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, dims).value();
   int64_t axis = state.range(4);
 
   absl::string_view hlo = R"(

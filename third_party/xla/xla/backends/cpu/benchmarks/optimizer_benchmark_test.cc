@@ -103,8 +103,8 @@ static void BM_Optimizer0(benchmark::State& state,
 
   std::minstd_rand0 engine;
 
-  auto shape = ShapeUtil::MakeShape(F32, {1, 2, 1, d0, 256});
-  auto scalar = ShapeUtil::MakeShape(S32, {});
+  auto shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 1, d0, 256}).value();
+  auto scalar = ShapeUtil::MakeValidatedShape(S32, {}).value();
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
   auto p1 = *LiteralUtil::CreateRandomLiteral<S32>(scalar, &engine, 1, 2);
 

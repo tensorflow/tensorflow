@@ -183,9 +183,9 @@ class BufferDonationTest : public HloTestBase {
         HloInstruction::CreateParameter(0, t_s32_f32v1_, "x"));
     auto index = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(const4->shape(), param, 0));
-    builder.AddInstruction(
-        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), index,
-                                      const4, ComparisonDirection::kLt));
+    builder.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeValidatedShape(PRED, {}).value(), index, const4,
+        ComparisonDirection::kLt));
     return builder.Build();
   }
 
@@ -243,10 +243,11 @@ class BufferDonationTest : public HloTestBase {
     return module;
   }
 
-  Shape s32_ = ShapeUtil::MakeShape(xla::S32, {});
-  Shape r0f32_ = ShapeUtil::MakeShape(xla::F32, {});
-  Shape f32v1_ = ShapeUtil::MakeShape(F32, {1});
-  Shape t_s32_f32v1_ = ShapeUtil::MakeTupleShape({s32_, f32v1_});
+  Shape s32_ = ShapeUtil::MakeValidatedShape(xla::S32, {}).value();
+  Shape r0f32_ = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
+  Shape f32v1_ = ShapeUtil::MakeValidatedShape(F32, {1}).value();
+  Shape t_s32_f32v1_ =
+      ShapeUtil::MakeValidatedTupleShape({s32_, f32v1_}).value();
 };
 
 // This tests a simple while loop where the parameters are aliased with the

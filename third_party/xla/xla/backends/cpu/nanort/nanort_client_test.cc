@@ -412,8 +412,10 @@ TEST(NanoRtClientTest, CustomCallTest) {
 static absl::StatusOr<XlaComputation> CreateAddScalarsComputation() {
   XlaBuilder b("add");
 
-  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "p0");
-  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {}), "p1");
+  auto p0 =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p0");
+  auto p1 =
+      Parameter(&b, 1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p1");
   Add(p0, p1);
 
   return b.Build();
@@ -422,8 +424,10 @@ static absl::StatusOr<XlaComputation> CreateAddScalarsComputation() {
 static absl::StatusOr<XlaComputation> CreateFibonacciComputation() {
   XlaBuilder b("fib");
 
-  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "p0");
-  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {}), "p1");
+  auto p0 =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p0");
+  auto p1 =
+      Parameter(&b, 1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p1");
 
   std::vector<XlaOp> vars = {p0, p1};
 

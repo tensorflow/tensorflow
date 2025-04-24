@@ -24,16 +24,18 @@ class CpuByteSizeOfTest : public ::testing::Test {};
 TEST_F(CpuByteSizeOfTest, ARM32) {
   llvm::DataLayout data_layout(
       "e-m:e-p:32:32-i64:64-v128:64:128-a:0:32-n32-S64");
-  auto tuple_shape =
-      xla::ShapeUtil::MakeTupleShape({xla::ShapeUtil::MakeShape(xla::F32, {})});
+  auto tuple_shape = xla::ShapeUtil::MakeValidatedTupleShape(
+                         {xla::ShapeUtil::MakeShape(xla::F32, {})})
+                         .value();
   EXPECT_EQ(xla::llvm_ir::ByteSizeOf(tuple_shape, data_layout),
             data_layout.getPointerSize(0 /* default address space */));
 }
 
 TEST_F(CpuByteSizeOfTest, ARM64) {
   llvm::DataLayout data_layout("e-m:e-i64:64-i128:128-n32:64-S128");
-  auto tuple_shape =
-      xla::ShapeUtil::MakeTupleShape({xla::ShapeUtil::MakeShape(xla::F32, {})});
+  auto tuple_shape = xla::ShapeUtil::MakeValidatedTupleShape(
+                         {xla::ShapeUtil::MakeShape(xla::F32, {})})
+                         .value();
   EXPECT_EQ(xla::llvm_ir::ByteSizeOf(tuple_shape, data_layout),
             data_layout.getPointerSize(0 /* default address space */));
 }

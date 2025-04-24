@@ -101,20 +101,24 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
       case HloOpcode::kAllReduce:
       case HloOpcode::kAllReduceStart:
         device_list = CollectiveDeviceList(CommToDeviceList(comm, num_hosts));
-        shape = ShapeUtil::MakeShape(PrimitiveType::F32, {tensor_size / 4});
+        shape =
+            ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {tensor_size / 4})
+                .value();
         break;
       case HloOpcode::kReduceScatter:
         device_list = CollectiveDeviceList(CommToDeviceList(comm, num_hosts));
-        shape = ShapeUtil::MakeShape(
-            PrimitiveType::F32,
-            {tensor_size /
-             (4 *
-              device_list.iota_replica_group_list()->num_devices_per_group())});
+        shape = ShapeUtil::MakeValidatedShape(
+                    PrimitiveType::F32,
+                    {tensor_size / (4 * device_list.iota_replica_group_list()
+                                            ->num_devices_per_group())})
+                    .value();
         break;
       case HloOpcode::kAllGather:
       case HloOpcode::kAllGatherStart:
         device_list = CollectiveDeviceList(CommToDeviceList(comm, num_hosts));
-        shape = ShapeUtil::MakeShape(PrimitiveType::F32, {tensor_size / 4});
+        shape =
+            ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {tensor_size / 4})
+                .value();
         break;
       default:
         LOG(FATAL) << "Unsupported test spec.";

@@ -37,7 +37,8 @@ using CpuDynamicShapeTest = CpuCodegenTest;
 TEST_F(CpuDynamicShapeTest, DynamicShapeR2) {
   HloComputation::Builder builder(TestName());
 
-  xla::Shape dyn_input_shape = xla::ShapeUtil::MakeShape(xla::F32, {2, 4});
+  xla::Shape dyn_input_shape =
+      ShapeUtil::MakeValidatedShape(xla::F32, {2, 4}).value();
   dyn_input_shape.set_dynamic_dimension(0, true);
   HloInstruction* param_x = builder.AddInstruction(
       HloInstruction::CreateParameter(0, dyn_input_shape, "x"));

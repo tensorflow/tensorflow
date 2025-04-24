@@ -36,7 +36,7 @@ TEST(OutfeedThunkTest, BufferAndResourceUses) {
 
   OutfeedThunk::OutfeedBuffer outfeed_buffer = {
       outfeed_slice,
-      ShapeUtil::MakeShape(F32, {10}),
+      ShapeUtil::MakeValidatedShape(F32, {10}).value(),
   };
 
   auto consume_token = Resource::Create(Resource::kToken);

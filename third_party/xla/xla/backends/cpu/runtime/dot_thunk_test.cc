@@ -102,7 +102,7 @@ TEST_P(DotThunkLayoutTest, SimpleDot) {
 }
 
 TEST(DotThunkTest, ThreadedDot) {
-  auto shape = ShapeUtil::MakeShape(F32, {1024, 1024});
+  auto shape = ShapeUtil::MakeValidatedShape(F32, {1024, 1024}).value();
   // These aren't very interesting literals, but they should be large enough to
   // trigger multi-threaded execution.
   auto lhs = *LiteralUtil::CreateLiteralWithGenerator<F32, float>(

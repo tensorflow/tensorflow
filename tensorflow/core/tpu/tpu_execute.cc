@@ -118,7 +118,7 @@ absl::Status FixTupleTableAsync(se::Stream* stream,
         std::vector<se::DeviceMemoryBase> elements;
         xla::ShapeIndex element_index = index;
         element_index.push_back(0);
-        for (int i = 0; i < element_shape.tuple_shapes_size(); ++i) {
+        for (int i = 0; i < element_shape.tuple_shapes().size(); ++i) {
           // Gather all children of the tuple element.
           element_index.back() = i;
           elements.push_back(mem->Buffer(element_index).AsDeviceMemoryBase());

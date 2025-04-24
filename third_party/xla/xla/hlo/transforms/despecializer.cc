@@ -175,8 +175,10 @@ absl::StatusOr<bool> DeconstructReduceWindowToReduceBroadcast::Run(
         broadcast_dimensions.push_back(index);
       }
     }
-    Shape reduce_shape = ShapeUtil::MakeShape(
-        reduce_window->shape().element_type(), reduce_instr_dimensions);
+    Shape reduce_shape =
+        ShapeUtil::MakeValidatedShape(reduce_window->shape().element_type(),
+                                      reduce_instr_dimensions)
+            .value();
     auto reduce_instr =
         reduce_window->AddInstruction(HloInstruction::CreateReduce(
             reduce_shape, reduce_window->mutable_operand(0),

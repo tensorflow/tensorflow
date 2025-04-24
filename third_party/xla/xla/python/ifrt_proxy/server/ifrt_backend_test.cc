@@ -1567,11 +1567,11 @@ TEST_P(IfrtBackendHandlerTest, LoadedHostCallbackExecute) {
   // Build a remote host callback with one F32 argument and one F32 result.
   std::vector<xla::HostCallbackArgInfo> hcb_args = {{
       .channel_id = 1,
-      .shape = xla::ShapeUtil::MakeShape(xla::F32, {}),
+      .shape = ShapeUtil::MakeValidatedShape(xla::F32, {}).value(),
   }};
   std::vector<xla::HostCallbackArgInfo> hcb_results = {{
       .channel_id = 2,
-      .shape = xla::ShapeUtil::MakeShape(xla::F32, {}),
+      .shape = ShapeUtil::MakeValidatedShape(xla::F32, {}).value(),
   }};
   auto hcb = tsl::MakeRef<RemoteLoadedHostCallback>(
       mock_client_, std::move(hcb_args), std::move(hcb_results),
@@ -1676,8 +1676,9 @@ TEST_P(IfrtBackendHandlerTest, LoadedHostCallbackExecute) {
     TF_ASSERT_OK_AND_ASSIGN(
         const std::shared_ptr<const std::string> operands,
         host_buffer_store_->Lookup(operand_host_buffer_handle));
-    EXPECT_EQ(xla::BorrowingLiteral(operands->data(),
-                                    xla::ShapeUtil::MakeShape(xla::F32, {})),
+    EXPECT_EQ(xla::BorrowingLiteral(
+                  operands->data(),
+                  ShapeUtil::MakeValidatedShape(xla::F32, {}).value()),
               xla::LiteralUtil::CreateR0(1.0f));
   }
 

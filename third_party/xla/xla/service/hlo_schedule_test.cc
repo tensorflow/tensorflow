@@ -260,9 +260,9 @@ ENTRY %WhileLoop () -> s32[] {
   HloComputation* cond = xla_while->while_condition();
 
   // Negate the root of the cond.
-  cond->set_root_instruction(cond->AddInstruction(
-      HloInstruction::CreateUnary(ShapeUtil::MakeShape(PRED, {}),
-                                  HloOpcode::kNot, cond->root_instruction())));
+  cond->set_root_instruction(cond->AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeValidatedShape(PRED, {}).value(), HloOpcode::kNot,
+      cond->root_instruction())));
 
   // Replace the body with a computation which just passes through its
   // parameter.
@@ -496,7 +496,8 @@ ENTRY %WhileLoop () -> (s32[], f32[10]) {
   HloInstruction* call =
       entry_computation->CreateCallInstruction(instructions_in_new_computation);
 
-  Shape completion_sflag_shape = ShapeUtil::MakeScalarShape(U32);
+  Shape completion_sflag_shape =
+      ShapeUtil::MakeValidatedScalarShape(U32).value();
   TF_ASSERT_OK_AND_ASSIGN(
       HloInstruction * async_done,
       entry_computation->CreateAsyncInstructions(

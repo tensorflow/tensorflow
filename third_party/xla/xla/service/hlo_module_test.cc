@@ -101,7 +101,7 @@ class HloModuleTest : public HloHardwareIndependentTestBase {
     return builder.Build();
   }
 
-  Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
+  Shape r0f32_ = ShapeUtil::MakeValidatedShape(F32, {}).value();
 };
 
 TEST_F(HloModuleTest, OneComputationPostOrder) {
@@ -538,7 +538,8 @@ TEST_F(HloModuleTest, VerifyReplaceComputationsWithReduceScatter) {
     auto p1 =
         b.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "p1"));
     b.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(F32, {}), HloOpcode::kMultiply, p0, p1));
+        ShapeUtil::MakeValidatedShape(F32, {}).value(), HloOpcode::kMultiply,
+        p0, p1));
     new_comp = module->AddEmbeddedComputation(b.Build());
   }
 
@@ -585,7 +586,8 @@ TEST_F(HloModuleTest, VerifyReplaceComputationsWithSortOp) {
     b.AddInstruction(HloInstruction::CreateParameter(2, r0f32_, "p2"));
     b.AddInstruction(HloInstruction::CreateParameter(3, r0f32_, "p3"));
     b.AddInstruction(HloInstruction::CreateCompare(
-        ShapeUtil::MakeShape(PRED, {}), p0, p1, ComparisonDirection::kGt));
+        ShapeUtil::MakeValidatedShape(PRED, {}).value(), p0, p1,
+        ComparisonDirection::kGt));
     new_comp = module->AddEmbeddedComputation(b.Build());
   }
 
@@ -706,7 +708,8 @@ TEST_F(HloModuleTest, TwoComputationsFilterexecution_threads) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto* async_done,
       main_thread_computation->CreateAsyncInstructions(
-          add, {ShapeUtil::MakeScalarShape(U32)}, kParallelThreadName));
+          add, {ShapeUtil::MakeValidatedScalarShape(U32).value()},
+          kParallelThreadName));
   auto* parallel_thread_computation = async_done->async_wrapped_computation();
 
   EXPECT_THAT(
