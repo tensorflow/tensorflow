@@ -183,6 +183,7 @@ tf_staging/tensorflow/tools/toolchains/cross_compile/config/BUILD:
 tf_staging/tensorflow/tools/toolchains/embedded/arm-linux/BUILD:
 tf_staging/tensorflow/tools/toolchains/ios/BUILD:
 tf_staging/tensorflow/tools/toolchains/java/BUILD:
+tf_staging/tensorflow/tools/toolchains/linux/BUILD:
 tf_staging/tensorflow/tools/toolchains/python/BUILD:
 tf_staging/tensorflow/tools/toolchains/remote/BUILD:
 tf_staging/tensorflow/tools/toolchains/remote_config/BUILD:
