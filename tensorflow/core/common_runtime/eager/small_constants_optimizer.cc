@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/small_constants_optimizer.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <string>
 #include <utility>
