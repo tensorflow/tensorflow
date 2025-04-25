@@ -74,7 +74,8 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     CHECK(llvm::isa<TestProgram>(serializable));
     return "";
   }
@@ -105,7 +106,8 @@ class TestCompileOptionsSerDes
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     CHECK(llvm::isa<TestCompileOptions>(serializable));
     return "";
   }

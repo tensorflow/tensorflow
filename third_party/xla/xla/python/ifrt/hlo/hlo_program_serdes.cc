@@ -62,7 +62,8 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     // Currently, PjRT-IFRT accepts an `HloProgram` that contains C/MHLO. Since
     // these dialects don't provide version compatibility, the following
     // converts the module into StableHLO and use its portable serialization.
