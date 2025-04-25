@@ -11,8 +11,8 @@ sdy.mesh @mesh = <["x"=2, "y"=2]>
 func.func @ignore_operand_shardings(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) {
   // CHECK-NEXT: %[[CALL:.*]] = call @foo(%arg0)
   // CHECK-SAME:   {mhlo.frontend_attributes = {backend_config = "{\22flag_configs\22:[],\22scoped_memory_configs\22:[],\22device_type\22:\22DEVICE_TYPE_HOST\22,\22used_scoped_memory_configs\22:[]}"},
-  // CHECK-SAME:    random_attr = "random_value",
-  // CHECK-SAME:    sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>}
+  // CHECK-SAME:    mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}",
+  // CHECK-SAME:    random_attr = "random_value"}
   // CHECK-SAME:   : (tensor<8x2xi32>) -> tensor<8x2xi32>
   // CHECK-NEXT: %[[MOVE_TO_HOST:.*]] = stablehlo.custom_call @MoveToHost(%[[CALL]]) {backend_config = "", sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y", ?}]>]>} : (tensor<8x2xi32>) -> tensor<8x2xi32>
   // CHECK-NEXT: return %[[MOVE_TO_HOST]] : tensor<8x2xi32>
@@ -37,8 +37,8 @@ func.func @vanilla_named_computation(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> 
 
 // CHECK-LABEL: func @multiple_same_named_computations(
 func.func @multiple_same_named_computations(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) {
-  // CHECK-NEXT: %0 = call @baz(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x2xi32>) -> tensor<8x2xi32>
-  // CHECK-NEXT: %1 = call @baz_0(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x2xi32>) -> tensor<8x2xi32>
+  // CHECK-NEXT: %0 = call @baz(%arg0) {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"} : (tensor<8x2xi32>) -> tensor<8x2xi32>
+  // CHECK-NEXT: %1 = call @baz_0(%arg0) {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"} : (tensor<8x2xi32>) -> tensor<8x2xi32>
   // CHECK-NEXT: return %1 : tensor<8x2xi32>
   %0 = sdy.named_computation<"baz">(%arg0) in_shardings=[<@mesh, [{}, {"y"}]>] out_shardings=[<@mesh, [{"x"}, {}]>] (%arg1: tensor<8x2xi32>) {
     %2 = stablehlo.multiply %arg1, %arg1 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
@@ -52,8 +52,8 @@ func.func @multiple_same_named_computations(%arg0: tensor<8x2xi32> {sdy.sharding
 }
 
 // CHECK-LABEL: func private @foo
-// CHECK-SAME:    (%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
-// CHECK-SAME:    -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+// CHECK-SAME:    (%arg0: tensor<8x2xi32> {mhlo.sharding = "{devices=[1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}"})
+// CHECK-SAME:    -> (tensor<8x2xi32> {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"}) {
 // CHECK-NEXT:    %[[MULT:.*]] = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
 // CHECK-NEXT:    return %0 : tensor<8x2xi32>
 
@@ -62,9 +62,9 @@ func.func @multiple_same_named_computations(%arg0: tensor<8x2xi32> {sdy.sharding
 // CHECK-NEXT:    return %0 : tensor<8x2xi32>
 
 // CHECK-LABEL: func private @baz(
-// CHECK-SAME:    %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
-// CHECK-SAME:    -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>})
+// CHECK-SAME:    %arg0: tensor<8x2xi32> {mhlo.sharding = "{devices=[1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}"})
+// CHECK-SAME:    -> (tensor<8x2xi32> {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"})
 
 // CHECK-LABEL: func private @baz_0(
-// CHECK-SAME:    %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
-// CHECK-SAME:    -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>})
+// CHECK-SAME:    %arg0: tensor<8x2xi32> {mhlo.sharding = "{devices=[1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}"})
+// CHECK-SAME:    -> (tensor<8x2xi32> {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"})

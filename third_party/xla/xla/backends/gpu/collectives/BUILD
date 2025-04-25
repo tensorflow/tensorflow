@@ -255,7 +255,6 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/gpu:gpu_stream",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
@@ -275,7 +274,9 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:numbers",
-    ] + if_cuda_is_configured([
+    ] + if_gpu_is_configured([
+        "//xla/stream_executor/gpu:gpu_stream",
+    ]) + if_cuda_is_configured([
         "@local_config_nccl//:nccl",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",

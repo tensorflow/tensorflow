@@ -24,9 +24,10 @@ namespace xla {
 namespace sdy {
 
 // Creates a pass that converts a `NamedComputationOp` to a `CallOp` with a new
-// private function called the `NamedComputationOp`'s `name`. The new `FuncOp`
-// and `CallOp` have the same shardings as the original `NamedComputationOp`s
-// operands/results.
+// private function called the `NamedComputationOp`'s `name`. Both (1) the
+// arguments and results of the new `FuncOp` and (2) the new `CallOp` have the
+// kXlaShardingAttr converted from the in/out shardings of the the original
+// `NamedComputationOp`.
 //
 // If there is a function with the same name as the `NamedComputationOp` in the
 // module, the MLIR symbol table will change it to `{name}_#`.

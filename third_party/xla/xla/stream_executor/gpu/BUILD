@@ -9,6 +9,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
     "if_rocm_is_configured",
+    "rocm_library",
 )
 load(
     "@local_config_sycl//sycl:build_defs.bzl",
@@ -21,7 +22,6 @@ load(
 )
 load(
     "//xla/stream_executor:build_defs.bzl",
-    "gpu_only_cc_library",
     "stream_executor_gpu_friends",
 )
 load(
@@ -157,7 +157,7 @@ cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_command_buffer",
     srcs = ["gpu_command_buffer.cc"],
     hdrs = [
@@ -204,7 +204,7 @@ cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_helpers_header",
     hdrs = ["gpu_helpers.h"],
     deps = [
@@ -254,10 +254,11 @@ tsl_gpu_library(
     alwayslink = True,
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_stream",
     srcs = ["gpu_stream.cc"],
     hdrs = ["gpu_stream.h"],
+    tags = ["gpu"],
     deps = [
         ":gpu_types_header",
         "//xla/stream_executor:stream",
@@ -266,7 +267,7 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_semaphore",
     srcs = ["gpu_semaphore.cc"],
     hdrs = ["gpu_semaphore.h"],
@@ -279,7 +280,7 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_types_header",
     hdrs = ["gpu_types.h"],
     defines = if_rocm_is_configured([
@@ -287,6 +288,7 @@ gpu_only_cc_library(
     ]) + if_sycl_is_configured([
         "TENSORFLOW_USE_SYCL=1",
     ]),
+    tags = ["gpu"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
@@ -310,7 +312,7 @@ cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "asm_compiler",
     srcs = ["asm_compiler.cc"],
     hdrs = ["asm_compiler.h"],
@@ -366,13 +368,17 @@ cc_library(
     ],
 )
 
-gpu_kernel_library(
+rocm_library(
     name = "redzone_allocator_kernel_rocm",
     srcs = [
         "redzone_allocator_kernel.h",
         "redzone_allocator_kernel_rocm.cu.cc",
     ],
-    tags = ["manual"],
+    tags = [
+        "gpu",
+        "manual",
+        "rocm-only",
+    ],
     deps = [
         ":gpu_asm_opts",
         "//xla/stream_executor:device_memory",
@@ -386,7 +392,7 @@ gpu_kernel_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "redzone_allocator",
     srcs = [
         "redzone_allocator.cc",
@@ -500,9 +506,7 @@ cc_library(
     name = "gpu_blas_lt",
     srcs = ["gpu_blas_lt.cc"],
     hdrs = ["gpu_blas_lt.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         "//xla:shape_util",
         "//xla:status_macros",

@@ -607,7 +607,7 @@ AbstractTfrtCpuBuffer::AllocateTrackedDeviceBuffer(
     absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
     absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>* definition_events) {
   // Nested tuple shapes are not supported here.
-  int num_leaf_buffers = shape.IsTuple() ? shape.tuple_shapes_size() : 1;
+  int num_leaf_buffers = shape.IsTuple() ? shape.tuple_shapes().size() : 1;
   for (int i = 0; i < num_leaf_buffers; ++i) {
     tsl::AsyncValueRef<CpuEvent> definition_event =
         tsl::MakeConstructedAsyncValueRef<CpuEvent>();

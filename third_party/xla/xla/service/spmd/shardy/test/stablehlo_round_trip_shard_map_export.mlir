@@ -212,3 +212,40 @@ func.func @remove_auto_axes_to_avoid_padding(%arg0: tensor<4xf32>, %arg1: tensor
   } : (tensor<4xf32>, tensor<12xf32>, tensor<24xf32>, tensor<48xf32>, tensor<96xf32>, tensor<192xf32>) -> (tensor<4xf32>, tensor<12xf32>, tensor<24xf32>, tensor<48xf32>, tensor<96xf32>, tensor<192xf32>)
   return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5 : tensor<4xf32>, tensor<12xf32>, tensor<24xf32>, tensor<48xf32>, tensor<96xf32>, tensor<192xf32>
 }
+
+// CHECK-LABEL: func @named_computation_in_manual_computation
+func.func @named_computation_in_manual_computation(%arg0: tensor<32xi32>) -> (tensor<32xi32>, tensor<32xi32>, tensor<16xi32>) {
+  // CHECK-NEXT: %0 = mhlo.copy %arg0 {mhlo.sharding = "{devices=[8]<=[8]}"} : tensor<32xi32>
+  // CHECK-NEXT: %1 = stablehlo.custom_call @SPMDFullToShardShape(%0) {mhlo.sharding = "{devices=[2,4]<=[4,2]T(1,0) last_tile_dims={manual}}"} : (tensor<32xi32>) -> tensor<8xi32>
+  // CHECK-NEXT: %2:2 = sdy.named_computation<"foo">(%1) in_shardings=[<@mesh_0, [{?}]>] out_shardings=[<@mesh_0, [{"b"}]>, <@mesh_0, [{"b"}]>] (%arg1: tensor<8xi32>) {
+  // CHECK-NEXT:   %10 = stablehlo.multiply %arg1, %arg1 {mhlo.sharding = "{devices=[2,4]<=[4,2]T(1,0) last_tile_dims={manual}}"} : tensor<8xi32>
+  // CHECK-NEXT:   %11 = stablehlo.negate %arg1 {mhlo.sharding = "{devices=[1,4,2]<=[8] last_tile_dims={manual, replicated}}"} : tensor<8xi32>
+  // CHECK-NEXT:   sdy.return {mhlo.sharding = "{}"} %10, %11 : tensor<8xi32>, tensor<8xi32>
+  // CHECK-NEXT: } {xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>)
+  // CHECK-NEXT: %3 = sdy.named_computation<"no_input_named_computation">() in_shardings=[] out_shardings=[<@mesh_0, [{?}]>] () {
+  // CHECK-NEXT:   %c = stablehlo.constant {mhlo.sharding = "{devices=[1,4,2]<=[8] last_tile_dims={manual, replicated}}"} dense<[0, 1, 2, 3]> : tensor<4xi32>
+  // CHECK-NEXT:   %10 = stablehlo.negate %c {mhlo.sharding = "{devices=[1,4,2]<=[8] last_tile_dims={manual, replicated}}"} : tensor<4xi32>
+  // CHECK-NEXT:   sdy.return {mhlo.sharding = "{}"} %10 : tensor<4xi32>
+  // CHECK-NEXT: } {xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : () -> tensor<4xi32>
+  // CHECK-NEXT: %4 = mhlo.copy %2#0 {mhlo.sharding = "{devices=[2,4]<=[4,2]T(1,0) last_tile_dims={manual}}"} : tensor<8xi32>
+  // CHECK-NEXT: %5 = stablehlo.custom_call @SPMDShardToFullShape(%4) {mhlo.sharding = "{devices=[8]<=[8]}"} : (tensor<8xi32>) -> tensor<32xi32>
+  // CHECK-NEXT: %6 = mhlo.copy %2#1 {mhlo.sharding = "{devices=[2,4]<=[4,2]T(1,0) last_tile_dims={manual}}"} : tensor<8xi32>
+  // CHECK-NEXT: %7 = stablehlo.custom_call @SPMDShardToFullShape(%6) {mhlo.sharding = "{devices=[8]<=[8]}"} : (tensor<8xi32>) -> tensor<32xi32>
+  // CHECK-NEXT: %8 = mhlo.copy %3 {mhlo.sharding = "{devices=[2,4]<=[4,2]T(1,0) last_tile_dims={manual}}"} : tensor<4xi32>
+  // CHECK-NEXT: %9 = stablehlo.custom_call @SPMDShardToFullShape(%8) {mhlo.sharding = "{devices=[8]<=[8]}"} : (tensor<4xi32>) -> tensor<16xi32>
+  // CHECK-NEXT: return %5, %7, %9 : tensor<32xi32>, tensor<32xi32>, tensor<16xi32>
+  %0:3 = sdy.manual_computation(%arg0) in_shardings=[<@mesh_0, [{"a", "b"}]>] out_shardings=[<@mesh_0, [{"a", "b"}]>, <@mesh_0, [{"a", "b"}]>, <@mesh_0, [{"a", "b"}]>] manual_axes={"a"} (%arg1: tensor<8xi32>) {
+    %1:2 = sdy.named_computation<"foo">(%arg1) out_shardings=[<@mesh_0, [{"b"}]>, <@mesh_0, [{"b"}]>] (%arg2: tensor<8xi32>) {
+      %2 = stablehlo.multiply %arg2, %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>} : tensor<8xi32>
+      %3 = stablehlo.negate %arg2 : tensor<8xi32>
+      sdy.return %2, %3 : tensor<8xi32>, tensor<8xi32>
+    } : (tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>)
+    %4 = sdy.named_computation<"no_input_named_computation">() () {
+      %c = stablehlo.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
+      %5 = stablehlo.negate %c : tensor<4xi32>
+      sdy.return %5 : tensor<4xi32>
+    } : () -> (tensor<4xi32>)
+    sdy.return %1#0, %1#1, %4 : tensor<8xi32>, tensor<8xi32>, tensor<4xi32>
+  } : (tensor<32xi32>) -> (tensor<32xi32>, tensor<32xi32>, tensor<16xi32>)
+  return %0#0, %0#1, %0#2 : tensor<32xi32>, tensor<32xi32>, tensor<16xi32>
+}

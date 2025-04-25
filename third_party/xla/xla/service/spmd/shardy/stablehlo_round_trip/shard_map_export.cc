@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -83,8 +84,10 @@ namespace sdy = ::mlir::sdy;
 using sdy::AxisRefAttr;
 using sdy::DimensionShardingAttr;
 using sdy::kShardingAttr;
+using sdy::ManualAxesAttr;
 using sdy::ManualComputationOp;
 using sdy::MeshAttr;
+using sdy::NamedComputationOp;
 using sdy::SdyDialect;
 using sdy::TensorShardingAttr;
 using sdy::TensorShardingPerValueAttr;
@@ -183,6 +186,28 @@ TensorShardingAttr removeAutoAxesToAvoidPadding(TensorShardingAttr sharding,
                                  newDimShardings, sharding.getReplicatedAxes());
 }
 
+void handleNamedComputationInManualComputation(NamedComputationOp op,
+                                               ArrayRef<StringAttr> manualAxes,
+                                               StringRef meshName) {
+  if (manualAxes.empty()) {
+    return;
+  }
+
+  // We will export the in/out shardings of `NamedComputationOp`s in the
+  // future. Therefore, we need to record the manual axes.
+  mlir::MLIRContext* context = op.getContext();
+  op->setAttr(kManualAxes, ManualAxesAttr::get(context, manualAxes));
+
+  if (!op.getInShardings().has_value()) {
+    op.setInShardingsAttr(TensorShardingPerValueAttr::getFullyOpen(
+        context, op.getOperandTypes(), meshName));
+  }
+  if (!op.getOutShardings().has_value()) {
+    op.setOutShardingsAttr(TensorShardingPerValueAttr::getFullyOpen(
+        context, op.getResultTypes(), meshName));
+  }
+}
+
 // Converts the shardings of all operations in `op`'s body to StableHLO
 // shardings.
 void convertShardingsToStablehloShardings(
@@ -217,6 +242,13 @@ void convertShardingsToStablehloShardings(
           // Skip `ManualComputationOp`s and their nested operations, they will
           // be converted separately.
           return mlir::WalkResult::skip();
+        }
+
+        if (NamedComputationOp namedComputationOp =
+                mlir::dyn_cast<NamedComputationOp>(opInBody)) {
+          handleNamedComputationInManualComputation(
+              namedComputationOp, manualAxes.region, meshName);
+          return mlir::WalkResult::advance();
         }
 
         if (mesh.getAxes().size() == manualAxes.region.size()) {
