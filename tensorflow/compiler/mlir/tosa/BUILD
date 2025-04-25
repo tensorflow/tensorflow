@@ -10,7 +10,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 # TODO: Tighten visibility once targets are at the right granularity.
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["internal"],
+    default_visibility = [":internal"],
     licenses = ["notice"],
 )
 
