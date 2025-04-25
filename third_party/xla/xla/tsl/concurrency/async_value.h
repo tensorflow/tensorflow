@@ -516,9 +516,9 @@ void BlockUntilReady(AsyncValue* async_value);
 
 // Runs the `callee` when all async values become available.
 void RunWhenReady(absl::Span<AsyncValue* const> values,
-                  absl::AnyInvocable<void()> callee);
+                  absl::AnyInvocable<void() &&> callee);
 void RunWhenReady(absl::Span<RCReference<AsyncValue> const> values,
-                  absl::AnyInvocable<void()> callee);
+                  absl::AnyInvocable<void() &&> callee);
 
 //===----------------------------------------------------------------------===//
 
