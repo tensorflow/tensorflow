@@ -1030,6 +1030,11 @@ class DefaultSchedulerCore : public SchedulerCore {
     // order (because we schedule bottom up). This will be required to be
     // reversed before assigning to the HloSchedule.
     std::vector<HloInstruction*> new_sequence_reversed;
+
+    // Memory pressure during and after an instruction in a schedule.
+    // (memory_after, memory_peak)
+    absl::flat_hash_map<const HloInstruction*, std::pair<int64_t, int64_t>>
+        memory_trace;
     // Units of time passed in the schedule. To keep track of latency hiding.
     HloGraphNode::TimeCost current_time = 0;
     // Resources and corresponding occupiers in flight.
@@ -1152,7 +1157,7 @@ class DefaultSchedulerCore : public SchedulerCore {
                                         int64_t annotation) const;
 
   ScheduleProto::ComputationScheduleProto ComputationScheduleToProto(
-      const HloComputation* computation, const HloScheduleGraph& schedule_graph,
+      const HloComputation* computation, const SchedulingState& sched_state,
       const LatencyEstimator& estimator,
       const std::vector<HloInstruction*>& instructions);
 
