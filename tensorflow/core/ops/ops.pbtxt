@@ -67644,6 +67644,10 @@ op {
     type: DT_FLOAT
   }
   input_arg {
+    name: "preserved_weights"
+    type: DT_FLOAT
+  }
+  input_arg {
     name: "activation_gradients"
     type: DT_FLOAT
   }
@@ -67744,6 +67748,10 @@ op {
   }
   input_arg {
     name: "preserved_vectors"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "preserved_weights"
     type: DT_FLOAT
   }
   input_arg {
@@ -67878,6 +67886,10 @@ op {
     type: DT_FLOAT
   }
   input_arg {
+    name: "preserved_weights"
+    type: DT_FLOAT
+  }
+  input_arg {
     name: "activation_gradients"
     type: DT_FLOAT
   }
@@ -68005,6 +68017,10 @@ op {
     type: DT_FLOAT
   }
   input_arg {
+    name: "preserved_weights"
+    type: DT_FLOAT
+  }
+  input_arg {
     name: "activation_gradients"
     type: DT_FLOAT
   }
@@ -68102,6 +68118,10 @@ op {
   }
   input_arg {
     name: "preserved_vectors"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "preserved_weights"
     type: DT_FLOAT
   }
   input_arg {
@@ -68233,6 +68253,10 @@ op {
   }
   input_arg {
     name: "preserved_vectors"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "preserved_weights"
     type: DT_FLOAT
   }
   input_arg {
