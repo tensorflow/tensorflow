@@ -196,6 +196,11 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "hlo_file",
+    srcs = glob(["data/**"]),
+)
+
 xla_test(
     name = "functional_hlo_runner_test",
     srcs = ["functional_hlo_runner_test.cc"],
@@ -210,18 +215,7 @@ xla_test(
         "cpu",
         "gpu",
     ],
-    data = [
-        "data/auto_layout.hlo",
-        "data/multiple_gemm_fusions.hlo",
-        "data/sharded_16_devices.hlo",
-        "data/sharded_2_devices.hlo",
-        "data/sharded_computation.hlo",
-        "data/sharded_unoptimized_hlo_snapshot.pbtxt",
-        "data/single_device.hlo",
-        "data/single_device_tupled.hlo",
-        "data/single_gemm_fusion.hlo",
-        "data/while_with_known_trip_count.hlo",
-    ],
+    data = [":hlo_file"],
     tags = ["no_mac"],
     deps = [
         ":create_client",
@@ -245,6 +239,7 @@ xla_test(
         "//xla/tsl/platform:subprocess",
         "//xla/tsl/platform:test",
         "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
