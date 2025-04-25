@@ -30,10 +30,10 @@ class AsyncWorkRunner {
   virtual ~AsyncWorkRunner() = default;
 
   // `work` euqueued by `Schedule` may run on the calling thread.
-  virtual void Schedule(absl::AnyInvocable<void()> work) = 0;
+  virtual void Schedule(absl::AnyInvocable<void() &&> work) = 0;
   virtual void ScheduleWhenReady(
       absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-      absl::AnyInvocable<void()> work) = 0;
+      absl::AnyInvocable<void() &&> work) = 0;
 };
 
 }  // namespace xla

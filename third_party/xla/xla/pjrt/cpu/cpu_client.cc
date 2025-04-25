@@ -182,20 +182,21 @@ absl::StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBufferAndAvs(
 }
 
 void EnqueueWork(tsl::thread::ThreadPool* pool,
-                 absl::AnyInvocable<void()> callee) {
+                 absl::AnyInvocable<void() &&> callee) {
   // TSL TheadPool expects std::function that must be copyable, so we are
   // forced to do a little bit of manual memory management here.
-  pool->Schedule([ptr = new absl::AnyInvocable<void()>(std::move(callee))]() {
-    (*ptr)();
-    delete ptr;
-  });
+  pool->Schedule(
+      [ptr = new absl::AnyInvocable<void() &&>(std::move(callee))]() {
+        std::move (*ptr)();
+        delete ptr;
+      });
 }
 
 // Enqueue to PjRtClient pool when all `values` are ready.
 void EnqueueWorkWhenReady(
     tsl::thread::ThreadPool* pool,
     absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-    absl::AnyInvocable<void()> callee) {
+    absl::AnyInvocable<void() &&> callee) {
   RunWhenReady(values, [pool, callee = std::move(callee)]() mutable {
     EnqueueWork(pool, std::move(callee));
   });
@@ -206,13 +207,13 @@ class ThreadPoolAsyncWorkRunner : public AsyncWorkRunner {
   explicit ThreadPoolAsyncWorkRunner(tsl::thread::ThreadPool* pool)
       : pool_(pool) {}
 
-  void Schedule(absl::AnyInvocable<void()> work) override {
+  void Schedule(absl::AnyInvocable<void() &&> work) override {
     EnqueueWork(pool_, std::move(work));
   }
 
   void ScheduleWhenReady(
       absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-      absl::AnyInvocable<void()> work) override {
+      absl::AnyInvocable<void() &&> work) override {
     EnqueueWorkWhenReady(pool_, values, std::move(work));
   }
 
