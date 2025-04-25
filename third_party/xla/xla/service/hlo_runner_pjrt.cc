@@ -549,58 +549,20 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
               std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> {
         TF_RET_CHECK(options.use_threads);
 
-        // The underlying data is modified concurrently. We don't need to
-        // protect access as each replica writes only to its own slot.
-        std::vector<absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>>
-            per_replica_results(options.num_replicas);
-        absl::c_fill(per_replica_results,
-                     absl::InternalError("No result for replica."));
+        for (int i = 1; i < options.num_replicas; ++i) {
+          if (executable_provider(i) != executable_provider(0)) {
+            return absl::InvalidArgumentError(
+                "Executables must be identical across all replicas");
+          }
+        }
+        TF_ASSIGN_OR_RETURN(
+            HloRunnerPjRtExecutable* const executable,
+            HloRunnerPjRtExecutable::TryUnwrap(*this, executable_provider(0)));
 
-        {
-          // NB: `pool` is joined on destruction.
-          tsl::thread::ThreadPool pool(tsl::Env::Default(), "replicas",
-                                       options.num_replicas);
-          for (int64_t i = 0; i < options.num_replicas; ++i) {
-            for (const PjRtBuffer* const buffer : argument_buffer_slices[i]) {
-              TF_RET_CHECK(buffer != nullptr);
-            }
-            TF_ASSIGN_OR_RETURN(HloRunnerPjRtExecutable* const executable,
-                                HloRunnerPjRtExecutable::TryUnwrap(
-                                    *this, executable_provider(i)));
-            TF_ASSIGN_OR_RETURN(
-                PjRtDevice * device_ptr,
-                pjrt_client_->LookupDevice(
-                    DeviceIdForInvocation(*device_assignment, i)));
-            pool.Schedule([&per_replica_results, i, executable,
-                           args = argument_buffer_slices[i], device_ptr]() {
-              std::optional<PjRtFuture<>> returned_future = {};
-              xla::ExecuteOptions options;
-              options.untuple_result = true;
-              per_replica_results[i] =
-                  executable->pjrt_loaded_executable()->ExecuteSharded(
-                      args, device_ptr, options,
-                      /*returned_future=*/returned_future,
-                      /*fill_future=*/true);
-              if (returned_future.has_value()) {
-                if (const absl::Status& status = returned_future->Await();
-                    !status.ok()) {
-                  per_replica_results[i] = status;
-                }
-              }
-            });
-          }
-        }
-        // Aggregate results.
-        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results;
-        for (int64_t i = 0; i < options.num_replicas; ++i) {
-          absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>&
-              replica_result = per_replica_results[i];
-          if (!replica_result.ok()) {
-            return replica_result.status();
-          }
-          results.push_back(*std::move(replica_result));
-        }
-        return results;
+        xla::ExecuteOptions options;
+        options.untuple_result = true;
+        return executable->pjrt_loaded_executable()->Execute(
+            argument_buffer_slices, options);
       },
       argument_count_provider, argument_provider, options, device_assignment);
 }
