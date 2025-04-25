@@ -721,10 +721,20 @@ ENTRY main {
     return GetOptimizedModule(std::move(module));
   };
 
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
+  auto gpu_cc = backend()
+                    .default_stream_executor()
+                    ->GetDeviceDescription()
+                    .gpu_compute_capability();
+  bool is_cuda =
+      std::holds_alternative<stream_executor::CudaComputeCapability>(gpu_cc);
+  auto cuda_cc = backend()
+                     .default_stream_executor()
+                     ->GetDeviceDescription()
+                     .cuda_compute_capability();
+  auto rocm_cc = backend()
+                     .default_stream_executor()
+                     ->GetDeviceDescription()
+                     .rocm_compute_capability();
 
   const std::string triton_keep_types = absl::Substitute(
       R"(CHECK: fusion($0{{[^)]*}}, $1{{[^)]*}}){{.*}}"kind":"__triton_gemm")",
@@ -739,8 +749,7 @@ ENTRY main {
 
   HloPrintOptions print_options =
       HloPrintOptions().set_print_operand_shape(true);
-
-  {
+  if (is_cuda) {
     // Triton enabled, no fallback.
     TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_no_fallback,
                             optimize_module(/*enable_triton=*/true,
@@ -748,8 +757,9 @@ ENTRY main {
                                             /*enable_blas_fallback=*/false));
     // Triton supports f8e4m3fn on Hopper and f8e5m2 on Ampere.
     const std::string triton_expected_check =
-        (cc.IsAtLeastHopper() ||
-         (cc.IsAtLeastAmpere() && lhs_type == F8E5M2 && rhs_type == F8E5M2))
+        (cuda_cc.IsAtLeastHopper() ||
+         (cuda_cc.IsAtLeastAmpere() && lhs_type == F8E5M2 &&
+          rhs_type == F8E5M2))
             ? triton_keep_types
             : cublas_convert_to_f16;
     TF_ASSERT_OK_AND_ASSIGN(
@@ -768,7 +778,8 @@ ENTRY main {
     // cuBLASlt is only available on Hopper and it doesn't support
     // f8e5m2×f8e5m2.
     const std::string blas_expected_check =
-        (cc.IsAtLeastHopper() && !(lhs_type == F8E5M2 && rhs_type == F8E5M2))
+        ((rocm_cc.has_ocp_fp8_support() || cuda_cc.IsAtLeastHopper()) &&
+         !(lhs_type == F8E5M2 && rhs_type == F8E5M2))
             ? cublaslt_keep_types
             : cublas_convert_to_f16;
 
