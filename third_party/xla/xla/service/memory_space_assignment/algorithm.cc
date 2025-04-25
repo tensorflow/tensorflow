@@ -4466,7 +4466,7 @@ void MsaAlgorithm::ExportAllocationsForRepacking(
 }
 
 void MsaAlgorithm::ImportRepackedAllocations() {
-  interval_tree_ = {};
+  interval_tree_.Clear();
   for (RepackAllocationBlock& allocation_block : repack_allocation_blocks_) {
     if (allocation_block.allocation->is_sliced_copy_allocation()) {
       ImportRepackedSlicedAllocation(allocation_block);
