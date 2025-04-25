@@ -136,7 +136,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
-  ResetCompiledProgramsCountForTesting();
+  auto before = GetCompiledProgramsCount();
   std::unique_ptr<Executable> executable =
       backend()
           .compiler()
@@ -146,7 +146,7 @@ ENTRY main {
                         /*layout_canonicalization_callback=*/{},
                         /*is_autotuning_compilation=*/false})
           .value();
-  EXPECT_EQ(GetCompiledProgramsCount(), 1);
+  EXPECT_EQ(GetCompiledProgramsCount(), before + 1);
 }
 
 TEST_F(GpuCompilerTest, RecordsStreamzStackTrace) {
