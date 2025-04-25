@@ -309,8 +309,10 @@ void Layout::Print(Printer* printer) const {
     }
   };
 
-  // Print the dimension attributes as D(...).
-  if (n_dim_level_types_ > 0) {
+  // Print the dimension attributes as D(...) only if the layout is sparse.
+  // By default, all dimensions are dense, so there's no need to print the
+  // attributes when this layout is dense.
+  if (LayoutUtil::IsSparse(*this)) {
     auto print_one = [&](int i) {
       printer->Append(DimLevelTypeAbbrev(dim_level_type(i)));
       if (n_dim_unique_ > 0 && !dim_unique(i)) {
@@ -330,7 +332,7 @@ void Layout::Print(Printer* printer) const {
     printer->Append(")");
   }
 
-  // Print the tiles as T(...).
+  // Print the tiles as T(...)...(...).
   if (!tiles().empty()) {
     print_colon_if_have_not();
     printer->Append("T");
@@ -393,8 +395,8 @@ void Layout::Print(Printer* printer) const {
     printer->Append(")");
   }
 
-  // Print the split configs as SC(split_config1 split_config2 ...). Omit this
-  // if the split configs are empty.
+  // Print the split configs as SC(...)...(...). Omit this if the split configs
+  // are empty.
   if (!split_configs().empty()) {
     print_colon_if_have_not();
     printer->Append("SC");

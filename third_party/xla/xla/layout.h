@@ -224,8 +224,9 @@ class Layout {
   //                         dimension 1 is compressed, not unique, and
   //                         unordered.
   //             If omitted, all dimensions are dense.
-  //     T(...): The tiling (comma-separated list of tile bound sizes). E.g.
-  //             T(2,4): The shape is tiled with 2x4 tiles.
+  //     T(...)...(...): The tiling (each (...) is acomma-separated list of
+  //                     tile bound sizes). E.g.
+  //             T(2,4)(3,5): The shape is tiled with 2x4 and 3x5 tiles.
   //             T(*,*,2,*,4): The dimensions corresponding the '*' are first
   //                 combined with the next more minor dimension, and then the
   //                 result shape is tiled with 2x4 tiles.
@@ -236,9 +237,9 @@ class Layout {
   //     E(n): The element size in bits.
   //     S(n): The numeric value of thememory space. See the definition of
   //           Layout::memory_space() for details.
-  //     SC(...): List of split configs, separated by nothing. Each split config
-  //              is a string of the form "(dimension:split_indices)". E.g.
-  //              SC((1:512)(2:1024,2048)): dimension 1 is split into 2 parts
+  //     SC(...)...(...): List of split configs, separated by nothing. Each
+  //              (...) is a string of the form "(dimension:split_indices)".
+  //              E.g. SC(1:512)(2:1024,2048): dimension 1 is split into 2 parts
   //              at index 512, and dimension 2 is split into 3 parts at index
   //              1024 and 2048.
   //     P(shape): The physical shape.
@@ -494,8 +495,9 @@ class Layout {
   int64_t dynamic_shape_metadata_prefix_bytes() const {
     return dynamic_shape_metadata_prefix_bytes_;
   }
-  void set_dynamic_shape_metadata_prefix_bytes(int64_t bytes) {
+  Layout& set_dynamic_shape_metadata_prefix_bytes(int64_t bytes) {
     dynamic_shape_metadata_prefix_bytes_ = bytes;
+    return *this;
   }
 
   void Swap(Layout* other) {

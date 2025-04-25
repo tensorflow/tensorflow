@@ -32,32 +32,134 @@ namespace {
 
 using ::testing::ElementsAre;
 
-class LayoutTest : public ::testing::Test {};
+TEST(Layout, ToStringForEmpty) { EXPECT_EQ(Layout().ToString(), "{}"); }
 
-TEST_F(LayoutTest, ToString) {
-  EXPECT_EQ(Layout().ToString(), "{}");
-  EXPECT_EQ(Layout({4, 5, 6}).ToString(), "{4,5,6}");
-  EXPECT_EQ(Layout({4, 5, 6}).ToString(), "{4,5,6}");
+TEST(Layout, ToStringForMinorToMajorOnly) {
+  EXPECT_EQ(Layout({1, 2, 0}).ToString(), "{1,2,0}");
+}
+
+TEST(Layout, ToStringForDimensionAttributes) {
+  // If all dimensions are dense, the dimension attributes are omitted.
+  EXPECT_EQ(Layout({0}).add_dim_level_type(DIM_DENSE).ToString(), "{0}");
+  EXPECT_EQ(Layout({1, 0})
+                .add_dim_level_type(DIM_DENSE)
+                .add_dim_level_type(DIM_DENSE)
+                .ToString(),
+            "{1,0}");
+
+  // Test other dimension level type abbreviations.
+  EXPECT_EQ(Layout({0}).add_dim_level_type(DIM_COMPRESSED).ToString(),
+            "{0:D(C)}");
+  EXPECT_EQ(Layout({0}).add_dim_level_type(DIM_SINGLETON).ToString(),
+            "{0:D(S)}");
+  EXPECT_EQ(Layout({0}).add_dim_level_type(DIM_LOOSE_COMPRESSED).ToString(),
+            "{0:D(H)}");
+
+  // Test the ordered attribute.
+  EXPECT_EQ(Layout({0})
+                .add_dim_level_type(DIM_COMPRESSED)
+                .add_dim_ordered(false)
+                .ToString(),
+            "{0:D(C~)}");
+
+  // Test the unique attribute.
+  EXPECT_EQ(Layout({0})
+                .add_dim_level_type(DIM_COMPRESSED)
+                .add_dim_unique(false)
+                .ToString(),
+            "{0:D(C+)}");
+
+  // Test the combination of ordered and unique attributes.
+  EXPECT_EQ(Layout({0})
+                .add_dim_level_type(DIM_COMPRESSED)
+                .add_dim_ordered(false)
+                .add_dim_unique(false)
+                .ToString(),
+            "{0:D(C+~)}");
+
+  // Test multiple dimension attributes.
+  EXPECT_EQ(Layout({1, 0})
+                .add_dim_level_type(DIM_DENSE)
+                .add_dim_level_type(DIM_COMPRESSED)
+                .ToString(),
+            "{1,0:D(D,C)}");
+}
+
+TEST(Layout, ToStringForTiles) {
   EXPECT_EQ(Layout({3, 2, 1, 0}, {}, {}, {}, {Tile({42, 123}), Tile({4, 5})})
                 .ToString(),
             "{3,2,1,0:T(42,123)(4,5)}");
+}
+
+TEST(Layout, ToStringForTileWithCombinedDimensions) {
+  EXPECT_EQ(
+      Layout(
+          {3, 2, 1, 0}, {}, {}, {},
+          {Tile({Tile::kCombineDimension, Tile::kCombineDimension, 42, 123})})
+          .ToString(),
+      "{3,2,1,0:T(*,*,42,123)}");
+}
+
+TEST(Layout, ToStringForTailPaddingAlignment) {
+  EXPECT_EQ(Layout({3, 2, 1, 0})
+                .set_tail_padding_alignment_in_elements(100)
+                .ToString(),
+            "{3,2,1,0:L(100)}");
+}
+
+TEST(Layout, ToStringForIndexPrimitiveType) {
+  EXPECT_EQ(Layout({3, 2, 1, 0})
+                .set_index_primitive_type(PrimitiveType::U32)
+                .ToString(),
+            "{3,2,1,0:#(u32)}");
+}
+
+TEST(Layout, ToStringForPointerPrimitiveType) {
+  EXPECT_EQ(Layout({3, 2, 1, 0})
+                .set_pointer_primitive_type(PrimitiveType::U16)
+                .ToString(),
+            "{3,2,1,0:*(u16)}");
+}
+
+TEST(Layout, ToStringForElementSize) {
+  EXPECT_EQ(Layout({3, 2, 1, 0}).set_element_size_in_bits(42).ToString(),
+            "{3,2,1,0:E(42)}");
+}
+
+TEST(Layout, ToStringForMemorySpace) {
+  EXPECT_EQ(Layout({3, 2, 1, 0}).set_memory_space(3).ToString(),
+            "{3,2,1,0:S(3)}");
+}
+
+TEST(Layout, ToStringForSplitConfigs) {
+  EXPECT_EQ(Layout({0, 1})
+                .add_split_configs(SplitConfig(0, {3}))
+                .add_split_configs(SplitConfig(1, {0, 4}))
+                .ToString(),
+            "{0,1:SC(0:3)(1:0,4)}");
+}
+
+TEST(Layout, ToStringForPhysicalShape) {
+  Layout layout({0, 1});
+  *layout.mutable_physical_shape() = ShapeUtil::MakeShape(S32, {10, 20});
+  EXPECT_EQ(layout.ToString(), "{0,1:P(s32[10,20]{1,0})}");
+}
+
+TEST(Layout, ToStringForDynamicShapeMetadataPrefixBytes) {
+  EXPECT_EQ(
+      Layout({0, 1}).set_dynamic_shape_metadata_prefix_bytes(123).ToString(),
+      "{0,1:M(123)}");
+}
+
+TEST(Layout, ToStringForMutipleProperties) {
   EXPECT_EQ(Layout({3, 2, 1, 0}, {}, {}, {}, {Tile({42, 123}), Tile({4, 5})})
                 .set_tail_padding_alignment_in_elements(100)
                 .set_element_size_in_bits(42)
                 .ToString(),
             "{3,2,1,0:T(42,123)(4,5)L(100)E(42)}");
-  EXPECT_EQ(Layout({3, 2, 1, 0}, {}, {}, {}, {Tile({42, 123}), Tile({4, 5})})
-                .set_memory_space(3)
-                .ToString(),
-            "{3,2,1,0:T(42,123)(4,5)S(3)}");
-  EXPECT_EQ(Layout({0, 1}, {}, {}, {}, {Tile({123})})
-                .add_split_configs(SplitConfig(0, {3}))
-                .add_split_configs(SplitConfig(1, {0, 4}))
-                .ToString(),
-            "{0,1:T(123)SC(0:3)(1:0,4)}");
 }
 
-TEST_F(LayoutTest, StreamOut) {
+TEST(Layout, StreamOut) {
   {
     std::ostringstream oss;
     oss << Tile({7, 8});
@@ -71,7 +173,7 @@ TEST_F(LayoutTest, StreamOut) {
   }
 }
 
-TEST_F(LayoutTest, Equality) {
+TEST(Layout, Equality) {
   EXPECT_EQ(Layout(), Layout());
   const std::vector<int64_t> empty_dims;
   EXPECT_EQ(Layout(empty_dims), Layout(empty_dims));
@@ -116,7 +218,7 @@ TEST_F(LayoutTest, Equality) {
       Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {3}))));
 }
 
-TEST_F(LayoutTest, LayoutToFromProto) {
+TEST(Layout, LayoutToFromProto) {
   // Round-trips a Layout through proto de/serialization.
   auto expect_unchanged = [](const Layout& layout) {
     EXPECT_EQ(layout, Layout::CreateFromProto(layout.ToProto()));
