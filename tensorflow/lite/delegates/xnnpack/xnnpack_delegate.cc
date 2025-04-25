@@ -3313,31 +3313,44 @@ class Subgraph {
         }
 
         // Validate or create the quantization parameters for the per-channel
-        // quantized input_b. Note that we currently only expect the `B` tensor
-        // to be per-tensor quantized, and not per-channel (see b/332675940).
+        // quantized input_b.
         TfLiteAffineQuantization* quant_params_b =
             reinterpret_cast<TfLiteAffineQuantization*>(
                 input_b.quantization.params);
+        const int num_quant_params = quant_params_b->scale->size;
+        float* scale_b = quant_params_b->scale->data;
+        const int zero_point_b = num_quant_params > 1
+                                     ? quant_params_b->zero_point->data[0]
+                                     : input_b.params.zero_point;
+        int32_t quantized_dimension = quant_params_b->quantized_dimension;
         if (quant_params_b->scale->size != batch_size_b * n) {
-          if (quant_params_b->scale->size != 1) {
+          if ((batch_size_b * n) % num_quant_params) {
             TF_LITE_MAYBE_KERNEL_LOG(
                 logging_context,
                 "failed to delegate %s node #%d. unexpected number of "
-                "quantizations scales (expected %d or 1, got %d)",
+                "quantizations scales (expected a divisor of %d, got %d)",
                 EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL),
-                node_index, batch_size_b * n, quant_params_b->scale->size);
+                node_index, batch_size_b * n, num_quant_params);
             return kTfLiteError;
           }
+          TfLiteFloatArray* new_scale_b =
+              TfLiteFloatArrayCreate(num_quant_params + batch_size_b * n);
+          if (num_quant_params == 1) {
+            std::fill_n(new_scale_b->data, new_scale_b->size,
+                        input_b.params.scale);
+          } else {
+            std::copy_n(quant_params_b->scale->data, num_quant_params,
+                        new_scale_b->data);
+            for (int k = 0; k < batch_size_b * n; k++) {
+              new_scale_b->data[num_quant_params + k] =
+                  quant_params_b->scale->data[k % num_quant_params];
+            }
+          }
           TfLiteFloatArrayFree(quant_params_b->scale);
-          quant_params_b->scale = TfLiteFloatArrayCreate(batch_size_b * n);
-          std::fill_n(quant_params_b->scale->data, batch_size_b * n,
-                      input_b.params.scale);
-          TfLiteIntArrayFree(quant_params_b->zero_point);
-          quant_params_b->zero_point = TfLiteIntArrayCreate(batch_size_b * n);
-          std::fill_n(quant_params_b->zero_point->data, batch_size_b * n,
-                      input_b.params.zero_point);
-          quant_params_b->quantized_dimension =
-              params->adj_y ? num_dims_b - 2 : num_dims_b - 1;
+          new_scale_b->size = num_quant_params;
+          quant_params_b->scale = new_scale_b;
+          scale_b = new_scale_b->data + num_quant_params;
+          quantized_dimension = params->adj_y ? num_dims_b - 2 : num_dims_b - 1;
         }
 
         // Create the quantized input_b.
@@ -3345,12 +3358,11 @@ class Subgraph {
         for (int i = 0; i < num_dims_b; ++i) {
           dims_b[i] = SizeOfDimension(&input_b, i);
         }
-        const int32_t zero_point_value = quant_params_b->zero_point->data[0];
         uint32_t cq_input_b_id = XNN_INVALID_VALUE_ID;
         if (xnn_status status =
                 xnn_define_channelwise_quantized_tensor_value_v2(
-                    subgraph, xnn_datatype_qcint8, zero_point_value,
-                    quant_params_b->scale->data, dims_b.size(),
+                    subgraph, xnn_datatype_qcint8, zero_point_b, scale_b,
+                    dims_b.size(),
                     /*channel_dim=*/
                     (params->adj_y ? num_dims_b - 2 : num_dims_b - 1),
                     dims_b.data(), GetTensorData<int8_t>(&input_b),
@@ -4133,11 +4145,10 @@ class Subgraph {
       case BuiltinOperator_SIN:
       case BuiltinOperator_SQRT:
       case BuiltinOperator_SQUARE:
-      case BuiltinOperator_TANH:
         TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
             logging_context, input_tensor, input_id, node_index));
         TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
-            logging_context, input_tensor, input_id, node_index));
+            logging_context, output_tensor, output_id, node_index));
         break;
       case BuiltinOperator_DEQUANTIZE:
         TF_LITE_ENSURE_STATUS(CheckTensorQInt8OrQUInt8Type(
@@ -4146,10 +4157,16 @@ class Subgraph {
             logging_context, output_tensor, output_id, node_index));
         break;
       case BuiltinOperator_ELU:
-      case BuiltinOperator_LOGISTIC:
         TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt8Type(
             delegate, logging_context, input_tensor, input_id, node_index));
         TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt8Type(
+            delegate, logging_context, output_tensor, output_id, node_index));
+        break;
+      case BuiltinOperator_LOGISTIC:
+      case BuiltinOperator_TANH:
+        TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
+            delegate, logging_context, input_tensor, input_id, node_index));
+        TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
             delegate, logging_context, output_tensor, output_id, node_index));
         break;
       case BuiltinOperator_LEAKY_RELU: {

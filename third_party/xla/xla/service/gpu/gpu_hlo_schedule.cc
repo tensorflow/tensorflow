@@ -396,6 +396,8 @@ std::optional<ProfiledInstructionsProto> ProfileFromPath(
     LOG(ERROR) << "Tried but failed to parse PGLE proto from "
                << (as_text ? "text" : "binary") << " file '" << path
                << "'. Error message: " << s.message();
+  } else {
+    LOG(ERROR) << "PGLE profile file does not exist: " << path;
   }
   return std::nullopt;
 }

@@ -2926,15 +2926,16 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
       saved_schedules[computation] = std::move(new_schedule);
     }
   }
-  LOG(INFO) << "LatencyHidingScheduler current memory usage: "
+  LOG(INFO) << "[" << name() << "]"
+            << " LatencyHidingScheduler current memory usage: "
             << scheduler_core_->GetMemoryPeak()
             << " bytes. Current limit: " << scheduler_core_->GetMemoryLimit();
   for (HloComputation* computation : computations_to_schedule) {
-    VLOG(1) << "Statistics before scheduling:";
+    VLOG(1) << "[" << name() << "] Statistics before scheduling:";
     LogScheduleStatistics(computation);
     module->schedule().set_sequence(
         computation, absl::MakeConstSpan(saved_schedules[computation]));
-    VLOG(1) << "Statistics after scheduling:";
+    VLOG(1) << "[" << name() << "] Statistics after scheduling:";
     LogScheduleStatistics(computation);
   }
   if (debug_options.xla_dump_latency_hiding_schedule()) {

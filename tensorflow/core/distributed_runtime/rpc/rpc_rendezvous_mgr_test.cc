@@ -177,7 +177,7 @@ TEST_F(RpcRendezvousMgrTest, LocalAbort) {
     bool val_dead = false;
     Rendezvous::Args args;
     TF_ASSERT_OK(rendez->Initialize(&worker_session_));
-    EXPECT_TRUE(errors::IsAborted(rendez->Recv(key, args, &val, &val_dead)));
+    EXPECT_TRUE(absl::IsAborted(rendez->Recv(key, args, &val, &val_dead)));
   }
   {  // Cleanup causes Abort().
     const int64_t step_id = 321;
@@ -190,7 +190,7 @@ TEST_F(RpcRendezvousMgrTest, LocalAbort) {
     bool val_dead = false;
     Rendezvous::Args args;
     TF_ASSERT_OK(rendez->Initialize(&worker_session_));
-    EXPECT_TRUE(errors::IsAborted(rendez->Recv(key, args, &val, &val_dead)));
+    EXPECT_TRUE(absl::IsAborted(rendez->Recv(key, args, &val, &val_dead)));
   }
 }
 
@@ -212,7 +212,7 @@ TEST_F(RpcRendezvousMgrTest, LocalCancel) {
   Rendezvous::Args args;
   args.cancellation_manager = cm;
   TF_ASSERT_OK(rendez->Initialize(&worker_session_));
-  EXPECT_TRUE(errors::IsCancelled(rendez->Recv(key, args, &val, &val_dead)));
+  EXPECT_TRUE(absl::IsCancelled(rendez->Recv(key, args, &val, &val_dead)));
   n.WaitForNotification();
   delete cm;
 }

@@ -366,7 +366,7 @@ std::unique_ptr<StrategyGroup> HandlePartialReduce(
 
   std::unique_ptr<StrategyGroup> strategy_group =
       CreateTupleStrategyGroup(instruction_id);
-  int64_t output_size = shape.tuple_shapes_size();
+  int64_t output_size = shape.tuple_shapes().size();
   for (size_t i = 0; i < output_size; ++i) {
     std::unique_ptr<StrategyGroup> child_strategy_group =
         CreateLeafStrategyGroupWithoutInNodes(instruction_id, strategy_groups);
@@ -429,7 +429,7 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
   std::unique_ptr<StrategyGroup> strategy_group;
   if (src_strategy_group.is_tuple) {
     CHECK(shape.IsTuple());
-    CHECK_EQ(shape.tuple_shapes_size(), children.size());
+    CHECK_EQ(shape.tuple_shapes().size(), children.size());
     strategy_group = CreateTupleStrategyGroup(instruction_id);
     for (size_t i = 0; i < children.size(); ++i) {
       auto child_strategies = MaybeFollowInsStrategyGroup(
@@ -458,12 +458,12 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
   std::unique_ptr<StrategyGroup> strategy_group;
   if (output_shape.IsTuple()) {
     strategy_group = CreateTupleStrategyGroup(instruction_id);
-    for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
+    for (size_t i = 0; i < ins->shape().tuple_shapes().size(); ++i) {
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<StrategyGroup> child_strategy,
           FollowReduceStrategy(
               ins, ins->shape().tuple_shapes().at(i), ins->operand(i),
-              ins->operand(i + ins->shape().tuple_shapes_size()),
+              ins->operand(i + ins->shape().tuple_shapes().size()),
               instruction_id, strategy_map, strategy_groups, cluster_env,
               allow_mixed_mesh_shape, crash_at_error));
       child_strategy->tuple_element_idx = i;
@@ -587,7 +587,7 @@ ReshardingCostsForTupleOperand(const HloInstruction* operand,
   ReshardingCosts memory_resharding_costs;
   std::vector<HloSharding> tuple_element_shardings;
   for (size_t tuple_element_idx = 0;
-       tuple_element_idx < operand->shape().tuple_shapes_size();
+       tuple_element_idx < operand->shape().tuple_shapes().size();
        tuple_element_idx++) {
     const StrategyGroup& tuple_element_strategy_group =
         *operand_strategy_vector.GetChildren()[tuple_element_idx];
@@ -629,7 +629,7 @@ ReshardingCosts CreateZeroReshardingCostsForAllOperands(
             << "Do not support instructions with more than one tuple "
                "operand.";
         for (size_t tuple_element_idx = 0;
-             tuple_element_idx < operand->shape().tuple_shapes_size();
+             tuple_element_idx < operand->shape().tuple_shapes().size();
              tuple_element_idx++) {
           const StrategyGroup& tuple_element_strategy_group =
               *operand_strategy_group.GetChildren().at(tuple_element_idx);
@@ -655,7 +655,7 @@ void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
   ReshardingCosts memory_resharding_costs;
   InputShardings input_shardings = {"R"};
 
-  const int tuple_size = ins->operand(0)->shape().tuple_shapes_size();
+  const int tuple_size = ins->operand(0)->shape().tuple_shapes().size();
   const auto& operand_strategy_group = strategy_map.at(ins->operand(0));
   const auto& operand_children = operand_strategy_group->GetChildren();
   if (ins->has_sharding()) {
@@ -1263,7 +1263,7 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
   std::unique_ptr<StrategyGroup> strategy_group;
   if (shape.IsTuple()) {
     strategy_group = CreateTupleStrategyGroup(instruction_id);
-    for (size_t i = 0; i < shape.tuple_shapes_size(); ++i) {
+    for (size_t i = 0; i < shape.tuple_shapes().size(); ++i) {
       auto child_strategies =
           CreateAllStrategiesGroup(
               ins, shape.tuple_shapes(i), instruction_id, strategy_groups,
@@ -1644,7 +1644,7 @@ std::unique_ptr<StrategyGroup> HandleManuallyShardedInstruction(
   std::unique_ptr<StrategyGroup> strategy_group;
   if (shape.IsTuple()) {
     strategy_group = CreateTupleStrategyGroup(instruction_id);
-    for (size_t i = 0; i < shape.tuple_shapes_size(); ++i) {
+    for (size_t i = 0; i < shape.tuple_shapes().size(); ++i) {
       std::unique_ptr<StrategyGroup> child_strategies =
           HandleManuallyShardedInstruction(ins, shape.tuple_shapes(i),
                                            instruction_id, strategy_groups,
@@ -2280,7 +2280,7 @@ absl::Status InsertReshardReshapes(
           case HloOpcode::kCustomCall:
           case HloOpcode::kRngBitGenerator:
           case HloOpcode::kSort: {
-            for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
+            for (size_t i = 0; i < inst->shape().tuple_shapes().size(); ++i) {
               const InputShardings& input_shardings =
                   GetInputShardingsForTuple(inst, {static_cast<int64_t>(i)},
                                             strategy_map, cost_graph, s_val);
@@ -2294,7 +2294,7 @@ absl::Status InsertReshardReshapes(
             break;
           }
           case HloOpcode::kTuple: {
-            for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
+            for (size_t i = 0; i < inst->shape().tuple_shapes().size(); ++i) {
               const InputShardings& input_shardings =
                   GetInputShardingsForTuple(inst, {static_cast<int64_t>(i)},
                                             strategy_map, cost_graph, s_val);
@@ -2308,8 +2308,8 @@ absl::Status InsertReshardReshapes(
           }
           case HloOpcode::kGetTupleElement: {
             std::vector<std::optional<HloSharding>> dst_shardings(
-                inst->shape().tuple_shapes_size(), std::nullopt);
-            for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
+                inst->shape().tuple_shapes().size(), std::nullopt);
+            for (size_t i = 0; i < inst->shape().tuple_shapes().size(); ++i) {
               CHECK(!inst->shape().tuple_shapes(i).IsTuple())
                   << "We currently do not support ops with nested tuples as "
                      "output. See b/332951306.";
@@ -2661,7 +2661,7 @@ void CheckUserShardingPreservation(
       } else if (inst->sharding().IsTuple()) {
         const std::vector<HloSharding>* preserve_shardings_tuple =
             &preserve_shardings.at(inst->name());
-        for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
+        for (size_t i = 0; i < inst->shape().tuple_shapes().size(); i++) {
           if (!preserve_shardings_tuple->at(i).IsUnknown() &&
               preserve_shardings_tuple->at(i) !=
                   inst->sharding().tuple_elements().at(i)) {

@@ -511,6 +511,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   const bool is_fusion_emitters =
       is_thunk_runtime &&
       module->config().debug_options().xla_cpu_use_fusion_emitters();
+  bool use_shardy_partitioner = module->config().use_shardy_partitioner();
   if (num_partitions > 1) {
     if (!module->config().use_spmd_partitioning()) {
       return InvalidArgument(
@@ -524,7 +525,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     spmd_pipeline.AddPass<CallInliner>();
     spmd_pipeline.AddPass<ZeroSizedHloElimination>();
     spmd_pipeline.AddPass<ConditionalCanonicalizer>();
-    if (module->config().use_shardy_partitioner()) {
+    if (use_shardy_partitioner) {
       spmd_pipeline.AddPass<sdy::ShardyXLA>();
     } else {
       spmd_pipeline.AddPass<ShardingPropagation>(
@@ -540,6 +541,11 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     AddHloVerifier(&sharding_removal_pipeline);
     // Remove redundant sharding ops when partition_count == 1.
     sharding_removal_pipeline.AddPass<ShardingRemover>();
+    // Run ShardyXLA without propagation, which enforces use-tuple-args.
+    if (use_shardy_partitioner) {
+      sharding_removal_pipeline.AddPass<sdy::ShardyXLA>(
+          /*runSdyShardingPropagation=*/false);
+    }
     sharding_removal_pipeline.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(sharding_removal_pipeline.Run(module).status());
   }

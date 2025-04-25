@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -48,7 +49,8 @@ namespace {
 // Given a group of annotated instructions (sources), find all reachable
 // instructions from them in the same computation.
 absl::flat_hash_set<HloInstruction*> PropagateAnnotationFromSources(
-    const std::vector<HloInstruction*>& sources, HloComputation* computation) {
+    const std::vector<HloInstruction*>& sources,
+    const HloComputation* computation) {
   absl::flat_hash_set<HloInstruction*> to_annotate;
   auto reachability = HloReachabilityMap::Build(computation);
   // worklist contains instructions that can reach any source instruction.
@@ -107,26 +109,11 @@ absl::Status AttachAnnotation(
           absl::StrCat(annotation_id) + " to " + std::string(instr->name()) +
           " but it has an existing annotation: " + absl::StrCat(*id));
     }
+    LOG(INFO) << "Propagating annotation " << annotation_id << " to "
+              << instr->name();
     SetSchedulingAnnotation(instr, annotation_id);
   }
   return absl::OkStatus();
-}
-
-absl::StatusOr<bool> PropagateAnnotations(
-    HloComputation* computation,
-    const absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>&
-        annotation_id_to_instructions) {
-  bool changed = false;
-  for (auto& [annotation_id, sources] : annotation_id_to_instructions) {
-    absl::flat_hash_set<HloInstruction*> to_annotate =
-        PropagateAnnotationFromSources(sources, computation);
-    changed |= (!to_annotate.empty());
-    auto status = AttachAnnotation(annotation_id, to_annotate);
-    if (!status.ok()) {
-      return status;
-    }
-  }
-  return changed;
 }
 
 absl::StatusOr<int64_t> ExtractAnnotation(
@@ -261,6 +248,23 @@ absl::Status CheckGapBetweenAnnotatedInstructions(
 
 }  // namespace
 
+absl::StatusOr<bool> LegalizeSchedulingAnnotations::PropagateAnnotations(
+    const HloComputation* computation,
+    const absl::btree_map<int64_t, std::vector<HloInstruction*>>&
+        annotation_id_to_instructions) {
+  bool changed = false;
+  for (auto& [annotation_id, sources] : annotation_id_to_instructions) {
+    absl::flat_hash_set<HloInstruction*> to_annotate =
+        PropagateAnnotationFromSources(sources, computation);
+    changed |= (!to_annotate.empty());
+    auto status = AttachAnnotation(annotation_id, to_annotate);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+  return changed;
+}
+
 bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
     HloInstruction* instr) {
   const auto& attrs = instr->frontend_attributes().map();
@@ -354,10 +358,12 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     return false;
   }
 
-  auto status = CheckStartDoneAnnotationConsistency(annotation_to_instructions,
-                                                    annotation);
-  if (!status.ok()) {
-    return status;
+  if (config_.check_start_done_annotation_consistency) {
+    auto status = CheckStartDoneAnnotationConsistency(
+        annotation_to_instructions, annotation);
+    if (!status.ok()) {
+      return status;
+    }
   }
 
   bool changed = false;
@@ -368,7 +374,7 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     // same annotation ID.
     for (HloComputation* computation :
          module->MakeNonfusionComputations(execution_threads)) {
-      absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>
+      absl::btree_map<int64_t, std::vector<HloInstruction*>>
           per_computation_annotation_to_instructions;
       for (const auto& [annotation_id, comp_inst_vector] :
            annotation_to_instructions) {

@@ -126,6 +126,7 @@ AutoShardingSolverParams GetParams(const AutoShardingSolverRequest& request) {
                                               departure_cost.costs().end());
     params.departure_costs.push_back(departure_cost_vector);
   }
+  params.deterministic_mode = request.deterministic_mode();
   params.max_departures =
       request.has_max_departures()
           ? std::make_optional(request.max_departures().coeff())
@@ -135,6 +136,10 @@ AutoShardingSolverParams GetParams(const AutoShardingSolverRequest& request) {
       request.has_overbudget_coeff()
           ? std::make_optional(request.overbudget_coeff().coeff())
           : std::nullopt;
+  params.solver_timeout =
+      request.has_solver_timeout()
+          ? absl::Seconds(request.solver_timeout().solver_timeout_in_seconds())
+          : absl::InfiniteDuration();
   return params;
 }
 
@@ -536,18 +541,17 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     // determinism, mip_max_bound (to handle large costs), and num_workers for
     // parallelism.
     solver_parameter_str = absl::StrCat("num_workers:", num_workers);
-    if (request.deterministic_mode()) {
+    if (params.deterministic_mode) {
       absl::StrAppend(
           &solver_parameter_str,
           ",share_binary_clauses:false,random_seed:1,interleave_search:true");
     }
-    if (request.has_solver_timeout()) {
-      if (request.deterministic_mode()) {
+    if (params.solver_timeout != absl::InfiniteDuration()) {
+      if (params.deterministic_mode) {
         absl::StrAppend(&solver_parameter_str, ",max_deterministic_time:",
-                        request.solver_timeout().solver_timeout_in_seconds());
+                        absl::ToInt64Seconds(params.solver_timeout));
       } else {
-        solver->SetTimeLimit(absl::Seconds(
-            request.solver_timeout().solver_timeout_in_seconds()));
+        solver->SetTimeLimit(params.solver_timeout);
       }
     }
     solver->SetSolverSpecificParametersAsString(solver_parameter_str);

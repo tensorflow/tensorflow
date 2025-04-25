@@ -141,19 +141,19 @@ absl::Status SetKernelFunctionAttributes(const HloFusionInstruction& fusion,
 
   mlir::MLIRContext* context = func->getContext();
 
-  // This is a hack until https://github.com/llvm/llvm-project/pull/135811 is
-  // merged, the value "2" corresponds to the default enum value.
-  mlir::ArrayAttr uwtable_attr = builder.getStrArrayAttr({"uwtable", "2"});
   int32_t vector_width =
       hlo_module->config().debug_options().xla_cpu_prefer_vector_width();
   mlir::ArrayAttr prefer_vector_width_attr = builder.getStrArrayAttr(
       {"prefer-vector-width", absl::StrCat(vector_width)});
   func->setAttr("passthrough",
-                builder.getArrayAttr({uwtable_attr, prefer_vector_width_attr}));
+                builder.getArrayAttr({prefer_vector_width_attr}));
   func->setAttr(
       "frame_pointer",
       mlir::LLVM::FramePointerKindAttr::get(
           context, mlir::LLVM::framePointerKind::FramePointerKind::All));
+  func->setAttr("uwtable_kind",
+                mlir::LLVM::UWTableKindAttr::get(
+                    context, mlir::LLVM::uwtable::UWTableKind::Async));
 
   return absl::OkStatus();
 }

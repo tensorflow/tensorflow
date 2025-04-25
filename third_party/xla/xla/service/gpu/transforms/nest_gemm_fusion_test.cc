@@ -279,6 +279,43 @@ ENTRY entry {
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
+TEST_F(NestGemmFusionTest, BitcastsCanBeHoistedPastConvertEpilogues) {
+  absl::string_view hlo = R"(
+dot {
+  lhs = f32[3,7] parameter(0)
+  rhs = f32[7,11] parameter(1)
+  dot = f32[3,11] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bitcast = f32[33] bitcast(dot)
+  ROOT convert = f16[33] convert(bitcast)
+}
+
+ENTRY entry {
+  p0 = f32[3, 7] parameter(0)
+  p1 = f32[7,11] parameter(1)
+  ROOT fusion = f16[33] fusion(p0, p1),
+    kind=kCustom, calls=dot, backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm",  "triton_gemm_config": {
+          "block_m":"32", "block_n":"64", "block_k":"16",
+          "split_k":"1", "num_stages":"1", "num_warps":"1", "num_ctas":"1"
+        }
+      }
+    }
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK: f16[3,11]{1,0} convert(
+CHECK: f16[3,11]{1,0} fusion(
+)"),
+      IsOkAndHolds(true));
+
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+}
+
 // We cannot hoist bitcasts past transposes, but we don't need to hoist
 // because the bitcast is not rank-expanding and symbolic tile analysis
 // works fine.
@@ -666,6 +703,56 @@ CHECK-NEXT: }
 CHECK: ENTRY {{.*}} {
 CHECK: [[entry_p0:[^ ]+]] = f32[11,1,24,1]{3,2,1,0} parameter(0)
 CHECK: {{.*}} = f32[264]{0} bitcast([[entry_p0]])
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_F(NestGemmFusionTest, BitcastsLayoutIsPreserved) {
+  absl::string_view hlo = R"(
+HloModule t
+
+gemm_dot {
+  p0 = pred[3,122,96,12] parameter(0)
+  bitcast0 = pred[3,122,1152] bitcast(p0)
+  transpose0 = pred[3,1152,122] transpose(bitcast0), dimensions={0,2,1}
+  bitcast1 = pred[3,96,12,122] bitcast(transpose0)
+  bitcast2 = pred[3456,122] bitcast(bitcast1)
+  convert0 = f16[3456,122] convert(bitcast2)
+  p1 = pred[1,5,122] parameter(1)
+  bitcast3 = pred[5,122] bitcast(p1)
+  convert1 = f16[5,122] convert(bitcast3)
+  bitcast4 = f16[122,5]{0,1} bitcast(convert1)
+  dot0 = f16[3456,5]{1,0} dot(convert0, bitcast4), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}
+  ROOT bitcast5 = f16[3,96,12,1,5] bitcast(dot0)
+}
+
+ENTRY e {
+  p0 = pred[3,122,96,12] parameter(0)
+  p1 = pred[1,5,122] parameter(1)
+  ROOT fusion = f16[3,96,12,1,5] fusion(p0, p1), kind=kCustom, calls=gemm_dot,
+    backend_config={"fusion_backend_config":{kind:"__triton_gemm",
+    triton_gemm_config: {"block_m":32,"block_n":16,"block_k":32,
+    "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK: {{.*}} {
+CHECK: transpose
+CHECK: [[bitcast:[^ ]+]] = pred[3456,122]{1,0} bitcast({{.*}})
+CHECK: ROOT {{.*}} = f16[3456,122]{1,0} convert([[bitcast]])
+CHECK-NEXT: }
+CHECK: {{.*}} {
+CHECK-NOT: bitcast
+CHECK: ROOT {{.*}} = f16[122,5]{0,1} convert({{.*}})
+CHECK-NEXT: }
+CHECK: ENTRY {{.*}} {
+CHECK: {{.*}} = pred[122,5]{0,1} bitcast({{.*}})
 )"),
       IsOkAndHolds(true));
 }

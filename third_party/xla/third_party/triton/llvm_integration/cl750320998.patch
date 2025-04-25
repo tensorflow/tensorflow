@@ -1,0 +1,52 @@
+
+--- a/test/Conversion/tma_to_llvm.mlir	2025-03-25 07:48:50.000000000 -0700
++++ b/test/Conversion/tma_to_llvm.mlir	2025-04-22 14:16:46.000000000 -0700
+@@ -68,22 +68,16 @@
+   // CHECK: "@$0 cp.async.bulk.tensor.2d.tile::gather4.shared::cluster.global.mbarrier::complete_tx::bytes [$1], [$2, {$3, $4, $5, $6, $7}], [$8];", "b,r,l,r,r,r,r,r,r"
+   // CHECK-SAME: (i1 [[PRED]], ptr addrspace(3) [[BASEPTR0]], ptr addrspace(1) %0, i32 [[Y0]], i32 [[IDX0]], i32 [[IDX1]], i32 [[IDX2]], i32 [[IDX3]], ptr addrspace(3) [[BAR]])
+ 
+-  // CHECK: [[OFFSET1_TMP:%.*]] = or disjoint i32 [[WARP_STRIDE]], 2048
+-  // CHECK: [[OFFSET1:%.*]] = zext nneg i32 [[OFFSET1_TMP]] to i64
+-  // CHECK: [[BASEPTR1:%.*]] = getelementptr bfloat, ptr addrspace(3) [[BASE_PTR]], i64 [[OFFSET1]]
++  // CHECK: [[BASEPTR1:%.*]] = getelementptr i8, ptr addrspace(3) [[BASEPTR0]], i64 4096
+   // CHECK: [[Y1:%.*]] = add i32 [[Y0]], 64
+   // CHECK: cp.async.bulk.tensor.2d.tile::gather4
+   // CHECK-SAME: (i1 [[PRED]], ptr addrspace(3) [[BASEPTR1]], ptr addrspace(1) %0, i32 [[Y1]], i32 [[IDX0]], i32 [[IDX1]], i32 [[IDX2]], i32 [[IDX3]], ptr addrspace(3) [[BAR]])
+ 
+-  // CHECK: [[OFFSET2_TMP:%.*]] = or disjoint i32 [[WARP_STRIDE]], 1024
+-  // CHECK: [[OFFSET2:%.*]] = zext nneg i32 [[OFFSET2_TMP]] to i64
+-  // CHECK: [[BASEPTR2:%.*]] = getelementptr bfloat, ptr addrspace(3) [[BASE_PTR]], i64 [[OFFSET2]]
++  // CHECK: [[BASEPTR2:%.*]] = getelementptr i8, ptr addrspace(3) [[BASEPTR0]], i64 2048
+   // CHECK: cp.async.bulk.tensor.2d.tile::gather4
+   // CHECK-SAME: (i1 [[PRED]], ptr addrspace(3) [[BASEPTR2]], ptr addrspace(1) %0, i32 [[Y0]], i32 [[IDX4]], i32 [[IDX5]], i32 [[IDX6]], i32 [[IDX7]], ptr addrspace(3) [[BAR]])
+ 
+-  // CHECK: [[OFFSET3_TMP:%.*]] = or disjoint i32 [[WARP_STRIDE]], 3072
+-  // CHECK: [[OFFSET3:%.*]] = zext nneg i32 [[OFFSET3_TMP]] to i64
+-  // CHECK: [[BASEPTR3:%.*]] = getelementptr bfloat, ptr addrspace(3) [[BASE_PTR]], i64 [[OFFSET3]]
++  // CHECK: [[BASEPTR3:%.*]] = getelementptr i8, ptr addrspace(3) [[BASEPTR0]], i64 6144
+   // CHECK: cp.async.bulk.tensor.2d.tile::gather4
+   // CHECK-SAME: (i1 [[PRED]], ptr addrspace(3) [[BASEPTR3]], ptr addrspace(1) %0, i32 [[Y1]], i32 [[IDX4]], i32 [[IDX5]], i32 [[IDX6]], i32 [[IDX7]], ptr addrspace(3) [[BAR]])
+   ttng.async_tma_gather %arg0[%arg2, %arg3] %arg4, %arg1, %arg5 : !tt.ptr<i8>, tensor<32xi32, #ttg.slice<{dim = 0, parent = #blocked}>>, i32, !ttg.memdesc<1xi64, #shared, #smem, mutable>, !ttg.memdesc<32x128xbf16, #shared1, #smem, mutable>, i1
+@@ -106,18 +100,16 @@
+   // CHECK: [[OFFSET0:%.*]] = and i32 [[WARP_STRIDE_TMP]], 1536
+ 
+   // CHECK: zext nneg i32 [[OFFSET0]] to i64
++  // CHECK: [[BASEPTR0:%.*]] = getelementptr bfloat, ptr addrspace(3)
+   // CHECK: cp.async.bulk.tensor
+ 
+-  // CHECK: [[OFFSET1:%.*]] = or disjoint i32 [[OFFSET0]], 2048
+-  // CHECK: zext nneg i32 [[OFFSET1]] to i64
++  // CHECK: [[OFFSET1:%.*]] = getelementptr i8, ptr addrspace(3) [[BASEPTR0]], i64 4096
+   // CHECK: cp.async.bulk.tensor
+ 
+-  // CHECK: [[OFFSET2:%.*]] = or disjoint i32 [[OFFSET0]], 256
+-  // CHECK: zext nneg i32 [[OFFSET2]] to i64
++  // CHECK: [[OFFSET2:%.*]] = getelementptr i8, ptr addrspace(3) [[BASEPTR0]], i64 512
+   // CHECK: cp.async.bulk.tensor
+ 
+-  // CHECK: [[OFFSET3:%.*]] = or disjoint i32 [[OFFSET0]], 2304
+-  // CHECK: zext nneg i32 [[OFFSET3]] to i64
++  // CHECK: [[OFFSET3:%.*]] = getelementptr i8, ptr addrspace(3) [[BASEPTR0]], i64 4608
+   // CHECK: cp.async.bulk.tensor
+   ttng.async_tma_gather %arg0[%arg2, %arg3] %arg4, %arg1, %arg5 : !tt.ptr<i8>, tensor<32xi32, #ttg.slice<{dim = 0, parent = #blocked1}>>, i32, !ttg.memdesc<1xi64, #shared, #smem, mutable>, !ttg.memdesc<32x128xbf16, #shared1, #smem, mutable>, i1
+ 

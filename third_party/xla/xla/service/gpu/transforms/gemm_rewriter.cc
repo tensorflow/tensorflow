@@ -2431,7 +2431,7 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
           xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
 
       if (!((instr->shape().IsTuple() &&
-             instr->shape().tuple_shapes_size() ==
+             instr->shape().tuple_shapes().size() ==
                  has_aux_output + config.damax_output() + 1) ||
             instr->shape().IsArray())) {
         return absl::OkStatus();

@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/permutation_util.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -554,7 +555,7 @@ class Array {
             std::enable_if_t<std::is_integral_v<IntT>>* = nullptr>
   void TransposeDimensionsImpl(absl::Span<const IntT> permutation) {
     CHECK_EQ(sizes_.size, permutation.size());
-    if (sizes_.size == 1 || (sizes_.size == 2 && permutation[0] == 0)) {
+    if (IsIdentityPermutation(permutation)) {
       return;  // Nothing to permute.
     }
 

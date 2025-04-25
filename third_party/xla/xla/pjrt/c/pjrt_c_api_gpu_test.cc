@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "tsl/platform/mem.h"
 
 namespace pjrt {
@@ -330,16 +331,15 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
 }
 
 TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
-  void* host_dma_ptr = nullptr;
   size_t dma_size = 1024 * 1024;
-  int err = posix_memalign(&host_dma_ptr, dma_size, dma_size);
-  CHECK_EQ(err, 0) << "posix_memalign failed: " << strerror(err);
+  size_t alignment = 1024 * 1024;
+  auto host_dma_ptr = xla::AlignedAlloc(alignment, dma_size);
 
   PJRT_Client_DmaMap_Args dma_args;
   dma_args.struct_size = PJRT_Client_DmaMap_Args_STRUCT_SIZE;
   dma_args.extension_start = nullptr;
   dma_args.client = client_;
-  dma_args.data = host_dma_ptr;
+  dma_args.data = host_dma_ptr.get();
   dma_args.size = dma_size;
   PJRT_Error* dma_error = api_->PJRT_Client_DmaMap(&dma_args);
   ASSERT_EQ(dma_error, nullptr);
@@ -349,12 +349,10 @@ TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
   unmap_args.struct_size = PJRT_Client_DmaUnmap_Args_STRUCT_SIZE;
   unmap_args.extension_start = nullptr;
   unmap_args.client = client_;
-  unmap_args.data = host_dma_ptr;
+  unmap_args.data = host_dma_ptr.get();
   PJRT_Error* unmap_error = api_->PJRT_Client_DmaUnmap(&unmap_args);
   ASSERT_EQ(unmap_error, nullptr);
   MakeErrorDeleter(api_)(unmap_error);
-
-  free(host_dma_ptr);
 }
 
 TEST_F(PjrtCApiGpuTransferManagerTest, SetBufferError) {

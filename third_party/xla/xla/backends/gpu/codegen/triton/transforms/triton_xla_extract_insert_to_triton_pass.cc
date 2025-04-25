@@ -137,6 +137,8 @@ bool CanUseTMA(::xla::EmitterLocOpBuilder& builder, bool tma_enabled,
   // - The block size must be less than 256 in every dimension.
   // See source:
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html
+  // TODO(b/413351367): Figure out if we need (and how) to handle non-normalized
+  // layouts.
   if (tensor.getType().getShape()[1] % 16 != 0) {
     return false;
   }

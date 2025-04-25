@@ -20,12 +20,17 @@ limitations under the License.
 #include <sstream>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/hlo/testlib/test.h"
+#include "xla/layout_util.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
 
 class LayoutTest : public ::testing::Test {};
 
@@ -130,6 +135,96 @@ TEST_F(LayoutTest, LayoutToFromProto) {
   expect_unchanged(Layout({0, 1}, {}, {}, {}, {Tile({123})})
                        .add_split_configs(SplitConfig(0, {3}))
                        .add_split_configs(SplitConfig(1, {0, 4})));
+}
+
+TEST(Layout, DimensionIsUniqueByDefault) {
+  Layout layout({0, 1});
+  layout.add_dim_level_type(DIM_DENSE);
+  EXPECT_TRUE(layout.dim_unique(0));
+
+  layout.add_dim_level_type(DIM_COMPRESSED);
+  EXPECT_TRUE(layout.dim_unique(1));
+}
+
+TEST(Layout, DimensionIsOrderedByDefault) {
+  Layout layout({0, 1});
+  layout.add_dim_level_type(DIM_DENSE);
+  EXPECT_TRUE(layout.dim_ordered(0));
+
+  layout.add_dim_level_type(DIM_COMPRESSED);
+  EXPECT_TRUE(layout.dim_ordered(1));
+}
+
+TEST(Layout, DeleteDimensionWorksForDeletingLastDimFromDenseLayout) {
+  Layout layout({0, 1});
+  layout.add_dim_level_type(DIM_DENSE);
+  layout.add_dim_level_type(DIM_DENSE);
+  layout.add_dim_unique(false);
+  layout.add_dim_unique(true);
+  ASSERT_TRUE(LayoutUtil::IsDense(layout));
+  ASSERT_EQ(layout.minor_to_major().size(), 2);
+  ASSERT_EQ(layout.dim_unique_size(), 2);
+
+  layout.DeleteDimension(1);
+  EXPECT_THAT(layout.minor_to_major(), ElementsAre(0));
+  ASSERT_EQ(layout.dim_level_types_size(), 1);
+  EXPECT_EQ(layout.dim_level_type(0), DIM_DENSE);
+  ASSERT_EQ(layout.dim_unique_size(), 1);
+  EXPECT_FALSE(layout.dim_unique(0));
+}
+
+TEST(Layout, DeleteDimensionWorksForDeletingNonLastDimFromDenseLayout) {
+  Layout layout({1, 0});
+  layout.add_dim_level_type(DIM_DENSE);
+  layout.add_dim_level_type(DIM_DENSE);
+  layout.add_dim_unique(false);
+  layout.add_dim_unique(true);
+  ASSERT_TRUE(LayoutUtil::IsDense(layout));
+  ASSERT_EQ(layout.minor_to_major().size(), 2);
+  ASSERT_EQ(layout.dim_unique_size(), 2);
+
+  layout.DeleteDimension(0);
+  EXPECT_THAT(layout.minor_to_major(), ElementsAre(0));
+  ASSERT_EQ(layout.dim_level_types_size(), 1);
+  EXPECT_EQ(layout.dim_level_type(0), DIM_DENSE);
+  ASSERT_EQ(layout.dim_unique_size(), 1);
+  EXPECT_TRUE(layout.dim_unique(0));
+}
+
+TEST(Layout, DeleteDimensionWorksForDeletingLastDimFromSparseLayout) {
+  Layout layout({0, 1});
+  layout.add_dim_level_type(DIM_COMPRESSED);
+  layout.add_dim_level_type(DIM_DENSE);
+  layout.add_dim_unique(false);
+  layout.add_dim_unique(true);
+  ASSERT_TRUE(LayoutUtil::IsSparse(layout));
+  ASSERT_EQ(layout.minor_to_major().size(), 2);
+  ASSERT_EQ(layout.dim_unique_size(), 2);
+
+  layout.DeleteDimension(1);
+  EXPECT_THAT(layout.minor_to_major(), ElementsAre(0));
+  ASSERT_EQ(layout.dim_level_types_size(), 1);
+  EXPECT_EQ(layout.dim_level_type(0), DIM_COMPRESSED);
+  ASSERT_EQ(layout.dim_unique_size(), 1);
+  EXPECT_FALSE(layout.dim_unique(0));
+}
+
+TEST(Layout, DeleteDimensionWorksForDeletingNonLastDimFromSparseLayout) {
+  Layout layout({1, 0});
+  layout.add_dim_level_type(DIM_COMPRESSED);
+  layout.add_dim_level_type(DIM_DENSE);
+  layout.add_dim_unique(false);
+  layout.add_dim_unique(true);
+  ASSERT_TRUE(LayoutUtil::IsSparse(layout));
+  ASSERT_EQ(layout.minor_to_major().size(), 2);
+  ASSERT_EQ(layout.dim_unique_size(), 2);
+
+  layout.DeleteDimension(0);
+  EXPECT_THAT(layout.minor_to_major(), ElementsAre(0));
+  ASSERT_EQ(layout.dim_level_types_size(), 1);
+  EXPECT_EQ(layout.dim_level_type(0), DIM_DENSE);
+  ASSERT_EQ(layout.dim_unique_size(), 1);
+  EXPECT_TRUE(layout.dim_unique(0));
 }
 
 }  // namespace

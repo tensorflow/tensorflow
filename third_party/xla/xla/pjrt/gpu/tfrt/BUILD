@@ -33,13 +33,14 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/client:executable_build_options",
         "//xla/client:local_client",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:host_callback",
         "//xla/pjrt:host_memory_spaces",
-        "//xla/pjrt:local_device_state",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
@@ -69,6 +70,7 @@ cc_library(
         "//xla/service:transfer_manager",
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:platform",
@@ -86,6 +88,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -108,7 +111,13 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@local_tsl//tsl/profiler/lib:traceme",
-    ],
+    ] + if_cuda([
+        # keep sorted
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm([
+        # keep sorted
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 xla_cc_test(
@@ -127,7 +136,6 @@ xla_cc_test(
         ":tracked_tfrt_gpu_device_buffer",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -144,6 +152,7 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
@@ -251,6 +260,7 @@ xla_cc_test(
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/client:client_library",
         "//xla/client:local_client",
         "//xla/pjrt:pjrt_client",
@@ -282,6 +292,7 @@ xla_cc_test(
         ":tfrt_gpu_client",
         ":tracked_tfrt_gpu_device_buffer",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:gpu_plugin",

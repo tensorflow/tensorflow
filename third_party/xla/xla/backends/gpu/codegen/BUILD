@@ -245,13 +245,11 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
-        "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu:kernel_arguments",
-        "//xla/service/gpu:kernel_reuse_cache",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:target_util",
         "//xla/service/llvm_ir:ir_array",
@@ -267,8 +265,7 @@ cc_library(
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "@llvm-project//mlir:LLVMDialect",
     ],
 )
 

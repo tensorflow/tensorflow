@@ -22,6 +22,7 @@ limitations under the License.
 namespace xla {
 
 void BuildOpsSubmodule(nanobind::module_& m);
+void BuildOpsModule(nanobind::module_& m);
 
 }  // namespace xla
 

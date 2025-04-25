@@ -188,7 +188,7 @@ absl::Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
                          io::ZlibCompressionOptions::GZIP());
   tstring decompressed_pbtxt_string;
   absl::Status s = in.ReadNBytes(INT_MAX, &decompressed_pbtxt_string);
-  if (!s.ok() && !errors::IsOutOfRange(s)) {
+  if (!s.ok() && !absl::IsOutOfRange(s)) {
     // OutOfRange is fine since we set the number of read bytes to INT_MAX.
     // Only return other kinds of errors.
     return s;

@@ -155,6 +155,7 @@ tools/toolchains/cross_compile/config/BUILD:
 tools/toolchains/embedded/arm-linux/BUILD:
 tools/toolchains/ios/BUILD:
 tools/toolchains/java/BUILD:
+tools/toolchains/linux/BUILD:
 tools/toolchains/python/BUILD:
 tools/toolchains/remote/BUILD:
 tools/toolchains/remote_config/BUILD:

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 
+#include <optional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
@@ -25,18 +27,19 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
 
 namespace xla::gpu {
 namespace {
 
+using ::testing::Optional;
 using ::testing::Test;
 using ::tsl::testing::IsOkAndHolds;
 
-bool IsMultiHostTopology(se::CudaComputeCapability compute_capability,
-                         int num_partitions, int replica_count) {
+std::optional<bool> IsMultiHostTopology(
+    se::CudaComputeCapability compute_capability, int num_partitions,
+    int replica_count) {
   HloModuleConfig config;
   config.set_num_partitions(num_partitions);
   config.set_replica_count(replica_count);
@@ -46,32 +49,51 @@ bool IsMultiHostTopology(se::CudaComputeCapability compute_capability,
 }
 
 TEST(IsMultiHostTopologyTest, SingleHostSingleDevice) {
-  EXPECT_FALSE(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
-                                   /*num_partitions=*/1, /*replica_count=*/1));
-  EXPECT_FALSE(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
-                                   /*num_partitions=*/1, /*replica_count=*/1));
+  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
+                                  /*num_partitions=*/1, /*replica_count=*/1),
+              Optional(false));
+  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
+                                  /*num_partitions=*/1, /*replica_count=*/1),
+              Optional(false));
 }
 
 TEST(IsMultiHostTopologyTest, SingleHostMultiDevices) {
-  EXPECT_FALSE(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
-                                   /*num_partitions=*/16, /*replica_count=*/1));
-  EXPECT_FALSE(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
-                                   /*num_partitions=*/1, /*replica_count=*/16));
-  EXPECT_FALSE(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
-                                   /*num_partitions=*/8, /*replica_count=*/1));
-  EXPECT_FALSE(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
-                                   /*num_partitions=*/1, /*replica_count=*/8));
+  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
+                                  /*num_partitions=*/16, /*replica_count=*/1),
+              Optional(false));
+  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
+                                  /*num_partitions=*/1, /*replica_count=*/16),
+              Optional(false));
+  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
+                                  /*num_partitions=*/8, /*replica_count=*/1),
+              Optional(false));
+  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
+                                  /*num_partitions=*/1, /*replica_count=*/8),
+              Optional(false));
 }
 
 TEST(IsMultiHostTopologyTest, MultiHosts) {
-  EXPECT_TRUE(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
-                                  /*num_partitions=*/32, /*replica_count=*/1));
-  EXPECT_TRUE(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
-                                  /*num_partitions=*/1, /*replica_count=*/32));
-  EXPECT_TRUE(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
-                                  /*num_partitions=*/16, /*replica_count=*/1));
-  EXPECT_TRUE(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
-                                  /*num_partitions=*/1, /*replica_count=*/16));
+  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
+                                  /*num_partitions=*/32, /*replica_count=*/1),
+              Optional(true));
+  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
+                                  /*num_partitions=*/1, /*replica_count=*/32),
+              Optional(true));
+  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
+                                  /*num_partitions=*/16, /*replica_count=*/1),
+              Optional(true));
+  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
+                                  /*num_partitions=*/1, /*replica_count=*/16),
+              Optional(true));
+}
+
+TEST(IsMultiHostTopologyTest, NonAmpereAndHopper) {
+  EXPECT_EQ(IsMultiHostTopology(se::CudaComputeCapability::Volta(),
+                                /*num_partitions=*/1, /*replica_count=*/1),
+            std::nullopt);
+  EXPECT_EQ(IsMultiHostTopology(se::CudaComputeCapability::Blackwell(),
+                                /*num_partitions=*/1, /*replica_count=*/1),
+            std::nullopt);
 }
 
 class CommunicationTypeTest : public Test {

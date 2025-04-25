@@ -29,7 +29,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -81,6 +80,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -597,6 +597,40 @@ TEST(TfrtGpuClientTest, CopyToPinnedHostMemorySpace) {
   std::vector<int32_t> expected{1, 2, 3, 4};
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
+}
+
+TEST(TfrtGpuClientTest, CopyToPinnedHostMemorySpaceInt4) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  std::vector<int8_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S4, {4});
+  auto device = client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          *device->default_memory_space(), /*device_layout=*/nullptr));
+
+  EXPECT_EQ(buffer->memory_space()->kind(), "device");
+
+  TF_EXPECT_OK(buffer->GetReadyFuture().Await());
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> device_literal,
+                          buffer->ToLiteralSync());
+  std::vector<xla::s4> expected{xla::s4(1), xla::s4(2), xla::s4(3), xla::s4(4)};
+  Literal expected_literal = LiteralUtil::CreateR1<xla::s4>(expected);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, *device_literal));
+
+  auto* pinned_memory_space = device->memory_spaces()[1];
+  EXPECT_EQ(pinned_memory_space->kind_id(), PinnedHostMemorySpace::kKindId);
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          buffer->CopyToMemorySpace(pinned_memory_space));
+
+  EXPECT_EQ(result->memory_space()->kind(), "pinned_host");
+  EXPECT_TRUE(result->IsOnCpu());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, *literal));
 }
 
 TEST(TfrtGpuClientTest, ToLiteralAsync) {
@@ -1439,22 +1473,50 @@ TEST(TfrtGpuClientTest, DmaMapUnmap) {
   GpuClientOptions options = GpuClientOptions();
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_client, GetTfrtGpuClient(options));
   auto client = tensorflow::down_cast<TfrtGpuClient*>(gpu_client.get());
-  size_t dma_size = 1024;
+  size_t dma_size = 8192;
   size_t alignment = 4096;
-  void* host_dma_ptr = nullptr;
-  // Add cleanup to free the host_dma_ptr if we exit early.
-  auto cleanup = absl::MakeCleanup([&host_dma_ptr]() { free(host_dma_ptr); });
-  int err = posix_memalign(&host_dma_ptr, alignment, dma_size);
-  CHECK_EQ(err, 0) << "posix_memalign failed: " << strerror(err);
-  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
-  EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr, dma_size));
-  // IsDmaMapped should keep track of all starting address, try a different
-  // starting address.
-  int kOffset = 5;
-  void* invalid_start_ptr = reinterpret_cast<char*>(host_dma_ptr) + kOffset;
-  EXPECT_FALSE(client->IsDmaMapped(invalid_start_ptr, dma_size));
-  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
-  EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr, dma_size));
+  auto host_dma_ptr = xla::AlignedAlloc(alignment, dma_size);
+
+  // DmaMap the first half of the buffer.
+  size_t dma_map_size = dma_size / 2;
+  char* first_half_ptr = static_cast<char*>(host_dma_ptr.get());
+  char* second_half_ptr = first_half_ptr + dma_map_size;
+  int offset = 5;
+  TF_EXPECT_OK(client->DmaMap(first_half_ptr, dma_map_size));
+  EXPECT_TRUE(client->IsDmaMapped(first_half_ptr, dma_map_size));
+  EXPECT_TRUE(client->IsDmaMapped(first_half_ptr + offset, 10));
+  EXPECT_FALSE(client->IsDmaMapped(first_half_ptr + offset, dma_map_size));
+  EXPECT_TRUE(
+      client->IsDmaMapped(first_half_ptr + offset, dma_map_size - offset));
+
+  // Verify boundaries.
+  EXPECT_TRUE(client->IsDmaMapped(first_half_ptr, 1));
+  EXPECT_FALSE(client->IsDmaMapped(first_half_ptr - 1, 1));
+  EXPECT_FALSE(client->IsDmaMapped(first_half_ptr + dma_map_size, 1));
+
+  // DmaMap the second half of the buffer.
+  TF_EXPECT_OK(client->DmaMap(second_half_ptr, dma_map_size));
+  EXPECT_TRUE(client->IsDmaMapped(second_half_ptr, dma_map_size));
+  EXPECT_TRUE(client->IsDmaMapped(second_half_ptr + offset, 10));
+  EXPECT_FALSE(client->IsDmaMapped(second_half_ptr + offset, dma_map_size));
+  EXPECT_TRUE(
+      client->IsDmaMapped(second_half_ptr + offset, dma_map_size - offset));
+
+  // Verify boundaries.
+  EXPECT_TRUE(client->IsDmaMapped(second_half_ptr, 1));
+  EXPECT_TRUE(client->IsDmaMapped(second_half_ptr - 1, 1));
+  EXPECT_FALSE(client->IsDmaMapped(second_half_ptr + dma_map_size, 1));
+
+  // Unmap the first half of the buffer.
+  TF_EXPECT_OK(client->DmaUnmap(first_half_ptr));
+  EXPECT_FALSE(client->IsDmaMapped(first_half_ptr, dma_map_size));
+  EXPECT_FALSE(client->IsDmaMapped(first_half_ptr + offset, 10));
+  EXPECT_FALSE(client->IsDmaMapped(second_half_ptr - 1, 1));
+  EXPECT_TRUE(client->IsDmaMapped(second_half_ptr, 1));
+
+  // Unmap the second half of the buffer.
+  TF_EXPECT_OK(client->DmaUnmap(second_half_ptr));
+  EXPECT_FALSE(client->IsDmaMapped(second_half_ptr, 1));
 }
 
 TEST(TfrtGpuClientTest, MultipleDeviceShareDmaMapping) {
@@ -1486,14 +1548,10 @@ TEST(TfrtGpuClientTest, MultipleDeviceShareDmaMapping) {
 
   size_t dma_size = 2 * 1024 * 1024;
   size_t alignment = 1024;
-  void* host_dma_ptr = nullptr;
-  // Add cleanup to free the host_dma_ptr if we exit early.
-  auto cleanup = absl::MakeCleanup([&host_dma_ptr]() { free(host_dma_ptr); });
-  int err = posix_memalign(&host_dma_ptr, alignment, dma_size);
-  CHECK_EQ(err, 0) << "posix_memalign failed: " << strerror(err);
-  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
+  auto host_dma_ptr = xla::AlignedAlloc(alignment, dma_size);
+  TF_EXPECT_OK(client->DmaMap(host_dma_ptr.get(), dma_size));
 
-  auto result = first_buffer->CopyRawToHost(host_dma_ptr, 0, size);
+  auto result = first_buffer->CopyRawToHost(host_dma_ptr.get(), 0, size);
   TF_EXPECT_OK(result.Await());
 
   PjRtDevice* const second_device = client->addressable_devices()[1];
@@ -1504,12 +1562,12 @@ TEST(TfrtGpuClientTest, MultipleDeviceShareDmaMapping) {
   auto second_buffer = transfer_manager->RetrieveBuffer(0);
 
   TF_EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(
-      0, host_dma_ptr, 0, size, true, []() {}));
+      0, host_dma_ptr.get(), 0, size, true, []() {}));
   TF_ASSERT_OK_AND_ASSIGN(auto literal, second_buffer->ToLiteralSync());
   EXPECT_EQ(literal->element_count(), test_length);
   EXPECT_THAT(literal->data<int32_t>(), ElementsAreArray(data));
 
-  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
+  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr.get()));
 }
 
 }  // namespace

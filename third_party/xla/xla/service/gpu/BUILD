@@ -9,6 +9,8 @@ load(
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load(
     "//xla/service/gpu:build_defs.bzl",
+    "build_cub_sort_kernels",
+    "get_cub_sort_kernel_types",
     "gpu_kernel_library",
 )
 load(
@@ -736,6 +738,32 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:statusor",
     ],
+)
+
+gpu_kernel_library(
+    name = "gpu_prim",
+    hdrs = ["gpu_prim.h"],
+    deps = [
+        "@eigen_archive//:eigen3",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/platform:bfloat16",
+    ] + if_cuda_is_configured(["@local_config_cuda//cuda:cub_headers"]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocprim",
+    ]),
+)
+
+build_cub_sort_kernels(
+    name = "cub_sort_kernel",
+    srcs = if_gpu_is_configured(["cub_sort_kernel.cu.cc"]),
+    hdrs = if_gpu_is_configured(["cub_sort_kernel.h"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    types = get_cub_sort_kernel_types(),
+    deps = if_gpu_is_configured([
+        ":gpu_prim",
+        "//xla/stream_executor/gpu:gpu_types_header",
+    ]),
 )
 
 cc_library(
@@ -1527,6 +1555,7 @@ cc_library(
         "//xla/service/gpu/transforms:windowed_einsum_handler",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/service/llvm_ir:llvm_util",
+        "//xla/service/spmd/shardy:shardy_xla_pass",
         "//xla/service/spmd:collective_permute_motion",
         "//xla/service/spmd:schedule_aware_collective_ops_cse",
         "//xla/service:all_reduce_promotion",
@@ -1575,7 +1604,6 @@ cc_library(
         "//xla/service:while_loop_all_reduce_code_motion",
         "//xla/service:while_loop_constant_sinking",
         "//xla/service:while_loop_simplifier",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
@@ -1620,8 +1648,6 @@ xla_test(
     srcs = ["gpu_compiler_test.cc"],
     backends = ["gpu"],
     data = ["gpu_compiler_test_autotune_db.textproto"],
-    # TODO(b/399912696): Remove this once the test case order dependency is fixed.
-    shuffle_tests = False,  # CANNOT_SHUFFLE_TESTS=existing dependency on test case order.
     deps = [
         ":backend_configs_cc",
         ":gpu_compiler",

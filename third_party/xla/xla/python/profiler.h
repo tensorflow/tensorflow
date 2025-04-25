@@ -21,6 +21,7 @@ limitations under the License.
 
 namespace xla {
 
+void BuildProfilerModule(nanobind::module_& m);
 void BuildProfilerSubmodule(nanobind::module_& m);
 
 }  // namespace xla

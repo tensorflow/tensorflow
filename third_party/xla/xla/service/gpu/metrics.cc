@@ -96,10 +96,6 @@ int64_t GetCompiledProgramsCount() {
   return compiled_programs_count->GetCell()->value();
 }
 
-void ResetCompiledProgramsCountForTesting() {
-  compiled_programs_count->GetCell()->IncrementBy(-GetCompiledProgramsCount());
-}
-
 void RecordXlaDeviceBinarySize(const int64_t size) {
   xla_device_binary_size->GetCell()->Set(size);
 }

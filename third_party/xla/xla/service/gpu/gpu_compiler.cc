@@ -258,6 +258,7 @@ limitations under the License.
 #include "xla/service/sharding_remover.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
+#include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/service/while_loop_all_reduce_code_motion.h"
@@ -266,7 +267,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
@@ -657,6 +657,11 @@ absl::Status RunSPMDPasses(
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
     // Remove redundant sharding ops when partition_count == 1.
     sharding_removal_pipeline.AddPass<ShardingRemover>();
+    // Run ShardyXLA without propagation, which enforces use-tuple-args.
+    if (hlo_module->config().use_shardy_partitioner()) {
+      sharding_removal_pipeline.AddPass<sdy::ShardyXLA>(
+          /*runSdyShardingPropagation=*/false);
+    }
     sharding_removal_pipeline.AddPass<HloDCE>();
     return sharding_removal_pipeline.Run(hlo_module).status();
   }
@@ -665,8 +670,7 @@ absl::Status RunSPMDPasses(
 absl::Status RunOptimizationPasses(
     HloModule* hlo_module, stream_executor::StreamExecutor* stream_exec,
     const Compiler::TargetConfig& gpu_target_config,
-    const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
-    absl::string_view platform_name) {
+    const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   HloPassPipeline pipeline("optimization");
@@ -710,8 +714,7 @@ absl::Status RunOptimizationPasses(
   // which isn't feasible if we don't have a device.
   if (hlo_module->config().debug_options().xla_gpu_enable_cub_radix_sort()) {
     if (stream_exec != nullptr) {
-      pipeline.AddPass<SortRewriter>(gpu_target_config.device_description,
-                                     std::string{platform_name});
+      pipeline.AddPass<SortRewriter>(gpu_target_config.device_description);
     } else {
       LOG(WARNING) << "Using fallback sort algorithm rather than SortRewriter, "
                       "which will be slower at runtime. To avoid this, "
@@ -1382,12 +1385,9 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunPreSPMDPartitionerPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunSPMDPasses(hlo_module, gpu_target_config,
                                    layout_insensitive_algsimp_opts));
-  TF_ASSIGN_OR_RETURN(
-      const stream_executor::Platform* platform,
-      stream_executor::PlatformManager::PlatformWithId(PlatformId()));
-  TF_RETURN_IF_ERROR(
-      RunOptimizationPasses(hlo_module, stream_exec, gpu_target_config,
-                            layout_insensitive_algsimp_opts, platform->Name()));
+  TF_RETURN_IF_ERROR(RunOptimizationPasses(hlo_module, stream_exec,
+                                           gpu_target_config,
+                                           layout_insensitive_algsimp_opts));
   se::GpuComputeCapability gpu_version =
       device_description.gpu_compute_capability();
   TF_RETURN_IF_ERROR(RunCollectiveOptimizationPasses(
@@ -1592,6 +1592,13 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           cuda_cc->IsAtLeast(se::CudaComputeCapability::kAmpere)) ||
          rocm_cc != nullptr)) {
       pipeline.AddPass<GemvRewriter>();
+      // Transpose dimension grouper simplifies the dimensions of the transpose
+      // and enables the symbolic tiling analysis for the generic emitter to
+      // find the possible tiling. It should run before the gemm rewriter has
+      // introduced the nested fusions. We also want to keep it close to the
+      // gemm rewriter to avoid the possibility of new passes to rewrite the
+      // transpose.
+      pipeline.AddPass<TransposeDimensionGrouper>();
       pipeline.AddPass<GemmFusion>(gpu_version);
       pipeline.AddPass<GemmFusionSwapOperands>();
     } else if (cuda_cc != nullptr &&
@@ -1620,7 +1627,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // also have unsorted update_window_dims.
     pipeline.AddPass<ScatterSimplifier>();
     pipeline.AddPass<BroadcastCanonicalizer>();
-
+    // BroadcastCanonicalizer can create transposes.
     pipeline.AddPass<TransposeDimensionGrouper>();
     pipeline.AddPass<ReductionDegenerateDimRemover>();
     pipeline.AddPass<ReductionLayoutNormalizer>();

@@ -168,7 +168,7 @@ void XnnFusionThunk::XnnRuntime::Destroy() {
   if (runtime != nullptr) XNN_LOG_IF_ERROR(xnn_delete_runtime(runtime));
   if (subgraph != nullptr) XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
   if (workspace != nullptr) XNN_LOG_IF_ERROR(xnn_release_workspace(workspace));
-  if (threadpool) pthreadpool_destroy(threadpool);
+  if (threadpool) DestroyCustomPthreadpool(threadpool);
 }
 
 absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(

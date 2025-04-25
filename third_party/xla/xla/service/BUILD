@@ -1171,7 +1171,6 @@ cc_library(
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:ptrvec",
         "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -1330,6 +1329,16 @@ cc_library(
 
 cc_library(
     name = "gpu_plugin_impl",
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":gpu_plugin_without_collectives",
+    ] + if_gpu_is_configured([
+        "//xla/backends/gpu/runtime:thunk_runtime_dependencies",
+    ]),
+)
+
+cc_library(
+    name = "gpu_plugin_without_collectives",
     compatible_with = get_compatible_with_portable(),
     deps = [
     ] + if_gpu_is_configured([
@@ -5836,6 +5845,7 @@ cc_library(
         "//xla/hlo/ir:ptrvec",
         "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",

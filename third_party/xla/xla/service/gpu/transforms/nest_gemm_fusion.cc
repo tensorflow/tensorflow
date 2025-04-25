@@ -216,87 +216,6 @@ absl::Status AnnotateDotRhsNestedFusion(HloFusionInstruction& nested_fusion,
       dimension_numbers.rhs_batch_dimensions(), config.block_k, config.block_n);
 }
 
-// Finds tile sizes for the root of the analysis that satisfy the
-// requirements of the dot. That is, the tile sizes need to satisfy the
-// constraints of the analysis and map to the given config of the dot.
-absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
-    HloDotInstruction* dot, const TritonGemmConfig& config,
-    mlir::MLIRContext* ctx) {
-  HloComputation* computation = dot->parent();
-  VLOG(3) << "FindOutputTileSizesForEpilogue of computation: "
-          << computation->ToString();
-  SymbolicTileAnalysisOrError analysis_or =
-      SymbolicTileAnalysis::AnalyzeComputation(*computation, ctx);
-  if (std::holds_alternative<FusionDecision>(analysis_or)) {
-    std::unique_ptr<HloModule> extracted_computation_module =
-        ExtractModule(computation->FusionInstruction());
-    return absl::InternalError(
-        absl::StrCat("Failed to analyze the computation (",
-                     std::get<FusionDecision>(analysis_or).Explain(),
-                     "): ", extracted_computation_module->ToString()));
-  }
-
-  auto& analysis = std::get<SymbolicTileAnalysis>(analysis_or);
-  const auto& tiled_instructions = analysis.GetSymbolicTiledHloComputation();
-  auto is_dot = [&](const auto& instr) { return instr->hlo() == dot; };
-  auto tiled_dot_it = absl::c_find_if(tiled_instructions, is_dot);
-  if (tiled_dot_it == tiled_instructions.end()) {
-    return absl::InternalError(absl::StrCat(
-        "Couldn't find a symbolic tiled instruction for ", dot->ToString()));
-  }
-  const SymbolicTiledHloInstruction& tiled_dot = **tiled_dot_it;
-
-  auto get_tile_sizes = [&](int64_t rank) {
-    QCHECK_GE(rank, 2) << "Expected at least rank 2 for the dot, got " << rank
-                       << " in computation " << computation->ToString();
-    // We always expect the shape to be [1, ..., block_m, block_n], by
-    // construction of GemmFusions.
-    llvm::SmallVector<int64_t> tile_sizes(rank - 2, 1);
-    tile_sizes.append({config.block_m, config.block_n});
-    return tile_sizes;
-  };
-
-  VLOG(3) << "FindOutputTileSizesForEpilogue: dot shape: "
-          << dot->shape().ToString();
-  auto expected_dot_tile_sizes =
-      get_tile_sizes(dot->shape().dimensions().size());
-  if (VLOG_IS_ON(2)) {
-    std::ostringstream oss;
-    for (const auto& size : expected_dot_tile_sizes) {
-      oss << size << " ";
-    }
-    LOG(INFO) << "FindOutputTileSizesForEpilogue: " << tiled_dot.ToString()
-              << "Constraints: " << analysis.GetConstraints().ToString()
-              << "Expected dot tile sizes: " << oss.str();
-  }
-
-  // Try all permutations of the dot tile sizes to see if any of them satisfy
-  // the constraints of the analysis and map to the given config of the dot.
-  int64_t out_rank =
-      computation->root_instruction()->shape().dimensions().size();
-  VLOG(3) << "FindOutputTileSizesForEpilogue: computation root shape: "
-          << computation->root_instruction()->shape().ToString();
-  auto output_tile_sizes = get_tile_sizes(out_rank);
-  std::sort(output_tile_sizes.begin(), output_tile_sizes.end());
-  do {
-    TF_ASSIGN_OR_RETURN(
-        bool parameters_satisfy_constraints,
-        analysis.ParametersSatisfyConstraints(output_tile_sizes));
-    if (!parameters_satisfy_constraints) {
-      continue;
-    }
-    auto mapped_dot_tile_sizes =
-        EvaluateTileSizes(tiled_dot.symbolic_tile(), output_tile_sizes);
-    if (mapped_dot_tile_sizes == expected_dot_tile_sizes) {
-      return output_tile_sizes;
-    }
-  } while (std::next_permutation(output_tile_sizes.begin(),
-                                 output_tile_sizes.end()));
-
-  return absl::InternalError(absl::StrCat(
-      "Couldn't find output tile sizes that satisfy ", tiled_dot.ToString()));
-}
-
 // Extracts the TritonGemmConfig from the given fusion's backend config.
 absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
     const HloFusionInstruction& fusion) {
@@ -360,8 +279,9 @@ absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
                           /*remove_cross_partition_collective_ops=*/false));
 
   // Annotate the fusion itself.
-  TF_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> output_tile_sizes,
-                      FindOutputTileSizesForEpilogue(dot, config, ctx));
+  TF_ASSIGN_OR_RETURN(
+      llvm::SmallVector<int64_t> output_tile_sizes,
+      ::xla::gpu::detail::FindOutputTileSizesForEpilogue(dot, config, ctx));
 
   TF_ASSIGN_OR_RETURN(auto gpu_config,
                       fusion->backend_config<GpuBackendConfig>());
@@ -455,8 +375,6 @@ absl::Status VerifyIsClosedConsumerSet(const HloInstructionSet& instructions,
 
 bool IsSafeToSinkBitcastBelow(HloInstruction* instruction) {
   switch (instruction->opcode()) {
-    case HloOpcode::kParameter:
-    case HloOpcode::kConstant:
     case HloOpcode::kBitcast:
       // TODO(b/393299275): Support sinking through broadcast.
       return true;
@@ -577,14 +495,15 @@ PlanHoistBitcastToCallers(const HloInstruction* bitcast) {
     for (HloInstruction* instruction : instructions) {
       auto it = to_update.find(instruction);
       // Only update the dimensions keeping the type intact.
-      Shape updated_shape = ShapeUtil::MakeShape(
-          instruction->shape().element_type(), shape.dimensions());
+      Shape updated_shape(shape);
+      updated_shape.set_element_type(instruction->shape().element_type());
       if (it == to_update.end()) {
         to_update.emplace(instruction, updated_shape);
       } else if (it->second != updated_shape) {
         return absl::FailedPreconditionError(absl::StrCat(
             "Conflicting shape assignment for ", instruction->ToString(),
-            " got ", it->second.ToString(), " and ", shape.ToString()));
+            " got ", ShapeUtil::HumanStringWithLayout(it->second), " and ",
+            ShapeUtil::HumanStringWithLayout(shape)));
       }
     }
     return absl::OkStatus();
@@ -609,12 +528,11 @@ PlanHoistBitcastToCallers(const HloInstruction* bitcast) {
       continue;
     }
     Shape& shape = it->second;
-    // TODO(b/393299275): check that the type of the instruction shape type
-    // matches the target shape.
     result.emplace_back(instruction, shape);
-    VLOG(2) << absl::StrCat("updating the shape of ", instruction->ToString(),
-                            " from ", instruction->shape().ToString(), " to ",
-                            shape.ToString());
+    VLOG(2) << absl::StrCat(
+        "updating the shape of ", instruction->ToString(), " from ",
+        ShapeUtil::HumanStringWithLayout(instruction->shape()), " to ",
+        ShapeUtil::HumanStringWithLayout(shape));
     switch (instruction->opcode()) {
       case HloOpcode::kParameter:
       case HloOpcode::kConstant:
@@ -651,9 +569,10 @@ absl::Status HoistBitcastUpwardsToCallers(
     HloInstruction* bitcast, const std::vector<HloInstruction*>& callers) {
   TF_ASSIGN_OR_RETURN(auto rewrite_plan, PlanHoistBitcastToCallers(bitcast));
   for (auto [instruction, shape] : rewrite_plan) {
-    VLOG(2) << absl::StrCat("rewriting shape of ", instruction->ToString(),
-                            " from ", instruction->shape().ToString(), " to ",
-                            shape.ToString());
+    VLOG(2) << absl::StrCat(
+        "rewriting shape of ", instruction->ToString(), " from ",
+        ShapeUtil::HumanStringWithLayout(instruction->shape()), " to ",
+        ShapeUtil::HumanStringWithLayout(shape));
     switch (instruction->opcode()) {
       case HloOpcode::kParameter: {
         // Create a new bitcast in callers.
@@ -691,6 +610,8 @@ absl::Status HoistBitcastUpwardsToCallers(
 absl::Status HoistBitcastDownwardsToCallers(
     HloInstruction* bitcast, const std::vector<HloInstruction*>& callers) {
   HloInstructionSet consumers = GetConsumerSet(bitcast);
+  // Check whether all operands of consumers are within the set of consumers, or
+  // the bitcast itself.
   TF_RETURN_IF_ERROR(VerifyIsClosedConsumerSet(consumers, bitcast));
   auto is_root = [](HloInstruction* instr) { return instr->IsRoot(); };
   CHECK(is_root(bitcast) || absl::c_any_of(consumers, is_root))
@@ -705,7 +626,13 @@ absl::Status HoistBitcastDownwardsToCallers(
   // Adjust the shape of of every consumer instruction.
   Shape shape = bitcast->operand(0)->shape();
   for (HloInstruction* instruction : consumers) {
-    *instruction->mutable_shape() = shape;
+    Shape updated_shape(shape);
+    updated_shape.set_element_type(instruction->shape().element_type());
+    VLOG(2) << absl::StrCat(
+        "rewriting shape of ", instruction->ToString(), " from ",
+        ShapeUtil::HumanStringWithLayout(instruction->shape()), " to ",
+        ShapeUtil::HumanStringWithLayout(updated_shape));
+    *instruction->mutable_shape() = updated_shape;
   }
 
   // Insert new bitcast for each caller's result.
@@ -713,7 +640,9 @@ absl::Status HoistBitcastDownwardsToCallers(
     HloInstruction* new_bitcast = caller->AddInstruction(
         HloInstruction::CreateBitcast(caller->shape(), caller));
     TF_RETURN_IF_ERROR(caller->ReplaceAllUsesWith(new_bitcast));
-    *caller->mutable_shape() = shape;
+    Shape updated_shape(shape);
+    updated_shape.set_element_type(caller->shape().element_type());
+    *caller->mutable_shape() = updated_shape;
   }
 
   TF_RETURN_IF_ERROR(
@@ -827,4 +756,85 @@ absl::StatusOr<bool> NestGemmFusion::Run(
   return changed;
 }
 
+namespace detail {
+
+absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
+    HloDotInstruction* dot, const TritonGemmConfig& config,
+    mlir::MLIRContext* ctx) {
+  HloComputation* computation = dot->parent();
+  VLOG(3) << "FindOutputTileSizesForEpilogue of computation: "
+          << computation->ToString();
+  SymbolicTileAnalysisOrError analysis_or =
+      SymbolicTileAnalysis::AnalyzeComputation(*computation, ctx);
+  if (std::holds_alternative<FusionDecision>(analysis_or)) {
+    std::unique_ptr<HloModule> extracted_computation_module =
+        ExtractModule(computation->FusionInstruction());
+    return absl::InternalError(
+        absl::StrCat("Failed to analyze the computation (",
+                     std::get<FusionDecision>(analysis_or).Explain(),
+                     "): ", extracted_computation_module->ToString()));
+  }
+
+  auto& analysis = std::get<SymbolicTileAnalysis>(analysis_or);
+  const auto& tiled_instructions = analysis.GetSymbolicTiledHloComputation();
+  auto is_dot = [&](const auto& instr) { return instr->hlo() == dot; };
+  auto tiled_dot_it = absl::c_find_if(tiled_instructions, is_dot);
+  if (tiled_dot_it == tiled_instructions.end()) {
+    return absl::InternalError(absl::StrCat(
+        "Couldn't find a symbolic tiled instruction for ", dot->ToString()));
+  }
+  const SymbolicTiledHloInstruction& tiled_dot = **tiled_dot_it;
+
+  auto get_tile_sizes = [&](int64_t rank) {
+    QCHECK_GE(rank, 2) << "Expected at least rank 2 for the dot, got " << rank
+                       << " in computation " << computation->ToString();
+    // We always expect the shape to be [1, ..., block_m, block_n], by
+    // construction of GemmFusions.
+    llvm::SmallVector<int64_t> tile_sizes(rank - 2, 1);
+    tile_sizes.append({config.block_m, config.block_n});
+    return tile_sizes;
+  };
+
+  VLOG(3) << "FindOutputTileSizesForEpilogue: dot shape: "
+          << dot->shape().ToString();
+  auto expected_dot_tile_sizes =
+      get_tile_sizes(dot->shape().dimensions().size());
+  if (VLOG_IS_ON(2)) {
+    std::ostringstream oss;
+    for (const auto& size : expected_dot_tile_sizes) {
+      oss << size << " ";
+    }
+    LOG(INFO) << "FindOutputTileSizesForEpilogue: " << tiled_dot.ToString()
+              << "Constraints: " << analysis.GetConstraints().ToString()
+              << "Expected dot tile sizes: " << oss.str();
+  }
+
+  // Try all permutations of the dot tile sizes to see if any of them satisfy
+  // the constraints of the analysis and map to the given config of the dot.
+  int64_t out_rank =
+      computation->root_instruction()->shape().dimensions().size();
+  VLOG(3) << "FindOutputTileSizesForEpilogue: computation root shape: "
+          << computation->root_instruction()->shape().ToString();
+  auto output_tile_sizes = get_tile_sizes(out_rank);
+  std::sort(output_tile_sizes.begin(), output_tile_sizes.end());
+  do {
+    TF_ASSIGN_OR_RETURN(
+        bool parameters_satisfy_constraints,
+        analysis.ParametersSatisfyConstraints(output_tile_sizes));
+    if (!parameters_satisfy_constraints) {
+      continue;
+    }
+    auto mapped_dot_tile_sizes =
+        EvaluateTileSizes(tiled_dot.symbolic_tile(), output_tile_sizes);
+    if (mapped_dot_tile_sizes == expected_dot_tile_sizes) {
+      return output_tile_sizes;
+    }
+  } while (std::next_permutation(output_tile_sizes.begin(),
+                                 output_tile_sizes.end()));
+
+  return absl::InternalError(absl::StrCat(
+      "Couldn't find output tile sizes that satisfy ", tiled_dot.ToString()));
+}
+
+}  // namespace detail
 }  // namespace xla::gpu

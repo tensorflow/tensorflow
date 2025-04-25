@@ -43,6 +43,8 @@ absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
   if (block_shape.size() != 2) {
     return absl::InvalidArgumentError("expected 2D block shape");
   }
+  // TODO(b/413351367): Figure out if we need (and how) to handle non-normalized
+  // layouts.
   SmallVector<uint64_t, 2> global_dims = {
       static_cast<uint64_t>(global_shape[1]),
       static_cast<uint64_t>(global_shape[0])};
@@ -59,8 +61,7 @@ absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
   } else if (contig_dim_size_in_byte >= 32) {
     swizzle = TmaDescriptor::TmaSwizzle::k32B;
   } else {
-    return absl::FailedPreconditionError(
-        "continguous dimension size too small");
+    return absl::FailedPreconditionError("contiguous dimension size too small");
   }
   if (contig_dim_size_in_byte > 128) {
     box_dims[0] = 128 / element_byte_size;

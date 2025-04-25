@@ -23,6 +23,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <initializer_list>
 #include <limits>
@@ -990,6 +991,32 @@ using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
 
 std::string PrintAllFields(const tsl::protobuf::Message& message);
+
+// Returns true if x is a power of 2.
+constexpr bool IsPowerOf2(size_t x) noexcept {
+  // Checks that x is non-zero and has only a single bit set.
+  return x != 0 && (x & (x - 1)) == 0;
+}
+
+// A custom deleter that frees the pointer via std::free().
+struct FreeDeleter {
+  void operator()(void* ptr) {
+#if defined(_WIN32)
+    _aligned_free(ptr);
+#else
+    std::free(ptr);
+#endif
+  }
+};
+
+/**
+ * @brief Allocates memory with specified alignment.
+ * @param alignment Specifies the alignment. Power of two.
+ * @param size The number of bytes to allocate. Integral multiple of alignment
+ * @return A unique_ptr managing the allocated memory.
+ */
+std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
+                                                std::size_t size);
 
 }  // namespace xla
 

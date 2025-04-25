@@ -313,8 +313,8 @@ class MsaInstructionFingerprint {
 // method which is overridden in this class.
 class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
-  MsaAlgorithm(AllocationSequence* allocations, const Options& options,
-               const HloAliasAnalysis& alias_analysis,
+  MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
+               const Options& options, const HloAliasAnalysis& alias_analysis,
                const HloLiveRange& hlo_live_range);
 
   // Allocates a buffer in preferred memory with whole program lifetime and
@@ -620,6 +620,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Allocates buffers for instructions that need reserved scoped allocations in
   // the alternate memory space.
   void AllocateReservedScopedAllocations();
+  void AllocateScopedAllocation(HloInstruction* instruction,
+                                bool is_post_module, int64_t size,
+                                int64_t time);
 
   // Returns the AliasedOffset object associated with the allocation.
   AliasedOffset* GetAliasedOffset(const Allocation& allocation);
@@ -1120,6 +1123,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   void UpdateRequestWithDefaultMemoryColoringRequirements(
       AllocationRequest& request);
 
+  HloModule* module_ = nullptr;
   AllocationSequence* allocations_;
   const Options& options_;
   const HloAliasAnalysis& alias_analysis_;

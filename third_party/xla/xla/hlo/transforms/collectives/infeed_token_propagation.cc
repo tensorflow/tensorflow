@@ -191,7 +191,7 @@ absl::StatusOr<HloInstruction*> InsertTokenIntoTuple(HloInstruction* tuple,
 
   HloInstruction* input_token_gte =
       computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-          tuple, tuple->shape().tuple_shapes_size() - 1));
+          tuple, tuple->shape().tuple_shapes().size() - 1));
   return input_token_gte;
 }
 }  // namespace

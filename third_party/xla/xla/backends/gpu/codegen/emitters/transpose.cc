@@ -619,8 +619,8 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
   int64_t shmem_dim = kNumShmemBanks * vector_size_;
   SmallVector<Value> shmem_tensors;
   for (auto* transpose : shmem_transposes_) {
-    Type elem_type =
-        emitters::PrimitiveTypeToMlirType(spec_.elem_type(), builder);
+    Type elem_type = emitters::PrimitiveTypeToMlirType(
+        transpose->shape().element_type(), builder);
     Value shmem = builder.create<AllocateSharedOp>(
         RankedTensorType::get({shmem_dim, shmem_dim}, elem_type));
 
@@ -727,8 +727,14 @@ void PackedTranspose::EmitReadFromShMemMlir(
   auto c0 = builder.create<mlir::arith::ConstantIndexOp>(0);
   SmallVector<Value> grid_and_vector_ids{thread_and_block_ids};
   grid_and_vector_ids.append({c0, c0});
-  Value vector_tile =
-      GetZeroVector(builder, spec_.elem_type(), {vector_size_, vector_size_});
+  absl::flat_hash_map<PrimitiveType, Value> elem_type_to_vector_tile;
+  for (const HloInstruction* transpose : shmem_transposes_) {
+    PrimitiveType elem_type = transpose->shape().element_type();
+    if (!elem_type_to_vector_tile.contains(elem_type)) {
+      elem_type_to_vector_tile[elem_type] =
+          GetZeroVector(builder, elem_type, {vector_size_, vector_size_});
+    }
+  }
   absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>
       transpose_values;
   // The outer loop reads <vector_size x vector_size> tiles.
@@ -743,6 +749,8 @@ void PackedTranspose::EmitReadFromShMemMlir(
         for (auto [transpose, shmem] :
              llvm::zip(shmem_transposes_, written.shmem_tensors)) {
           ValueRange shmem_indices = map_results;
+          Value vector_tile =
+              elem_type_to_vector_tile[transpose->shape().element_type()];
           vector_tile = ReadVectorTileFromShmem(nested_b, shmem, shmem_indices,
                                                 vector_tile);
           transpose_values[transpose] = {vector_tile};

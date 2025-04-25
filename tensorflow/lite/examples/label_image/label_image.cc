@@ -22,6 +22,7 @@ limitations under the License.
 #include <sys/uio.h>    // NOLINT(build/include_order)
 #include <unistd.h>     // NOLINT(build/include_order)
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>

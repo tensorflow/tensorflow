@@ -413,7 +413,7 @@ void AllToAllImpl(const ExecutableRunOptions* run_options,
   auto event = communicator->AllToAll(
       source_buffers_data, destination_buffers_data, U8, buffer_size, executor);
   tsl::BlockUntilReady(event);
-  TF_CHECK_OK(event.GetError());
+  CHECK(!event.IsError()) << event.GetError();
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
@@ -446,7 +446,7 @@ void AllGatherImpl(const ExecutableRunOptions* run_options,
   auto event = communicator->AllGather(input_buffer_data, output_buffer_data,
                                        U8, buffer_size, executor);
   tsl::BlockUntilReady(event);
-  TF_CHECK_OK(event.GetError());
+  CHECK(!event.IsError()) << event.GetError();
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
@@ -488,7 +488,7 @@ void ReduceScatterImpl(const ExecutableRunOptions* run_options,
       static_cast<ReductionKind>(reduction_kind), executor);
 
   tsl::BlockUntilReady(event);
-  TF_CHECK_OK(event.GetError());
+  CHECK(!event.IsError()) << event.GetError();
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
@@ -544,7 +544,7 @@ void AllReduceImpl(const ExecutableRunOptions* run_options,
         ShapeUtil::ElementsIn(subshape),
         static_cast<ReductionKind>(reduction_kind), executor);
     tsl::BlockUntilReady(event);
-    TF_CHECK_OK(event.GetError());
+    CHECK(!event.IsError()) << event.GetError();
   }
 }
 
@@ -599,7 +599,7 @@ void CollectivePermuteImpl(const ExecutableRunOptions* run_options,
       input_buffer_data, output_buffer_data, U8, byte_size, source_replica_id,
       copy_to, executor);
   tsl::BlockUntilReady(event);
-  TF_CHECK_OK(event.GetError());
+  CHECK(!event.IsError()) << event.GetError();
 }
 }  // namespace
 }  // namespace runtime

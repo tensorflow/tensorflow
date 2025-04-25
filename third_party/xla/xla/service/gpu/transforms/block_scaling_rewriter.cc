@@ -129,7 +129,7 @@ absl::StatusOr<HloInstruction*> ExpandQuantizeCustomCall(
   if (instruction->operand_count() != 1) {
     return InvalidArgument("Incorrect number of operands for quantize op");
   }
-  if (instruction->shape().tuple_shapes_size() != 2 ||
+  if (instruction->shape().tuple_shapes().size() != 2 ||
       instruction->operand(0)->shape().dimensions() !=
           instruction->shape().tuple_shapes(0).dimensions()) {
     return InvalidArgument("Incorrect output shape for quantize op");

@@ -502,8 +502,10 @@ Shape* Layout::mutable_physical_shape() {
 
 void Layout::clear_physical_shape() { physical_shape_ = nullptr; }
 
-Layout& Layout::DeleteDimension(int64_t dim_to_delete) {
-  for (int64_t i = 0; i < minor_to_major_.size();) {
+Layout& Layout::DeleteDimension(int dim_to_delete) {
+  CHECK_GE(dim_to_delete, 0);
+  CHECK_LT(dim_to_delete, minor_to_major_.size());
+  for (int i = 0; i < minor_to_major_.size();) {
     if (minor_to_major_[i] == dim_to_delete) {
       minor_to_major_.erase(minor_to_major_.begin() + i);
       continue;
@@ -514,10 +516,16 @@ Layout& Layout::DeleteDimension(int64_t dim_to_delete) {
     ++i;
   }
   // Delete the corresponding dim level types.
-  if (LayoutUtil::IsSparse(*this)) {
-    if (dim_to_delete < n_dim_level_types_) n_dim_level_types_--;
-    if (dim_to_delete < n_dim_unique_) n_dim_unique_--;
-    if (dim_to_delete < n_dim_ordered_) n_dim_ordered_--;
+  if (dim_to_delete < n_dim_level_types_) {
+    n_dim_level_types_--;
+  }
+  if (dim_to_delete < n_dim_unique_) {
+    n_dim_unique_--;
+  }
+  if (dim_to_delete < n_dim_ordered_) {
+    n_dim_ordered_--;
+  }
+  if (dim_to_delete < dim_attributes_.size()) {
     dim_attributes_.erase(dim_attributes_.begin() + dim_to_delete);
   }
   return *this;

@@ -2291,6 +2291,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -3031,8 +3032,12 @@ xla_cc_test(
 
 cc_library(
     name = "sort_rewriter",
-    srcs = ["sort_rewriter.cc"],
+    srcs = if_gpu_is_configured(
+        ["sort_rewriter.cc"],
+        ["sort_rewriter_stub.cc"],
+    ),
     hdrs = ["sort_rewriter.h"],
+    visibility = ["//xla/service/gpu:__subpackages__"] + if_google(["//learning/brain/engprod/xwatch:__subpackages__"]),
     deps = [
         "//xla:comparison_util",
         "//xla:literal_util",
@@ -3076,10 +3081,8 @@ xla_test(
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:pattern_matcher",
-        "//xla/service:platform_util",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/stream_executor:platform",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep

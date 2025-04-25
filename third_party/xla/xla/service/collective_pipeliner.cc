@@ -2763,13 +2763,13 @@ static absl::Status TransformLoopBackward(
   // only dynamic thing that is allowed to be used by the computation pipelined
   // in the previous iteration.
   const int64_t operands_indices_count =
-      while_loop->shape().tuple_shapes_size() +
+      while_loop->shape().tuple_shapes().size() +
       loop_analysis.GetMoveInfos().size() + 1;
   new_parameter_shapes.resize(operands_indices_count);
   new_root_operands.resize(operands_indices_count);
   new_init_operands.resize(operands_indices_count);
   // Fill up root and init operands for the new loop.
-  for (int i = 0; i < loop_parameter->shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < loop_parameter->shape().tuple_shapes().size(); ++i) {
     new_parameter_shapes[i] = loop_parameter->shape().tuple_shapes(i);
     new_root_operands[i] = while_body->root_instruction()->mutable_operand(i);
     new_init_operands[i] = while_loop->mutable_operand(0)->mutable_operand(i);
@@ -2792,7 +2792,7 @@ static absl::Status TransformLoopBackward(
   int64_t next_scheduling_id = NextSchedulingId(*while_loop->GetModule());
   absl::flat_hash_map<int64_t, int64_t> annotation_map;
   for (int i = 0; i < loop_analysis.GetMoveInfos().size(); ++i) {
-    const int64_t idx = i + loop_parameter->shape().tuple_shapes_size();
+    const int64_t idx = i + loop_parameter->shape().tuple_shapes().size();
     new_parameter_shapes[idx] =
         loop_analysis.GetMoveInfos()[i].collectives_to_move[0]->shape();
     new_root_operands[idx] =
@@ -2884,7 +2884,7 @@ static absl::Status TransformLoopBackward(
     }
     if (it != collective_to_move_map.end()) {
       const int64_t tuple_idx =
-          while_loop->shape().tuple_shapes_size() + it->second;
+          while_loop->shape().tuple_shapes().size() + it->second;
       HloInstruction* pipelined_value = body_builder.AddInstruction(
           HloInstruction::CreateGetTupleElement(new_loop_param, tuple_idx));
       while_body_replacement_map[instr] = pipelined_value;
@@ -2982,7 +2982,7 @@ static absl::Status TransformLoopBackward(
   while_body_replacement_map.clear();
   while_body_replacement_map[loop_parameter] = new_while_loop;
   std::vector<HloInstruction*> output_tuple_instructions(
-      while_loop->shape().tuple_shapes_size(), nullptr);
+      while_loop->shape().tuple_shapes().size(), nullptr);
   for (auto* instr : while_body->MakeInstructionPostOrder()) {
     if (instr == loop_parameter || instr == while_body->root_instruction() ||
         sideeffect_unused_instructions.contains(instr)) {
@@ -2992,7 +2992,7 @@ static absl::Status TransformLoopBackward(
     auto it = collective_to_move_map.find(instr);
     if (it != collective_to_move_map.end()) {
       const int64_t tuple_idx =
-          while_loop->shape().tuple_shapes_size() + it->second;
+          while_loop->shape().tuple_shapes().size() + it->second;
       HloInstruction* pipelined_value = while_loop->parent()->AddInstruction(
           HloInstruction::CreateGetTupleElement(new_while_loop, tuple_idx));
       while_body_replacement_map[instr] = pipelined_value;

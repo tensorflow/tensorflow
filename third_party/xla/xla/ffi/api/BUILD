@@ -11,9 +11,10 @@ package(
 # Public XLA FFI API
 #===-------------------------------------------------------------------------------------------===//
 
-# XLA FFI is a header only library that does not have any dependencies on XLA. The intent is that
-# users that do want to register custom FFI handlers with XLA should copy these headers to their
-# project, build a shared object with an XLA FFI handler implementation, and load it at run time.
+# XLA FFI is a header only library that does not have any dependencies on XLA or any other
+# external libraries. The intent is that users that do want to register custom FFI handlers with XLA
+# should copy these headers to their project, build a shared object with an XLA FFI handler
+# implementation and load it at run time.
 #
 # `api.h` and `ffi.h` headers provide a C++ library for decoding XLA FFI C API structs into a more
 # user friendly C++ types. Shared objects defining XLA FFI handlers should be built with private
@@ -22,6 +23,10 @@ package(
 #
 # `ffi.h` defines builtin decoding for canonical XLA types, but users can add their own decodings
 # with template specializations.
+#
+# IMPORTANT: It is critical that exported FFI headers do not have any dependencies on XLA or any
+# other libraries, because it allows external FFI users to simply copy the headers to their project
+# and do not worry about build configuration or dependencies.
 
 # A user of the FFI interface will only need the three headers included in the `all_headers`
 # filegroup: `api.h`, `c_api.h`, and `ffi.h`.
@@ -48,10 +53,7 @@ cc_library(
     name = "api",
     hdrs = [":api_headers"],
     visibility = ["//visibility:private"],
-    deps = [
-        ":c_api",
-        "@com_google_absl//absl/strings:string_view",
-    ],
+    deps = [":c_api"],
 )
 
 cc_library(
@@ -71,7 +73,6 @@ cc_library(
     deps = [
         ":api",
         ":c_api",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

@@ -301,7 +301,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
               *end_of_sequence = false;
               return absl::OkStatus();
             }
-            if (errors::IsOutOfRange(s) && !record.empty()) {
+            if (absl::IsOutOfRange(s) && !record.empty()) {
               uint64 body_size =
                   current_pos + record.size() -
                   (dataset()->header_bytes_ + dataset()->footer_bytes_);

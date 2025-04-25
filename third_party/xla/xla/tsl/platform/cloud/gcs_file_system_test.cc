@@ -100,7 +100,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoBlockCache) {
   EXPECT_EQ("012345", result);
 
   // Read the second chunk.
-  EXPECT_TRUE(errors::IsOutOfRange(
+  EXPECT_TRUE(absl::IsOutOfRange(
       file->Read(sizeof(scratch), sizeof(scratch), &result, scratch)));
   EXPECT_EQ("6789", result);
 }
@@ -147,7 +147,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered) {
   EXPECT_EQ("012345", result);
 
   // Read the second chunk.
-  EXPECT_TRUE(errors::IsOutOfRange(
+  EXPECT_TRUE(absl::IsOutOfRange(
       file->Read(sizeof(scratch), sizeof(scratch), &result, scratch)));
   EXPECT_EQ("6789", result);
 }
@@ -192,11 +192,11 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_Errors) {
 
   // Read the first chunk.
   EXPECT_TRUE(
-      errors::IsUnavailable(file->Read(0, sizeof(scratch), &result, scratch)));
+      absl::IsUnavailable(file->Read(0, sizeof(scratch), &result, scratch)));
   EXPECT_EQ("", result);
 
   // Read the second chunk.
-  EXPECT_TRUE(errors::IsOutOfRange(
+  EXPECT_TRUE(absl::IsOutOfRange(
       file->Read(sizeof(scratch), sizeof(scratch), &result, scratch)));
   EXPECT_EQ("123", result);
 }
@@ -242,7 +242,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_ReadAtEOF) {
   EXPECT_EQ("0123456789", result);
 
   // Read the second chunk.
-  EXPECT_TRUE(errors::IsOutOfRange(
+  EXPECT_TRUE(absl::IsOutOfRange(
       file->Read(sizeof(scratch), sizeof(scratch), &result, scratch)));
   EXPECT_EQ("", result);
 }
@@ -288,7 +288,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_CachedOutOfRange) {
 
   // Return the cached error once the user starts reading out of range.
   EXPECT_TRUE(
-      errors::IsOutOfRange(file->Read(5, sizeof(scratch), &result, scratch)));
+      absl::IsOutOfRange(file->Read(5, sizeof(scratch), &result, scratch)));
   EXPECT_EQ("5678", result);
 }
 
@@ -376,7 +376,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_Growing) {
   // we don't cache the out-of-range flag and each subsequent read triggers a
   // backend call.
   EXPECT_TRUE(
-      errors::IsOutOfRange(file->Read(0, sizeof(scratch), &result, scratch)));
+      absl::IsOutOfRange(file->Read(0, sizeof(scratch), &result, scratch)));
   EXPECT_EQ("012345678", result);
 
   TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
@@ -422,7 +422,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_ReadBackwards) {
 
   // Read the first chunk.
   EXPECT_TRUE(
-      errors::IsOutOfRange(file->Read(5, sizeof(scratch), &result, scratch)));
+      absl::IsOutOfRange(file->Read(5, sizeof(scratch), &result, scratch)));
   EXPECT_EQ("56789", result);
 
   // Go back and read from the beginning of the file.
@@ -583,7 +583,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoBlockCache_DifferentN) {
   // Read the second chunk that is larger. Requires allocation of new buffer.
   char large_scratch[10];
 
-  EXPECT_TRUE(errors::IsOutOfRange(file->Read(
+  EXPECT_TRUE(absl::IsOutOfRange(file->Read(
       sizeof(small_scratch), sizeof(large_scratch), &result, large_scratch)));
   EXPECT_EQ("3456789", result);
 }
@@ -656,14 +656,14 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache) {
 
     // The range can only be partially satisfied, as the second block contains
     // only 6 bytes for a total of 9 + 6 = 15 bytes in the file.
-    EXPECT_TRUE(errors::IsOutOfRange(file->Read(6, 10, &result, scratch)));
+    EXPECT_TRUE(absl::IsOutOfRange(file->Read(6, 10, &result, scratch)));
     EXPECT_EQ("6789abcde", result);
 
     // The range cannot be satisfied, and the requested offset is past the end
     // of the cache. A new request will be made to read 9 bytes starting at
     // offset 18. This request will return an empty response, and there will not
     // be another request.
-    EXPECT_TRUE(errors::IsOutOfRange(file->Read(20, 10, &result, scratch)));
+    EXPECT_TRUE(absl::IsOutOfRange(file->Read(20, 10, &result, scratch)));
     EXPECT_TRUE(result.empty());
 
     // The beginning of the file should still be in the LRU cache. There should
@@ -867,7 +867,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoObjectName) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<RandomAccessFile> file;
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       fs.NewRandomAccessFile("gs://bucket/", nullptr, &file)));
 }
 
@@ -911,7 +911,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_InconsistentRead) {
   absl::string_view result;
 
   EXPECT_TRUE(
-      errors::IsInternal(file->Read(0, sizeof(scratch), &result, scratch)));
+      absl::IsInternal(file->Read(0, sizeof(scratch), &result, scratch)));
 }
 
 TEST(GcsFileSystemTest, NewWritableFile) {
@@ -1229,7 +1229,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
   TF_EXPECT_OK(file->Append("content1,"));
   TF_EXPECT_OK(file->Append("content2"));
   const auto& status = file->Close();
-  EXPECT_TRUE(errors::IsAborted(status));
+  EXPECT_TRUE(absl::IsAborted(status));
   EXPECT_TRUE(
       absl::StrContains(status.message(),
                         "All 10 retry attempts failed. The last failure: "
@@ -1294,7 +1294,7 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
     TF_EXPECT_OK(file->Append("content1,"));
     TF_EXPECT_OK(file->Append("content2"));
     const auto& status = file->Close();
-    EXPECT_TRUE(errors::IsUnavailable(status));
+    EXPECT_TRUE(absl::IsUnavailable(status));
     EXPECT_TRUE(
         absl::StrContains(status.message(),
                           "Upload to gs://bucket/path/writeable.txt failed, "
@@ -1327,7 +1327,7 @@ TEST(GcsFileSystemTest, NewWritableFile_NoObjectName) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<WritableFile> file;
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       fs.NewWritableFile("gs://bucket/", nullptr, &file)));
 }
 
@@ -1428,7 +1428,7 @@ TEST(GcsFileSystemTest, NewAppendableFile_NoObjectName) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<WritableFile> file;
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       fs.NewAppendableFile("gs://bucket/", nullptr, &file)));
 }
 
@@ -1515,7 +1515,7 @@ TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile_NoObjectName) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<ReadOnlyMemoryRegion> region;
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       fs.NewReadOnlyMemoryRegionFromFile("gs://bucket/", nullptr, &region)));
 }
 
@@ -1625,7 +1625,7 @@ TEST(GcsFileSystemTest, FileExists_NotAsObjectOrFolder) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   EXPECT_TRUE(
-      errors::IsNotFound(fs.FileExists("gs://bucket/path/file1.txt", nullptr)));
+      absl::IsNotFound(fs.FileExists("gs://bucket/path/file1.txt", nullptr)));
 }
 
 TEST(GcsFileSystemTest, FileExists_NotAsBucket) {
@@ -2121,8 +2121,8 @@ TEST(GcsFileSystemTest, GetMatchingPaths_OnlyWildcard) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> result;
-  EXPECT_TRUE(errors::IsInvalidArgument(
-      fs.GetMatchingPaths("gs://*", nullptr, &result)));
+  EXPECT_TRUE(
+      absl::IsInvalidArgument(fs.GetMatchingPaths("gs://*", nullptr, &result)));
 }
 
 TEST(GcsFileSystemTest, GetMatchingPaths_Cache) {
@@ -2290,8 +2290,7 @@ TEST(GcsFileSystemTest, DeleteFile_NoObjectName) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  EXPECT_TRUE(
-      errors::IsInvalidArgument(fs.DeleteFile("gs://bucket/", nullptr)));
+  EXPECT_TRUE(absl::IsInvalidArgument(fs.DeleteFile("gs://bucket/", nullptr)));
 }
 
 TEST(GcsFileSystemTest, DeleteFile_StatCacheRemoved) {
@@ -2477,8 +2476,8 @@ TEST(GcsFileSystemTest, GetFileSize_NoObjectName) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   uint64 size;
-  EXPECT_TRUE(errors::IsInvalidArgument(
-      fs.GetFileSize("gs://bucket/", nullptr, &size)));
+  EXPECT_TRUE(
+      absl::IsInvalidArgument(fs.GetFileSize("gs://bucket/", nullptr, &size)));
 }
 
 TEST(GcsFileSystemTest, RenameFile_Folder) {
@@ -2849,7 +2848,7 @@ TEST(GcsFileSystemTest, RenameFile_Object_Incomplete) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  EXPECT_TRUE(errors::IsUnimplemented(fs.RenameFile(
+  EXPECT_TRUE(absl::IsUnimplemented(fs.RenameFile(
       "gs://bucket/path/src.txt", "gs://bucket/path/dst.txt", nullptr)));
 }
 

@@ -159,15 +159,19 @@ build:android --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:android_arm --config=android
 build:android_arm --cpu=armeabi-v7a
 build:android_arm --fat_apk_cpu=armeabi-v7a
+build:android_arm --platforms=@org_tensorflow//tensorflow/tools/toolchains/android:armeabi-v7a
 build:android_arm64 --config=android
 build:android_arm64 --cpu=arm64-v8a
 build:android_arm64 --fat_apk_cpu=arm64-v8a
+build:android_arm64 --platforms=@org_tensorflow//tensorflow/tools/toolchains/android:arm64-v8a
 build:android_x86 --config=android
 build:android_x86 --cpu=x86
 build:android_x86 --fat_apk_cpu=x86
+build:android_x86 --platforms=@org_tensorflow//tensorflow/tools/toolchains/android:x86
 build:android_x86_64 --config=android
 build:android_x86_64 --cpu=x86_64
 build:android_x86_64 --fat_apk_cpu=x86_64
+build:android_x86_64 --platforms=@org_tensorflow//tensorflow/tools/toolchains/android:x86_64
 
 # Build everything statically for Android since all static libs are later
 # bundled together into a single .so for deployment.
@@ -200,6 +204,7 @@ build:apple-toolchain --host_crosstool_top=@local_config_apple_cc//:toolchain
 # Settings for MacOS on ARM CPUs.
 build:macos_arm64 --cpu=darwin_arm64
 build:macos_arm64 --macos_minimum_os=11.0
+build:macos_arm64 --platforms=@build_bazel_apple_support//configs/platforms:darwin_arm64
 
 # iOS configs for each architecture and the fat binary builds.
 build:ios --apple_platform_type=ios
@@ -208,14 +213,19 @@ build:ios --copt=-Wno-c++11-narrowing
 build:ios --config=apple-toolchain
 build:ios_armv7 --config=ios
 build:ios_armv7 --cpu=ios_armv7
+build:ios_armv7 --platforms=@org_tensorflow//tensorflow/tools/toolchains/ios:ios_armv7
 build:ios_arm64 --config=ios
 build:ios_arm64 --cpu=ios_arm64
+build:ios_arm64 --platforms=@build_bazel_apple_support//configs/platforms:ios_arm64
 build:ios_arm64e --config=ios
 build:ios_arm64e --cpu=ios_arm64e
+build:ios_arm64e --platforms=@build_bazel_apple_support//configs/platforms:ios_arm64e
 build:ios_sim_arm64 --config=ios
 build:ios_sim_arm64 --cpu=ios_sim_arm64
+build:ios_sim_arm64 --platforms=@build_bazel_apple_support//configs/platforms:ios_sim_arm64
 build:ios_x86_64 --config=ios
 build:ios_x86_64 --cpu=ios_x86_64
+build:ios_x86_64 --platforms=@build_bazel_apple_support//configs/platforms:ios_x86_64
 build:ios_fat --config=ios
 build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 
@@ -639,8 +649,10 @@ build:elinux --crosstool_top=@local_config_embedded_arm//:toolchain
 build:elinux --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:elinux_aarch64 --config=elinux
 build:elinux_aarch64 --cpu=aarch64
+build:elinux_aarch64 --platforms=@org_tensorflow//tensorflow/tools/toolchains/linux:linux_aarch64
 build:elinux_armhf --config=elinux
 build:elinux_armhf --cpu=armhf
+build:elinux_armhf --platforms=@org_tensorflow//tensorflow/tools/toolchains/linux:linux_armhf
 build:elinux_armhf --copt -mfp16-format=ieee
 
 # Config-specific options should come above this line.

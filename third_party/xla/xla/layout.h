@@ -355,12 +355,16 @@ class Layout {
     minor_to_major_.clear();
     return *this;
   }
+
+  absl::Span<const int64_t> minor_to_major() const { return minor_to_major_; }
+  DimensionVector* mutable_minor_to_major() { return &minor_to_major_; }
+
   // Removes the given dimension from 'minor_to_major_', and adjusts the other
   // dimensions accordingly. Also adjusts 'dim_level_types_', 'dim_ordered_' and
   // 'dim_unique_' in case it is a sparse layout.
-  Layout& DeleteDimension(int64_t dim_to_delete);
-  absl::Span<const int64_t> minor_to_major() const { return minor_to_major_; }
-  DimensionVector* mutable_minor_to_major() { return &minor_to_major_; }
+  //
+  // Precondition: dim_to_delete is in the range [0, minor_to_major_size()).
+  Layout& DeleteDimension(int dim_to_delete);
 
   // Methods for accessing the tile field.
   int64_t tiles_size() const { return tiles_.size(); }
@@ -472,7 +476,7 @@ class Layout {
   // We store a single inlined vector to hold
   struct DimInfo {
     DimInfo()
-        : dim_level_type(DIM_DENSE), dim_unique(false), dim_ordered(false) {}
+        : dim_level_type(DIM_DENSE), dim_unique(true), dim_ordered(true) {}
 
     DimLevelType dim_level_type : 6;
     bool dim_unique : 1;

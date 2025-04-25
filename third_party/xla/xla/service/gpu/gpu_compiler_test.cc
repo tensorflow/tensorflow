@@ -126,8 +126,7 @@ class GpuCompilerTest : public HloTestBase {
   }
 };
 
-// TODO(b/399912696): Fix and enable this test.
-TEST_F(GpuCompilerTest, DISABLED_CompiledProgramsCount) {
+TEST_F(GpuCompilerTest, CompiledProgramsCount) {
   const char* hlo_text = R"(
 HloModule test
 
@@ -137,7 +136,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
-  ResetCompiledProgramsCountForTesting();
+  auto before = GetCompiledProgramsCount();
   std::unique_ptr<Executable> executable =
       backend()
           .compiler()
@@ -147,7 +146,7 @@ ENTRY main {
                         /*layout_canonicalization_callback=*/{},
                         /*is_autotuning_compilation=*/false})
           .value();
-  EXPECT_EQ(GetCompiledProgramsCount(), 1);
+  EXPECT_EQ(GetCompiledProgramsCount(), before + 1);
 }
 
 TEST_F(GpuCompilerTest, RecordsStreamzStackTrace) {
@@ -722,10 +721,20 @@ ENTRY main {
     return GetOptimizedModule(std::move(module));
   };
 
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
+  auto gpu_cc = backend()
+                    .default_stream_executor()
+                    ->GetDeviceDescription()
+                    .gpu_compute_capability();
+  bool is_cuda =
+      std::holds_alternative<stream_executor::CudaComputeCapability>(gpu_cc);
+  auto cuda_cc = backend()
+                     .default_stream_executor()
+                     ->GetDeviceDescription()
+                     .cuda_compute_capability();
+  auto rocm_cc = backend()
+                     .default_stream_executor()
+                     ->GetDeviceDescription()
+                     .rocm_compute_capability();
 
   const std::string triton_keep_types = absl::Substitute(
       R"(CHECK: fusion($0{{[^)]*}}, $1{{[^)]*}}){{.*}}"kind":"__triton_gemm")",
@@ -740,8 +749,7 @@ ENTRY main {
 
   HloPrintOptions print_options =
       HloPrintOptions().set_print_operand_shape(true);
-
-  {
+  if (is_cuda) {
     // Triton enabled, no fallback.
     TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_no_fallback,
                             optimize_module(/*enable_triton=*/true,
@@ -749,8 +757,9 @@ ENTRY main {
                                             /*enable_blas_fallback=*/false));
     // Triton supports f8e4m3fn on Hopper and f8e5m2 on Ampere.
     const std::string triton_expected_check =
-        (cc.IsAtLeastHopper() ||
-         (cc.IsAtLeastAmpere() && lhs_type == F8E5M2 && rhs_type == F8E5M2))
+        (cuda_cc.IsAtLeastHopper() ||
+         (cuda_cc.IsAtLeastAmpere() && lhs_type == F8E5M2 &&
+          rhs_type == F8E5M2))
             ? triton_keep_types
             : cublas_convert_to_f16;
     TF_ASSERT_OK_AND_ASSIGN(
@@ -769,7 +778,8 @@ ENTRY main {
     // cuBLASlt is only available on Hopper and it doesn't support
     // f8e5m2×f8e5m2.
     const std::string blas_expected_check =
-        (cc.IsAtLeastHopper() && !(lhs_type == F8E5M2 && rhs_type == F8E5M2))
+        ((rocm_cc.has_ocp_fp8_support() || cuda_cc.IsAtLeastHopper()) &&
+         !(lhs_type == F8E5M2 && rhs_type == F8E5M2))
             ? cublaslt_keep_types
             : cublas_convert_to_f16;
 
@@ -1656,7 +1666,6 @@ TEST_F(PassOrderTest,
                   /*last_pass_regex=*/"comparison-expander");
 }
 
-
 TEST_F(PassOrderTest,
        AllGatherDynamicSliceSimplifierRunsAfterAllGatherOptimizer) {
   VerifyPassOrder(
@@ -1751,6 +1760,38 @@ TEST_F(PassOrderTest, NestGemmFusionRunsAfterGemmFusionAutotuner) {
   options.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
   SetDebugOptions(options);
   VerifyPassOrder("gemm-fusion-autotuner", "nest_gemm_fusion");
+}
+
+TEST_F(PassOrderTest, TransposeDimensionGrouperRunsBeforeGemmRewriter) {
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+  if (!cc.IsAtLeastAmpere()) {
+    GTEST_SKIP() << "triton-gemm-rewriter requires at least Ampere to run.";
+  }
+  if (!optimized_module_) {
+    CompileModule(GetModuleConfigForTest());
+  }
+  // DebugOptions options = GetDebugOptionsForTest();
+  // options.set_xla_gpu_enable_triton_gemm(true);
+  // SetDebugOptions(options);
+  // Verify that transpose-dimension-grouper runs immediately before
+  // triton-gemm-rewriter. We want to keep them close together to avoid the
+  // possibility of new passes to rewrite the transpose and make it
+  // not compatible with the generic triton emitter.
+  // Simple VerifyPassOrder does not work here as we want to check that passes
+  // are run next to each other, also transpose-dimension-grouper runs one more
+  // time after the gemm rewriter.
+  CHECK(optimized_module_);
+  std::string previous_pass_name;
+  for (const HloPassMetadata& pass_metadata :
+       optimized_module_->metadata().proto().pass_metadata()) {
+    if (pass_metadata.pass_name() == "triton-gemm-rewriter") {
+      EXPECT_EQ(previous_pass_name, "transpose-dimension-grouper");
+    }
+    previous_pass_name = pass_metadata.pass_name();
+  }
 }
 
 TEST_F(PassOrderTest,

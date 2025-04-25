@@ -285,7 +285,7 @@ InterpreterLoadedExecutable::ExecuteSharded(
   std::vector<std::unique_ptr<PjRtBuffer>> result;
   // Untuple result if requested.
   if (options.untuple_result && result_literal.shape().IsTuple()) {
-    const int tuple_count = result_literal.shape().tuple_shapes_size();
+    const int tuple_count = result_literal.shape().tuple_shapes().size();
     result.reserve(tuple_count);
     // DecomposeTuple invalidates result_literal. move(...) to make it obvious.
     std::vector<Literal> tuple_elements =

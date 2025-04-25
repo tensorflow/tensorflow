@@ -57,9 +57,10 @@ void MemoryUsageMonitor::Start() {
       if (current_peak_bytes > peak_mem_footprint_bytes_) {
         peak_mem_footprint_bytes_ = current_peak_bytes;
       }
-      if (static_cast<int64_t>(mem_info.in_use_allocated_bytes) >
-          peak_in_use_mem_bytes_) {
-        peak_in_use_mem_bytes_ = mem_info.in_use_allocated_bytes;
+      int64_t current_in_use_bytes =
+          static_cast<int64_t>(mem_info.in_use_allocated_bytes);
+      if (current_in_use_bytes > peak_in_use_mem_bytes_) {
+        peak_in_use_mem_bytes_ = current_in_use_bytes;
       }
       if (stop_signal_->HasBeenNotified()) break;
       sampler_->SleepFor(sampling_interval_);

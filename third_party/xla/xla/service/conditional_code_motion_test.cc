@@ -2329,11 +2329,12 @@ ENTRY %xla_computation  {
       root->branch_computation(1)->root_instruction();
   const HloInstruction* conditional_true =
       root->branch_computation(0)->root_instruction();
-  EXPECT_THAT(conditional_false->shape().tuple_shapes_size(), 1);
-  EXPECT_THAT(conditional_false->shape().tuple_shapes(0).tuple_shapes_size(),
+  EXPECT_THAT(conditional_false->shape().tuple_shapes().size(), 1);
+  EXPECT_THAT(conditional_false->shape().tuple_shapes(0).tuple_shapes().size(),
               2);
-  EXPECT_THAT(conditional_true->shape().tuple_shapes_size(), 1);
-  EXPECT_THAT(conditional_true->shape().tuple_shapes(0).tuple_shapes_size(), 2);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes().size(), 1);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes(0).tuple_shapes().size(),
+              2);
 }
 
 // Move partially used operands inside empty conditional branches.
@@ -2391,11 +2392,12 @@ ENTRY %xla_computation  {
       root->branch_computation(1)->root_instruction();
   const HloInstruction* conditional_true =
       root->branch_computation(0)->root_instruction();
-  EXPECT_THAT(conditional_false->shape().tuple_shapes_size(), 2);
-  EXPECT_THAT(conditional_false->shape().tuple_shapes(1).tuple_shapes_size(),
+  EXPECT_THAT(conditional_false->shape().tuple_shapes().size(), 2);
+  EXPECT_THAT(conditional_false->shape().tuple_shapes(1).tuple_shapes().size(),
               2);
-  EXPECT_THAT(conditional_true->shape().tuple_shapes_size(), 2);
-  EXPECT_THAT(conditional_true->shape().tuple_shapes(1).tuple_shapes_size(), 2);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes().size(), 2);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes(1).tuple_shapes().size(),
+              2);
 }
 
 // Move partially used operands inside empty conditional branches.

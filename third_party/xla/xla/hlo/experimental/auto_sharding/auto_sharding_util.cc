@@ -483,7 +483,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
         break;
       case HloOpcode::kWhile: {
         const HloInstruction* op = ins->operand(0);
-        for (size_t i = 0; i < op->shape().tuple_shapes_size(); ++i) {
+        for (size_t i = 0; i < op->shape().tuple_shapes().size(); ++i) {
           if (batch_map.contains(GetBatchDimMapKey(op, i))) {
             batch_map[GetBatchDimMapKey(ins, i)] =
                 batch_map[GetBatchDimMapKey(op, i)];
@@ -734,7 +734,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
         break;
       case HloOpcode::kWhile: {
         const HloInstruction* op = ins->operand(0);
-        for (size_t i = 0; i < op->shape().tuple_shapes_size(); ++i) {
+        for (size_t i = 0; i < op->shape().tuple_shapes().size(); ++i) {
           if (batch_map.contains(GetBatchDimMapKey(ins, i))) {
             batch_map[GetBatchDimMapKey(op, i)] =
                 batch_map[GetBatchDimMapKey(ins, i)];
@@ -1275,7 +1275,7 @@ absl::Status FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
     HloInstruction* inst,
     const std::vector<std::optional<HloSharding>>& dst_shardings,
     const DeviceMesh& device_mesh) {
-  size_t tuple_size = inst->shape().tuple_shapes_size();
+  size_t tuple_size = inst->shape().tuple_shapes().size();
   const HloSharding& current_sharding = inst->sharding();
 
   bool need_to_reshard = false;
@@ -2131,10 +2131,12 @@ int64_t ByteSizeOfShapeIfShardedAcrossDevices(
           return;
         }
         int64_t byte_size = ByteSizeOfShape(subshape);
-        absl::Span<const int64_t> subshape_dims = subshape.dimensions();
-        auto max_dim_it = absl::c_max_element(subshape_dims);
-        if (max_dim_it != subshape_dims.end() && *max_dim_it >= num_devices) {
-          byte_size /= num_devices;
+        if (subshape.IsArray()) {
+          const absl::Span<const int64_t> subshape_dims = subshape.dimensions();
+          const auto max_dim_it = absl::c_max_element(subshape_dims);
+          if (max_dim_it != subshape_dims.end() && *max_dim_it >= num_devices) {
+            byte_size /= num_devices;
+          }
         }
         total_size += byte_size;
       });
@@ -2254,7 +2256,7 @@ absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     if (inst->shape().IsTuple()) {
       ShapeTree<HloSharding> output_tuple_sharding(inst->shape(), Undefined());
       std::vector<HloSharding> output_flattened_shardings;
-      for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
+      for (size_t i = 0; i < inst->shape().tuple_shapes().size(); i++) {
         const Shape& shape = inst->shape().tuple_shapes(i);
         const HloSharding& sharding = inst->sharding().tuple_elements()[i];
         if (sharding.IsUnknown()) {
@@ -2522,7 +2524,7 @@ std::vector<std::vector<int64_t>> InferOrEnumerateMeshShapesToTry(
 
 bool IsShardingMisaligned(const HloSharding& sharding, const Shape& shape) {
   if (shape.IsTuple()) {
-    for (size_t i = 0; i < shape.tuple_shapes_size(); ++i) {
+    for (size_t i = 0; i < shape.tuple_shapes().size(); ++i) {
       if (IsShardingMisaligned(
               sharding.IsTuple()
                   ? sharding.GetSubSharding(shape, {static_cast<int64_t>(i)})

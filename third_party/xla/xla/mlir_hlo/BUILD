@@ -12,6 +12,7 @@ package(
 
 exports_files([
     "mhlo/IR/hlo_ops.td",
+    "mhlo/IR/hlo_utils.td",
 ])
 
 # Python extension sources.

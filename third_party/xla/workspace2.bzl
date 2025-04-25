@@ -74,9 +74,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "618fcb27b1bc895af5431acccc96bc005e872854115ad99cdbaf803a53b00a4c",
-        strip_prefix = "pthreadpool-da30a55fecdd9f2f90f236874a305db146567aef",
-        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/da30a55fecdd9f2f90f236874a305db146567aef.zip"),
+        sha256 = "6416b3ca51c60fbcd4776685ef27e4858760ecf689d113adf074a0749f977ff7",
+        strip_prefix = "pthreadpool-290ee6fff0c36614702d6b297c148e3fa08e056a",
+        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/290ee6fff0c36614702d6b297c148e3fa08e056a.zip"),
     )
 
     tf_http_archive(
