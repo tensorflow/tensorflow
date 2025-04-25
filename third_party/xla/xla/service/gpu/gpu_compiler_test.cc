@@ -18,9 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <limits>
 #include <memory>
+#include <optional>
+#include <ostream>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -40,12 +44,15 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -56,11 +63,13 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/xla_debug_info_manager.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -70,7 +79,11 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -2026,8 +2039,68 @@ ENTRY %main {
   // StartCapturingLogs has to be called even if we expect not to capture any
   // logs.
   mock_log.StartCapturingLogs();
-  TF_ASSERT_OK(backend().compiler()->RunHloPasses(std::move(module), nullptr,
-                                                  GetAllocator()));
+  auto status_or_module = backend().compiler()->RunHloPasses(
+      std::move(module), nullptr, GetAllocator());
+  TF_ASSERT_OK(status_or_module.status());
+}
+
+TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule cluster
+
+    ENTRY main {
+      cst = f32[1]{0} constant({0})
+      ROOT tuple_out = (f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0}) tuple(cst, cst, cst, cst)
+    }
+  )";
+
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+
+  std::string target_file;
+  ASSERT_TRUE(tsl::Env::Default()->LocalTempFilename(&target_file));
+  TF_ASSERT_OK(tsl::WriteTextProto(
+      tsl::Env::Default(), target_file,
+      Compiler::TargetConfig(backend().default_stream_executor()).ToProto()));
+  debug_options.set_xla_gpu_target_config_filename(target_file);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo, config));
+
+  auto status_or_module = backend().compiler()->RunHloPasses(
+      std::move(module), nullptr, GetAllocator());
+
+  auto opt_module = std::move(status_or_module.value());
+  const HloModuleMetadataProto& metadata = opt_module->metadata()->proto();
+  for (int pass = 0; pass < metadata.pass_metadata().size(); pass++) {
+    const HloPassMetadata& pass_metadata = metadata.pass_metadata(pass);
+    EXPECT_NE(pass_metadata.pass_id(), 0);
+    EXPECT_FALSE(pass_metadata.pass_name().empty());
+    EXPECT_FALSE(pass_metadata.pipeline_name().empty());
+    EXPECT_EQ(pass_metadata.module_id(), opt_module->unique_id());
+    EXPECT_GT(pass_metadata.start_timestamp_usec(), 0);
+    EXPECT_LE(pass_metadata.start_timestamp_usec(),
+              pass_metadata.end_timestamp_usec());
+  }
+  auto status_or_executable = backend().compiler()->RunBackend(
+      std::move(opt_module), backend().default_stream_executor(),
+      {/*device_allocator=*/nullptr,
+       /*thread_pool=*/nullptr,
+       /*layout_canonicalization_callback=*/{},
+       /*is_autotuning_compilation=*/false});
+
+  auto& exe_module = status_or_executable.value()->module();
+  const HloModuleMetadataProto& exe_metadata = exe_module.metadata()->proto();
+  for (int pass = 0; pass < exe_metadata.pass_metadata().size(); pass++) {
+    const HloPassMetadata& pass_metadata = exe_metadata.pass_metadata(pass);
+    EXPECT_NE(pass_metadata.pass_id(), 0);
+    EXPECT_FALSE(pass_metadata.pass_name().empty());
+    EXPECT_FALSE(pass_metadata.pipeline_name().empty());
+    EXPECT_EQ(pass_metadata.module_id(), exe_module.unique_id());
+    EXPECT_GT(pass_metadata.start_timestamp_usec(), 0);
+    EXPECT_LE(pass_metadata.start_timestamp_usec(),
+              pass_metadata.end_timestamp_usec());
+  }
 }
 
 }  // namespace
