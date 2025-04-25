@@ -279,6 +279,43 @@ ENTRY entry {
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
+TEST_F(NestGemmFusionTest, BitcastsCanBeHoistedPastConvertEpilogues) {
+  absl::string_view hlo = R"(
+dot {
+  lhs = f32[3,7] parameter(0)
+  rhs = f32[7,11] parameter(1)
+  dot = f32[3,11] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bitcast = f32[33] bitcast(dot)
+  ROOT convert = f16[33] convert(bitcast)
+}
+
+ENTRY entry {
+  p0 = f32[3, 7] parameter(0)
+  p1 = f32[7,11] parameter(1)
+  ROOT fusion = f16[33] fusion(p0, p1),
+    kind=kCustom, calls=dot, backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm",  "triton_gemm_config": {
+          "block_m":"32", "block_n":"64", "block_k":"16",
+          "split_k":"1", "num_stages":"1", "num_warps":"1", "num_ctas":"1"
+        }
+      }
+    }
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK: f16[3,11]{1,0} convert(
+CHECK: f16[3,11]{1,0} fusion(
+)"),
+      IsOkAndHolds(true));
+
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+}
+
 // We cannot hoist bitcasts past transposes, but we don't need to hoist
 // because the bitcast is not rank-expanding and symbolic tile analysis
 // works fine.

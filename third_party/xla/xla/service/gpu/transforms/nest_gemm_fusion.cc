@@ -375,8 +375,6 @@ absl::Status VerifyIsClosedConsumerSet(const HloInstructionSet& instructions,
 
 bool IsSafeToSinkBitcastBelow(HloInstruction* instruction) {
   switch (instruction->opcode()) {
-    case HloOpcode::kParameter:
-    case HloOpcode::kConstant:
     case HloOpcode::kBitcast:
       // TODO(b/393299275): Support sinking through broadcast.
       return true;
@@ -612,6 +610,8 @@ absl::Status HoistBitcastUpwardsToCallers(
 absl::Status HoistBitcastDownwardsToCallers(
     HloInstruction* bitcast, const std::vector<HloInstruction*>& callers) {
   HloInstructionSet consumers = GetConsumerSet(bitcast);
+  // Check whether all operands of consumers are within the set of consumers, or
+  // the bitcast itself.
   TF_RETURN_IF_ERROR(VerifyIsClosedConsumerSet(consumers, bitcast));
   auto is_root = [](HloInstruction* instr) { return instr->IsRoot(); };
   CHECK(is_root(bitcast) || absl::c_any_of(consumers, is_root))
@@ -640,7 +640,9 @@ absl::Status HoistBitcastDownwardsToCallers(
     HloInstruction* new_bitcast = caller->AddInstruction(
         HloInstruction::CreateBitcast(caller->shape(), caller));
     TF_RETURN_IF_ERROR(caller->ReplaceAllUsesWith(new_bitcast));
-    *caller->mutable_shape() = shape;
+    Shape updated_shape(shape);
+    updated_shape.set_element_type(caller->shape().element_type());
+    *caller->mutable_shape() = updated_shape;
   }
 
   TF_RETURN_IF_ERROR(
