@@ -311,6 +311,7 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
   options.set_xla_gpu_enable_nccl_user_buffers(
       !default_options.xla_gpu_enable_nccl_user_buffers());
   options.set_xla_enable_dumping(true);
+  options.set_xla_gpu_enable_shared_constants(false);
   // Enum field
   options.clear_xla_gpu_enable_command_buffer();
   options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
@@ -350,6 +351,8 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
               100)));
   EXPECT_THAT(non_default_options,
               testing::HasSubstr("xla_gpu_enable_nccl_user_buffers: true"));
+  EXPECT_THAT(non_default_options,
+              testing::HasSubstr("xla_gpu_enable_shared_constants: false"));
   EXPECT_THAT(non_default_options,
               testing::HasSubstr("xla_gpu_enable_command_buffer: CUBLAS"));
   EXPECT_THAT(non_default_options,
