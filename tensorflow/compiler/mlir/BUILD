@@ -76,10 +76,7 @@ cc_library(
 
 cc_library(
     name = "passes",
-    visibility = [
-        ":__subpackages__",
-        "//tensorflow/python:__subpackages__",
-    ],
+    visibility = [":__subpackages__"],
     deps = [
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:QuantOps",
@@ -266,7 +263,7 @@ tf_cc_test(
 filegroup(
     name = "litfiles",
     srcs = glob(["runlit*py"]),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
 )
 
 exports_files(["run_lit.sh"])
