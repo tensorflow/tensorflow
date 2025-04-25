@@ -264,6 +264,33 @@ class Ffi {
                                        std::string_view name,
                                        XLA_FFI_TypeId* type_id);
 
+  // This is a helper template that allows to convert function pointers from
+  // the run time values to compile time values (template arguments) with
+  // automatic template arguments deduction.
+  //
+  // Example:
+  //
+  //   static Error Foo(int32_t arg) {... }
+  //
+  //   template<typename Callable>
+  //   void call(Callable callable) { callable(42); }
+  //
+  //   call(Foo);                  // `Foo` passed as a runtime value
+  //   call(Ffi::Wrapper<Foo>())   // `Foo` passed as a template argument
+  //
+  // In the first case compiler will not be able to inline `Foo` into the `call`
+  // body. However in the second case it can do that, because function pointer
+  // is a statically known value (template non-type argument).
+  template <auto fn>
+  struct Wrapper;
+
+  template <typename Ret, typename... Args, Ret (*fn)(Args...)>
+  struct Wrapper<fn> {
+    XLA_FFI_ATTRIBUTE_ALWAYS_INLINE Ret operator()(Args... args) const {
+      return fn(std::forward<Args>(args)...);
+    }
+  };
+
  protected:
   template <typename... Args>
   static std::string StrCat(Args... args);
@@ -463,7 +490,9 @@ using HasRemainingRetsTag =
 
 template <typename T>
 constexpr XLA_FFI_DataType NativeTypeToCApiDataType() {
-  if constexpr (std::is_same_v<T, bool>) {
+  if constexpr (std::is_same_v<T, char>) {
+    return XLA_FFI_DataType_U8;
+  } else if constexpr (std::is_same_v<T, bool>) {
     return XLA_FFI_DataType_PRED;
   } else if constexpr (std::is_same_v<T, int8_t>) {
     return XLA_FFI_DataType_S8;
