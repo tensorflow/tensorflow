@@ -294,8 +294,7 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<HloMemoryScheduler>(/*size_fn*/ size_fn);
   RegisterPass<HloTrivialScheduler>();
   RegisterPass<HostMemoryTransferAsyncifier>(/*host_memory_space_color=*/5);
-  RegisterPass<HostOffloadLegalize>(
-      /*host_memory_space_color=*/5, /*after_layout=*/false);
+  RegisterPass<HostOffloadLegalize>();
   RegisterPass<HostOffloader>();
   RegisterPass<HostOffloadingPrepare>(
       /*rewrite=*/HostOffloadingPrepare::Rewrite::kElideMoveToHost);

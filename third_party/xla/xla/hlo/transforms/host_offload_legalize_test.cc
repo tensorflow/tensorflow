@@ -40,15 +40,12 @@ namespace {
 
 class HostOffloadLegalizeTest : public HloHardwareIndependentTestBase {
  protected:
-  static constexpr int64_t kHostMemorySpaceColor{5};
-
   absl::StatusOr<bool> RunHostOffloadLegalize(HloModule* module) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
     }
-    HostOffloadLegalize host_offload_legalize(kHostMemorySpaceColor,
-                                              /*after_layout=*/true);
+    HostOffloadLegalize host_offload_legalize;
     return host_offload_legalize.Run(module);
   }
 

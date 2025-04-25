@@ -1088,9 +1088,7 @@ absl::Status RunLayoutAssignmentPasses(
   // Run HostOffloadLegalize before LayoutNormalization to prevent
   // the creation of invalid transpose/bitcast operations within
   // host memory offloading segments.
-  pipeline.AddPass<HostOffloadLegalize>(
-      static_cast<int64_t>(stream_executor::MemoryType::kHost),
-      /* after_layout= */ true);
+  pipeline.AddPass<HostOffloadLegalize>();
   return pipeline.Run(hlo_module).status();
 }
 
@@ -1696,9 +1694,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   // Recover host-offloader invariants (such as the single-use broadcast buffer
   // initialization before loops) by re-running the offload legalizer.
-  pipeline.AddPass<HostOffloadLegalize>(
-      static_cast<int64_t>(stream_executor::MemoryType::kHost),
-      /* after_layout= */ true);
+  pipeline.AddPass<HostOffloadLegalize>();
 
   pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
 

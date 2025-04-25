@@ -878,7 +878,7 @@ HostOffloadLegalize::FindStartingInstructionsOfHostMemoryOffload(
                 .shape();
         // TODO(mingyao): Add support for tuple parameter.
         if (param_shape.has_layout() &&
-            param_shape.layout().memory_space() == kHostMemorySpaceColor) {
+            param_shape.layout().memory_space() == Layout::kHostMemorySpace) {
           starting_instructions.push_back(instruction);
           continue;
         }
@@ -897,10 +897,6 @@ absl::StatusOr<bool> HostOffloadLegalize::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  if (!after_layout_) {
-    return changed;
-  }
-
   // Look for layout changing copies which happen during host memory offload. If
   // any are found, move them outside of the offload section.
   std::vector<HloInstruction*> starting_instructions =
