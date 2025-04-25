@@ -1991,16 +1991,16 @@ absl::Status TfrtGpuClient::DmaUnmap(void* data) {
 
 bool TfrtGpuClient::IsDmaMapped(const void* data_start, int64_t transfer_size) {
   absl::MutexLock lock(&dma_maps_mutex_);
-  if (!dma_maps_.empty()) {
-    void* data_end = (char*)data_start + transfer_size;
-    for (const auto& [map_start, map_size] : dma_maps_) {
-      void* map_end = (char*)map_start + map_size;
-      if (data_start >= map_start && data_end <= map_end) {
-        return true;
-      }
-    }
+  if (dma_maps_.empty()) {
+    return false;
   }
-  return false;
+  auto it = dma_maps_.lower_bound(data_start);
+  if (it == dma_maps_.end()) {
+    return false;
+  }
+  void* data_end = (char*)data_start + transfer_size;
+  void* map_end = (char*)it->first + it->second;
+  return data_end <= map_end;
 }
 
 static absl::StatusOr<std::vector<std::unique_ptr<TfrtGpuDevice>>>

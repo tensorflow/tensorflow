@@ -1473,19 +1473,50 @@ TEST(TfrtGpuClientTest, DmaMapUnmap) {
   GpuClientOptions options = GpuClientOptions();
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_client, GetTfrtGpuClient(options));
   auto client = tensorflow::down_cast<TfrtGpuClient*>(gpu_client.get());
-  size_t dma_size = 1024;
+  size_t dma_size = 8192;
   size_t alignment = 4096;
   auto host_dma_ptr = xla::AlignedAlloc(alignment, dma_size);
-  TF_EXPECT_OK(client->DmaMap(host_dma_ptr.get(), dma_size));
-  EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr.get(), dma_size));
-  // IsDmaMapped should keep track of all starting address, try a different
-  // starting address.
-  int kOffset = 5;
-  void* invalid_start_ptr =
-      reinterpret_cast<char*>(host_dma_ptr.get()) + kOffset;
-  EXPECT_FALSE(client->IsDmaMapped(invalid_start_ptr, dma_size));
-  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr.get()));
-  EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr.get(), dma_size));
+
+  // DmaMap the first half of the buffer.
+  size_t dma_map_size = dma_size / 2;
+  char* first_half_ptr = static_cast<char*>(host_dma_ptr.get());
+  char* second_half_ptr = first_half_ptr + dma_map_size;
+  int offset = 5;
+  TF_EXPECT_OK(client->DmaMap(first_half_ptr, dma_map_size));
+  EXPECT_TRUE(client->IsDmaMapped(first_half_ptr, dma_map_size));
+  EXPECT_TRUE(client->IsDmaMapped(first_half_ptr + offset, 10));
+  EXPECT_FALSE(client->IsDmaMapped(first_half_ptr + offset, dma_map_size));
+  EXPECT_TRUE(
+      client->IsDmaMapped(first_half_ptr + offset, dma_map_size - offset));
+
+  // Verify boundaries.
+  EXPECT_TRUE(client->IsDmaMapped(first_half_ptr, 1));
+  EXPECT_FALSE(client->IsDmaMapped(first_half_ptr - 1, 1));
+  EXPECT_FALSE(client->IsDmaMapped(first_half_ptr + dma_map_size, 1));
+
+  // DmaMap the second half of the buffer.
+  TF_EXPECT_OK(client->DmaMap(second_half_ptr, dma_map_size));
+  EXPECT_TRUE(client->IsDmaMapped(second_half_ptr, dma_map_size));
+  EXPECT_TRUE(client->IsDmaMapped(second_half_ptr + offset, 10));
+  EXPECT_FALSE(client->IsDmaMapped(second_half_ptr + offset, dma_map_size));
+  EXPECT_TRUE(
+      client->IsDmaMapped(second_half_ptr + offset, dma_map_size - offset));
+
+  // Verify boundaries.
+  EXPECT_TRUE(client->IsDmaMapped(second_half_ptr, 1));
+  EXPECT_TRUE(client->IsDmaMapped(second_half_ptr - 1, 1));
+  EXPECT_FALSE(client->IsDmaMapped(second_half_ptr + dma_map_size, 1));
+
+  // Unmap the first half of the buffer.
+  TF_EXPECT_OK(client->DmaUnmap(first_half_ptr));
+  EXPECT_FALSE(client->IsDmaMapped(first_half_ptr, dma_map_size));
+  EXPECT_FALSE(client->IsDmaMapped(first_half_ptr + offset, 10));
+  EXPECT_FALSE(client->IsDmaMapped(second_half_ptr - 1, 1));
+  EXPECT_TRUE(client->IsDmaMapped(second_half_ptr, 1));
+
+  // Unmap the second half of the buffer.
+  TF_EXPECT_OK(client->DmaUnmap(second_half_ptr));
+  EXPECT_FALSE(client->IsDmaMapped(second_half_ptr, 1));
 }
 
 TEST(TfrtGpuClientTest, MultipleDeviceShareDmaMapping) {

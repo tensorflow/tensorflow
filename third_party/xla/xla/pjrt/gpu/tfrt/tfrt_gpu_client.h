@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -461,7 +462,8 @@ class TfrtGpuClient final : public PjRtClient {
 
   absl::Mutex dma_maps_mutex_;
   // Maps dma mapped start pointers to their sizes.
-  absl::flat_hash_map<void*, size_t> dma_maps_ ABSL_GUARDED_BY(dma_maps_mutex_);
+  absl::btree_map<const void*, size_t, std::greater<const void*>> dma_maps_
+      ABSL_GUARDED_BY(dma_maps_mutex_);
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
