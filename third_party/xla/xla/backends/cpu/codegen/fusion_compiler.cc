@@ -189,11 +189,11 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
 
   if (mlir::Attribute options =
           mlir_module->getAttr(xla::ExtraBackendOptionsAttr::name)) {
-    const auto formater = [](std::string* out, const mlir::StringAttr& attr) {
+    const auto formatter = [](std::string* out, const mlir::StringAttr& attr) {
       absl::StrAppend(out, attr.str());
     };
     std::string options_csv = absl::StrJoin(
-        mlir::cast<xla::ExtraBackendOptionsAttr>(options), ",", formater);
+        mlir::cast<xla::ExtraBackendOptionsAttr>(options), ",", formatter);
     llvm::MDString* options_mdstring =
         llvm::MDString::get(llvm_context, options_csv);
     llvm_module->addModuleFlag(llvm::Module::Error, "xla_backend_extra_options",
