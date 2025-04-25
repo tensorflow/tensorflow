@@ -1894,9 +1894,9 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     }
   }
 
-  // TODO(b/315957220): Propagate TMA flag once it's supported.
   pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
-      device_info, /*tma_enabled=*/false));
+      device_info,
+      hlo_config.debug_options().xla_gpu_experimental_enable_triton_tma()));
 
   // Lower affine expressions into arithmetic ops.
   pm.addPass(mlir::createLowerAffinePass());
