@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -91,9 +92,9 @@ class NcclCommunicator : public Communicator {
                                       const Executor& executor) final;
 
   tsl::AsyncValueRef<Event> AllToAll(
-      absl::Span<const se::DeviceMemoryBase> send_buffers,
-      absl::Span<const se::DeviceMemoryBase> recv_buffers, PrimitiveType dtype,
-      size_t count, const Executor& executor) final;
+      absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
+      absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+      PrimitiveType dtype, size_t count, const Executor& executor) final;
 
   tsl::AsyncValueRef<Event> CollectivePermute(
       se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,

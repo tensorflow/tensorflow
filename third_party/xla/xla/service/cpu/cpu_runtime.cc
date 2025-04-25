@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -401,8 +402,8 @@ void AllToAllImpl(const ExecutableRunOptions* run_options,
 
   CpuCollectives::Executor executor(rendezvous_key, DefaultCollectiveTimeout());
 
-  std::vector<se::DeviceMemoryBase> source_buffers_data;
-  std::vector<se::DeviceMemoryBase> destination_buffers_data;
+  absl::InlinedVector<se::DeviceMemoryBase, 4> source_buffers_data;
+  absl::InlinedVector<se::DeviceMemoryBase, 4> destination_buffers_data;
   for (int i = 0; i < num_buffers; i++) {
     source_buffers_data.push_back(
         se::DeviceMemoryBase(source_buffers[i], buffer_size));
@@ -410,8 +411,9 @@ void AllToAllImpl(const ExecutableRunOptions* run_options,
         se::DeviceMemoryBase(destination_buffers[i], buffer_size));
   }
 
-  auto event = communicator->AllToAll(
-      source_buffers_data, destination_buffers_data, U8, buffer_size, executor);
+  auto event = communicator->AllToAll(std::move(source_buffers_data),
+                                      std::move(destination_buffers_data), U8,
+                                      buffer_size, executor);
   tsl::BlockUntilReady(event);
   CHECK(!event.IsError()) << event.GetError();
 }

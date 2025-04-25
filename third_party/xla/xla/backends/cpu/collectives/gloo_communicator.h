@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -55,9 +56,9 @@ class GlooCommunicator : public Communicator {
       absl::Span<const RankId> target_ranks, const Executor& executor) override;
 
   tsl::AsyncValueRef<Event> AllToAll(
-      absl::Span<const se::DeviceMemoryBase> send_buffers,
-      absl::Span<const se::DeviceMemoryBase> recv_buffers, PrimitiveType dtype,
-      size_t count, const Executor& executor) override;
+      absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
+      absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+      PrimitiveType dtype, size_t count, const Executor& executor) override;
 
   tsl::AsyncValueRef<Event> AllGather(se::DeviceMemoryBase send_buffer,
                                       se::DeviceMemoryBase recv_buffer,
