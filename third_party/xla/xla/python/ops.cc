@@ -322,6 +322,17 @@ void BuildOpsSubmodule(nb::module_& m) {
 }
 
 void BuildOpsModule(nb::module_& m) {
+  nb::enum_<FftType>(m, "FftType")
+      .value("FFT", FftType::FFT)
+      .value("IFFT", FftType::IFFT)
+      .value("RFFT", FftType::RFFT)
+      .value("IRFFT", FftType::IRFFT);
+
+  nb::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
+      .value("DEFAULT", PrecisionConfig::DEFAULT)
+      .value("HIGH", PrecisionConfig::HIGH)
+      .value("HIGHEST", PrecisionConfig::HIGHEST);
+
   nb::enum_<TriangularSolveOptions::Transpose>(
       m, "TriangularSolveOptions_Transpose")
       .value("TRANSPOSE_INVALID", TriangularSolveOptions::TRANSPOSE_INVALID)
@@ -333,6 +344,10 @@ void BuildOpsModule(nb::module_& m) {
       .value("RNG_DEFAULT", RandomAlgorithm::RNG_DEFAULT)
       .value("RNG_THREE_FRY", RandomAlgorithm::RNG_THREE_FRY)
       .value("RNG_PHILOX", RandomAlgorithm::RNG_PHILOX);
+
+  nb::enum_<ResultAccuracy::Mode>(m, "ResultAccuracy_Mode")
+      .value("DEFAULT", ResultAccuracy::DEFAULT)
+      .value("HIGHEST", ResultAccuracy::HIGHEST);
 
   nb::enum_<CustomCallSchedule>(m, "CustomCallSchedule")
       .value("SCHEDULE_NONE", CustomCallSchedule::SCHEDULE_NONE)
