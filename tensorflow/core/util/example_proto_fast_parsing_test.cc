@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/lib/random/philox_random.h"
@@ -44,7 +45,7 @@ string SerializedToReadable(string serialized) {
   string result;
   result += '"';
   for (char c : serialized)
-    result += strings::StrCat("\\x", strings::Hex(c, strings::kZeroPad2));
+    absl::StrAppend(&result, "\\x", absl::Hex(c, absl::kZeroPad2));
   result += '"';
   return result;
 }
