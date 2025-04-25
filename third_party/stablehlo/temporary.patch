@@ -1,3 +1,76 @@
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/gather.mlir b/stablehlo/stablehlo/conversions/linalg/tests/gather.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/gather.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/gather.mlir
+@@ -30,12 +30,11 @@
+ // CHECK-SAME:           outs(%[[INIT]] : tensor<1x8x8xi32>)
+ // CHECK-SAME:           {someattr}
+ // CHECK:           ^bb0
+-// CHECK-DAG:         %[[IDX0:.+]] = linalg.index 0
+-// CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
+-// CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
+-// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[IDX1]], %[[C0]]] : tensor<1x8x2xi32>
+-// CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
+-// CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[IDX1]], %[[C1]]] : tensor<1x8x2xi32>
++// CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
++// CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
++// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[C0]], %[[IDX1]], %[[C0]]] : tensor<1x8x2xi32>
++// CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
++// CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[C0]], %[[IDX1]], %[[C1]]] : tensor<1x8x2xi32>
+ // CHECK-DAG:         %[[S1:.+]] = arith.index_cast %[[S1_INT]] : i32 to index
+ // CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[S0]], %[[C0]]  : index
+ // CHECK-DAG:         %[[IN0:.+]] = arith.minsi %[[CLAMP0]], %[[C0]]
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+@@ -1233,6 +1233,7 @@
+ //      CHECK: func @torch_index_select
+ // CHECK-SAME:   %[[INPUT:[a-zA-Z0-9_]*]]
+ // CHECK-SAME:   %[[INDEX:[a-zA-Z0-9_]*]]
++//      CHECK: %[[C0:.+]] = arith.constant 0 : index
+ //      CHECK: %[[INIT1:.+]] = tensor.empty() :
+ //      CHECK: %[[INIT2:.+]] = tensor.empty() :
+ //      CHECK: linalg.generic {
+@@ -1244,9 +1245,8 @@
+ // CHECK-SAME: {someattr}
+ //      CHECK: ^{{.+}}(%[[VAL:.+]]: i32, %{{.+}}: i32, %{{.+}}: i32):
+ //      CHECK:   %[[CAST:.+]] = arith.index_cast %[[VAL]] : i32 to index
+-//      CHECK:   %[[J:.+]] = linalg.index 1
+ //      CHECK:   %[[K:.+]] = linalg.index 2
+-//      CHECK:   %[[VAL2:.+]] = tensor.extract %[[INPUT]][%[[CAST]], %[[J]], %[[K]]] : tensor<5x1x5xi32>
++//      CHECK:   %[[VAL2:.+]] = tensor.extract %[[INPUT]][%[[CAST]], %[[C0]], %[[K]]] : tensor<5x1x5xi32>
+ //      CHECK:   linalg.yield %[[VAL2]] : i32
+ 
+ // -----
+@@ -1265,6 +1265,7 @@
+   } : (tensor<5x1x5xui32>, tensor<2xi32>) -> tensor<2x1x5xui32>
+   func.return %0 : tensor<2x1x5xui32>
+ }
++//      CHECK:   %[[C0:.+]] = arith.constant 0 : index
+ //      CHECK:   %[[INPUT_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[INPUT]] : tensor<5x1x5xui32> to tensor<5x1x5xi32>
+ //      CHECK:   %[[INIT:.*]] = tensor.empty() : tensor<1x5xi32>
+ //      CHECK:   %[[RES:.+]] = linalg.generic {
+@@ -1274,9 +1275,8 @@
+ // CHECK-SAME:   ins(%[[INDEX]], %[[INIT]] : tensor<2xi32>, tensor<1x5xi32>)
+ //      CHECK:   ^{{.+}}(%[[VAL:.+]]: i32, %{{.+}}: i32, %{{.+}}: i32):
+ //      CHECK:     %[[CAST:.+]] = arith.index_cast %[[VAL]] : i32 to index
+-//      CHECK:     %[[J:.+]] = linalg.index 1
+ //      CHECK:     %[[K:.+]] = linalg.index 2
+-//      CHECK:     %[[VAL2:.+]] = tensor.extract %[[INPUT_SIGNLESS]][%[[CAST]], %[[J]], %[[K]]] : tensor<5x1x5xi32>
++//      CHECK:     %[[VAL2:.+]] = tensor.extract %[[INPUT_SIGNLESS]][%[[CAST]], %[[C0]], %[[K]]] : tensor<5x1x5xi32>
+ //      CHECK:     linalg.yield %[[VAL2]] : i32
+ //      CHECK:   %[[RES_UNSIGNED:.+]] = builtin.unrealized_conversion_cast %[[RES]] : tensor<2x1x5xi32> to tensor<2x1x5xui32>
+ //      CHECK:   return %[[RES_UNSIGNED]]
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+@@ -61,7 +61,6 @@
+ }  // namespace
+ 
+ LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
+-  addArgumentMaterialization(scalarToTensor);
+   addSourceMaterialization(scalarToTensor);
+   addTargetMaterialization(scalarToTensor);
+ }
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
 --- stablehlo/stablehlo/dialect/StablehloAttrs.td
 +++ stablehlo/stablehlo/dialect/StablehloAttrs.td
@@ -10,4 +83,38 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo
  }
  
  #endif // STABLEHLO_DIALECT_STABLEHLO_ATTRS
+diff --ruN a/stablehlo/stablehlo/dialect/VhloAttrs.td b/stablehlo/stablehlo/dialect/VhloAttrs.td
+--- stablehlo/stablehlo/dialect/VhloAttrs.td
++++ stablehlo/stablehlo/dialect/VhloAttrs.td
+@@ -102,7 +102,7 @@
+ // Corresponds to IntegerConstant from the StableHLO spec.
+ def VHLO_IntegerAttrV1 : VHLO_AttrDef<"IntegerV1", "0.9.0", "current"> {
+   let mnemonic = "integer_v1";
+-  let parameters = (ins "mlir::Type":$type, "APInt":$value);
++  let parameters = (ins "mlir::Type":$type, APIntParameter<"">:$value);
+   let genVerifyDecl = 1;
+   let extraClassDefinition = [{
+     LogicalResult IntegerV1Attr::verify(
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.cpp b/stablehlo/stablehlo/dialect/VhloTypes.cpp
+--- stablehlo/stablehlo/dialect/VhloTypes.cpp
++++ stablehlo/stablehlo/dialect/VhloTypes.cpp
+@@ -333,7 +333,6 @@
+ void VhloTypeConverter::addUnrealizedMaterializations() {
+   addTargetMaterialization(materializeIllegalCast);
+   addSourceMaterialization(materializeIllegalCast);
+-  addArgumentMaterialization(materializeIllegalCast);
+ }
+ 
+ namespace {
+diff --ruN a/stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp b/stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
+--- stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
++++ stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
+@@ -77,7 +77,6 @@
+   addConversion(convertInteger);
+   addConversion(convertShapedType);
+ 
+-  addArgumentMaterialization(materializeCastFromIllegal);
+   addSourceMaterialization(materializeCastToIllegal);
+   addTargetMaterialization(materializeCastFromIllegal);
+ }
 
