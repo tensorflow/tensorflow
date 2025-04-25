@@ -45,6 +45,8 @@ pytype_strict_library(
     srcs = ["xla_client.py"],
     visibility = ["//visibility:public"],
     deps = if_google([
+        ":_ops",
+        ":_profiler",
         "//third_party/py/jax/jaxlib/xla:xla_client",
     ]),
 )

@@ -16,3 +16,6 @@
 
 from jax.jaxlib.xla.xla_client import *  # pylint: disable=wildcard-import
 from jax.jaxlib.xla.xla_client import _xla  # pylint: disable=unused-import
+
+from . import _ops as ops  # pylint: disable=unused-import
+from . import _profiler as profiler  # pylint: disable=unused-import
