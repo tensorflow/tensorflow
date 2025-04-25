@@ -146,6 +146,29 @@ bool CheckAffineQuantization(
                        TfLiteTypeGetName(tensor.type), t);
     return false;
   }
+  if (quantization_params.scale->size != 1) {
+    if (quantization_params.quantized_dimension >= NumDimensions(&tensor)) {
+      TF_LITE_KERNEL_LOG(context,
+                         "quantized_dimension value (%" PRId32
+                         ") is higher than the number of dimensions (%d) of %s "
+                         "tensor %d in XNNPACK delegate",
+                         quantization_params.quantized_dimension,
+                         NumDimensions(&tensor), TfLiteTypeGetName(tensor.type),
+                         t);
+      return false;
+    }
+    if (quantization_params.scale->size !=
+        SizeOfDimension(&tensor, quantization_params.quantized_dimension)) {
+      TF_LITE_KERNEL_LOG(
+          context,
+          "mismatching number of quantization scales (%d) and quantized "
+          "dimension size (%d) for %s tensor %d in XNNPACK delegate",
+          quantization_params.scale->size,
+          SizeOfDimension(&tensor, quantization_params.quantized_dimension),
+          TfLiteTypeGetName(tensor.type), t);
+      return false;
+    }
+  }
   return true;
 }
 
@@ -278,24 +301,9 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
             }
             return xnn_datatype_qint8;
           }
-          if (NumDimensions(&tensor) >= 1 &&
-              quantization_scale->size ==
-                  SizeOfDimension(&tensor,
-                                  quantization_params->quantized_dimension)) {
-            // Per-channel quantization
-            if (!CheckZeroPointForPerChannelQuantization(
-                    context, tensor, t, *(quantization_params->zero_point))) {
-              return xnn_datatype_invalid;
-            }
-          } else {
-            TF_LITE_KERNEL_LOG(
-                context,
-                "mismatching number of quantization parameters %d and outer "
-                "dimension %d for INT8 tensor %d in XNNPACK delegate",
-                quantization_params->scale->size,
-                SizeOfDimension(&tensor,
-                                quantization_params->quantized_dimension),
-                t);
+          // Per-channel quantization
+          if (!CheckZeroPointForPerChannelQuantization(
+                  context, tensor, t, *(quantization_params->zero_point))) {
             return xnn_datatype_invalid;
           }
           switch (tensor.type) {
@@ -385,19 +393,9 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
       if (quantization_params->scale->size == 1) {
         // Per-tensor quantization
         return xnn_datatype_qint32;
-      } else if (NumDimensions(&tensor) >= 1 &&
-                 quantization_params->scale->size ==
-                     SizeOfDimension(&tensor, 0)) {
-        // Per-channel quantization
-        return xnn_datatype_qcint32;
-      } else {
-        TF_LITE_KERNEL_LOG(
-            context,
-            "mismatching number of quantization parameters %d and outer "
-            "dimension %d for INT32 tensor %d in XNNPACK delegate",
-            quantization_params->scale->size, SizeOfDimension(&tensor, 0), t);
-        return xnn_datatype_invalid;
       }
+      // Per-channel quantization
+      return xnn_datatype_qcint32;
     }
     default:
       return xnn_datatype_invalid;
