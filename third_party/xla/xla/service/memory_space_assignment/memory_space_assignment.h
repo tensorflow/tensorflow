@@ -260,6 +260,18 @@ class PresetAssignments {
     return assignment_info_;
   }
 
+  // A chunk of alternate memory that has been allocated for post-module
+  // scoped operations.
+  std::optional<HeapSimulator::Chunk>
+  post_module_scoped_alternate_memory_chunk() const {
+    return post_module_scoped_alternate_memory_chunk_;
+  }
+
+  void set_post_module_scoped_alternate_memory_chunk(
+      const HeapSimulator::Chunk& chunk) {
+    post_module_scoped_alternate_memory_chunk_ = chunk;
+  }
+
   // Get debugging information.
   std::string buffer_info_str() const { return buffer_info_str_; }
   std::string allocation_info_str() const { return allocation_info_str_; }
@@ -271,6 +283,8 @@ class PresetAssignments {
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
   std::vector<std::pair<HloInstruction*, HeapSimulator::Chunk>>
       scoped_allocation_chunks_;
+  std::optional<HeapSimulator::Chunk>
+      post_module_scoped_alternate_memory_chunk_ = std::nullopt;
   std::vector<std::pair<int64_t, AssignmentInformation>> assignment_info_;
   std::string buffer_info_str_;
   std::string allocation_info_str_;
@@ -363,6 +377,18 @@ class MemorySpaceAssignment {
   HloModule* module() { return module_; }
 
  private:
+  // A struct that represents the source of scoped alternate memory. It can be
+  // either for an instruction or for post-module operations.
+  struct ScopedMemorySource {
+    static ScopedMemorySource ForInstruction(HloInstruction* instruction);
+    static ScopedMemorySource ForPostModule();
+
+    std::string ToString() const;
+
+    bool is_post_module = false;
+    HloInstruction* instruction = nullptr;
+  };
+
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
   absl::Status Process(const HloLiveRange& hlo_live_range);
@@ -397,7 +423,7 @@ class MemorySpaceAssignment {
       alternate_memory_assignments_;
   // Maps from a defining position to a shape if the tensor is split.
   absl::flat_hash_map<HloPosition, const Layout*> split_map_;
-  std::vector<std::pair<HloInstruction*, HeapSimulator::Chunk>>
+  std::vector<std::pair<ScopedMemorySource, HeapSimulator::Chunk>>
       scoped_memory_assignments_;
   int64_t alternate_memory_size_ = 0;
 

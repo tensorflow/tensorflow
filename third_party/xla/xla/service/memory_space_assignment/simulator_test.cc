@@ -71,7 +71,7 @@ class MemorySpaceAssignmentSimulatorTest
                 memory_space_assignment::MemorySpace::kAlternate,
                 HeapSimulator::Chunk::FromOffsetSize(-1, -1),
                 /*start_time=*/0,
-                /*end_time=*/1, /*is_scoped_allocation=*/false);
+                /*end_time=*/1);
         for (HloInstruction* user : inst->users()) {
           allocation->AddUse(HloUse{user, 0});
         }
