@@ -213,7 +213,8 @@ void convertShardingsToStablehloShardings(
 
   if (mesh.getAxes().size() == manualAxes.region.size()) {
     // All operations in the body have fully manual sharding.
-    StringAttr fullyManualSharding = getStringAttr(HloSharding::Manual());
+    StringAttr fullyManualSharding =
+        StringAttr::get(context, HloSharding::Manual().ToString());
     op.getBody().front().walk<mlir::WalkOrder::PreOrder>(
         [&](Operation* opInBody) {
           if (mlir::isa<ManualComputationOp>(opInBody)) {
@@ -245,7 +246,7 @@ void convertShardingsToStablehloShardings(
           opInBody->setAttr(kXlaShardingAttr,
                             convertToHloShardingAttr(
                                 opInBody, shardingPerValue.getShardings(),
-                                getMeshAttr, getStringAttr, manualAxes.region));
+                                getMeshAttr, manualAxes.region));
           opInBody->removeAttr(kShardingAttr);
           return mlir::WalkResult::advance();
         });
