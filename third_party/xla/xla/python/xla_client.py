@@ -92,6 +92,7 @@ class PrecisionConfig:
 
 
 FftType = ops.FftType
+ShapeIndex = ops.ShapeIndex
 ResultAccuracyMode = ops.ResultAccuracy_Mode
 
 

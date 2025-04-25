@@ -256,6 +256,7 @@ cc_library(
         ":nb_helpers",
         ":types",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/types:span",
         "@nanobind",
         "//xla:literal",
