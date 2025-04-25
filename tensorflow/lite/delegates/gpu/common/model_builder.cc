@@ -3617,7 +3617,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 
 absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
                                  const tflite::OpResolver& op_resolver,
-                                 GraphFloat32* graph, bool allow_quant_ops) {
+                                 GraphFloat32* graph, bool allow_quant_ops,
+                                 bool apply_model_transformations) {
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::InterpreterBuilder interpreter_builder(flatbuffer, op_resolver);
   if (interpreter_builder(&interpreter) != kTfLiteOk || !interpreter) {
@@ -3643,9 +3644,11 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
     return absl::InternalError("Conversion from TfLite model failed.");
   }
 
-  ModelTransformer transformer(graph);
-  if (!ApplyModelTransformations(&transformer)) {
-    return absl::InternalError("Graph transformations failed");
+  if (apply_model_transformations) {
+    ModelTransformer transformer(graph);
+    if (!ApplyModelTransformations(&transformer)) {
+      return absl::InternalError("Graph transformations failed");
+    }
   }
 
   return absl::OkStatus();

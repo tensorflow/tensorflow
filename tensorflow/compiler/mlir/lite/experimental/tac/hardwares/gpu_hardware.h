@@ -41,6 +41,8 @@ class GpuHardware : public TargetHardware {
 
   double GetHardwareSwitchingCost(const TargetHardware* from,
                                   size_t buffer_size) const override;
+
+  bool IsOpSupported(mlir::Operation* op) const override;
 };
 }  // namespace tac
 }  // namespace TFL

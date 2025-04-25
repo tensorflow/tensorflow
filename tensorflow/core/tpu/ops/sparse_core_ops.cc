@@ -26,8 +26,8 @@ namespace {
 absl::Status ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
     shape_inference::InferenceContext* c, const int weights_index,
     const int preserved_valencies_index, const int preserved_vectors_index,
-    const int activation_gradients_index, const int tables_index,
-    const int num_tables) {
+    const int preserved_weights_index, const int activation_gradients_index,
+    const int tables_index, const int num_tables) {
   shape_inference::ShapeHandle shape;
   int num_weights;
   int max_valency_int;
@@ -37,6 +37,9 @@ absl::Status ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
   // issues of 0-shaped values.
   if (num_weights > 0) {
     TF_RETURN_IF_ERROR(c->Merge(c->input(weights_index),
+                                c->MakeShape({c->MakeDim(num_weights)}),
+                                &shape));
+    TF_RETURN_IF_ERROR(c->Merge(c->input(preserved_weights_index),
                                 c->MakeShape({c->MakeDim(num_weights)}),
                                 &shape));
   }
@@ -662,6 +665,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInput")
     .Input("weights: float32")
     .Input("preserved_valencies: int32")
     .Input("preserved_vectors: float32")
+    .Input("preserved_weights: float32")
     .Input("activation_gradients: float32")
     .Input("learning_rate: float32")
     .Input("combiner_weights_learning_rate: float32")
@@ -679,14 +683,15 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInput")
       constexpr int kWeightsIndex = 5;
       constexpr int kPreservedValenciesIndex = 6;
       constexpr int kPreservedVectorsIndex = 7;
-      constexpr int kActivationGradientsIndex = 8;
-      constexpr int kTablesIndex = 11;
+      constexpr int kPreservedWeightsIndex = 8;
+      constexpr int kActivationGradientsIndex = 9;
+      constexpr int kTablesIndex = 12;
       constexpr int kNumTables = 1;
       TF_RETURN_IF_ERROR(
           ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
               c, kWeightsIndex, kPreservedValenciesIndex,
-              kPreservedVectorsIndex, kActivationGradientsIndex, kTablesIndex,
-              kNumTables));
+              kPreservedVectorsIndex, kPreservedWeightsIndex,
+              kActivationGradientsIndex, kTablesIndex, kNumTables));
       return absl::OkStatus();
     });
 
@@ -699,6 +704,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInput")
     .Input("weights: float32")
     .Input("preserved_valencies: int32")
     .Input("preserved_vectors: float32")
+    .Input("preserved_weights: float32")
     .Input("activation_gradients: float32")
     .Input("learning_rate: float32")
     .Input("combiner_weights_learning_rate: float32")
@@ -718,14 +724,15 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInput")
       constexpr int kWeightsIndex = 5;
       constexpr int kPreservedValenciesIndex = 6;
       constexpr int kPreservedVectorsIndex = 7;
-      constexpr int kActivationGradientsIndex = 8;
-      constexpr int kTablesIndex = 11;
+      constexpr int kPreservedWeightsIndex = 8;
+      constexpr int kActivationGradientsIndex = 9;
+      constexpr int kTablesIndex = 12;
       constexpr int kNumTables = 2;
       TF_RETURN_IF_ERROR(
           ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
               c, kWeightsIndex, kPreservedValenciesIndex,
-              kPreservedVectorsIndex, kActivationGradientsIndex, kTablesIndex,
-              kNumTables));
+              kPreservedVectorsIndex, kPreservedWeightsIndex,
+              kActivationGradientsIndex, kTablesIndex, kNumTables));
       return absl::OkStatus();
     });
 
@@ -739,6 +746,7 @@ REGISTER_OP(
     .Input("weights: float32")
     .Input("preserved_valencies: int32")
     .Input("preserved_vectors: float32")
+    .Input("preserved_weights: float32")
     .Input("activation_gradients: float32")
     .Input("learning_rate: float32")
     .Input("combiner_weights_learning_rate: float32")
@@ -765,14 +773,15 @@ REGISTER_OP(
       constexpr int kWeightsIndex = 5;
       constexpr int kPreservedValenciesIndex = 6;
       constexpr int kPreservedVectorsIndex = 7;
-      constexpr int kActivationGradientsIndex = 8;
-      constexpr int kTablesIndex = 11;
+      constexpr int kPreservedWeightsIndex = 8;
+      constexpr int kActivationGradientsIndex = 9;
+      constexpr int kTablesIndex = 12;
       constexpr int kNumTables = 3;
       TF_RETURN_IF_ERROR(
           ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
               c, kWeightsIndex, kPreservedValenciesIndex,
-              kPreservedVectorsIndex, kActivationGradientsIndex, kTablesIndex,
-              kNumTables));
+              kPreservedVectorsIndex, kPreservedWeightsIndex,
+              kActivationGradientsIndex, kTablesIndex, kNumTables));
       return absl::OkStatus();
     });
 
@@ -785,6 +794,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInput")
     .Input("weights: float32")
     .Input("preserved_valencies: int32")
     .Input("preserved_vectors: float32")
+    .Input("preserved_weights: float32")
     .Input("activation_gradients: float32")
     .Input("learning_rate: float32")
     .Input("combiner_weights_learning_rate: float32")
@@ -810,14 +820,15 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInput")
       constexpr int kWeightsIndex = 5;
       constexpr int kPreservedValenciesIndex = 6;
       constexpr int kPreservedVectorsIndex = 7;
-      constexpr int kActivationGradientsIndex = 8;
-      constexpr int kTablesIndex = 11;
+      constexpr int kPreservedWeightsIndex = 8;
+      constexpr int kActivationGradientsIndex = 9;
+      constexpr int kTablesIndex = 12;
       constexpr int kNumTables = 3;
       TF_RETURN_IF_ERROR(
           ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
               c, kWeightsIndex, kPreservedValenciesIndex,
-              kPreservedVectorsIndex, kActivationGradientsIndex, kTablesIndex,
-              kNumTables));
+              kPreservedVectorsIndex, kPreservedWeightsIndex,
+              kActivationGradientsIndex, kTablesIndex, kNumTables));
       return absl::OkStatus();
     });
 
@@ -830,6 +841,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInput")
     .Input("weights: float32")
     .Input("preserved_valencies: int32")
     .Input("preserved_vectors: float32")
+    .Input("preserved_weights: float32")
     .Input("activation_gradients: float32")
     .Input("learning_rate: float32")
     .Input("combiner_weights_learning_rate: float32")
@@ -856,14 +868,15 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInput")
       constexpr int kWeightsIndex = 5;
       constexpr int kPreservedValenciesIndex = 6;
       constexpr int kPreservedVectorsIndex = 7;
-      constexpr int kActivationGradientsIndex = 8;
-      constexpr int kTablesIndex = 11;
+      constexpr int kPreservedWeightsIndex = 8;
+      constexpr int kActivationGradientsIndex = 9;
+      constexpr int kTablesIndex = 12;
       constexpr int kNumTables = 3;
       TF_RETURN_IF_ERROR(
           ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
               c, kWeightsIndex, kPreservedValenciesIndex,
-              kPreservedVectorsIndex, kActivationGradientsIndex, kTablesIndex,
-              kNumTables));
+              kPreservedVectorsIndex, kPreservedWeightsIndex,
+              kActivationGradientsIndex, kTablesIndex, kNumTables));
       return absl::OkStatus();
     });
 
@@ -878,6 +891,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput")
     // the VJP computations in the backward pass.
     .Input("preserved_valencies: int32")
     .Input("preserved_vectors: float32")
+    .Input("preserved_weights: float32")
     .Input("activation_gradients: float32")
     .Input("tables: N * float32")
     .Input("hyperparameters: M * float32")
@@ -896,15 +910,16 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput")
       constexpr int kWeightsIndex = 5;
       constexpr int kPreservedValenciesIndex = 6;
       constexpr int kPreservedVectorsIndex = 7;
-      constexpr int kActivationGradientsIndex = 8;
-      constexpr int kTablesIndex = 9;
+      constexpr int kPreservedWeightsIndex = 8;
+      constexpr int kActivationGradientsIndex = 9;
+      constexpr int kTablesIndex = 10;
       int num_tables;
       TF_RETURN_IF_ERROR(c->GetAttr("N", &num_tables));
       TF_RETURN_IF_ERROR(
           ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
               c, kWeightsIndex, kPreservedValenciesIndex,
-              kPreservedVectorsIndex, kActivationGradientsIndex, kTablesIndex,
-              num_tables));
+              kPreservedVectorsIndex, kPreservedWeightsIndex,
+              kActivationGradientsIndex, kTablesIndex, num_tables));
       return absl::OkStatus();
     });
 

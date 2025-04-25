@@ -519,8 +519,7 @@ ENTRY entry {
   EXPECT_GT(result.shmem_bytes, device_info.shared_memory_per_block());
 }
 
-// TODO(b/393299275): there is a miscompile here.
-TEST_F(TritonGemmTest, DISABLED_MultipleDims) {
+TEST_F(TritonGemmTest, MultipleDims) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -535,7 +534,7 @@ ENTRY e {
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
 ; CHECK-NOT:  convert
-; CHECK-NEXT: fusion(
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "__triton_nested_gemm_fusion"
   )");
@@ -569,34 +568,7 @@ ENTRY e {
                                ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// TODO(b/393299275, b/410085031): requires canonicalizing the transpose in
-// order to be able to go through tile constraints. We end up trying to
-// propagate a tile with sizes (32, 32) upwards through the following ops:
-//
-//   p0 = pred[3,122,96,12]{3,2,1,0} parameter(0)
-//   transpose = pred[3,96,12,122]{3,2,1,0} transpose(p0), dimensions={0,2,3,1}
-//   bitcast = pred[3456,122]{1,0} bitcast(transpose)
-//
-// Unfortunately, there is no way to propagate such tile sizes through the
-// bitcast, since the trailing dimension of the reshaped dimension has size 12,
-// which is not divisible by any power of 2. BUT! The legacy emitter also has to
-// work around this problem, since it has generate a tensor pointer, which
-// requires coming up with a tile-like structure for the parameter load.
-//
-// The reason this works is that we can actually rewrite the HLO to collapse
-// the dimensions of size 96 and 12 at every step, and that those dimensions are
-// initially contiguous:
-//
-//   p0 = pred[3,122,1152]{3,2,1,0} parameter(0)
-//   transpose = pred[3,1152,122]{3,2,1,0} transpose(p0), dimensions={0,2,1}
-//   bitcast = pred[3456,122]{1,0} bitcast(transpose)
-//
-// (with a hoisted bitcast in the caller giving the right logical shape to the
-// parameter). The resulting dimension has length 1152, which is divisible by
-// 128 and therefore allows tile propagation to proceed smoothly. The legacy
-// emitter essentially does this implicitly in code generation instead of
-// materializing it in HLO.
-TEST_F(TritonGemmTest, DISABLED_SplitLhsNoncontractingTransposeRhs) {
+TEST_F(TritonGemmTest, SplitLhsNoncontractingTransposeRhs) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -609,20 +581,19 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={2}
 })";
 
+  // Check that the transpose is in the nested fusion but not in the entry.
   MatchOptimizedHlo(kHloText, R"(
+; CHECK: transpose
 ; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: fusion(
+; CHECK-NOT: transpose
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: __triton_nested_gemm_fusion
 )");
-
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
-// TODO(b/393299275): requires hoisting bitcasts through transposes.
-TEST_F(TritonGemmTest, DISABLED_SplitLhsNoncontracting) {
+TEST_F(TritonGemmTest, SplitLhsNoncontracting) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f32[72,72] parameter(0)
@@ -635,11 +606,13 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
+  // Check that the transpose is in the nested fusion but not in the entry.
   MatchOptimizedHlo(kHloText, R"(
+; CHECK: f32[72,2,36]{2,1,0} transpose(
+; CHECK-NEXT: ROOT
 ; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: fusion(
+; CHECK-NOT: transpose
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: __triton_nested_gemm_fusion
 )");
@@ -663,10 +636,9 @@ ENTRY e {
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: ROOT
-; CHECK-SAME: fusion
+; CHECK-NOT: transpose
+; CHECK-NOT: convert
+; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
@@ -1704,8 +1676,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-// TODO(b/393299275): looks like another miscompile.
-TEST_F(TritonGemmTest, DISABLED_ParameterAfterDotIsFused) {
+TEST_F(TritonGemmTest, ParameterAfterDotIsFused) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }

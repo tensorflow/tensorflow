@@ -886,20 +886,10 @@ std::string GetNonDefaultDebugOptions(const DebugOptions& debug_options) {
       continue;
     }
 
-    // Check if this field differs from default
-    if (reflection->HasField(debug_options, field) &&
-        !reflection->HasField(default_options, field)) {
-      // Field exists in debug_options but not defaults
+    if (GetValueAsString(reflection, debug_options, field) !=
+        GetValueAsString(reflection, default_options, field)) {
       absl::StrAppend(&non_default_options, field->name(), ": ",
                       GetValueAsString(reflection, debug_options, field), "\n");
-    } else if (reflection->HasField(debug_options, field)) {
-      // Field exists in both, compare values
-      if (GetValueAsString(reflection, debug_options, field) !=
-          GetValueAsString(reflection, default_options, field)) {
-        absl::StrAppend(&non_default_options, field->name(), ": ",
-                        GetValueAsString(reflection, debug_options, field),
-                        "\n");
-      }
     }
   }
 

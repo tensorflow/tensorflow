@@ -179,7 +179,7 @@ def gen_gpu_hlo_compile_tests(
 
         # Expand "gpu" backend name to specific GPU backends and update tags.
         backends, disabled_backends, backend_tags, backend_args = \
-            prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args)
+            prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, tags)
 
         backends = [
             backend

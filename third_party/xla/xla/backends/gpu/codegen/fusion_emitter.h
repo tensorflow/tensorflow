@@ -104,6 +104,7 @@ absl::StatusOr<
     std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
                std::vector<llvm_ir::IrArray> /*outputs*/>>
 BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
+                     const std::string& impl_fn_name,
                      const std::string& suggested_name,
                      absl::Span<const KernelArgument> arguments,
                      size_t num_inputs,
@@ -113,6 +114,7 @@ absl::StatusOr<
     std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
                std::vector<llvm_ir::IrArray> /*outputs*/>>
 BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
+                                   const std::string& impl_fn_name,
                                    const std::string& unique_name,
                                    absl::Span<const KernelArgument> arguments,
                                    size_t num_inputs,

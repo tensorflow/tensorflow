@@ -134,12 +134,6 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, MixedTypeTest,
                              MixTypeParams{F16, F32, 16, 32, 8, 1e-3, 1e-6},
                              MixTypeParams{BF16, F16, 16, 32, 8, 1e-3, 1e-6},
                              MixTypeParams{BF16, F32, 16, 32, 8, 1e-3, 1e-6},
-                             // Supported but disabled because narrowing
-                             // converts should rather belong to producers.
-                             // TODO(b/266862493): Move these to CompareTest.
-                             // TritonRewriteTest2Params{S32, BF16},
-                             //  TritonRewriteTest2Params{F32, F16},
-                             //  TritonRewriteTest2Params{F32, BF16},
                              MixTypeParams{S8, BF16, 24, 40, 8},
                              MixTypeParams{S8, F16, 80, 16, 32, 1e-3, 1e-6},
                              MixTypeParams{F16, F32, 127, 3, 300, 1e-2, 1e-2},

@@ -17,7 +17,6 @@ load(
     "if_cuda_tools",
     # copybara:comment_end
     "if_google",
-    "if_nccl",
     "if_windows",
     "internal_visibility",
     "tsl_copts",
@@ -97,7 +96,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps =
         [
-            ":cuda_collectives",
             ":cuda_diagnostics",  # buildcleaner: keep
             ":cuda_executor",
             ":cuda_platform_id",
@@ -202,81 +200,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-    ],
-)
-
-cc_library(
-    name = "cuda_collectives",
-    hdrs = ["cuda_collectives.h"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = if_nccl(
-        [":cuda_collectives_impl"],
-        [":cuda_collectives_stub"],
-    ) + [
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/gpu:context",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-cc_library(
-    name = "cuda_collectives_impl",
-    srcs = [
-        "cuda_collectives.cc",
-        "cuda_collectives.h",
-    ],
-    tags = [
-        "cuda-only",
-        "gpu",
-        "manual",
-    ],
-    deps = [
-        "//xla/backends/gpu/collectives:gpu_collectives",
-        "//xla/core/collectives",
-        "//xla/core/collectives:collectives_registry",
-        "//xla/stream_executor:activate_context",
-        "//xla/stream_executor:stream_executor_h",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_config_nccl//:nccl",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-cc_library(
-    name = "cuda_collectives_stub",
-    srcs = [
-        "cuda_collectives.h",
-        "cuda_collectives_stub.cc",
-    ],
-    deps = [
-        "//xla/stream_executor:stream_executor_h",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-xla_test(
-    name = "cuda_collectives_test",
-    srcs = ["cuda_collectives_test.cc"],
-    backends = ["gpu_any"],
-    tags = ["cuda-only"],
-    deps = [
-        ":cuda_collectives",
-        "//xla/backends/gpu/collectives:gpu_collectives",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream_executor_h",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -1009,7 +932,6 @@ cc_library(
         "gpu",
     ],
     deps = [
-        ":cuda_collectives",
         ":cuda_command_buffer",
         ":cuda_context",
         ":cuda_event",
@@ -1020,6 +942,8 @@ cc_library(
         ":cuda_timer",
         ":cuda_version_parser",
         ":tma_util",
+        "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/core/collectives:collectives_registry",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:command_buffer",

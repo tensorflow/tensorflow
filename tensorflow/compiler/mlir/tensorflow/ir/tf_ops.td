@@ -2864,6 +2864,7 @@ def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInputOp : TF_Op<"X
     // combiner VJP).
     TF_Int32Tensor:$preserved_valencies,
     TF_Float32Tensor:$preserved_vectors,
+    TF_Float32Tensor:$preserved_weights,
     // Gradients of the activation.
     TF_Float32Tensor:$activation_gradients,
     // Learning rate of the embedding table.
@@ -2903,6 +2904,7 @@ def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInputOp : TF_O
     // combiner VJP).
     TF_Int32Tensor:$preserved_valencies,
     TF_Float32Tensor:$preserved_vectors,
+    TF_Float32Tensor:$preserved_weights,
     // Gradients of the activation.
     TF_Float32Tensor:$activation_gradients,
     // Learning rate of the embedding table.
@@ -2944,6 +2946,7 @@ def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrInputO
     // combiner VJP).
     TF_Int32Tensor:$preserved_valencies,
     TF_Float32Tensor:$preserved_vectors,
+    TF_Float32Tensor:$preserved_weights,
     // Gradients of the activation.
     TF_Float32Tensor:$activation_gradients,
     // Learning rate of the embedding table.
@@ -2993,6 +2996,7 @@ def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInputOp : TF_Op<"
     // combiner VJP).
     TF_Int32Tensor:$preserved_valencies,
     TF_Float32Tensor:$preserved_vectors,
+    TF_Float32Tensor:$preserved_weights,
     // Gradients of the activation.
     TF_Float32Tensor:$activation_gradients,
     // Learning rate of the embedding table.
@@ -3041,6 +3045,7 @@ def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInputOp : TF_Op<"
     // combiner VJP).
     TF_Int32Tensor:$preserved_valencies,
     TF_Float32Tensor:$preserved_vectors,
+    TF_Float32Tensor:$preserved_weights,
     // Gradients of the activation.
     TF_Float32Tensor:$activation_gradients,
     // Learning rate of the embedding table.
@@ -3090,6 +3095,7 @@ def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp : TF_Op<"XlaSpar
     // combiner VJP).
     TF_Int32Tensor:$preserved_valencies,
     TF_Float32Tensor:$preserved_vectors,
+    TF_Float32Tensor:$preserved_weights,
     // Gradients of the activation.
     TF_Float32Tensor:$activation_gradients,
     // The embedding table and the associated slot variables.
@@ -3114,9 +3120,9 @@ def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp : TF_Op<"XlaSpar
   );
 
   // Number of embedding table + its associated slot variables.
-  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<9>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<10>;
   // Number of hyperparameters.
-  TF_DerivedOperandSizeAttr M = TF_DerivedOperandSizeAttr<10>;
+  TF_DerivedOperandSizeAttr M = TF_DerivedOperandSizeAttr<11>;
 }
 
 // b/394499589: move back to tf_generated_ops.td

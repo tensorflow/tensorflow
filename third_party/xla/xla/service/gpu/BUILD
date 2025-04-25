@@ -1648,8 +1648,6 @@ xla_test(
     srcs = ["gpu_compiler_test.cc"],
     backends = ["gpu"],
     data = ["gpu_compiler_test_autotune_db.textproto"],
-    # TODO(b/399912696): Remove this once the test case order dependency is fixed.
-    shuffle_tests = False,  # CANNOT_SHUFFLE_TESTS=existing dependency on test case order.
     deps = [
         ":backend_configs_cc",
         ":gpu_compiler",

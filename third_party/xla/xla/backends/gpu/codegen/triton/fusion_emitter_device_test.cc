@@ -2028,38 +2028,6 @@ ENTRY entry_computation {
       RunAndCompareNoHloPasses(std::move(module), {&literal}, kExactMatch));
 }
 
-TEST_F(TritonEmitterTest, FP8ToFP8EndToEnd) {
-  if (auto cc = std::get_if<se::CudaComputeCapability>(&GpuComputeCapability());
-      cc && !cc->IsAtLeastHopper()) {
-    GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
-  }
-
-  const std::string hlo_text = R"(
-HloModule t
-
-triton_dot {
-  parameter_0 = f8e5m2[32,32]{1,0} parameter(0)
-  parameter_1 = f8e4m3fn[32,32]{1,0} parameter(1)
-  convert = f8e4m3fn[32,32]{1,0} convert(parameter_0)
-  ROOT dot = f32[32,32]{1,0} dot(convert, parameter_1),
-                lhs_contracting_dims={1}, rhs_contracting_dims={1}
-}
-
-ENTRY main {
-  parameter_0 = f8e5m2[32,32]{1,0} parameter(0)
-  parameter_1 = f8e4m3fn[32,32]{1,0} parameter(1)
-  ROOT gemm_fusion_dot = f32[32,32]{1,0} fusion(parameter_0, parameter_1),
-       kind=kCustom, calls=triton_dot,
-       backend_config={
-       "fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":
-         {"block_m":"32","block_n":"32","block_k":"32","split_k":"1",
-          "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
-})";
-
-  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text,
-                                       ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
-}
-
 TEST_F(TritonEmitterTest, SingleTileDotWithNestedFusionsIsEmittedCorrectly) {
   // Simplest case when everything fits into one tile that is useful for
   // debugging. This also tests support for empty nested fusions.

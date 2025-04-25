@@ -1452,11 +1452,11 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
       llvm::Function* kernel;
       std::vector<llvm_ir::IrArray> inputs;
       std::vector<llvm_ir::IrArray> outputs;
-      TF_ASSIGN_OR_RETURN(
-          std::tie(kernel, inputs, outputs),
-          BuildKernelPrototypeFromUniqueName(
-              *ir_emitter_context_, sanitized_kernel_name,
-              kernel_arguments.args(), arg_size, launch_dimensions, &builder));
+      TF_ASSIGN_OR_RETURN(std::tie(kernel, inputs, outputs),
+                          BuildKernelPrototypeFromUniqueName(
+                              *ir_emitter_context_, impl_fn->getName().str(),
+                              sanitized_kernel_name, kernel_arguments.args(),
+                              arg_size, launch_dimensions, &builder));
 
       // Move function body into kernel prototype.
       llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
@@ -2298,9 +2298,10 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
   std::vector<llvm_ir::IrArray> outputs;
   TF_ASSIGN_OR_RETURN(
       std::tie(kernel, inputs, outputs),
-      BuildKernelPrototype(
-          *ir_emitter_context_, suggested_kernel_name, kernel_arguments.args(),
-          kernel_arguments.args().size(), launch_dimensions, &b_));
+      BuildKernelPrototype(*ir_emitter_context_, suggested_kernel_name,
+                           suggested_kernel_name, kernel_arguments.args(),
+                           kernel_arguments.args().size(), launch_dimensions,
+                           &b_));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       hlo, kernel->getName().str(), kernel_arguments.args(), launch_dimensions,

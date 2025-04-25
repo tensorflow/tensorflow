@@ -39,6 +39,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/FileSystem.h"
@@ -1959,6 +1960,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     }
   }
 
+  std::vector<llvm::Metadata*> captured_nvvm_annotations;
   if (emit_kernel) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<llvm::Module> ll_triton_module,
@@ -1974,6 +1976,9 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     auto* nvvm_annotations =
         ll_triton_module->getNamedMetadata("nvvm.annotations");
     if (nvvm_annotations) {
+      for (auto operand : nvvm_annotations->operands()) {
+        captured_nvvm_annotations.push_back(operand);
+      }
       ll_triton_module->eraseNamedMetadata(nvvm_annotations);
     }
     ll_triton_module->setDataLayout(llvm_module->getDataLayout());
@@ -2012,7 +2017,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   TF_ASSIGN_OR_RETURN(stream_executor::gpu::TmaMetadata tma_metadata,
                       ExtractTmaMetadata(triton_module, kernel_name));
 
-  return {{shared_mem_bytes, cluster_dim, tma_metadata}};
+  return {
+      {shared_mem_bytes, cluster_dim, tma_metadata, captured_nvvm_annotations}};
 }
 
 }  // namespace gpu

@@ -147,9 +147,13 @@ static std::string GetFdoProfile(const std::string& xspace,
 void BuildProfilerSubmodule(nb::module_& m) {
   nb::module_ profiler =
       m.def_submodule("profiler", "TensorFlow profiler integration");
+  BuildProfilerModule(profiler);
+}
+
+void BuildProfilerModule(nb::module_& m) {
   nb::class_<tsl::profiler::ProfilerServer> profiler_server_class(
-      profiler, "ProfilerServer");
-  profiler.def(
+      m, "ProfilerServer");
+  m.def(
       "start_server",
       [](int port) -> std::unique_ptr<tsl::profiler::ProfilerServer> {
         auto server = std::make_unique<tsl::profiler::ProfilerServer>();
@@ -157,7 +161,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
         return server;
       },
       nb::arg("port"));
-  profiler.def("register_plugin_profiler", [](nb::capsule c_api) -> void {
+  m.def("register_plugin_profiler", [](nb::capsule c_api) -> void {
     if (absl::string_view(c_api.name()) != "pjrt_c_api") {
       throw xla::XlaRuntimeError(
           "Argument to register_plugin_profiler was not a pjrt_c_api capsule.");
@@ -165,7 +169,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
     RegisterProfiler(static_cast<const PJRT_Api*>(c_api.data()));
   });
 
-  nb::class_<ProfilerSessionWrapper> profiler_session_class(profiler,
+  nb::class_<ProfilerSessionWrapper> profiler_session_class(m,
                                                             "ProfilerSession");
   profiler_session_class
       .def("__init__",
@@ -218,7 +222,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
            });
 
   nb::class_<tensorflow::ProfileOptions> profile_options_class(
-      profiler, "ProfileOptions");
+      m, "ProfileOptions");
   profile_options_class
       .def("__init__",
            [](tensorflow::ProfileOptions* options) {
@@ -252,7 +256,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
             options->set_repository_path(path);
           });
 
-  nb::class_<TraceMeWrapper> traceme_class(profiler, "TraceMe");
+  nb::class_<TraceMeWrapper> traceme_class(m, "TraceMe");
   traceme_class.def(nb::init<nb::str, nb::kwargs>())
       .def("__enter__", [](nb::object self) -> nb::object { return self; })
       .def(
@@ -268,7 +272,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
       .def("set_metadata", &TraceMeWrapper::SetMetadata)
       .def_static("is_enabled", &TraceMeWrapper::IsEnabled);
 
-  profiler.def(
+  m.def(
       "get_profiled_instructions_proto",
       [](std::string tensorboard_dir) -> nb::bytes {
         tensorflow::profiler::ProfiledInstructionsProto profile_proto;
@@ -280,7 +284,7 @@ void BuildProfilerSubmodule(nb::module_& m) {
       },
       nb::arg("tensorboard_dir"));
 
-  profiler.def(
+  m.def(
       "get_instructions_profile",
       [](const std::string& tensorboard_dir)
           -> std::vector<std::pair<std::string, double>> {
@@ -297,19 +301,19 @@ void BuildProfilerSubmodule(nb::module_& m) {
       },
       nb::arg("tensorboard_dir"));
 
-  profiler.def("get_fdo_profile",
-               [](nb::bytes xspace, bool as_textproto = false) -> nb::object {
-                 std::string out = GetFdoProfile(
-                     std::string(xspace.c_str(), xspace.size()), as_textproto);
-                 return nb::bytes(out.data(), out.size());
-               });
+  m.def("get_fdo_profile",
+        [](nb::bytes xspace, bool as_textproto = false) -> nb::object {
+          std::string out = GetFdoProfile(
+              std::string(xspace.c_str(), xspace.size()), as_textproto);
+          return nb::bytes(out.data(), out.size());
+        });
 
-  profiler.def("get_fdo_profile", [](nb::bytes xspace) -> nb::object {
+  m.def("get_fdo_profile", [](nb::bytes xspace) -> nb::object {
     std::string out = GetFdoProfile(std::string(xspace.c_str(), xspace.size()));
     return nb::bytes(out.data(), out.size());
   });
 
-  profiler.def(
+  m.def(
       "aggregate_profiled_instructions",
       [](const std::vector<nb::bytes>& profiles, int percentile) -> nb::object {
         std::vector<tensorflow::profiler::ProfiledInstructionsProto>

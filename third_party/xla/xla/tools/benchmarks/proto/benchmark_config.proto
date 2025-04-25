@@ -52,6 +52,17 @@ enum UpdateFrequency {
   QUARTERLY = 3;
 }
 
+// Enum defining what benchmark metrics are supported using XSpace.
+enum TargetMetric {
+  TARGET_METRIC_UNSPECIFIED = 0;
+  WALL_TIME = 1;               // Measures profiler start and end time in ms.
+  GPU_DEVICE_TIME = 2;         // Measure GPU device time in ms.
+  GPU_DEVICE_MEMCPY_TIME = 3;  // Measures GPU device memcpy time in ms.
+  CPU_TIME = 4;                // Measures CPU time in ms.
+  PEAK_CPU_MEMORY = 5;         // Measures peak CPU memory in gigabytes.
+  PEAK_GPU_MEMORY = 6;         // Measures peak GPU memory in gigabytes.
+}
+
 // Defines a specific benchmark configuration.
 message BenchmarkConfig {
   // REQUIRED: Unique identifier for this specific benchmark configuration.
@@ -93,22 +104,27 @@ message BenchmarkConfig {
   // REQUIRED: Defines when this benchmark configuration should run.
   repeated RunFrequency run_frequencies = 10;
 
+  // Automatically mapped by hardware category, for example, CPU_X86 ->
+  // [CPU_TIME], GPU_L4 -> [WALL_TIME, GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME,
+  // PEAK_GPU_MEMORY].
+  repeated TargetMetric target_metrics = 11;
+
   // REQUIRED: Metadata about how often this definition should be
   // reviewed/updated.
-  UpdateFrequency update_frequency_policy = 11;
+  UpdateFrequency update_frequency_policy = 12;
 
   // Optional: List of XLA compilation flags to enable/disable.
   // Example: ["--xla_gpu_enable_cudnn_fusion=false",
   // "--xla_gpu_triton_gemm_any=True"]
-  repeated string xla_compilation_flags = 12;
+  repeated string xla_compilation_flags = 13;
 
   // Optional: List of flags for the benchmark runner itself
   // (e.g., specific flags for multihost_hlo_runner).
-  repeated string runtime_flags = 13;
+  repeated string runtime_flags = 14;
 
   // Optional: List of GitHub labels used for filtering/triggering.
   // e.g., If a PR has 'ci:nvidia-benchmarks', run configs with this label.
-  repeated string github_labels = 14;
+  repeated string github_labels = 15;
 }
 
 // Represents a collection of benchmark configurations, typically loaded

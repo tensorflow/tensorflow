@@ -126,8 +126,7 @@ class GpuCompilerTest : public HloTestBase {
   }
 };
 
-// TODO(b/399912696): Fix and enable this test.
-TEST_F(GpuCompilerTest, DISABLED_CompiledProgramsCount) {
+TEST_F(GpuCompilerTest, CompiledProgramsCount) {
   const char* hlo_text = R"(
 HloModule test
 
@@ -137,7 +136,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
-  ResetCompiledProgramsCountForTesting();
+  auto before = GetCompiledProgramsCount();
   std::unique_ptr<Executable> executable =
       backend()
           .compiler()
@@ -147,7 +146,7 @@ ENTRY main {
                         /*layout_canonicalization_callback=*/{},
                         /*is_autotuning_compilation=*/false})
           .value();
-  EXPECT_EQ(GetCompiledProgramsCount(), 1);
+  EXPECT_EQ(GetCompiledProgramsCount(), before + 1);
 }
 
 TEST_F(GpuCompilerTest, RecordsStreamzStackTrace) {
@@ -1656,7 +1655,6 @@ TEST_F(PassOrderTest,
                   /*last_pass_regex=*/"comparison-expander");
 }
 
-
 TEST_F(PassOrderTest,
        AllGatherDynamicSliceSimplifierRunsAfterAllGatherOptimizer) {
   VerifyPassOrder(
@@ -1751,6 +1749,38 @@ TEST_F(PassOrderTest, NestGemmFusionRunsAfterGemmFusionAutotuner) {
   options.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
   SetDebugOptions(options);
   VerifyPassOrder("gemm-fusion-autotuner", "nest_gemm_fusion");
+}
+
+TEST_F(PassOrderTest, TransposeDimensionGrouperRunsBeforeGemmRewriter) {
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+  if (!cc.IsAtLeastAmpere()) {
+    GTEST_SKIP() << "triton-gemm-rewriter requires at least Ampere to run.";
+  }
+  if (!optimized_module_) {
+    CompileModule(GetModuleConfigForTest());
+  }
+  // DebugOptions options = GetDebugOptionsForTest();
+  // options.set_xla_gpu_enable_triton_gemm(true);
+  // SetDebugOptions(options);
+  // Verify that transpose-dimension-grouper runs immediately before
+  // triton-gemm-rewriter. We want to keep them close together to avoid the
+  // possibility of new passes to rewrite the transpose and make it
+  // not compatible with the generic triton emitter.
+  // Simple VerifyPassOrder does not work here as we want to check that passes
+  // are run next to each other, also transpose-dimension-grouper runs one more
+  // time after the gemm rewriter.
+  CHECK(optimized_module_);
+  std::string previous_pass_name;
+  for (const HloPassMetadata& pass_metadata :
+       optimized_module_->metadata().proto().pass_metadata()) {
+    if (pass_metadata.pass_name() == "triton-gemm-rewriter") {
+      EXPECT_EQ(previous_pass_name, "transpose-dimension-grouper");
+    }
+    previous_pass_name = pass_metadata.pass_name();
+  }
 }
 
 TEST_F(PassOrderTest,

@@ -1991,16 +1991,16 @@ absl::Status TfrtGpuClient::DmaUnmap(void* data) {
 
 bool TfrtGpuClient::IsDmaMapped(const void* data_start, int64_t transfer_size) {
   absl::MutexLock lock(&dma_maps_mutex_);
-  if (!dma_maps_.empty()) {
-    void* data_end = (char*)data_start + transfer_size;
-    for (const auto& [map_start, map_size] : dma_maps_) {
-      void* map_end = (char*)map_start + map_size;
-      if (data_start >= map_start && data_end <= map_end) {
-        return true;
-      }
-    }
+  if (dma_maps_.empty()) {
+    return false;
   }
-  return false;
+  auto it = dma_maps_.lower_bound(data_start);
+  if (it == dma_maps_.end()) {
+    return false;
+  }
+  void* data_end = (char*)data_start + transfer_size;
+  void* map_end = (char*)it->first + it->second;
+  return data_end <= map_end;
 }
 
 static absl::StatusOr<std::vector<std::unique_ptr<TfrtGpuDevice>>>
@@ -2870,6 +2870,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       parameters_that_must_be_donated_[executable_idx];
   auto donate_it = donated_params.begin();
 
+  absl::flat_hash_map<const void*, std::pair<bool, int>> donation_clashes;
+  donation_clashes.reserve(argument_handles.size());
   for (int i = 0; i < argument_handles.size(); ++i) {
     PjRtBuffer* handle = argument_handles[i];
     auto* tfrt_buffer = tsl::down_cast<TfrtGpuBuffer*>(handle);
@@ -2884,41 +2886,55 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         options.non_donatable_input_indices.contains(i);
     bool must_donate = donate_it != donated_params.end() && *donate_it == i &&
                        !donation_denied_at_runtime;
-    TrackedTfrtGpuDeviceBuffer* tracked_buffer = nullptr;
-    if (must_donate) {
-      ++donate_it;
-      TF_ASSIGN_OR_RETURN(auto donation_transaction,
-                          tfrt_buffer->AcquireDonation());
+    auto tracked_buffer_or =
+        [&]() -> absl::StatusOr<TrackedTfrtGpuDeviceBuffer*> {
+      TrackedTfrtGpuDeviceBuffer* tracked_buffer = nullptr;
+      if (must_donate) {
+        ++donate_it;
+        TF_RETURN_IF_ERROR(TestBufferDonationClashes(
+            handle, donation_clashes, must_donate, i, replica, partition));
+        TF_ASSIGN_OR_RETURN(auto donation_transaction,
+                            tfrt_buffer->AcquireDonation());
 
-      // After acquiring the buffer for donation, we retrieve the dependent
-      // usage events. Note that we don't need any locking here as
-      // AcquireDonation() is supposed to synchronize with other usages.
-      input_deps.push_back(
-          donation_transaction.device_buffer()->AfterAllUsageEvents());
-      tracked_buffer = donation_transaction.device_buffer();
-      tracked_buffers.push_back(tracked_buffer);
-      buffer_is_donated.push_back(true);
-      donation_transactions.push_back(std::move(donation_transaction));
-    } else {
-      tracked_buffer = tfrt_buffer->AcquireUsage(execute_event);
-      if (!tracked_buffer) {
-        return InvalidArgument(
-            "Invalid buffer passed: buffer has been deleted or donated.");
+        // After acquiring the buffer for donation, we retrieve the dependent
+        // usage events. Note that we don't need any locking here as
+        // AcquireDonation() is supposed to synchronize with other usages.
+        input_deps.push_back(
+            donation_transaction.device_buffer()->AfterAllUsageEvents());
+        tracked_buffer = donation_transaction.device_buffer();
+        donation_transactions.push_back(std::move(donation_transaction));
+        buffer_is_donated.push_back(true);
+      } else {
+        tracked_buffer = tfrt_buffer->AcquireUsage(execute_event);
+        if (!tracked_buffer) {
+          return InvalidArgument(
+              "Invalid buffer passed: buffer has been deleted or donated.");
+        }
+        buffer_is_donated.push_back(false);
       }
+      return tracked_buffer;
+    }();
+    if (!tracked_buffer_or.ok()) {
+      // If something failed when preparing the input, we still need to add it
+      // to the input deps so that it can poison the output buffers.
+      auto error_av = tsl::MakeErrorAsyncValueRef(tracked_buffer_or.status());
+      prepare_input_deps.push_back(error_av);
+      input_deps.push_back(error_av);
+    } else {
+      TrackedTfrtGpuDeviceBuffer* tracked_buffer = tracked_buffer_or.value();
       tracked_buffers.push_back(tracked_buffer);
-      buffer_is_donated.push_back(false);
-    }
-    prepare_input_deps.push_back(tracked_buffer->buffer().CopyRCRef());
+      prepare_input_deps.push_back(tracked_buffer->buffer().CopyRCRef());
 
-    // Definition events are never modified after buffer construction. If they
-    // are available and have no error, they can be skipped in input deps.
-    // In contrast, already known errors in the input are taken as deps so that
-    // they can poison output buffers.
-    const auto& definition_event = tracked_buffer->definition_event();
-    if (!definition_event.IsAvailable() || definition_event.IsError()) {
-      VLOG(2) << "definition_event is not available: AsyncValue pointer: "
-              << definition_event.GetAsyncValue();
-      input_deps.push_back(definition_event.CopyRCRef());
+      // Definition events are never modified after buffer construction. If they
+      // are available and have no error, they can be skipped in input deps.
+      // In contrast, already known errors in the input are taken as deps so
+      // that they can poison output buffers.
+      const auto& definition_event = tracked_buffer->definition_event();
+      if (!definition_event.IsAvailable() || definition_event.IsError()) {
+        VLOG(2) << "definition_event is not available: AsyncValue pointer: "
+                << definition_event.GetAsyncValue();
+        input_deps.push_back(definition_event.CopyRCRef());
+      }
     }
   }
 
@@ -3171,8 +3187,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
             "prepare_inputs", tsl::profiler::ContextType::kPjRt,
             run_id.ToInt());
 
-        VLOG(2) << "prepare_inputs";
-        DCHECK_EQ(tracked_buffers.size(), buffer_is_donated.size());
 
         auto set_error = [&](absl::Status status) {
           execute_event.SetError(status);
@@ -3188,6 +3202,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
             return;
           }
         }
+
+        VLOG(2) << "prepare_inputs";
+        DCHECK_EQ(tracked_buffers.size(), buffer_is_donated.size());
 
         absl::Status status = CheckBufferCompatibilities(
             *input_buffer_sizes_in_bytes, tracked_buffers);
@@ -3254,8 +3271,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                            event = execute_event.CopyRef()]() mutable {
       absl::Status s;
       if (auto* error = event.GetErrorIfPresent()) {
-        s = absl::InternalError(
-            absl::StrFormat("Compute error: %s", error->message()));
+        s = *error;
       }
       VLOG(1) << "Setting future: " << s;
       promise.Set(s);

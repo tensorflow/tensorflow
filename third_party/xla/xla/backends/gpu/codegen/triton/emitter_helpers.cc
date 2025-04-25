@@ -175,8 +175,7 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
   if (src_fp_element_ty && dst_fp_element_ty) {
     // F8 <-> FP16, BF16, FP32, FP64 need to be handled via Triton's tt.fp_to_fp
     // because LLVM doesn't support casts from/to FP8.
-    // TODO(b/266862493): Add end-to-end test once FP8 support lands in XLA as
-    // we can't test the code below without patching the feature.
+    // TODO(b/413272992): Add better test coverage for FpToFpOp.
     if (IsFp8Type(src_element_ty) && !IsFp8Type(dst_element_ty)) {
       return b.create<mt::FpToFpOp>(dst_ty, value);
     }
@@ -214,7 +213,7 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
   }
   // int => float
   if (mlir::isa<mlir::IntegerType>(src_element_ty) && dst_fp_element_ty) {
-    // TODO(b/266862493): Support unsigned integer types.
+    // The current logic handles signed integer types only.
     if (src_element_ty.isInteger(1)) {
       return b.create<ma::UIToFPOp>(dst_ty, value);
     }
@@ -226,7 +225,6 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
       return b.create<ma::CmpFOp>(ma::CmpFPredicate::UNE, value,
                                   ZerosLike(b, value));
     }
-    // TODO(b/266862493): Support unsigned integer types.
     // The current logic handles signed integer types only. Additional handling
     // is needed for unsigned integer types.
     auto cst_int = [&](int64_t x) {

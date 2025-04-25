@@ -69,10 +69,23 @@ enum class Int64BasedEnum : int64_t {
   kTwo = kI32MaxValue + 2,
 };
 
+// Enums for performance benchmark defined below.
+enum class Enum0 : int32_t { kA = 0, kB = 1, kC = 2, kD = 3 };
+enum class Enum1 : int32_t { kA = 0, kB = 1, kC = 2, kD = 3 };
+enum class Enum2 : int32_t { kA = 0, kB = 1, kC = 2, kD = 3 };
+enum class Enum3 : int32_t { kA = 0, kB = 1, kC = 2, kD = 3 };
+enum class Enum4 : int32_t { kA = 0, kB = 1, kC = 2, kD = 3 };
+
 }  // namespace xla::ffi
 
 XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Int32BasedEnum);
 XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Int64BasedEnum);
+
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Enum0);
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Enum1);
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Enum2);
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Enum3);
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Enum4);
 
 namespace xla::ffi {
 
@@ -943,15 +956,23 @@ TEST(FfiTest, AttrsAsDictionary) {
 
     ErrorOr<int32_t> i32 = dict.get<int32_t>("i32");
     ErrorOr<float> f32 = dict.get<float>("f32");
-    ErrorOr<absl::string_view> str = dict.get<absl::string_view>("str");
+    ErrorOr<std::string_view> str = dict.get<std::string_view>("str");
 
     EXPECT_TRUE(i32.has_value());
     EXPECT_TRUE(f32.has_value());
     EXPECT_TRUE(str.has_value());
 
-    if (i32.has_value()) EXPECT_EQ(*i32, 42);
-    if (f32.has_value()) EXPECT_EQ(*f32, 42.0f);
-    if (str.has_value()) EXPECT_EQ(*str, "foo");
+    if (i32.has_value()) {
+      EXPECT_EQ(*i32, 42);
+    }
+
+    if (f32.has_value()) {
+      EXPECT_EQ(*f32, 42.0f);
+    }
+
+    if (str.has_value()) {
+      EXPECT_EQ(*str, "foo");
+    }
 
     EXPECT_FALSE(dict.contains("i64"));
     EXPECT_FALSE(dict.get<int64_t>("i32").has_value());
@@ -994,8 +1015,13 @@ TEST(FfiTest, DictionaryAttr) {
     EXPECT_TRUE(i32.has_value());
     EXPECT_TRUE(f32.has_value());
 
-    if (i32.has_value()) EXPECT_EQ(*i32, 42);
-    if (f32.has_value()) EXPECT_EQ(*f32, 42.0f);
+    if (i32.has_value()) {
+      EXPECT_EQ(*i32, 42);
+    }
+
+    if (f32.has_value()) {
+      EXPECT_EQ(*f32, 42.0f);
+    }
 
     return Error::Success();
   };
@@ -1021,7 +1047,7 @@ TEST(FfiTest, StructAttr) {
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto fn = [&](absl::string_view str, PairOfI32AndF32 i32_and_f32) {
+  auto fn = [&](std::string_view str, PairOfI32AndF32 i32_and_f32) {
     EXPECT_EQ(str, "foo");
     EXPECT_EQ(i32_and_f32.i32, 42);
     EXPECT_EQ(i32_and_f32.f32, 42.0f);
@@ -1029,7 +1055,7 @@ TEST(FfiTest, StructAttr) {
   };
 
   auto handler = Ffi::Bind()
-                     .Attr<absl::string_view>("str")
+                     .Attr<std::string_view>("str")
                      .Attr<PairOfI32AndF32>("i32_and_f32")
                      .To(fn);
 
@@ -1615,5 +1641,43 @@ void BM_TupleOfI32Attrs(benchmark::State& state) {
 }
 
 BENCHMARK(BM_TupleOfI32Attrs);
+
+//===----------------------------------------------------------------------===//
+// BM_EnumAttrs
+//===----------------------------------------------------------------------===//
+
+void BM_EnumAttrs(benchmark::State& state) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("e0", int32_t{0});
+  attrs.Insert("e1", int32_t{0});
+  attrs.Insert("e2", int32_t{0});
+  attrs.Insert("e3", int32_t{0});
+  attrs.Insert("e4", int32_t{0});
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind()
+                     .Attr<Enum0>("e0")
+                     .Attr<Enum1>("e1")
+                     .Attr<Enum2>("e2")
+                     .Attr<Enum3>("e3")
+                     .Attr<Enum4>("e4")
+                     .To([](Enum0 e0, Enum1 e1, Enum2 e2, Enum3 e3, Enum4 e4) {
+                       benchmark::DoNotOptimize(e0);
+                       benchmark::DoNotOptimize(e1);
+                       benchmark::DoNotOptimize(e2);
+                       benchmark::DoNotOptimize(e3);
+                       benchmark::DoNotOptimize(e4);
+                       return Error::Success();
+                     });
+
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_EnumAttrs);
 
 }  // namespace xla::ffi

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1339,12 +1340,56 @@ class CopyRemover {
     // used for sorting below.
     absl::flat_hash_map<int, int64_t> instruction_ids;
     int64_t id = 0;
-    for (HloComputation* computation : module.MakeComputationPostOrder()) {
-      for (HloInstruction* instruction :
-           computation->MakeInstructionPostOrder()) {
-        instruction_ids[instruction->unique_id()] = id++;
-      }
-    }
+
+    // Generate instruction ids for all instructions in the module, starting at
+    // the entry computation, processing instructions post-order and recursing
+    // depth-first into called computations.
+    absl::flat_hash_set<HloComputation*> visited;
+    std::function<void(HloComputation*)> assign_ids_dfs =
+        [&](HloComputation* computation) {
+          // Only visit each computation once.
+          auto [it, inserted] = visited.insert(computation);
+          if (!inserted) {
+            return;
+          }
+          // Assign ids to parameters first to match logic in IsDefinedBefore()
+          for (HloInstruction* instruction :
+               computation->parameter_instructions()) {
+            instruction_ids[instruction->unique_id()] = id++;
+          }
+
+          // Use the schedule order if available, otherwise use post order.
+          const HloInstructionSequence* seq =
+              ordering->SequentialOrder(*computation);
+          std::vector<HloInstruction*> instructions =
+              seq != nullptr ? seq->instructions()
+                             : computation->MakeInstructionPostOrder();
+
+          // Traverse depth-first, assigning ids to caller instructions
+          // *after* called computations.
+          for (HloInstruction* instruction : instructions) {
+            switch (instruction->opcode()) {
+              case HloOpcode::kParameter:
+                // Parameters are already assigned ids above.
+                continue;
+              case HloOpcode::kWhile:
+                // While condition executes before body.
+                assign_ids_dfs(instruction->while_condition());
+                assign_ids_dfs(instruction->while_body());
+                break;
+              default:
+                for (HloComputation* called_computation :
+                     instruction->called_computations()) {
+                  assign_ids_dfs(called_computation);
+                }
+                break;
+            }
+            instruction_ids[instruction->unique_id()] = id++;
+          }
+        };
+
+    CHECK(module.has_entry_computation());
+    assign_ids_dfs(module.entry_computation());
 
     // Construct a list for each HLO buffer in the alias analysis. Maintain a
     // map from HloValue to the respective list element representing that

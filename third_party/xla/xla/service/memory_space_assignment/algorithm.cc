@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/algorithm.h"
 
 #include <sys/stat.h>
+#include <sys/types.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -405,7 +406,7 @@ bool MsaAlgorithm::MatchesPrefetchContext(
              producer_shape_index;
 }
 
-MsaAlgorithm::MsaAlgorithm(AllocationSequence* allocations,
+MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
                            const Options& options,
                            const HloAliasAnalysis& alias_analysis,
                            const HloLiveRange& hlo_live_range)
@@ -417,6 +418,7 @@ MsaAlgorithm::MsaAlgorithm(AllocationSequence* allocations,
                        .all_slice_time_permutations_threshold()
                ? SliceTimePermutationIterator::Ty::kPreferred
                : SliceTimePermutationIterator::Ty::kAll)),
+      module_(module),
       allocations_(allocations),
       options_(options),
       alias_analysis_(alias_analysis),
@@ -3819,8 +3821,7 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
   AllocationSequence allocations;
   allocations.push_back(std::make_unique<PinnedAllocation>(
       buffer->defining_position(), MemorySpace::kDefault, kDummyChunk,
-      prefetch_candidate.start, prefetch_candidate.end,
-      /*is_scoped_allocation=*/false));
+      prefetch_candidate.start, prefetch_candidate.end));
 
   // Find the earliest use.
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
@@ -3957,44 +3958,20 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
 }
 
 void MsaAlgorithm::AllocateReservedScopedAllocations() {
-  const auto& instruction_sequence =
+  const std::vector<HloInstruction*>& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
   for (int i = 0; i < instruction_sequence.size(); ++i) {
-    const HloInstruction* instruction = instruction_sequence[i];
+    HloInstruction* instruction = instruction_sequence[i];
     int64_t reserved_scoped_memory =
         std::min(options_.reserved_scoped_memory_fn(
                      instruction, /*operands_in_alternate_memory=*/{},
                      /*outputs_in_alternate_memory=*/{}),
                  options_.max_size_in_bytes);
-    if (reserved_scoped_memory != 0) {
-      VLOG(1) << "Allocate reserved scoped memory at " << i << " ("
-              << instruction->name() << "): " << reserved_scoped_memory;
-      MsaBufferInterval interval;
-      interval.buffer = nullptr;
-      interval.size = reserved_scoped_memory;
-      interval.start = i;
-      interval.end = i;
-      interval.need_allocation = true;
-      Chunk chunk_candidate =
-          FindChunkCandidate(interval, /*preferred_offset=*/0);
-      CHECK_EQ(chunk_candidate.offset, 0);
-      AddToPendingChunks(interval, chunk_candidate);
-
-      if (options_.dump_fn != nullptr || VLOG_IS_ON(3)) {
-        AppendScopedAllocationBufferInfoDebugString(
-            instruction, i, reserved_scoped_memory, buffer_info_str_);
-      }
-
-      allocations_->push_back(std::make_unique<PinnedAllocation>(
-          HloPosition{instruction_sequence[i], {}}, MemorySpace::kAlternate,
-          chunk_candidate, i, i, /*is_scoped_allocation=*/true));
-
-      repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
-          i, i, reserved_scoped_memory,
-          /*initial_offset=*/0,
-          static_cast<int64_t>(repack_allocation_blocks_.size()),
-          allocations_->back().get()));
+    if (reserved_scoped_memory == 0) {
+      continue;
     }
+    AllocateScopedAllocation(instruction, /*is_post_module=*/false,
+                             reserved_scoped_memory, i);
   }
   // If requested, make all scoped allocations to colocate with each other so
   // that when we repack, all scoped allocations get the same offsets. Since
@@ -4012,12 +3989,52 @@ void MsaAlgorithm::AllocateReservedScopedAllocations() {
       repack_allocation_blocks_.back().next_colocated =
           &repack_allocation_blocks_.front();
     }
-  } else {
-    for (RepackAllocationBlock& allocation_block : repack_allocation_blocks_) {
-      allocation_block.next_colocated = &allocation_block;
-    }
   }
+
+  // Allocate post-module scoped allocation if requested. It never needs to be
+  // colocated with other scoped allocations.
+  if (options_.post_module_scoped_alternate_memory_size_in_bytes > 0) {
+    AllocateScopedAllocation(
+        /*instruction=*/module_->entry_computation()->root_instruction(),
+        /*is_post_module=*/true,
+        options_.post_module_scoped_alternate_memory_size_in_bytes,
+        hlo_live_range_.schedule_end_time());
+  }
+
   ClearPendingChunks();
+}
+
+void MsaAlgorithm::AllocateScopedAllocation(HloInstruction* instruction,
+                                            bool is_post_module, int64_t size,
+                                            int64_t time) {
+  VLOG(1) << "Allocate reserved scoped memory at " << time << " ("
+          << (is_post_module ? "<post-module>" : instruction->name())
+          << "): " << size;
+  MsaBufferInterval interval;
+  interval.buffer = nullptr;
+  interval.size = size;
+  interval.start = time;
+  interval.end = time;
+  interval.need_allocation = true;
+  Chunk chunk_candidate = FindChunkCandidate(interval, /*preferred_offset=*/0);
+  CHECK_EQ(chunk_candidate.offset, 0);
+  AddToPendingChunks(interval, chunk_candidate);
+
+  if (options_.dump_fn != nullptr || VLOG_IS_ON(3)) {
+    AppendScopedAllocationBufferInfoDebugString(instruction, time, size,
+                                                buffer_info_str_);
+  }
+
+  allocations_->push_back(std::make_unique<ScopedAllocation>(
+      chunk_candidate, time, instruction, is_post_module));
+
+  repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
+      time, time, size,
+      /*initial_offset=*/0,
+      static_cast<int64_t>(repack_allocation_blocks_.size()),
+      allocations_->back().get()));
+  repack_allocation_blocks_.back().next_colocated =
+      &repack_allocation_blocks_.back();
 }
 
 int64_t MsaAlgorithm::GetCorrectedUseTime(
@@ -5084,8 +5101,7 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
       allocation_sequence->push_back(std::make_unique<PinnedAllocation>(
           defining_position, required_assignment_at_start->memory_space,
           aliased_chunk, request.inclusive_start_time,
-          request.inclusive_start_time,
-          /*is_scoped_allocation=*/false));
+          request.inclusive_start_time));
       if (required_assignment_at_start->memory_space ==
           MemorySpace::kAlternate) {
         CreateOrAddToAliasedOffset(*allocation_sequence->back(),
@@ -5164,8 +5180,7 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
       allocation_sequence->push_back(std::make_unique<PinnedAllocation>(
           defining_position, MemorySpace::kDefault,
           /*chunk=*/std::nullopt, request.inclusive_start_time,
-          request.end_time,
-          /*is_scoped_allocation=*/false));
+          request.end_time));
       prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
     }
   } else if (prev_allocation_in_default_mem_it == allocation_sequence->rend()) {
@@ -5488,8 +5503,7 @@ AllocationResult MsaAlgorithm::ForceAlternateMemoryAllocationForMinTime(
   request.allocation_value->mutable_allocation_sequence()->push_back(
       std::make_unique<PinnedAllocation>(
           defining_position, MemorySpace::kAlternate, chunk_candidate,
-          alternate_mem_interval.start, alternate_mem_interval.end,
-          /*is_scoped_allocation=*/false));
+          alternate_mem_interval.start, alternate_mem_interval.end));
   // Since we did not use request.preferred_offset, we pass nullptr to
   // CreateOrAddToAliasedOffset.
   CreateOrAddToAliasedOffset(
@@ -5616,8 +5630,7 @@ AllocationResult MsaAlgorithm::AllocateInAlternateMemoryNoCopy(
       request.allocation_value->mutable_allocation_sequence()->push_back(
           std::make_unique<PinnedAllocation>(
               defining_position, MemorySpace::kAlternate, chunk_candidate,
-              request.inclusive_start_time, request.end_time,
-              /*is_scoped_allocation=*/false));
+              request.inclusive_start_time, request.end_time));
       CreateOrAddToAliasedOffset(
           *request.allocation_value->allocation_sequence()->back(),
           preferred_offset);
