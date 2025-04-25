@@ -208,6 +208,7 @@ DECL_CONVERT_OP(Imag);
 DECL_CONVERT_OP(RFFT2d);
 DECL_CONVERT_OP(LogicalAnd);
 DECL_CONVERT_OP(LogicalOr);
+DECL_CONVERT_OP(BitwiseXor);
 DECL_CONVERT_OP(Pow);
 DECL_CONVERT_OP(BroadcastTo);
 DECL_CONVERT_OP(Exp);
@@ -4809,6 +4810,11 @@ LogicalResult ConvertTFLLogicalOrOp::matchAndRewrite(
   return ConvertBinaryOp<tosa::LogicalOrOp>(op, rewriter);
 }
 
+LogicalResult ConvertTFLBitwiseXorOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  return ConvertBinaryOp<tosa::BitwiseXorOp>(op, rewriter);
+}
+
 LogicalResult ConvertTFLPowOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   return ConvertBinaryOp<tosa::PowOp>(op, rewriter);
@@ -4986,6 +4992,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
 
   DEF_PATTERN_INSERT(TFLLogicalAnd);
   DEF_PATTERN_INSERT(TFLLogicalOr);
+  DEF_PATTERN_INSERT(TFLBitwiseXor);
   DEF_PATTERN_INSERT(TFLPow);
 
   DEF_PATTERN_INSERT(TFLGelu);
