@@ -79,14 +79,6 @@ SplitConfigProto SplitConfig::ToProto() const {
   return split_config_proto;
 }
 
-void SplitConfig::SetProto(SplitConfigProto& split_config_proto) const {
-  split_config_proto.Clear();
-  split_config_proto.set_dimension(dimension_);
-  for (int64_t i : split_indices_) {
-    split_config_proto.add_split_indices(i);
-  }
-}
-
 std::string SplitConfig::ToString() const {
   return absl::StrCat("(", dimension_, ":", absl::StrJoin(split_indices_, ","),
                       ")");
@@ -238,11 +230,6 @@ Layout& Layout::operator=(Layout&& other) = default;
 
 LayoutProto Layout::ToProto() const {
   LayoutProto proto;
-  SetProto(proto);
-  return proto;
-}
-
-void Layout::SetProto(LayoutProto& proto) const {
   proto.Clear();
   for (int i = 0; i < n_dim_level_types_; i++) {
     proto.add_dim_level_types(dim_level_type(i));
@@ -267,13 +254,14 @@ void Layout::SetProto(LayoutProto& proto) const {
   proto.set_element_size_in_bits(element_size_in_bits_);
   proto.set_memory_space(memory_space_);
   for (const SplitConfig& split_config : split_configs()) {
-    split_config.SetProto(*proto.add_split_configs());
+    *proto.add_split_configs() = split_config.ToProto();
   }
   if (has_physical_shape()) {
     *proto.mutable_physical_shape() = physical_shape_->ToProto();
   }
   proto.set_dynamic_shape_metadata_prefix_bytes(
       dynamic_shape_metadata_prefix_bytes_);
+  return proto;
 }
 
 // Converts a DimLevelType to a single-character abbreviation:

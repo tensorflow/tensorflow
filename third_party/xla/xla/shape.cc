@@ -144,7 +144,7 @@ void Shape::SetProto(ShapeProto& proto) const {
       proto.add_is_dynamic_dimension(dynamic);
     }
     if (state->layout.has_value()) {
-      state->layout->SetProto(*proto.mutable_layout());
+      *proto.mutable_layout() = state->layout->ToProto();
     }
   } else if (const auto* const state = if_tuple_state()) {
     proto.mutable_tuple_shapes()->Reserve(state->tuple_shapes.size());

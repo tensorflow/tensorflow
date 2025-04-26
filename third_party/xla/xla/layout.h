@@ -116,7 +116,6 @@ class SplitConfig {
                        split_config_proto.split_indices());
   }
   SplitConfigProto ToProto() const;
-  void SetProto(SplitConfigProto& split_config_proto) const;
 
   bool operator==(const SplitConfig& other) const {
     return dimension() == other.dimension() &&
@@ -199,8 +198,6 @@ class Layout {
 
   // Returns a LayoutProto representation of the Layout.
   LayoutProto ToProto() const;
-  // Sets a LayoutProto to the representation of the Layout.
-  void SetProto(LayoutProto& proto) const;
 
   // Prints this layout as human-readable string, in the format
   // "{minor_to_major:properties}", where the fields are:
