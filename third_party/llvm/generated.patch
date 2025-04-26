@@ -1,461 +1,103 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/AST/ItaniumMangle.cpp b/clang/lib/AST/ItaniumMangle.cpp
---- a/clang/lib/AST/ItaniumMangle.cpp
-+++ b/clang/lib/AST/ItaniumMangle.cpp
-@@ -1405,16 +1405,6 @@
-     //   - a template template parameter with arguments
-     // In all of these cases, we should have no prefix.
-     if (NestedNameSpecifier *Prefix = qualifier->getPrefix()) {
--      if (const auto *DTST =
--              dyn_cast<DependentTemplateSpecializationType>(type)) {
--        Out << "srN";
--        TemplateName Template = getASTContext().getDependentTemplateName(
--            {Prefix, DTST->getDependentTemplateName().getName(),
--             /*HasTemplateKeyword=*/true});
--        mangleTemplatePrefix(Template);
--        mangleTemplateArgs(Template, DTST->template_arguments());
--        break;
--      }
-       mangleUnresolvedPrefix(Prefix,
-                              /*recursive=*/true);
-     } else {
-@@ -2618,7 +2608,8 @@
-         cast<DependentTemplateSpecializationType>(Ty);
-     TemplateName Template = getASTContext().getDependentTemplateName(
-         DTST->getDependentTemplateName());
--    mangleTemplatePrefix(Template);
-+    const DependentTemplateStorage &S = DTST->getDependentTemplateName();
-+    mangleSourceName(S.getName().getIdentifier());
-     mangleTemplateArgs(Template, DTST->template_arguments());
-     break;
-   }
-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.cpp b/clang/lib/CodeGen/CGDebugInfo.cpp
---- a/clang/lib/CodeGen/CGDebugInfo.cpp
-+++ b/clang/lib/CodeGen/CGDebugInfo.cpp
-@@ -2018,17 +2018,8 @@
-   return getOrCreateInstanceMethodType(ThisType, Func, Unit);
- }
- 
--llvm::DISubroutineType *CGDebugInfo::getOrCreateMethodTypeForDestructor(
--    const CXXMethodDecl *Method, llvm::DIFile *Unit, QualType FNType) {
--  const FunctionProtoType *Func = FNType->getAs<FunctionProtoType>();
--  // skip the first param since it is also this
--  return getOrCreateInstanceMethodType(Method->getThisType(), Func, Unit, true);
--}
--
--llvm::DISubroutineType *
--CGDebugInfo::getOrCreateInstanceMethodType(QualType ThisPtr,
--                                           const FunctionProtoType *Func,
--                                           llvm::DIFile *Unit, bool SkipFirst) {
-+llvm::DISubroutineType *CGDebugInfo::getOrCreateInstanceMethodType(
-+    QualType ThisPtr, const FunctionProtoType *Func, llvm::DIFile *Unit) {
-   FunctionProtoType::ExtProtoInfo EPI = Func->getExtProtoInfo();
-   Qualifiers &Qc = EPI.TypeQuals;
-   Qc.removeConst();
-@@ -2068,7 +2059,7 @@
-   }
- 
-   // Copy rest of the arguments.
--  for (unsigned i = (SkipFirst ? 2 : 1), e = Args.size(); i != e; ++i)
-+  for (unsigned i = 1, e = Args.size(); i != e; ++i)
-     Elts.push_back(Args[i]);
- 
-   // Attach FlagObjectPointer to the explicit "this" parameter.
-@@ -4381,12 +4372,6 @@
-     // subprogram DIE will miss DW_AT_decl_file and DW_AT_decl_line fields.
-     return DBuilder.createSubroutineType(DBuilder.getOrCreateTypeArray({}));
- 
--  if (const auto *Method = dyn_cast<CXXDestructorDecl>(D)) {
--    // Read method type from 'FnType' because 'D.getType()' does not cover
--    // implicit arguments for destructors.
--    return getOrCreateMethodTypeForDestructor(Method, F, FnType);
--  }
--
-   if (const auto *Method = dyn_cast<CXXMethodDecl>(D))
-     return getOrCreateMethodType(Method, F);
- 
-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.h b/clang/lib/CodeGen/CGDebugInfo.h
---- a/clang/lib/CodeGen/CGDebugInfo.h
-+++ b/clang/lib/CodeGen/CGDebugInfo.h
-@@ -249,14 +249,9 @@
-   /// to get a method type which includes \c this pointer.
-   llvm::DISubroutineType *getOrCreateMethodType(const CXXMethodDecl *Method,
-                                                 llvm::DIFile *F);
--
--  llvm::DISubroutineType *
--  getOrCreateMethodTypeForDestructor(const CXXMethodDecl *Method,
--                                     llvm::DIFile *F, QualType FNType);
--
-   llvm::DISubroutineType *
-   getOrCreateInstanceMethodType(QualType ThisPtr, const FunctionProtoType *Func,
--                                llvm::DIFile *Unit, bool SkipFirst = false);
-+                                llvm::DIFile *Unit);
-   llvm::DISubroutineType *
-   getOrCreateFunctionType(const Decl *D, QualType FnType, llvm::DIFile *F);
-   /// \return debug info descriptor for vtable.
-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.cpp b/clang/lib/CodeGen/CodeGenModule.cpp
---- a/clang/lib/CodeGen/CodeGenModule.cpp
-+++ b/clang/lib/CodeGen/CodeGenModule.cpp
-@@ -5812,15 +5812,24 @@
-     }
- }
- 
-+static GlobalDecl getBaseVariantGlobalDecl(const FunctionDecl *FD) {
-+  if (auto const *CD = dyn_cast<const CXXConstructorDecl>(FD))
-+    return GlobalDecl(CD, CXXCtorType::Ctor_Base);
-+  else if (auto const *DD = dyn_cast<const CXXDestructorDecl>(FD))
-+    return GlobalDecl(DD, CXXDtorType::Dtor_Base);
-+  return GlobalDecl(FD);
+diff -ruN --strip-trailing-cr a/clang/lib/Basic/Targets/SPIR.h b/clang/lib/Basic/Targets/SPIR.h
+--- a/clang/lib/Basic/Targets/SPIR.h
++++ b/clang/lib/Basic/Targets/SPIR.h
+@@ -58,8 +58,9 @@
+ // Used by both the SPIR and SPIR-V targets.
+ static const unsigned SPIRDefIsGenMap[] = {
+     4, // Default
+-    // OpenCL address space values for this map are dummy and they can't be used
+-    0, // opencl_global
++    // Some OpenCL address space values for this map are dummy and they can't be
++    // used
++    1, // opencl_global
+     0, // opencl_local
+     0, // opencl_constant
+     0, // opencl_private
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCUDASPIRV/printf.cu b/clang/test/CodeGenCUDASPIRV/printf.cu
+--- a/clang/test/CodeGenCUDASPIRV/printf.cu
++++ b/clang/test/CodeGenCUDASPIRV/printf.cu
+@@ -0,0 +1,11 @@
++// RUN: %clang_cc1 -fcuda-is-device -triple spirv32 -o - -emit-llvm -x cuda %s  | FileCheck --check-prefix=CHECK-SPIRV32 %s
++// RUN: %clang_cc1 -fcuda-is-device -triple spirv64 -o - -emit-llvm -x cuda %s  | FileCheck --check-prefix=CHECK-SPIRV64 %s
++
++// CHECK-SPIRV32: @.str = private unnamed_addr addrspace(4) constant [13 x i8] c"Hello World\0A\00", align 1
++// CHECK-SPIRV64: @.str = private unnamed_addr addrspace(1) constant [13 x i8] c"Hello World\0A\00", align 1
++
++extern "C" __attribute__((device)) int printf(const char* format, ...);
++
++__attribute__((global)) void printf_kernel() {
++  printf("Hello World\n");
 +}
-+
- void CodeGenModule::EmitExternalFunctionDeclaration(const FunctionDecl *FD) {
-   if (CGDebugInfo *DI = getModuleDebugInfo())
-     if (getCodeGenOpts().hasReducedDebugInfo()) {
-+      GlobalDecl GD = getBaseVariantGlobalDecl(FD);
-       auto *Ty = getTypes().ConvertType(FD->getType());
--      StringRef MangledName = getMangledName(FD);
-+      StringRef MangledName = getMangledName(GD);
-       auto *Fn = cast<llvm::Function>(
--          GetOrCreateLLVMFunction(MangledName, Ty, FD, /* ForVTable */ false));
-+          GetOrCreateLLVMFunction(MangledName, Ty, GD, /* ForVTable */ false));
-       if (!Fn->getSubprogram())
--        DI->EmitFunctionDecl(FD, FD->getLocation(), FD->getType(), Fn);
-+        DI->EmitFunctionDecl(GD, FD->getLocation(), FD->getType(), Fn);
-     }
- }
- 
-diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp b/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp
---- a/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp
-+++ b/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp
-@@ -1,24 +0,0 @@
--// RUN: %clang_cc1 -triple x86_64-none-linux-gnu -emit-llvm -debug-info-kind=limited %s -o - | FileCheck %s
--// RUN: %clang_cc1 -triple x86_64-pc-windows-msvc -emit-llvm -debug-info-kind=limited %s -o - | FileCheck --check-prefix MSVC %s
--
--struct B {
--    virtual ~B() {}
--};
--
--struct A : virtual B {
--};
--
--A a;
--
--
--// CHECK-DAG: !{{[0-9]+}} = !DILocalVariable(name: "vtt", arg: 2, scope: ![[destructor:[0-9]+]], type: ![[vtttype:[0-9]+]], flags: DIFlagArtificial)
--// CHECK-DAG: ![[destructor]] = distinct !DISubprogram(name: "~A", {{.*}}, type: ![[subroutinetype:[0-9]+]]
--// CHECK-DAG: ![[subroutinetype]] = !DISubroutineType(types: ![[types:[0-9]+]])
--// CHECK-DAG: [[types]] = !{null, !{{[0-9]+}}, ![[vtttype]]}
--
--// MSVC-DAG: ![[inttype:[0-9]+]] = !DIBasicType(name: "int", size: 32, encoding: DW_ATE_signed)
--// MSVC-DAG: ![[voidpointertype:[0-9]+]] = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: null, size: 64)
--// MSVC-DAG: ![[destructor:[0-9]+]] = distinct !DISubprogram(name: "~A", linkageName: "??_GA@@UEAAPEAXI@Z", {{.*}}, type: ![[subroutinetype:[0-9]+]]
--// MSVC-DAG: !{{[0-9]+}} = !DILocalVariable(name: "should_call_delete", arg: 2, scope: ![[destructor]], type: ![[inttype]], flags: DIFlagArtificial)
--// MSVC-DAG: ![[subroutinetype]] = !DISubroutineType(types: ![[types:[0-9]+]])
--// MSVC-DAG: [[types]] = !{![[voidpointertype]], !{{[0-9]+}}, ![[inttype]]}
-diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/mangle-template.cpp b/clang/test/CodeGenCXX/mangle-template.cpp
---- a/clang/test/CodeGenCXX/mangle-template.cpp
-+++ b/clang/test/CodeGenCXX/mangle-template.cpp
-@@ -416,3 +416,20 @@
-   template enable_if<true> raw_hash_set<int>::AbslHashValue<HashStateBase>();
-   // CHECH: @_ZN39unresolved_template_specialization_type12raw_hash_setIiE13AbslHashValueINS_13HashStateBaseEEENS_9enable_ifIXsrNT_11is_hashableIiEE5valueEEEv
- } // namespace unresolved_template_specialization_type
-+
-+namespace GH133610 {
-+  template <class T> struct A {
-+    template <class V> struct B { int MEM; };
-+  };
-+
-+  struct D {};
-+  struct C: public A<int>::B<D> {};
-+
-+  template <class T, class U, class V>
-+  auto k(T t, U u, V v) -> decltype (t.U::template B<V>::MEM) { return {}; }
-+
-+  void t() {
-+    k( C(), A<int>(), D() );
-+  }
-+  // CHECK: @_ZN8GH1336101kINS_1CENS_1AIiEENS_1DEEEDtdtfp_sr1U1BIT1_EE3MEMET_T0_S5_
-+} // namespace GH133610
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp b/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp
---- a/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp
-+++ b/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp
-@@ -1141,8 +1141,6 @@
-         break;
-       [[fallthrough]];
-     case Intrinsic::abs:
--    case Intrinsic::uadd_sat:
--    case Intrinsic::usub_sat:
-       WorkList.push_back(FactOrCheck::getInstFact(DT.getNode(&BB), &I));
-       break;
-     }
-@@ -1893,26 +1891,13 @@
-         AddFact(CmpInst::ICMP_SGE, CB.Inst, X);
-         continue;
-       }
-+
-       if (auto *MinMax = dyn_cast<MinMaxIntrinsic>(CB.Inst)) {
-         Pred = ICmpInst::getNonStrictPredicate(MinMax->getPredicate());
-         AddFact(Pred, MinMax, MinMax->getLHS());
-         AddFact(Pred, MinMax, MinMax->getRHS());
-         continue;
-       }
--      if (auto *USatI = dyn_cast<SaturatingInst>(CB.Inst)) {
--        switch (USatI->getIntrinsicID()) {
--        default:
--          llvm_unreachable("Unexpected intrinsic.");
--        case Intrinsic::uadd_sat:
--          AddFact(ICmpInst::ICMP_UGE, USatI, USatI->getLHS());
--          AddFact(ICmpInst::ICMP_UGE, USatI, USatI->getRHS());
--          break;
--        case Intrinsic::usub_sat:
--          AddFact(ICmpInst::ICMP_ULE, USatI, USatI->getLHS());
--          break;
--        }
--        continue;
--      }
-     }
- 
-     Value *A = nullptr, *B = nullptr;
 diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
 --- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
 +++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-@@ -1889,6 +1889,7 @@
-     LoadEntriesToVectorize.clear();
-     IsGraphTransformMode = false;
-     GatheredLoadsEntriesFirst.reset();
-+    CompressEntryToData.clear();
-     ExternalUses.clear();
-     ExternalUsesAsOriginalScalar.clear();
-     for (auto &Iter : BlocksSchedules) {
-@@ -4308,6 +4309,11 @@
-   /// The index of the first gathered load entry in the VectorizeTree.
-   std::optional<unsigned> GatheredLoadsEntriesFirst;
+@@ -23979,6 +23979,8 @@
+     assert(isValidElementType(V1->getType()) &&
+            isValidElementType(V2->getType()) &&
+            "Expected vectorizable types only.");
++    if (V1 == V2)
++      return false;
+     // It is fine to compare type IDs here, since we expect only vectorizable
+     // types, like ints, floats and pointers, we don't care about other type.
+     if (V1->getType()->getTypeID() < V2->getType()->getTypeID())
+@@ -24015,7 +24017,7 @@
+           if (NodeI1 != NodeI2)
+             return NodeI1->getDFSNumIn() < NodeI2->getDFSNumIn();
+           InstructionsState S = getSameOpcode({I1, I2}, *TLI);
+-          if (S && !S.isAltShuffle()) {
++          if (S && !S.isAltShuffle() && I1->getOpcode() == I2->getOpcode()) {
+             const auto *E1 = dyn_cast<ExtractElementInst>(I1);
+             const auto *E2 = dyn_cast<ExtractElementInst>(I2);
+             if (!E1 || !E2)
+@@ -24047,6 +24049,8 @@
  
-+  /// Maps compress entries to their mask data for the final codegen.
-+  SmallDenseMap<const TreeEntry *,
-+                std::tuple<SmallVector<int>, VectorType *, unsigned, bool>>
-+      CompressEntryToData;
-+
-   /// This POD struct describes one external user in the vectorized tree.
-   struct ExternalUser {
-     ExternalUser(Value *S, llvm::User *U, const TreeEntry &E, int L)
-@@ -13428,6 +13434,8 @@
-             *TLI, [](Value *) { return true; }, IsMasked, InterleaveFactor,
-             CompressMask, LoadVecTy);
-         assert(IsVectorized && "Expected to be vectorized");
-+        CompressEntryToData.try_emplace(E, CompressMask, LoadVecTy,
-+                                        InterleaveFactor, IsMasked);
-         Align CommonAlignment;
-         if (IsMasked)
-           CommonAlignment = computeCommonAlignment<LoadInst>(VL);
-@@ -17963,10 +17971,6 @@
-       if (E->State == TreeEntry::Vectorize) {
-         NewLI = Builder.CreateAlignedLoad(VecTy, PO, LI->getAlign());
-       } else if (E->State == TreeEntry::CompressVectorize) {
--        bool IsMasked;
--        unsigned InterleaveFactor;
--        SmallVector<int> CompressMask;
--        VectorType *LoadVecTy;
-         SmallVector<Value *> Scalars(E->Scalars.begin(), E->Scalars.end());
-         if (!E->ReorderIndices.empty()) {
-           SmallVector<int> Mask(E->ReorderIndices.begin(),
-@@ -17976,11 +17980,8 @@
-         SmallVector<Value *> PointerOps(Scalars.size());
-         for (auto [I, V] : enumerate(Scalars))
-           PointerOps[I] = cast<LoadInst>(V)->getPointerOperand();
--        [[maybe_unused]] bool IsVectorized = isMaskedLoadCompress(
--            Scalars, PointerOps, E->ReorderIndices, *TTI, *DL, *SE, *AC, *DT,
--            *TLI, [](Value *) { return true; }, IsMasked, InterleaveFactor,
--            CompressMask, LoadVecTy);
--        assert(IsVectorized && "Expected to be vectorized");
-+        auto [CompressMask, LoadVecTy, InterleaveFactor, IsMasked] =
-+            CompressEntryToData.at(E);
-         Align CommonAlignment;
-         if (IsMasked)
-           CommonAlignment = computeCommonAlignment<LoadInst>(E->Scalars);
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll b/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll
---- a/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll
-+++ b/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll
-@@ -1,43 +0,0 @@
--; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
--; RUN: opt -passes=constraint-elimination -S %s | FileCheck %s
--
--declare i64 @llvm.uadd.sat.i64(i64, i64)
--declare i64 @llvm.usub.sat.i64(i64, i64)
--
--define i1 @uadd_sat_uge(i64 %a, i64 %b) {
--; CHECK-LABEL: define i1 @uadd_sat_uge(
--; CHECK-SAME: i64 [[A:%.*]], i64 [[B:%.*]]) {
--; CHECK-NEXT:    [[ADD_SAT:%.*]] = call i64 @llvm.uadd.sat.i64(i64 [[A]], i64 [[B]])
--; CHECK-NEXT:    [[CMP:%.*]] = and i1 true, true
--; CHECK-NEXT:    ret i1 [[CMP]]
--;
--  %add.sat = call i64 @llvm.uadd.sat.i64(i64 %a, i64 %b)
--  %cmp1 = icmp uge i64 %add.sat, %a
--  %cmp2 = icmp uge i64 %add.sat, %b
--  %cmp = and i1 %cmp1, %cmp2
--  ret i1 %cmp
--}
--
--define i1 @usub_sat_ule_lhs(i64 %a, i64 %b) {
--; CHECK-LABEL: define i1 @usub_sat_ule_lhs(
--; CHECK-SAME: i64 [[A:%.*]], i64 [[B:%.*]]) {
--; CHECK-NEXT:    [[SUB_SAT:%.*]] = call i64 @llvm.usub.sat.i64(i64 [[A]], i64 [[B]])
--; CHECK-NEXT:    ret i1 true
--;
--  %sub.sat = call i64 @llvm.usub.sat.i64(i64 %a, i64 %b)
--  %cmp = icmp ule i64 %sub.sat, %a
--  ret i1 %cmp
--}
--
--; Negative test
--define i1 @usub_sat_not_ule_rhs(i64 %a, i64 %b) {
--; CHECK-LABEL: define i1 @usub_sat_not_ule_rhs(
--; CHECK-SAME: i64 [[A:%.*]], i64 [[B:%.*]]) {
--; CHECK-NEXT:    [[SUB_SAT:%.*]] = call i64 @llvm.usub.sat.i64(i64 [[A]], i64 [[B]])
--; CHECK-NEXT:    [[CMP:%.*]] = icmp ule i64 [[SUB_SAT]], [[B]]
--; CHECK-NEXT:    ret i1 [[CMP]]
--;
--  %sub.sat = call i64 @llvm.usub.sat.i64(i64 %a, i64 %b)
--  %cmp = icmp ule i64 %sub.sat, %b
--  ret i1 %cmp
--}
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll b/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll
---- a/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll
-+++ b/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll
-@@ -0,0 +1,48 @@
+             continue;
+           }
++          if (I1->getOpcode() == I2->getOpcode())
++            continue;
+           return I1->getOpcode() < I2->getOpcode();
+         }
+         if (I1)
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll b/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll
+@@ -0,0 +1,38 @@
 +; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
-+; RUN: opt -S --passes=slp-vectorizer -mtriple=aarch64-unknown-linux-gnu < %s | FileCheck %s
++; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-unknown-linux-gnu < %s | FileCheck %s
 +
-+declare noalias ptr @malloc()
-+
-+define void @test() {
-+; CHECK-LABEL: define void @test() {
-+; CHECK-NEXT:    [[TMP1:%.*]] = call dereferenceable_or_null(16) ptr @malloc()
-+; CHECK-NEXT:    [[TMP2:%.*]] = load volatile ptr, ptr null, align 8
-+; CHECK-NEXT:    [[TMP3:%.*]] = load <15 x i8>, ptr [[TMP1]], align 1
-+; CHECK-NEXT:    [[TMP4:%.*]] = shufflevector <15 x i8> [[TMP3]], <15 x i8> poison, <8 x i32> <i32 0, i32 2, i32 4, i32 6, i32 8, i32 10, i32 12, i32 14>
-+; CHECK-NEXT:    store <8 x i8> [[TMP4]], ptr [[TMP2]], align 1
++define void @test(i32 %julianDay, i1 %cmp, i8 %0, i16 %1) {
++; CHECK-LABEL: define void @test(
++; CHECK-SAME: i32 [[JULIANDAY:%.*]], i1 [[CMP:%.*]], i8 [[TMP0:%.*]], i16 [[TMP1:%.*]]) {
++; CHECK-NEXT:  [[ENTRY:.*]]:
++; CHECK-NEXT:    br i1 [[CMP]], label %[[IF_THEN2:.*]], label %[[IF_END33:.*]]
++; CHECK:       [[IF_THEN2]]:
++; CHECK-NEXT:    [[CONV_I:%.*]] = sext i8 [[TMP0]] to i32
++; CHECK-NEXT:    [[CONV_I2:%.*]] = sext i16 [[TMP1]] to i32
++; CHECK-NEXT:    br label %[[IF_END33]]
++; CHECK:       [[IF_END33]]:
++; CHECK-NEXT:    [[MONTH_0:%.*]] = phi i32 [ [[CONV_I]], %[[IF_THEN2]] ], [ 0, %[[ENTRY]] ]
++; CHECK-NEXT:    [[DAYOFMONTH_0:%.*]] = phi i32 [ [[CONV_I]], %[[IF_THEN2]] ], [ [[JULIANDAY]], %[[ENTRY]] ]
++; CHECK-NEXT:    [[DAYOFYEAR_0:%.*]] = phi i32 [ [[CONV_I2]], %[[IF_THEN2]] ], [ 0, %[[ENTRY]] ]
++; CHECK-NEXT:    store volatile i32 [[MONTH_0]], ptr null, align 4294967296
++; CHECK-NEXT:    store volatile i32 [[DAYOFMONTH_0]], ptr null, align 4294967296
++; CHECK-NEXT:    store volatile i32 [[DAYOFYEAR_0]], ptr null, align 4294967296
 +; CHECK-NEXT:    ret void
 +;
-+  %1 = call dereferenceable_or_null(16) ptr @malloc()
-+  %2 = load volatile ptr, ptr null, align 8
-+  %3 = load i8, ptr %1, align 1
-+  store i8 %3, ptr %2, align 1
-+  %4 = getelementptr i8, ptr %1, i64 2
-+  %5 = load i8, ptr %4, align 1
-+  %6 = getelementptr i8, ptr %2, i64 1
-+  store i8 %5, ptr %6, align 1
-+  %7 = getelementptr i8, ptr %1, i64 4
-+  %8 = load i8, ptr %7, align 1
-+  %9 = getelementptr i8, ptr %2, i64 2
-+  store i8 %8, ptr %9, align 1
-+  %10 = getelementptr i8, ptr %1, i64 6
-+  %11 = load i8, ptr %10, align 1
-+  %12 = getelementptr i8, ptr %2, i64 3
-+  store i8 %11, ptr %12, align 1
-+  %13 = getelementptr i8, ptr %1, i64 8
-+  %14 = load i8, ptr %13, align 1
-+  %15 = getelementptr i8, ptr %2, i64 4
-+  store i8 %14, ptr %15, align 1
-+  %16 = getelementptr i8, ptr %1, i64 10
-+  %17 = load i8, ptr %16, align 1
-+  %18 = getelementptr i8, ptr %2, i64 5
-+  store i8 %17, ptr %18, align 1
-+  %19 = getelementptr i8, ptr %1, i64 12
-+  %20 = load i8, ptr %19, align 1
-+  %21 = getelementptr i8, ptr %2, i64 6
-+  store i8 %20, ptr %21, align 1
-+  %22 = getelementptr i8, ptr %1, i64 14
-+  %23 = load i8, ptr %22, align 1
-+  %24 = getelementptr i8, ptr %2, i64 7
-+  store i8 %23, ptr %24, align 1
++entry:
++  br i1 %cmp, label %if.then2, label %if.end33
++
++if.then2:
++  %conv.i = sext i8 %0 to i32
++  %conv.i2 = sext i16 %1 to i32
++  br label %if.end33
++
++if.end33:
++  %month.0 = phi i32 [ %conv.i, %if.then2 ], [ 0, %entry ]
++  %dayOfMonth.0 = phi i32 [ %conv.i, %if.then2 ], [ %julianDay, %entry ]
++  %dayOfYear.0 = phi i32 [ %conv.i2, %if.then2 ], [ 0, %entry ]
++  store volatile i32 %month.0, ptr null, align 4294967296
++  store volatile i32 %dayOfMonth.0, ptr null, align 4294967296
++  store volatile i32 %dayOfYear.0, ptr null, align 4294967296
 +  ret void
 +}
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-@@ -897,6 +897,26 @@
- )
- 
- mlir_c_api_cc_library(
-+    name = "CAPISMT",
-+    srcs = [
-+        "lib/CAPI/Dialect/SMT.cpp",
-+        "lib/CAPI/Target/ExportSMTLIB.cpp",
-+    ],
-+    hdrs = [
-+        "include/mlir-c/Dialect/SMT.h",
-+        "include/mlir-c/Target/ExportSMTLIB.h",
-+    ],
-+    capi_deps = [
-+        ":CAPIIR",
-+    ],
-+    includes = ["include"],
-+    deps = [
-+        ":SMTDialect",
-+        ":TargetSMTLIB",
-+    ],
-+)
-+
-+mlir_c_api_cc_library(
-     name = "CAPIRegisterEverything",
-     srcs = ["lib/CAPI/RegisterEverything/RegisterEverything.cpp"],
-     hdrs = ["include/mlir-c/RegisterEverything.h"],
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
-@@ -1113,6 +1113,53 @@
- )
- 
- ##---------------------------------------------------------------------------##
-+# SMT dialect.
-+##---------------------------------------------------------------------------##
-+
-+td_library(
-+    name = "SMTOpsPyTdFiles",
-+    srcs = [],
-+    includes = ["../include"],
-+    deps = [
-+        "//mlir:SMTTdFiles",
-+        "//mlir:OpBaseTdFiles",
-+    ],
-+)
-+
-+gentbl_filegroup(
-+    name = "SMTOpsPyGen",
-+    tbl_outs = [
-+        (
-+            [
-+                "-gen-python-enum-bindings",
-+                "-bind-dialect=smt",
-+            ],
-+            "mlir/dialects/_smt_enum_gen.py",
-+        ),
-+        (
-+            [
-+                "-gen-python-op-bindings",
-+                "-bind-dialect=smt",
-+            ],
-+            "mlir/dialects/_smt_ops_gen.py",
-+        ),
-+    ],
-+    tblgen = "//mlir:mlir-tblgen",
-+    td_file = "mlir/dialects/SMTOps.td",
-+    deps = [
-+        ":SMTOpsPyTdFiles",
-+    ],
-+)
-+
-+filegroup(
-+    name = "SMTOpsPyFiles",
-+    srcs = [
-+        "mlir/dialects/smt.py",
-+        ":SMTOpsPyGen",
-+    ],
-+)
-+
-+##---------------------------------------------------------------------------##
- # SparseTensor dialect.
- ##---------------------------------------------------------------------------##
- 
