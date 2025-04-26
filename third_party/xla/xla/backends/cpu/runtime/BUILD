@@ -703,6 +703,7 @@ cc_library(
     srcs = ["custom_call_thunk.cc"],
     hdrs = ["custom_call_thunk.h"],
     deps = [
+        ":object_pool",
         ":thunk",
         "//xla:shape_util",
         "//xla:util",
