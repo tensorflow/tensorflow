@@ -26,11 +26,11 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/cpu/runtime/object_pool.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/hlo.pb.h"

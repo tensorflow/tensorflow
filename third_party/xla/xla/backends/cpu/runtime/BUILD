@@ -135,32 +135,6 @@ cc_library(
 )
 
 cc_library(
-    name = "object_pool",
-    hdrs = ["object_pool.h"],
-    deps = [
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "object_pool_test",
-    srcs = ["object_pool_test.cc"],
-    shuffle_tests = False,
-    deps = [
-        ":object_pool",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-cc_library(
     name = "parallel_loop_runner",
     srcs = ["parallel_loop_runner.cc"],
     hdrs = ["parallel_loop_runner.h"],
@@ -703,7 +677,6 @@ cc_library(
     srcs = ["custom_call_thunk.cc"],
     hdrs = ["custom_call_thunk.h"],
     deps = [
-        ":object_pool",
         ":thunk",
         "//xla:shape_util",
         "//xla:util",
@@ -713,6 +686,7 @@ cc_library(
         "//xla/ffi:ffi_api",
         "//xla/ffi/api:c_api",
         "//xla/runtime:buffer_use",
+        "//xla/runtime:object_pool",
         "//xla/service:buffer_assignment",
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_status_internal",

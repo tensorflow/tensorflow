@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/runtime/object_pool.h"
+#include "xla/runtime/object_pool.h"
 
 #include <atomic>
 #include <cstddef>
@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 
-namespace xla::cpu {
+namespace xla {
 namespace {
 
 using IntPool = ObjectPool<std::unique_ptr<int32_t>>;
@@ -100,4 +100,4 @@ static void BM_GetOrCreate(benchmark::State& state) {
 BENCHMARK(BM_GetOrCreate);
 
 }  // namespace
-}  // namespace xla::cpu
+}  // namespace xla
