@@ -44,7 +44,6 @@ mlir::StringAttr convertToHloShardingAttr(
     mlir::ArrayRef<mlir::sdy::TensorShardingAttr> shardings,
     std::function<mlir::sdy::MeshAttr(mlir::sdy::TensorShardingAttr)>
         getMeshAttr,
-    std::function<mlir::StringAttr(const HloSharding&)> getStringAttr,
     mlir::ArrayRef<mlir::StringAttr> manualAxes = {});
 
 // Creates a pass that converts the shardings from `kShardingAttr` to
