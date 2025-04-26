@@ -101,6 +101,18 @@ cc_library(
 )
 
 cc_library(
+    name = "common_pjrt_client",
+    srcs = ["common_pjrt_client.cc"],
+    hdrs = ["common_pjrt_client.h"],
+    deps = [
+        ":device_event",
+        ":pjrt_client",
+        ":raw_buffer",
+        "//xla/tsl/concurrency:async_value",
+    ],
+)
+
+cc_library(
     name = "tracked_device_buffer",
     srcs = ["tracked_device_buffer.cc"],
     hdrs = ["tracked_device_buffer.h"],
