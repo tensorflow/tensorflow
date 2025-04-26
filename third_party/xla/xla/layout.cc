@@ -276,8 +276,13 @@ void Layout::SetProto(LayoutProto& proto) const {
       dynamic_shape_metadata_prefix_bytes_);
 }
 
-namespace {
-absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
+// Converts a DimLevelType to a single-character abbreviation:
+//   D: DIM_DENSE
+//   C: DIM_COMPRESSED
+//   S: DIM_SINGLETON
+//   H: DIM_LOOSE_COMPRESSED
+// Crashes if the DimLevelType is invalid.
+static absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
   switch (dim_level_type) {
     case DIM_DENSE:
       return "D";
@@ -291,20 +296,23 @@ absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
       LOG(FATAL) << "Invalid DimLevelType value: " << dim_level_type;
   }
 }
-}  // namespace
 
 void Layout::Print(Printer* printer) const {
   printer->Append("{");
   AppendJoin(printer, minor_to_major(), ",");
 
   bool colon_printed = false;
-  auto print_colon = [&]() {
-    if (colon_printed) return;
-    printer->Append(":");
-    colon_printed = true;
+  auto print_colon_if_have_not = [&]() {
+    if (!colon_printed) {
+      printer->Append(":");
+      colon_printed = true;
+    }
   };
 
-  if (n_dim_level_types_ > 0) {
+  // Print the dimension attributes as D(...) only if the layout is sparse.
+  // By default, all dimensions are dense, so there's no need to print the
+  // attributes when this layout is dense.
+  if (LayoutUtil::IsSparse(*this)) {
     auto print_one = [&](int i) {
       printer->Append(DimLevelTypeAbbrev(dim_level_type(i)));
       if (n_dim_unique_ > 0 && !dim_unique(i)) {
@@ -314,7 +322,7 @@ void Layout::Print(Printer* printer) const {
         printer->Append("~");
       }
     };
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("D(");
     print_one(0);
     for (int i = 1; i < n_dim_level_types_; ++i) {
@@ -324,23 +332,28 @@ void Layout::Print(Printer* printer) const {
     printer->Append(")");
   }
 
+  // Print the tiles as T(...)...(...).
   if (!tiles().empty()) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("T");
     for (const Tile& tile : tiles()) {
       tile.Print(printer);
     }
   }
 
+  // Print the tail padding alignment as L(n). Omit this if n is 1.
   if (tail_padding_alignment_in_elements() != 1) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("L(");
     printer->Append(tail_padding_alignment_in_elements());
     printer->Append(")");
   }
 
+  // Print the primitive type used for indices as #(type). Print
+  // #(invalid) if the type is valid but not an integer. Omit this if the type
+  // is PRIMITIVE_TYPE_INVALID.
   if (index_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-    print_colon();
+    print_colon_if_have_not();
     if (primitive_util::IsIntegralType(index_primitive_type())) {
       printer->Append("#(");
       printer->Append(
@@ -351,8 +364,11 @@ void Layout::Print(Printer* printer) const {
     }
   }
 
+  // Print the primitive type used for poitners as *(type). Print *(invalid) if
+  // the type is valid but not a pointer. Omit this if the type is
+  // PRIMITIVE_TYPE_INVALID.
   if (pointer_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-    print_colon();
+    print_colon_if_have_not();
     if (primitive_util::IsIntegralType(pointer_primitive_type())) {
       printer->Append("*(");
       printer->Append(
@@ -363,36 +379,45 @@ void Layout::Print(Printer* printer) const {
     }
   }
 
+  // Print the element size in bits as E(n). Omit this if n is 0.
   if (element_size_in_bits() != 0) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("E(");
     printer->Append(element_size_in_bits());
     printer->Append(")");
   }
 
+  // Print the memory space as S(n). Omit this if n is 0.
   if (memory_space() != 0) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("S(");
     printer->Append(memory_space());
     printer->Append(")");
   }
+
+  // Print the split configs as SC(...)...(...). Omit this if the split configs
+  // are empty.
   if (!split_configs().empty()) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("SC");
     for (const auto& split_config : split_configs()) {
       printer->Append(split_config.ToString());
     }
   }
 
+  // Print the physical shape as P(physical_shape). Omit this if the physical
+  // shape is not set.
   if (has_physical_shape()) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("P(");
     physical_shape_->Print(printer, /*print_layout=*/true);
     printer->Append(")");
   }
 
+  // Print the dynamic shape metadata prefix bytes as M(n). Omit this if n is
+  // 0.
   if (dynamic_shape_metadata_prefix_bytes_ > 0) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("M(");
     printer->Append(dynamic_shape_metadata_prefix_bytes());
     printer->Append(")");

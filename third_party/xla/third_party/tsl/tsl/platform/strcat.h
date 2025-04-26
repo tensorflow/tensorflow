@@ -22,6 +22,9 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/attributes.h"
+#include "absl/base/macros.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/numbers.h"
@@ -52,47 +55,30 @@ limitations under the License.
 // You can convert to Hexadecimal output rather than Decimal output using Hex.
 // To do this, pass strings::Hex(my_int) as a parameter to StrCat. You may
 // specify a minimum field width using a separate parameter, so the equivalent
-// of Printf("%04x", my_int) is StrCat(Hex(my_int, strings::kZeroPad4))
+// of Printf("%04x", my_int) is StrCat(Hex(my_int, absl::kZeroPad4))
 //
 // This class has implicit constructors.
 namespace tsl {
 namespace strings {
 
-enum PadSpec {
-  kNoPad = 1,
-  kZeroPad2,
-  kZeroPad3,
-  kZeroPad4,
-  kZeroPad5,
-  kZeroPad6,
-  kZeroPad7,
-  kZeroPad8,
-  kZeroPad9,
-  kZeroPad10,
-  kZeroPad11,
-  kZeroPad12,
-  kZeroPad13,
-  kZeroPad14,
-  kZeroPad15,
-  kZeroPad16
-};
-
-struct Hex {
-  uint64 value;
-  enum PadSpec spec;
-  template <class Int>
-  explicit Hex(Int v, PadSpec s = kNoPad) : spec(s) {
-    // Prevent sign-extension by casting integers to
-    // their unsigned counterparts.
-    static_assert(
-        sizeof(v) == 1 || sizeof(v) == 2 || sizeof(v) == 4 || sizeof(v) == 8,
-        "Unknown integer type");
-    value = sizeof(v) == 1   ? static_cast<uint8>(v)
-            : sizeof(v) == 2 ? static_cast<uint16>(v)
-            : sizeof(v) == 4 ? static_cast<uint32>(v)
-                             : static_cast<uint64>(v);
-  }
-};
+using PadSpec ABSL_DEPRECATE_AND_INLINE() = absl::PadSpec;
+using absl::kNoPad;
+using absl::kZeroPad10;
+using absl::kZeroPad11;
+using absl::kZeroPad12;
+using absl::kZeroPad13;
+using absl::kZeroPad14;
+using absl::kZeroPad15;
+using absl::kZeroPad16;
+using absl::kZeroPad2;
+using absl::kZeroPad3;
+using absl::kZeroPad4;
+using absl::kZeroPad5;
+using absl::kZeroPad6;
+using absl::kZeroPad7;
+using absl::kZeroPad8;
+using absl::kZeroPad9;
+using Hex ABSL_DEPRECATE_AND_INLINE() = absl::Hex;
 
 class AlphaNum {
   // NOLINTBEGIN(google-explicit-constructor)
@@ -121,10 +107,10 @@ class AlphaNum {
 
   AlphaNum(Hex hex);  // NOLINT(runtime/explicit)
 
-  AlphaNum(const char *c_str) : piece_(c_str) {}   // NOLINT(runtime/explicit)
+  AlphaNum(const char *c_str) : piece_(c_str) {}  // NOLINT(runtime/explicit)
   AlphaNum(const absl::string_view &pc)
-      : piece_(pc) {}                              // NOLINT(runtime/explicit)
-  AlphaNum(const std::string &str)                 // NOLINT(runtime/explicit)
+      : piece_(pc) {}               // NOLINT(runtime/explicit)
+  AlphaNum(const std::string &str)  // NOLINT(runtime/explicit)
       : piece_(str) {}
   AlphaNum(const tstring &str)  // NOLINT(runtime/explicit)
       : piece_(str) {}

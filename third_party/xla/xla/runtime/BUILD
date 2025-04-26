@@ -95,6 +95,31 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "object_pool",
+    hdrs = ["object_pool.h"],
+    deps = [
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "object_pool_test",
+    srcs = ["object_pool_test.cc"],
+    deps = [
+        ":object_pool",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "thunk",
     hdrs = ["thunk.h"],
 )

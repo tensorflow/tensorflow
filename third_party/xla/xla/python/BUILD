@@ -45,7 +45,12 @@ pytype_strict_library(
     srcs = ["xla_client.py"],
     visibility = ["//visibility:public"],
     deps = if_google([
+        ":_ops",
+        ":_profiler",
+        ":_xla_builder",
         "//third_party/py/jax/jaxlib/xla:xla_client",
+        "@ml_dtypes_py//ml_dtypes",
+        "//third_party/py/numpy",
     ]),
 )
 
@@ -216,6 +221,26 @@ cc_library(
     alwayslink = 1,
 )
 
+nanobind_pywrap_extension(
+    name = "_xla_builder",
+    srcs = ["xla_builder.cc"],
+    pytype_deps = [
+        "//third_party/py/jax/jaxlib:_jax",
+    ],
+    pytype_srcs = ["_xla_builder.pyi"],
+    deps = [
+        ":nb_helpers",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/pjrt:status_casters",
+        "//xla/service:name_uniquer",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+        "@nanobind",
+    ],
+)
+
 cc_library(
     name = "ops",
     srcs = ["ops.cc"],
@@ -231,6 +256,7 @@ cc_library(
         ":nb_helpers",
         ":types",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/types:span",
         "@nanobind",
         "//xla:literal",
@@ -255,6 +281,11 @@ cc_library(
 nanobind_pywrap_extension(
     name = "_ops",
     srcs = ["_ops.cc"],
+    pytype_deps = [
+        ":_xla_builder",
+        "//third_party/py/jax/jaxlib:_jax",
+    ],
+    pytype_srcs = ["_ops.pyi"],
     deps = [
         ":ops",
         "@nanobind",

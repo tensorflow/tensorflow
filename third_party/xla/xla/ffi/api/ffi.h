@@ -452,11 +452,10 @@ class CountDownPromise {
           return state_->error;
         };
         state_->promise.SetError(take_error());
-        return true;
       } else {
         state_->promise.SetAvailable();
-        return true;
       }
+      return true;
     }
 
     return false;
@@ -967,8 +966,9 @@ struct internal::Decode<internal::RemainingRetsTag> {
   template <>                                                               \
   struct AttrDecoding<Span<const T>> {                                      \
     using Type = Span<const T>;                                             \
-    static std::optional<Type> Decode(XLA_FFI_AttrType type, void* attr,    \
-                                      DiagnosticEngine& diagnostic) {       \
+                                                                            \
+    XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(      \
+        XLA_FFI_AttrType type, void* attr, DiagnosticEngine& diagnostic) {  \
       if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_ARRAY)) {          \
         return diagnostic.Emit("Wrong attribute type: expected ")           \
                << XLA_FFI_AttrType_ARRAY << " but got " << type;            \
@@ -1000,9 +1000,9 @@ XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(double, XLA_FFI_DataType_F64);
 template <>
 struct AttrDecoding<std::string_view> {
   using Type = std::string_view;
-  static std::optional<std::string_view> Decode(XLA_FFI_AttrType type,
-                                                void* attr,
-                                                DiagnosticEngine& diagnostic) {
+
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<std::string_view> Decode(
+      XLA_FFI_AttrType type, void* attr, DiagnosticEngine& diagnostic) {
     if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_STRING)) {
       return diagnostic.Emit("Wrong attribute type: expected ")
              << XLA_FFI_AttrType_STRING << " but got " << type;
@@ -1021,8 +1021,8 @@ template <typename T>
 struct AttrDecoding<Pointer<T>> {
   using Type = T*;
 
-  static std::optional<Type> Decode(XLA_FFI_AttrType type, void* attr,
-                                    DiagnosticEngine& diagnostic) {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
+      XLA_FFI_AttrType type, void* attr, DiagnosticEngine& diagnostic) {
     auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);
     if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_SCALAR ||
                               scalar->dtype != XLA_FFI_DataType_S64)) {
@@ -1058,9 +1058,9 @@ class Dictionary : public internal::DictionaryBase {
 // Decode `AttrsTag` (all attributes) into a `Dictionary`.
 template <>
 struct internal::Decode<internal::AttrsTag<Dictionary>> {
-  static std::optional<Dictionary> call(DecodingOffsets& offsets,
-                                        DecodingContext& ctx,
-                                        DiagnosticEngine& diagnostic) {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Dictionary> call(
+      DecodingOffsets& offsets, DecodingContext& ctx,
+      DiagnosticEngine& diagnostic) {
     return Dictionary(&ctx.call_frame->attrs);
   }
 };
@@ -1069,8 +1069,8 @@ struct internal::Decode<internal::AttrsTag<Dictionary>> {
 template <>
 struct AttrDecoding<Dictionary> {
   using Type = Dictionary;
-  static std::optional<Dictionary> Decode(XLA_FFI_AttrType type, void* attr,
-                                          DiagnosticEngine& diagnostic) {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Dictionary> Decode(
+      XLA_FFI_AttrType type, void* attr, DiagnosticEngine& diagnostic) {
     if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_DICTIONARY)) {
       return diagnostic.Emit("Wrong attribute type: expected ")
              << XLA_FFI_AttrType_DICTIONARY << " but got " << type;
@@ -1230,6 +1230,7 @@ struct CtxDecoding<PlatformStream<T>> {
 
   static_assert(std::is_pointer_v<T>, "stream type must be a pointer");
 
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine& diagnostic) {
@@ -1295,9 +1296,9 @@ template <>
 struct CtxDecoding<ScratchAllocator> {
   using Type = ScratchAllocator;
 
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine& diagnostic) {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
+      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      DiagnosticEngine& diagnostic) {
     return ScratchAllocator(api, ctx, diagnostic);
   }
 };
@@ -1414,9 +1415,9 @@ template <>
 struct CtxDecoding<ThreadPool> {
   using Type = ThreadPool;
 
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine& diagnostic) {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
+      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      DiagnosticEngine& diagnostic) {
     return ThreadPool(api, ctx, diagnostic);
   }
 };
@@ -1437,9 +1438,9 @@ template <>
 struct CtxDecoding<FfiApi> {
   using Type = const XLA_FFI_Api*;
 
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine& diagnostic) {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
+      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      DiagnosticEngine& diagnostic) {
     return api;
   }
 };
@@ -1448,9 +1449,9 @@ template <>
 struct CtxDecoding<FfiExecutionContext> {
   using Type = XLA_FFI_ExecutionContext*;
 
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine& diagnostic) {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
+      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      DiagnosticEngine& diagnostic) {
     return ctx;
   }
 };
@@ -1488,9 +1489,9 @@ struct CtxDecoding<UserData<T>> {
   static_assert(std::is_same_v<decltype(T::id), TypeId>,
                 "UserData type must have a static `TypeId id` field");
 
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine& diagnostic) {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
+      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      DiagnosticEngine& diagnostic) {
     XLA_FFI_ExecutionContext_Get_Args args;
     args.struct_size = XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE;
     args.extension_start = nullptr;
@@ -1531,9 +1532,9 @@ struct CtxDecoding<State<T>> {
   static_assert(std::is_same_v<decltype(T::id), TypeId>,
                 "State type must have a static `TypeId id` field");
 
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine& diagnostic) {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
+      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      DiagnosticEngine& diagnostic) {
     XLA_FFI_State_Get_Args args;
     args.struct_size = XLA_FFI_State_Get_Args_STRUCT_SIZE;
     args.extension_start = nullptr;
@@ -1570,9 +1571,9 @@ template <>
 struct CtxDecoding<RunId> {
   using Type = RunId;
 
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine& diagnostic) {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
+      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      DiagnosticEngine& diagnostic) {
     XLA_FFI_RunId_Get_Args args;
     args.struct_size = XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE;
     args.extension_start = nullptr;
@@ -1604,9 +1605,9 @@ template <>
 struct CtxDecoding<DeviceOrdinal> {
   using Type = int32_t;
 
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine& diagnostic) {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(
+      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+      DiagnosticEngine& diagnostic) {
     XLA_FFI_DeviceOrdinal_Get_Args args;
     args.struct_size = XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE;
     args.extension_start = nullptr;

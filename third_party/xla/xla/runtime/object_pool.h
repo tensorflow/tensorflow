@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_RUNTIME_OBJECT_POOL_H_
-#define XLA_BACKENDS_CPU_RUNTIME_OBJECT_POOL_H_
+#ifndef XLA_RUNTIME_OBJECT_POOL_H_
+#define XLA_RUNTIME_OBJECT_POOL_H_
 
 #include <atomic>
 #include <cstddef>
@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/statusor.h"
 
-namespace xla::cpu {
+namespace xla {
 
 // A non-blocking pool of objects of type `T`. Objects in the pool are created
 // lazily when needed by calling the user-provided `builder` function.
@@ -125,7 +125,9 @@ ObjectPool<T, Args...>::BorrowedObject::BorrowedObject(
 
 template <typename T, typename... Args>
 ObjectPool<T, Args...>::BorrowedObject::~BorrowedObject() {
-  if (parent_ && entry_) parent_->PushEntry(std::move(entry_));
+  if (parent_ && entry_) {
+    parent_->PushEntry(std::move(entry_));
+  }
 }
 
 template <typename T, typename... Args>
@@ -138,6 +140,6 @@ auto ObjectPool<T, Args...>::GetOrCreate(Args... args)
   return BorrowedObject(this, std::move(entry));
 }
 
-}  // namespace xla::cpu
+}  // namespace xla
 
-#endif  // XLA_BACKENDS_CPU_RUNTIME_OBJECT_POOL_H_
+#endif  // XLA_RUNTIME_OBJECT_POOL_H_

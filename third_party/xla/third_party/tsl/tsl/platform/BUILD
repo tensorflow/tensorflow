@@ -773,7 +773,9 @@ cc_library(
     deps = [
         ":numbers",
         ":stringpiece",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/meta:type_traits",
+        "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/platform:logging",
         "@local_xla//xla/tsl/platform:macros",
         "@local_xla//xla/tsl/platform:types",
@@ -1116,6 +1118,7 @@ tsl_cc_test(
         ":platform",
         ":stringpiece",
         ":tstring",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
     ],
@@ -1364,6 +1367,7 @@ tsl_cc_test(
         "strcat_test.cc",
     ],
     deps = [
+        ":bfloat16",
         ":strcat",
         ":stringprintf",
         "@com_google_absl//absl/strings",

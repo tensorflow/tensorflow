@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
@@ -322,6 +323,36 @@ void BuildOpsSubmodule(nb::module_& m) {
 }
 
 void BuildOpsModule(nb::module_& m) {
+  nb::class_<ShapeIndex>(m, "ShapeIndex", R"(Represents an XLA ShapeIndex.
+
+  An index for specifying a particular nested subshape within a shape. Used in
+  ShapeUtil::GetSubshape and other interfaces. ShapeIndex defines a path through
+  the Shape tree where each element of ShapeIndex indexes into a tuple (or
+  nested tuple) within the shape. For a non-nested tuple, an index has a single
+  element.)")
+      .def("__init__",
+           [](ShapeIndex* self, const std::vector<int64_t>& v) {
+             new (self) ShapeIndex(v.begin(), v.end());
+           })
+      .def("__repr__", &ShapeIndex::ToString)
+      .def("__eq__", [](const ShapeIndex& shape_ind,
+                        const ShapeIndex& other) { return shape_ind == other; })
+      .def("__ne__", [](const ShapeIndex& shape_ind,
+                        const ShapeIndex& other) { return shape_ind != other; })
+      .def("__hash__",
+           [](const ShapeIndex& shape_ind) { return absl::HashOf(shape_ind); });
+
+  nb::enum_<FftType>(m, "FftType")
+      .value("FFT", FftType::FFT)
+      .value("IFFT", FftType::IFFT)
+      .value("RFFT", FftType::RFFT)
+      .value("IRFFT", FftType::IRFFT);
+
+  nb::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
+      .value("DEFAULT", PrecisionConfig::DEFAULT)
+      .value("HIGH", PrecisionConfig::HIGH)
+      .value("HIGHEST", PrecisionConfig::HIGHEST);
+
   nb::enum_<TriangularSolveOptions::Transpose>(
       m, "TriangularSolveOptions_Transpose")
       .value("TRANSPOSE_INVALID", TriangularSolveOptions::TRANSPOSE_INVALID)
@@ -333,6 +364,10 @@ void BuildOpsModule(nb::module_& m) {
       .value("RNG_DEFAULT", RandomAlgorithm::RNG_DEFAULT)
       .value("RNG_THREE_FRY", RandomAlgorithm::RNG_THREE_FRY)
       .value("RNG_PHILOX", RandomAlgorithm::RNG_PHILOX);
+
+  nb::enum_<ResultAccuracy::Mode>(m, "ResultAccuracy_Mode")
+      .value("DEFAULT", ResultAccuracy::DEFAULT)
+      .value("HIGHEST", ResultAccuracy::HIGHEST);
 
   nb::enum_<CustomCallSchedule>(m, "CustomCallSchedule")
       .value("SCHEDULE_NONE", CustomCallSchedule::SCHEDULE_NONE)

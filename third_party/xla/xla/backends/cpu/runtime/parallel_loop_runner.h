@@ -97,11 +97,10 @@ class ParallelLoopRunner {
     size_t count;
   };
 
-  // clang-format off
-  template <typename Dim> struct TaskIndex;
-  template <> struct TaskIndex<RangeDim> { using Index = RangeIndex; };
-  template <> struct TaskIndex<TileDim>  { using Index = TileIndex; };
-  // clang-format on
+  // Mapping from parallel loop dimension to the parallel task index. Defined
+  // as template specializations below.
+  template <typename Dim>
+  struct TaskIndex;
 
   template <typename Dim>
   using task_index_t = typename TaskIndex<Dim>::Index;
@@ -284,6 +283,20 @@ class ParallelLoopRunner {
   // pools for different NUMA nodes, and we have to be able to switch between
   // them from run to run.
   std::atomic<const Eigen::ThreadPoolDevice*> device_;
+};
+
+// An explicit specialization shall be declared in the namespace of which the
+// template is a member, or, for member templates, in the namespace of which the
+// enclosing class or enclosing class template is a member.
+
+template <>
+struct ParallelLoopRunner::TaskIndex<ParallelLoopRunner::RangeDim> {
+  using Index = RangeIndex;
+};
+
+template <>
+struct ParallelLoopRunner::TaskIndex<ParallelLoopRunner::TileDim> {
+  using Index = TileIndex;
 };
 
 //===----------------------------------------------------------------------===//

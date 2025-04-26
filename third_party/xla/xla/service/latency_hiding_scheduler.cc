@@ -2075,12 +2075,18 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   VLOG(10)
       << "Memory peak before schedule: "
       << sched_state->memory_pressure_tracker->pressure_state().memory_peak;
+
   sched_state->memory_pressure_tracker->UpdateBuffers(&n->GetInstr());
-  VLOG(10) << "Memory pressure after schedule: "
-           << sched_state->memory_pressure_tracker->memory_usage();
-  VLOG(10)
-      << "Memory peak after schedule: "
-      << sched_state->memory_pressure_tracker->pressure_state().memory_peak;
+  int64_t memory_after = sched_state->memory_pressure_tracker->memory_usage();
+  int64_t memory_peak =
+      sched_state->memory_pressure_tracker->pressure_state().memory_peak;
+
+  if (schedule_proto_.has_value()) {
+    sched_state->memory_trace[&n->GetInstr()] = {memory_after, memory_peak};
+  }
+
+  VLOG(10) << "Memory pressure after schedule: " << memory_after;
+  VLOG(10) << "Memory peak after schedule: " << memory_peak;
   return current_time;
 }
 
@@ -2620,7 +2626,7 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
 
   if (schedule_proto_.has_value()) {
     *schedule_proto_->add_computation_schedules() = ComputationScheduleToProto(
-        computation, sched_state.sched_graph, *latency_estimator_,
+        computation, sched_state, *latency_estimator_,
         sched_state.new_sequence_reversed);
   }
   return std::move(sched_state.new_sequence_reversed);
@@ -2628,9 +2634,10 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
 
 ScheduleProto::ComputationScheduleProto
 DefaultSchedulerCore::ComputationScheduleToProto(
-    const HloComputation* computation, const HloScheduleGraph& schedule_graph,
+    const HloComputation* computation, const SchedulingState& sched_state,
     const LatencyEstimator& estimator,
     const std::vector<HloInstruction*>& instructions) {
+  const HloScheduleGraph& schedule_graph = sched_state.sched_graph;
   ScheduleProto::ComputationScheduleProto proto;
   proto.set_computation_id(computation->unique_id());
   proto.set_cycles_per_microsecond(estimator.CyclesPerMicrosecond());
@@ -2651,6 +2658,12 @@ DefaultSchedulerCore::ComputationScheduleToProto(
     instr_msg->set_id(instr->unique_id());
     instr_msg->set_start_timestamp_cycles(start_time);
     instr_msg->set_end_timestamp_cycles(end_time);
+
+    auto it = sched_state.memory_trace.find(instr);
+    if (it != sched_state.memory_trace.end()) {
+      instr_msg->set_memory_usage_after(it->second.first);
+      instr_msg->set_peak_memory_after(it->second.second);
+    }
   }
   return proto;
 }

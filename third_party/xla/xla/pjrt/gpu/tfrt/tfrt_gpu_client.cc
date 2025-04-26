@@ -3050,8 +3050,16 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        client = client_](std::vector<ExecutionInput> execution_inputs) mutable {
         VLOG(1) << "execute_fn for " << executable_name << ": " << launch_id
                 << "; replica: " << replica;
-        tsl::profiler::TraceMeConsumer activity(
-            "execute_fn", tsl::profiler::ContextType::kPjRt, run_id.ToInt());
+
+        tsl::profiler::TraceMeProducer producer(
+            [&] {
+              return tsl::profiler::TraceMeEncode(
+                  "execute_fn",
+                  {{"launch_id", std::to_string(launch_id)},
+                   {"device_ordinal", device->local_device_id().value()}});
+            },
+            tsl::profiler::ContextType::kTfExecutor, run_id.ToInt());
+
         auto set_error = [&](absl::Status status) {
           for (auto& output_buffer : output_buffers) {
             output_buffer.SetError(status);

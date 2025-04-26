@@ -251,6 +251,7 @@ CustomCallThunk::CustomCallThunk(
       api_version_(api_version),
       backend_config_(std::move(backend_config)),
       call_frame_(std::move(call_frame)),
+      call_frames_([this] { return call_frame_->Copy(); }),
       execution_state_(std::move(execution_state)) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::Execute(
@@ -298,9 +299,10 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
                                   slice.ToString(), results[i].opaque());
   }
 
-  // Update the FFI call frame with the actual device memory addresses.
-  TF_ASSIGN_OR_RETURN(ffi::CallFrame call_frame,
-                      call_frame_->CopyWithBuffers(arguments, results));
+  // Borrow the FFI call frame from the object pool and update with the actual
+  // device memory addresses.
+  TF_ASSIGN_OR_RETURN(auto call_frame, call_frames_.GetOrCreate());
+  TF_RETURN_IF_ERROR(call_frame->UpdateWithBuffers(arguments, results));
 
   // Forward ExecutableRunOptions to the FFI handlers via the call options.
   CustomCallExecuteParams* custom_call_params = params.custom_call_params;
@@ -313,7 +315,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
       execution_state_.get()};
 
   ffi::HandlerRegistration& handler = std::get<1>(target_);
-  return ffi::CallAsync(handler.bundle.execute, call_frame, call_options);
+  return ffi::CallAsync(handler.bundle.execute, *call_frame, call_options);
 }
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(

@@ -44,15 +44,17 @@ static bool WaitForReadyWithTimeout(RendezvousStateSynchronization& state,
     tsl::profiler::TraceMe trace([&] {
       if (num_pending == 0) {
         return absl::StrFormat("Wait for rendezvous callback");
-      } else {
-        return absl::StrFormat("Wait %d of %d", num_pending, state.num_threads);
       }
+      return absl::StrFormat("Wait: pending_threads=%d/%d", num_pending,
+                             state.num_threads);
     });
 
     bool timed_out = state.cv.WaitWithTimeout(&state.mutex, timeout);
 
     // We are done and ready.
-    if (state.ready) return true;
+    if (state.ready) {
+      return true;
+    }
 
     // We are done with waiting because the timeout is exceeded.
     if (timed_out && !state.ready) {
@@ -143,7 +145,9 @@ RendezvousFlag::InFlightRendezvous::InFlightRendezvous(RendezvousFlag* flag)
     : flag_(flag) {}
 
 RendezvousFlag::InFlightRendezvous::~InFlightRendezvous() {
-  if (flag_ == nullptr) return;
+  if (flag_ == nullptr) {
+    return;
+  }
 
   // Reload state and use CAS to decide if we are the one who
   // should mark rendezvous flag completed.
@@ -168,7 +172,9 @@ RendezvousFlag::InFlightRendezvous::operator bool() const {
 RendezvousFlag::InFlightRendezvous RendezvousFlag::TryJoin() {
   // If `state_` is `kCompleted` it means that we have at least one completed
   // rendezvous for this flag and can skip it.
-  if (state_.load() == kCompleted) return InFlightRendezvous(nullptr);
+  if (state_.load() == kCompleted) {
+    return InFlightRendezvous(nullptr);
+  }
 
   // Try to increment a state in a CAS loop to signal all other participants
   // that we joined an in-flight rendezvous.
@@ -178,7 +184,9 @@ RendezvousFlag::InFlightRendezvous RendezvousFlag::TryJoin() {
   }
 
   // Someone else completed the rendezvous and we don't need to join.
-  if (state == kCompleted) return InFlightRendezvous(nullptr);
+  if (state == kCompleted) {
+    return InFlightRendezvous(nullptr);
+  }
 
   return InFlightRendezvous(this);
 }

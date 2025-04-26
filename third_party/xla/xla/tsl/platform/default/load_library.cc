@@ -28,7 +28,6 @@ namespace internal {
 absl::Status LoadDynamicLibrary(const char* library_filename, void** handle) {
   *handle = dlopen(library_filename, RTLD_NOW | RTLD_LOCAL);
   if (!*handle) {
-    // Note that in C++17 std::string_view(nullptr) gives segfault!
     const char* const error_msg = dlerror();
     return absl::NotFoundError(error_msg ? error_msg : "(null error message)");
   }
@@ -44,8 +43,7 @@ absl::Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
     *symbol = dlsym(handle, symbol_name);
   }
   if (!*symbol) {
-    // Note that in C++17 absl::string_view(nullptr) gives segfault!
-    const char* error_msg = dlerror();
+    const char* const error_msg = dlerror();
     return absl::NotFoundError(error_msg ? error_msg : "(null error message)");
   }
   return absl::OkStatus();

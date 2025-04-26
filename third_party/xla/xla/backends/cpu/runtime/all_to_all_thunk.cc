@@ -78,9 +78,9 @@ tsl::AsyncValueRef<AllToAllThunk::ExecuteEvent> AllToAllThunk::Execute(
         CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
         const Shape& shape = destination_shape(0);
 
-        return comm.AllToAll(data.source, data.destination,
-                             shape.element_type(), ShapeUtil::ElementsIn(shape),
-                             executor);
+        return comm.AllToAll(std::move(data.source),
+                             std::move(data.destination), shape.element_type(),
+                             ShapeUtil::ElementsIn(shape), executor);
       });
 }
 

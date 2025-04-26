@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -180,9 +181,9 @@ tsl::AsyncValueRef<MpiCommunicator::Event> MpiCommunicator::CollectivePermute(
 }
 
 tsl::AsyncValueRef<MpiCommunicator::Event> MpiCommunicator::AllToAll(
-    absl::Span<const se::DeviceMemoryBase> send_buffers,
-    absl::Span<const se::DeviceMemoryBase> recv_buffers, PrimitiveType dtype,
-    size_t count, const Executor& executor) {
+    absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
+    absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+    PrimitiveType dtype, size_t count, const Executor& executor) {
   // We can't use MPI_Alltoall directly because it assumes that the inputs and
   // outputs are contiguous. Therefore here we implement it using MPI_Sendrecv.
 
