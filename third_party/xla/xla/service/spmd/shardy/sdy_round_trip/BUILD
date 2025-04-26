@@ -12,7 +12,6 @@ package_group(
     packages = [
         "//learning/deepmind/partir/compiler/mpmd/...",
         "//learning/deepmind/partir/compiler/shardonnay/...",
-        "//third_party/australis/google/ifrt/...",
         "//third_party/openxla/shardy/tools/...",
         "//third_party/py/jax/...",
         "//xla/...",
