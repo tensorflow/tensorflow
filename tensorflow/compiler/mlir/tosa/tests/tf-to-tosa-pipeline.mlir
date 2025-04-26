@@ -1,7 +1,7 @@
-// RUN: tf-opt --tf-to-tosa-pipeline  --verify-each %s | FileCheck %s
-// REQUIRES: tf_tosa
-// RUN: tf-opt --tf-tfl-to-tosa-pipeline  --verify-each %s | FileCheck %s
-// REQUIRES: tf_tosa
+// RUN: tf-tosa-opt --tf-to-tosa-pipeline  --verify-each %s | FileCheck %s
+
+// RUN: tf-tosa-opt --tf-tfl-to-tosa-pipeline  --verify-each %s | FileCheck %s
+
 
 // Operations for testing tf-to-tosa-pipeline
 // TODO: These tests are fairly minimal. Expand the checks to be more robust.

@@ -363,7 +363,7 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
   }
 
   mlir::Attribute min_val, max_val;
-  if (element_type.isa<mlir::FloatType>()) {
+  if (mlir::isa<mlir::FloatType>(element_type)) {
     min_val = rewriter.getFloatAttr(element_type, 0.0f);
     max_val =
         rewriter.getFloatAttr(element_type, std::numeric_limits<float>::max());
@@ -433,7 +433,7 @@ LogicalResult ConvertTFLRelu1Op::matchAndRewrite(
   }
 
   mlir::Attribute min_val, max_val;
-  if (element_type.isa<mlir::FloatType>()) {
+  if (mlir::isa<mlir::FloatType>(element_type)) {
     min_val = rewriter.getFloatAttr(element_type, -1.0f);
     max_val = rewriter.getFloatAttr(element_type, 1.0f);
   } else {
@@ -500,7 +500,7 @@ LogicalResult ConvertTFLRelu0To1Op::matchAndRewrite(
   }
 
   mlir::Attribute min_val, max_val;
-  if (element_type.isa<mlir::FloatType>()) {
+  if (mlir::isa<mlir::FloatType>(element_type)) {
     min_val = rewriter.getFloatAttr(element_type, 0.0f);
     max_val = rewriter.getFloatAttr(element_type, 1.0f);
   } else {
@@ -567,7 +567,7 @@ LogicalResult ConvertTFLRelu6Op::matchAndRewrite(
   }
 
   mlir::Attribute min_val, max_val;
-  if (element_type.isa<mlir::FloatType>()) {
+  if (mlir::isa<mlir::FloatType>(element_type)) {
     min_val = rewriter.getFloatAttr(element_type, 0.0f);
     max_val = rewriter.getFloatAttr(element_type, 6.0f);
   } else {
@@ -1553,7 +1553,7 @@ static FailureOr<std::pair<Type, Value>> getTosaBias(
     RankedTensorType bias_type = RankedTensorType::get({1}, bias_ety);
     auto bias_attr = rewriter.getZeroAttr(bias_type);
     bias = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(), bias_type,
-                                           bias_attr.cast<ElementsAttr>());
+                                           mlir::cast<ElementsAttr>(bias_attr));
   }
 
   auto prev_bias_type = dyn_cast<ShapedType>(bias.getType());
@@ -1748,11 +1748,11 @@ LogicalResult ConvertTFLConv3DOp::matchAndRewrite(
   }
 
   bool input_is_qtype =
-      input_type.getElementType().isa<mlir::quant::QuantizedType>();
+      mlir::isa<mlir::quant::QuantizedType>(input_type.getElementType());
   bool filter_is_qtype =
-      filter_type.getElementType().isa<mlir::quant::QuantizedType>();
+      mlir::isa<mlir::quant::QuantizedType>(filter_type.getElementType());
   bool output_is_qtype =
-      output_type.getElementType().isa<mlir::quant::QuantizedType>();
+      mlir::isa<mlir::quant::QuantizedType>(output_type.getElementType());
 
   if ((input_is_qtype != filter_is_qtype) ||
       (input_is_qtype != output_is_qtype)) {
@@ -1958,11 +1958,11 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
   if (!filter_type) return failure();
 
   bool input_is_qtype =
-      input_type.getElementType().isa<mlir::quant::QuantizedType>();
+      mlir::isa<mlir::quant::QuantizedType>(input_type.getElementType());
   bool filter_is_qtype =
-      filter_type.getElementType().isa<mlir::quant::QuantizedType>();
+      mlir::isa<mlir::quant::QuantizedType>(filter_type.getElementType());
   bool output_is_qtype =
-      output_type.getElementType().isa<mlir::quant::QuantizedType>();
+      mlir::isa<mlir::quant::QuantizedType>(output_type.getElementType());
 
   if ((input_is_qtype != filter_is_qtype) ||
       (input_is_qtype != output_is_qtype)) {
@@ -2155,8 +2155,8 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
         rewriter, op->getLoc(),
         UnrankedTensorType::get(rhs_ty.getElementType()), rhs,
         new_rhs_shape_value);
-    lhs_ty = lhs.getType().cast<RankedTensorType>();
-    rhs_ty = rhs.getType().cast<RankedTensorType>();
+    lhs_ty = mlir::cast<RankedTensorType>(lhs.getType());
+    rhs_ty = mlir::cast<RankedTensorType>(rhs.getType());
   }
 
   if (transpose_lhs) {
@@ -3790,7 +3790,7 @@ static LogicalResult LegalizeFloatingPointPrelu(Operation* op,
                                                 Value input, Value alpha,
                                                 ShapedType output_type) {
   Value mul = CreateMulOpAndInfer(rewriter, op, output_type, input, alpha);
-  auto rank = mul.getType().cast<ShapedType>().getRank();
+  auto rank = mlir::cast<ShapedType>(mul.getType()).getRank();
   Value const_zero = getTosaConstTensorSingleF32(rewriter, op, 0.0, rank);
   auto ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
       rewriter, op->getLoc(), output_type.clone(rewriter.getIntegerType(1)),
@@ -3964,7 +3964,7 @@ static LogicalResult LegalizeFloatingPointLeakyRelu(Operation* op,
                                                     PatternRewriter& rewriter,
                                                     Value input, double alpha,
                                                     ShapedType output_type) {
-  auto rank = input.getType().cast<ShapedType>().getRank();
+  auto rank = mlir::cast<ShapedType>(input.getType()).getRank();
   Value const_alpha = getTosaConstTensorSingleF32(rewriter, op, alpha, rank);
   auto mul = CreateMulOpAndInfer(rewriter, op, output_type, input, const_alpha);
   if (alpha <= 1.0) {
@@ -4535,12 +4535,12 @@ LogicalResult ConvertTFLArgMinOp::matchAndRewrite(
   // so need to rescale ArgMax output to original output zero point
   int output_zp = 0;
   Type output_ty = arg_min_op.getType();
-  Type output_ety = output_ty.cast<ShapedType>().getElementType();
+  Type output_ety = mlir::cast<ShapedType>(output_ty).getElementType();
   if (auto output_quantized_ty = dyn_cast<UniformQuantizedType>(output_ety)) {
     output_zp = output_quantized_ty.getZeroPoint();
     if (output_zp != 0) {
       // need to rescale arg_max output to output zero point
-      output_ty = output_ty.cast<ShapedType>().clone(input_ety);
+      output_ty = mlir::cast<ShapedType>(output_ty).clone(input_ety);
     }
   }
 
