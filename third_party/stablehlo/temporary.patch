@@ -1,3 +1,14 @@
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+@@ -61,7 +61,6 @@
+ }  // namespace
+ 
+ LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
+-  addArgumentMaterialization(scalarToTensor);
+   addSourceMaterialization(scalarToTensor);
+   addTargetMaterialization(scalarToTensor);
+ }
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
 --- stablehlo/stablehlo/dialect/StablehloAttrs.td
 +++ stablehlo/stablehlo/dialect/StablehloAttrs.td
@@ -10,4 +21,38 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo
  }
  
  #endif // STABLEHLO_DIALECT_STABLEHLO_ATTRS
+diff --ruN a/stablehlo/stablehlo/dialect/VhloAttrs.td b/stablehlo/stablehlo/dialect/VhloAttrs.td
+--- stablehlo/stablehlo/dialect/VhloAttrs.td
++++ stablehlo/stablehlo/dialect/VhloAttrs.td
+@@ -102,7 +102,7 @@
+ // Corresponds to IntegerConstant from the StableHLO spec.
+ def VHLO_IntegerAttrV1 : VHLO_AttrDef<"IntegerV1", "0.9.0", "current"> {
+   let mnemonic = "integer_v1";
+-  let parameters = (ins "mlir::Type":$type, "APInt":$value);
++  let parameters = (ins "mlir::Type":$type, APIntParameter<"">:$value);
+   let genVerifyDecl = 1;
+   let extraClassDefinition = [{
+     LogicalResult IntegerV1Attr::verify(
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.cpp b/stablehlo/stablehlo/dialect/VhloTypes.cpp
+--- stablehlo/stablehlo/dialect/VhloTypes.cpp
++++ stablehlo/stablehlo/dialect/VhloTypes.cpp
+@@ -333,7 +333,6 @@
+ void VhloTypeConverter::addUnrealizedMaterializations() {
+   addTargetMaterialization(materializeIllegalCast);
+   addSourceMaterialization(materializeIllegalCast);
+-  addArgumentMaterialization(materializeIllegalCast);
+ }
+ 
+ namespace {
+diff --ruN a/stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp b/stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
+--- stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
++++ stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
+@@ -77,7 +77,6 @@
+   addConversion(convertInteger);
+   addConversion(convertShapedType);
+ 
+-  addArgumentMaterialization(materializeCastFromIllegal);
+   addSourceMaterialization(materializeCastToIllegal);
+   addTargetMaterialization(materializeCastFromIllegal);
+ }
 
