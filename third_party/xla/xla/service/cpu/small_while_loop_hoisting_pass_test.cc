@@ -25,15 +25,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-class SmallWhileLoopHoistingPassTest : public HloTestBase {
+class SmallWhileLoopHoistingPassTest : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<bool> RunSmallWhileLoopHoistingPass(HloModule* module) {
     return cpu::SmallWhileLoopHoistingPass(256).Run(module);

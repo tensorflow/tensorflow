@@ -183,7 +183,8 @@ static void SetArgvFromEnv(absl::string_view envvar, EnvArgv* a) {
 // The simulated argv[] parsed from the environment, one for each different
 // environment variable we've seen.
 static absl::flat_hash_map<std::string, EnvArgv>& EnvArgvs() {
-  static auto* env_argvs = new absl::flat_hash_map<std::string, EnvArgv>();
+  static auto* const env_argvs =
+      new absl::flat_hash_map<std::string, EnvArgv>();
   return *env_argvs;
 }
 

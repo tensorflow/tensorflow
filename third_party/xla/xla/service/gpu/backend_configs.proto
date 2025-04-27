@@ -105,6 +105,8 @@ message GemmBackendConfig {
   optional bool grad_x = 16;
   optional bool grad_y = 17;
   bool damax_output = 18;
+
+  repeated ReificationCost reification_cost = 19;
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.
@@ -116,19 +118,16 @@ message BitcastBackendConfig {
 // Backend config for async collective operations. Note that for is_sync will
 // be false by default, so even if a backend config is not explicitly attached
 // to the HLOInstruction, getting the backend_config will yield a default valued
-// proto which will have is_sync = false. Attribute no_parallel_custom_call
-// asserts that an asynchronous collective operation does not execute in
-// parallel with custom-calls, which can trigger device synchronization . This
-// attribute will also be false by default and should lead to conversative
-// runtime behavior.
+// proto which will have is_sync = false.
 message CollectiveBackendConfig {
   bool is_sync = 1;
-  bool no_parallel_custom_call = 2;
   // Determines whether the collective op of interested has been pipelined
   // within a loop.
   bool is_pipelined = 3;
   // Cost model prediction.
   repeated ReificationCost reification_cost = 4;
+
+  reserved 2;
 }
 
 // Backend config for cost model estimates.
@@ -207,7 +206,7 @@ message FusionBackendConfig {
   // present, we use the default Triton config.
   AutotuneResult.TritonGemmKey triton_gemm_config = 2;
 
-  // Only valid when kind is "__triton" or "__triton_nested_fusion_gemm". Code
+  // Only valid when kind is "__triton" or "__triton_nested_gemm_fusion". Code
   // generation of such fusions will fail if this field is not set.
   BlockLevelFusionConfig block_level_fusion_config = 6;
 

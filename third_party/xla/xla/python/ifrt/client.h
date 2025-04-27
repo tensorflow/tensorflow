@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -206,6 +207,12 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
       HostBufferSemantics semantics,
+      tsl::RCReference<UserContext> user_context) = 0;
+
+  // Creates new arrays that will be fulfilled with the given error status. The
+  // status must not be OK.
+  virtual absl::StatusOr<std::vector<tsl::RCReference<Array>>> MakeErrorArrays(
+      const absl::Status& error, absl::Span<const ArraySpec> array_specs,
       tsl::RCReference<UserContext> user_context) = 0;
 
   // Builds a larger array out of individual per-device shards.

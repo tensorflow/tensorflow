@@ -1,7 +1,7 @@
-// RUN: tf-opt --split-input-file --tfl-to-tosa-pipeline --verify-each %s | FileCheck %s
-// REQUIRES: tf_tosa
-// RUN: tf-opt --split-input-file --tf-tfl-to-tosa-pipeline --verify-each %s | FileCheck %s
-// REQUIRES: tf_tosa
+// RUN: tf-tosa-opt --split-input-file --tfl-to-tosa-pipeline --verify-each %s | FileCheck %s
+
+// RUN: tf-tosa-opt --split-input-file --tf-tfl-to-tosa-pipeline --verify-each %s | FileCheck %s
+
 
 // Operations for testing tfl-to-tosa-pipeline
 

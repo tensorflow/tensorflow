@@ -134,16 +134,14 @@ class IrEmitter2 {
 
   bool CanUpdateDynamicSliceInPlace(const HloInstruction* update) const;
 
+  bool IsSupportedByFusionEmitter(const HloFusionInstruction* fusion) const;
+
  private:
   class ElementalIrEmitter;
 
   // Emits a host kernel prototype for the given HLO instruction.
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       const HloInstruction* instr);
-
-  // Emits a host fusion using fusion emitters.
-  absl::StatusOr<IrEmitter2::KernelInfo> EmitFusionWithFusionEmitters(
-      const HloFusionInstruction* fusion);
 
   // Parallel partition bounds for parallelized outer dimensions:
   //   vector<[i64 lower_bound, i64 upper_bound]>
@@ -177,8 +175,6 @@ class IrEmitter2 {
       const llvm_ir::ElementGenerator& element_generator);
 
   bool fast_min_max() const;
-
-  bool IsSupportedByFusionEmitter(const HloFusionInstruction* fusion) const;
 
   // Returns the number of bytes within the shape.
   int64_t ByteSizeOf(const Shape& shape) const;

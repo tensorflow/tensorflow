@@ -23,6 +23,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -44,8 +45,13 @@ namespace xla {
 //
 // At run time we can relax sequential schedule and execute operations
 // concurrently, as long as we don't create data races (reading and writing
-// from/To the same or overlapping buffer slices concurrently), or resource
+// from/to the same or overlapping buffer slices concurrently), or resource
 // races (using the same mutable resource concurrently).
+//
+// Resources can behave as buffers and require an execution order (operation
+// must wait for the completion of execution of all dependencies), or as a
+// scheduling barrier (operation must wait for the completion of scheduling of
+// all dependencies). See more details in the `NodeEdge::Kind` definition.
 //
 // We use buffer and resource use conflicts to define an execution order of
 // operations as a directed acyclic graph (DAG) that satisfies all dependencies.
@@ -60,12 +66,62 @@ class ExecutionGraph {
 
   static constexpr NodeId kInvalidNodeId = std::numeric_limits<NodeId>::min();
 
+  struct NodeEdge {
+    // Edge kind defines execution ordering between two operations. Scheduling
+    // edge is weaker than an execution edge, as it gives more flexibility
+    // to the backend runtime to execute operations concurrently.
+    enum class Kind {
+      // If two operations have a scheduling edge between them, then the
+      // dependent operation must be scheduled (start execution) after the
+      // dependency operation scheduled (started execution), however it doesn't
+      // have to wait for the completion of execution. We use this type of
+      // edge to guarantee that operations that share the same resource (i.e.
+      // collective communicator) start execution in a deterministic order
+      // across different ranks, however the execution of operations can
+      // overlap and finish in any order, and backend-implementation specific.
+      kScheduling,
+
+      // If two operations have an execution edge between them, then the
+      // dependent operation must wait for the completion of dependency
+      // operation execution. We use this type of edge to order execution of
+      // operations that read and write from/to the same buffers, as otherwise
+      // we may create data races.
+      kExecution,
+    };
+
+    static constexpr NodeEdge::Kind KindOf(Resource::Kind resource) {
+      switch (resource) {
+        case Resource::kToken:
+          return NodeEdge::Kind::kExecution;
+        case Resource::kCollectiveCommunicator:
+          return NodeEdge::Kind::kScheduling;
+      }
+    }
+
+    bool operator==(const NodeEdge& other) const {
+      return kind == other.kind && id == other.id;
+    }
+
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, Kind kind) {
+      sink.Append(kind == Kind::kScheduling ? "scheduling" : "execution");
+    }
+
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const NodeEdge& edge) {
+      absl::Format(&sink, "NodeEdge {kind: %v, id: %v}", edge.kind, edge.id);
+    }
+
+    Kind kind;
+    NodeId id;
+  };
+
   // NodeDef defines a dependency-based execution order for all operations.
   struct NodeDef {
     NodeId id = kInvalidNodeId;
 
-    absl::Span<const NodeId> in_edges;
-    absl::Span<const NodeId> out_edges;
+    absl::Span<const NodeEdge> in_edges;
+    absl::Span<const NodeEdge> out_edges;
 
     // When doing the transitive reduction, we assign a priority to each node
     // based on the number of nodes that are reachable from the given node. The
@@ -112,14 +168,24 @@ class ExecutionGraph {
   // Sink nodes are the nodes that do not have any out-edges.
   absl::Span<const NodeId> sink() const { return sink_; }
 
+  // Returns true if a given node id is a source node.
+  bool is_source(NodeId id) const {
+    return absl::c_find(source_, id) != source_.end();
+  }
+
+  // Returns true if a given node id is a sink node.
+  bool is_sink(NodeId id) const {
+    return absl::c_find(sink_, id) != sink_.end();
+  }
+
   // Returns in-edges for a given node id.
-  absl::Span<const NodeId> in_edges(NodeId id) const {
+  absl::Span<const NodeEdge> in_edges(NodeId id) const {
     DCHECK_EQ(id, nodes_defs_[id].id);
     return nodes_defs_[id].in_edges;
   }
 
   // Returns out-edges for a given node id.
-  absl::Span<const NodeId> out_edges(NodeId id) const {
+  absl::Span<const NodeEdge> out_edges(NodeId id) const {
     DCHECK_EQ(id, nodes_defs_[id].id);
     return nodes_defs_[id].out_edges;
   }
@@ -139,7 +205,7 @@ class ExecutionGraph {
 
   // We store all `in_edges` and `out_edges` referenced by the `NodeDef` inside
   // large vectors to optimize for data locality on a hot path.
-  using NodesEdges = std::vector<NodeId>;
+  using NodesEdges = std::vector<NodeEdge>;
 
   // A NodeDef builder to collect all in-edges and out-edges before constructing
   // a NodeDef. We use it at dependency graph construction time when we don't
@@ -147,8 +213,8 @@ class ExecutionGraph {
   struct NodeDefBuilder {
     NodeId id = kInvalidNodeId;
     int64_t priority = 0;
-    std::vector<NodeId> in_edges;
-    std::vector<NodeId> out_edges;
+    std::vector<NodeEdge> in_edges;
+    std::vector<NodeEdge> out_edges;
   };
 
   ExecutionGraph(NodesEdges nodes_in_edges, NodesEdges nodes_out_edges,
@@ -159,9 +225,11 @@ class ExecutionGraph {
   static std::tuple<NodesEdges, NodesEdges, std::vector<NodeDef>>
   CreateNodeDefs(std::vector<NodeDefBuilder> builders);
 
-  // Erases edge from `from` node to `to` node if it exists. We rely on the fact
-  // that out and in-edges are sorted and use binary search on a critical path.
-  static int64_t EraseEdge(NodeDefBuilder& from, NodeDefBuilder& to);
+  // Erases edge from `from` node to `to` node if it exists and it has a weaker
+  // ordering than the given `kind`. We rely on the fact that out and in-edges
+  // are sorted and use binary search on a critical path.
+  static int64_t EraseEdge(NodeDefBuilder& from, NodeDefBuilder& to,
+                           NodeEdge::Kind kind);
 
   // Runs a transitive reduction on the NodeDefBuilder graph to remove redundant
   // edges, and updates nodes priorities. Returns the number of removed edges.

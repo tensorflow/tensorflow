@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
@@ -34,30 +35,59 @@ inline constexpr int64_t kTempBufferMemorySpaceColor = 2;
 // Set memory space to kCollectiveMemorySpaceColor for all allocations used by
 // all-reduce, all-gather, and reduce-scatter. This memory space maps to
 // collective memory using ncclMemAlloc in the runtime.
-inline BufferAssigner::Colorer CollectiveColorer() {
-  return [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
-    static const auto* kSupportedOpcodes = new absl::flat_hash_set<HloOpcode>{
-        HloOpcode::kAllReduce,
-        HloOpcode::kAllReduceStart,
-        HloOpcode::kAllReduceDone,
-        HloOpcode::kAllGather,
-        HloOpcode::kAllGatherStart,
-        HloOpcode::kAllGatherDone,
-        HloOpcode::kReduceScatter,
-        HloOpcode::kCollectivePermute,
-        HloOpcode::kCollectivePermuteStart,
-        HloOpcode::kCollectivePermuteDone,
-        HloOpcode::kAllToAll,
+inline BufferAssigner::Colorer CollectiveColorer(bool use_user_buffers,
+                                                 bool use_nvshmem) {
+  return [use_user_buffers, use_nvshmem](HloAliasAnalysis* alias_analysis,
+                                         const HloOrdering&) {
+    static const auto* const kSupportedOpcodes =
+        new absl::flat_hash_set<HloOpcode>{
+            HloOpcode::kAllReduce,
+            HloOpcode::kAllReduceStart,
+            HloOpcode::kAllReduceDone,
+            HloOpcode::kAllGather,
+            HloOpcode::kAllGatherStart,
+            HloOpcode::kAllGatherDone,
+            HloOpcode::kReduceScatter,
+            HloOpcode::kCollectivePermute,
+            HloOpcode::kCollectivePermuteStart,
+            HloOpcode::kCollectivePermuteDone,
+            HloOpcode::kAllToAll,
+        };
+    auto is_mosaic_gpu_nvshmem_instr = [](const HloInstruction* instr) {
+      return instr->opcode() == HloOpcode::kCustomCall &&
+             (instr->custom_call_target() == "mosaic_gpu" ||
+              instr->custom_call_target() == "mosaic_gpu_v2") &&
+             instr->raw_backend_config_string().find("nvshmem") !=
+                 std::string::npos;
+    };
+    auto is_collective_memory_instr = [&](const HloInstruction* instr) {
+      if (use_user_buffers) {
+        return kSupportedOpcodes->contains(instr->opcode()) ||
+               // opcode or async wrapped opcode is in kSupportedOpcodes.
+               ((instr->opcode() == HloOpcode::kAsyncStart ||
+                 instr->opcode() == HloOpcode::kAsyncDone) &&
+                kSupportedOpcodes->contains(instr->async_wrapped_opcode()));
+      }
+      if (use_nvshmem) {
+        return is_mosaic_gpu_nvshmem_instr(instr);
+      }
+      return false;
+    };
+    auto has_collective_memory_in_uses = [&](const HloValue* input_alias) {
+      // If any use is a collective instruction, we must color the value to use
+      // collective memory space.
+      for (auto& use : input_alias->GetUses()) {
+        if (is_collective_memory_instr(use.instruction)) {
+          return true;
+        }
+      }
+      return false;
     };
     for (HloValue* value : alias_analysis->dataflow_analysis().values()) {
       auto& buffer = alias_analysis->GetBufferContainingValue(*value);
       for (const auto& alias : buffer.values()) {
-        // opcode or async wrapped opcode is in kSupportedOpcodes.
-        if (kSupportedOpcodes->contains(alias->instruction()->opcode()) ||
-            ((alias->instruction()->opcode() == HloOpcode::kAsyncStart ||
-              alias->instruction()->opcode() == HloOpcode::kAsyncDone) &&
-             kSupportedOpcodes->contains(
-                 alias->instruction()->async_wrapped_opcode()))) {
+        if (is_collective_memory_instr(alias->instruction()) ||
+            has_collective_memory_in_uses(alias)) {
           value->set_color(kCollectiveMemorySpaceColor);
         }
       }

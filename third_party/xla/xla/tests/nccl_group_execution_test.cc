@@ -127,13 +127,13 @@ XLA_TEST_F(NcclGroupExecutionTest, NcclGroupSendRecvNoWhileLoop) {
 
 XLA_TEST_F(NcclGroupExecutionTest, BidirectionalCommunication) {
   const absl::string_view kModuleStr = R"(
-  HloModule module_main, entry_computation_layout={()->(u32[], u32[])}
+  HloModule module_main, entry_computation_layout={()->(u32[], u32[])}, num_partitions=4
 
   bidirectional_ring {
     a = u32[] parameter(0)
-    start = (u32[], u32[]) collective-permute-start(a), channel_id=2, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+    start = (u32[], u32[]) collective-permute-start(a), source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
     done = u32[] collective-permute-done(start)
-    start.1 = (u32[], u32[]) collective-permute-start(a), channel_id=1, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+    start.1 = (u32[], u32[]) collective-permute-start(a), source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
     done.1 = u32[] collective-permute-done(start.1)
     ROOT tuple = (u32[], u32[]) tuple(done, done.1)
   }

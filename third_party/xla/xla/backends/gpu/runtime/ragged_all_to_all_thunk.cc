@@ -37,13 +37,13 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/ragged_all_to_all.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/kernels/ragged_all_to_all_kernel.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -120,13 +121,23 @@ absl::Status RunAllToAllOnIndexBuffer(
         collectives->Slice(destination_buffer, element_type, offset,
                            /*count=*/num_updates_per_replica);
 
-    TF_RETURN_IF_ERROR(comm->Send(send_slice, element_type,
-                                  /*count=*/num_updates_per_replica,
-                                  RankId(peer), GpuCollectives::On(stream)));
+    auto event_send = comm->Send(send_slice, element_type,
+                                 /*count=*/num_updates_per_replica,
+                                 RankId(peer), GpuCollectives::On(stream));
 
-    TF_RETURN_IF_ERROR(comm->Recv(recv_slice, element_type,
-                                  /*count=*/num_updates_per_replica,
-                                  RankId(peer), GpuCollectives::On(stream)));
+    tsl::BlockUntilReady(event_send);
+    if (event_send.IsError()) {
+      return event_send.GetError();
+    }
+
+    auto event_recv = comm->Recv(recv_slice, element_type,
+                                 /*count=*/num_updates_per_replica,
+                                 RankId(peer), GpuCollectives::On(stream));
+
+    tsl::BlockUntilReady(event_recv);
+    if (event_recv.IsError()) {
+      return event_recv.GetError();
+    }
   }
 
   TF_RETURN_IF_ERROR(collectives->GroupEnd());
@@ -191,13 +202,23 @@ absl::Status RunRaggedAllToAll(
                              output_offsets[idx] * ragged_row_element_size,
                              recv_sizes[idx] * ragged_row_element_size);
 
-      TF_RETURN_IF_ERROR(comm->Send(send_slice, element_type,
-                                    send_sizes[idx] * ragged_row_element_size,
-                                    RankId(peer), GpuCollectives::On(stream)));
+      auto event_send = comm->Send(send_slice, element_type,
+                                   send_sizes[idx] * ragged_row_element_size,
+                                   RankId(peer), GpuCollectives::On(stream));
 
-      TF_RETURN_IF_ERROR(comm->Recv(recv_slice, element_type,
-                                    recv_sizes[idx] * ragged_row_element_size,
-                                    RankId(peer), GpuCollectives::On(stream)));
+      tsl::BlockUntilReady(event_send);
+      if (event_send.IsError()) {
+        return event_send.GetError();
+      }
+
+      auto event_recv = comm->Recv(recv_slice, element_type,
+                                   recv_sizes[idx] * ragged_row_element_size,
+                                   RankId(peer), GpuCollectives::On(stream));
+
+      tsl::BlockUntilReady(event_recv);
+      if (event_recv.IsError()) {
+        return event_recv.GetError();
+      }
     }
   }
 
@@ -251,11 +272,13 @@ RendezvousBeforeKernelStart(absl::string_view name,
   std::string start_rendezvous_key =
       absl::StrFormat("start %s ragged-all-to-all for rank %d, clique %s", name,
                       rank.value(), clique_key.ToString());
-  std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values =
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
       Rendezvous<std::vector<RendezvousValue>>(
           /*name=*/
           start_rendezvous_key, /*key=*/clique_key,
-          /*value=*/rendezvous_value, /*num_threads=*/num_ranks, rendezvous_fn);
+          /*value=*/rendezvous_value, /*num_threads=*/num_ranks,
+          rendezvous_fn));
 
   // Wait for all devices to reach the start event. This indicates that all
   // output buffers are ready for transfer.
@@ -280,9 +303,9 @@ absl::Status RendezvousAfterKernelFinish(
   std::string finish_rendezvous_key =
       absl::StrFormat("finish %s ragged-all-to-all for rank %d, clique %s",
                       name, rank.value(), clique_key.ToString());
-  Rendezvous(/*name=*/finish_rendezvous_key,
-             /*key=*/clique_key,
-             /*num_threads=*/num_ranks);
+  TF_RETURN_IF_ERROR(Rendezvous(/*name=*/finish_rendezvous_key,
+                                /*key=*/clique_key,
+                                /*num_threads=*/num_ranks));
 
   // Wait for all devices to reach the end event. This indicates that all
   // updates from other devices have arrived.

@@ -338,6 +338,14 @@ class AlgebraicSimplifierOptions {
     enable_onednn_support_ = enable_onednn_support;
   }
 
+  bool rewrite_reshape_transpose_as_slice_concatenate() const {
+    return rewrite_reshape_transpose_as_slice_concatenate_;
+  }
+
+  void set_rewrite_reshape_transpose_as_slice_concatenate(bool value) {
+    rewrite_reshape_transpose_as_slice_concatenate_ = value;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -393,6 +401,7 @@ class AlgebraicSimplifierOptions {
       false
 #endif  // INTEL_MKL
   };
+  bool rewrite_reshape_transpose_as_slice_concatenate_{true};
   Metadata metadata_;
 };
 
@@ -588,7 +597,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
  private:
   // Returns whether the dot precision config is supported by simplifier.
-  virtual bool SupportedDotPrecisionConfig(const PrecisionConfig& config);
+  virtual bool SupportedDotPrecisionConfig(const PrecisionConfig& config,
+                                           bool has_contracting_dim);
 
   // Makes algorithm specific set of instructions for multiply with precision
   // algorithm in mind. In the trivial case it returns just multiply.

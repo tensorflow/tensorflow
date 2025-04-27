@@ -283,7 +283,7 @@ def : Pat<(MHLO_ConcatenateOp $inputs, $dim),
 //===----------------------------------------------------------------------===//
 
 class HasChloCompareType<string value> :
-    CPred<"$_self.cast<::mlir::chlo::ComparisonTypeAttr>().getValue() == " # value>;
+    CPred<"llvm::cast<::mlir::chlo::ComparisonTypeAttr>($_self).getValue() == " # value>;
 
 // Attribute value should be such that it matches the comparison used by
 // TensorFlow, if the attribute is present.
@@ -298,7 +298,7 @@ class CHLO_ComparisonDirectionValue<string enumStr> :
   ConstantAttr<CHLO_ComparisonDirectionAttr, "::mlir::chlo::ComparisonDirection::" # enumStr>;
 
 class HasMhloCompareType<string value> :
-    CPred<"$_self.cast<::mlir::mhlo::ComparisonTypeAttr>().getValue() == " # value>;
+    CPred<"llvm::cast<::mlir::mhlo::ComparisonTypeAttr>($_self).getValue() == " # value>;
 
 // Attribute value should be such that it matches the comparison used by
 // TensorFlow, if the attribute is present.

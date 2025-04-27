@@ -1,5 +1,12 @@
 // RUN: sdy_opt %s -sdy-populate-op-sharding-rules -verify-diagnostics 2>&1 | FileCheck %s
 
+// CHECK-LABEL: func @copy
+func.func @copy(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=16, j=8}>
+  %0 = mhlo.copy %arg0 : tensor<16x8xf32>
+  return %0 : tensor<16x8xf32>
+}
+
 // CHECK-LABEL: func @ragged_dot_mode_non_contracting
 func.func @ragged_dot_mode_non_contracting(%arg0: tensor<16x32x64xf32>, %arg1: tensor<4x16x64x8xf32>, %arg2: tensor<16x4xi32>) -> tensor<16x32x8xf32> {
   // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, l], [m, i, l, k], [i, m])->([i, j, k]) {i=16, j=32, k=8, l=64, m=4} reduction={l} need_replication={j, m}>

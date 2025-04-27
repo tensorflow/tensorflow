@@ -32,7 +32,7 @@ def GetSqueezedPermutation: NativeCodeCall<"GetSqueezedPermutation($0, $1)">;
 
 // Check to see if the tensor dimensions can be Squeezed by eliminating 1s'
 def CanSqueezeTensor : Constraint<CPred<
-  "GetShape($0).getNumElements() > GetSqueezedShape($0).getNumElements()">>;
+  "GetShapeAttr($0).getNumElements() > GetSqueezedShape($0).getNumElements()">>;
 
 
 // Pattern to convert TFL_TransposeOp with rank>6 to rank<=6 if there are
@@ -50,7 +50,7 @@ def ConvertTransposeToDecreaseRank : Pat<
     (TFL_TransposeOp
       (TFL_ReshapeOp $input, (Arith_ConstantOp (GetSqueezedShape $input))),
       (Arith_ConstantOp (GetSqueezedPermutation $input, $permutation))),
-    (Arith_ConstantOp (GetShape $output_transpose))),
+    (Arith_ConstantOp (GetShapeAttr $output_transpose))),
     [(AnyStaticShapeTensor $input),
      (HasRankAtLeast<7> $input),
      (CanSqueezeTensor $input)]>;

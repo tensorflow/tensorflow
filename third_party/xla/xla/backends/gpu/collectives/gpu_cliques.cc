@@ -348,7 +348,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
   // processes are not able to synchronize device activity.
   RendezvousArg rendezvous_arg = std::make_pair(device_rank, synchronized);
 
-  return Rendezvous<absl::StatusOr<LockableGpuClique::Lock>>(
+  return Rendezvous<LockableGpuClique::Lock>(
       initialization_rendezvous_name, rendezvous_key, rendezvous_arg,
       num_local_participants, initialize, WarnStuckTimeout(),
       TerminateTimeout());
@@ -510,7 +510,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       rank.value(), clique_key.ToString(), run_id.ToInt(),
       parent_clique_key.ToString());
 
-  return Rendezvous<absl::StatusOr<LockableGpuClique::Lock>>(
+  return Rendezvous<LockableGpuClique::Lock>(
       initialization_rendezvous_name, rendezvous_key, rank_pair,
       num_local_participants, split, WarnStuckTimeout(), TerminateTimeout());
 }
@@ -545,7 +545,7 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<LockableGpuClique::Lock> clique,
-      Rendezvous<absl::StatusOr<LockableGpuClique::Lock>>(
+      Rendezvous<LockableGpuClique::Lock>(
           rendezvous_name, rendezvous_key, num_local_participants,
           [&] {
             tsl::profiler::TraceMe trace("LockGpuClique");

@@ -28,7 +28,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 
 // IWYU pragma: begin_exports
 #include "xla/ffi/api/api.h"
@@ -424,16 +423,16 @@ XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(double, XLA_FFI_DataType_F64);
 template <>
 struct AttrDecoding<absl::string_view> {
   using Type = absl::string_view;
-  static std::optional<std::string_view> Decode(XLA_FFI_AttrType type,
-                                                void* attr,
-                                                DiagnosticEngine& diagnostic) {
+  static std::optional<absl::string_view> Decode(XLA_FFI_AttrType type,
+                                                 void* attr,
+                                                 DiagnosticEngine& diagnostic) {
     if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_STRING)) {
       return diagnostic.Emit("Wrong attribute type: expected ")
              << XLA_FFI_AttrType_STRING << " but got " << type;
     }
 
     auto* span = reinterpret_cast<XLA_FFI_ByteSpan*>(attr);
-    return std::string_view(span->ptr, span->len);
+    return absl::string_view(span->ptr, span->len);
   }
 };
 
@@ -469,7 +468,7 @@ class Dictionary : public internal::DictionaryBase {
   using internal::DictionaryBase::DictionaryBase;
 
   template <typename T>
-  absl::StatusOr<T> get(std::string_view name) const {
+  absl::StatusOr<T> get(absl::string_view name) const {
     DiagnosticEngine diagnostic;
     std::optional<T> value = internal::DictionaryBase::get<T>(name, diagnostic);
     if (!value.has_value()) {

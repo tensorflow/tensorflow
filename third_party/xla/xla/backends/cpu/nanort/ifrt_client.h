@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
@@ -101,6 +103,12 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
       HostBufferSemantics semantics,
+      tsl::RCReference<xla::ifrt::UserContext> user_context) override;
+
+  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+  MakeErrorArrays(
+      const absl::Status& error,
+      absl::Span<const xla::ifrt::ArraySpec> array_specs,
       tsl::RCReference<xla::ifrt::UserContext> user_context) override;
 
   // Assembles a sharded array from a list of single device arrays. If the
@@ -185,19 +193,14 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   // details.
   std::unique_ptr<ifrt::Compiler> compiler_;
   std::unique_ptr<ifrt::Memory> memory_;
-  std::unique_ptr<ifrt::Device> device_;
+  std::vector<std::unique_ptr<ifrt::Device>> owned_devices_;
 
   // The default sharding for this client. When this sharding is used it
   // typically means that we can use an array's contents directly.
   std::shared_ptr<ifrt::Sharding> default_sharding_;
 
   // Some of the ifrt::Client methods return a span of devices, so we need to
-  // keep storage for them here. Note that this may repeat the device_ pointer
-  // multiple times if this client is configured with multiple devices. This is
-  // mostly to make IFRT callers that expect sharded programs to run on multiple
-  // devices happy. This has the unusual property that we have multiple devices
-  // but a single device_id, but this seems to work fine and most documentation
-  // warns that devices may be repeated within a device list or sharding.
+  // keep storage for them here.
   std::vector<ifrt::Device*> devices_;
 };
 

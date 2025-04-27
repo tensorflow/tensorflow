@@ -488,7 +488,7 @@ class AsyncValue {
 
     struct Node final : public WaiterListNode {
       explicit Node(Waiter waiter) : waiter(std::move(waiter)) {}
-      void operator()() final { waiter(); }
+      void operator()() final { std::move(waiter)(); }
       Waiter waiter;
     };
 
@@ -516,9 +516,9 @@ void BlockUntilReady(AsyncValue* async_value);
 
 // Runs the `callee` when all async values become available.
 void RunWhenReady(absl::Span<AsyncValue* const> values,
-                  absl::AnyInvocable<void()> callee);
+                  absl::AnyInvocable<void() &&> callee);
 void RunWhenReady(absl::Span<RCReference<AsyncValue> const> values,
-                  absl::AnyInvocable<void()> callee);
+                  absl::AnyInvocable<void() &&> callee);
 
 //===----------------------------------------------------------------------===//
 
@@ -1014,7 +1014,7 @@ void AsyncValue::AndThen(Waiter&& waiter) {
   if (waiters_and_state.state() == State::kConcrete ||
       waiters_and_state.state() == State::kError) {
     DCHECK_EQ(waiters_and_state.waiter(), nullptr);
-    waiter();
+    std::forward<Waiter>(waiter)();
     return;
   }
 

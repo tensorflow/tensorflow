@@ -371,12 +371,6 @@ class PjRtCApiClient : public PjRtClient {
         "this feature.");
   }
 
-  absl::Status Defragment() override {
-    return Unimplemented(
-        "PJRT C API does not support Defragment. Please report an issue at "
-        "https://github.com/google/jax/issues if you need this feature.");
-  }
-
   absl::Status DmaMap(void* data, size_t size) override;
 
   absl::Status DmaUnmap(void* data) override;

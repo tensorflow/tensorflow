@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
+#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
@@ -33,6 +35,7 @@ limitations under the License.
 namespace xla::cpu {
 
 static absl::Status RunFusionBenchmark(benchmark::State& state,
+                                       HloBenchmarkOptions options,
                                        absl::string_view hlo,
                                        bool is_xnn_fusion = false) {
   int64_t d0 = state.range(0);  // Tensor size.
@@ -55,8 +58,11 @@ static absl::Status RunFusionBenchmark(benchmark::State& state,
       ShapeUtil::MakeShape(F32, {d0, d0}), &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&p0, &p1};
 
-  HloBenchmarkOptions options;
-  if (is_xnn_fusion) options.disable_parallel_task_assigner = true;
+  if (is_xnn_fusion) {
+    options.disable_parallel_task_assigner = true;
+    options.aot_options = nullptr;
+  }
+
   return RunHloBenchmark(state, hlo, args,
                          {{"$d0", absl::StrCat(d0)},
                           {"$n", absl::StrCat(n)},
@@ -64,7 +70,8 @@ static absl::Status RunFusionBenchmark(benchmark::State& state,
                          options);
 }
 
-static void BM_EltwiseF32(benchmark::State& state) {
+static void BM_EltwiseF32(benchmark::State& state,
+                          HloBenchmarkOptions options) {
   // Perform `n+1` iterations of `add` and `multiply`, then end with `subtract`.
   absl::string_view hlo = R"(
     HloModule eltwise_f32_$n
@@ -78,10 +85,11 @@ static void BM_EltwiseF32(benchmark::State& state) {
       ROOT sub = f32[$d0,$d0] subtract(mul$n, p0)
     }
   )";
-  CHECK_OK(RunFusionBenchmark(state, hlo));
+  CHECK_OK(RunFusionBenchmark(state, std::move(options), hlo));
 }
 
-static void BM_XnnEltwiseF32(benchmark::State& state) {
+static void BM_XnnEltwiseF32(benchmark::State& state,
+                             HloBenchmarkOptions options) {
   // Perform `n+1` iterations of `add` and `multiply`, then end with `subtract`.
   absl::string_view hlo = R"(
     HloModule eltwise_f32_$n
@@ -103,10 +111,12 @@ static void BM_XnnEltwiseF32(benchmark::State& state) {
         backend_config={"fusion_config": {kind: "__xnn_fusion"}}
     }
   )";
-  CHECK_OK(RunFusionBenchmark(state, hlo, /*is_xnn_fusion=*/true));
+  CHECK_OK(RunFusionBenchmark(state, std::move(options), hlo,
+                              /*is_xnn_fusion=*/true));
 }
 
-static void BM_DotAndEltwiseF32(benchmark::State& state) {
+static void BM_DotAndEltwiseF32(benchmark::State& state,
+                                HloBenchmarkOptions options) {
   // Perform `dot` followed by `n+1` iterations of `add` and `multiply`, then
   // end with `subtract`.
   absl::string_view hlo = R"(
@@ -123,10 +133,11 @@ static void BM_DotAndEltwiseF32(benchmark::State& state) {
       ROOT sub = f32[$d0,$d0] subtract(mul$n, p0)
     }
   )";
-  CHECK_OK(RunFusionBenchmark(state, hlo));
+  CHECK_OK(RunFusionBenchmark(state, std::move(options), hlo));
 }
 
-static void BM_XnnDotAndEltwiseF32(benchmark::State& state) {
+static void BM_XnnDotAndEltwiseF32(benchmark::State& state,
+                                   HloBenchmarkOptions options) {
   // Perform `dot` followed by `n+1` iterations of `add` and `multiply`, then
   // end with `subtract`.
   absl::string_view hlo = R"(
@@ -151,11 +162,12 @@ static void BM_XnnDotAndEltwiseF32(benchmark::State& state) {
         backend_config={"fusion_config": {kind: "__xnn_fusion"}}
     }
   )";
-  CHECK_OK(RunFusionBenchmark(state, hlo, /*is_xnn_fusion=*/true));
+  CHECK_OK(RunFusionBenchmark(state, std::move(options), hlo,
+                              /*is_xnn_fusion=*/true));
 }
 
 #define BENCHMARK_FUSION(name)  \
-  BENCHMARK(name)               \
+  XLA_CPU_BENCHMARK(name)       \
       ->MeasureProcessCPUTime() \
       ->Args({1024, 4})         \
       ->Args({1024, 8})         \

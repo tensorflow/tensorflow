@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/statusor.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -37,10 +38,14 @@ class PjRtRawBuffer : public tsl::ReferenceCounted<PjRtRawBuffer> {
   static absl::StatusOr<tsl::RCReference<PjRtRawBuffer>> CreateRawAliasOfBuffer(
       PjRtBuffer* buffer);
 
+  // Memory space that the raw buffer lives on.
   virtual PjRtMemorySpace* memory_space() const = 0;
 
+  // If visible to the host, returns the base pointer for direct access.
+  virtual void* GetHostPointer() const { return nullptr; }
+
   // Returns the number of bytes of the buffer storage on the device.
-  virtual absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const = 0;
+  virtual size_t GetOnDeviceSizeInBytes() const = 0;
 
   // Transfers the buffer to a sub-range of the on-device representation.
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
@@ -63,6 +68,26 @@ class PjRtRawBuffer : public tsl::ReferenceCounted<PjRtRawBuffer> {
   // this method for specific alignment requirements.
   virtual PjRtFuture<> CopyRawDeviceToHost(void* dst, int64_t offset,
                                            int64_t transfer_size) = 0;
+};
+
+// Adds methods common to all implementations of PjRtRawBuffer based on device
+// events.
+class CommonPjRtRawBuffer : public PjRtRawBuffer {
+ public:
+  // Transfers the buffer to a sub-range of the on-device representation.
+  // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
+  // returned future transitions to ready on error, or after the transfer has
+  // completed.
+  //
+  // Note that the underlying driver may have requirements
+  // on the alignment of `src` and `offset` as well. Look at implementations of
+  // this method for specific alignment requirements.
+  virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+  CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
+                                    int64_t transfer_size) = 0;
+
+  PjRtFuture<> CopyRawHostToDevice(const void* src, int64_t offset,
+                                   int64_t transfer_size) override;
 };
 
 class RegisterRawBufferFactory {

@@ -39,17 +39,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
@@ -67,7 +67,7 @@ using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 
-class HloInstructionTest : public HloTestBase {
+class HloInstructionTest : public HloHardwareIndependentTestBase {
  protected:
   Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
 };
@@ -2404,7 +2404,7 @@ TEST_F(HloInstructionTest, CloneWindowOnCustomCall) {
   Window w = window_util::MakeWindow({1, 2, 3});
   instr->set_window(w);
   auto clone = instr->Clone();
-  EXPECT_THAT(clone->window(), EqualsProto(w)) << clone->window().DebugString();
+  EXPECT_THAT(clone->window(), EqualsProto(w));
 }
 
 TEST_F(HloInstructionTest, CloneDnumsOnCustomCall) {
@@ -2415,8 +2415,7 @@ TEST_F(HloInstructionTest, CloneDnumsOnCustomCall) {
   dnums.set_output_batch_dimension(42);
   instr->set_convolution_dimension_numbers(dnums);
   auto clone = instr->Clone();
-  EXPECT_THAT(clone->convolution_dimension_numbers(), EqualsProto(dnums))
-      << clone->convolution_dimension_numbers().DebugString();
+  EXPECT_THAT(clone->convolution_dimension_numbers(), EqualsProto(dnums));
 }
 
 TEST_F(HloInstructionTest, CloneHasSideEffectOnCustomCall) {
@@ -2767,10 +2766,12 @@ TEST_F(HloInstructionTest,
   // point to the conditional instruction.
   int num_conditional_branch_comp = 0;
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
-    if (comp->IsConditionalBranchComputation()) {
+    auto conditional_callers =
+        comp->caller_instructions(HloOpcode::kConditional);
+    if (!conditional_callers.empty()) {
       num_conditional_branch_comp += 1;
-      EXPECT_EQ(comp->ConditionalCallInstruction(),
-                module->entry_computation()->root_instruction());
+      EXPECT_THAT(conditional_callers,
+                  ElementsAre(module->entry_computation()->root_instruction()));
     }
   }
   EXPECT_EQ(num_conditional_branch_comp, 2);
@@ -2842,10 +2843,12 @@ TEST_F(HloInstructionTest,
   // point to the conditional instruction.
   int num_conditional_branch_comp = 0;
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
-    if (comp->IsConditionalBranchComputation()) {
+    auto conditional_callers =
+        comp->caller_instructions(HloOpcode::kConditional);
+    if (!conditional_callers.empty()) {
       num_conditional_branch_comp += 1;
-      EXPECT_EQ(comp->ConditionalCallInstruction(),
-                module->entry_computation()->root_instruction());
+      EXPECT_THAT(conditional_callers,
+                  ElementsAre(module->entry_computation()->root_instruction()));
     }
   }
   EXPECT_EQ(num_conditional_branch_comp, branch_computations.size());

@@ -25,27 +25,21 @@ namespace tsl {
 namespace histogram {
 
 static void Validate(const Histogram& h) {
-  string s1 = h.ToString();
-  LOG(ERROR) << s1;
-
   HistogramProto proto_with_zeroes;
   h.EncodeToProto(&proto_with_zeroes, true);
   Histogram h2;
   EXPECT_TRUE(h2.DecodeFromProto(proto_with_zeroes));
-  string s2 = h2.ToString();
-  LOG(ERROR) << s2;
 
-  EXPECT_EQ(s1, s2);
+  EXPECT_EQ(h2.ToString(), h.ToString());
 
   HistogramProto proto_no_zeroes;
   h.EncodeToProto(&proto_no_zeroes, false);
-  LOG(ERROR) << proto_no_zeroes.DebugString();
   Histogram h3;
   EXPECT_TRUE(h3.DecodeFromProto(proto_no_zeroes));
   string s3 = h3.ToString();
   LOG(ERROR) << s3;
 
-  EXPECT_EQ(s1, s3);
+  EXPECT_EQ(h3.ToString(), h.ToString());
 }
 
 TEST(Histogram, Empty) {

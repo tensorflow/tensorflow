@@ -70,8 +70,14 @@ void AddOptimizationPasses(const tflite::ConverterFlags& converter_flags,
 
   pass_manager->addPass(mlir::TFL::CreatePushTransposeThroughEwisePass());
 
-  pass_manager->addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::Create<mlir::TFL::OptimizeBroadcastLikePass>());
+  // Add BroadcastLike optimization pass.
+  {
+    mlir::TFL::OptimizeBroadcastLikePassOptions options;
+    options.unsafe_fuse_dynamic_shaped_broadcast =
+        pass_config.unsafe_fuse_dynamic_shaped_broadcast;
+    pass_manager->addNestedPass<mlir::func::FuncOp>(
+        mlir::TFL::Create<mlir::TFL::OptimizeBroadcastLikePass>(options));
+  }
 
   // Add TFLite optimize pass.
   mlir::TFL::OptimizePassOptions optimize_pass_options;
@@ -355,8 +361,13 @@ void AddPostQuantizationStableHloToTfPasses(
     // broadcasting support. This needs to be run immediately after HLO->TFL
     // legalization, otherwise the newly generated TFL broadcast ops can fold
     // and materialize the weights.
-    pass_manager.addNestedPass<mlir::func::FuncOp>(
-        mlir::TFL::Create<mlir::TFL::OptimizeBroadcastLikePass>());
+    {
+      mlir::TFL::OptimizeBroadcastLikePassOptions options;
+      options.unsafe_fuse_dynamic_shaped_broadcast =
+          pass_config.unsafe_fuse_dynamic_shaped_broadcast;
+      pass_manager.addNestedPass<mlir::func::FuncOp>(
+          mlir::TFL::Create<mlir::TFL::OptimizeBroadcastLikePass>(options));
+    }
   }
   // folds tf.BroadcastTo ops with subsequent ops if they have built in
   // broadcasting support. This needs to be run immediately after HLO->TF
@@ -637,6 +648,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
         converter_flags.reduce_type_precision()) {
       pass_manager->addPass(mlir::TFL::CreateReduceTypePrecisionPass());
     }
+    pass_manager->addPass(mlir::TFL::CreateCleanupOptimizationBarrierPass());
 
     // This pass should alway run before the end of the model conversion but
     // not after the CreateSplitMergedOperandsPass below.

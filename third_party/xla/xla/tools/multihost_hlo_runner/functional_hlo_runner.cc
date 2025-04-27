@@ -65,6 +65,8 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
+#include "xla/service/slow_operation_alarm.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tests/test_utils.h"
@@ -111,6 +113,14 @@ absl::StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape,
             PopulateWithSameValue(
                 &literal,
                 static_cast<NativeT>(type == PRED ? (value % 2) == 0 : value));
+            for (int i = 0; i < shape.dimensions_size(); i++) {
+              if (shape.is_dynamic_dimension(i)) {
+                // TODO(b/378917570): We might need to set the dynamic size to
+                // the actual bound i.e., shape.dimensions(i) when HybridSim
+                // supports SparseCore.
+                literal.SetDynamicSize(i, 0);
+              }
+            }
             return literal;
           }
           return Unimplemented(
@@ -792,10 +802,24 @@ absl::Status FunctionalHloRunner::PrepareHloModuleForCompilation(
 }
 
 CompileOptions FunctionalHloRunner::CompleteCompileOptions(
-    const HloModule& hlo_module, CompileOptions compile_options) {
+    const HloModule& hlo_module, CompileOptions compile_options,
+    const PreprocessingOptions& preproc_options) {
   ParameterType parameter_type = GetParameterType(hlo_module);
   compile_options.parameter_is_tupled_arguments =
       (parameter_type == ParameterType::kOneTupleOfArrays);
+  if (preproc_options.use_layouts_from_hlo_module) {
+    const ComputationLayout& layout = hlo_module.entry_computation_layout();
+    std::vector<Shape> parameter_shapes;
+    parameter_shapes.reserve(layout.parameter_count());
+    for (const ShapeLayout& shape_layout : layout.parameter_layouts()) {
+      parameter_shapes.push_back(shape_layout.shape());
+    }
+    compile_options.argument_layouts = std::move(parameter_shapes);
+    compile_options.executable_build_options.set_result_layout(
+        layout.result_shape());
+    compile_options.executable_build_options.mutable_debug_options()
+        ->set_xla_pjrt_allow_auto_layout_in_hlo(true);
+  }
   return compile_options;
 }
 
@@ -838,7 +862,7 @@ FunctionalHloRunner::Compile(PjRtClient& client, HloModule* hlo_module,
   TF_RETURN_IF_ERROR(PrepareHloModuleForCompilation(hlo_module, debug_options,
                                                     preproc_options));
   CompileOptions modified_compile_options =
-      CompleteCompileOptions(*hlo_module, compile_options);
+      CompleteCompileOptions(*hlo_module, compile_options, preproc_options);
 
   return ConvertAndCallCompiler<PjRtLoadedExecutable>(
       preproc_options.compile_as_stablehlo, hlo_module,
@@ -856,7 +880,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> FunctionalHloRunner::Compile(
   TF_RETURN_IF_ERROR(PrepareHloModuleForCompilation(hlo_module, debug_options,
                                                     preproc_options));
   CompileOptions modified_compile_options =
-      CompleteCompileOptions(*hlo_module, compile_options);
+      CompleteCompileOptions(*hlo_module, compile_options, preproc_options);
 
   return ConvertAndCallCompiler<PjRtExecutable>(
       preproc_options.compile_as_stablehlo, hlo_module,
@@ -1044,13 +1068,9 @@ FunctionalHloRunner::RunInternal(
     if (!module.result_shape().IsTuple()) {
       return false;
     }
-    return absl::c_any_of(
-        module.result_shape().tuple_shapes(), [](const Shape& shape) {
-          return shape.has_layout() &&
-                 shape.layout().memory_space() == Layout::kHostMemorySpace;
-        });
+    return true;
   };
-  // If any output leaf buffer is in host memory, PJRT requires untuple_result.
+  // If any output leaf buffer is a tuple, PJRT requires untuple_result.
   bool must_untuple_result = output_has_tuple_leaf_on_host_memory_space();
   bool default_untuple_result =
       must_untuple_result || execute_options.untuple_result;
@@ -1150,6 +1170,11 @@ FunctionalHloRunner::CreateArgumentsOnDevice(
         client, executable, running_options, flatten_arguments);
   }
 
+  SlowOperationAlarm alarm(
+      absl::Seconds(5),
+      absl::StrFormat("Argument initialization is slow. Consider changing "
+                      "--hlo_argument_mode."));
+
   absl::Span<PjRtDevice* const> addressable_devices =
       executable->addressable_devices();
   size_t num_addressable_devices = addressable_devices.size();
@@ -1174,7 +1199,7 @@ FunctionalHloRunner::CreateArgumentsOnDevice(
           ModuleArgumentMode::kUseZerosAsInput;
 
   for (int i = 0; i < num_addressable_devices; ++i) {
-    VLOG(3) << "Creating fake argument for device " << i;
+    VLOG(3) << "Creating fake arguments for device " << i;
     LiteralVec& argument_literals =
         per_device_argument_literals[addressable_devices[i]->id()];
     int executable_idx = hlo_modules.size() == 1
@@ -1191,7 +1216,8 @@ FunctionalHloRunner::CreateArgumentsOnDevice(
       if (flatten_arguments) {
         CHECK_EQ(params.size(), 1);
         CHECK(params.front()->shape().IsTuple());
-        argument_literals.reserve(params.front()->shape().tuple_shapes_size());
+        argument_literals.reserve(
+            params.front()->shape().tuple_shapes().size());
       } else {
         argument_literals.reserve(params.size());
       }
@@ -1368,7 +1394,8 @@ FunctionalHloRunner::CopyArgumentsToDevice(
       TF_RET_CHECK(entry_layout.parameter_count() == 1)
           << "entry_layout.parameter_count(): "
           << entry_layout.parameter_count();
-      TF_RET_CHECK(arg_i < entry_layout.parameter_shape(0).tuple_shapes_size());
+      TF_RET_CHECK(arg_i <
+                   entry_layout.parameter_shape(0).tuple_shapes().size());
       const Shape& shape = entry_layout.parameter_shape(0).tuple_shapes(arg_i);
       TF_RET_CHECK(!shape.IsTuple()) << "Nested tuples are not supported";
       return non_tuple_memory_space(shape);

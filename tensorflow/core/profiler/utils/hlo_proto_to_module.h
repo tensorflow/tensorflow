@@ -16,22 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_HLO_PROTO_TO_MODULE_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_HLO_PROTO_TO_MODULE_H_
 
-#include <memory>
-
-#include "absl/status/statusor.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo.pb.h"
-
-namespace tensorflow {
-namespace profiler {
-
-absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertHloProtoToModule(
-    const xla::HloProto& hlo_proto);
-
-std::unique_ptr<xla::HloModule> ConvertHloProtoToModuleIgnoringErrors(
-    const xla::HloProto& hlo_proto);
-
-}  // namespace profiler
-}  // namespace tensorflow
+#include "xprof/utils/hlo_proto_to_module.h"  // from @org_xprof  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_PROFILER_UTILS_HLO_PROTO_TO_MODULE_H_

@@ -85,7 +85,7 @@ struct TFQuantizationBase
       Operation* quantized_op, const CustomMap& custom_op_map) {
     auto call_op = cast<TF::PartitionedCallOp>(quantized_op);
     StringRef function_name =
-        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+        llvm::cast<FlatSymbolRefAttr>(call_op.getFAttr()).getValue();
     // The below can be generalized as there are more read-only ops added such
     // as slice.
     const bool is_gather = function_name.contains("gather");
@@ -98,7 +98,7 @@ struct TFQuantizationBase
                                                const CustomMap& custom_op_map) {
     auto call_op = cast<TF::PartitionedCallOp>(quantized_op);
     StringRef function_name =
-        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+        llvm::cast<FlatSymbolRefAttr>(call_op.getFAttr()).getValue();
     // The below can be generalized as there are more read-only ops added such
     // as slice.
     bool is_gather = false;
@@ -221,16 +221,16 @@ class QuantizeSameScaleOpsPattern
       inputs.reserve(quantizing_op->getNumOperands());
       for (const auto& operand : quantizing_op->getOperands()) {
         Type operand_type = operand.getType();
-        if (operand_type.isa<NoneType>()) {
+        if (isa<NoneType>(operand_type)) {
           inputs.push_back(operand);
           continue;
         }
 
-        Type elem_type = operand_type.cast<TensorType>().getElementType();
+        Type elem_type = llvm::cast<TensorType>(operand_type).getElementType();
         if (auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
                 operand.getDefiningOp())) {
-          auto dq_arg_type = dq_op.getArg().getType().cast<TensorType>();
-          auto qtype = dq_arg_type.getElementType().cast<QuantizedType>();
+          auto dq_arg_type = llvm::cast<TensorType>(dq_op.getArg().getType());
+          auto qtype = llvm::cast<QuantizedType>(dq_arg_type.getElementType());
           auto scast_op = rewriter.create<quantfork::StorageCastOp>(
               dq_op->getLoc(), dq_arg_type.clone(qtype.getStorageType()),
               dq_op.getArg());
@@ -253,12 +253,12 @@ class QuantizeSameScaleOpsPattern
            llvm::enumerate(quantizing_op->getResults())) {
         Value result = enumerated_result.value();
         Type result_type = result.getType();
-        if (result_type.isa<NoneType>()) {
+        if (isa<NoneType>(result_type)) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result_type);
           continue;
         }
-        auto result_tensor_type = result_type.cast<TensorType>();
+        auto result_tensor_type = llvm::cast<TensorType>(result_type);
         // If the user is the Quantize op, it must be the only user.
         if (result.hasOneUse() &&
             llvm::isa<quantfork::QuantizeCastOp>(*result.user_begin())) {
@@ -266,10 +266,8 @@ class QuantizeSameScaleOpsPattern
               llvm::cast<quantfork::QuantizeCastOp>(*result.user_begin());
           outputs_replaced.insert(
               {user.getResult(), enumerated_result.index()});
-          auto qtype = user.getType()
-                           .cast<TensorType>()
-                           .getElementType()
-                           .cast<QuantizedType>();
+          auto qtype = llvm::cast<QuantizedType>(
+              llvm::cast<TensorType>(user.getType()).getElementType());
           output_types.push_back(
               result_tensor_type.clone(qtype.getStorageType()));
         } else if (!result_tensor_type.getElementType().isF32()) {
@@ -338,7 +336,7 @@ class QuantizeSameScaleOpsPattern
       // Check if the preceding op is a quantized same-scale op.
       if (llvm::isa<quantfork::StorageCastOp>(preceding_op)) {
         auto sc_op = llvm::cast<quantfork::StorageCastOp>(preceding_op);
-        auto sc_arg_type = sc_op.getArg().getType().dyn_cast<TensorType>();
+        auto sc_arg_type = llvm::dyn_cast<TensorType>(sc_op.getArg().getType());
         if (sc_arg_type.getElementType().isInteger(8)) {
           return true;
         }
@@ -364,7 +362,8 @@ class QuantizeSameScaleOpsPattern
         // Check if the preceding op is a quantized same-scale op.
         if (llvm::isa<quantfork::StorageCastOp>(following_op)) {
           auto sc_op = llvm::cast<quantfork::StorageCastOp>(following_op);
-          auto sc_arg_type = sc_op.getResult().getType().dyn_cast<TensorType>();
+          auto sc_arg_type =
+              llvm::dyn_cast<TensorType>(sc_op.getResult().getType());
           if (sc_arg_type.getElementType().isInteger(8)) {
             return true;
           }
@@ -381,28 +380,28 @@ class QuantizeSameScaleOpsPattern
       return false;
     }
 
-    const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+    const auto f_attr = llvm::dyn_cast<FlatSymbolRefAttr>(call_op.getFAttr());
     if (!f_attr || !f_attr.getValue().starts_with("composite_")) {
       return false;
     }
 
     bool has_quantized_types = false;
     for (Value input : call_op.getArgs()) {
-      if (auto type = input.getType().dyn_cast<TensorType>()) {
-        if (type.getElementType().isa<FloatType>()) {
+      if (auto type = llvm::dyn_cast<TensorType>(input.getType())) {
+        if (isa<FloatType>(type.getElementType())) {
           return false;
         }
-        if (type.getElementType().isa<QuantizedType>()) {
+        if (isa<QuantizedType>(type.getElementType())) {
           has_quantized_types = true;
         }
       }
     }
     for (Value output : call_op.getOutput()) {
-      if (auto type = output.getType().dyn_cast<TensorType>()) {
-        if (type.getElementType().isa<FloatType>()) {
+      if (auto type = llvm::dyn_cast<TensorType>(output.getType())) {
+        if (isa<FloatType>(type.getElementType())) {
           return false;
         }
-        if (type.getElementType().isa<QuantizedType>()) {
+        if (isa<QuantizedType>(type.getElementType())) {
           has_quantized_types = true;
         }
       }
@@ -432,10 +431,11 @@ struct QuantizeAvgPoolOpPattern
     if (!preceding_sc_op) return failure();
 
     // Check if the same-scale requirement is met.
-    auto dq_arg_type = preceding_sc_op.getArg().getType().cast<TensorType>();
-    auto qtype = dq_arg_type.getElementType().cast<QuantizedType>();
-    auto q_result_type = sc_op.getType().cast<TensorType>();
-    auto out_qtype = q_result_type.getElementType().cast<QuantizedType>();
+    auto dq_arg_type =
+        llvm::cast<TensorType>(preceding_sc_op.getArg().getType());
+    auto qtype = llvm::cast<QuantizedType>(dq_arg_type.getElementType());
+    auto q_result_type = llvm::cast<TensorType>(sc_op.getType());
+    auto out_qtype = llvm::cast<QuantizedType>(q_result_type.getElementType());
     if (qtype != out_qtype) {
       avg_pool_op.emitError(
           "The preceding StorageCastOp and the following "

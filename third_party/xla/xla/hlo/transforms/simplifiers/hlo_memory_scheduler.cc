@@ -632,7 +632,7 @@ absl::StatusOr<HloSchedule> ScheduleModule(
 
   TF_RETURN_IF_ERROR(schedule.Verify());
 
-  return std::move(schedule);
+  return schedule;
 }
 
 absl::StatusOr<HloSchedule> ScheduleModule(

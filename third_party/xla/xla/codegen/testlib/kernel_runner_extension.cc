@@ -38,11 +38,14 @@ limitations under the License.
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/kernel_source.h"
 #include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -171,6 +174,22 @@ NB_MODULE(_extension, kernel_runner_module) {
   nb::class_<KernelSource>(kernel_runner_module, "KernelSource")
       .def("__str__", &KernelSource::ToString);
 
+  nb::class_<LlvmIrKernelSource, KernelSource> llvm_kernel_source(
+      kernel_runner_module, "LlvmIrKernelSource");
+
+  nb::class_<MlirKernelSource, KernelSource>(kernel_runner_module,
+                                             "MlirKernelSource")
+      .def_static(
+          "parse_from_string",
+          [](absl::string_view ir, std::unique_ptr<mlir::MLIRContext> context) {
+            absl::StatusOr<MlirKernelSource> source =
+                MlirKernelSource::ParseFromString(ir, std::move(context));
+            if (!source.ok()) {
+              throw std::runtime_error(std::string(source.status().message()));
+            }
+            return std::move(source).value();
+          });
+
   nb::class_<KernelSpec> kernel_spec(kernel_runner_module, "KernelSpec");
 
   nb::class_<KernelDefinition>(kernel_runner_module, "KernelDefinition")
@@ -235,6 +254,36 @@ NB_MODULE(_extension, kernel_runner_module) {
           nb::arg("lhs_batch_dims") = std::vector<int64_t>{},
           nb::arg("rhs_batch_dims") = std::vector<int64_t>{});
 
+  nb::class_<ScatterDimensionNumbers>(kernel_runner_module,
+                                      "ScatterDimensionNumbers")
+      .def(
+          "__init__",
+          [](ScatterDimensionNumbers* self,
+             std::vector<int64_t> update_window_dims,
+             std::vector<int64_t> inserted_window_dims,
+             std::vector<int64_t> scatter_dims_to_operand_dims,
+             int64_t index_vector_dim, std::vector<int64_t> input_batching_dims,
+             std::vector<int64_t> scatter_indices_batching_dims) {
+            new (self) ScatterDimensionNumbers();
+            self->mutable_update_window_dims()->Assign(
+                update_window_dims.begin(), update_window_dims.end());
+            self->mutable_inserted_window_dims()->Assign(
+                inserted_window_dims.begin(), inserted_window_dims.end());
+            self->mutable_scatter_dims_to_operand_dims()->Assign(
+                scatter_dims_to_operand_dims.begin(),
+                scatter_dims_to_operand_dims.end());
+            self->set_index_vector_dim(index_vector_dim);
+            self->mutable_input_batching_dims()->Assign(
+                input_batching_dims.begin(), input_batching_dims.end());
+            self->mutable_scatter_indices_batching_dims()->Assign(
+                scatter_indices_batching_dims.begin(),
+                scatter_indices_batching_dims.end());
+          },
+          nb::arg("update_window_dims"), nb::arg("inserted_window_dims"),
+          nb::arg("scatter_dims_to_operand_dims"), nb::arg("index_vector_dim"),
+          nb::arg("input_batching_dims") = std::vector<int64_t>{},
+          nb::arg("scatter_indices_batching_dims") = std::vector<int64_t>{});
+
   nb::class_<HloInstruction> hlo_instruction(kernel_runner_module,
                                              "HloInstruction");
   // Factory methods
@@ -259,7 +308,18 @@ NB_MODULE(_extension, kernel_runner_module) {
       .def_static("create_call", &CreateCallHloInstruction,
                   nb::keep_alive<0, 1>(), nb::keep_alive<0, 2>(),
                   nb::keep_alive<0, 3>())
+      .def_static(
+          "create_scatter",
+          nb::overload_cast<const Shape&, HloInstruction*, HloInstruction*,
+                            HloInstruction*, HloComputation*,
+                            const ScatterDimensionNumbers&, bool, bool>(
+              &HloInstruction::CreateScatter),
+          nb::keep_alive<0, 2>(), nb::keep_alive<0, 3>(),
+          nb::keep_alive<0, 4>(), nb::keep_alive<0, 5>())
       .def("name", &HloInstruction::name);
+
+  nb::class_<HloFusionInstruction, HloInstruction> fusion_instruction(
+      kernel_runner_module, "HloFusionInstruction");
 
   nb::class_<HloComputation>(kernel_runner_module, "HloComputation")
       .def("__str__",

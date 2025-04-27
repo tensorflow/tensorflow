@@ -133,17 +133,21 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
 
 namespace {
 
+// Returns the slice size in the given dimension for a dynamic-(update-)slice
+// instruction.
+int64_t GetSliceSize(const HloInstruction* slice, int dim) {
+  if (slice->opcode() == HloOpcode::kDynamicSlice) {
+    return slice->dynamic_slice_sizes()[dim];
+  }
+  CHECK_EQ(slice->opcode(), HloOpcode::kDynamicUpdateSlice);
+  return slice->operand(1)->shape().dimensions(dim);
+}
+
 // Whether the offset in the given dimension of the slice operation is
 // guaranteed to be clamped to 0. This is the case if the slice size is the
 // same as the size of the dimension in the unsliced shape.
 bool IsZeroOffset(const HloInstruction* slice, int dim) {
-  if (slice->opcode() == HloOpcode::kDynamicSlice) {
-    return slice->dynamic_slice_sizes()[dim] ==
-           slice->operand(0)->shape().dimensions(dim);
-  }
-  CHECK_EQ(slice->opcode(), HloOpcode::kDynamicUpdateSlice);
-  return slice->operand(1)->shape().dimensions(dim) ==
-         slice->operand(0)->shape().dimensions(dim);
+  return GetSliceSize(slice, dim) == slice->operand(0)->shape().dimensions(dim);
 }
 
 std::vector<const HloInstruction*> GetCallStack(
@@ -207,7 +211,7 @@ bool DynamicMemcpyFusion::IsCandidateFusion(
     }
   }
 
-  int rank = root->operand(0)->shape().dimensions_size();
+  int rank = root->operand(0)->shape().dimensions().size();
   for (int i = 0; i < rank; ++i) {
     auto* operand = root->operand(i + first_offset_index);
     if (!IsZeroOffset(root, i) && operand->opcode() != HloOpcode::kConstant &&
@@ -238,7 +242,7 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
   }
 
   int first_offset_index = GetFirstOffsetOperandIndex(slice);
-  int rank = slice_input_shape.dimensions_size();
+  int rank = slice_input_shape.dimensions().size();
   auto stack = GetCallStack(fusion);
 
   VLOG(5) << "Preconditions passed, trying to build a memcpy descriptor.";
@@ -264,6 +268,10 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
         return std::nullopt;
       }
 
+      // Clamp the offset to [0; dimension size - slice size].
+      int64_t max =
+          slice->operand(0)->shape().dimensions(i) - GetSliceSize(slice, i);
+      *value = std::max<int64_t>(0, std::min(*value, max));
       VLOG(5) << "Offset for dimension " << i << " is constant: " << *value
               << ".";
       static_offset += *value * (*strides)[i];

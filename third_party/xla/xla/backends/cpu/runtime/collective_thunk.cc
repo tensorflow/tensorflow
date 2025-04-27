@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -216,9 +215,7 @@ CollectiveThunk::ExecuteWithCommunicator(
       Communicator * communicator,
       AcquireCommunicator(collectives, clique_key, RankId(rank)));
 
-  TF_RETURN_IF_ERROR(callback(key, *communicator));
-
-  return OkExecuteEvent();
+  return callback(key, *communicator);
 }
 
 const BufferAllocation::Slice& CollectiveThunk::source_buffer(

@@ -51,11 +51,14 @@ class CollectiveInterpolator {
     }
   };
 
-  using InterpolatorMap =
-      absl::flat_hash_map<InterpolatorKey, EuclideanNNInterpolator<int64_t, 2>>;
+  using InterpolatorMap = std::unique_ptr<absl::flat_hash_map<
+      InterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 2>>>>;
 
   static absl::StatusOr<std::unique_ptr<CollectiveInterpolator>> Create(
-      HloInstructionProfileList profiles,
+      const HloInstructionProfileList& profiles,
+      const se::DeviceDescription& device_info);
+
+  static absl::StatusOr<std::unique_ptr<CollectiveInterpolator>> Create(
       const se::DeviceDescription& device_info);
 
   // Constructs the semantically correct module from the profile.
@@ -66,19 +69,15 @@ class CollectiveInterpolator {
 
   // Returns the estimated runtime for a supported `collective`.
   std::optional<absl::Duration> EstimatedRuntime(
-      HloCollectiveInstruction& instr);
+      const HloCollectiveInstruction& instr) const;
 
  private:
   // Uses `EuclideanNNInterpolator` to figure get the closest neighbour from
   // profiles.
-  explicit CollectiveInterpolator(HloInstructionProfileList profiles,
-                                  InterpolatorMap interpolators,
+  explicit CollectiveInterpolator(InterpolatorMap interpolators,
                                   const se::DeviceDescription& device_info)
-      : profiles_(profiles),
-        interpolators_(interpolators),
-        device_info_(device_info) {}
+      : interpolators_(std::move(interpolators)), device_info_(device_info) {}
 
-  HloInstructionProfileList profiles_;
   InterpolatorMap interpolators_;
 
   const se::DeviceDescription& device_info_;

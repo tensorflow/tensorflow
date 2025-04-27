@@ -31,17 +31,18 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
-class CodegenReduceOnArchWithNoVectorRegisters : public HloTestBase {};
+class CodegenReduceOnArchWithNoVectorRegisters
+    : public HloHardwareIndependentTestBase {};
 
 absl::StatusOr<unsigned int> GetTargetVectorRegisterByteSize(
     std::string triple) {

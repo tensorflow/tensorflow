@@ -20,9 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
 #include "xla/tsl/platform/logging.h"
-#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 
@@ -43,7 +44,7 @@ class GenericCachingChannelCache : public ChannelCacheT {
 
   SharedGrpcChannelPtr FindWorkerChannel(const string& target) override {
     {
-      mutex_lock l(mu_);
+      absl::MutexLock l(&mu_);
       auto iter = channels_.find(target);
       if (iter != channels_.end()) {
         return GetNextChannelPtrAndUpdateState(iter->second);
@@ -58,7 +59,7 @@ class GenericCachingChannelCache : public ChannelCacheT {
     new_chan_state.last_used = num_channels_per_target_ - 1;
 
     {
-      mutex_lock l(mu_);
+      absl::MutexLock l(&mu_);
       typename absl::flat_hash_map<string, ChannelState>::iterator iter;
       bool was_inserted;
       std::tie(iter, was_inserted) = channels_.insert({target, new_chan_state});
@@ -94,7 +95,7 @@ class GenericCachingChannelCache : public ChannelCacheT {
 
   const int num_channels_per_target_;
   // TODO(zhifengc): Eviction when the map becomes too big.
-  mutex mu_;
+  absl::Mutex mu_;
   absl::flat_hash_map<string, ChannelState> channels_ TF_GUARDED_BY(mu_);
 };
 

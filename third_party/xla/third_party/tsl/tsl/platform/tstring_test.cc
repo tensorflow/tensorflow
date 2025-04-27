@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/cord.h"
 #include "tsl/platform/platform.h"
@@ -261,12 +262,10 @@ TEST(TF_TStringTest, Conversion) {
   EXPECT_EQ(kLongString, s52);
   EXPECT_EQ(kLongStringLen, s52.size());
 
-#ifdef PLATFORM_GOOGLE
-  absl::AlphaNum s53(s50);
+  std::string s53 = absl::StrCat(s50);
 
   EXPECT_STREQ(kLongString, s53.data());
   EXPECT_EQ(kLongStringLen, s53.size());
-#endif  // PLATFORM_GOOGLE
 }
 
 TEST(TF_TStringTest, Allocation) {

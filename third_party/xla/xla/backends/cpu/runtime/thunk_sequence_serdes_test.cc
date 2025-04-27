@@ -59,6 +59,8 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_convolution_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/runtime/resource_use.h"
@@ -76,6 +78,11 @@ limitations under the License.
 
 namespace xla::cpu {
 namespace {
+
+// Register a no-op FFI handler for testing custom call thunk.
+static absl::Status NoOp() { return absl::OkStatus(); }
+XLA_FFI_DEFINE_HANDLER(kNoOp, NoOp, ffi::Ffi::Bind());
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "no_op", "Host", kNoOp);
 
 template <typename T>
 class FixedCapacityVector {
@@ -219,7 +226,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
   // Thunk creation helper functions.
   absl::StatusOr<std::unique_ptr<Thunk>> CreateAllGatherThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllGatherThunk::Create(
@@ -248,7 +256,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateAllReduceThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllReduceThunk::Create(
@@ -278,7 +287,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateAllToAllThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllToAllThunk::Create(
@@ -307,7 +317,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateReduceScatterThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return ReduceScatterThunk::Create(
@@ -341,12 +352,12 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     TF_ASSIGN_OR_RETURN(called_sequence.emplace_back(), CreateAllReduceThunk());
     TF_ASSIGN_OR_RETURN(called_sequence.emplace_back(), CreateAllToAllThunk());
     return CallThunk::Create(Thunk::Info(),
-                             /*called_sequence=*/
-                             std::move(called_sequence));
+                             /*called_sequence=*/std::move(called_sequence));
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateCollectivePermuteThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return CollectivePermuteThunk::Create(
@@ -417,7 +428,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return CustomCallThunk::Create(
-        Thunk::Info(), "custom_call_thunk_test",
+        Thunk::Info(), "no_op",
         {
             /*arguments_buffers=*/{CreateBufferAllocationSlice(
                 buffer_allocations_[buffer_allocations_.size() - 2])},
@@ -430,7 +441,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
             {literals_[buffer_allocations_.size() - 1].shape()},
             /*is_tuple_result=*/false,
         },
-        /*backend_config=*/"", CustomCallApiVersion::API_VERSION_ORIGINAL);
+        /*backend_config=*/"", CustomCallApiVersion::API_VERSION_TYPED_FFI);
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateDotThunk() {

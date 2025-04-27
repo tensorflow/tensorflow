@@ -686,7 +686,19 @@ static int EagerTensor_settensor_shape(EagerTensor* self, PyObject* value,
 // Function `_copy_to_device`.
 static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
                                             PyObject* kwds) {
+#if PY_VERSION_HEX <= 0x030C0000  // <= Python 3.12
   if (!_PyArg_NoKeywords("copy_to_device", kwds)) return nullptr;
+#else
+  const char* keyname = "copy_to_device";
+  if (kwds != NULL && PyDict_Size(kwds) > 0) {
+    PyErr_SetString(PyExc_TypeError, "Function does not accept keyword args.");
+    return nullptr;
+  }
+
+  if (!PyArg_ParseTuple(args, "s", &keyname)) {
+    return nullptr;
+  }
+#endif
 
   const char* device_name = nullptr;
   if (!PyArg_ParseTuple(args, "O&:copy_to_device", ConvertDeviceName,
@@ -873,6 +885,8 @@ static int EagerTensor_traverse(PyObject* self, visitproc visit, void* arg) {
 #if PY_VERSION_HEX < 0x030C0000  // < Python 3.12
   PyObject*& dict = *_PyObject_GetDictPtr(self);
   Py_VISIT(dict);
+#elif PY_VERSION_HEX >= 0x030D0000  // >= Python 3.13
+  PyObject_VisitManagedDict(self, visit, arg);
 #else
   _PyObject_VisitManagedDict(self, visit, arg);
 #endif  // PY_VERSION_HEX < 0x030C0000
@@ -896,6 +910,8 @@ extern int EagerTensor_clear(PyObject* self) {
 #if PY_VERSION_HEX < 0x030C0000  // < Python 3.12
   PyObject*& dict = *_PyObject_GetDictPtr(self);
   Py_CLEAR(dict);
+#elif PY_VERSION_HEX >= 0x030D0000  // >= Python 3.13
+  PyObject_ClearManagedDict(self);
 #else
   _PyObject_ClearManagedDict(self);
 #endif  // PY_VERSION_HEX < 0x030C0000

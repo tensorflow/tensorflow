@@ -331,7 +331,30 @@ ENTRY entry {
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
 }
 
-TEST_F(SchedulingAnnotationPropagationTest, ProgagateAnnotationToGap) {
+TEST_F(SchedulingAnnotationPropagationTest, NoOpSchedulingGroup) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16]{0} parameter(0)
+  p1 = f32[16]{0} parameter(1)
+  ROOT a0 = f32[16]{0} add(p0, p1), frontend_attributes={_scheduling_group_id="noop"}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  EXPECT_IS_OK(
+      LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
+  VLOG(1) << "module after: " << hlo_module->ToString();
+  HloInstruction* add =
+      hlo_module->GetComputationWithName("entry")->GetInstructionWithName("a0");
+  CHECK(add != nullptr);
+  const auto& attrs = add->frontend_attributes().map();
+  EXPECT_FALSE(attrs.contains(kXlaSchedulingGroupIdAttr));
+}
+
+TEST_F(LegalizeSchedulingAnnotationsTest, ProgagateAnnotationToGap) {
   constexpr absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 

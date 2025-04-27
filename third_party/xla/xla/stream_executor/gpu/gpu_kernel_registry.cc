@@ -41,6 +41,11 @@ std::string GetPlatformName(Platform::Id platform_id) {
 }
 }  // namespace
 
+GpuKernelRegistry& GpuKernelRegistry::GetGlobalRegistry() {
+  static auto registry = new GpuKernelRegistry();
+  return *registry;
+}
+
 absl::StatusOr<std::reference_wrapper<const MultiKernelLoaderSpec>>
 GpuKernelRegistry::GetKernelSpec(const std::type_info& type,
                                  Platform::Id platform_id) {

@@ -81,7 +81,15 @@ std::vector<int64_t> ComposePermutations(absl::Span<const int64_t> p1,
                                          absl::Span<const int64_t> p2);
 
 // Returns true iff permutation == {0, 1, 2, ...}.
-bool IsIdentityPermutation(absl::Span<const int64_t> permutation);
+template <typename Container>
+bool IsIdentityPermutation(const Container& permutation) {
+  for (int64_t i = 0; i < permutation.size(); ++i) {
+    if (permutation[i] != i) {
+      return false;
+    }
+  }
+  return true;
+}
 
 }  // namespace xla
 

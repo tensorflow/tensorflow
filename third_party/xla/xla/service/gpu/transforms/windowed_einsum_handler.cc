@@ -231,7 +231,7 @@ absl::StatusOr<HloInstruction*> ShiftDequantizationF8(
     TF_ASSIGN_OR_RETURN(
         HloInstruction * operand_scale,
         MakeGetTupleElementHlo(
-            body_param, body_param->shape().tuple_shapes_size() - 2 + k));
+            body_param, body_param->shape().tuple_shapes().size() - 2 + k));
 
     // Also add the scaling factor to the output tuple of the while body.
     while_root->AppendOperand(operand_scale);
@@ -349,7 +349,7 @@ static int64_t GetAgActivationCacheIndex(const HloInstruction* while_loop) {
   const HloInstruction* loop_tuple = while_loop->operand(0);
   const Shape& tuple_shape = loop_tuple->shape();
   CHECK(tuple_shape.IsTuple());
-  return tuple_shape.tuple_shapes_size() - 1;
+  return tuple_shape.tuple_shapes().size() - 1;
 }
 
 bool FindDusSliceForCachedActivation(HloInstruction* inst,
@@ -649,7 +649,7 @@ absl::Status MoveAccumulationOutsideLoop(
   // The final reduction
   HloInstruction* concat_result_gte =
       comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-          loop, (loop->operand(0)->shape().tuple_shapes_size() - 1)));
+          loop, (loop->operand(0)->shape().tuple_shapes().size() - 1)));
   HloInstruction* reduced_result =
       comp->AddInstruction(HloInstruction::CreateReduce(
           partial_accumulations[0]->shape(), concat_result_gte, zero, {0},
@@ -1009,15 +1009,15 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
 
       // Each split is sliced out of the input buffer, we need to determine the
       // slice sizes and increments.
-      std::vector<int64_t> lhs_slice_sizes(a2a->shape().dimensions_size(), 0);
-      std::vector<int64_t> lhs_slice_increments(a2a->shape().dimensions_size(),
-                                                1);
+      std::vector<int64_t> lhs_slice_sizes(a2a->shape().dimensions().size(), 0);
+      std::vector<int64_t> lhs_slice_increments(
+          a2a->shape().dimensions().size(), 1);
       std::vector<int64_t> lhs_slice_max_range(
           a2a->shape().dimensions().begin(), a2a->shape().dimensions().end());
 
-      std::vector<int64_t> rhs_slice_sizes(rhs->shape().dimensions_size(), 0);
-      std::vector<int64_t> rhs_slice_increments(rhs->shape().dimensions_size(),
-                                                1);
+      std::vector<int64_t> rhs_slice_sizes(rhs->shape().dimensions().size(), 0);
+      std::vector<int64_t> rhs_slice_increments(
+          rhs->shape().dimensions().size(), 1);
       std::vector<int64_t> rhs_slice_max_range(
           rhs->shape().dimensions().begin(), rhs->shape().dimensions().end());
 
@@ -1248,17 +1248,17 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
       // Each split is sliced out of the input buffer, we need to determine the
       // slice sizes and increments.
       std::vector<int64_t> lhs_slice_sizes(
-          matched_result.lhs->shape().dimensions_size(), 0);
+          matched_result.lhs->shape().dimensions().size(), 0);
       std::vector<int64_t> lhs_slice_increments(
-          matched_result.lhs->shape().dimensions_size(), 1);
+          matched_result.lhs->shape().dimensions().size(), 1);
       std::vector<int64_t> lhs_slice_max_range(
           matched_result.lhs->shape().dimensions().begin(),
           matched_result.lhs->shape().dimensions().end());
 
       std::vector<int64_t> rhs_slice_sizes(
-          matched_result.rhs->shape().dimensions_size(), 0);
+          matched_result.rhs->shape().dimensions().size(), 0);
       std::vector<int64_t> rhs_slice_increments(
-          matched_result.rhs->shape().dimensions_size(), 1);
+          matched_result.rhs->shape().dimensions().size(), 1);
       std::vector<int64_t> rhs_slice_max_range(
           matched_result.rhs->shape().dimensions().begin(),
           matched_result.rhs->shape().dimensions().end());

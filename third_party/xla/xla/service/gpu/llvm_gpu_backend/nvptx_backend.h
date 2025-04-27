@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
+#include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/xla.pb.h"
@@ -47,11 +48,6 @@ absl::StatusOr<std::string> CompileToPtx(
     llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
-
-// Determine PTX version from CUDA version.
-stream_executor::SemanticVersion
-DetermineHighestSupportedPtxVersionFromCudaVersion(
-    stream_executor::SemanticVersion cuda_version);
 
 // Returns the LLVM command line flags that we use for compilation.
 std::vector<std::string> GetNVPTXBackendOptions(

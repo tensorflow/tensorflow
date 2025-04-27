@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/dot_normalizer.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -28,7 +31,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-using DotNormalizerTest = HloTestBase;
+using DotNormalizerTest = HloHardwareIndependentTestBase;
 using ::tsl::testing::IsOkAndHolds;
 
 TEST_F(DotNormalizerTest, DotWithoutContractingDims) {

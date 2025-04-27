@@ -58,13 +58,13 @@ using ::tsl::testing::IsOkAndHolds;
 // Serialized `ModuleOp` that does add 1.
 static const char* const module_add_one =
     R"(module {
-func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
-  %0 = "mhlo.copy"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-  %1 = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  %2 = "mhlo.broadcast"(%1) {broadcast_sizes = dense<[2, 3]> : tensor<2xi64>} : (tensor<f32>) -> tensor<2x3xf32>
-  %3 = mhlo.add %0, %2 : tensor<2x3xf32>
-  return %3 : tensor<2x3xf32>
-}})";
+  func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+    %0 = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+    %1 = "stablehlo.broadcast_in_dim"(%0) {broadcast_dimensions = array<i64>} : (tensor<f32>) -> tensor<2x3xf32>
+    %2 = stablehlo.add %arg0, %1 : tensor<2x3xf32>
+    return %2 : tensor<2x3xf32>
+  }
+})";
 
 // Compiles an MLIR module on specified devices. If devices is empty, compiles
 // it as a portable executable.
@@ -118,13 +118,9 @@ TEST(LoadedExecutableImplTest, GetDonatableInputIndices) {
         %arg2: tensor<2x3xf32> {jax.buffer_donor = true},
         %arg3: tensor<2x3xf32>
       ) -> tensor<2x3xf32> {
-      %0 = "mhlo.copy"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-      %1 = "mhlo.copy"(%arg1) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-      %2 = "mhlo.copy"(%arg2) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-      %3 = "mhlo.copy"(%arg3) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-      %4 = mhlo.add %0, %1 : tensor<2x3xf32>
-      %5 = mhlo.add %2, %3 : tensor<2x3xf32>
-      %6 = mhlo.add %4, %5 : tensor<2x3xf32>
+      %4 = stablehlo.add %arg0, %arg1 : tensor<2x3xf32>
+      %5 = stablehlo.add %arg2, %arg3 : tensor<2x3xf32>
+      %6 = stablehlo.add %4, %5 : tensor<2x3xf32>
       return %6 : tensor<2x3xf32>
     }})";
 

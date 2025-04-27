@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -65,12 +64,10 @@ bool hasSizeOneAxes(MeshOp meshOp) {
                       [](MeshAxisAttr axis) { return axis.getSize() == 1; });
 }
 
-
 TensorShardingAttr removeSizeOneAxes(TensorShardingAttr sharding,
                                      const SymbolTable& symbolTable) {
   MeshAttr mesh = sharding.getMesh(symbolTable);
-  CHECK(mesh) << "unknown mesh: "
-              << std::string_view(sharding.getMeshName());  // non-absl ok
+  CHECK(mesh) << "unknown mesh: " << sharding.getMeshName().str();
 
   auto isNotSizeOne = [&](AxisRefAttr axis) { return axis.getSize(mesh) != 1; };
 

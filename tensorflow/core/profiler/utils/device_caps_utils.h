@@ -16,16 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_DEVICE_CAPS_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_DEVICE_CAPS_UTILS_H_
 
-#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
-#include "tsl/profiler/protobuf/xplane.pb.h"
-
-namespace tensorflow {
-namespace profiler {
-
-void SetDeviceCaps(const DeviceCapabilities& caps, XPlane* plane);
-DeviceCapabilities GetDeviceCaps(const XPlane& plane);
-
-}  // namespace profiler
-}  // namespace tensorflow
+#include "xprof/utils/device_caps_utils.h"  // from @org_xprof  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_PROFILER_UTILS_DEVICE_CAPS_UTILS_H_

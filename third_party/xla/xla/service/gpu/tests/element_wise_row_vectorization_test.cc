@@ -11,13 +11,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/error_spec.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class ElementWiseRowVectorizationTest : public HloTestBase {};
+using ElementWiseRowVectorizationTest =
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 TEST_F(ElementWiseRowVectorizationTest, SimpleAddSmallRowBroadcastingTest) {
   const char* hlo_text = R"(

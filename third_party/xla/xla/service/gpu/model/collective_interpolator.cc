@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -34,8 +36,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/model/collective_interpolator_data.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
+#include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/gpu/model/interpolator.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/hlo.pb.h"
@@ -53,10 +58,12 @@ namespace {
 struct InterpolationSpecification {
   HloOpcode opcode;
   GPUCommunicationType comm;
-  int num_devices;
-  int transfer_size;
+  int64_t num_devices;
+  int64_t transfer_size;
 };
 
+// Returns number of participating devices in an input `device_list`. Supports
+// only `iota_replica_group_list`.
 absl::StatusOr<int> GetNumParticipatingDevices(
     const CollectiveDeviceList& device_list) {
   auto iota = device_list.iota_replica_group_list();
@@ -65,11 +72,6 @@ absl::StatusOr<int> GetNumParticipatingDevices(
         "Only iota device assignment is supported.");
   }
   return iota->num_devices_per_group();
-}
-
-absl::StatusOr<int> GetNumParticipatingDevices(
-    const HloCollectiveInstruction& instr) {
-  return GetNumParticipatingDevices(instr.device_list());
 }
 
 absl::StatusOr<InterpolationSpecification> Spec(
@@ -85,12 +87,13 @@ absl::StatusOr<InterpolationSpecification> Spec(
 
   GpuHloCostAnalysis analysis(GpuHloCostAnalysis::Options(), device_info);
   TF_RETURN_IF_ERROR(collective->Accept(&analysis));
-  int bytes_transferred = analysis.BytesTransferred(*collective);
+  int64_t bytes_transferred = analysis.BytesTransferred(*collective);
 
   TF_ASSIGN_OR_RETURN(
       auto comm,
       CommunicationType(*collective, device_info.gpu_compute_capability()));
-  TF_ASSIGN_OR_RETURN(int num_devices, GetNumParticipatingDevices(*collective));
+  TF_ASSIGN_OR_RETURN(int num_devices,
+                      GetNumParticipatingDevices(collective->device_list()));
 
   return InterpolationSpecification{
       /*opcode=*/collective->opcode(),
@@ -247,12 +250,62 @@ HloOpcode AsyncToSyncOpcode(const HloCollectiveInstruction& instr) {
   return opcode;
 }
 
+absl::StatusOr<HloInstructionProfileList> ReadDefaultProfiles(
+    const se::DeviceDescription& device_info) {
+  DeviceHloInstructionProfiles profile;
+
+  if (!tsl::protobuf::TextFormat::ParseFromString(kDefaultCollectivePTable,
+                                                  &profile)) {
+    return absl::FailedPreconditionError("Cannot parse a default profile.");
+  }
+  std::string key = HloOpProfiles::GetProfileName(device_info);
+
+  if (!profile.entries().contains(key)) {
+    return absl::NotFoundError(absl::StrCat("Cannot find key: ", key));
+  }
+  return profile.entries().at(key);
+}
+
 }  // namespace
 
 /*static*/ absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
-CollectiveInterpolator::Create(HloInstructionProfileList profiles,
+CollectiveInterpolator::Create(const se::DeviceDescription& device_info) {
+  auto interpolators = std::make_unique<absl::flat_hash_map<
+      InterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 2>>>>();
+
+  TF_ASSIGN_OR_RETURN(HloInstructionProfileList profiles,
+                      ReadDefaultProfiles(device_info));
+  for (auto& profile : profiles.entries()) {
+    TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
+                        Spec(profile, device_info));
+    CollectiveInterpolator::InterpolatorKey key{
+        /*opcode=*/spec.opcode,
+        /*communication_type=*/spec.comm,
+    };
+    auto it = interpolators->find(key);
+    if (it == interpolators->end()) {
+      auto interpolator =
+          std::make_unique<EuclideanComplementInterpolator<int64_t, 2>>(
+              /*next_context=*/std::array<int64_t, 2>{-1, -1},
+              /*next_power_context=*/std::array<int64_t, 2>{1, 1},
+              /*max_context=*/std::array<int64_t, 2>{1 << 30, 8},
+              /*min_context=*/std::array<int64_t, 2>{1 << 10, 8});
+
+      (*interpolators)[key] = std::move(interpolator);
+    }
+    std::array<int64_t, 2> point = {spec.transfer_size, spec.num_devices};
+    interpolators->at(key)->Add(point,
+                                profile.network_throughput_bytes_per_sec());
+  }
+  return std::unique_ptr<CollectiveInterpolator>(
+      new CollectiveInterpolator(std::move(interpolators), device_info));
+}
+
+/*static*/ absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
+CollectiveInterpolator::Create(const HloInstructionProfileList& profiles,
                                const se::DeviceDescription& device_info) {
-  CollectiveInterpolator::InterpolatorMap interpolators;
+  auto interpolators = std::make_unique<absl::flat_hash_map<
+      InterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 2>>>>();
 
   for (auto& profile : profiles.entries()) {
     TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
@@ -261,19 +314,22 @@ CollectiveInterpolator::Create(HloInstructionProfileList profiles,
         /*opcode=*/spec.opcode,
         /*communication_type=*/spec.comm,
     };
-    auto it = interpolators.find(key);
-    if (it == interpolators.end()) {
-      interpolators[key] = EuclideanNNInterpolator<int64_t, 2>();
+    auto it = interpolators->find(key);
+    if (it == interpolators->end()) {
+      auto interpolator =
+          std::make_unique<EuclideanNNInterpolator<int64_t, 2>>();
+      (*interpolators)[key] = std::move(interpolator);
     }
     std::array<int64_t, 2> point = {spec.transfer_size, spec.num_devices};
-    interpolators[key].Add(point, profile.network_throughput_bytes_per_sec());
+    interpolators->at(key)->Add(point,
+                                profile.network_throughput_bytes_per_sec());
   }
   return std::unique_ptr<CollectiveInterpolator>(
-      new CollectiveInterpolator(profiles, interpolators, device_info));
+      new CollectiveInterpolator(std::move(interpolators), device_info));
 }
 
 std::optional<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
-    HloCollectiveInstruction& instr) {
+    const HloCollectiveInstruction& instr) const {
   GpuHloCostAnalysis analysis(GpuHloCostAnalysis::Options(), device_info_);
   CHECK_OK(instr.Accept(&analysis));
   int64_t bytes_transferred = analysis.BytesTransferred(instr);
@@ -281,21 +337,21 @@ std::optional<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
   if (!comm.ok()) {
     return std::nullopt;
   }
-  auto num_devices = GetNumParticipatingDevices(instr);
+  auto num_devices = GetReplicaGroupCountAndSize(&instr);
   if (!num_devices.ok()) {
     return std::nullopt;
   }
-  std::array<int64_t, 2> point({bytes_transferred, *num_devices});
+  std::array<int64_t, 2> point({bytes_transferred, (*num_devices)->second});
   CollectiveInterpolator::InterpolatorKey key{
       /*opcode=*/AsyncToSyncOpcode(instr),
       /*communication_type=*/*comm,
   };
-  if (!interpolators_.contains(key)) {
+  if (!interpolators_->contains(key)) {
     VLOG(1) << "Cannot find key for instr: " << instr.ToString();
     return std::nullopt;
   }
   return absl::Seconds(1.0 * bytes_transferred /
-                       interpolators_.at(key).Eval(point));
+                       interpolators_->at(key)->Eval(point));
 }
 
 /*static*/ std::unique_ptr<HloModule> CollectiveInterpolator::ConstructModule(

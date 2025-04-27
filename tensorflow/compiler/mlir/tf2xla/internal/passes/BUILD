@@ -7,7 +7,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//learning/pathways/serving/transforms:__pkg__",
+        "//learning/brain/tfrt/tpu/compiler/mlir:__pkg__",
         "//tensorflow/compiler/mlir:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla/internal:__subpackages__",
@@ -71,15 +71,10 @@ cc_library(
 gentbl_cc_library(
     name = "clustering_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TFXLABridgeClustering",
-            ],
-            "clustering_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"clustering_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TFXLABridgeClustering",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "clustering_passes.td",
     deps = [
@@ -229,15 +224,10 @@ cc_library(
 gentbl_cc_library(
     name = "mlir_to_graph_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TFXLABridgeMlirToGraph",
-            ],
-            "mlir_to_graph_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"mlir_to_graph_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TFXLABridgeMlirToGraph",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "mlir_to_graph_passes.td",
     deps = [
@@ -459,15 +449,10 @@ cc_library(
 gentbl_cc_library(
     name = "lowering_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TFXLABridgeLowering",
-            ],
-            "lowering_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"lowering_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TFXLABridgeLowering",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lowering_passes.td",
     deps = [
@@ -570,7 +555,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:sharding_builder",
+        "@local_xla//xla/hlo/builder:sharding_builder",
     ],
 )
 

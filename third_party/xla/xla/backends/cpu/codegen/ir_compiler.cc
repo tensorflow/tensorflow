@@ -123,6 +123,10 @@ static llvm::PipelineTuningOptions GetPipelineTuningOptions(
     pto.SLPVectorization =
         !opts.optimize_for_size && !opts.disable_slp_vectorizer;
     pto.LoopUnrolling = !opts.disable_loop_unrolling;
+
+    // TODO(b/411125413): Re-enable SLPVectorization once the LLVM bug is fixed.
+    pto.SLPVectorization = false;
+
     return pto;
   };
 

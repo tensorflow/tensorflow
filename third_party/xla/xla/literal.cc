@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/byte_swap_array.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -136,10 +137,10 @@ const Shape& NilShape() {
 // Returns the interned shape pointer in static storage if it's a scalar shape
 // or nil shape.
 const Shape* TryInternShape(const Shape& shape) {
-  if (shape.IsTuple() && shape.tuple_shapes_size() == 0) {
+  if (shape.IsTuple() && shape.tuple_shapes().size() == 0) {
     return &NilShape();
   }
-  if (shape.IsArray() && shape.dimensions_size() == 0 && shape.is_static() &&
+  if (shape.IsArray() && shape.dimensions().size() == 0 && shape.is_static() &&
       shape.has_layout() && shape.layout().tiles_size() == 0 &&
       shape.layout().memory_space() == 0 &&
       shape.layout().element_size_in_bits() == 0) {
@@ -256,9 +257,13 @@ void Literal::SetShape(const Shape& shape) {
     return;
   }
   auto owning_shape_ptr = std::make_unique<Shape>(shape);
-  if (owning_shape_ptr->IsArray() && !owning_shape_ptr->has_layout()) {
-    *owning_shape_ptr->mutable_layout() =
-        LayoutUtil::GetDefaultLayoutForShape(*owning_shape_ptr);
+  if (!LayoutUtil::HasLayout(*owning_shape_ptr)) {
+    ShapeUtil::ForEachMutableLeafShape(
+        owning_shape_ptr.get(), [](Shape* subshape, const ShapeIndex& index) {
+          if (!subshape->has_layout()) {
+            LayoutUtil::SetToDefaultLayout(subshape);
+          }
+        });
   }
   if (owning_shape_ptr->IsArray() &&
       LayoutUtil::HasCustomElementSizeInBits(*owning_shape_ptr)) {
@@ -401,7 +406,7 @@ absl::Status LiteralBase::SerializeToString(std::string* output) const {
 absl::StatusOr<std::string> LiteralBase::SerializeAsString() const {
   std::string result;
   TF_RETURN_IF_ERROR(SerializeToString(&result));
-  return std::move(result);
+  return result;
 }
 
 template <typename NativeT>
@@ -416,8 +421,8 @@ absl::Status MutableLiteralBase::CopySliceFromInternal(
   // `this->` is needed to workaround MSVC bug: #16882
   NativeT* dest_data = this->data<NativeT>().data();
   const NativeT* src_data = src_literal.data<NativeT>().data();
-  if (src_literal.shape().dimensions_size() == 0 ||
-      shape().dimensions_size() == 0) {
+  if (src_literal.shape().dimensions().size() == 0 ||
+      shape().dimensions().size() == 0) {
     // If any of the two shapes are scalars, just assign the value once.
     TF_RET_CHECK(copy_size.empty());
     dest_data[linear_index(shape(), dest_base)] =
@@ -540,7 +545,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
         return absl::OkStatus();
       }));
 
-  return std::move(literal);
+  return literal;
 }
 
 Literal Literal::SubLiteral(ShapeIndexView shape_index) {
@@ -596,7 +601,7 @@ void CopyElementsBetween(absl::Span<NativeT> dest,
   if (ShapeUtil::IsZeroElementArray(dest_shape)) {
     return;
   }
-  std::vector<int64_t> index(dest_shape.dimensions_size());
+  std::vector<int64_t> index(dest_shape.dimensions().size());
   do {
     dest[IndexUtil::MultidimensionalIndexToLinearIndex(dest_shape, index)] =
         src[IndexUtil::MultidimensionalIndexToLinearIndex(src_shape, index)];
@@ -650,13 +655,13 @@ void LiteralBase::Piece::CopyElementsWithDynamicBound(
   if (ShapeUtil::IsZeroElementArray(dest_shape)) {
     return;
   }
-  if (dest_shape.dimensions_size() == 1) {
+  if (dest_shape.dimensions().size() == 1) {
     // Fast path for rank 1 arrays.
     int64_t count = std::min(GetDynamicSize(0), src.GetDynamicSize(0));
     std::copy_n(src.data<NativeT>().begin(), count, data<NativeT>().begin());
     return;
   }
-  std::vector<int64_t> index(dest_shape.dimensions_size());
+  std::vector<int64_t> index(dest_shape.dimensions().size());
   do {
     bool out_of_bound = false;
     for (int64_t i = 0; i < index.size(); ++i) {
@@ -706,7 +711,7 @@ absl::Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
     // If the layouts are equal it's faster just to memcpy.
     memcpy(buffer(), src.buffer(), src.size_bytes_dense());
   } else {
-    std::vector<int64_t> origin(subshape().dimensions_size(), 0);
+    std::vector<int64_t> origin(subshape().dimensions().size(), 0);
     primitive_util::ArrayTypeSwitch<void>(
         [&](auto primitive_type_constant) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
@@ -840,8 +845,8 @@ absl::Status MutableLiteralBase::CopySliceFrom(
   TF_RET_CHECK(LayoutUtil::IsDenseArray(src_literal.shape()))
       << src_literal.shape();
   TF_RET_CHECK(ShapeUtil::SameElementType(src_literal.shape(), shape()));
-  TF_RET_CHECK(src_literal.shape().dimensions_size() == src_base.size());
-  TF_RET_CHECK(shape().dimensions_size() == dest_base.size());
+  TF_RET_CHECK(src_literal.shape().dimensions().size() == src_base.size());
+  TF_RET_CHECK(shape().dimensions().size() == dest_base.size());
 
   return primitive_util::ArrayTypeSwitch<absl::Status>(
       [&](auto primitive_type_constant) -> absl::Status {
@@ -854,7 +859,7 @@ absl::Status MutableLiteralBase::CopySliceFrom(
 
 void MutableLiteralBase::PopulateR1(const tsl::core::Bitmap& values) {
   CHECK(shape().IsArray());
-  CHECK_EQ(shape().dimensions_size(), 1);
+  CHECK_EQ(shape().dimensions().size(), 1);
   CHECK_EQ(element_count(), values.bits());
   CHECK_EQ(shape().element_type(), PRED);
   for (int64_t i = 0; i < static_cast<int64_t>(values.bits()); ++i) {
@@ -866,7 +871,7 @@ void MutableLiteralBase::PopulateInplaceInternal(
     absl::FunctionRef<void(void*, absl::Span<const int64_t>, int)> populator,
     bool parallel) {
   const Shape& this_shape = shape();
-  const int64_t rank = this_shape.dimensions_size();
+  const int64_t rank = this_shape.dimensions().size();
   DCHECK(LayoutUtil::IsDenseArray(this_shape));
   char* const dest_base = static_cast<char*>(untyped_data());
   if (rank > 0) {
@@ -877,7 +882,7 @@ void MutableLiteralBase::PopulateInplaceInternal(
     // If we are rank-1 and we are `parallel`, it is better to use a smaller
     // `step` than what `StrideConfig` does: stick the entire dimension in the
     // inner-most loop.
-    if (parallel && this_shape.dimensions_size() == 1) {
+    if (parallel && this_shape.dimensions().size() == 1) {
       const int64_t thread_count =
           ShapeUtil::GetForEachIndexParallelThreadCount();
       // Let's just divide up the array into small amounts per thread.
@@ -930,7 +935,7 @@ void MutableLiteralBase::PopulateInplaceInternal(
 void MutableLiteralBase::PopulateLinearInplaceInternal(
     absl::FunctionRef<void(void*, int64_t, int)> populator, bool parallel) {
   const Shape& this_shape = shape();
-  const int64_t rank = this_shape.dimensions_size();
+  const int64_t rank = this_shape.dimensions().size();
   DCHECK(LayoutUtil::IsDenseArray(this_shape));
   char* const dest_base = static_cast<char*>(untyped_data());
 
@@ -1035,7 +1040,7 @@ Literal LiteralBase::ToBoundedDynamic(const Shape& bounded_shape) const {
         if (!subshape.IsArray()) {
           return;
         }
-        for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
+        for (int64_t i = 0; i < subshape.dimensions().size(); ++i) {
           if (bounded_shape.is_dynamic_dimension(i)) {
             result.SetDynamicSize(i, subshape.dimensions(i));
           }
@@ -1054,7 +1059,7 @@ Literal LiteralBase::ToStatic() const {
         if (!subshape->IsArray()) {
           return;
         }
-        for (int64_t i = 0; i < subshape->dimensions_size(); ++i) {
+        for (int64_t i = 0; i < subshape->dimensions().size(); ++i) {
           // GetDynamicSize has a 32-bit return type and may truncate static
           // dimensions, so make sure to skip.
           if (!subshape->is_dynamic_dimension(i)) continue;
@@ -1122,7 +1127,7 @@ absl::StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
 
     // Storage for indexing into the result literal.
     absl::InlinedVector<int64_t, 4> broadcast_index(
-        broadcast_shape.dimensions_size(), 0);
+        broadcast_shape.dimensions().size(), 0);
     absl::Span<int64_t> broadcast_index_span = absl::MakeSpan(broadcast_index);
 
     // Iterate over the broadcast shape copying one element at a time.
@@ -1191,7 +1196,7 @@ absl::StatusOr<Literal> LiteralBase::Reshape(
   Literal output;
   if (!LayoutUtil::IsMonotonicWithDim0Major(shape().layout())) {
     output = Relayout(
-        LayoutUtil::GetDefaultLayoutForRank(shape().dimensions_size()));
+        LayoutUtil::GetDefaultLayoutForRank(shape().dimensions().size()));
   } else {
     output = Clone();
   }
@@ -1209,13 +1214,13 @@ absl::StatusOr<Literal> LiteralBase::Reshape(
         ShapeUtil::HumanString(shape()),
         ShapeUtil::HumanString(output.shape()));
   }
-  return std::move(output);
+  return output;
 }
 
 Literal LiteralBase::Transpose(absl::Span<const int64_t> permutation) const {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
-  CHECK(shape().dimensions_size() == permutation.size() &&
+  CHECK(shape().dimensions().size() == permutation.size() &&
         IsPermutation(permutation))
       << "Given permutation is not a permutation of dimension numbers";
   // To transpose the array, we just permute the dimensions and layout, and
@@ -1245,7 +1250,7 @@ Literal LiteralBase::Transpose(absl::Span<const int64_t> permutation) const {
   }
   Literal new_literal(permuted_shape);
   if (shape().is_dynamic()) {
-    for (int64_t i = 0; i < shape().dimensions_size(); i++) {
+    for (int64_t i = 0; i < shape().dimensions().size(); i++) {
       if (shape().is_dynamic_dimension(i)) {
         // Set the dynamic size of any dynamic dimension in the transposed
         // literal.
@@ -1265,15 +1270,16 @@ void SliceInternal(const LiteralBase& src_literal,
                    absl::Span<const int64_t> start_indices,
                    Literal& result_literal) {
   const Shape& result_shape = result_literal.shape();
-  DimensionVector new_indices(result_shape.dimensions_size());
+  DimensionVector new_indices(result_shape.dimensions().size());
   TF_CHECK_OK(
       result_literal.Populate<NativeT>([&](absl::Span<const int64_t> indices) {
-        for (int64_t i = 0; i < result_shape.dimensions_size(); ++i) {
+        for (int64_t i = 0; i < result_shape.dimensions().size(); ++i) {
           new_indices[i] = indices[i] + start_indices[i];
         }
         return src_literal.Get<NativeT>(new_indices);
       }));
-  for (int64_t dnum = 0; dnum < src_literal.shape().dimensions_size(); ++dnum) {
+  for (int64_t dnum = 0; dnum < src_literal.shape().dimensions().size();
+       ++dnum) {
     if (src_literal.shape().is_dynamic_dimension(dnum)) {
       int64_t dynamic_size =
           src_literal.GetDynamicSize(dnum) - start_indices[dnum];
@@ -1290,7 +1296,7 @@ Literal LiteralBase::Slice(absl::Span<const int64_t> start_indices,
   CHECK(shape().IsArray()) << "tuple is not supported for slice";
 
   DimensionVector result_dimensions;
-  for (int64_t dnum = 0; dnum < shape().dimensions_size(); ++dnum) {
+  for (int64_t dnum = 0; dnum < shape().dimensions().size(); ++dnum) {
     CHECK_GE(start_indices[dnum], 0);
     CHECK_LE(limit_indices[dnum], shape().dimensions(dnum))
         << "dnum = " << dnum;
@@ -1504,7 +1510,7 @@ void DenseArrayPrintHelper(const LiteralBase& literal,
                            const ShapeIndex& shape_index, bool print_shape,
                            bool print_layout, bool oneline, Printer* printer) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
-  int64_t rank = subshape.dimensions_size();
+  int64_t rank = subshape.dimensions().size();
   const absl::string_view linebreak = oneline ? " " : "\n";
 
   std::function<void(absl::Span<const int64_t> dimensions,
@@ -1573,9 +1579,9 @@ void DenseArrayPrintHelper(const LiteralBase& literal,
     PrintShape(print_layout, subshape, printer);
     if (subshape.is_dynamic()) {
       printer->Append("(");
-      for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
+      for (int64_t i = 0; i < subshape.dimensions().size(); ++i) {
         printer->Append(literal.GetDynamicSize(i, shape_index));
-        if (i < subshape.dimensions_size() - 1) {
+        if (i < subshape.dimensions().size() - 1) {
           printer->Append(",");
         }
       }
@@ -1585,8 +1591,8 @@ void DenseArrayPrintHelper(const LiteralBase& literal,
   }
   std::vector<int64_t> indices = {};
   std::vector<int64_t> dimensions;
-  dimensions.reserve(subshape.dimensions_size());
-  for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
+  dimensions.reserve(subshape.dimensions().size());
+  for (int64_t i = 0; i < subshape.dimensions().size(); ++i) {
     dimensions.push_back(literal.GetDynamicSize(i, shape_index));
   }
   print_recursive(dimensions, &indices);
@@ -1898,7 +1904,7 @@ absl::StatusOr<Literal> LiteralBase::ConvertToShape(
 template <typename NativeT>
 bool LiteralBase::Piece::EqualElementsInternal(
     const LiteralBase::Piece& other, std::vector<int64_t>* multi_index) const {
-  if (multi_index->size() == subshape().dimensions_size()) {
+  if (multi_index->size() == subshape().dimensions().size()) {
     return (Get<NativeT>(*multi_index) == other.Get<NativeT>(*multi_index));
   }
   for (int64_t i = 0; i < GetDynamicSize(multi_index->size()); ++i) {
@@ -1918,7 +1924,7 @@ bool LiteralBase::Piece::EqualDynamicSize(
     return true;
   }
 
-  for (int64_t i = 0; i < subshape().dimensions_size(); ++i) {
+  for (int64_t i = 0; i < subshape().dimensions().size(); ++i) {
     if (GetDynamicSize(i) != other.GetDynamicSize(i)) {
       return false;
     }
@@ -1973,14 +1979,14 @@ bool LiteralBase::Equal(const LiteralBase& other, bool layout_sensitive) const {
     if (!piece.subshape().IsArray()) {
       return true;
     }
-    if (subshape.dimensions_size() != other_subshape.dimensions_size()) {
+    if (subshape.dimensions().size() != other_subshape.dimensions().size()) {
       return false;
     }
     if (layout_sensitive && (subshape.layout() != other_subshape.layout())) {
       return false;
     }
 
-    for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {
+    for (int64_t i = 0; i < subshape.dimensions().size(); ++i) {
       if (piece.GetDynamicSize(i) != other_piece.GetDynamicSize(i)) {
         return false;
       }
@@ -2143,9 +2149,9 @@ bool LiteralBase::IsAllFirst() const {
     return false;
   }
 
-  absl::InlinedVector<int64_t, 4> start_indices(/*n=*/shape().dimensions_size(),
-                                                0);
-  absl::InlinedVector<int64_t, 4> end_indices(/*n=*/shape().dimensions_size(),
+  absl::InlinedVector<int64_t, 4> start_indices(
+      /*n=*/shape().dimensions().size(), 0);
+  absl::InlinedVector<int64_t, 4> end_indices(/*n=*/shape().dimensions().size(),
                                               1);
   Literal first = Slice(start_indices, end_indices);
   return IsAll(first.Reshape({}).value());
@@ -2159,7 +2165,7 @@ bool LiteralBase::IsR1Iota() const {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
 
-  if (shape().dimensions_size() != 1) {
+  if (shape().dimensions().size() != 1) {
     return false;
   }
 
@@ -2197,7 +2203,7 @@ bool LiteralBase::IsR1Iota() const {
 // stride. Only applicable for integer iotas. Returns std::nullopt if the
 // literal is not a strided iota.
 std::optional<int64_t> LiteralBase::IsR1StridedIota() const {
-  if (!shape().IsArray() || shape().dimensions_size() != 1) {
+  if (!shape().IsArray() || shape().dimensions().size() != 1) {
     return std::nullopt;
   }
 
@@ -2269,24 +2275,27 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       break;
     case U1:
       *proto->mutable_u1s() = std::string(
-          reinterpret_cast<const char*>(data<u1>().data()), size_bytes_dense());
+          tsl::safe_reinterpret_cast<const char*>(data<u1>().data()),
+          size_bytes_dense());
       break;
     case U2:
       *proto->mutable_u2s() = std::string(
-          reinterpret_cast<const char*>(data<u2>().data()), size_bytes_dense());
+          tsl::safe_reinterpret_cast<const char*>(data<u2>().data()),
+          size_bytes_dense());
       break;
     case U4:
       *proto->mutable_u4s() = std::string(
-          reinterpret_cast<const char*>(data<u4>().data()), size_bytes_dense());
+          tsl::safe_reinterpret_cast<const char*>(data<u4>().data()),
+          size_bytes_dense());
       break;
     case U8:
       proto->set_u8s(static_cast<const unsigned char*>(data<uint8_t>().data()),
                      element_count());
       break;
     case U16:
-      *proto->mutable_u16s() =
-          std::string(reinterpret_cast<const char*>(data<uint16_t>().data()),
-                      size_bytes_dense());
+      *proto->mutable_u16s() = std::string(
+          tsl::safe_reinterpret_cast<const char*>(data<uint16_t>().data()),
+          size_bytes_dense());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_u16s());
       }
@@ -2299,24 +2308,27 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       break;
     case S1:
       *proto->mutable_s1s() = std::string(
-          reinterpret_cast<const char*>(data<s1>().data()), size_bytes_dense());
+          tsl::safe_reinterpret_cast<const char*>(data<s1>().data()),
+          size_bytes_dense());
       break;
     case S2:
       *proto->mutable_s2s() = std::string(
-          reinterpret_cast<const char*>(data<s2>().data()), size_bytes_dense());
+          tsl::safe_reinterpret_cast<const char*>(data<s2>().data()),
+          size_bytes_dense());
       break;
     case S4:
       *proto->mutable_s4s() = std::string(
-          reinterpret_cast<const char*>(data<s4>().data()), size_bytes_dense());
+          tsl::safe_reinterpret_cast<const char*>(data<s4>().data()),
+          size_bytes_dense());
       break;
     case S8:
       proto->set_s8s(static_cast<const signed char*>(data<int8_t>().data()),
                      element_count());
       break;
     case S16:
-      *proto->mutable_s16s() =
-          std::string(reinterpret_cast<const char*>(data<int16_t>().data()),
-                      size_bytes_dense());
+      *proto->mutable_s16s() = std::string(
+          tsl::safe_reinterpret_cast<const char*>(data<int16_t>().data()),
+          size_bytes_dense());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_s16s());
       }
@@ -2328,62 +2340,71 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       CopyToRepeatedField(proto->mutable_s64s(), data<int64_t>());
       break;
     case F4E2M1FN:
-      *proto->mutable_f4e2m1fns() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float4_e2m1fn>().data()),
-          size_bytes_dense());
+      *proto->mutable_f4e2m1fns() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float4_e2m1fn>().data()),
+                      size_bytes_dense());
       break;
     case F8E5M2:
-      *proto->mutable_f8e5m2s() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e5m2>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e5m2s() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e5m2>().data()),
+                      size_bytes_dense());
       break;
     case F8E4M3:
-      *proto->mutable_f8e4m3s() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e4m3s() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e4m3>().data()),
+                      size_bytes_dense());
       break;
     case F8E4M3FN:
-      *proto->mutable_f8e4m3fns() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3fn>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e4m3fns() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e4m3fn>().data()),
+                      size_bytes_dense());
       break;
     case F8E4M3B11FNUZ:
-      *proto->mutable_f8e4m3b11fnuzs() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3b11fnuz>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e4m3b11fnuzs() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e4m3b11fnuz>().data()),
+                      size_bytes_dense());
       break;
     case F8E5M2FNUZ:
-      *proto->mutable_f8e5m2fnuzs() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e5m2fnuz>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e5m2fnuzs() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e5m2fnuz>().data()),
+                      size_bytes_dense());
       break;
     case F8E4M3FNUZ:
-      *proto->mutable_f8e4m3fnuzs() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3fnuz>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e4m3fnuzs() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e4m3fnuz>().data()),
+                      size_bytes_dense());
       break;
     case F8E3M4:
-      *proto->mutable_f8e3m4s() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e3m4>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e3m4s() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e3m4>().data()),
+                      size_bytes_dense());
       break;
     case F8E8M0FNU:
-      *proto->mutable_f8e8m0fnus() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e8m0fnu>().data()),
-          size_bytes_dense());
+      *proto->mutable_f8e8m0fnus() =
+          std::string(tsl::safe_reinterpret_cast<const char*>(
+                          data<tsl::float8_e8m0fnu>().data()),
+                      size_bytes_dense());
       break;
     case F16:
-      *proto->mutable_f16s() =
-          std::string(reinterpret_cast<const char*>(data<half>().data()),
-                      size_bytes_dense());
+      *proto->mutable_f16s() = std::string(
+          tsl::safe_reinterpret_cast<const char*>(data<half>().data()),
+          size_bytes_dense());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_f16s());
       }
       break;
     case BF16:
-      *proto->mutable_bf16s() =
-          std::string(reinterpret_cast<const char*>(data<bfloat16>().data()),
-                      size_bytes_dense());
+      *proto->mutable_bf16s() = std::string(
+          tsl::safe_reinterpret_cast<const char*>(data<bfloat16>().data()),
+          size_bytes_dense());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_bf16s());
       }
@@ -2480,7 +2501,8 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       TF_RET_CHECK(data<int16_t>().size() * sizeof(int16_t) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+        ConvertEndianShort(tsl::safe_reinterpret_cast<char*>(untyped_data()),
+                           s.size());
       }
       break;
     }
@@ -2513,7 +2535,8 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       TF_RET_CHECK(data<uint16_t>().size() * sizeof(uint16_t) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+        ConvertEndianShort(tsl::safe_reinterpret_cast<char*>(untyped_data()),
+                           s.size());
       }
       break;
     }
@@ -2597,7 +2620,8 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       TF_RET_CHECK(data<half>().size() * sizeof(half) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+        ConvertEndianShort(tsl::safe_reinterpret_cast<char*>(untyped_data()),
+                           s.size());
       }
       break;
     }
@@ -2606,7 +2630,8 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       TF_RET_CHECK(data<bfloat16>().size() * sizeof(bfloat16) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+        ConvertEndianShort(tsl::safe_reinterpret_cast<char*>(untyped_data()),
+                           s.size());
       }
       break;
     }
@@ -2711,7 +2736,7 @@ int64_t LiteralBase::size_bytes(const ShapeIndex& shape_index) const {
 
 std::string LiteralBase::GetR1U8AsString() const {
   CHECK(shape().IsArray());
-  CHECK_EQ(shape().dimensions_size(), 1);
+  CHECK_EQ(shape().dimensions().size(), 1);
   CHECK_EQ(shape().element_type(), U8);
   return std::string(absl::bit_cast<const char*>(data<uint8_t>().data()),
                      ShapeUtil::ElementsIn(shape()));

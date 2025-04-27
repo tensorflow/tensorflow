@@ -21,6 +21,8 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/types/span.h"
+#include "benchmark/benchmark.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
@@ -75,7 +77,7 @@ TEST(KernelTest, PackDeviceMemoryArguments) {
   DeviceMemoryBase a(reinterpret_cast<void*>(0x12345678));
   DeviceMemoryBase b(reinterpret_cast<void*>(0x87654321));
 
-  auto args = PackKernelArgs({a, b}, 0).value();
+  auto args = PackKernelArgs<DeviceMemoryBase>({a, b}, 0).value();
   ASSERT_EQ(args->number_of_arguments(), 2);
 
   auto packed = args->argument_addresses();
@@ -137,7 +139,7 @@ static void BM_PackDeviceMemoryArgs(benchmark::State& state) {
   }
 
   for (auto s : state) {
-    auto packed = PackKernelArgs(args, 0);
+    auto packed = PackKernelArgs<DeviceMemoryBase>(args, 0);
     benchmark::DoNotOptimize(packed);
   }
 }

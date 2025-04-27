@@ -16,11 +16,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_NEST_GEMM_FUSION_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_NEST_GEMM_FUSION_H_
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/gpu/matmul_utils.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
@@ -42,6 +49,9 @@ namespace xla::gpu {
 // nested fusions, each with their own BlockLevelFusionConfig.
 class NestGemmFusion : public HloModulePass {
  public:
+  explicit NestGemmFusion(const se::GpuComputeCapability& compute_capability)
+      : compute_capability_(compute_capability) {}
+
   absl::string_view name() const override { return "nest_gemm_fusion"; }
 
   using HloPassInterface::Run;
@@ -50,7 +60,25 @@ class NestGemmFusion : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  const se::GpuComputeCapability compute_capability_;
 };
+
+namespace detail {
+
+// Finds tile sizes for the root of the analysis that satisfy the
+// requirements of the dot. That is, the tile sizes need to satisfy the
+// constraints of the analysis and map to the given config of the dot.
+//
+// We expose this function because using `GpuDotFusionCostModel` is only
+// possible with `EstimateRunTimeForDotOpWithBlockParameters` method. To compute
+// `BlockLevelParameters` we need to calculate output tile sizes. This function
+// can be removed once `GpuDotFusionCostModel::EstimateRunTimeForDotOp` is
+// implemented.
+absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
+    HloDotInstruction* dot, const TritonGemmConfig& config,
+    mlir::MLIRContext* ctx);
+
+}  // namespace detail
 
 }  // namespace xla::gpu
 

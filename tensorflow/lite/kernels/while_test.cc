@@ -15,8 +15,10 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -44,10 +46,12 @@ TEST_F(WhileTest, TestWithXNNPACK) {
   builder_->BuildFloatWhileSubgraph(&interpreter_->primary_subgraph(), 2);
 
   const auto opt = TfLiteXNNPackDelegateOptionsDefault();
-  TfLiteDelegate* xnnpack_delegate = TfLiteXNNPackDelegateCreate(&opt);
+  std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)> xnnpack_delegate(
+      TfLiteXNNPackDelegateCreate(&opt), TfLiteXNNPackDelegateDelete);
   interpreter_->primary_subgraph().MarkAsDelegationSkippable();
   interpreter_->subgraph(1)->MarkAsDelegationSkippable();
-  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(xnnpack_delegate), kTfLiteOk);
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(std::move(xnnpack_delegate)),
+            kTfLiteOk);
   ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1}),
             kTfLiteOk);
   ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1}),
@@ -71,7 +75,6 @@ TEST_F(WhileTest, TestWithXNNPACK) {
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
-  TfLiteXNNPackDelegateDelete(xnnpack_delegate);
 }
 
 TEST_F(WhileTest, TestInputIsOutput) {

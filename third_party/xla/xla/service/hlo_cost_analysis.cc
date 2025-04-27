@@ -1170,6 +1170,9 @@ absl::Status HloCostAnalysis::FusionProcessOutputBytesAccessed(
       if (bytes_accessed != 0) {
         return bytes_accessed;
       }
+      if (!shape.IsTuple()) {
+        return bytes_accessed;
+      }
       for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
         const Shape& subshape = shape.tuple_shapes(i);
         if (!subshape.IsTuple() && ShouldFilterFusionOutputIndex(fusion, {i})) {

@@ -32,6 +32,9 @@ package(
         "//xla/tsl/distributed_runtime/rpc:__pkg__",
         "//xla/tsl/profiler/utils:__pkg__",
         "//tensorflow/core/profiler/convert:__pkg__",
+        # xprof /convert and /utils uses map_util and top_n
+        "//third_party/xprof/convert:__pkg__",
+        "//third_party/xprof/utils:__pkg__",
     ]),
     licenses = ["notice"],
 )
@@ -41,7 +44,10 @@ package(
 cc_library(
     name = "compactptrset",
     hdrs = ["compactptrset.h"],
-    deps = [":flatset"],
+    deps = [
+        ":flatset",
+        "//xla/tsl/util:safe_reinterpret_cast",
+    ],
 )
 
 cc_library(

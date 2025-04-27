@@ -16,6 +16,7 @@ gpu_device_info {
   threads_per_block_limit: 1024
   threads_per_warp: 64
   shared_memory_per_block: 65536
+  shared_memory_per_block_optin: 65536
   shared_memory_per_core: 65536
   threads_per_core_limit: 2048
   core_count: 110

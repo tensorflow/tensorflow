@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -73,6 +74,7 @@ limitations under the License.
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 
@@ -120,6 +122,8 @@ class TfrtGpuDevice final : public PjRtDevice {
  public:
   struct Options {
     int id;
+    int32_t process_index;
+    int slice_index;
     PjRtLocalDeviceId local_device_id;
     PjRtLocalHardwareId local_hardware_id;
     se::StreamExecutor* executor;
@@ -127,6 +131,9 @@ class TfrtGpuDevice final : public PjRtDevice {
     int stream_capacity;
     int max_inflight_computations;
     std::string platform_version;
+    std::string compute_capability;
+    std::string device_vendor;
+    int core_count;
   };
 
   explicit TfrtGpuDevice(Options&& options);
@@ -202,13 +209,12 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   int id_;
   PjRtClient* client_ = nullptr;
-  PjRtLocalDeviceId local_device_id_;
-  PjRtLocalHardwareId local_hardware_id_;
+  const PjRtLocalDeviceId local_device_id_;
+  const PjRtLocalHardwareId local_hardware_id_;
   se::StreamExecutor* executor_;
   BoundedStreamPool stream_pool_;
-  // TODO(b/400541410): Support H2D transfers on compute streams.
-  //   Have a dedicated compute stream pool to avoid blocking the stream pool
-  //   for H2D transfers.
+  //  Have a dedicated compute stream pool to avoid blocking the stream pool
+  //  for H2D transfers.
   BoundedStreamPool compute_stream_pool_;
   std::unique_ptr<tsl::Allocator> allocator_;
   std::unique_ptr<se::DeviceMemoryAllocator> se_allocator_;
@@ -287,9 +293,7 @@ class TfrtGpuClient final : public PjRtClient {
 
   absl::string_view platform_name() const override { return platform_name_; }
 
-  absl::string_view platform_version() const override {
-    return platform_version_;
-  }
+  absl::string_view platform_version() const override;
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -308,18 +312,30 @@ class TfrtGpuClient final : public PjRtClient {
     return non_blocking_thread_pool_.get();
   }
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      mlir::ModuleOp mlir_module, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp mlir_module, CompileOptions options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtMemorySpace* memory_space) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
+
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,
                            std::optional<CompileOptions> options,
                            const LoadOptions& load_options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::unique_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
@@ -354,6 +370,14 @@ class TfrtGpuClient final : public PjRtClient {
       std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtMemorySpace* memory_space) override;
 
+  // Caller is responsible to ensure that `data` has allocated enough memory
+  // for `buffer_size` to do DMA mapping.
+  absl::Status DmaMap(void* data, size_t buffer_size) override;
+
+  absl::Status DmaUnmap(void* data) override;
+
+  bool IsDmaMapped(const void* data_start, int64_t transfer_size);
+
  private:
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
   // `options` in-place.
@@ -365,16 +389,40 @@ class TfrtGpuClient final : public PjRtClient {
   };
   absl::StatusOr<ExecutableExtras> GetExecutableExtras(CompileOptions* options);
 
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
+  // Updates `options` for compilation.
+  absl::Status UpdateCompileOptions(CompileOptions* options);
+
+  // Same as above, but also returns the executable extras.
+  absl::StatusOr<ExecutableExtras> UpdateCompileOptionsAndGetExecutableExtras(
+      CompileOptions* options);
+
+  // Updates `options` for compilation, and gets the executable extras if
+  // `returned_extras` is not null.
+  absl::Status UpdateCompileOptionsInternal(CompileOptions* options,
+                                            ExecutableExtras* returned_extras);
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
       const XlaComputation& computation,
       const std::vector<const Shape*>& argument_layout_pointers,
       LayoutCanonicalizationCallback layout_canonicalization_callback,
       CompileOptions options);
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> BuildPjRtExecutable(
+      std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+      CompileOptions compile_options);
+
+  absl::StatusOr<
+      std::pair<std::vector<std::unique_ptr<LocalExecutable>>, CompileOptions>>
+  DeserializeToLocalExecutable(absl::string_view serialized,
+                               std::optional<CompileOptions> options);
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
+      std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+      CompileOptions compile_options);
+
   int process_index_;
 
   xla::LocalClient* xla_client_;
-  const std::string platform_version_;
 
   bool should_stage_host_to_device_transfers_;
   // Allocator to be used for staging memory transfers to devices.
@@ -399,7 +447,9 @@ class TfrtGpuClient final : public PjRtClient {
   std::unique_ptr<tsl::thread::ThreadPool> blocking_thread_pool_;
   std::unique_ptr<tsl::thread::ThreadPool> non_blocking_thread_pool_;
 
-  std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
+  // TODO(caojx): Make gpu run options configurable.
+  std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_ =
+      std::make_unique<gpu::GpuExecutableRunOptions>();
 
   // A cache for transpose plans. We use transposes to convert
   // (possibly strided) buffers provided to BufferFromHostBuffer into dense
@@ -409,6 +459,11 @@ class TfrtGpuClient final : public PjRtClient {
 
   const std::string platform_name_;
   StreamExecutorGpuTopologyDescription topology_;
+
+  absl::Mutex dma_maps_mutex_;
+  // Maps dma mapped start pointers to their sizes.
+  absl::btree_map<const void*, size_t, std::greater<const void*>> dma_maps_
+      ABSL_GUARDED_BY(dma_maps_mutex_);
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
@@ -473,7 +528,9 @@ class TfrtGpuBuffer final : public PjRtBuffer {
 
   PjRtFuture<> GetReadyFuture() override;
 
-  bool IsOnCpu() const override { return false; }
+  bool IsOnCpu() const override;
+
+  const tsl::AsyncValueRef<MaybeOwningGpuMemory>& GetBufferPtr() const;
 
  private:
   // Acquires the device buffer for shared read-only usages, and it also adds
@@ -651,6 +708,8 @@ class TfrtGpuExecutable final : public PjRtLoadedExecutable {
   absl::Span<PjRtDevice* const> addressable_devices() const override {
     return addressable_devices_;
   }
+
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override;
 
   using PjRtLoadedExecutable::Execute;
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(

@@ -2,6 +2,7 @@
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
+load("@com_github_nelhage_rules_boost//:boost/boost.bzl", "boost_deps")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
 
@@ -16,6 +17,8 @@ def workspace(with_rules_cc = True):
     rules_pkg_dependencies()
 
     closure_repositories()
+
+    boost_deps()
 
     http_archive(
         name = "bazel_toolchains",

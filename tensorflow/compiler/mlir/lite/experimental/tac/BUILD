@@ -98,12 +98,7 @@ cc_library(
 gentbl_cc_library(
     name = "transform_patterns_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_transform_patterns.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/generated_transform_patterns.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/transform_patterns.td",
     deps = [

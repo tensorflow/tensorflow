@@ -53,10 +53,10 @@ std::vector<HloInstruction*> GetOutputs(HloInstruction& instruction) {
   }
 
   std::vector<HloInstruction*> outputs;
-  outputs.reserve(instruction.shape().tuple_shapes_size());
+  outputs.reserve(instruction.shape().tuple_shapes().size());
 
   HloComputation& computation = *instruction.parent();  // never null
-  for (int i = 0; i < instruction.shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < instruction.shape().tuple_shapes().size(); ++i) {
     outputs.push_back(computation.AddInstruction(
         HloInstruction::CreateGetTupleElement(&instruction, i)));
   }

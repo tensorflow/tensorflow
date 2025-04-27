@@ -23,10 +23,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 
@@ -137,7 +138,7 @@ class PreemptionNotifier {
   }
 
   Env* env_;  // Not owned.
-  mutex mu_;
+  absl::Mutex mu_;
   absl::Time death_time_ TF_GUARDED_BY(mu_) = absl::InfinitePast();
   std::vector<PreemptTimeCallback> callbacks_ TF_GUARDED_BY(mu_);
 };

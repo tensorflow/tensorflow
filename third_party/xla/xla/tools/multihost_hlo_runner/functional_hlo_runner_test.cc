@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -386,6 +387,34 @@ void CompileAndFilecheck(
   }
 }
 
+TEST_F(FunctionalHloRunnerTest, KeepLayoutsFromHloModule) {
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  preproc_options.use_layouts_from_hlo_module = true;
+
+  CompileAndFilecheck(GetHloPath("single_device.hlo"),
+                      // Check that non-standard layouts are preserved.
+                      R"(
+// CHECK: entry_computation_layout={(f32[2,2]{0,1})->f32[2,2]{0,1}}
+// CHECK: f32[2,2]{0,1} parameter(0)
+// CHECK: ROOT {{.*}} = f32[2,2]{0,1}
+)",
+                      preproc_options,
+                      FunctionalHloRunner::HloPassesMode::kStandardCompile,
+                      /*num_partitions=*/1);
+}
+
+TEST_F(FunctionalHloRunnerTest, AutoLayoutAssignsNonDefaultLayout) {
+  if (IsTestingCpu()) GTEST_SKIP() << "CPU doesn't support auto-layout yet.";
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  preproc_options.use_layouts_from_hlo_module = true;
+  CompileAndFilecheck(GetHloPath("auto_layout.hlo"),
+                      // Makes LHS contracting dimension minor.
+                      "// CHECK: entry_computation_layout={(bf16[4096,64,8]{0",
+                      preproc_options,
+                      FunctionalHloRunner::HloPassesMode::kStandardCompile,
+                      /*num_partitions=*/1);
+}
+
 TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
   CompileAndFilecheck(GetHloPath("sharded_16_devices.hlo"),
                       // Check that the sharding was done correctly.
@@ -518,6 +547,42 @@ TEST_F(FunctionalHloRunnerTest, PreservesAutoLayout) {
   EXPECT_FALSE(layout.parameter_layouts()[0].AnyLayoutIsSet());
   EXPECT_TRUE(layout.parameter_layouts()[1].AnyLayoutIsSet());
   EXPECT_FALSE(layout.result_layout().AnyLayoutIsSet());
+}
+
+TEST_F(FunctionalHloRunnerTest, MakeFakeLiteralWithSameValue) {
+  if (IsTestingCpu()) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloModuleAndArguments hlo_module_and_arguments,
+      FunctionalHloRunner::LoadHloModuleAndArguments(
+          GetHloPath("dynamic_shaped_arguments.hlo"), InputFormat::kText));
+
+  const auto params = hlo_module_and_arguments.hlo_module->entry_computation()
+                          ->parameter_instructions();
+
+  for (const auto& param : params) {
+    LOG(INFO) << "param: " << param->ToString();
+    CHECK_EQ(param->shape().is_dynamic(), true);
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  // Options corresponding to --num_replicas=1 --num_partitions=1
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  CompileOptions compile_options;
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseDeviceIdAsInput;
+
+  std::minstd_rand0 engine(42);
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRun(
+      *client, debug_options, preproc_options, compile_options, running_options,
+      {GetHloPath("dynamic_shaped_arguments.hlo")}, InputFormat::kText,
+      /*arguments=*/{}, /*engine=*/&engine));
 }
 
 TEST_F(FunctionalHloRunnerTest, CanRunWithMockCollectives) {

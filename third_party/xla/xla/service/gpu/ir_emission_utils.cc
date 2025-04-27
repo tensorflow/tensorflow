@@ -29,13 +29,15 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/FPEnv.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
@@ -52,17 +54,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
+#include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/target_util.h"
-#include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -75,12 +78,12 @@ namespace {
 
 // Return whether the given shape is rank 2 excluding the batch dimensions.
 bool IsRank2(const Shape& shape, int64_t batch_dimensions_size) {
-  return shape.dimensions_size() == batch_dimensions_size + 2;
+  return shape.dimensions().size() == batch_dimensions_size + 2;
 }
 
 // Return whether the given shape is rank 1 excluding the batch dimensions.
 bool IsRank1(const Shape& shape, int64_t batch_dimensions_size) {
-  return shape.dimensions_size() == batch_dimensions_size + 1;
+  return shape.dimensions().size() == batch_dimensions_size + 1;
 }
 
 }  // namespace
@@ -393,6 +396,32 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   return true;
 }
 
+int GetBitwidth(PrimitiveType type) {
+  if (type == PRED) {
+    return 8;
+  }
+  return primitive_util::BitWidth(type);
+}
+
+bool IsNormalized(const HloTransposeInstruction& transpose) {
+  const auto& permutation = transpose.dimensions();
+  for (int i = 0; i < permutation.size() - 1; ++i) {
+    if (permutation[i] + 1 == permutation[i + 1]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CanEmitPackedTranspose(const HloTransposeInstruction& transpose) {
+  // Support only normalized transposes.
+  if (!IsNormalized(transpose)) {
+    return false;
+  }
+  const auto& spec = GetTransposeSpec(&transpose);
+  return GetPackedTransposeTileSizes(spec).ok();
+}
+
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& hero) {
   if (hero.opcode() != HloOpcode::kTranspose) {
@@ -407,19 +436,31 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   if (permutation.size() < 2) {
     return std::nullopt;
   }
+  auto byte_width = primitive_util::ByteWidth(hero.shape().element_type());
   absl::InlinedVector<int64_t, 3> dimensions(hero.shape().dimensions().begin(),
                                              hero.shape().dimensions().end());
   int64_t operand_most_minor_dim = hero.operand(0)->shape().dimensions().back();
+  if (CanEmitPackedTranspose(*Cast<HloTransposeInstruction>(&hero))) {
+    int64_t vector_size =
+        kBankBitwidth / GetBitwidth(hero.shape().element_type());
+    int64_t shmem_usage_bytes =
+        kNumShmemBanks * (kBankBitwidth / 8) * kNumShmemBanks * vector_size;
+    return TransposeDescription{&hero, dimensions, permutation,
+                                shmem_usage_bytes};
+  }
   if (permutation.back() == dimensions.size() - 1) {
     operand_most_minor_dim =
         hero.operand(0)->shape().dimensions(dimensions.size() - 2);
-    auto byte_width = primitive_util::ByteWidth(hero.shape().element_type());
     if (byte_width * dimensions.back() <= kMaxBytesInMostMinorDimension &&
         byte_width * dimensions.back() *
                 std::min(operand_most_minor_dim,
                          dimensions[dimensions.size() - 2]) >=
             kMinDimensionToTransposeTiled) {
-      return TransposeDescription{&hero, dimensions, permutation};
+      // Tile size for transposition.
+      int64_t shmem_usage_bytes = kNumShmemBanks * (kNumShmemBanks + 1) *
+                                  byte_width * dimensions.back();
+      return TransposeDescription{&hero, dimensions, permutation,
+                                  shmem_usage_bytes};
     }
   } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
               dimensions.back() >= kMinDimensionToTransposeTiled) ||
@@ -427,9 +468,113 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
               dimensions.back() >= kMinDimensionToTransposeTiled2 &&
               operand_most_minor_dim * dimensions.back() >=
                   kMinTotalDimensionsToTransposeTiled)) {
-    return TransposeDescription{&hero, dimensions, permutation};
+    int64_t shmem_usage_bytes =
+        kNumShmemBanks * (kNumShmemBanks + 1) * byte_width;
+    return TransposeDescription{&hero, dimensions, permutation,
+                                shmem_usage_bytes};
   }
   return std::nullopt;
+}
+
+TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose) {
+  auto inv_permutation = InversePermutation(transpose->dimensions());
+  auto& output_shape = transpose->shape();
+  llvm::SmallVector<int64_t, 3> canonical_output_shape =
+      llvm::to_vector<3>(output_shape.dimensions());
+  llvm::SmallVector<int64_t, 3> canonical_permutation =
+      llvm::to_vector<3>(transpose->dimensions());
+
+  // If the last dimension is transposed, add a size-1 B dimension.
+  if (canonical_permutation.back() != canonical_output_shape.size() - 1) {
+    canonical_permutation.push_back(output_shape.dimensions().size());
+    canonical_output_shape.push_back(1);
+  }
+  int64_t dim_t1 = -1;
+  int64_t dim_t2 = -1;
+  for (int64_t i = canonical_permutation.size() - 1; i >= 0; --i) {
+    if (canonical_permutation[i] != i) {
+      dim_t2 = canonical_permutation[i];
+      dim_t1 = i;
+      break;
+    }
+  }
+  // Insert size-1 A dimension if necessary.
+  auto rank = canonical_output_shape.size();
+  if (canonical_permutation[rank - 3] != rank - 3) {
+    canonical_output_shape.insert(canonical_output_shape.begin() + dim_t1, 1);
+    for (auto& p : canonical_permutation) {
+      if (p > rank - 3) p++;
+    }
+    canonical_permutation.insert(canonical_permutation.begin() + dim_t1,
+                                 dim_t1);
+  }
+  auto canonical_inv_permutation = InversePermutation(canonical_permutation);
+  auto canonical_input_shape =
+      Permute(canonical_output_shape, canonical_inv_permutation);
+  return TransposeSpec{
+      transpose,
+      llvm::to_vector<3>(transpose->dimensions()),
+      llvm::to_vector<3>(inv_permutation),
+      canonical_output_shape,
+      canonical_permutation,
+      llvm::to_vector<3>(canonical_inv_permutation),
+      llvm::to_vector<3>(canonical_input_shape),
+  };
+}
+
+std::string TransposeSpec::ToString() const {
+  return absl::Substitute(R"(
+transpose: $0
+canonical_input_shape: $1
+canonical_output_shape: $2
+canonical_permutation: $3
+canonical_inv_permutation: $4
+[T2, A, T1, B] = [$5, $6, $7, $8]
+)",
+                          transpose->ToString(),
+                          absl::StrJoin(canonical_input_shape, ","),
+                          absl::StrJoin(canonical_output_shape, ","),
+                          absl::StrJoin(canonical_permutation, ","),
+                          absl::StrJoin(canonical_inv_permutation, ","),
+                          dim_T2(), dim_A(), dim_T1(), dim_B());
+}
+
+absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
+    const TransposeSpec& spec) {
+  // Check the side outputs, etc.
+  int64_t bits_per_element = GetBitwidth(spec.elem_type());
+  if (bits_per_element >= kBankBitwidth) {
+    return absl::InvalidArgumentError("Element type is too large");
+  }
+  absl::InlinedVector<int64_t, 3> tile_sizes(spec.canonical_rank(), 1);
+  int64_t vector_size = kBankBitwidth / bits_per_element;
+
+  // The shmem size is `shmem_dim x shmem_dim`.
+  int64_t shmem_dim = kNumShmemBanks * vector_size;
+  int64_t tile_size_T1 = std::min(spec.dim_T1(), shmem_dim);
+  int64_t tile_size_A = std::min(spec.dim_A(), shmem_dim / tile_size_T1);
+  int64_t tile_size_T2 = std::min(spec.dim_T2(), shmem_dim);
+  int64_t populated_shmem_rows = tile_size_T2;
+  int64_t populated_shmem_cols = tile_size_A * tile_size_T1;
+
+  // Do not use the packed transpose if there are not enough populated rows or
+  // columns in shmem.
+  const int64_t kNumMinPopulatedRowsOrColumns = 10 * vector_size;
+  if (populated_shmem_cols < kNumMinPopulatedRowsOrColumns ||
+      populated_shmem_rows < kNumMinPopulatedRowsOrColumns) {
+    return absl::InvalidArgumentError("Not enough rows or columns in shmem");
+  }
+
+  // These divisibility constrains are too strict, we can do better.
+  if (spec.dim_B() != 1 || populated_shmem_rows % vector_size != 0 ||
+      populated_shmem_cols % vector_size != 0 ||
+      spec.dim_T2() % tile_size_T2 % vector_size != 0) {
+    return absl::InvalidArgumentError("The shape is not supported");
+  }
+  tile_sizes[spec.dim_T1_output_id()] = tile_size_T1;
+  tile_sizes[spec.dim_T2_output_id()] = tile_size_T2;
+  tile_sizes[spec.dim_A_id()] = tile_size_A;
+  return tile_sizes;
 }
 
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {

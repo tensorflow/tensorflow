@@ -126,6 +126,8 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
       "#sink_nodes=%d, is_sequential=%v, small_buffers=%v",
       num_thunks_, execution_graph_.source().size(),
       execution_graph_.sink().size(), is_sequential_, small_buffers);
+
+  VLOG(6) << "ThunkExecutor execution graph:\n" << ToString();
 }
 
 absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
@@ -148,7 +150,7 @@ ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
       runner(runner),
       nodes(executor->execution_graph_.nodes_defs().size()),
       execute_event(tsl::MakeConstructedAsyncValueRef<ExecuteEvent>()),
-      pending_sink_nodes(executor->execution_graph_.sink().size()),
+      pending_nodes(executor->execution_graph_.sink().size()),
       abort(false) {
   NodeStorage* node = nodes.data();
   for (const NodeDef& node_def : executor->execution_graph_.nodes_defs()) {
@@ -237,9 +239,9 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
   // alive while thunk executor has pending tasks.
   tsl::AsyncValueRef<ExecuteEvent> execute_event = state->execute_event;
   execute_event.AndThen([state = std::move(state)] {
-    auto cnt = state->pending_sink_nodes.load(std::memory_order_acquire);
+    auto cnt = state->pending_nodes.load(std::memory_order_acquire);
     DCHECK_EQ(cnt, 0)
-        << "All sink nodes must be completed before execute_event is marked "
+        << "All pending nodes must be completed before execute_event is marked "
            "available.";
   });
 
@@ -395,6 +397,8 @@ void ThunkExecutor::Execute(ExecuteState* state,
     int64_t cnt = node.counter.load(std::memory_order_acquire);
     DCHECK_EQ(cnt, 0) << "Node counter must be 0";
 
+    bool is_sink = node.out_edges.empty();
+
     // If we have multiple ready thunks, split the ready queue and offload
     // thunks processing to the task runner.
     int64_t num_ready_thunks = ready_queue.Size();
@@ -413,9 +417,16 @@ void ThunkExecutor::Execute(ExecuteState* state,
     if (ABSL_PREDICT_TRUE(execute_event.IsAvailable())) {
       // If thunk execution is completed, process out edges in the current
       // thread and keep working on the ready queue.
-      ProcessOutEdges(state, execute_event.AsPtr(), node, ready_queue);
+      ProcessOutEdges</*process_scheduling_edges=*/true>(
+          state, execute_event.AsPtr(), node, ready_queue,
+          /*drop_pending_nodes=*/is_sink);
 
     } else {
+      // Process scheduling edges first, before waiting for the completion of
+      // thunk execution. This allows to schedule more thunks without having to
+      // wait for the execution completion.
+      bool inc_pending_nodes = ProcessOutEdges(state, node, ready_queue);
+
       // If thunk execution is not completed yet, attach a continuation to the
       // event and resume execution on the continuation thread (ready queue
       // processing will continue on a thread that marked event completed).
@@ -426,36 +437,38 @@ void ThunkExecutor::Execute(ExecuteState* state,
       // execute session. If we happen to process the last thunk in the ready
       // queue, we will forward the lock that we already hold (note that the
       // lock might be empty, if `Execute` was called by the main thread).
-      execute_event.AndThen(
-          [&params, &node, state, execute_event = execute_event.AsPtr(),
-           ready_queue = ready_queue.CreateEmptyReadyQueue(),
-           lock = ready_queue.Empty() ? std::move(lock)
-                                      : params.session.Join()]() mutable {
-            state->executor->ProcessOutEdges(state, execute_event, node,
-                                             ready_queue);
+      execute_event.AndThen([&params, &node, state, is_sink, inc_pending_nodes,
+                             execute_event = execute_event.AsPtr(),
+                             ready_queue = ready_queue.CreateEmptyReadyQueue(),
+                             lock = ready_queue.Empty()
+                                        ? std::move(lock)
+                                        : params.session.Join()]() mutable {
+        state->executor->ProcessOutEdges</*process_scheduling_edges=*/false>(
+            state, execute_event, node, ready_queue,
+            /*drop_pending_nodes=*/is_sink || inc_pending_nodes);
 
-            // If ready queue is empty, it might mean that we have completed an
-            // execution and destroyed the `state`, so we make sure we don't
-            // touch `state` if we don't have to.
-            if (ABSL_PREDICT_FALSE(ready_queue.Empty())) {
-              return;
-            }
+        // If ready queue is empty, it might mean that we have completed an
+        // execution and destroyed the `state`, so we make sure we don't
+        // touch `state` if we don't have to.
+        if (ABSL_PREDICT_FALSE(ready_queue.Empty())) {
+          return;
+        }
 
-            Thunk::TaskRunner* runner = state->runner;
-            if (ABSL_PREDICT_TRUE(!runner || runner->current_worker_id())) {
-              // Resume execution in the current thread if we are already
-              // running on a thread managed by the task runner.
-              state->executor->Execute(state, params, std::move(ready_queue),
-                                       std::move(lock));
-            } else {
-              // Resume execution in the task runner to avoid thread "leaks".
-              (*runner)([state, &params, ready_queue = std::move(ready_queue),
-                         lock = std::move(lock)] {
-                state->executor->Execute(state, params, std::move(ready_queue),
-                                         std::move(lock));
-              });
-            }
+        Thunk::TaskRunner* runner = state->runner;
+        if (ABSL_PREDICT_TRUE(!runner || runner->current_worker_id())) {
+          // Resume execution in the current thread if we are already
+          // running on a thread managed by the task runner.
+          state->executor->Execute(state, params, std::move(ready_queue),
+                                   std::move(lock));
+        } else {
+          // Resume execution in the task runner to avoid thread "leaks".
+          (*runner)([state, &params, ready_queue = std::move(ready_queue),
+                     lock = std::move(lock)] {
+            state->executor->Execute(state, params, std::move(ready_queue),
+                                     std::move(lock));
           });
+        }
+      });
     }
   }
 }
@@ -490,9 +503,47 @@ inline ABSL_ATTRIBUTE_ALWAYS_INLINE void ThunkExecutor::SplitReadyQueue(
 }
 
 template <typename ReadyQueue>
+bool ThunkExecutor::ProcessOutEdges(ExecuteState* state,
+                                    ExecuteState::Node& node,
+                                    ReadyQueue& ready_queue) {
+  bool inc_pending_nodes = false;
+
+  // Append ready nodes to the back of the ready queue.
+  for (NodeEdge out_edge : node.out_edges) {
+    // Do not process execution edges as they'll be processed later after thunk
+    // execution is completed (async execute event becomes available).
+    if (ABSL_PREDICT_TRUE(out_edge.kind == NodeEdge::Kind::kExecution)) {
+      continue;
+    }
+
+    // If it is the first scheduling edge, we must increment the pending nodes
+    // counter to keep thunk executor alive until all scheduled thunks are
+    // completed. We don't need to do that for execution edges, as they have a
+    // path to sink nodes, and executor waits for the completion of all sink
+    // nodes. We must do it before we decrement the node counter, to avoid data
+    // races with the dependent thunks.
+    if (!inc_pending_nodes) {
+      state->pending_nodes.fetch_add(1, std::memory_order_relaxed);
+      inc_pending_nodes = true;
+    }
+
+    ExecuteState::Node& out_node = state->node(out_edge.id);
+
+    int64_t cnt = out_node.counter.fetch_sub(1, std::memory_order_release);
+    DCHECK_GE(cnt, 1) << "Node counter can't drop below 0";
+    if (cnt == 1) {
+      ready_queue.Push(out_edge.id);
+    }
+  }
+
+  return inc_pending_nodes;
+}
+
+template <bool process_scheduling_edges, typename ReadyQueue>
 void ThunkExecutor::ProcessOutEdges(
     ExecuteState* state, tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
-    ExecuteState::Node& node, ReadyQueue& ready_queue) {
+    ExecuteState::Node& node, ReadyQueue& ready_queue,
+    bool drop_pending_nodes) {
   // If thunk execution failed, mark execution as aborted and record the error.
   // We still continue processing the nodes DAG to eventually mark sink nodes
   // completed as it's easier than to add a special abort handling logic.
@@ -502,27 +553,36 @@ void ThunkExecutor::ProcessOutEdges(
     state->abort_status.Update(node_event.GetError());
   }
 
-  // Load `is_sink` before dropping node counters because otherwise it might
-  // race with NodeDef destructor.
-  bool is_sink = node.out_edges.empty();
-
   // Append ready nodes to the back of the ready queue.
-  for (NodeId out_edge : node.out_edges) {
-    ExecuteState::Node& out_node = state->node(out_edge);
+  for (NodeEdge out_edge : node.out_edges) {
+    // Do not process scheduling edges if they were already processed earlier.
+    if (process_scheduling_edges == false &&
+        out_edge.kind == NodeEdge::Kind::kScheduling) {
+      continue;
+    }
+
+    ExecuteState::Node& out_node = state->node(out_edge.id);
 
     int64_t cnt = out_node.counter.fetch_sub(1, std::memory_order_release);
     DCHECK_GE(cnt, 1) << "Node counter can't drop below 0";
-    if (cnt == 1) ready_queue.Push(out_edge);
+    if (cnt == 1) {
+      ready_queue.Push(out_edge.id);
+    }
   }
 
-  // Drop the pending sink nodes counter if the node is a sink.
-  if (ABSL_PREDICT_FALSE(is_sink)) {
-    // Check if it was the last sink node and thunk executor is done. We update
-    // the counter using `std::memory_order_acq_rel` to ensure that the
+  if (ABSL_PREDICT_FALSE(drop_pending_nodes)) {
+    // Check if it was the last pending node and thunk executor is done. We
+    // update the counter using `std::memory_order_acq_rel` to ensure that the
     // remaining memory writes are visible to the consumer of execute event.
     bool is_done =
-        state->pending_sink_nodes.fetch_sub(1, std::memory_order_acq_rel) == 1;
-    if (ABSL_PREDICT_TRUE(!is_done)) return;
+        state->pending_nodes.fetch_sub(1, std::memory_order_acq_rel) == 1;
+    if (ABSL_PREDICT_TRUE(!is_done)) {
+      return;
+    }
+
+    // We can't be done and have pending nodes in the queue at the same time.
+    DCHECK(ready_queue.Empty())
+        << "Ready queue must be empty when execution is completed";
 
     // In the unlikely event of an execution error during thunk execution,
     // forward it to the caller via the execute event.
@@ -548,8 +608,9 @@ std::string ThunkExecutor::ToString() const {
   // Collect names of `in_edges`.
   std::vector<std::vector<std::string>> in_edges(num_thunks_);
   for (const auto& node_def : execution_graph_.nodes_defs()) {
-    for (NodeId in_edge : node_def.in_edges) {
-      in_edges[node_def.id].push_back(thunk_sequence_[in_edge]->info().op_name);
+    for (NodeEdge in_edge : node_def.in_edges) {
+      in_edges[node_def.id].push_back(
+          thunk_sequence_[in_edge.id]->info().op_name);
     }
   }
 
@@ -561,12 +622,13 @@ std::string ThunkExecutor::ToString() const {
     const Thunk& thunk = *thunk_sequence_[i];
     bool is_source = absl::c_find(source, i) != source.end();
     bool is_sink = absl::c_find(sink, i) != sink.end();
-    absl::StrAppendFormat(&str,
-                          "\n thunk #%05d: op_name=%s, dependencies=[%s], "
-                          "source=%v, sink=%v, priority=%d",
-                          i, thunk.info().op_name,
-                          absl::StrJoin(in_edges[i], ", "), is_source, is_sink,
-                          execution_graph_.priority(i));
+    absl::StrAppendFormat(
+        &str,
+        "\n thunk #%05d: op_name=%s, kind=%s, dependencies=[%s], "
+        "source=%v, sink=%v, priority=%d",
+        i, thunk.info().op_name, Thunk::KindToString(thunk.kind()),
+        absl::StrJoin(in_edges[i], ", "), is_source, is_sink,
+        execution_graph_.priority(i));
   }
 
   return str;

@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/utils.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/client.h"
@@ -790,10 +792,10 @@ class NanoExecutable final
                         GetInputShardings(program_shape, computation));
     TF_ASSIGN_OR_RETURN(auto proto_output_shardings,
                         GetOutputShardings(program_shape, computation));
-    auto input_shardings =
-        IfrtShardingsFromProto(client, proto_input_shardings);
-    auto output_shardings =
-        IfrtShardingsFromProto(client, proto_output_shardings);
+    TF_ASSIGN_OR_RETURN(auto input_shardings,
+                        IfrtShardingsFromProto(client, proto_input_shardings));
+    TF_ASSIGN_OR_RETURN(auto output_shardings,
+                        IfrtShardingsFromProto(client, proto_output_shardings));
 
     return absl::WrapUnique(new NanoExecutable(
         client, std::move(computation), std::move(program_shape),
@@ -976,8 +978,9 @@ class NanoExecutable final
 
   // Converts an OpSharding proto (from an HLO Instruction) to an ifrt
   // sharding.
-  static std::vector<std::shared_ptr<ifrt::Sharding>> IfrtShardingsFromProto(
-      NanoIfrtClient* client, absl::Span<const OpSharding> shardings) {
+  static absl::StatusOr<std::vector<std::shared_ptr<ifrt::Sharding>>>
+  IfrtShardingsFromProto(NanoIfrtClient* client,
+                         absl::Span<const OpSharding> shardings) {
     std::vector<std::shared_ptr<ifrt::Sharding>> result;
     result.reserve(shardings.size());
     for (const auto& sharding : shardings) {
@@ -990,10 +993,13 @@ class NanoExecutable final
       for (const auto dim : sharding.tile_assignment_dimensions()) {
         num_tiles *= dim;
       }
-      // Repeat the device for each tile. We only have one device anyway so
-      // just used the first.
+      if (num_tiles > client->devices().size()) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Sharding has %d tiles, but only %d devices are available.",
+            num_tiles, client->devices().size()));
+      }
       auto device_list = ifrt::BasicDeviceList::Create(
-          ifrt::BasicDeviceList::Devices(num_tiles, client->devices()[0]));
+          client->devices().subspan(0, num_tiles));
       auto xla_sharding = *HloSharding::FromProto(sharding);
       result.push_back(ifrt::HloSharding::Create(
           std::move(device_list), client->devices()[0]->Memories()[0]->Kind(),
@@ -1181,12 +1187,12 @@ ABSL_ATTRIBUTE_UNUSED char NanoMemory::ID = 'M';  // NOLINT
 // Device implementation. There is only one device so this doesn't do much.
 class NanoDevice final : public llvm::RTTIExtends<NanoDevice, ifrt::Device> {
  public:
-  NanoDevice(NanoIfrtClient* client, ifrt::Memory* memory)
-      : client_(client), memory_(memory) {}
+  NanoDevice(NanoIfrtClient* client, ifrt::DeviceId id, ifrt::Memory* memory)
+      : client_(client), id_(id), memory_(memory) {}
 
   ifrt::Client* client() const override { return client_; }
 
-  ifrt::DeviceId Id() const override { return ifrt::DeviceId(0); }
+  ifrt::DeviceId Id() const override { return id_; }
 
   const ifrt::AttributeMap& Attributes() const override {
     static auto attributes = new ifrt::AttributeMap({});
@@ -1215,6 +1221,7 @@ class NanoDevice final : public llvm::RTTIExtends<NanoDevice, ifrt::Device> {
 
  private:
   NanoIfrtClient* client_;
+  ifrt::DeviceId id_;
   ifrt::Memory* memory_;
 };
 
@@ -1234,7 +1241,8 @@ std::shared_ptr<NanoIfrtClient> NanoIfrtClient::CreateWithDevices(
 }
 
 std::shared_ptr<ifrt::Sharding> NanoIfrtClient::default_sharding() const {
-  return ifrt::SingleDeviceSharding::Create(device_.get(), ifrt::MemoryKind{});
+  return ifrt::SingleDeviceSharding::Create(devices_.front(),
+                                            ifrt::MemoryKind{});
 }
 
 absl::StatusOr<tsl::RCReference<ifrt::Array>>
@@ -1270,6 +1278,15 @@ NanoIfrtClient::MakeArraysFromHostBufferShards(
     tsl::RCReference<ifrt::UserContext> user_context) {
   return ifrt::ClientMakeArraysFromHostBufferShards(this, specs, semantics,
                                                     std::move(user_context));
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+NanoIfrtClient::MakeErrorArrays(
+    const absl::Status& error,
+    absl::Span<const xla::ifrt::ArraySpec> array_specs,
+    tsl::RCReference<xla::ifrt::UserContext> user_context) {
+  return absl::UnimplementedError(
+      "NanoIfrtClient does not support MakeErrorArrays.");
 }
 
 absl::StatusOr<tsl::RCReference<ifrt::Array>>
@@ -1389,7 +1406,20 @@ absl::Span<xla::ifrt::Device* const> NanoIfrtClient::GetAllDevices() const {
 absl::StatusOr<ifrt::DeviceAssignment>
 NanoIfrtClient::GetDefaultDeviceAssignment(int num_replicas,
                                            int num_partitions) const {
-  return ifrt::DeviceAssignment(num_replicas, num_partitions);
+  if (num_replicas < 1 || num_partitions < 1) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Requested device assignment is invalid: %d replicas, "
+                        "%d partitions",
+                        num_replicas, num_partitions));
+  } else if (num_replicas * num_partitions > devices_.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Requested device assignment is too large for the number of devices "
+        "available: %d vs. %d",
+        num_replicas * num_partitions, devices_.size()));
+  }
+  ifrt::DeviceAssignment device_assignment(num_replicas, num_partitions);
+  device_assignment.FillIota(0);
+  return device_assignment;
 }
 
 absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupDevice(
@@ -1399,7 +1429,12 @@ absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupDevice(
 
 absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupAddressableDevice(
     int local_hardware_id) const {
-  return device_.get();
+  if (local_hardware_id < 0 || local_hardware_id >= devices_.size()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Device id %d is out of range [0, %d)",
+                        local_hardware_id, devices_.size()));
+  }
+  return devices_[local_hardware_id];
 }
 
 ifrt::DeviceListRef NanoIfrtClient::MakeDeviceList(
@@ -1425,11 +1460,17 @@ NanoIfrtClient::GetDefaultLayout(ifrt::DType dtype,
 
 NanoIfrtClient::NanoIfrtClient(int32_t num_devices)
     : compiler_(std::make_unique<NanoCompiler>(this)),
-      memory_(std::make_unique<NanoMemory>(this)),
-      device_(std::make_unique<NanoDevice>(this, memory_.get())),
-      default_sharding_(
-          ifrt::SingleDeviceSharding::Create(device_.get(), memory_->Kind())),
-      devices_(num_devices, device_.get()) {}
+      memory_(std::make_unique<NanoMemory>(this)) {
+  owned_devices_.reserve(num_devices);
+  devices_.reserve(num_devices);
+  for (int i = 0; i < num_devices; ++i) {
+    owned_devices_.push_back(
+        std::make_unique<NanoDevice>(this, ifrt::DeviceId(i), memory_.get()));
+    devices_.push_back(owned_devices_.back().get());
+  }
+  default_sharding_ =
+      ifrt::SingleDeviceSharding::Create(devices_.front(), memory_->Kind());
+}
 
 char NanoIfrtClient::ID = 'N';  // NOLINT
 

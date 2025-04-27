@@ -184,9 +184,8 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
   funcOp.front().walk([&](Operation* op) {
     if (ArrayRef<TensorShardingAttr> shardings = mlir::sdy::getShardings(op);
         !shardings.empty()) {
-      op->setAttr(
-          kXlaShardingAttr,
-          convertToHloShardingAttr(op, shardings, getMeshAttr, getStringAttr));
+      op->setAttr(kXlaShardingAttr,
+                  convertToHloShardingAttr(op, shardings, getMeshAttr));
       op->removeAttr(kShardingAttr);
     } else if (addMissingShardingToControlFlow &&
                mlir::isa<stablehlo::WhileOp, stablehlo::CaseOp,
@@ -365,15 +364,16 @@ HloSharding convertToHloSharding(
 StringAttr convertToHloShardingAttr(
     Operation* op, ArrayRef<TensorShardingAttr> shardings,
     std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
-    std::function<StringAttr(const HloSharding&)> getStringAttr,
     ArrayRef<StringAttr> manualAxes) {
   // TODO(bartchr): pass through a symbol table to `getMesh(...)` below.
   bool isNoResultMaximal = op->getNumResults() == 0 && shardings.size() == 1 &&
                            shardings.front().getMesh(op).isMaximal();
   CHECK(shardings.size() == op->getNumResults() || isNoResultMaximal);
   if (op->getNumResults() == 1 || isNoResultMaximal) {
-    return getStringAttr(
-        convertToHloSharding(shardings.front(), getMeshAttr, manualAxes));
+    return StringAttr::get(
+        op->getContext(),
+        convertToHloSharding(shardings.front(), getMeshAttr, manualAxes)
+            .ToString());
   }
 
   SmallVector<HloSharding> newShardings;
@@ -387,8 +387,10 @@ StringAttr convertToHloShardingAttr(
   llvm::transform(op->getResultTypes(), std::back_inserter(shapes),
                   [&](mlir::Type type) { return xla::TypeToShape(type); });
 
-  return getStringAttr(
-      HloSharding::Tuple(xla::ShapeUtil::MakeTupleShape(shapes), newShardings));
+  return StringAttr::get(
+      op->getContext(),
+      HloSharding::Tuple(xla::ShapeUtil::MakeTupleShape(shapes), newShardings)
+          .ToString());
 }
 
 std::unique_ptr<Pass> createExportStablehloShardingsPass(

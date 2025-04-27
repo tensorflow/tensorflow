@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -32,7 +33,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -51,12 +54,33 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
+
+std::vector<xla::PrimitiveType> AllXlaDataTypes() {
+  std::vector<xla::PrimitiveType> xla_data_types;
+  std::vector<xla::PrimitiveType> to_filter_out = {PRIMITIVE_TYPE_INVALID,
+                                                   TUPLE, OPAQUE_TYPE, TOKEN};
+  const tsl::protobuf::EnumDescriptor* xla_type_descriptor =
+      tsl::protobuf::GetEnumDescriptor<xla::PrimitiveType>();
+  for (int enum_ix = 0; enum_ix < xla_type_descriptor->value_count();
+       ++enum_ix) {
+    xla::PrimitiveType xla_type = static_cast<xla::PrimitiveType>(
+        xla_type_descriptor->value(enum_ix)->number());
+    if (!absl::c_linear_search(to_filter_out, xla_type)) {
+      xla_data_types.push_back(xla_type);
+    }
+  }
+  return xla_data_types;
+}
 
 bool SupportsBF16(const stream_executor::GpuComputeCapability& cc) {
   if (std::holds_alternative<stream_executor::CudaComputeCapability>(cc)) {
@@ -97,14 +121,14 @@ absl::Status CreateTritonIrAndFileCheck(
 
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
-      auto triton_module,
+      mlir::OwningOpRef<mlir::ModuleOp> triton_module,
       CreateTritonModule("triton_fn", fusion,
                          TestGpuDeviceInfo::RTXA6000DeviceInfo(),
                          block_level_parameters, context));
 
   std::string out;
   llvm::raw_string_ostream os(out);
-  triton_module.module->print(os);
+  triton_module->print(os);
   TF_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
   if (!succeeded) {
     return absl::InternalError("FileCheck failed.");

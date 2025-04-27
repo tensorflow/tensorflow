@@ -24,14 +24,15 @@ limitations under the License.
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
@@ -74,10 +75,12 @@ DeviceHloInstructionProfiles TestProfiles(
   return profiles;
 }
 
-class CollectivePerfTableStatsCollectionTest : public HloTestBase {
+class CollectivePerfTableStatsCollectionTest
+    : public HloHardwareIndependentTestBase {
  public:
   explicit CollectivePerfTableStatsCollectionTest()
-      : device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo()),
+      : device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo(
+            se::CudaComputeCapability(9, 0))),
         profiles_path_(tsl::io::JoinPath(tsl::testing::TmpDir(), kFile)) {}
 
   void SetUp() override {

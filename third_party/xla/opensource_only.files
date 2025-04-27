@@ -146,13 +146,16 @@ tools/def_file_filter/BUILD:
 tools/def_file_filter/def_file_filter.py.tpl:
 tools/def_file_filter/def_file_filter_configure.bzl:
 tools/toolchains/BUILD:
+tools/toolchains/android/BUILD:
 tools/toolchains/clang6/BUILD:
 tools/toolchains/cpus/py/BUILD:
 tools/toolchains/cpus/py3/BUILD:
 tools/toolchains/cross_compile/cc/BUILD:
 tools/toolchains/cross_compile/config/BUILD:
 tools/toolchains/embedded/arm-linux/BUILD:
+tools/toolchains/ios/BUILD:
 tools/toolchains/java/BUILD:
+tools/toolchains/linux/BUILD:
 tools/toolchains/python/BUILD:
 tools/toolchains/remote/BUILD:
 tools/toolchains/remote_config/BUILD:

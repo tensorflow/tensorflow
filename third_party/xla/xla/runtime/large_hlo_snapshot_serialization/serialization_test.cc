@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 
@@ -37,6 +38,7 @@ namespace xla {
 namespace {
 
 using ::testing::HasSubstr;
+using ::tsl::proto_testing::EqualsProto;
 
 HloUnoptimizedSnapshot CreateSnapshot() {
   HloUnoptimizedSnapshot snapshot;
@@ -69,7 +71,7 @@ TEST(LargeHloSnapshotSerializationTest, SerializeAndDeserialize) {
 
   TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot deserialized_snapshot,
                           SerializeAndDeserialize(snapshot));
-  EXPECT_EQ(deserialized_snapshot.DebugString(), snapshot.DebugString());
+  EXPECT_THAT(deserialized_snapshot, EqualsProto(snapshot));
 }
 
 TEST(LargeHloSnapshotSerializationTest, SerializeAndDeserializeEmptyModule) {
@@ -79,7 +81,7 @@ TEST(LargeHloSnapshotSerializationTest, SerializeAndDeserializeEmptyModule) {
   TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot deserialized_snapshot,
                           SerializeAndDeserialize(snapshot));
 
-  EXPECT_EQ(deserialized_snapshot.DebugString(), snapshot.DebugString());
+  EXPECT_THAT(deserialized_snapshot, EqualsProto(snapshot));
 }
 
 TEST(LargeHloSnapshotSerializationTest, SerializeAndDeserializeEmptyPartition) {
@@ -89,7 +91,7 @@ TEST(LargeHloSnapshotSerializationTest, SerializeAndDeserializeEmptyPartition) {
   TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot deserialized_snapshot,
                           SerializeAndDeserialize(snapshot));
 
-  EXPECT_EQ(deserialized_snapshot.DebugString(), snapshot.DebugString());
+  EXPECT_THAT(deserialized_snapshot, EqualsProto(snapshot));
 }
 
 TEST(LargeHloSnapshotSerializationTest, SerializeAndDeserializeBrokenSnapshot) {
@@ -154,7 +156,7 @@ TEST(LargeHloSnapshotSerializationTest,
   TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot deserialized_snapshot,
                           SerializeAndDeserialize(snapshot));
 
-  EXPECT_EQ(deserialized_snapshot.DebugString(), snapshot.DebugString());
+  EXPECT_THAT(deserialized_snapshot, EqualsProto(snapshot));
 }
 
 }  // namespace

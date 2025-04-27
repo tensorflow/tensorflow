@@ -95,6 +95,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/transforms/xnn_graph_fusion.h"
+#include "xla/backends/cpu/xnn_fusion.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/analysis/indexed_array_analysis.h"
@@ -166,6 +167,7 @@ limitations under the License.
 #include "xla/service/cpu/conv_canonicalization.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/cpu/cpu_float_support.h"
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 #include "xla/service/cpu/cpu_layout_assignment.h"
 #include "xla/service/cpu/cpu_options.h"
@@ -264,7 +266,7 @@ static tsl::thread::ThreadPool* GetCompilationThreadPool() {
   tsl::ThreadOptions thread_options;
   thread_options.stack_size = 4 * 1024 * 1024;  // 4 MB
 
-  static auto* thread_pool = new tsl::thread::ThreadPool(
+  static auto* const thread_pool = new tsl::thread::ThreadPool(
       tsl::Env::Default(), thread_options, "xla-cpu-llvm-codegen",
       std::min(kMaxCompilationThreads, tsl::port::MaxParallelism()));
   return thread_pool;
@@ -458,9 +460,9 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
 
   AlgebraicSimplifierOptions options;
   options.set_enable_dot_strength_reduction(false);
-  // TODO(b/209827141): XLA:CPU doesn't propagate NaN through min/max, but
-  // other platforms do, so it should be changed.
-  options.set_minmax_propagate_nan(false);
+  // "slow" minmax means we propagate nan.
+  options.set_minmax_propagate_nan(
+      !module->config().debug_options().xla_cpu_enable_fast_min_max());
   options.set_supports_non_canonical_dots(false);
   options.set_executing_on_cpu(true);
   pipeline->AddPass<AlgebraicSimplifier>(options);
@@ -509,6 +511,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   const bool is_fusion_emitters =
       is_thunk_runtime &&
       module->config().debug_options().xla_cpu_use_fusion_emitters();
+  bool use_shardy_partitioner = module->config().use_shardy_partitioner();
   if (num_partitions > 1) {
     if (!module->config().use_spmd_partitioning()) {
       return InvalidArgument(
@@ -522,7 +525,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     spmd_pipeline.AddPass<CallInliner>();
     spmd_pipeline.AddPass<ZeroSizedHloElimination>();
     spmd_pipeline.AddPass<ConditionalCanonicalizer>();
-    if (module->config().use_shardy_partitioner()) {
+    if (use_shardy_partitioner) {
       spmd_pipeline.AddPass<sdy::ShardyXLA>();
     } else {
       spmd_pipeline.AddPass<ShardingPropagation>(
@@ -538,6 +541,11 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     AddHloVerifier(&sharding_removal_pipeline);
     // Remove redundant sharding ops when partition_count == 1.
     sharding_removal_pipeline.AddPass<ShardingRemover>();
+    // Run ShardyXLA without propagation, which enforces use-tuple-args.
+    if (use_shardy_partitioner) {
+      sharding_removal_pipeline.AddPass<sdy::ShardyXLA>(
+          /*runSdyShardingPropagation=*/false);
+    }
     sharding_removal_pipeline.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(sharding_removal_pipeline.Run(module).status());
   }
@@ -555,7 +563,30 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   AddHloVerifier(&pipeline);
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
   pipeline.AddPass<ResultCaster>();
-  pipeline.AddPass<OperandUpcaster>();
+
+  // If XNNPACK is enabled, we only need to upcast dots that XnnDotThunk does
+  // not support. `upcaster_filter` returns false if the instruction shouldn't
+  // be processed.
+  // TODO(b/406806134): Stop calling XNNPACK from regular Dot thunks. All XNN
+  // Dots should be wrapped in an `__xnn_fusion` fusion region and processed in
+  // `XnnFusionThunk`.
+  bool xnnpack_enabled = module->config().debug_options().xla_cpu_use_xnnpack();
+  auto call_library_for_dot = [&](const HloInstruction& instr) {
+    if (!xnnpack_enabled) return false;
+    DotImplementationStrategy strategy = GetDotImplementationStrategy(
+        module->config(), instr, *target_machine_features,
+        /*allow_runtime_calls=*/true);
+    return strategy == DotImplementationStrategy::kEigen;
+  };
+  HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
+    if (!call_library_for_dot(*instr)) return true;
+    return !IsXnnDotSupported(instr->dot_dimension_numbers(),
+                              instr->operand(0)->shape(),
+                              instr->operand(1)->shape(), instr->shape(),
+                              target_machine_features)
+                .value_or(false);
+  };
+  pipeline.AddPass<OperandUpcaster>(upcaster_filter);
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
@@ -609,7 +640,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Convert BF16 and F8 operations to F32 and F16 respectively so that the CPU
   // backend can support BF16/F8 operations without directly implementing a
   // BF16/F8 lowering for most ops.
-  FloatSupport bf16_support(BF16);
+  CpuFloatSupport bf16_support(BF16, call_library_for_dot,
+                               target_machine_features);
 #if defined(INTEL_MKL)
   OneDnnFloatSupport onednn_bf16_support(BF16);
   if (!is_aot_compile && !is_thunk_runtime) {
@@ -837,7 +869,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   // Run this to a fixed point.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-       "simplification after layout assignment")] {
+       "simplification after layout assignment"),
+   &module] {
     AddHloVerifier(
         &pipeline,
         HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
@@ -847,9 +880,9 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     options.set_is_layout_sensitive(true);
     options.set_supports_non_canonical_dots(false);
     options.set_enable_dot_strength_reduction(false);
-    // TODO(b/209827141): XLA:CPU doesn't propagate NaN through min/max, but
-    // other platforms do, so it should be changed.
-    options.set_minmax_propagate_nan(false);
+    // "slow" minmax means we propagate nan.
+    options.set_minmax_propagate_nan(
+        !module->config().debug_options().xla_cpu_enable_fast_min_max());
     options.set_executing_on_cpu(true);
     pipeline.AddPass<AlgebraicSimplifier>(options);
     pipeline.AddPass<HloDCE>();

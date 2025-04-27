@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/tuple.h"
 
-#include <utility>
-
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -39,7 +37,7 @@ absl::StatusOr<ShapeTree<XlaOp>> DisassembleTuple(XlaOp tuple) {
       *element = GetTupleElement(parent, index.back());
     }
   });
-  return std::move(result);
+  return result;
 }
 
 XlaOp AssembleTuple(XlaBuilder* builder, ShapeTree<XlaOp> elements) {

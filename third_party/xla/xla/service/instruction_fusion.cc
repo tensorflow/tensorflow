@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/errors.h"
 // The source_location.h is not available in open source.
 #if defined(PLATFORM_GOOGLE)
 #include "absl/types/source_location.h"
@@ -263,8 +264,11 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
                    ShapeUtil::IsEffectiveScalar(operand->shape())) {
                  return false;
                }
-               return ShapeUtil::TrueNumDimensions(operand->shape()) >=
-                      output_rank;
+               const int true_dims =
+                   operand->shape().IsArray()
+                       ? ShapeUtil::TrueNumDimensions(operand->shape())
+                       : 0;
+               return true_dims >= output_rank;
              }) <= 1;
 }
 
@@ -724,6 +728,7 @@ absl::StatusOr<bool> InstructionFusion::Run(
           // Operand is now dead. Remove from queue.
           fusion_queue->RemoveInstruction(operand);
           // Remove from computation.
+          TF_RETURN_IF_ERROR(operand->SafelyDropAllControlDependencies());
           TF_RETURN_IF_ERROR(computation->RemoveInstruction(operand));
         }
 

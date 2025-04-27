@@ -137,9 +137,11 @@ absl::StatusOr<tsl::RCReference<Array>> CreateArray(
                                    MemoryKind(),
                                    /*shape=*/shape,
                                    /*shard_shape=*/std::move(shard_shape));
+  absl::Span<tsl::RCReference<Array>> arrays = absl::MakeSpan(shards);
   return client->AssembleArrayFromSingleDeviceArrays(
-      std::move(shape), std::move(assembled_sharding), absl::MakeSpan(shards),
-      ArrayCopySemantics::kDonateInput);
+      arrays.at(0)->dtype(), std::move(shape), std::move(assembled_sharding),
+      arrays, ArrayCopySemantics::kDonateInput,
+      SingleDeviceShardSemantics::kAddressableShards);
 }
 
 // Checks the shards and contents of an array, same as what CreateArray would
@@ -160,8 +162,10 @@ void AssertArrayContent(Client* client, Array* array,
   EXPECT_EQ(actual_sharding->shape(), expected_shape);
   EXPECT_EQ(actual_sharding->shard_shape(), expected_shard_shape);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto shards, array->DisassembleIntoSingleDeviceArrays(
-                                           ArrayCopySemantics::kReuseInput));
+  TF_ASSERT_OK_AND_ASSIGN(auto shards,
+                          array->DisassembleIntoSingleDeviceArrays(
+                              ArrayCopySemantics::kReuseInput,
+                              SingleDeviceShardSemantics::kAddressableShards));
   ASSERT_THAT(shards, SizeIs(base_values.size()));
   for (int i = 0; i < shards.size(); ++i) {
     EXPECT_EQ(shards[i]->dtype(), expected_dtype);

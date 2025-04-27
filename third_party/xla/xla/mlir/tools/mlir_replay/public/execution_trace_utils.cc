@@ -177,7 +177,7 @@ void ExecutionTraceListener::LeaveRegion(ArrayRef<InterpreterValue> yielded) {
 llvm::SmallVector<mlir::Attribute> ValueToAttribute(
     const InterpreterValue& value, mlir::Type type) {
   if (std::holds_alternative<Tuple>(value.storage)) {
-    auto types = type.cast<TupleType>().getTypes();
+    auto types = mlir::cast<TupleType>(type).getTypes();
     const auto& t = std::get<Tuple>(value.storage);
     llvm::SmallVector<mlir::Attribute> attrs;
     for (const auto& [v, ty] : llvm::zip(t.values, types)) {
@@ -196,11 +196,11 @@ llvm::SmallVector<mlir::Attribute> ValueToAttribute(
                 .getValues<mlir::Attribute>()[0]};
   }
 
-  if (!type.isa<ShapedType>()) {
+  if (!mlir::isa<ShapedType>(type)) {
     return {};
   }
 
-  auto shaped_ty = type.cast<ShapedType>();
+  auto shaped_ty = mlir::cast<ShapedType>(type);
   return {DispatchScalarType(shaped_ty, [&](auto dummy) -> mlir::Attribute {
     using T = decltype(dummy);
     auto& t = std::get<TensorOrMemref<T>>(value.storage);

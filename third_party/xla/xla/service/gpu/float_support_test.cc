@@ -18,7 +18,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
-#include "xla/service/gpu/variant_visitor.h"
+#include "xla/service/overload.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
@@ -51,7 +51,6 @@ class FloatSupportTestWithTriton : public FloatSupportTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = FloatSupportTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(true);
-    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
@@ -76,10 +75,10 @@ ENTRY e {
 
 TEST_F(FloatSupportTestWithTriton, MixedTypeDotWithBF16IsNotUpcasted) {
   bool skip_test = std::visit(
-      VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                       return !cc.IsAtLeast(se::CudaComputeCapability::kAmpere);
-                     },
-                     [](const se::RocmComputeCapability&) { return true; }},
+      Overload{[](const se::CudaComputeCapability& cc) {
+                 return !cc.IsAtLeast(se::CudaComputeCapability::kAmpere);
+               },
+               [](const se::RocmComputeCapability&) { return true; }},
       GetGpuComputeCapability());
 
   if (skip_test) {

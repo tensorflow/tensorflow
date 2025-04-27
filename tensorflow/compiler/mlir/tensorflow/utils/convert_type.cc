@@ -180,10 +180,10 @@ absl::Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
         absl::StrCat("Converting ", debugString(type), " to DataType"));
   }
 
-#define HANDLE_TF_TYPE(tftype, enumerant, name)  \
-  if (type.isa<mlir::tf_type::tftype##Type>()) { \
-    *dtype = DT_##enumerant;                     \
-    return OkStatus();                           \
+#define HANDLE_TF_TYPE(tftype, enumerant, name)       \
+  if (llvm::isa<mlir::tf_type::tftype##Type>(type)) { \
+    *dtype = DT_##enumerant;                          \
+    return OkStatus();                                \
   }
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"

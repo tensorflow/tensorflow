@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/transforms/memory_space_propagation.h"
 
-#include <cstdint>
 #include <optional>
 #include <utility>
 

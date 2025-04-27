@@ -264,6 +264,11 @@ class XLineVisitor {
     }
   }
 
+  // Returns the first event in the line, used to get name for counter line.
+  XEventVisitor GetFirstEvent() const {
+    return XEventVisitor(plane_, line_, &line_->events(0));
+  }
+
  private:
   const XPlaneVisitor* plane_;
   const XLine* line_;

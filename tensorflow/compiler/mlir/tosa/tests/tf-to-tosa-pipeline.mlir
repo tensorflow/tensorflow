@@ -1,7 +1,7 @@
-// RUN: tf-opt --tf-to-tosa-pipeline  --verify-each %s | FileCheck %s
-// REQUIRES: tf_tosa
-// RUN: tf-opt --tf-tfl-to-tosa-pipeline  --verify-each %s | FileCheck %s
-// REQUIRES: tf_tosa
+// RUN: tf-tosa-opt --tf-to-tosa-pipeline  --verify-each %s | FileCheck %s
+
+// RUN: tf-tosa-opt --tf-tfl-to-tosa-pipeline  --verify-each %s | FileCheck %s
+
 
 // Operations for testing tf-to-tosa-pipeline
 // TODO: These tests are fairly minimal. Expand the checks to be more robust.
@@ -106,7 +106,7 @@ func.func @test_mul(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x1x3xf32>) -> te
 // -----
 
 // CHECK-LABEL: test_real_div
-// CHECK: %[[VAR0:.*]] = tosa.int_div %arg0, %arg1
+// CHECK: %[[VAR0:.*]] = tosa.intdiv %arg0, %arg1
 func.func @test_real_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<13x1x3xi32>) -> tensor<13x21x3xi32> {
   %2 = "tf.RealDiv"(%arg0, %arg1)   : (tensor<13x21x3xi32>, tensor<13x1x3xi32>) -> tensor<13x21x3xi32>
   func.return %2 : tensor<13x21x3xi32>
@@ -117,12 +117,12 @@ func.func @test_real_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<13x1x3xi32>) 
 // CHECK-LABEL:   func.func @test_floor_div(
 // CHECK-SAME:                              %[[VAL_0:.*]]: tensor<13x21x3xi32>,
 // CHECK-SAME:                              %[[VAL_1:.*]]: tensor<13x1x3xi32>) -> tensor<13x21x3xi32> {
-// CHECK:           %[[VAL_2:.*]] = "tosa.const"() <{value = dense<0> : tensor<i8>}> : () -> tensor<i8>
-// CHECK:           %[[VAL_3:.*]] = "tosa.const"() <{value = dense<0> : tensor<1x1x1xi32>}> : () -> tensor<1x1x1xi32>
-// CHECK:           %[[VAL_4:.*]] = "tosa.const"() <{value = dense<1> : tensor<1x1x1xi32>}> : () -> tensor<1x1x1xi32>
-// CHECK:           %[[VAL_5:.*]] = tosa.int_div %[[VAL_0]], %[[VAL_1]] : (tensor<13x21x3xi32>, tensor<13x1x3xi32>) -> tensor<13x21x3xi32>
-// CHECK:           %[[VAL_6:.*]] = tosa.mul %[[VAL_0]], %[[VAL_1]], %[[VAL_2]] : (tensor<13x21x3xi32>, tensor<13x1x3xi32>, tensor<i8>) -> tensor<13x21x3xi32>
-// CHECK:           %[[VAL_7:.*]] = tosa.mul %[[VAL_1]], %[[VAL_5]], %[[VAL_2]] : (tensor<13x1x3xi32>, tensor<13x21x3xi32>, tensor<i8>) -> tensor<13x21x3xi32>
+// CHECK:           %[[VAL_2:.*]] = "tosa.const"() <{values = dense<0> : tensor<1xi8>}> : () -> tensor<1xi8>
+// CHECK:           %[[VAL_3:.*]] = "tosa.const"() <{values = dense<0> : tensor<1x1x1xi32>}> : () -> tensor<1x1x1xi32>
+// CHECK:           %[[VAL_4:.*]] = "tosa.const"() <{values = dense<1> : tensor<1x1x1xi32>}> : () -> tensor<1x1x1xi32>
+// CHECK:           %[[VAL_5:.*]] = tosa.intdiv %[[VAL_0]], %[[VAL_1]] : (tensor<13x21x3xi32>, tensor<13x1x3xi32>) -> tensor<13x21x3xi32>
+// CHECK:           %[[VAL_6:.*]] = tosa.mul %[[VAL_0]], %[[VAL_1]], %[[VAL_2]] : (tensor<13x21x3xi32>, tensor<13x1x3xi32>, tensor<1xi8>) -> tensor<13x21x3xi32>
+// CHECK:           %[[VAL_7:.*]] = tosa.mul %[[VAL_1]], %[[VAL_5]], %[[VAL_2]] : (tensor<13x1x3xi32>, tensor<13x21x3xi32>, tensor<1xi8>) -> tensor<13x21x3xi32>
 // CHECK:           %[[VAL_8:.*]] = tosa.equal %[[VAL_0]], %[[VAL_7]] : (tensor<13x21x3xi32>, tensor<13x21x3xi32>) -> tensor<13x21x3xi1>
 // CHECK:           %[[VAL_9:.*]] = tosa.logical_not %[[VAL_8]] : (tensor<13x21x3xi1>) -> tensor<13x21x3xi1>
 // CHECK:           %[[VAL_10:.*]] = tosa.greater %[[VAL_3]], %[[VAL_6]] : (tensor<1x1x1xi32>, tensor<13x21x3xi32>) -> tensor<13x21x3xi1>
@@ -1053,6 +1053,20 @@ func.func @test_gather_nd(%arg0: tensor<13x21x3xf32>) -> tensor<6x7x21x3xf32> {
   func.return %1 : tensor<6x7x21x3xf32>
 }
 
+// -----
+
+// CHECK-LABEL: test_scatter_nd
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1x224x512xf32>}>
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() <{values = dense<0> : tensor<1x2xi32>}>
+// CHECK-DAG: %[[VAR3:.*]] = tosa.reduce_sum %[[VAR2:.*]] {axis = 1 : i32} : (tensor<1x2xi32>)
+// CHECK-DAG: %[[VAR4:.*]] = tosa.scatter %[[VAR1:.*]], %[[VAR3:.*]], %arg0 : (tensor<1x224x512xf32>, tensor<1x1xi32>, tensor<1x1x512xf32>)
+// CHECK: return %[[VAR4]]
+func.func @test_scatter_nd(%arg0: tensor<1x1x512xf32>) -> tensor<1x224x512xf32> {
+  %shape = "tf.Const"() {device = "", value = dense<[1, 224, 512]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %indices = "tf.Const"() {device = "", value = dense<[[[0, 0]]]>: tensor<1x1x2xi32>} : () -> tensor<1x1x2xi32>
+  %1 = "tf.ScatterNd"(%indices, %arg0, %shape) {device = ""} : (tensor<1x1x2xi32>, tensor<1x1x512xf32>, tensor<3xi32>) -> tensor<1x224x512xf32>
+  func.return %1 : tensor<1x224x512xf32>
+}
 
 // -----
 

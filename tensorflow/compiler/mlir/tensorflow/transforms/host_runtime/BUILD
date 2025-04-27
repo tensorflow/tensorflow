@@ -6,7 +6,6 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//learning/serving/contrib/tfrt/mlir/saved_model_analysis:__pkg__",
         "//tensorflow/compiler/mlir:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
@@ -142,15 +141,10 @@ tf_cc_test(
 gentbl_cc_library(
     name = "runtime_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=RuntimeLowering",
-            ],
-            "runtime_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"runtime_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=RuntimeLowering",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "runtime_passes.td",
     deps = [

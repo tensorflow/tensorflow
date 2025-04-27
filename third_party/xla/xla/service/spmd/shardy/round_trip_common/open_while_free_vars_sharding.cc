@@ -58,10 +58,15 @@ class OpenWhileFreeVarsShardingPass
         if (!sharding || sharding.getRank() == 0) {
           continue;
         }
+        auto fullyOpenSharding = TensorShardingAttr::getFullyOpenLike(sharding);
+        if (fullyOpenSharding == sharding) {
+          // The sharding of the `freeVar` is already fully open, no need to add
+          // a sharding constraint.
+          continue;
+        }
         auto shardingConstraint =
             rewriter.create<mlir::sdy::ShardingConstraintOp>(
-                freeVar.getLoc(), freeVar,
-                TensorShardingAttr::getFullyOpenLike(sharding));
+                freeVar.getLoc(), freeVar, fullyOpenSharding);
         // Only replace uses in the regions of the while op.
         rewriter.replaceUsesWithIf(
             freeVar, shardingConstraint, [op](mlir::OpOperand& use) {

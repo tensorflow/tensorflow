@@ -188,7 +188,8 @@ absl::StatusOr<bool> TryRewritingBroadcastAsAllocateBuffer(
     HloInstruction* while_instr) {
   std::optional<int64_t> induction_var_tuple_index =
       GetLoopInductionVarTupleIdx(while_instr);
-  if (!induction_var_tuple_index.has_value()) {
+  if (!induction_var_tuple_index.has_value() ||
+      ComputeWhileLoopTripCount(while_instr).value_or(0) == 0) {
     return false;
   }
   HloComputation* while_body = while_instr->while_body();

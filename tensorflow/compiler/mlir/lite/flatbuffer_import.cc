@@ -377,10 +377,8 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
   // min/max stats is just for comments, so ignore it.
   if (!tensor.quantization || tfl::IsQuantized(tensor)) return nullptr;
   // If the result isn't float and unquantizable, the min/max is ignored.
-  if (!res.getType()
-           .cast<mlir::ShapedType>()
-           .getElementType()
-           .isa<mlir::FloatType>()) {
+  if (!llvm::isa<mlir::FloatType>(
+          llvm::cast<mlir::ShapedType>(res.getType()).getElementType())) {
     return nullptr;
   }
   auto mins = tensor.quantization->min;
@@ -438,7 +436,7 @@ StatusOr<Operation*> BuildExternalConstOp(const tflite::TensorT& tensor,
   TF_ASSIGN_OR_RETURN(mlir::TensorType type,
                       tfl::GetTensorType(tensor, builder,
                                          /*is_constant=*/true));
-  auto shaped_type = type.dyn_cast<mlir::RankedTensorType>();
+  auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
     return errors::Internal("Constant doesn't have a shape");
   }
@@ -457,7 +455,7 @@ StatusOr<Operation*> BuildVariableOp(const tflite::TensorT& tensor,
   TF_ASSIGN_OR_RETURN(mlir::TensorType type,
                       tfl::GetTensorType(tensor, builder,
                                          /*is_constant=*/true));
-  auto shaped_type = type.dyn_cast<mlir::RankedTensorType>();
+  auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
     return errors::Internal("Constant doesn't have a shape");
   }
@@ -510,7 +508,7 @@ static StatusOr<Operation*> BuildSparseConstOp(
   TF_ASSIGN_OR_RETURN(mlir::TensorType type,
                       tfl::GetTensorType(tensor, builder,
                                          /*is_constant=*/true));
-  auto shaped_type = type.dyn_cast<mlir::RankedTensorType>();
+  auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
     return errors::Internal("Constant doesn't have a shape");
   }
@@ -598,7 +596,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                          /*is_constant=*/true,
                                          /*is_intermediate=*/false,
                                          /*get_storage=*/true));
-  auto shaped_type = type.dyn_cast<mlir::RankedTensorType>();
+  auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!shaped_type) {
     return errors::Internal("Constant doesn't have a shape");
   }
@@ -619,11 +617,11 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   }
 
   auto elem_type = shaped_type.getElementType();
-  if (auto float_type = elem_type.dyn_cast<mlir::FloatType>()) {
+  if (auto float_type = llvm::dyn_cast<mlir::FloatType>(elem_type)) {
     TF_ASSIGN_OR_RETURN(value, tfl::ConvertFloatBuffer(shaped_type, buffer));
-  } else if (elem_type.isa<mlir::IntegerType>()) {
+  } else if (llvm::isa<mlir::IntegerType>(elem_type)) {
     TF_ASSIGN_OR_RETURN(value, tfl::ConvertIntBuffer(shaped_type, buffer));
-  } else if (elem_type.isa<mlir::TF::StringType>()) {
+  } else if (llvm::isa<mlir::TF::StringType>(elem_type)) {
     tensorflow::TensorProto repr =
         tfl::ConvertTfliteConstTensor(tensor, buffer);
     std::vector<llvm::StringRef> refs;
@@ -633,7 +631,8 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
       refs.push_back({ref.data(), ref.size()});
 
     value = mlir::DenseStringElementsAttr::get(shaped_type, refs);
-  } else if (elem_type.isa<mlir::ComplexType, mlir::TF::TensorFlowType>()) {
+  } else if (llvm::isa<mlir::ComplexType, mlir::TF::TensorFlowType>(
+                 elem_type)) {
     tensorflow::TensorProto repr =
         tfl::ConvertTfliteConstTensor(tensor, buffer);
     std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
@@ -929,8 +928,8 @@ StatusOr<Operation*> ConvertOp(
     // Flattens reshape ops when more than one dimension shape operand is given.
     mlir::DenseIntElementsAttr shape_attr;
     if (matchPattern(op_state.operands[1], m_Constant(&shape_attr))) {
-      auto shape_ty =
-          op_state.operands[1].getType().dyn_cast<RankedTensorType>();
+      auto shape_ty = llvm::dyn_cast<mlir::RankedTensorType>(
+          op_state.operands[1].getType());
       if (shape_ty != nullptr && shape_ty.hasRank() && shape_ty.getRank() > 1) {
         llvm::SmallVector<mlir::Attribute, 4> shape;
         int32_t dim_size = 0;
@@ -1117,8 +1116,8 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
         value.getType());
     // Only the 8-bit constants are imported with narrow range.
     if (!qtype || qtype.getStorageTypeIntegralWidth() != 8 ||
-        !(qtype.isa<mlir::quant::UniformQuantizedType>() ||
-          qtype.isa<mlir::quant::UniformQuantizedPerAxisType>())) {
+        !(llvm::isa<mlir::quant::UniformQuantizedType>(qtype) ||
+          llvm::isa<mlir::quant::UniformQuantizedPerAxisType>(qtype))) {
       return;
     }
     for (auto& use : value.getUses()) {
@@ -1134,14 +1133,16 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
       if (full_range_const == value) {
         mlir::quant::QuantizedType new_qtype;
         if (auto per_axis =
-                qtype.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+                llvm::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(
+                    qtype)) {
           new_qtype = mlir::quant::UniformQuantizedPerAxisType::get(
               per_axis.getFlags(), per_axis.getStorageType(),
               per_axis.getExpressedType(), per_axis.getScales(),
               per_axis.getZeroPoints(), per_axis.getQuantizedDimension(),
               per_axis.getStorageTypeMin() - 1, per_axis.getStorageTypeMax());
         } else if (auto per_tensor =
-                       qtype.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+                       llvm::dyn_cast<mlir::quant::UniformQuantizedType>(
+                           qtype)) {
           new_qtype = mlir::quant::UniformQuantizedType::get(
               per_tensor.getFlags(), per_tensor.getStorageType(),
               per_tensor.getExpressedType(), per_tensor.getScale(),
@@ -1185,7 +1186,8 @@ int GetTensorIndex(const std::string& tensor_name,
 llvm::SmallVector<llvm::StringRef, 2> GetStringsFromAttrWithSeparator(
     mlir::DictionaryAttr attr, const std::string& attr_key) {
   llvm::SmallVector<llvm::StringRef, 2> result;
-  if (auto str = attr.get(attr_key).dyn_cast_or_null<mlir::StringAttr>()) {
+  if (auto str =
+          llvm::dyn_cast_if_present<mlir::StringAttr>(attr.get(attr_key))) {
     str.getValue().split(result, ',', /*MaxSplit=*/-1,
                          /*KeepEmpty=*/false);
   }
@@ -1643,11 +1645,13 @@ void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
   mlir::SymbolTable symbol_table(module);
   module.walk([&](mlir::TFL::WhileOp while_op) {
     auto cond = symbol_table.lookup<mlir::func::FuncOp>(
-        while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
+        llvm::cast<mlir::FlatSymbolRefAttr>(while_op->getAttr("cond"))
+            .getValue());
     AddCallOpInWhileOpRegion(while_op.getCond(), cond);
     while_op->removeAttr("cond");
     auto body = symbol_table.lookup<mlir::func::FuncOp>(
-        while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
+        llvm::cast<mlir::FlatSymbolRefAttr>(while_op->getAttr("body"))
+            .getValue());
     AddCallOpInWhileOpRegion(while_op.getBody(), body);
     while_op->removeAttr("body");
   });
@@ -1658,15 +1662,15 @@ void AddRegionsForStableHLOOp(mlir::ModuleOp module) {
   std::vector<mlir::func::FuncOp> to_delete_funcs;
   module.walk([&](mlir::vhlo::ReduceOpV1 reduce_op) {
     auto body = symbol_table.lookup<mlir::func::FuncOp>(
-        reduce_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
+        llvm::cast<mlir::FlatSymbolRefAttr>(reduce_op->getAttr("body"))
+            .getValue());
     InlineVhloOpRegion(reduce_op.getBody(), body);
     reduce_op->removeAttr("body");
     to_delete_funcs.push_back(body);
   });
   module.walk([&](mlir::vhlo::ReduceWindowOpV1 reduce_window_op) {
     auto body = symbol_table.lookup<mlir::func::FuncOp>(
-        reduce_window_op->getAttr("body")
-            .cast<mlir::FlatSymbolRefAttr>()
+        llvm::cast<mlir::FlatSymbolRefAttr>(reduce_window_op->getAttr("body"))
             .getValue());
     InlineVhloOpRegion(reduce_window_op.getBody(), body);
     reduce_window_op->removeAttr("body");
@@ -1674,8 +1678,8 @@ void AddRegionsForStableHLOOp(mlir::ModuleOp module) {
   });
   module.walk([&](mlir::vhlo::ScatterOpV1 scatter_op) {
     auto update_computation = symbol_table.lookup<mlir::func::FuncOp>(
-        scatter_op->getAttr(kScatterRegionFuncName)
-            .cast<mlir::FlatSymbolRefAttr>()
+        llvm::cast<mlir::FlatSymbolRefAttr>(
+            scatter_op->getAttr(kScatterRegionFuncName))
             .getValue());
     InlineVhloOpRegion(scatter_op.getUpdateComputation(), update_computation);
     scatter_op->removeAttr(kScatterRegionFuncName);
@@ -1683,8 +1687,7 @@ void AddRegionsForStableHLOOp(mlir::ModuleOp module) {
   });
   module.walk([&](mlir::vhlo::SortOpV1 sort_op) {
     auto comparator = symbol_table.lookup<mlir::func::FuncOp>(
-        sort_op->getAttr("comparator")
-            .cast<mlir::FlatSymbolRefAttr>()
+        llvm::cast<mlir::FlatSymbolRefAttr>(sort_op->getAttr("comparator"))
             .getValue());
     InlineVhloOpRegion(sort_op.getComparator(), comparator);
     sort_op->removeAttr("comparator");
@@ -1692,11 +1695,13 @@ void AddRegionsForStableHLOOp(mlir::ModuleOp module) {
   });
   module.walk([&](mlir::vhlo::WhileOpV1 while_op) {
     auto cond = symbol_table.lookup<mlir::func::FuncOp>(
-        while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
+        llvm::cast<mlir::FlatSymbolRefAttr>(while_op->getAttr("cond"))
+            .getValue());
     InlineVhloOpRegion(while_op.getCond(), cond);
     while_op->removeAttr("cond");
     auto body = symbol_table.lookup<mlir::func::FuncOp>(
-        while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
+        llvm::cast<mlir::FlatSymbolRefAttr>(while_op->getAttr("body"))
+            .getValue());
     InlineVhloOpRegion(while_op.getBody(), body);
     while_op->removeAttr("body");
     to_delete_funcs.push_back(body);

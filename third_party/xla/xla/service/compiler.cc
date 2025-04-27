@@ -86,21 +86,21 @@ Compiler::CompileAheadOfTime(
 
 /* static */ absl::flat_hash_map<se::Platform::Id, Compiler::CompilerFactory>*
 Compiler::GetPlatformCompilerFactories() {
-  static auto* r = new absl::flat_hash_map<se::Platform::Id, CompilerFactory>;
+  static auto* const r =
+      new absl::flat_hash_map<se::Platform::Id, CompilerFactory>;
   return r;
 }
 
 /* static */
 absl::flat_hash_map<se::Platform::Id, std::unique_ptr<Compiler>>*
 Compiler::GetPlatformCompilers() {
-  static auto* r =
+  static auto* const r =
       new absl::flat_hash_map<se::Platform::Id, std::unique_ptr<Compiler>>;
   return r;
 }
 
 /* static */ void Compiler::RegisterCompilerFactory(
-    se::Platform::Id platform_id,
-    std::function<std::unique_ptr<Compiler>()> compiler_factory) {
+    se::Platform::Id platform_id, CompilerFactory compiler_factory) {
   absl::MutexLock lock(&platform_compiler_mutex_);
   auto* factories = GetPlatformCompilerFactories();
   CHECK(factories->find(platform_id) == factories->end())
@@ -108,21 +108,9 @@ Compiler::GetPlatformCompilers() {
   (*factories)[platform_id] = std::move(compiler_factory);
 }
 
-/* static */ absl::StatusOr<Compiler*> Compiler::GetForPlatform(
+/* static */ absl::StatusOr<std::unique_ptr<Compiler>> Compiler::GetForPlatform(
     const se::Platform* platform) {
   absl::MutexLock lock(&platform_compiler_mutex_);
-
-  auto* compilers = GetPlatformCompilers();
-  // See if we already instantiated a compiler for this platform.
-  {
-    auto it = compilers->find(platform->id());
-    if (it != compilers->end()) {
-      return it->second.get();
-    }
-
-    // If not, we just fall through to try to create one with a registered
-    // factory.
-  }
 
   auto* factories = GetPlatformCompilerFactories();
   auto it = factories->find(platform->id());
@@ -132,10 +120,7 @@ Compiler::GetPlatformCompilers() {
         "that platform linked in?",
         platform->Name());
   }
-
-  // And then we invoke the factory, placing the result into the mapping.
-  compilers->insert(std::make_pair(platform->id(), it->second()));
-  return compilers->at(platform->id()).get();
+  return it->second();
 }
 
 // Default implementation

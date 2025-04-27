@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 
 #include "absl/log/check.h"
-#include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -100,8 +99,7 @@ void importCallOp(
                                namedCompRegion.begin());
   } else {
     FuncOp funcOp = symbolTable.lookup<FuncOp>(calleeName);
-    CHECK(funcOp) << "Failed to lookup function: "
-                  << std::string_view(calleeName);  // non-absl ok
+    CHECK(funcOp) << "Failed to lookup function: " << calleeName.str();
     mlir::sdy::inlineRegionAndConvertTerminatorOp<mlir::sdy::ReturnOp>(
         funcOp.getBody(), namedCompRegion);
     calleeNameToMovedRegion[calleeName] = &namedCompRegion;

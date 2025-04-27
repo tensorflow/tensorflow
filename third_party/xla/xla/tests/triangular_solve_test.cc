@@ -13,33 +13,41 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <numeric>
+#include <cstdint>
+#include <limits>
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/log/check.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
-#include "xla/hlo/builder/lib/math.h"
+#include "xla/array3d.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/literal_util.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-using TriangularSolveTest = ClientLibraryTestBase;
-using TriangularSolveLeftLookingTest = ClientLibraryTestBase;
+constexpr float kNan = std::numeric_limits<float>::quiet_NaN();
+constexpr complex64 kNanC64 = complex64(kNan, kNan);
 
-static constexpr float kNan = std::numeric_limits<float>::quiet_NaN();
+using TriangularSolveTest = ClientLibraryTestRunnerMixin<HloTestBase>;
+using TriangularSolveLeftLookingTest =
+    ClientLibraryTestRunnerMixin<HloTestBase>;
 
 Array2D<float> AValsLower() {
   return {{2, kNan, kNan, kNan},
@@ -77,8 +85,6 @@ Array2D<float> BValsLeft() {
   return {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}};
 }
 
-static constexpr complex64 kNanC64 = complex64(kNan, kNan);
-
 Array2D<complex64> AValsLowerComplex() {
   return {{2, kNanC64, kNanC64, kNanC64},
           {complex64(3, 1), 6, kNanC64, kNanC64},
@@ -101,7 +107,7 @@ Array2D<complex64> BValsLeftComplex() {
   return {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}};
 }
 
-XLA_TEST_F(TriangularSolveTest, EmptyArrays) {
+TEST_F(TriangularSolveTest, EmptyArrays) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -115,10 +121,10 @@ XLA_TEST_F(TriangularSolveTest, EmptyArrays) {
                   /*transpose_a=*/TriangularSolveOptions::TRANSPOSE);
 
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 10),
-                             {a_data.get(), b_data.get()});
+                             {&a_data, &b_data});
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTranspose) {
+TEST_F(TriangularSolveTest, SimpleRightLowerTranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -135,11 +141,11 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTranspose) {
       {4.5, -0.58333331, -0.32407406, -0.23569024},
   });
 
-  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
+  ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleRightLowerNotranspose) {
+TEST_F(TriangularSolveTest, SimpleRightLowerNotranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -156,11 +162,11 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerNotranspose) {
       {1.4520202, 0.2003367, 0.01010101, 1.09090909},
   });
 
-  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
+  ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleRightUpperTranspose) {
+TEST_F(TriangularSolveTest, SimpleRightUpperTranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -177,11 +183,11 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightUpperTranspose) {
       {1.4520202, 0.2003367, 0.01010101, 1.09090909},
   });
 
-  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
+  ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleRightUpperNotranspose) {
+TEST_F(TriangularSolveTest, SimpleRightUpperNotranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -198,11 +204,11 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightUpperNotranspose) {
       {4.5, -0.58333331, -0.32407406, -0.23569024},
   });
 
-  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
+  ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerTranspose) {
+TEST_F(TriangularSolveTest, SimpleLeftLowerTranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -220,11 +226,11 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerTranspose) {
       {0.90909091, 1., 1.09090909},
   });
 
-  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
+  ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotranspose) {
+TEST_F(TriangularSolveTest, SimpleLeftLowerNotranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -242,11 +248,11 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotranspose) {
       {0.16835017, 0.13468013, 0.1010101},
   });
 
-  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
+  ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNoTransposeUnitDiagonal) {
+TEST_F(TriangularSolveTest, SimpleLeftLowerNoTransposeUnitDiagonal) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -261,11 +267,11 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNoTransposeUnitDiagonal) {
   Array2D<float> expected(
       {{1., 2., 3.}, {1., -1., -3.}, {-4., 7., 18.}, {37., -61., -159.}});
 
-  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
+  ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotransposeIrregularblock) {
+TEST_F(TriangularSolveTest, SimpleLeftLowerNotransposeIrregularblock) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -283,11 +289,11 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotransposeIrregularblock) {
       {0.16835017, 0.13468013, 0.1010101},
   });
 
-  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
+  ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTranspose) {
+TEST_F(TriangularSolveTest, SimpleLeftUpperTranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -305,11 +311,11 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTranspose) {
       {0.16835017, 0.13468013, 0.1010101},
   });
 
-  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
+  ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotranspose) {
+TEST_F(TriangularSolveTest, SimpleLeftUpperNotranspose) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -327,11 +333,11 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotranspose) {
       {0.90909091, 1., 1.09090909},
   });
 
-  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
+  ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotransposeUnitDiagonal) {
+TEST_F(TriangularSolveTest, SimpleLeftUpperNotransposeUnitDiagonal) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -348,11 +354,11 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotransposeUnitDiagonal) {
                            {-93., -102., -111.},
                            {10., 11., 12.}});
 
-  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
+  ComputeAndCompareR2<float>(&builder, expected, {&a_data, &b_data},
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
+TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -374,11 +380,11 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
        complex64(0.11026936, -0.03114478)},
   });
 
-  ComputeAndCompareR2<complex64>(
-      &builder, expected, {a_data.get(), b_data.get()}, ErrorSpec(1e-2, 1e-2));
+  ComputeAndCompareR2<complex64>(&builder, expected, {&a_data, &b_data},
+                                 ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
+TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
   XlaBuilder builder(TestName());
 
   XlaOp a, b;
@@ -402,11 +408,11 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
        complex64(0.15798226, 5.12749446e-01)},
   });
 
-  ComputeAndCompareR2<complex64>(
-      &builder, expected, {a_data.get(), b_data.get()}, ErrorSpec(1e-2, 1e-2));
+  ComputeAndCompareR2<complex64>(&builder, expected, {&a_data, &b_data},
+                                 ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(TriangularSolveTest, BatchedLeftUpper) {
+TEST_F(TriangularSolveTest, BatchedLeftUpper) {
   XlaBuilder builder(TestName());
 
   Array3D<float> bvals(7, 5, 5);
@@ -430,7 +436,7 @@ XLA_TEST_F(TriangularSolveTest, BatchedLeftUpper) {
                       /*unit_diagonal=*/false,
                       /*transpose_a=*/TriangularSolveOptions::NO_TRANSPOSE));
 
-  ComputeAndCompareR3<float>(&builder, bvals, {a_data.get(), b_data.get()},
+  ComputeAndCompareR3<float>(&builder, bvals, {&a_data, &b_data},
                              ErrorSpec(1e-2, 1e-2));
 }
 
@@ -442,13 +448,13 @@ struct TriangularSolveTestSpec {
 };
 
 class TriangularSolveParametricTest
-    : public ClientLibraryTestBase,
+    : public ClientLibraryTestRunnerMixin<HloTestBase>,
       public ::testing::WithParamInterface<TriangularSolveTestSpec> {};
 
-XLA_TEST_P(TriangularSolveParametricTest, Random) {
+TEST_P(TriangularSolveParametricTest, Random) {
   TriangularSolveTestSpec spec = GetParam();
 
-  if (client_->backend()
+  if (backend()
           .default_stream_executor()
           ->GetDeviceDescription()
           .cuda_compute_capability()
@@ -480,12 +486,13 @@ XLA_TEST_P(TriangularSolveParametricTest, Random) {
   Array<float> bvals(b_dims);
   bvals.FillRandom(1.0);
 
-  XlaOp a, b;
-  auto a_data = CreateParameter<float>(avals, 0, "a", &builder, &a);
-  auto b_data = CreateParameter<float>(bvals, 1, "b", &builder, &b);
-  auto x = TriangularSolve(a, b, spec.left_side, spec.lower,
-                           /*unit_diagonal=*/false, spec.transpose_a);
-  auto a_tri = Triangle(a, spec.lower);
+  const Literal avals_literal = LiteralUtil::CreateFromArray(avals);
+  const Literal bvals_literal = LiteralUtil::CreateFromArray(bvals);
+  XlaOp a = Parameter(&builder, 0, avals_literal.shape(), "a");
+  XlaOp b = Parameter(&builder, 1, bvals_literal.shape(), "b");
+  XlaOp x = TriangularSolve(a, b, spec.left_side, spec.lower,
+                            /*unit_diagonal=*/false, spec.transpose_a);
+  XlaOp a_tri = Triangle(a, spec.lower);
   a_tri = MaybeTransposeInMinorDims(
       a_tri, spec.transpose_a != TriangularSolveOptions::NO_TRANSPOSE);
   if (spec.left_side) {
@@ -494,7 +501,8 @@ XLA_TEST_P(TriangularSolveParametricTest, Random) {
     BatchDot(x, a_tri, xla::PrecisionConfig::HIGHEST);
   }
 
-  ComputeAndCompare<float>(&builder, bvals, {a_data.get(), b_data.get()},
+  ComputeAndCompareLiteral(&builder, LiteralUtil::CreateFromArray(bvals),
+                           {&avals_literal, &bvals_literal},
                            ErrorSpec(3e-2, 3e-2));
 }
 

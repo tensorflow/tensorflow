@@ -85,6 +85,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(
       mt::gpu::createTritonGPUOptimizeDotOperands({cc.IsAtLeastAmpere()}));
+  pm->addPass(mlir::createTritonNvidiaGPUOptimizeDescriptorEncodingPass());
   pm->addPass(mlir::createCSEPass());
 
   if (cc.IsAtLeastBlackwell()) {
@@ -92,10 +93,12 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
     pm->addPass(mlir::createCanonicalizerPass());
     pm->addPass(mlir::createLoopInvariantCodeMotionPass());
     pm->addPass(mt::gpu::createTritonGPUOptimizeAccumulatorInit());
+    pm->addPass(
+        mt::gpu::createTritonGPUAutomaticWarpSpecialization({num_stages}));
+    pm->addPass(mt::gpu::createTritonGPUHoistTMEMAlloc());
     pm->addPass(mt::gpu::createTritonGPUPipeline({num_stages}));
     pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
     pm->addPass(mlir::createTritonNvidiaGPUPromoteLHSToTMemPass());
-    pm->addPass(mlir::createTritonNvidiaGPUKeepAccInTMemPass());
     pm->addPass(mlir::createCanonicalizerPass());
   } else if (cc.IsAtLeastAmpere()) {
     // Even though we don't run on pre-Ampere architectures anymore, we keep
@@ -103,7 +106,6 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
     pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
     pm->addPass(mlir::createCanonicalizerPass());
     pm->addPass(mlir::createLoopInvariantCodeMotionPass());
-    pm->addPass(mt::gpu::createTritonGPUOptimizeAccumulatorInit());
     pm->addPass(mlir::createCanonicalizerPass());
     pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
     pm->addPass(mt::gpu::createTritonGPUPipeline({num_stages}));

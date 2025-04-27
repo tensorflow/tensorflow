@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mhlo/transforms/passes.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -63,6 +65,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "stablehlo/dialect/Base.h"
+#include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/transforms/Passes.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
@@ -92,6 +96,7 @@ limitations under the License.
 #include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
@@ -102,6 +107,8 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/xla_data.pb.h"
+
+#define DEBUG_TYPE "xla-translate"
 
 using ::int64_t;
 using ::tsl::int16;
@@ -252,15 +259,6 @@ static std::vector<int64_t> ConvertDenseIntAttr(
   return ConvertDenseIntAttr(*attr);
 }
 
-// Converts the broadcast_dimensions attribute into a vector of dimension
-// numbers (empty if the attribute is absent).
-static std::vector<int64_t> Convert_broadcast_dimensions(
-    std::optional<mlir::DenseIntElementsAttr> broadcast_dimensions) {
-  if (!broadcast_dimensions.has_value()) return {};
-
-  return ConvertDenseIntAttr(*broadcast_dimensions);
-}
-
 static std::vector<xla::CrossProgramPrefetch> Convert_cross_program_prefetches(
     mlir::ArrayAttr prefetches) {
   std::vector<xla::CrossProgramPrefetch> cross_program_prefetches;
@@ -282,6 +280,18 @@ static xla::FftType Convert_fft_type(mlir::mhlo::FftType fft_type) {
   if (!FftType_Parse(std::string(mlir::mhlo::stringifyFftType(fft_type)),
                      &fft_type_enum))
     return xla::FftType::FFT;
+  return fft_type_enum;
+}
+
+// Converts StringRef to xla FftType enum
+static xla::FftType Convert_fft_type(mlir::stablehlo::FftType fft_type) {
+  xla::FftType fft_type_enum;
+  // Illegal fft_type string would be caught by the verifier, so 'FftType_Parse'
+  // call below should never return false.
+  if (!FftType_Parse(std::string(mlir::stablehlo::stringifyFftType(fft_type)),
+                     &fft_type_enum))
+    return xla::FftType::FFT;
+
   return fft_type_enum;
 }
 
@@ -353,6 +363,13 @@ static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
       .value();
 }
 
+// Converts StringRef to xla Transpose enum.
+static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
+    mlir::stablehlo::Transpose transpose) {
+  return xla::ConvertTranspose(mlir::stablehlo::stringifyTranspose(transpose))
+      .value();
+}
+
 static xla::Layout ExtractLayout(
     mlir::Operation* op, int rank,
     llvm::StringRef attr_name = kDefaultLayoutAttrName) {
@@ -396,18 +413,39 @@ static mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op) {
     return ConvertDenseIntAttr(attribute);                   \
   }
 
-I64_ELEMENTS_ATTR_TO_VECTOR(broadcast_sizes);
-I64_ELEMENTS_ATTR_TO_VECTOR(permutation);
-I64_ELEMENTS_ATTR_TO_VECTOR(start_indices);
-I64_ELEMENTS_ATTR_TO_VECTOR(limit_indices);
-I64_ELEMENTS_ATTR_TO_VECTOR(strides);
-I64_ELEMENTS_ATTR_TO_VECTOR(slice_sizes);
-I64_ELEMENTS_ATTR_TO_VECTOR(fft_length);
-I64_ELEMENTS_ATTR_TO_VECTOR(dimensions);
-I64_ELEMENTS_ATTR_TO_VECTOR(window_strides);
-I64_ELEMENTS_ATTR_TO_VECTOR(lhs_dilation);
-I64_ELEMENTS_ATTR_TO_VECTOR(rhs_dilation);
+#define I64_ARRAY_ATTR_TO_VECTOR(attribute)               \
+  static std::vector<int64_t> Convert_##attribute(        \
+      std::optional<llvm::ArrayRef<int64_t>> attribute) { \
+    if (!attribute.has_value()) return {};                \
+    return {attribute->begin(), attribute->end()};        \
+  }
 
+I64_ELEMENTS_ATTR_TO_VECTOR(broadcast_sizes);
+I64_ARRAY_ATTR_TO_VECTOR(broadcast_sizes);
+I64_ELEMENTS_ATTR_TO_VECTOR(broadcast_dimensions);
+I64_ARRAY_ATTR_TO_VECTOR(broadcast_dimensions);
+I64_ELEMENTS_ATTR_TO_VECTOR(permutation);
+I64_ARRAY_ATTR_TO_VECTOR(permutation);
+I64_ELEMENTS_ATTR_TO_VECTOR(start_indices);
+I64_ARRAY_ATTR_TO_VECTOR(start_indices);
+I64_ELEMENTS_ATTR_TO_VECTOR(limit_indices);
+I64_ARRAY_ATTR_TO_VECTOR(limit_indices);
+I64_ELEMENTS_ATTR_TO_VECTOR(strides);
+I64_ARRAY_ATTR_TO_VECTOR(strides);
+I64_ELEMENTS_ATTR_TO_VECTOR(slice_sizes);
+I64_ARRAY_ATTR_TO_VECTOR(slice_sizes);
+I64_ELEMENTS_ATTR_TO_VECTOR(fft_length);
+I64_ARRAY_ATTR_TO_VECTOR(fft_length);
+I64_ELEMENTS_ATTR_TO_VECTOR(dimensions);
+I64_ARRAY_ATTR_TO_VECTOR(dimensions);
+I64_ELEMENTS_ATTR_TO_VECTOR(window_strides);
+I64_ARRAY_ATTR_TO_VECTOR(window_strides);
+I64_ELEMENTS_ATTR_TO_VECTOR(lhs_dilation);
+I64_ARRAY_ATTR_TO_VECTOR(lhs_dilation);
+I64_ELEMENTS_ATTR_TO_VECTOR(rhs_dilation);
+I64_ARRAY_ATTR_TO_VECTOR(rhs_dilation);
+
+#undef I64_ARRAY_ATTR_TO_VECTOR
 #undef I64_ELEMENTS_ATTR_TO_VECTOR
 
 #define BOOL_ELEMENTS_ATTR_TO_VECTOR(attribute)           \
@@ -559,6 +597,17 @@ std::optional<xla::ChannelHandle> Convert_channel_handle(
   return Convert_channel_handle(attr.value());
 }
 
+std::optional<xla::ChannelHandle> Convert_channel_handle(
+    const std::optional<mlir::stablehlo::ChannelHandleAttr> attr) {
+  if (!attr.has_value()) return std::nullopt;
+
+  xla::ChannelHandle channel_handle;
+  channel_handle.set_handle(attr->getHandle());
+  channel_handle.set_type(
+      static_cast<xla::ChannelHandle::ChannelType>(attr->getType()));
+  return channel_handle;
+}
+
 // Converts the comparison_direction string attribute into the XLA enum. The
 // string is assumed to correspond to exactly one of the allowed strings
 // representing the enum. This should have been checked in the op verify method.
@@ -568,8 +617,8 @@ static xla::ComparisonDirection Convert_comparison_direction(
       .value();
 }
 
-static xla::GatherDimensionNumbers Convert_dimension_numbers(
-    mlir::mhlo::GatherDimensionNumbersAttr input) {
+template <typename T>
+static xla::GatherDimensionNumbers Convert_dimension_numbers(T input) {
   xla::GatherDimensionNumbers output;
 
   auto offset_dims = input.getOffsetDims();
@@ -600,6 +649,12 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(
 
   output.set_index_vector_dim(input.getIndexVectorDim());
   return output;
+}
+
+static xla::GatherDimensionNumbers Convert_dimension_numbers(
+    mlir::mhlo::GatherDimensionNumbersAttr input) {
+  return Convert_dimension_numbers<mlir::mhlo::GatherDimensionNumbersAttr>(
+      input);
 }
 
 static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
@@ -638,6 +693,8 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
 }
 
 // Converts ResultAccuracyAttr to XLA ResultAccuracy proto.
+// This function name is non-standard to match the codegen
+// function name, similar to other attribute converters.
 static xla::ResultAccuracy Convert_result_accuracy(
     std::optional<mlir::mhlo::ResultAccuracyAttr>
         optional_result_accuracy_attr) {
@@ -652,21 +709,58 @@ static xla::ResultAccuracy Convert_result_accuracy(
         optional_result_accuracy_attr.value().getRtol().convertToDouble());
     result_accuracy.mutable_tolerance()->set_ulps(
         optional_result_accuracy_attr.value().getUlps());
-  } else {
-    xla::ResultAccuracy::Mode mode;
-    auto result_accuracy_mode =
-        ::mlir::mhlo::stringifyResultAccuracyMode(
-            optional_result_accuracy_attr.value().getMode().getValue())
-            .str();
-    if (xla::ResultAccuracy::Mode_Parse(result_accuracy_mode, &mode)) {
-      result_accuracy.set_mode(mode);
-    } else {
-      auto* context = optional_result_accuracy_attr.value().getContext();
-      mlir::emitError(mlir::UnknownLoc::get(context))
-          << "unexpected result accuracy mode " << result_accuracy_mode;
-      return xla::ResultAccuracy();
-    }
+    return result_accuracy;
   }
+
+  xla::ResultAccuracy::Mode mode;
+  auto result_accuracy_mode =
+      ::mlir::mhlo::stringifyResultAccuracyMode(
+          optional_result_accuracy_attr.value().getMode().getValue())
+          .str();
+  if (!xla::ResultAccuracy::Mode_Parse(result_accuracy_mode, &mode)) {
+    auto* context = optional_result_accuracy_attr.value().getContext();
+    mlir::emitError(mlir::UnknownLoc::get(context))
+        << "unexpected result accuracy mode " << result_accuracy_mode;
+    return xla::ResultAccuracy();
+  }
+
+  result_accuracy.set_mode(mode);
+  return result_accuracy;
+}
+
+// Converts ResultAccuracyAttr to XLA ResultAccuracy proto.
+// This function name is non-standard to match the codegen
+// function name, similar to other attribute converters.
+static xla::ResultAccuracy Convert_result_accuracy(
+    std::optional<mlir::stablehlo::ResultAccuracyAttr>
+        optional_result_accuracy_attr) {
+  if (!optional_result_accuracy_attr.has_value()) return xla::ResultAccuracy();
+
+  auto result_accuracy = xla::ResultAccuracy();
+  if (optional_result_accuracy_attr.value().getMode().getValue() ==
+      mlir::stablehlo::ResultAccuracyMode::TOLERANCE) {
+    result_accuracy.mutable_tolerance()->set_atol(
+        optional_result_accuracy_attr.value().getAtol().convertToDouble());
+    result_accuracy.mutable_tolerance()->set_rtol(
+        optional_result_accuracy_attr.value().getRtol().convertToDouble());
+    result_accuracy.mutable_tolerance()->set_ulps(
+        optional_result_accuracy_attr.value().getUlps());
+    return result_accuracy;
+  }
+
+  xla::ResultAccuracy::Mode mode;
+  auto result_accuracy_mode =
+      ::mlir::stablehlo::stringifyResultAccuracyMode(
+          optional_result_accuracy_attr.value().getMode().getValue())
+          .str();
+  if (!xla::ResultAccuracy::Mode_Parse(result_accuracy_mode, &mode)) {
+    auto* context = optional_result_accuracy_attr.value().getContext();
+    mlir::emitError(mlir::UnknownLoc::get(context))
+        << "unexpected result accuracy mode " << result_accuracy_mode;
+    return xla::ResultAccuracy();
+  }
+
+  result_accuracy.set_mode(mode);
   return result_accuracy;
 }
 
@@ -1083,6 +1177,187 @@ void BuildGetTupleElementsForTupleResults(mlir::Operation* op, xla::XlaOp tuple,
 }  // namespace
 
 namespace mlir {
+
+namespace stablehlo {
+namespace {
+
+LogicalResult ExportXlaOp(ConstantOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
+  auto type = mlir::dyn_cast<RankedTensorType>(op.getType());
+  if (!type) {
+    return failure();
+  }
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
+    return failure();
+  }
+
+  // Use TypeToShape to handle bounded dynamism.
+  // HLO expects broadcast sizes to use the bound's value, not kDynamic.
+  xla::Shape shape = xla::TypeToShape(type);
+  value_map[op] =
+      BroadcastInDim(operand, shape.dimensions(),
+                     Convert_broadcast_dimensions(op.getBroadcastDimensions()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
+  // This op has no expression in the legacy export format.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(mlir::stablehlo::ConvolutionOp op,
+                          OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.getLhs(), value_map, &lhs, op))) {
+    return mlir::failure();
+  }
+  if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op))) {
+    return mlir::failure();
+  }
+  xla::PrimitiveType preferred_element_type =
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+  xla::XlaOp xla_result = xla::ConvGeneralDilated(
+      lhs, rhs, Convert_window_strides(op.getWindowStrides()),
+      Convert_padding(op.getPadding()),
+      Convert_lhs_dilation(op.getLhsDilation()),
+      Convert_rhs_dilation(op.getRhsDilation()),
+      xla::ConvertConvDimensionNumbers(op.getDimensionNumbers()),
+      Convertuint64_t(op.getFeatureGroupCount()),
+      Convertuint64_t(op.getBatchGroupCount()),
+      Unwrap(Convert_precision_config(op.getPrecisionConfig())),
+      preferred_element_type, op.getWindowReversal());
+  value_map[op] = xla_result;
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+
+  value_map[op] = xla::ConvertElementType(
+      operand,
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+  return success();
+}
+
+LogicalResult ExportXlaOp(CosineOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  xla::ResultAccuracy result_accuracy =
+      Convert_result_accuracy(op.getResultAccuracy());
+  auto xla_result = xla::Cos(Unwrap(arg), result_accuracy);
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(SineOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  xla::ResultAccuracy result_accuracy =
+      Convert_result_accuracy(op.getResultAccuracy());
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  auto xla_result = xla::Sin(Unwrap(arg), result_accuracy);
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(TanOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  xla::ResultAccuracy result_accuracy =
+      Convert_result_accuracy(op.getResultAccuracy());
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  auto xla_result = xla::Tan(Unwrap(arg), result_accuracy);
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(SubtractOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp lhs;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &lhs, op)))
+    return mlir::failure();
+
+  xla::XlaOp rhs;
+  if (failed(GetXlaOp(*op.getODSOperands(1).begin(), value_map, &rhs, op)))
+    return mlir::failure();
+
+  auto xla_result = xla::Sub(Unwrap(lhs), Unwrap(rhs));
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+
+  SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands)))
+    return op.emitOpError("failed to get tuple");
+
+  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  if (failed(shape_or)) return op.emitOpError("failed to extract XLA shape");
+
+  auto all_gather_dim = op.getAllGatherDim();
+  int64_t shard_count = 0;
+
+  for (const auto& indexed_pair :
+       llvm::enumerate(llvm::zip(op.getOperandTypes(), op.getResultTypes()))) {
+    auto [operand_type, result_type] = indexed_pair.value();
+    TensorType operand_ttype = mlir::cast<TensorType>(operand_type);
+    TensorType result_ttype = mlir::cast<TensorType>(result_type);
+    if (!operand_ttype || !result_ttype)
+      return op.emitOpError("operands/results must be TensorTypes");
+
+    if (!operand_ttype.hasStaticShape() || !result_ttype.hasStaticShape())
+      return op.emitOpError("operands/results must have static shapes");
+
+    if (indexed_pair.index() == 0) {
+      shard_count = result_ttype.getDimSize(all_gather_dim) /
+                    operand_ttype.getDimSize(all_gather_dim);
+    }
+  }
+
+  if (shape_or->IsTuple()) {
+    std::optional<xla::Layout> layout = std::nullopt;
+    if (shape_or->has_layout()) layout = shape_or->layout();
+
+    auto tuple = xla::AllGatherTuple(
+        operands, all_gather_dim, shard_count,
+        Convert_replica_groups(op.getReplicaGroups()),
+        Convert_channel_handle(op.getChannelHandle()), layout,
+        Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+    BuildGetTupleElementsForTupleResults(op, tuple, ctx);
+    return success();
+  }
+
+  value_map[op->getResults()[0]] = xla::AllGather(
+      operands[0], all_gather_dim, shard_count,
+      Convert_replica_groups(op.getReplicaGroups()),
+      Convert_channel_handle(op.getChannelHandle()), std::nullopt,
+      Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+
+  return success();
+}
+
+}  // namespace
+}  // namespace stablehlo
+
 namespace mhlo {
 namespace {
 LogicalResult ExportXlaOp(CollectiveBroadcastOp op, OpLoweringContext ctx) {
@@ -1104,7 +1379,9 @@ LogicalResult ExportXlaOp(CompositeOp, OpLoweringContext) {
 }
 
 LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
-  // This op has no expression in the legacy export format.
+  // HLO has no support for DynamicBroadcastInDimOp.
+  // These all must be refined away before lowering.
+  // See https://openxla.org/stablehlo/dynamism
   return failure();
 }
 
@@ -3636,8 +3913,8 @@ LogicalResult ConvertToHloModule::Lower(
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaOp* return_value) {
   // Explicitly fail for ops that are not supported for export.
-  if (inst->getDialect() !=
-          inst->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>() &&
+  if (!mlir::isa<mhlo::MhloDialect, stablehlo::StablehloDialect>(
+          inst->getDialect()) &&
       !mlir::isa<mlir::func::ConstantOp, mlir::arith::ConstantOp,
                  mlir::func::CallOp, mlir::tensor::CastOp,
                  mlir::func::ReturnOp>(inst)) {
@@ -4055,11 +4332,14 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   }
 
   xla::XlaOp return_value;
-  for (auto& inst : *block)
+  for (auto& inst : *block) {
+    if (isa<stablehlo::StablehloDialect>(inst.getDialect()))
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Lowering: " << inst.getName().getStringRef() << "\n");
     if (failed(Lower(&inst, is_entry_function, ret_shardings, implicit_results,
                      builder, &lowering, &return_value)))
       return failure();
-
+  }
   // Build the XlaComputation and check for failures.
   auto computation_or =
       return_value.valid() ? builder->Build(return_value) : builder->Build();
@@ -4068,6 +4348,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     return failure();
   }
   *result = std::move(computation_or.value());
+  LLVM_DEBUG(llvm::dbgs() << "Created: " << result->name() << "\n");
   return success();
 }
 
@@ -4100,9 +4381,18 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
     // Experimental support for exporting dynamic MHLO programs to HLO.
     // Only bounded dynamism is planned to be supported; unbounded dynamism
     // is out of scope for now.
+    //
+    // Shape -> MHLO
+    // Currently takes overhead if input is MHLO for MHLO->StableHLO, can
+    // be deleted once conversion can assume StableHLO input.
+    mlir::mhlo::HloLegalizeToStablehloPassOptions options;
+    options.allow_xla_features_ = true;
     pm.addNestedPass<mlir::func::FuncOp>(
-        mhlo::createSymbolicShapeOptimizationPass());
-    pm.addNestedPass<mlir::func::FuncOp>(mhlo::createShapeLegalizeToHloPass());
+        stablehlo_ext::createSymbolicShapeOptimizationPass());
+    pm.addPass(mhlo::createHloLegalizeToStablehloPass(options));
+    pm.addNestedPass<mlir::func::FuncOp>(
+        stablehlo::createShapeLegalizeToStablehloPass());
+    pm.addPass(mhlo::createStablehloLegalizeToHloPass());
   }
 
   mlir::BaseScopedDiagnosticHandler handler(module.getContext());
@@ -4130,7 +4420,10 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   // temporarily support StableHLO to MHLO lowering here as well to ensure
   // a smooth migration.
   mlir::PassManager pm(module->getContext());
-  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  mhlo::StablehloLegalizeToHloPassOptions shlo_pass_opts;
+  shlo_pass_opts.convert_xla_supported_stablehlo_ =
+      !options.direct_stablehlo_to_hlo;
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass(shlo_pass_opts));
   if (failed(pm.run(module))) {
     return tsl::errors::Internal("Unable to convert StableHLO to MHLO");
   }

@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/client.h"
@@ -223,6 +225,13 @@ class CompileOnlyIfRtClient final
     return Unimplemented(
         "MakeArraysFromHostBufferShards not available with compile-only "
         "client.");
+  }
+
+  absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> MakeErrorArrays(
+      const absl::Status& error, absl::Span<const ifrt::ArraySpec> array_specs,
+      tsl::RCReference<ifrt::UserContext> user_context) override {
+    return Unimplemented(
+        "MakeErrorArrays not available with compile-only client.");
   }
 
   absl::StatusOr<tsl::RCReference<ifrt::Array>>

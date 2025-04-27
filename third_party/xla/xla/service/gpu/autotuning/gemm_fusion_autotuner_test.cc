@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <variant>
@@ -370,6 +371,10 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
           VLOG(5) << m->ToString();
           const HloInstruction* dot_fusion =
               m->entry_computation()->root_instruction();
+          // Split-K rewriting may introduce a convert and / or a reduce op.
+          if (dot_fusion->opcode() == HloOpcode::kConvert) {
+            dot_fusion = dot_fusion->operand(0);
+          }
           if (dot_fusion->opcode() == HloOpcode::kReduce) {
             dot_fusion = dot_fusion->operand(0);
           }
@@ -400,19 +405,49 @@ class GemmFusionAutotunerTestWithMorePreciseReduction
   }
 };
 
+// TODO: b/404470821 - Remove once this is enabled by default.
+class DynamicSearchSpaceAutotunerTest : public GemmFusionAutotunerTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        GemmFusionAutotunerTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_dynamic_dot_search_space(
+        true);
+    return debug_options;
+  }
+};
+
+// TODO: b/404470821 - Merge this with the autotuning levels test once dynamic
+// search space is enabled by default.
+class DynamicSearchSpaceAutotunerDisabledTest
+    : public DynamicSearchSpaceAutotunerTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        GemmFusionAutotunerTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_autotune_level(0);
+    return debug_options;
+  }
+};
+
 absl::StatusOr<std::vector<TritonGemmConfig>>
 GetPossibleMatmulAutotuneTritonConfigs(
     const HloDotInstruction& dot,
     const se::CudaComputeCapability& compute_capability,
     const se::SemanticVersion& toolkit_version,
     const DebugOptions& debug_options) {
-  se::GpuDeviceInfoProto deviceless_proto;
-  auto ccc = deviceless_proto.mutable_cuda_compute_capability();
-  ccc->set_major(compute_capability.major);
-  ccc->set_minor(compute_capability.minor);
-  deviceless_proto.set_core_count(100);
-  deviceless_proto.set_threads_per_warp(32);
-  DevicelessConfig test_config{se::DeviceDescription{deviceless_proto}};
+  se::DeviceDescription device_description(
+      se::GpuDeviceInfoProto::default_instance());
+  device_description.set_gpu_compute_capability(compute_capability);
+  // Using H100 numbers as the most relevant example here.
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#features-and-technical-specifications-technical-specifications-per-compute-capability
+  // https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/#nvidia_h100_gpu_architecture_in-depth
+  device_description.set_registers_per_block_limit(64 * 1024);
+  device_description.set_core_count(132);
+  device_description.set_threads_per_block_limit(1024);
+  device_description.set_threads_per_warp(32);
+  device_description.set_shared_memory_per_block_optin(227 * 1024);
+  DevicelessConfig test_config = {device_description};
   AutotuneConfig autotune_config{test_config, debug_options};
   GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
                                     debug_options, nullptr);
@@ -554,7 +589,7 @@ ENTRY e {
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: kCustom
-; CHECK-NEXT: kLoop
+; CHECK-NEXT: {{kLoop|kInput}}
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1, /*arel=*/0.5}));
@@ -579,7 +614,7 @@ ENTRY e {
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: kCustom
-; CHECK-NEXT: kLoop
+; CHECK-NEXT: {{kLoop|kInput}}
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
@@ -602,7 +637,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: f16[3,55,20]
+; CHECK: f{{(16|32)}}[3,55,20]
 ; CHECK: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2,"num_ctas":1}
 ; CHECK: f16[55,20]{1,0} {{(reduce|fusion)}}
 )");
@@ -762,7 +797,6 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
                           ParseTextProto<AutotuneResults>(R"pb(
-                            version: 3
                             results {
                               device: "..."
                               hlo: "..."
@@ -770,8 +804,8 @@ ENTRY main {
                                 gemm { algorithm: -1 }
                                 run_time { nanos: 14 }
                               }
-                              version: 1
                             })pb"));
+  AddVersionToAutotuneResults(autotune_results_override);
   autotune_results_override.mutable_results(0)->set_device(
       std::string(cache_key.GetModelStr()));
   autotune_results_override.mutable_results(0)->set_hlo(
@@ -1022,119 +1056,6 @@ ENTRY e {
 )");
 }
 
-// TODO(b/337839570): Triton currently has a limitation where it crashes
-// on small block_k values depending on the bit-width of the inputs to the
-// dot. For this test case, it should skip any block_k values that are <= 16
-// since the smallest type has a bit-width of 8.
-TEST_F(GemmFusionAutotunerExhaustiveTest, SkipsCrashingTileKConfigWithConvert) {
-  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
-HloModule module
-ENTRY e {
-  x = s8[33,33]{1,0} parameter(0)
-  c = f16[33,33]{1,0} convert(x)
-  y = f16[33,33]{1,0} parameter(1)
-  ROOT out = f16[33,33]{1,0} dot(c, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-)")
-                                                  .value();
-  const se::CudaComputeCapability compute_capability{
-      se::CudaComputeCapability::kAmpere, /*minor=*/0};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
-  EXPECT_TRUE(std::all_of(
-      configs.begin(), configs.end(),
-      [](const TritonGemmConfig& config) { return config.block_k > 16; }));
-}
-
-// TODO(b/337839570): Triton currently has a limitation where it crashes
-// on small block_k values depending on the bit-width of the inputs to the
-// dot. For this test case, it should skip any block_k values that are <= 16
-// since the smallest type has a bit-width of 8.
-TEST_F(GemmFusionAutotunerExhaustiveTest, SkipsCrashingTileKConfigNoConvert) {
-  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
-HloModule module
-ENTRY e {
-  x = f8e4m3fn[33,33]{1,0} parameter(0)
-  y = f8e4m3fn[33,33]{1,0} parameter(1)
-  ROOT out = bf16[33,33]{1,0} dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-)")
-                                                  .value();
-  const se::CudaComputeCapability compute_capability{
-      se::CudaComputeCapability::kAmpere, /*minor=*/0};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
-  EXPECT_TRUE(std::all_of(
-      configs.begin(), configs.end(),
-      [](const TritonGemmConfig& config) { return config.block_k > 16; }));
-}
-
-// TODO(b/337839570): In addition to Triton's existing limitations on small
-// block_k values, there are further issues happening on FP8 types and
-// predicates that require additional restriction on block_m when num_warps
-// > 8 (see b/378660935). It's unclear if the issue extends beyond these cases,
-// so restrictions here are conservative to these.
-TEST_F(GemmFusionAutotunerExhaustiveTest, SkipsCrashingConfigsFP8Dot) {
-  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
-HloModule module
-ENTRY e {
-  x = f8e4m3fn[33,33]{1,0} parameter(0)
-  y = f8e4m3fn[33,33]{1,0} parameter(1)
-  ROOT out = bf16[33,33]{1,0} dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-)")
-                                                  .value();
-  const se::CudaComputeCapability compute_capability{
-      se::CudaComputeCapability::kAmpere, /*minor=*/0};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
-  EXPECT_TRUE(std::all_of(
-      configs.begin(), configs.end(), [](const TritonGemmConfig& config) {
-        return config.block_k > 16 &&
-               (config.num_warps <= 8 || config.block_m > 16);
-      }));
-}
-
-// TODO(b/337839570): In addition to FP8 and predicates, also S8 leads to
-// crashes when num_warps > 8 and block_m < 32.
-TEST_F(GemmFusionAutotunerExhaustiveTest, SkipsCrashingConfigsS8Dot) {
-  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
-HloModule module
-ENTRY e {
-  lhs = s8[512,4608]{0,1} parameter(0)
-  rhs = f32[4608,16384]{1,0} parameter(1)
-  ROOT d = f32[512,16384]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-)")
-                                                  .value();
-  const se::CudaComputeCapability compute_capability{
-      se::CudaComputeCapability::kAmpere, /*minor=*/0};
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
-
-  for (const auto& config : configs) {
-    if (config.num_warps > 8) {
-      EXPECT_GE(config.block_m, 32);
-    }
-  }
-}
-
 class GemmFusionAutotunerDisableSplitK : public GemmFusionAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
@@ -1166,46 +1087,6 @@ ENTRY e {
       configs.begin(), configs.end(),
       [](const TritonGemmConfig& config) { return config.split_k == 1; }));
 }
-
-class GemmFusionAutotunerConfigTest
-    : public StatelessAutotunerTest,
-      public ::testing::WithParamInterface<bool> {};
-
-TEST_P(GemmFusionAutotunerConfigTest, SparseDotDiscardsUnsupportedTiles) {
-  const std::string kHloText = R"(
-HloModule test
-ENTRY wais {
-  lhs = f16[5,1600] parameter(0)
-  rhs = f16[3200,10] parameter(1)
-  meta = u16[5,200] parameter(2)
-  ROOT dot = f32[5,10] dot(lhs, rhs, meta),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  const se::CudaComputeCapability compute_capability{
-      se::CudaComputeCapability::kAmpere, /*minor=*/0};
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_exhaustive_tiling_search(GetParam());
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), debug_options));
-  for (const auto& config : configs) {
-    int metadata_size = config.block_m * config.block_k / 16;
-    EXPECT_LE(
-        config.num_warps *
-            WarpSize(
-                backend().default_stream_executor()->GetDeviceDescription()),
-        metadata_size);
-    EXPECT_GT(config.block_k, 16);  // kMinTileSize
-  }
-}
-
-INSTANTIATE_TEST_SUITE_P(GemmFusionAutotunerConfigSweep,
-                         GemmFusionAutotunerConfigTest, ::testing::Bool());
 
 TEST_F(GemmFusionAutotunerTest, SplitKFLoatNormalization) {
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
@@ -1496,8 +1377,8 @@ absl::StatusOr<AutotuneResults> GetDummyAutotuneResultsForCacheKey(
                             custom_kernel_fusion { kernel_index: 1 }
                             run_time { nanos: 14 }
                           }
-                          version: 1
                         })pb"));
+  AddVersionToAutotuneResults(autotune_results);
   autotune_results.mutable_results(0)->set_device(
       std::string(cache_key.GetModelStr()));
   autotune_results.mutable_results(0)->set_hlo(std::string(cache_key.GetHlo()));
@@ -1729,10 +1610,47 @@ TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
   EXPECT_TRUE(file_check_matches);
 }
 
-TEST_F(GemmFusionAutotunerTest, NumCtasAutotuningOnHopper) {
-  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
-    GTEST_SKIP() << "NumCtas autotuning is only supported from Hopper onwards.";
-  }
+TEST_F(DynamicSearchSpaceAutotunerTest, AutotunesSimpleDotFusion) {
+  const std::string hlo = R"(
+HloModule module
+ENTRY e {
+  x = s8[128,64] parameter(0)
+  c = f16[128,64] convert(x)
+  y = f16[64,6144] parameter(1)
+  ROOT out = f16[128,6144] dot(c, y),
+                lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  CheckTritonAutotuning(hlo, R"(
+// CHECK: ENTRY
+// CHECK: ROOT
+// CHECK-SAME: kCustom
+// CHECK-SAME: block_m
+)");
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
+}
+
+TEST_F(DynamicSearchSpaceAutotunerTest, UsesSplitKForSmallOuterDimensions) {
+  const std::string hlo = R"(
+HloModule module
+ENTRY e {
+  x = s8[32,16384] parameter(0)
+  c = f16[32,16384] convert(x)
+  y = f16[16384,32] parameter(1)
+  ROOT out = f16[32,32] dot(c, y),
+                lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  CheckTritonAutotuning(hlo, R"(
+// CHECK: ENTRY
+// CHECK: __triton_gemm
+// CHECK-NOT: "split_k":"1"
+// CHECK: ROOT
+)");
+}
+
+TEST_F(DynamicSearchSpaceAutotunerDisabledTest,
+       ReturnsSingleConfigWhenAutotuningIsDisabled) {
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
 ENTRY e {
   p0 = f32[1024,1024] parameter(0)
@@ -1741,21 +1659,55 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })")
                                                   .value();
-
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_exhaustive_tiling_search(true);
-  debug_options.set_xla_gpu_enable_triton_hopper(true);
-  debug_options.set_xla_gpu_autotune_level(1);
-
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::kAmpere, /*minor=*/0};
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> configs,
       GetPossibleMatmulAutotuneTritonConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
-          GetCudaComputeCapability(), GetToolkitVersion(), debug_options));
-  EXPECT_TRUE(std::any_of(
-      configs.begin(), configs.end(),
-      [](const TritonGemmConfig& config) { return config.num_ctas > 2; }));
+          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
+
+  EXPECT_EQ(configs.size(), 1);
+}
+
+TEST_F(GemmFusionAutotunerTest, VerifyHopperConfigsAreDifferentFromBlackwell) {
+  if (isRocm()) {
+    GTEST_SKIP() << "Not supported on ROCm.";
+  }
+
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+    ENTRY e {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT r = f32[1024,1024] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })")
+                                                  .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> blackwell_configs,
+      GetPossibleMatmulAutotuneTritonConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          se::CudaComputeCapability(se::CudaComputeCapability::kBlackwell, 0),
+          GetToolkitVersion(), GetDebugOptionsForTest()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> hopper_configs,
+      GetPossibleMatmulAutotuneTritonConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
+          GetToolkitVersion(), GetDebugOptionsForTest()));
+
+  std::set<TritonGemmConfig> blackwell_configs_set(blackwell_configs.begin(),
+                                                   blackwell_configs.end());
+  std::set<TritonGemmConfig> hopper_configs_set(hopper_configs.begin(),
+                                                hopper_configs.end());
+
+  EXPECT_GT(blackwell_configs_set.size(), 0);
+  EXPECT_GT(hopper_configs_set.size(), 0);
+  EXPECT_NE(blackwell_configs_set, hopper_configs_set);
 }
 
 }  // namespace

@@ -3801,6 +3801,26 @@ func.func @mhlo_nd_fft_1(%arg0: tensor<2x3x345x4x256xf32>) -> tensor<2x3x345x4x1
 
 // -----
 
+// CHECK-LABEL: @mhlo_dynamic_fft_1
+func.func @mhlo_dynamic_fft_1(%arg0: tensor<?x9x1x2560xf32>) -> tensor<?x9x1x1281xcomplex<f32>> {
+  %0 = "mhlo.fft"(%arg0) <{fft_length = dense<[1, 2560]> : tensor<2xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<?x9x1x2560xf32>) -> tensor<?x9x1x1281xcomplex<f32>>
+  return %0 : tensor<?x9x1x1281xcomplex<f32>>
+  // CHECK: %cst = arith.constant dense<[1, 2560]> : tensor<2xi32>
+  // CHECK: %0 = "tfl.rfft2d"(%arg0, %cst) : (tensor<?x9x1x2560xf32>, tensor<2xi32>) -> tensor<?x9x1x1281xcomplex<f32>>
+  // CHECK: return %0 : tensor<?x9x1x1281xcomplex<f32>>
+}
+
+// -----
+
+// CHECK-LABEL: @mhlo_dynamic_fft_2
+func.func @mhlo_dynamic_fft_2(%arg0: tensor<?x?x1x2560xf32>) -> tensor<?x?x1x1281xcomplex<f32>> {
+  %9 = "mhlo.fft"(%arg0) <{fft_length = dense<[1, 2560]> : tensor<2xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<?x?x1x2560xf32>) -> tensor<?x?x1x1281xcomplex<f32>>
+  return %9 : tensor<?x?x1x1281xcomplex<f32>>
+  // CHECK: %cst = arith.constant dense<[1, 2560]> : tensor<2xi32>
+  // CHECK: %0 = "tfl.rfft2d"(%arg0, %cst) : (tensor<?x?x1x2560xf32>, tensor<2xi32>) -> tensor<?x?x1x1281xcomplex<f32>>
+  // CHECK: return %0 : tensor<?x?x1x1281xcomplex<f32>>
+}
+
 //===----------------------------------------------------------------------===//
 // mhlo.imag
 //===----------------------------------------------------------------------===//

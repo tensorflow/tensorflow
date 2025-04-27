@@ -18,15 +18,21 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
+#include "xla/ffi/execution_context.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -38,6 +44,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -272,6 +279,77 @@ ENTRY test_module {
 
   EXPECT_TRUE(event.IsConcrete());
   EXPECT_EQ(result_span[0], expected_result);
+}
+
+//===----------------------------------------------------------------------===//
+// Custom call tests below
+//===----------------------------------------------------------------------===//
+
+struct StrUserData {
+  explicit StrUserData(std::string str) : str(std::move(str)) {}
+  std::string str;
+};
+
+static absl::Status Add(StrUserData* user_data,
+                        ffi::BufferR0<PrimitiveType::S32> a,
+                        ffi::BufferR0<PrimitiveType::S32> b,
+                        ffi::Result<ffi::BufferR0<PrimitiveType::S32>> sum) {
+  EXPECT_EQ(user_data->str, "foo");
+  sum->typed_data()[0] = a.typed_data()[0] + b.typed_data()[0];
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kAdd, Add,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::UserData<StrUserData>>()
+                           .Arg<ffi::BufferR0<PrimitiveType::S32>>()
+                           .Arg<ffi::BufferR0<PrimitiveType::S32>>()
+                           .Ret<ffi::BufferR0<PrimitiveType::S32>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_nanort_test$$add", "Host",
+                         kAdd);
+
+TEST(NanoRtClientTest, CustomCallTest) {
+  const char* kModuleStr = R"(
+    HloModule module
+
+    ENTRY custom_call {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      ROOT custom-call = s32[] custom-call(a, b),
+        custom_call_target="__xla_nanort_test$$add",
+        api_version=API_VERSION_TYPED_FFI
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  XlaComputation computation(module->ToProto());
+
+  NanoRtClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                          client.Compile(computation));
+
+  int32_t a = 1.0f;
+  int32_t b = 2.0f;
+  int32_t result = 0.0f;
+
+  std::vector<NanoRtExecutable::Argument> arguments;
+  std::vector<NanoRtExecutable::Result> results;
+  arguments.push_back({&a, 1});
+  arguments.push_back({&b, 1});
+  results.push_back({&result, 1});
+
+  ffi::ExecutionContext context;
+  TF_ASSERT_OK(context.Emplace<StrUserData>("foo"));
+
+  NanoRtExecutable::ExecuteOptions execute_options;
+  execute_options.set_ffi_context(&context);
+
+  auto event = executable->Execute(arguments, results, {}, execute_options);
+  tsl::BlockUntilReady(event);
+
+  EXPECT_TRUE(event.IsConcrete());
+  EXPECT_EQ(result, 3.0f);
 }
 
 //===----------------------------------------------------------------------===//

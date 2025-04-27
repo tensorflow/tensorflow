@@ -98,6 +98,26 @@ ClientMakeArraysFromHostBufferShards(
     absl::Span<Client::MakeArraysFromHostBufferShardsSpec> specs,
     Client::HostBufferSemantics semantics,
     tsl::RCReference<UserContext> user_context) {
+  for (int i = 1; i < specs.size(); ++i) {
+    const Client::MakeArraysFromHostBufferShardsSpec& spec = specs[i];
+    if (specs[0].array_spec.sharding->devices() !=
+        spec.array_spec.sharding->devices()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "All arrays in MakeArraysFromHostBufferShards must have the "
+          "same device list, but got ",
+          specs[0].array_spec.sharding->devices(), " vs. ",
+          spec.array_spec.sharding->devices()));
+    }
+    if (specs[0].array_spec.sharding->memory_kind() !=
+        spec.array_spec.sharding->memory_kind()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "All arrays in MakeArraysFromHostBufferShards must have the "
+          "same memory kind, but got ",
+          specs[0].array_spec.sharding->memory_kind(), " vs. ",
+          spec.array_spec.sharding->memory_kind()));
+    }
+  }
+
   std::vector<tsl::RCReference<Array>> arrays;
   arrays.reserve(specs.size());
   for (Client::MakeArraysFromHostBufferShardsSpec& spec : specs) {

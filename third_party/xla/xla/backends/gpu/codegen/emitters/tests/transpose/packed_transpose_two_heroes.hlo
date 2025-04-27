@@ -1,0 +1,19 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  p0 = s16[2,4,64,10,6] parameter(0)
+  p1 = bf16[2,4,64,10,6] parameter(1)
+
+  tr0 = s16[4,2,6,10,64] transpose(p0), dimensions={1,0,4,3,2}
+  tr1 = bf16[4,2,6,10,64] transpose(p1), dimensions={1,0,4,3,2}
+
+  ROOT tuple = (s16[4,2,6,10,64], bf16[4,2,6,10,64]) tuple(tr0, tr1)
+}
+
+// CHECK-DAG:  arith.constant dense<0> : vector<2x2xi16>
+// CHECK-DAG:  arith.constant dense<0.000000e+00> : vector<2x2xbf16>
+
+// CHECK:  xla_gpu.allocate_shared : tensor<64x64xi16>
+// CHECK:  xla_gpu.allocate_shared : tensor<64x64xbf16>

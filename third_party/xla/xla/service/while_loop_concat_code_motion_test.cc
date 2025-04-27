@@ -24,9 +24,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -35,7 +35,7 @@ namespace {
 
 namespace op = ::xla::testing::opcode_matchers;
 
-class WhileLoopConcatCodeMotionTest : public HloTestBase {};
+class WhileLoopConcatCodeMotionTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(WhileLoopConcatCodeMotionTest, SimpleMotion) {
   constexpr absl::string_view kHloModule = R"(

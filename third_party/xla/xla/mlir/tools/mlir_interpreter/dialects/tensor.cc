@@ -40,7 +40,7 @@ int64_t Dim(InterpreterState& state, tensor::DimOp,
 
 InterpreterValue Empty(InterpreterState&, tensor::EmptyOp op,
                        ArrayRef<int64_t> dynamic_sizes) {
-  auto ty = op->getResultTypes().front().cast<mlir::ShapedType>();
+  auto ty = mlir::cast<mlir::ShapedType>(op->getResultTypes().front());
   auto shape = ReplaceDynamicVals(ty.getShape(), dynamic_sizes);
   return InterpreterValue::MakeTensor(ty.getElementType(), shape);
 }
@@ -56,7 +56,7 @@ InterpreterValue Extract(InterpreterState& state, tensor::ExtractOp,
 
 InterpreterValue FromElements(InterpreterState&, tensor::FromElementsOp op,
                               MutableArrayRef<InterpreterValue> elements) {
-  auto ty = op->getResultTypes().front().cast<mlir::ShapedType>();
+  auto ty = mlir::cast<mlir::ShapedType>(op->getResultTypes().front());
   auto result = InterpreterValue::MakeTensor(ty.getElementType(),
                                              llvm::to_vector(ty.getShape()));
   for (auto [index, element] : llvm::zip(result.View().Indices(), elements)) {
@@ -186,7 +186,7 @@ llvm::SmallVector<InterpreterValue> InsertSlice(
 
 InterpreterValue Generate(InterpreterState& state, tensor::GenerateOp generate,
                           ArrayRef<int64_t> dynamic_sizes) {
-  auto ty = generate->getResultTypes().front().cast<ShapedType>();
+  auto ty = mlir::cast<ShapedType>(generate->getResultTypes().front());
   auto sizes = ReplaceDynamicVals(ty.getShape(), dynamic_sizes);
 
   auto result = InterpreterValue::MakeTensor(ty.getElementType(), sizes);

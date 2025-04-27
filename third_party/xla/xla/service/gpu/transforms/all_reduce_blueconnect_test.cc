@@ -29,12 +29,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -45,7 +45,7 @@ namespace {
 using ::tsl::testing::IsOkAndHolds;
 namespace m = ::xla::match;
 
-using AllReduceBlueConnectTest = HloTestBase;
+using AllReduceBlueConnectTest = HloHardwareIndependentTestBase;
 
 HloPredicate MatchChannelId(std::optional<int64_t> channel_id) {
   return [channel_id](const HloInstruction* instruction) {

@@ -703,6 +703,31 @@ ENTRY %FusionParam0OneUser (param0: (f32[8], f32[3])) -> f32[8] {
   Run(hlo_str, /*expected_num_users=*/1);
 }
 
+TEST_F(FusionPointsToAnalysisTest,
+       FusionParam0OneUserWithUnreachableInstructionInFusion) {
+  std::string hlo_str = R"(
+HloModule FusionParam0OneUser
+
+%fused_computation (param_1.2: (f32[8], f32[3], f32[7])) -> f32[8] {
+  %param_1.2 = (f32[8]{0}, f32[3]{0}, f32[7]{0}) parameter(0)
+  %get-tuple-element.1 = f32[8]{0} get-tuple-element(%param_1.2), index=0
+  %get-tuple-element.2 = f32[3]{0} get-tuple-element(%param_1.2), index=1
+  %get-tuple-element.3 = f32[7]{0} get-tuple-element(%param_1.2), index=2
+  %placeholder = f32[7]{0} custom-call(%get-tuple-element.3), custom_call_target="IntermediateBufferDummyConsumer", custom_call_has_side_effect=true
+  %constant.3 = f32[3]{0} constant({1, 1, 1})
+  %add.1 = f32[3]{0} add(f32[3]{0} %get-tuple-element.2, f32[3]{0} %constant.3)
+  %constant.2 = s32[] constant(0)
+  ROOT %dynamic-update-slice.1 = f32[8]{0} dynamic-update-slice(f32[8]{0} %get-tuple-element.1, f32[3]{0} %add.1, s32[] %constant.2)
+}
+
+ENTRY %FusionParam0OneUser (param0: (f32[8], f32[3], f32[7])) -> f32[8] {
+  %param0 = (f32[8]{0}, f32[3]{0}, f32[7]{0}) parameter(0)
+  ROOT %fusion = f32[8]{0} fusion(%param0), kind=kLoop, calls=%fused_computation
+}
+)";
+  Run(hlo_str, /*expected_num_users=*/1);
+}
+
 // Tests the points-to set of tuple-shaped fusion parameter 0 and all GTE users.
 // Tests the alias set of tuple-shaped fusion parameter 0 at all shape indices.
 // Tests that there are two users of the aliases of tuple-shaped fusion

@@ -16,7 +16,13 @@ limitations under the License.
 #include "xla/tsl/lib/io/inputbuffer.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 
@@ -28,18 +34,18 @@ InputBuffer::InputBuffer(RandomAccessFile* file, size_t buffer_bytes)
       file_pos_(0),
       size_(buffer_bytes),
       buf_(new char[size_]),
-      pos_(buf_),
-      limit_(buf_) {}
+      pos_(buf_.get()),
+      limit_(buf_.get()) {}
 
-InputBuffer::~InputBuffer() { delete[] buf_; }
+InputBuffer::~InputBuffer() = default;
 
 absl::Status InputBuffer::FillBuffer() {
   absl::string_view data;
-  absl::Status s = file_->Read(file_pos_, size_, &data, buf_);
-  if (data.data() != buf_) {
-    memmove(buf_, data.data(), data.size());
+  absl::Status s = file_->Read(file_pos_, size_, &data, buf());
+  if (data.data() != buf()) {
+    memmove(buf(), data.data(), data.size());
   }
-  pos_ = buf_;
+  pos_ = buf();
   limit_ = pos_ + data.size();
   file_pos_ += data.size();
   return s;
@@ -50,12 +56,13 @@ absl::Status InputBuffer::ReadLine(T* result) {
   result->clear();
   absl::Status s;
   do {
-    size_t buf_remain = limit_ - pos_;
-    char* newline = static_cast<char*>(memchr(pos_, '\n', buf_remain));
+    const int buf_remain = num_remaining_bytes();
+    const char* const newline =
+        static_cast<const char*>(memchr(pos_, '\n', buf_remain));
     if (newline != nullptr) {
-      size_t result_len = newline - pos_;
+      const int result_len = newline - pos_;
       result->append(pos_, result_len);
-      pos_ = newline + 1;
+      pos_ += result_len + 1;
       if (!result->empty() && result->back() == '\r') {
         result->resize(result->size() - 1);
       }
@@ -64,8 +71,8 @@ absl::Status InputBuffer::ReadLine(T* result) {
     if (buf_remain > 0) result->append(pos_, buf_remain);
     // Get more data into buffer
     s = FillBuffer();
-    DCHECK_EQ(pos_, buf_);
-  } while (limit_ != buf_);
+    DCHECK_EQ(pos_, buf());
+  } while (limit_ != buf());
   if (!result->empty() && result->back() == '\r') {
     result->resize(result->size() - 1);
   }
@@ -104,13 +111,13 @@ absl::Status InputBuffer::ReadNBytes(int64_t bytes_to_read, char* result,
     if (pos_ == limit_) {
       // Get more data into buffer.
       status = FillBuffer();
-      if (limit_ == buf_) {
+      if (limit_ == buf()) {
         break;
       }
     }
     // Do not go over the buffer boundary.
     const int64_t bytes_to_copy =
-        std::min<int64_t>(limit_ - pos_, bytes_to_read - *bytes_read);
+        std::min<int64_t>(num_remaining_bytes(), bytes_to_read - *bytes_read);
     // Copies buffered data into the destination.
     memcpy(result + *bytes_read, pos_, bytes_to_copy);
     pos_ += bytes_to_copy;
@@ -166,12 +173,12 @@ absl::Status InputBuffer::SkipNBytes(int64_t bytes_to_skip) {
     if (pos_ == limit_) {
       // Get more data into buffer
       s = FillBuffer();
-      if (limit_ == buf_) {
+      if (limit_ == buf()) {
         break;
       }
     }
     const int64_t bytes_to_advance =
-        std::min<int64_t>(limit_ - pos_, bytes_to_skip - bytes_skipped);
+        std::min<int64_t>(num_remaining_bytes(), bytes_to_skip - bytes_skipped);
     bytes_skipped += bytes_to_advance;
     pos_ += bytes_to_advance;
   }
@@ -187,14 +194,15 @@ absl::Status InputBuffer::Seek(int64_t position) {
                                    position);
   }
   // Position of the buffer within file.
-  const int64_t bufpos = file_pos_ - static_cast<int64_t>(limit_ - buf_);
+  const int64_t bufpos = file_pos_ - static_cast<int64_t>(limit_ - buf());
   if (position >= bufpos && position < file_pos_) {
     // Seeks to somewhere inside the buffer.
-    pos_ = buf_ + (position - bufpos);
-    DCHECK(pos_ >= buf_ && pos_ < limit_);
+    pos_ = buf() + position - bufpos;
+    DCHECK_GE(pos_, buf());
+    DCHECK_LT(pos_, limit_);
   } else {
     // Seeks to somewhere outside.  Discards the buffered data.
-    pos_ = limit_ = buf_;
+    pos_ = limit_ = buf();
     file_pos_ = position;
   }
   return absl::OkStatus();
@@ -211,7 +219,7 @@ absl::Status InputBuffer::Hint(int64_t bytes_to_read) {
     return absl::OkStatus();
   }
 
-  const int64_t bytes_remain_in_buf = static_cast<int64_t>(limit_ - pos_);
+  const int64_t bytes_remain_in_buf = num_remaining_bytes();
 
   // There are enough data in the buffer. Do nothing.
   if (bytes_to_read <= bytes_remain_in_buf) {
@@ -219,9 +227,9 @@ absl::Status InputBuffer::Hint(int64_t bytes_to_read) {
   }
 
   // Additional read from file is necessary. Make some room.
-  memmove(buf_, pos_, bytes_remain_in_buf);
-  pos_ = buf_;
-  limit_ = buf_ + bytes_remain_in_buf;
+  memmove(buf(), pos_, bytes_remain_in_buf);
+  pos_ = buf();
+  limit_ = buf() + bytes_remain_in_buf;
   bytes_to_read -= bytes_remain_in_buf;
 
   // Read the remaining bytes from file.

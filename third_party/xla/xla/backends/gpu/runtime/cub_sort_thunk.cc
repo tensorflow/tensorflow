@@ -241,8 +241,8 @@ absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateCubSortRunner(
 }
 
 // Returns an interface for calling CubSortPairs on the given key and value
-// types. key_type can be only unsigned integer types. value_type can be any
-// type of 16/32/64 bit width.
+// types. key_type can be any unsigned integer types or F32. value_type can be
+// any type of 16/32/64 bit width.
 absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateCubSortRunner(
     PrimitiveType key_type, PrimitiveType value_type) {
   int value_width = primitive_util::BitWidth(value_type);
@@ -259,6 +259,10 @@ absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateCubSortRunner(
   if (key_type == U64 && value_width == 16) sort_fn = CubSortPairs_u64_b16;
   if (key_type == U64 && value_width == 32) sort_fn = CubSortPairs_u64_b32;
   if (key_type == U64 && value_width == 64) sort_fn = CubSortPairs_u64_b64;
+
+  if (key_type == F32 && value_width == 16) sort_fn = CubSortPairs_f32_b16;
+  if (key_type == F32 && value_width == 32) sort_fn = CubSortPairs_f32_b32;
+  if (key_type == F32 && value_width == 64) sort_fn = CubSortPairs_f32_b64;
 
   if (sort_fn == nullptr) {
     return InvalidArgument(

@@ -34,10 +34,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
@@ -998,7 +998,11 @@ static void Pass(const Shape& shape, FftType type,
   const absl::StatusOr<Shape> inferred_shape =
       ShapeInference::InferFftShape(shape, type, length);
   ASSERT_IS_OK(inferred_shape.status());
-  ASSERT_TRUE(ShapeUtil::Equal(expected_shape, *inferred_shape));
+  ASSERT_TRUE(ShapeUtil::Equal(expected_shape, *inferred_shape))
+      << "\nshape: " << shape << "\ntype: " << type
+      << "\nlength: " << absl::StrJoin(length, ",")
+      << "\nexpected_shape: " << expected_shape
+      << "\ninferred_shape: " << *inferred_shape;
 }
 
 static void Fail(const Shape& shape, FftType type,
@@ -3960,13 +3964,12 @@ class ScatterShapeInferenceTest
     Shape& result = *program_shape.mutable_result();
     result = ShapeUtil::MakeNil();
     result.mutable_tuple_shapes()->reserve(types.size());
-    program_shape.mutable_parameters()->reserve(types.size() * 2);
     for (PrimitiveType type : types) {
-      *program_shape.add_parameters() = scalar(type);
+      program_shape.AddParameter(scalar(type), "");
       *result.add_tuple_shapes() = scalar(type);
     }
     for (PrimitiveType type : types) {
-      *program_shape.add_parameters() = scalar(type);
+      program_shape.AddParameter(scalar(type), "");
     }
     return program_shape;
   }

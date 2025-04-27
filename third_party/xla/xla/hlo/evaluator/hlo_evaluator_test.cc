@@ -3312,10 +3312,10 @@ TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutions) {
   HloEvaluator evaluator;
   Literal param0_literal = LiteralUtil::CreateR1<float>({1, 2, 3, 4});
   Literal square_literal = LiteralUtil::CreateR1<float>({10, 20, 30, 40});
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal result,
-      evaluator.EvaluateWithSubstitutions(
-          add, {{param0, &param0_literal}, {square, &square_literal}}));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                          evaluator.Evaluate(add, {}, false,
+                                             {{param0, &param0_literal},
+                                              {square, &square_literal}}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({11, 22, 33, 44}), result));
 }
@@ -3337,10 +3337,11 @@ TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsRecursive) {
   HloInstruction* param = module->entry_computation()->parameter_instruction(0);
   TF_ASSERT_OK_AND_ASSIGN(
       auto result,
-      evaluator_.EvaluateWithSubstitutions(
+      evaluator_.Evaluate(
           /*instruction=*/module->entry_computation()->root_instruction(),
-          /*substitutions=*/{{param, &param_value}},
-          /*recursively_evaluate_nonconstant_operands=*/true));
+          /*precomputed_analyses=*/{},
+          /*recursively_evaluate_nonconstant_operands=*/true,
+          /*substitutions=*/{{param, &param_value}}));
   EXPECT_EQ(result, LiteralUtil::CreateR0(PrimitiveType::S32, 1 + 2 + 3));
 }
 
@@ -3362,10 +3363,11 @@ TEST_F(HloEvaluatorTest,
   HloInstruction* param = module->entry_computation()->parameter_instruction(0);
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result,
-      evaluator_.EvaluateWithSubstitutions(
+      evaluator_.Evaluate(
           /*instruction=*/module->entry_computation()->root_instruction(),
-          /*substitutions=*/{{param, &param_value}},
-          /*recursively_evaluate_nonconstant_operands=*/true));
+          /*precomputed_analyses=*/{},
+          /*recursively_evaluate_nonconstant_operands=*/true,
+          /*substitutions=*/{{param, &param_value}}));
   EXPECT_EQ(result, LiteralUtil::CreateR0(PrimitiveType::S32, 4 + 1 + 2 + 1));
 }
 
@@ -3389,7 +3391,7 @@ TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutionsWithConstantOperand) {
   Literal square_literal = LiteralUtil::CreateR1<float>({10, 20, 30, 40});
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result,
-      evaluator.EvaluateWithSubstitutions(add, {{square, &square_literal}}));
+      evaluator.Evaluate(add, {}, false, {{square, &square_literal}}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({11, 22, 33, 44}), result));
 }
@@ -3405,8 +3407,9 @@ TEST_P(HloEvaluatorBf16Test, EvaluateSubstitutedInstruction) {
 
   HloEvaluator evaluator;
   Literal literal = LiteralUtil::CreateR1<float>({10, 20, 30, 40});
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, evaluator.EvaluateWithSubstitutions(
-                                              param, {{param, &literal}}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator.Evaluate(param, {}, false, {{param, &literal}}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({10, 20, 30, 40}), result));
 }
@@ -3426,8 +3429,9 @@ TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsLiteralBase) {
   BorrowingLiteral literal(reinterpret_cast<const char*>(int64_values),
                            literal_shape);
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, evaluator.EvaluateWithSubstitutions(
-                                              square, {{param0, &literal}}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator.Evaluate(square, {}, false, {{param0, &literal}}));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int64_t>({1, 4, 9}),
                                      result));
 }

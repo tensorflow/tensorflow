@@ -27,6 +27,7 @@ limitations under the License.
 
 #if defined(TENSORFLOW_PROTOBUF_USES_CORD)
 #include "strings/cord_varint.h"
+#include "util/gtl/stl_util.h"
 #endif  // defined(TENSORFLOW_PROTOBUF_USES_CORD)
 
 namespace tensorflow {

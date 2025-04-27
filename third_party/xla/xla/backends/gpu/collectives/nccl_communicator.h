@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -30,6 +31,8 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -44,10 +47,12 @@ limitations under the License.
 
 namespace xla::gpu {
 
+class NcclCollectives;
+
 // XLA collectives communicator wrapping an NCCL communicator.
 class NcclCommunicator : public Communicator {
  public:
-  explicit NcclCommunicator(ncclComm_t comm);
+  explicit NcclCommunicator(NcclCollectives* collectives, ncclComm_t comm);
   ~NcclCommunicator() override;
 
   // NcclCommunicator is not copyable or movable.
@@ -63,43 +68,46 @@ class NcclCommunicator : public Communicator {
   absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>> RegisterBuffer(
       se::DeviceMemoryBase buffer) final;
 
-  absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
-                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                         size_t count, ReductionKind reduction_kind,
-                         const Executor& executor) final;
+  tsl::AsyncValueRef<Event> AllReduce(se::DeviceMemoryBase send_buffer,
+                                      se::DeviceMemoryBase recv_buffer,
+                                      PrimitiveType dtype, size_t count,
+                                      ReductionKind reduction_kind,
+                                      const Executor& executor) final;
 
-  absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
-                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                         size_t count, RankId root,
-                         const Executor& executor) final;
+  tsl::AsyncValueRef<Event> Broadcast(se::DeviceMemoryBase send_buffer,
+                                      se::DeviceMemoryBase recv_buffer,
+                                      PrimitiveType dtype, size_t count,
+                                      RankId root,
+                                      const Executor& executor) final;
 
-  absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
-                             se::DeviceMemoryBase recv_buffer,
-                             PrimitiveType dtype, size_t count,
-                             ReductionKind reduction_kind,
-                             const Executor& executor) final;
+  tsl::AsyncValueRef<Event> ReduceScatter(se::DeviceMemoryBase send_buffer,
+                                          se::DeviceMemoryBase recv_buffer,
+                                          PrimitiveType dtype, size_t count,
+                                          ReductionKind reduction_kind,
+                                          const Executor& executor) final;
 
-  absl::Status AllGather(se::DeviceMemoryBase send_buffer,
-                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                         size_t count, const Executor& executor) final;
+  tsl::AsyncValueRef<Event> AllGather(se::DeviceMemoryBase send_buffer,
+                                      se::DeviceMemoryBase recv_buffer,
+                                      PrimitiveType dtype, size_t count,
+                                      const Executor& executor) final;
 
-  absl::Status AllToAll(absl::Span<const se::DeviceMemoryBase> send_buffers,
-                        absl::Span<const se::DeviceMemoryBase> recv_buffers,
-                        PrimitiveType dtype, size_t count,
-                        const Executor& executor) final;
+  tsl::AsyncValueRef<Event> AllToAll(
+      absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
+      absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+      PrimitiveType dtype, size_t count, const Executor& executor) final;
 
-  absl::Status CollectivePermute(se::DeviceMemoryBase send_buffer,
-                                 se::DeviceMemoryBase recv_buffer,
-                                 PrimitiveType dtype, size_t count,
-                                 std::optional<RankId> source_rank,
-                                 absl::Span<const RankId> target_ranks,
+  tsl::AsyncValueRef<Event> CollectivePermute(
+      se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+      PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
+      absl::Span<const RankId> target_ranks, const Executor& executor) final;
+
+  tsl::AsyncValueRef<Event> Send(se::DeviceMemoryBase send_buffer,
+                                 PrimitiveType dtype, size_t count, RankId peer,
                                  const Executor& executor) final;
 
-  absl::Status Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
-                    size_t count, RankId peer, const Executor& executor) final;
-
-  absl::Status Recv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                    size_t count, RankId peer, const Executor& executor) final;
+  tsl::AsyncValueRef<Event> Recv(se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count, RankId peer,
+                                 const Executor& executor) final;
 
   std::string ToString() const final;
 
@@ -108,8 +116,9 @@ class NcclCommunicator : public Communicator {
  private:
   static absl::StatusOr<se::Stream*> ToStream(const Executor& executor);
 
-  ncclComm_t comm_;
-  bool aborted_ = false;  // Has Abort() been called?
+  NcclCollectives* collectives_;  // Parent NcclCollectives instance
+  ncclComm_t comm_;               // Underlying NCCL communicator
+  bool aborted_ = false;          // Has Abort() been called?
 };
 
 }  // namespace xla::gpu

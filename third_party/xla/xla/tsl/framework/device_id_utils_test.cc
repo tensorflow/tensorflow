@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tsl/framework/device_id_utils.h"
 
-#include <string_view>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/framework/device_id_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -28,7 +28,7 @@ namespace {
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
-constexpr std::string_view kTestDeviceType = "CPU";
+constexpr absl::string_view kTestDeviceType = "CPU";
 
 PlatformDeviceId TfToPlatformDeviceId(TfDeviceId tf_device_id) {
   PlatformDeviceId platform_device_id;

@@ -567,18 +567,19 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
   // Maybe serialize all commands in a sequence by forcing barriers between all
   // recorded commands. This guarantees that we execute all device operations
   // in the exact same order as a thunk sequence.
-  CommandBufferCmdSequence::SynchronizationMode synchronization_mode =
+  CommandBufferCmdExecutor::SynchronizationMode synchronization_mode =
       ir_emitter_context_->debug_options()
               .xla_gpu_graph_enable_concurrent_region()
-          ? CommandBufferCmdSequence::SynchronizationMode::kAutomatic
-          : CommandBufferCmdSequence::SynchronizationMode::kSerialize;
+          ? CommandBufferCmdExecutor::SynchronizationMode::kAutomatic
+          : CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
 
   TF_ASSIGN_OR_RETURN(
-      CommandBufferCmdSequence cmd_sequence,
-      ConvertToCommands(thunk_sequence->thunks(), synchronization_mode));
+      CommandBufferCmdExecutor cmd_executor,
+      ConvertToCommands(thunk_sequence->thunks(),
+                        ConvertToCommandsOptions{synchronization_mode}));
 
   AddThunkToThunkSequence(std::make_unique<CommandBufferThunk>(
-      std::move(cmd_sequence), Thunk::ThunkInfo::WithProfileAnnotation(instr),
+      std::move(cmd_executor), Thunk::ThunkInfo::WithProfileAnnotation(instr),
       std::move(thunk_sequence),
       ir_emitter_context_->debug_options()
           .xla_enable_command_buffers_during_profiling()));
@@ -732,9 +733,14 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
   TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
                       gpublas_lt::AsBlasLtEpilogue(epilogue));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
+<<<<<<< HEAD
       instr, std::move(gemm_config),
       blas_lt_epilogue, algorithm, a, b, c, d, bias, aux, a_scale, b_scale,
       c_scale, d_scale, d_amax, workspace_buffer);
+=======
+      instr, std::move(gemm_config), blas_lt_epilogue, algorithm, a, b, c, d,
+      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax, workspace_buffer);
+>>>>>>> upstream/master
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
@@ -824,9 +830,14 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
                       gpublas_lt::AsBlasLtEpilogue(epilogue));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
+<<<<<<< HEAD
       instr, std::move(gemm_config),
       blas_lt_epilogue, algorithm, a, b, c, d, bias, aux, a_scale, b_scale,
       c_scale, d_scale, d_amax, workspace_buffer);
+=======
+      instr, std::move(gemm_config), blas_lt_epilogue, algorithm, a, b, c, d,
+      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax, workspace_buffer);
+>>>>>>> upstream/master
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
@@ -835,7 +846,7 @@ absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
     const HloCustomCallInstruction* instr) {
   bool has_bias = instr->operand_count() > 1;
   Shape shape = has_bias ? instr->shape().tuple_shapes(0) : instr->shape();
-  if (shape.dimensions_size() != 5 || shape.dimensions(4) != 32) {
+  if (shape.dimensions().size() != 5 || shape.dimensions(4) != 32) {
     return Internal("Unexpected shape for convolution reorder: %s",
                     instr->ToString());
   }
@@ -1020,7 +1031,7 @@ absl::Status IrEmitterUnnested::EmitCubDeviceRadixSort(
           : std::nullopt,
       operands, results, scratch, options.descending(),
       Product(operand_shape.dimensions()) /
-          operand_shape.dimensions(operand_shape.dimensions_size() - 1));
+          operand_shape.dimensions(operand_shape.dimensions().size() - 1));
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
@@ -1029,7 +1040,7 @@ absl::Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(CholeskyOptions options,
                       instr->backend_config<CholeskyOptions>());
   const Shape& shape = instr->operand(0)->shape();
-  int ndim = shape.dimensions_size();
+  int ndim = shape.dimensions().size();
   CHECK_GE(ndim, 2);
   int64_t n = shape.dimensions(ndim - 1);
 
@@ -1304,8 +1315,8 @@ absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
         /*mem_size=*/ShapeUtil::ByteSizeOf(b_shape)));
   }
 
-  int64_t m = b_shape.dimensions(b_shape.dimensions_size() - 2);
-  int64_t n = b_shape.dimensions(b_shape.dimensions_size() - 1);
+  int64_t m = b_shape.dimensions(b_shape.dimensions().size() - 2);
+  int64_t n = b_shape.dimensions(b_shape.dimensions().size() - 1);
   int64_t batch_size = std::accumulate(
       b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
       [](int64_t a, int64_t b) { return a * b; });
@@ -1346,11 +1357,11 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
   auto top_elements_shape = shape.tuple_shapes()[0];
   auto indices_shape = shape.tuple_shapes()[1];
 
-  TF_RET_CHECK(data_shape.dimensions_size() <= 2) << "Invalid input shape.";
+  TF_RET_CHECK(data_shape.dimensions().size() <= 2) << "Invalid input shape.";
   TF_RET_CHECK(indices_shape.element_type() == PrimitiveType::S32)
       << "Indices should be S32.";
 
-  bool has_batch = data_shape.dimensions_size() == 2;
+  bool has_batch = data_shape.dimensions().size() == 2;
   auto [batch_size, n, k] =
       has_batch
           ? std::tuple<size_t, size_t, size_t>{data_shape.dimensions(0),
@@ -1453,11 +1464,11 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
       llvm::Function* kernel;
       std::vector<llvm_ir::IrArray> inputs;
       std::vector<llvm_ir::IrArray> outputs;
-      TF_ASSIGN_OR_RETURN(
-          std::tie(kernel, inputs, outputs),
-          BuildKernelPrototypeFromUniqueName(
-              *ir_emitter_context_, sanitized_kernel_name,
-              kernel_arguments.args(), arg_size, launch_dimensions, &builder));
+      TF_ASSIGN_OR_RETURN(std::tie(kernel, inputs, outputs),
+                          BuildKernelPrototypeFromUniqueName(
+                              *ir_emitter_context_, impl_fn->getName().str(),
+                              sanitized_kernel_name, kernel_arguments.args(),
+                              arg_size, launch_dimensions, &builder));
 
       // Move function body into kernel prototype.
       llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
@@ -2299,9 +2310,10 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
   std::vector<llvm_ir::IrArray> outputs;
   TF_ASSIGN_OR_RETURN(
       std::tie(kernel, inputs, outputs),
-      BuildKernelPrototype(
-          *ir_emitter_context_, suggested_kernel_name, kernel_arguments.args(),
-          kernel_arguments.args().size(), launch_dimensions, &b_));
+      BuildKernelPrototype(*ir_emitter_context_, suggested_kernel_name,
+                           suggested_kernel_name, kernel_arguments.args(),
+                           kernel_arguments.args().size(), launch_dimensions,
+                           &b_));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       hlo, kernel->getName().str(), kernel_arguments.args(), launch_dimensions,

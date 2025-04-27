@@ -26,15 +26,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-class ValueRangeTest : public HloTestBase {};
+class ValueRangeTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(ValueRangeTest, AddedValue) {
   constexpr absl::string_view hlo_string = R"(

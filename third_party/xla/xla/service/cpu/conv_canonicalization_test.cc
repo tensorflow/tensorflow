@@ -20,11 +20,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -33,7 +33,7 @@ namespace cpu {
 
 using ::testing::ElementsAre;
 
-class ConvCanonicalizationTest : public HloTestBase {
+class ConvCanonicalizationTest : public HloHardwareIndependentTestBase {
  public:
   ConvCanonicalizationTest() {
     for (int i = 0; i < 2; ++i) {

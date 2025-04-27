@@ -21,11 +21,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -36,7 +36,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class ConditionalSimplifierTest : public HloTestBase {
+class ConditionalSimplifierTest : public HloHardwareIndependentTestBase {
  public:
   // Makes a computation that contains a conditional with constant predicate.
   HloComputation* MakeConditional(HloModule* module, bool is_constant = true);

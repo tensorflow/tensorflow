@@ -70,8 +70,8 @@ class CollectivePipeliner : public HloModulePass {
   // before and after the loop, and rotated instructions. The new while op is
   // only passed for the peeled trailing ops when the new while op was already
   // created.
-  using HloPostprocessor = std::optional<std::function<absl::Status(
-      HloInstruction* instr, HloInstruction* new_while_instr)>>;
+  using HloPostprocessor = std::function<absl::Status(
+      HloInstruction* instr, HloInstruction* new_while_instr)>;
 
   struct Config {
     int64_t level_to_operate_on = 0;
@@ -104,14 +104,14 @@ class CollectivePipeliner : public HloModulePass {
     // pipelined. This is currently only used to support kBackward pipelining.
     bool should_allow_control_dependencies = false;
     // TODO(b/399476667): Consolidate these postprocessing functions.
-    HloPostprocessor postprocess_backward_peeled_op = std::nullopt;
-    HloPostprocessor postprocess_backward_rotated_op = std::nullopt;
-    HloPostprocessor postprocess_backward_peeled_trailing_op = std::nullopt;
+    HloPostprocessor postprocess_backward_peeled_op;
+    HloPostprocessor postprocess_backward_rotated_op;
+    HloPostprocessor postprocess_backward_peeled_trailing_op;
     // Determines whether a loop invariant instruction can be considered
     // in the pipelining chain.
     bool should_add_loop_invariant_op_in_chain = false;
     // Postprocessing hook which runs for every successfully pipelined op.
-    HloPostprocessor postprocess_pipelined_ops = std::nullopt;
+    HloPostprocessor postprocess_pipelined_ops;
     int64_t collective_size_threshold_to_stop_sinking = INT64_MAX;
   };
   static const char* const kInsertedByPreviousStep;

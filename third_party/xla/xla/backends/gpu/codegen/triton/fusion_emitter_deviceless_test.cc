@@ -27,35 +27,26 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
-#if defined(PLATFORM_GOOGLE)
-#else
-
-#endif
 namespace xla::gpu {
 namespace {
 
 using ::tsl::testing::IsOkAndHolds;
 using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
 
-class AnnotationsTest : public GpuCodegenTest {
+class AnnotationsTest : public HloHardwareIndependentTestBase {
  public:
-  const stream_executor::GpuComputeCapability& GpuComputeComp() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
-  }
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_unsupported_annotate_with_emitter_loc(true);
     return debug_options;
   }
@@ -63,56 +54,47 @@ class AnnotationsTest : public GpuCodegenTest {
 
 TEST_F(AnnotationsTest, Annotations) {
   static constexpr absl::string_view kHloText = R"(
-    HloModule Annotations
+HloModule Annotations
 
-    triton_dot {
-      p0 = f32[8,8] parameter(0)
-      p1 = f32[8,8] parameter(1)
-      ROOT dot = f32[8,8] dot(p0, p1),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0},
-        algorithm=dot_bf16_bf16_f32_x3
-    }
+triton_dot {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+  ROOT dot = f32[8,8] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_bf16_bf16_f32_x3
+}
 
-    ENTRY e {
-      p0 = f32[8,8]{1, 0} parameter(0)
-      p1 = f32[8,8]{1, 0} parameter(1)
-      ROOT _ = f32[8,8] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-        backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-          triton_gemm_config:
-          {
-            "block_m":32,
-            "block_n":32,
-            "block_k":32,
-            "split_k":1,
-            "num_stages":1,
-            "num_warps":1,
-            "num_ctas":1
-          }
-        }
+ENTRY e {
+  p0 = f32[8,8]{1, 0} parameter(0)
+  p1 = f32[8,8]{1, 0} parameter(1)
+  ROOT _ = f32[8,8] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+      triton_gemm_config:
+      {
+        "block_m":32,
+        "block_n":32,
+        "block_k":32,
+        "split_k":1,
+        "num_stages":1,
+        "num_warps":1,
+        "num_ctas":1
       }
     }
-  )";
+  }
+})";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  auto* comp = module->GetComputationWithName("triton_dot");
-  EXPECT_NE(comp, nullptr);
-  auto fusion_backend_config = comp->FusionInstruction()
-                                   ->backend_config<GpuBackendConfig>()
-                                   ->fusion_backend_config();
-  BlockLevelParameters block_level_parameters =
-      BlockLevelParameters::FromBlockLevelFusionConfig(
-          fusion_backend_config.block_level_fusion_config());
-
-  auto* fusion = Cast<HloFusionInstruction>(comp->FusionInstruction());
+  auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
 
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(
       auto triton_module,
       CreateTritonModule("triton_fn", fusion,
                          TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                         block_level_parameters, context));
+                         BlockLevelParameters(), context));
 
-  std::string annotated_ir = DumpTritonIR(triton_module.module.get(), true);
+  std::string annotated_ir = DumpTritonIR(triton_module.get(), true);
 
   if constexpr (EmitterLocOpBuilder::kSourceLocationSupported) {
     EXPECT_THAT(RunFileCheck(annotated_ir, R"(
@@ -127,7 +109,7 @@ TEST_F(AnnotationsTest, Annotations) {
   }
 }
 
-using TritonEmitterDevicelessTest = GpuCodegenTest;
+using TritonEmitterDevicelessTest = HloHardwareIndependentTestBase;
 
 TEST_F(TritonEmitterDevicelessTest, FailsGracefullyIfNumWarpsIsMissing) {
   constexpr absl::string_view kHloText = R"(

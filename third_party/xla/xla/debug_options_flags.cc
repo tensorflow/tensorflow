@@ -51,15 +51,11 @@ limitations under the License.
 namespace xla {
 
 inline std::string DefaultMaxIsa() {
-#ifdef PLATFORM_GOOGLE
-  return "";
-#else
   // There are many missing SVE lowerings in LLVM. Limit features to NEON for
   // now. There shouldn't be significant performance impact as most AAarch64
   // CPUs still use 128-bit registers.
   // TODO(penporn): Remove this once SVE is fully supported.
   return tsl::port::IsAarch64CPU() ? "NEON" : "";
-#endif  // PLATFORM_GOOGLE
 }
 
 DebugOptions DefaultDebugOptionsIgnoringFlags() {
@@ -171,6 +167,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
+  opts.set_xla_gpu_experimental_enable_nvshmem(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
   opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(0);
 
@@ -208,7 +205,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_memory_limit_slop_factor(95);
   opts.set_xla_gpu_enable_highest_priority_async_stream(true);
 
-  opts.set_xla_gpu_enable_pipelined_collectives(false);
   opts.set_xla_gpu_enable_pipelined_all_reduce(false);
   opts.set_xla_gpu_enable_pipelined_all_gather(false);
   opts.set_xla_gpu_enable_pipelined_reduce_scatter(true);
@@ -227,9 +223,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_triton_gemm(true);
   opts.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(false);
+  opts.set_xla_gpu_unsupported_enable_triton_multi_output_fusion(false);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(true);
-  opts.set_xla_gpu_unsupported_force_triton_gemm(false);
   opts.set_xla_gpu_verify_triton_fusion_numerics(false);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
@@ -245,7 +241,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
-  opts.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(false);
+  opts.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(true);
   opts.set_xla_gpu_unsafe_pipelined_loop_annotator(false);
 
   opts.set_xla_gpu_copy_insertion_use_region_analysis(false);
@@ -253,13 +249,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_split_k_autotuning(true);
 
   opts.set_xla_gpu_enable_reduction_epilogue_fusion(true);
-  opts.set_xla_gpu_enable_nccl_clique_optimization(false);
   opts.set_xla_gpu_cublas_fallback(true);
   opts.set_xla_gpu_cudnn_gemm_fusion_level(0);
   opts.set_xla_gpu_enable_while_loop_double_buffering(false);
   opts.set_xla_gpu_enable_while_loop_unrolling(
       DebugOptions::WHILE_LOOP_UNROLLING_AUTO_UNROLL);
-  opts.set_xla_gpu_ensure_minor_dot_contraction_dims(false);
   opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(true);
   opts.set_xla_gpu_fail_ptx_compilation_on_register_spilling(false);
   opts.set_xla_gpu_llvm_verification_level(0);
@@ -270,6 +264,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_operand_bytes_threshold_for_windowed_einsum(-1);
 
   opts.set_xla_gpu_enable_triton_hopper(false);
+  opts.set_xla_gpu_experimental_enable_dynamic_dot_search_space(false);
   opts.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(false);
 
   opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
@@ -281,7 +276,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
   opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
 
-  opts.set_xla_gpu_experimental_stream_annotation(false);
+  opts.set_xla_gpu_experimental_stream_annotation(true);
   // Minimum combined size of matrices in matrix multiplication to
   // be rewritten to cuBLAS or Triton kernel call.
   // This threshold is a conservative estimate and has been measured
@@ -320,7 +315,12 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_executable_terminate_timeout_seconds(30);
+
+  opts.set_xla_gpu_first_collective_call_warn_stuck_timeout_seconds(20);
+  opts.set_xla_gpu_first_collective_call_terminate_timeout_seconds(40);
+
   opts.set_xla_gpu_experimental_collective_perf_table_path("");
+  opts.set_xla_gpu_experimental_matmul_perf_table_path("");
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
   // --xla_ignore_channel_id should be kept false by default while channel ids
   // are load-bearing.
@@ -331,14 +331,17 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
   opts.set_xla_gpu_enable_scatter_determinism_expander(true);
   opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(false);
+  opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(false);
   opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
+  opts.set_xla_gpu_unsupported_enable_all_reduce_decomposer(false);
   opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
   opts.set_xla_hlo_pass_fix_detect_cycles(false);
   opts.set_xla_gpu_experimental_enable_sync_collective_combining(false);
-  opts.set_xla_allow_get_default_platform(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(false);
   opts.set_xla_unsupported_crash_on_hlo_pass_noop_change(false);
+  opts.set_xla_gpu_experimental_enable_split_k_rewrite(false);
+  opts.set_xla_gpu_experimental_enable_triton_tma(false);
   return opts;
 }
 
@@ -841,7 +844,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_cpu_enable_fast_min_max",
       bool_setter_for(&DebugOptions::set_xla_cpu_enable_fast_min_max),
       debug_options->xla_cpu_enable_fast_min_max(),
-      "Enable fast floating point min/max lowering that always propagates "
+      "Enable fast floating point min/max lowering that might not propagate "
       "NaNs."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_fast_min_max",
@@ -1585,6 +1588,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "allocator config must also be set to a non-zero value that is large "
       "enough to meet peak collective memory usage."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_nvshmem",
+      bool_setter_for(&DebugOptions::set_xla_gpu_experimental_enable_nvshmem),
+      debug_options->xla_gpu_experimental_enable_nvshmem(),
+      "Enables NVSHMEM."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_temp_buffer_use_separate_color",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_temp_buffer_use_separate_color),
@@ -1716,12 +1724,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_highest_priority_async_stream(),
       "Enable async stream to have the highest priority."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_pipelined_collectives",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_collectives),
-      debug_options->xla_gpu_enable_pipelined_collectives(),
-      "Enable pipelinling of collective instructions (all-reduce, all-gather, "
-      "and reduce-scatter)."));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_pipelined_all_reduce",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_all_reduce),
       debug_options->xla_gpu_enable_pipelined_all_reduce(),
@@ -1774,6 +1776,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           ->xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(),
       "Enable lowering Triton GEMM fusions through the generic Triton "
       "emitter."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_unsupported_enable_triton_multi_output_fusion",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_unsupported_enable_triton_multi_output_fusion),
+      debug_options->xla_gpu_unsupported_enable_triton_multi_output_fusion(),
+      "Enable Triton multi-output fusions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_verify_triton_fusion_numerics",
       bool_setter_for(&DebugOptions::set_xla_gpu_verify_triton_fusion_numerics),
@@ -1902,19 +1911,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_split_k_autotuning),
       debug_options->xla_gpu_enable_split_k_autotuning(),
       "Enable split_k autotuning for triton gemms."));
-
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_reduction_epilogue_fusion",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_enable_reduction_epilogue_fusion),
       debug_options->xla_gpu_enable_reduction_epilogue_fusion(),
       "Enable fusion for reduction epilogues"));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_enable_nccl_clique_optimization",
-                bool_setter_for(
-                    &DebugOptions::set_xla_gpu_enable_nccl_clique_optimization),
-                debug_options->xla_gpu_enable_nccl_clique_optimization(),
-                "Allow early return when acquiring NCCL cliques"));
+  flag_list->push_back(tsl::Flag("xla_gpu_enable_nccl_clique_optimization",
+                                 noop_flag_setter<bool>, false,
+                                 "[Deprecated, do not use]."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_cublas_fallback",
                 bool_setter_for(&DebugOptions::set_xla_gpu_cublas_fallback),
@@ -1938,13 +1943,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_enable_while_loop_double_buffering),
       debug_options->xla_gpu_enable_while_loop_double_buffering(),
       "Enable double buffering for while loop"));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_ensure_minor_dot_contraction_dims",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_ensure_minor_dot_contraction_dims),
-      debug_options->xla_gpu_ensure_minor_dot_contraction_dims(),
-      "Ensure that the contracting dimensions for matmul operands are the most "
-      "minor by changing layouts accordingly"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_filter_kernels_spilling_registers_on_autotuning",
       bool_setter_for(
@@ -2006,6 +2004,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_hopper),
       debug_options->xla_gpu_enable_triton_hopper(),
       "Currently used to enable MMA_V3 for Hopper in Triton"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_dynamic_dot_search_space",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_dynamic_dot_search_space),
+      debug_options->xla_gpu_experimental_enable_dynamic_dot_search_space(),
+      "Enable dynamically generating and pruning the autotuning search space "
+      "for Triton dot fusions, based on the properties of the problem and "
+      "hardware (shapes, instructions, GPU limits, etc.)."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_fusion_block_level_rewriter",
       bool_setter_for(
@@ -2188,6 +2195,22 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_executable_terminate_timeout_seconds),
       debug_options->xla_gpu_executable_terminate_timeout_seconds(),
       "Set timeout for Rendezvous termination"));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_first_collective_call_warn_stuck_timeout_seconds",
+      int32_setter_for(
+          &DebugOptions::
+              set_xla_gpu_first_collective_call_warn_stuck_timeout_seconds),
+      debug_options->xla_gpu_first_collective_call_warn_stuck_timeout_seconds(),
+      "Set timeout for First Collective Call Rendezvous stuck warning"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_first_collective_call_terminate_timeout_seconds",
+      int32_setter_for(
+          &DebugOptions::
+              set_xla_gpu_first_collective_call_terminate_timeout_seconds),
+      debug_options->xla_gpu_first_collective_call_terminate_timeout_seconds(),
+      "Set timeout for First Collective Call Rendezvous termination"));
+
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_disable_binary_libraries",
       bool_setter_for(
@@ -2243,6 +2266,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Note that even when this flag is disabled, scatter operations may still "
       "be deterministic, although with additional overhead."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_unsupported_enable_all_reduce_decomposer",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_unsupported_enable_all_reduce_decomposer),
+      debug_options->xla_gpu_unsupported_enable_all_reduce_decomposer(),
+      "Internal: Enable the AllReduceDecomposer, an unsupported pass that "
+      "rewrites small all-reduce operations as a sequence of all-gather and "
+      "reduce operations."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_enable_ragged_all_to_all_decomposer",
       bool_setter_for(
           &DebugOptions::
@@ -2250,6 +2281,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(),
       "Internal: Enable the RaggedAllToAllDecomposer, an experimental pass "
       "that rewrites ragged-all-to-all as a dense all-to-all operation."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_unsupported_use_all_reduce_one_shot_kernel",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel),
+      debug_options->xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
+      "Internal: Enable the one-shot kernel for single-host all-reduce "
+      "operations."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel",
       bool_setter_for(
@@ -2296,11 +2335,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_enable_sync_collective_combining(),
       "Enable sync collective combining."));
   flag_list->push_back(tsl::Flag(
-      "xla_allow_get_default_platform",
-      bool_setter_for(&DebugOptions::set_xla_allow_get_default_platform),
-      debug_options->xla_allow_get_default_platform(),
-      "If false, GetDefaultPlatform will cause an error if called."));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_collective_cse_distance_threshold",
       int64_setter_for(
           &DebugOptions::
@@ -2330,6 +2364,27 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_unsupported_crash_on_hlo_pass_noop_change(),
       "Crash if a pass reports that it did change the HLO but in fact it "
       "did not."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_matmul_perf_table_path",
+      string_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_matmul_perf_table_path),
+      debug_options->xla_gpu_experimental_matmul_perf_table_path(),
+      "If non empty will interpret this variable as a path for performance "
+      "tables for matmuls. Expects `xla.gpu.DeviceHloInstructionProfiles` "
+      "proto."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_split_k_rewrite",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_enable_split_k_rewrite),
+      debug_options->xla_gpu_experimental_enable_split_k_rewrite(),
+      "Enable the pass that splits GEMMs that underutilize the GPU load by "
+      "splitting the K dimension using a heuristic."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_triton_tma",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_enable_triton_tma),
+      debug_options->xla_gpu_experimental_enable_triton_tma(),
+      "Enable Triton's TMA loads/stores for arguments where applicable."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
@@ -2369,6 +2424,13 @@ void ResetThreadLocalFuel() {
   for (const auto& kv : *initial_fuel) {
     thread_fuel->emplace(kv.first, kv.second);
   }
+}
+
+bool PassFuelIsSet(absl::string_view pass) {
+  absl::call_once(flags_init, &AllocateFlags, nullptr);
+  auto* fuel_pool = thread_fuel ? thread_fuel.get() : global_fuel;
+  auto it = fuel_pool->find(pass);
+  return it != fuel_pool->end();
 }
 
 bool ConsumeFuel(absl::string_view pass, bool* just_ran_out) {

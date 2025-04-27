@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla {
 namespace emitters {
@@ -37,7 +37,7 @@ using ::testing::ElementsAre;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
 
-class ComputationPartitionerTest : public HloTestBase {
+class ComputationPartitionerTest : public HloHardwareIndependentTestBase {
  protected:
   ComputationPartitionerTest() {
     mlir_context_.loadDialect<mlir::func::FuncDialect>();

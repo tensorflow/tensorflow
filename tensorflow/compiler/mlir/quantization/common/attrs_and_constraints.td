@@ -17,7 +17,7 @@ include "mlir/IR/PatternBase.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 def DenseElementsAttr : ElementsAttrBase<
-  CPred<"$_self.isa<DenseElementsAttr>()">,
+  CPred<"llvm::isa<DenseElementsAttr>($_self)">,
   "non-opaque constant tensor">;
 
 // Checks if the data format is "NHWC".
@@ -31,13 +31,13 @@ def IsConstTensor :  Constraint<CPred<"dyn_cast_or_null<TF::ConstOp>($0.getDefin
 
 // Checks if the element value has a float type.
 def IsFloatElementsAttr : ElementsAttrBase<
-  CPred<"$_self.isa<ElementsAttr>() && "
-        "getElementTypeOrSelf($_self.cast<ElementsAttr>().getType()).isa<FloatType>()">,
+  CPred<"llvm::isa<ElementsAttr>($_self) && "
+        "llvm::isa<FloatType>(getElementTypeOrSelf(llvm::cast<ElementsAttr>($_self).getType()))">,
         "float constant tensor">;
 
 // Checks if the boolean value is false.
 def IsFalseBoolAttr : AttrConstraint<
-  CPred<"!$_self.cast<BoolAttr>().getValue()">>;
+  CPred<"!llvm::cast<BoolAttr>($_self).getValue()">>;
 
 // Checks if the value has only one user.
 def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
@@ -63,7 +63,7 @@ def IsBF16ElementType : Constraint<
 
 // Checks if the value has the type of UniformQuantizedType.
 def IsUniformQuantizedType : Constraint<
-  CPred<"getElementTypeOrSelf($0).isa<mlir::quant::UniformQuantizedType>()">>;
+  CPred<"llvm::isa<mlir::quant::UniformQuantizedType>(getElementTypeOrSelf($0))">>;
 
 // Checks if the given two values have the same type.
 def AreTheSameElementType : Constraint<
@@ -75,12 +75,12 @@ def AreTheSameValue : Constraint<
 
 // Checks if the value has rank.
 def HasRank : Constraint<
-  CPred<"$0.getType().cast<ShapedType>().hasRank()">>;
+  CPred<"llvm::cast<ShapedType>($0.getType()).hasRank()">>;
 
 // Checks if the value has rank of `n`.
 class HasRankOf<int n> : Constraint<
-  CPred<"$0.getType().cast<ShapedType>().hasRank() && "
-        "$0.getType().cast<ShapedType>().getRank() == " # n>,
+  CPred<"llvm::cast<ShapedType>($0.getType()).hasRank() && "
+        "llvm::cast<ShapedType>($0.getType()).getRank() == " # n>,
   "Checks if the value has rank of 'n'.">;
 
 // Checks if the value has static shape.

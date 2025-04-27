@@ -2,7 +2,10 @@
 
 `cuda_configure` depends on the following environment variables:
 
-  * `TF_NEED_CUDA`: Whether to enable building with CUDA.
+  * `TF_NEED_CUDA`: Whether to enable building with CUDA toolchain.
+  * `USE_CUDA_REDISTRIBUTIONS`: Whether to use CUDA redistributions, but not
+    the CUDA toolchain. This can be used to preserve the cache between GPU and
+    CPU builds.
   * `TF_NVCC_CLANG` (deprecated): Whether to use clang for C++ and NVCC for Cuda
     compilation.
   * `CUDA_NVCC`: Whether to use NVCC for Cuda compilation.
@@ -20,6 +23,14 @@
     environment variable is used by GCC compiler.
 """
 
+load("@cuda_cublas//:version.bzl", _cublas_version = "VERSION")
+load("@cuda_cudart//:version.bzl", _cudart_version = "VERSION")
+load("@cuda_cudnn//:version.bzl", _cudnn_version = "VERSION")
+load("@cuda_cufft//:version.bzl", _cufft_version = "VERSION")
+load("@cuda_cupti//:version.bzl", _cupti_version = "VERSION")
+load("@cuda_curand//:version.bzl", _curand_version = "VERSION")
+load("@cuda_cusolver//:version.bzl", _cusolver_version = "VERSION")
+load("@cuda_cusparse//:version.bzl", _cusparse_version = "VERSION")
 load(
     "//third_party/gpus:compiler_common_tools.bzl",
     "get_cxx_inc_directories",
@@ -119,6 +130,11 @@ def _get_clang_major_version(repository_ctx, cc):
 def enable_cuda(repository_ctx):
     """Returns whether to build with CUDA support."""
     return int(get_host_environ(repository_ctx, TF_NEED_CUDA, False))
+
+def use_cuda_redistributions(repository_ctx):
+    """Returns whether to use CUDA redistributions."""
+    return (int(get_host_environ(repository_ctx, USE_CUDA_REDISTRIBUTIONS, False)) and
+            not int(get_host_environ(repository_ctx, _TF_NEED_ROCM, False)))
 
 def _flag_enabled(repository_ctx, flag_name):
     return get_host_environ(repository_ctx, flag_name) == "1"
@@ -263,14 +279,14 @@ def _get_cuda_config(repository_ctx):
 
     return struct(
         cuda_version = get_cuda_version(repository_ctx),
-        cupti_version = repository_ctx.read(repository_ctx.attr.cupti_version),
-        cudart_version = repository_ctx.read(repository_ctx.attr.cudart_version),
-        cublas_version = repository_ctx.read(repository_ctx.attr.cublas_version),
-        cusolver_version = repository_ctx.read(repository_ctx.attr.cusolver_version),
-        curand_version = repository_ctx.read(repository_ctx.attr.curand_version),
-        cufft_version = repository_ctx.read(repository_ctx.attr.cufft_version),
-        cusparse_version = repository_ctx.read(repository_ctx.attr.cusparse_version),
-        cudnn_version = repository_ctx.read(repository_ctx.attr.cudnn_version),
+        cupti_version = _cupti_version,
+        cudart_version = _cudart_version,
+        cublas_version = _cublas_version,
+        cusolver_version = _cusolver_version,
+        curand_version = _curand_version,
+        cufft_version = _cufft_version,
+        cusparse_version = _cusparse_version,
+        cudnn_version = _cudnn_version,
         compute_capabilities = _compute_capabilities(repository_ctx),
         cpu_value = get_cpu_value(repository_ctx),
     )
@@ -459,23 +475,43 @@ def _create_dummy_repository(repository_ctx):
 
     # Set up cuda_config.h, which is used by
     # tensorflow/compiler/xla/stream_executor/dso_loader.cc.
-    repository_ctx.template(
-        "cuda/cuda/cuda_config.h",
-        repository_ctx.attr.cuda_config_tpl,
-        {
-            "%{cuda_version}": "",
-            "%{cudart_version}": "",
-            "%{cupti_version}": "",
-            "%{cublas_version}": "",
-            "%{cusolver_version}": "",
-            "%{curand_version}": "",
-            "%{cufft_version}": "",
-            "%{cusparse_version}": "",
-            "%{cudnn_version}": "",
-            "%{cuda_toolkit_path}": "",
-            "%{cuda_compute_capabilities}": "",
-        },
-    )
+    if use_cuda_redistributions(repository_ctx):
+        cuda_config = _get_cuda_config(repository_ctx)
+        repository_ctx.template(
+            "cuda/cuda/cuda_config.h",
+            repository_ctx.attr.cuda_config_tpl,
+            {
+                "%{cuda_version}": cuda_config.cudart_version,
+                "%{cudart_version}": cuda_config.cudart_version,
+                "%{cupti_version}": cuda_config.cupti_version,
+                "%{cublas_version}": cuda_config.cublas_version,
+                "%{cusolver_version}": cuda_config.cusolver_version,
+                "%{curand_version}": cuda_config.curand_version,
+                "%{cufft_version}": cuda_config.cufft_version,
+                "%{cusparse_version}": cuda_config.cusparse_version,
+                "%{cudnn_version}": cuda_config.cudnn_version,
+                "%{cuda_toolkit_path}": "",
+                "%{cuda_compute_capabilities}": "",
+            },
+        )
+    else:
+        repository_ctx.template(
+            "cuda/cuda/cuda_config.h",
+            repository_ctx.attr.cuda_config_tpl,
+            {
+                "%{cuda_version}": "",
+                "%{cudart_version}": "",
+                "%{cupti_version}": "",
+                "%{cublas_version}": "",
+                "%{cusolver_version}": "",
+                "%{curand_version}": "",
+                "%{cufft_version}": "",
+                "%{cusparse_version}": "",
+                "%{cudnn_version}": "",
+                "%{cuda_toolkit_path}": "",
+                "%{cuda_compute_capabilities}": "",
+            },
+        )
 
     # Set up cuda_config.py, which is used by gen_build_info to provide
     # static build environment info to the API
@@ -586,6 +622,8 @@ _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 HERMETIC_CUDA_VERSION = "HERMETIC_CUDA_VERSION"
 TF_CUDA_VERSION = "TF_CUDA_VERSION"
 TF_NEED_CUDA = "TF_NEED_CUDA"
+_TF_NEED_ROCM = "TF_NEED_ROCM"
+USE_CUDA_REDISTRIBUTIONS = "USE_CUDA_REDISTRIBUTIONS"
 _TF_NVCC_CLANG = "TF_NVCC_CLANG"
 _CUDA_NVCC = "CUDA_NVCC"
 _TF_SYSROOT = "TF_SYSROOT"
@@ -595,6 +633,7 @@ _ENVIRONS = [
     _CC,
     _CLANG_CUDA_COMPILER_PATH,
     TF_NEED_CUDA,
+    _TF_NEED_ROCM,
     _TF_NVCC_CLANG,
     _CUDA_NVCC,
     TF_CUDA_VERSION,
@@ -606,6 +645,7 @@ _ENVIRONS = [
     _TMPDIR,
     "LOCAL_CUDA_PATH",
     "LOCAL_CUDNN_PATH",
+    USE_CUDA_REDISTRIBUTIONS,
 ]
 
 cuda_configure = repository_rule(
@@ -613,20 +653,20 @@ cuda_configure = repository_rule(
     environ = _ENVIRONS,
     attrs = {
         "environ": attr.string_dict(),
-        "cccl_version": attr.label(default = Label("@cuda_cccl//:version.txt")),
-        "cublas_version": attr.label(default = Label("@cuda_cublas//:version.txt")),
-        "cudart_version": attr.label(default = Label("@cuda_cudart//:version.txt")),
-        "cudnn_version": attr.label(default = Label("@cuda_cudnn//:version.txt")),
-        "cufft_version": attr.label(default = Label("@cuda_cufft//:version.txt")),
-        "cupti_version": attr.label(default = Label("@cuda_cupti//:version.txt")),
-        "curand_version": attr.label(default = Label("@cuda_curand//:version.txt")),
-        "cusolver_version": attr.label(default = Label("@cuda_cusolver//:version.txt")),
-        "cusparse_version": attr.label(default = Label("@cuda_cusparse//:version.txt")),
+        "cccl_version": attr.label(default = Label("@cuda_cccl//:version.bzl")),
+        "cublas_version": attr.label(default = Label("@cuda_cublas//:version.bzl")),
+        "cudart_version": attr.label(default = Label("@cuda_cudart//:version.bzl")),
+        "cudnn_version": attr.label(default = Label("@cuda_cudnn//:version.bzl")),
+        "cufft_version": attr.label(default = Label("@cuda_cufft//:version.bzl")),
+        "cupti_version": attr.label(default = Label("@cuda_cupti//:version.bzl")),
+        "curand_version": attr.label(default = Label("@cuda_curand//:version.bzl")),
+        "cusolver_version": attr.label(default = Label("@cuda_cusolver//:version.bzl")),
+        "cusparse_version": attr.label(default = Label("@cuda_cusparse//:version.bzl")),
         "nvcc_binary": attr.label(default = Label("@cuda_nvcc//:bin/nvcc")),
-        "nvcc_version": attr.label(default = Label("@cuda_nvcc//:version.txt")),
-        "nvjitlink_version": attr.label(default = Label("@cuda_nvjitlink//:version.txt")),
-        "nvml_version": attr.label(default = Label("@cuda_nvml//:version.txt")),
-        "nvtx_version": attr.label(default = Label("@cuda_nvtx//:version.txt")),
+        "nvcc_version": attr.label(default = Label("@cuda_nvcc//:version.bzl")),
+        "nvjitlink_version": attr.label(default = Label("@cuda_nvjitlink//:version.bzl")),
+        "nvml_version": attr.label(default = Label("@cuda_nvml//:version.bzl")),
+        "nvtx_version": attr.label(default = Label("@cuda_nvtx//:version.bzl")),
         "local_config_cuda_build_file": attr.label(default = Label("//third_party/gpus:local_config_cuda.BUILD")),
         "build_defs_tpl": attr.label(default = Label("//third_party/gpus/cuda:build_defs.bzl.tpl")),
         "cuda_build_tpl": attr.label(default = Label("//third_party/gpus/cuda/hermetic:BUILD.tpl")),

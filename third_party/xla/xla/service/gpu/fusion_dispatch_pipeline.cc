@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/transforms/fusion_block_level_rewriter.h"
-#include "xla/service/gpu/transforms/fusion_dynamic_memcpy_rewriter.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
@@ -58,7 +57,7 @@ bool IsSlowLoopTransposeFusion(const HloFusionInstruction* fusion) {
   // is neither the minormost nor the second minormost dimension in the output,
   // and the output minormost dimension is swapped with the new minormost
   // dimension.
-  int64_t rank = root->shape().dimensions_size();
+  int64_t rank = root->shape().dimensions().size();
 
   // The transpose dimension grouper has run, so it should be enough to check
   // that the minormost dimension's index within the result is smaller than
@@ -132,7 +131,6 @@ HloPassPipeline FusionDispatchPipeline(
   HloPassPipeline pipeline("fusion-dispatch-pipeline");
   pipeline.AddPass<FusionBlockLevelRewriter>(device_description, shape_size_fn,
                                              std::move(try_rewrite_fusion_if));
-  pipeline.AddPass<FusionDynamicMemcpyRewriter>();
   return pipeline;
 }
 

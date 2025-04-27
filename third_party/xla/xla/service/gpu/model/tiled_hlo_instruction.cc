@@ -47,7 +47,8 @@ absl::Status VerifyTiledHloInstructionConstructorPreconditions(
     const HloInstruction* hlo, llvm::SmallVector<int64_t> tile_sizes,
     llvm::SmallVector<int64_t> tile_strides,
     std::optional<IndexingMap> tile_offsets_indexing) {
-  int rank = hlo->shape().dimensions_size();
+  const int rank =
+      hlo->shape().IsArray() ? hlo->shape().dimensions().size() : 0;
 
   if (tile_sizes.size() != rank) {
     return absl::InvalidArgumentError(

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -258,8 +259,9 @@ LogicalResult QuantizeContext::PropagateQuantParams(
     quant::AdjacentOperations *new_items, bool *changed) {
   // Use the final state to set all the operands' parameters.
   for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
-    auto ele = op->getOperand(i).getType().cast<ShapedType>().getElementType();
-    if (ele.isa<FloatType>() && SetOperandParams(op, i, params)) {
+    auto ele =
+        llvm::cast<ShapedType>(op->getOperand(i).getType()).getElementType();
+    if (isa<FloatType>(ele) && SetOperandParams(op, i, params)) {
       *changed |= true;
       new_items->push_back(op->getOperand(i).getDefiningOp());
     }
@@ -267,8 +269,9 @@ LogicalResult QuantizeContext::PropagateQuantParams(
 
   // Use the final state to set all the results' parameters.
   for (int res = 0, e = op->getNumResults(); res != e; ++res) {
-    auto ele = op->getResult(res).getType().cast<ShapedType>().getElementType();
-    if (ele.isa<FloatType>() && SetResultParams(op, res, params)) {
+    auto ele =
+        llvm::cast<ShapedType>(op->getResult(res).getType()).getElementType();
+    if (isa<FloatType>(ele) && SetResultParams(op, res, params)) {
       auto users = op->getResult(res).getUsers();
       *changed |= !users.empty();
       new_items->append(users.begin(), users.end());
@@ -286,7 +289,7 @@ int QuantizeContext::StatesManager::InitializeState(
     params_attr = op.getInputSpecs()[index];
   }
   QuantParams params =
-      params_attr.cast<TypeAttr>().getValue().dyn_cast<QuantParams>();
+      dyn_cast<QuantizedType>(cast<TypeAttr>(params_attr).getValue());
   bool immutable = !EmptyParams(params);
   int next_state_index = states_.size();
   states_.push_back({params, immutable});

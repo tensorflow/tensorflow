@@ -633,7 +633,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
       computation_time_in_ms = visitor->GetComputationTimeInMilliSec(dot);
 
       std::vector<int64_t> lhs_contracting_dims;
-      lhs_contracting_dims.reserve(new_lhs.base_shape().dimensions_size());
+      lhs_contracting_dims.reserve(dims_mapping.contracting_dims.size());
       for (const auto& cd : dims_mapping.contracting_dims) {
         lhs_contracting_dims.push_back(cd.lhs);
       }
@@ -1989,16 +1989,17 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
     // on the other side.
     if (ShapeSizeInBytes(lhs.base_shape()) <
         ShapeSizeInBytes(rhs.base_shape())) {
-      lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithZero();
-      rhs = rhs.PadWithZero();
+      lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs);
     } else {
-      lhs = lhs.PadWithZero();
-      rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs).PadWithZero();
+      rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs);
     }
+
+    lhs = lhs.PadWithZero();
+    rhs = rhs.PadWithZero();
     TF_ASSIGN_OR_RETURN(
         auto dot, create_sharded_dot(lhs.hlo(), rhs.hlo(), b, conv_window));
     std::vector<int64_t> lhs_contracting_dims;
-    lhs_contracting_dims.reserve(lhs.base_shape().dimensions_size());
+    lhs_contracting_dims.reserve(dims_mapping.contracting_dims.size());
     for (const auto& cd : dims_mapping.contracting_dims) {
       lhs_contracting_dims.push_back(cd.lhs);
     }
@@ -2064,7 +2065,7 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
 
   // If LHS and output are replicated, we compare the cost of all-gather on RHS
   // vs all-reduce on the output.
-  const bool rhs_constracting_fully_partitioned =
+  const bool rhs_contracting_fully_partitioned =
       (rhs_contracting_partitions == num_partitions) &&
       lhs.sharding().IsReplicated() &&
       ShapeUtil::ElementsIn(rhs.base_shape()) >
@@ -2075,21 +2076,22 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
       ShapeUtil::ElementsIn(lhs.base_shape()) >
           ShapeUtil::ElementsIn(output_base_shape);
 
-  if (rhs_constracting_fully_partitioned) {
-    lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithZero();
-    rhs = rhs.PadWithZero();
+  if (rhs_contracting_fully_partitioned) {
+    lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs);
   } else if (lhs_contracting_fully_partitioned) {
-    lhs = lhs.PadWithZero();
-    rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs).PadWithZero();
+    rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs);
   } else {
     return nullptr;
   }
+
+  lhs = lhs.PadWithZero();
+  rhs = rhs.PadWithZero();
 
   TF_ASSIGN_OR_RETURN(auto dot,
                       create_sharded_dot(lhs.hlo(), rhs.hlo(), b, conv_window));
 
   std::vector<int64_t> lhs_contracting_dims;
-  lhs_contracting_dims.reserve(lhs.base_shape().dimensions_size());
+  lhs_contracting_dims.reserve(dims_mapping.contracting_dims.size());
   for (const auto& cd : dims_mapping.contracting_dims) {
     lhs_contracting_dims.push_back(cd.lhs);
   }
@@ -2856,24 +2858,9 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnContractingImpl(
     lhs = lhs.Reshard(lhs_sharding);
   }
   // Mask out invalid data.
-  std::vector<int64_t> lhs_skipped_dims;
-  for (int64_t i = 0; i < lhs.base_shape().dimensions_size(); ++i) {
-    if (absl::c_linear_search(lhs_dims, i)) {
-      continue;
-    }
-    lhs_skipped_dims.push_back(i);
-  }
-  lhs = lhs.PadWithZero(
-      /*left_padded_dims=*/{}, lhs_skipped_dims);
-  std::vector<int64_t> rhs_skipped_dims;
-  for (int64_t i = 0; i < rhs.base_shape().dimensions_size(); ++i) {
-    if (absl::c_linear_search(rhs_dims, i)) {
-      continue;
-    }
-    rhs_skipped_dims.push_back(i);
-  }
-  rhs = rhs.PadWithZero(
-      /*left_padded_dims=*/{}, rhs_skipped_dims);
+  lhs = lhs.PadWithZeroOnSpecifiedDims(lhs_dims);
+  rhs = rhs.PadWithZeroOnSpecifiedDims(rhs_dims);
+
   top_level_sharding_to_reset.emplace_back(lhs.hlo(), lhs_sharding);
   lhs.hlo()->set_sharding(lhs_grouped.sharding);
   top_level_sharding_to_reset.emplace_back(rhs.hlo(), rhs_sharding);

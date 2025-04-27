@@ -267,8 +267,11 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
 
     // Get static MLIR Type from xla Shape.
     const xla::Shape &xla_shape = input_shapes[next_actual_input++];
-    std::vector<int64_t> xla_dimensions(xla_shape.dimensions().begin(),
-                                        xla_shape.dimensions().end());
+    std::vector<int64_t> xla_dimensions;
+    if (xla_shape.IsArray()) {
+      xla_dimensions = std::vector<int64_t>(xla_shape.dimensions().begin(),
+                                            xla_shape.dimensions().end());
+    }
     TF_ASSIGN_OR_RETURN(
         mlir::Type element_type,
         ConvertPrimitiveTypeToMlirType(xla_shape.element_type(), builder));
@@ -399,9 +402,15 @@ absl::Status XlaCallModuleLoader::LoadModule(
   }
 
   // Parse the StableHLO/VHLO bytecode
-  module_ = mlir::stablehlo::deserializePortableArtifact(module_str, context_);
-  if (!module_) {
-    return absl::InvalidArgumentError("Cannot deserialize computation");
+  {
+    mlir::StatusScopedDiagnosticHandler diag_handler(context_);
+    module_ =
+        mlir::stablehlo::deserializePortableArtifact(module_str, context_);
+    if (!module_) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot deserialize computation: ",
+                       diag_handler.ConsumeStatus().ToString()));
+    }
   }
   VLOG(3) << "Parsed serialized module (version = " << version
           << ", platforms = [" << absl::StrJoin(platforms, ", ")
@@ -481,18 +490,14 @@ absl::Status XlaCallModuleLoader::ValidateStaticShapes() {
 absl::Status XlaCallModuleLoader::PrepareStablehloForLowering() {
   mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
 
-  // TODO (b/393390051): Migrate required passes to StableHLO.
+  // TODO (b/410057228): Replace MHLO canonicalization with StableHLO.
+  // This code requires MHLO CaseOp canonicalization to remove unreachable
+  // branches, else `tf.call_tf_function` inlining can fail.
   mlir::PassManager pm(module_->getContext());
-  applyTensorflowAndCLOptions(pm);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createChloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  // In order to export to XLA, we must sink constants to control flow
-  // regions, since XLA uses functional control flow.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createSinkConstantsToControlFlowPass());
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+
   if (failed(pm.run(*module_))) {
     return absl::InternalError(
         absl::StrCat("MHLO->HLO lowering passes failed: ",
@@ -500,7 +505,7 @@ absl::Status XlaCallModuleLoader::PrepareStablehloForLowering() {
   }
 
   if (VLOG_IS_ON(5)) {
-    DumpMlirOpToFile("xla_call_module.after_mhlo_lowering", *module_);
+    DumpMlirOpToFile("xla_call_module.after_canonicalization", *module_);
   }
 
   return absl::OkStatus();

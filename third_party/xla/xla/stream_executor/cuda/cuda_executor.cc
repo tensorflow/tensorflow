@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_executor.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -45,10 +47,11 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/collectives_registry.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/cuda_collectives.h"
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
@@ -111,8 +114,9 @@ bool ShouldLaunchDelayKernel() {
 // thread::ThreadPool on some platforms), we run certain routines in this pool
 // and wait for completion.
 tsl::thread::ThreadPool* GetDriverExecutor() {
-  static tsl::thread::ThreadPool* thread_pool = new tsl::thread::ThreadPool(
-      tsl::Env::Default(), tsl::ThreadOptions(), "cuda_driver", 1);
+  static tsl::thread::ThreadPool* const thread_pool =
+      new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                  "cuda_driver", 1);
   return thread_pool;
 }
 
@@ -630,6 +634,33 @@ CudaExecutor::~CudaExecutor() {
   CHECK(gpu_binary_to_module_.empty()) << "CudaExecutor has loaded modules.";
 }
 
+absl::StatusOr<xla::gpu::GpuCollectives*> GetGpuCollectives(
+    StreamExecutor* executor) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+  TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
+                      xla::CollectivesRegistry::Default("gpu"));
+  return tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+}
+
+absl::StatusOr<void*> CollectiveMemoryAllocate(StreamExecutor* executor,
+                                               uint64_t bytes) {
+  if (bytes == 0) return nullptr;
+
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+  TF_ASSIGN_OR_RETURN(xla::gpu::GpuCollectives * gpu_collectives,
+                      GetGpuCollectives(executor));
+  return gpu_collectives->Allocate(bytes);
+}
+
+absl::Status CollectiveMemoryDeallocate(StreamExecutor* executor,
+                                        void* location) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+
+  TF_ASSIGN_OR_RETURN(xla::gpu::GpuCollectives * gpu_collectives,
+                      GetGpuCollectives(executor));
+  return gpu_collectives->Deallocate(location);
+}
+
 absl::StatusOr<std::unique_ptr<MemoryAllocator>>
 CudaExecutor::CreateMemoryAllocator(MemoryType type) {
   if (type == MemoryType::kUnified) {
@@ -663,14 +694,12 @@ CudaExecutor::CreateMemoryAllocator(MemoryType type) {
     return std::make_unique<GenericMemoryAllocator>(
         [this](uint64_t size)
             -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
-          TF_ASSIGN_OR_RETURN(
-              void* ptr, CudaCollectives::CollectiveMemoryAllocate(this, size));
+          TF_ASSIGN_OR_RETURN(void* ptr, CollectiveMemoryAllocate(this, size));
           VLOG(2) << "allocated " << ptr << " for context " << cuda_context_
                   << " of " << size << " bytes of collective memory";
           return std::make_unique<GenericMemoryAllocation>(
               ptr, size, [this](void* location, uint64_t size) {
-                auto status =
-                    CudaCollectives::CollectiveMemoryDeallocate(this, location);
+                auto status = CollectiveMemoryDeallocate(this, location);
                 if (!status.ok()) {
                   LOG(ERROR) << "failed to free collective memory at "
                              << location << "; result: " << status;
@@ -994,7 +1023,7 @@ CudaExecutor::CreateOrShareConstant(Stream* stream,
 
 DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
   if (memory_space == static_cast<int64_t>(MemoryType::kCollective)) {
-    auto result = CudaCollectives::CollectiveMemoryAllocate(this, size);
+    auto result = CollectiveMemoryAllocate(this, size);
     if (!result.ok()) {
       LOG(ERROR) << result.status();
       return DeviceMemoryBase(nullptr, 0);
@@ -1192,7 +1221,7 @@ absl::StatusOr<DeviceMemoryBase> CudaExecutor::GetSymbol(
   size_t bytes = 0;
   CHECK(static_cast<bool>(module_handle));
 
-  {  // give limited scope to mutex_lock
+  {  // give limited scope to MutexLock
     absl::MutexLock lock{&in_memory_modules_mu_};
     auto it = gpu_binary_to_module_.find(module_handle);
     CHECK(it != gpu_binary_to_module_.end());
@@ -1421,8 +1450,8 @@ absl::StatusOr<const CudaKernel*> CudaExecutor::GetCudaKernel(
   return static_cast<const CudaKernel*>(*it);
 }
 
-absl::StatusOr<DeviceMemoryBase> CudaExecutor::CreateTensorMap(
-    TmaDescriptor tma_desc, void* global_address) {
+absl::StatusOr<TensorMap> CudaExecutor::CreateTensorMap(TmaDescriptor tma_desc,
+                                                        void* global_address) {
   TF_ASSIGN_OR_RETURN(CUtensorMapDataType data_type,
                       GetTensorMapDataType(tma_desc.element_size()));
   CUtensorMapSwizzle swizzle = GetTensorMapSwizzle(tma_desc.swizzle());
@@ -1446,10 +1475,7 @@ absl::StatusOr<DeviceMemoryBase> CudaExecutor::CreateTensorMap(
         "Failed to create tensormap with cuTensorMapEncodeTiled: %s",
         error_message));
   }
-  DeviceMemoryBase device_tensor_map = Allocate(sizeof(tensor_map), 0);
-  TF_RETURN_IF_ERROR(
-      SynchronousMemcpy(&device_tensor_map, &tensor_map, sizeof(tensor_map)));
-  return device_tensor_map;
+  return absl::bit_cast<TensorMap>(tensor_map);
 }
 
 }  // namespace gpu

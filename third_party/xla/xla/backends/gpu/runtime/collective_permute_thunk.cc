@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -285,9 +286,10 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
 
     // Perform a rendezvous to make sure all receivers have their events
     // recorded.
-    Rendezvous(rendezvous_name, rendezvous_key, num_local_participants,
-               /*warn_stuck_timeout=*/absl::Seconds(20),
-               /*terminate_timeout=*/absl::Seconds(40));
+    TF_RETURN_IF_ERROR(Rendezvous(rendezvous_name, rendezvous_key,
+                                  num_local_participants,
+                                  /*warn_stuck_timeout=*/absl::Seconds(20),
+                                  /*terminate_timeout=*/absl::Seconds(40)));
 
     // For sending side, wait for the recorded event from the receiving side.
     if (target_id) {
@@ -325,9 +327,10 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
 
     // Perform a rendezvous to make sure all senders have their events
     // recorded.
-    Rendezvous(rendezvous_name, rendezvous_key, num_local_participants,
-               /*warn_stuck_timeout=*/absl::Seconds(20),
-               /*terminate_timeout=*/absl::Seconds(40));
+    TF_RETURN_IF_ERROR(Rendezvous(rendezvous_name, rendezvous_key,
+                                  num_local_participants,
+                                  /*warn_stuck_timeout=*/absl::Seconds(20),
+                                  /*terminate_timeout=*/absl::Seconds(40)));
 
     // For receiving side, wait for the recorded event from the sending side.
     if (source_id) {
@@ -407,9 +410,14 @@ absl::Status RunCollectivePermute(
       const auto src_addr = src_addrs.at(idx);
       const auto dest_addr = dest_addrs.at(idx);
       const auto buffer = buffers.at(idx);
-      TF_RETURN_IF_ERROR(comm->CollectivePermute(
+      auto event = comm->CollectivePermute(
           src_addr, dest_addr, buffer.element_type, buffer.element_count,
-          source_rank, target_ranks, GpuCollectives::On(stream)));
+          source_rank, target_ranks, GpuCollectives::On(stream));
+
+      tsl::BlockUntilReady(event);
+      if (event.IsError()) {
+        return event.GetError();
+      }
     }
 
     if (is_nccl_group_needed) {

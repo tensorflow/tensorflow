@@ -934,8 +934,8 @@ void HloCollectiveInstruction::PrintExtraAttributesImpl(
     VLOG(4) << name() << " replica_groups="
             << device_list_.ToString(options.print_full_replica_group_list());
 
-    AppendCat(printer, "replica_groups=",
-              device_list_.ToString(options.print_full_replica_group_list()));
+    printer->Append("replica_groups=");
+    device_list_.Print(printer, options.print_full_replica_group_list());
   });
   if (constrain_layout_) {
     printer.Next(
@@ -1516,7 +1516,7 @@ HloTransposeInstruction::HloTransposeInstruction(
 
 bool HloTransposeInstruction::IsRank2Transpose() const {
   return dimensions() == std::vector<int64_t>({1, 0}) &&
-         shape().dimensions_size() == 2 &&
+         shape().dimensions().size() == 2 &&
          std::equal(shape().dimensions().begin(), shape().dimensions().end(),
                     operand(0)->shape().dimensions().rbegin());
 }
@@ -1618,7 +1618,7 @@ HloMapInstruction::HloMapInstruction(const Shape& shape,
   AppendComputation(map_computation);
   // TODO(b/65689298) Remove code below once Map is generalized to accept
   // arbitrary map dimensions.
-  dimensions_.resize(shape.dimensions_size());
+  dimensions_.resize(shape.dimensions().size());
   std::iota(dimensions_.begin(), dimensions_.end(), 0);
 }
 
@@ -1634,7 +1634,7 @@ bool HloMapInstruction::IsElementwiseImpl(
     const std::optional<int64_t>& operand_idx) const {
   if (!dimensions().empty()) {
     // Check that the map is executed in elementwise compatible dimensions.
-    if (dimensions().size() != shape().dimensions_size()) {
+    if (dimensions().size() != shape().dimensions().size()) {
       return false;
     }
     for (int i = 0; i < dimensions().size(); ++i) {
@@ -2982,7 +2982,7 @@ HloInstructionProto HloConvolutionInstruction::ToProto() const {
 
 void HloConvolutionInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
-  if (window_.dimensions_size() != 0) {
+  if (!window_.dimensions().empty()) {
     printer.Next([this](Printer* printer) {
       AppendCat(printer, "window={", window_util::ToString(window()), "}");
     });
@@ -3067,7 +3067,7 @@ HloInstructionProto HloReduceWindowInstruction::ToProto() const {
 
 void HloReduceWindowInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
-  if (window_.dimensions_size() != 0) {
+  if (!window_.dimensions().empty()) {
     printer.Next([this](Printer* printer) {
       AppendCat(printer, "window={", window_util::ToString(window()), "}");
     });
@@ -3118,7 +3118,7 @@ HloInstructionProto HloSelectAndScatterInstruction::ToProto() const {
 
 void HloSelectAndScatterInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
-  if (window_.dimensions_size() != 0) {
+  if (!window_.dimensions().empty()) {
     printer.Next([this](Printer* printer) {
       AppendCat(printer, "window={", window_util::ToString(window()), "}");
     });
@@ -3454,7 +3454,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   cloned->set_padding_type(padding_type_);
   *cloned->mutable_precision_config() = precision_config();
   cloned->set_custom_call_schedule(custom_call_schedule_);
-  return std::move(cloned);
+  return cloned;
 }
 
 HloPadInstruction::HloPadInstruction(const Shape& shape,
@@ -3567,7 +3567,7 @@ HloDynamicSliceInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   if (new_operands.size() == 2 &&
-      new_operands[1]->shape().dimensions_size() == 1) {
+      new_operands[1]->shape().dimensions().size() == 1) {
     // TODO(b/118437727): Old form, remove this path.
     return std::make_unique<HloDynamicSliceInstruction>(
         shape, new_operands[0], new_operands[1], dynamic_slice_sizes_);

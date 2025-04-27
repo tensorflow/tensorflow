@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
@@ -62,7 +63,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/logical_buffer.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -73,7 +74,7 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-using IrEmitterTest = HloTestBase;
+using IrEmitterTest = HloHardwareIndependentTestBase;
 
 static std::pair<llvm::Function*, llvm::BasicBlock*> CreateFunction(
     llvm::LLVMContext& context, llvm::Module* module, llvm::IRBuilderBase* b) {
@@ -110,7 +111,9 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           hlo.get(), std::make_unique<DependencyHloOrdering>(hlo.get()),
-          backend().compiler()->BufferSizeBytesFunction(),
+          [](const BufferValue& buffer) {
+            return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
+          },
           [](LogicalBuffer::Color) { return /*alignment=*/1; }));
 
   TargetMachineFeaturesStub target_machine([](int64_t size) { return 1; });

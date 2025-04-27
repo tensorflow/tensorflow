@@ -19,8 +19,8 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <limits>
+#include <tuple>
 #include <utility>
 
 #include "absl/base/attributes.h"
@@ -29,15 +29,12 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/work_queue.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
-#include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/logging.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
-
-using Task = std::function<void(size_t task_index)>;
 
 // Returns non-reference-counted async value ref in constructed state.
 //
@@ -108,112 +105,91 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::ScheduleAll(
   done_event_ = std::move(count_down_done);
 }
 
-namespace {
+// A collection of helper macros to define parallel task structs for ND loops
+// with different types of dimensions.
 
-// Multidimensional index types for the parallel loop runner tasks. We launch
-// tasks using one-dimensional `task_index` and convert it into a
-// multidimensional index type depending on the loop type.
+#define DEFINE_PARALLEL_TASK_1D(TASK, DIM0)                                 \
+  struct ParallelLoopRunner::Parallel##TASK {                               \
+    ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const { \
+      std::apply(task, Delinearize(task_index, this->i));                   \
+    }                                                                       \
+    DIM0 i;                                                                 \
+    TASK task;                                                              \
+  }
 
-struct Task1DTile1DIndex {
-  size_t offset;
-  size_t extent;
-};
+#define DEFINE_PARALLEL_TASK_2D(TASK, DIM0, DIM1)                           \
+  struct ParallelLoopRunner::Parallel##TASK {                               \
+    ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const { \
+      std::apply(task, Delinearize(task_index, this->i, this->j));          \
+    }                                                                       \
+    DIM0 i;                                                                 \
+    DIM1 j;                                                                 \
+    TASK task;                                                              \
+  }
 
-struct Task2DTile1DIndex {
-  size_t i;
-  size_t offset_j;
-  size_t extent_j;
-};
+#define DEFINE_PARALLEL_TASK_3D(TASK, DIM0, DIM1, DIM2)                     \
+  struct ParallelLoopRunner::Parallel##TASK {                               \
+    ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const { \
+      std::apply(task, Delinearize(task_index, this->i, this->j, this->k)); \
+    }                                                                       \
+    DIM0 i;                                                                 \
+    DIM1 j;                                                                 \
+    DIM2 k;                                                                 \
+    TASK task;                                                              \
+  }
 
-struct Task3DTile2DIndex {
-  size_t i;
-  size_t offset_j;
-  size_t offset_k;
-  size_t extent_j;
-  size_t extent_k;
-};
+#define DEFINE_PARALLEL_TASK_4D(TASK, DIM0, DIM1, DIM2, DIM3)                  \
+  struct ParallelLoopRunner::Parallel##TASK {                                  \
+    ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const {    \
+      std::apply(task,                                                         \
+                 Delinearize(task_index, this->i, this->j, this->k, this->l)); \
+    }                                                                          \
+    DIM0 i;                                                                    \
+    DIM1 j;                                                                    \
+    DIM2 k;                                                                    \
+    DIM3 l;                                                                    \
+    TASK task;                                                                 \
+  }
 
-}  // namespace
+#define DEFINE_PARALLEL_TASK_5D(TASK, DIM0, DIM1, DIM2, DIM3, DIM4)         \
+  struct ParallelLoopRunner::Parallel##TASK {                               \
+    ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const { \
+      std::apply(task, Delinearize(task_index, this->i, this->j, this->k,   \
+                                   this->l, this->m));                      \
+    }                                                                       \
+    DIM0 i;                                                                 \
+    DIM1 j;                                                                 \
+    DIM2 k;                                                                 \
+    DIM3 l;                                                                 \
+    DIM4 m;                                                                 \
+    TASK task;                                                              \
+  }
 
-static Task1DTile1DIndex Delinearize(size_t task_index, size_t range,
-                                     size_t tile) {
-  size_t offset = task_index * tile;
-  size_t extent = std::min(range - offset, tile);
-  return {offset, extent};
-}
+DEFINE_PARALLEL_TASK_1D(Task1D, RangeDim);
+DEFINE_PARALLEL_TASK_1D(Task1DTile1D, TileDim);
 
-static size_t NumTasks(size_t range_i, size_t range_j, size_t tile_j) {
-  size_t num_tile_j_tasks = tsl::MathUtil::CeilOfRatio(range_j, tile_j);
-  size_t num_tasks = range_i * num_tile_j_tasks;
-  DCHECK_GT(num_tasks, 0) << "Expected at least one tile task";
-  return num_tasks;
-}
+DEFINE_PARALLEL_TASK_2D(Task2D, RangeDim, RangeDim);
+DEFINE_PARALLEL_TASK_2D(Task2DTile1D, RangeDim, TileDim);
+DEFINE_PARALLEL_TASK_2D(Task2DTile2D, TileDim, TileDim);
 
-static Task2DTile1DIndex Delinearize(size_t task_index, size_t range_i,
-                                     size_t range_j, size_t tile_j) {
-  size_t num_tile_j_tasks = tsl::MathUtil::CeilOfRatio(range_j, tile_j);
-  DCHECK_GT(num_tile_j_tasks, 0) << "Expected at least one tile j task";
+DEFINE_PARALLEL_TASK_3D(Task3D, RangeDim, RangeDim, RangeDim);
+DEFINE_PARALLEL_TASK_3D(Task3DTile1D, RangeDim, RangeDim, TileDim);
+DEFINE_PARALLEL_TASK_3D(Task3DTile2D, RangeDim, TileDim, TileDim);
 
-  // Compute task indices along the `i` and `j` dimensions.
-  size_t task_i = task_index / num_tile_j_tasks;
-  size_t task_j = task_index % num_tile_j_tasks;
+DEFINE_PARALLEL_TASK_4D(Task4DTile2D, RangeDim, RangeDim, TileDim, TileDim);
 
-  // Convert task index into the offset and extent along the `j` dimension.
-  size_t offset_j = task_j * tile_j;
-  size_t extent_j = std::min(range_j - offset_j, tile_j);
+DEFINE_PARALLEL_TASK_5D(Task5D, RangeDim, RangeDim, RangeDim, RangeDim,
+                        RangeDim);
+DEFINE_PARALLEL_TASK_5D(Task5DTile2D, RangeDim, RangeDim, RangeDim, TileDim,
+                        TileDim);
 
-  return {task_i, offset_j, extent_j};
-}
+#undef DEFINE_PARALLEL_TASK_1D
+#undef DEFINE_PARALLEL_TASK_2D
+#undef DEFINE_PARALLEL_TASK_3D
+#undef DEFINE_PARALLEL_TASK_4D
+#undef DEFINE_PARALLEL_TASK_5D
 
-static size_t NumTasks(size_t range_i, size_t range_j, size_t range_k,
-                       size_t tile_j, size_t tile_k) {
-  size_t num_tile_j_tasks = tsl::MathUtil::CeilOfRatio(range_j, tile_j);
-  size_t num_tile_k_tasks = tsl::MathUtil::CeilOfRatio(range_k, tile_k);
-  size_t num_tasks = range_i * num_tile_j_tasks * num_tile_k_tasks;
-  DCHECK_GT(num_tasks, 0) << "Expected at least one tile task";
-  return num_tasks;
-}
-
-static Task3DTile2DIndex Delinearize(size_t task_index, size_t range_i,
-                                     size_t range_j, size_t range_k,
-                                     size_t tile_j, size_t tile_k) {
-  size_t num_tile_j_tasks = tsl::MathUtil::CeilOfRatio(range_j, tile_j);
-  size_t num_tile_k_tasks = tsl::MathUtil::CeilOfRatio(range_k, tile_k);
-  size_t num_tile_tasks = num_tile_j_tasks * num_tile_k_tasks;
-
-  DCHECK_GT(num_tile_j_tasks, 0) << "Expected at least one tile j task";
-  DCHECK_GT(num_tile_k_tasks, 0) << "Expected at least one tile k task";
-
-  // Compute task indices along the `i`, `j` and `k` dimensions.
-  size_t task_i = task_index / num_tile_tasks;
-  task_index %= num_tile_tasks;
-
-  size_t task_j = task_index / num_tile_k_tasks;
-  task_index %= num_tile_k_tasks;
-
-  size_t task_k = task_index;
-
-  // Convert task indices into the offset and extent along the `j` and `k`
-  // dimensions.
-  size_t offset_j = task_j * tile_j;
-  size_t offset_k = task_k * tile_k;
-  size_t extent_j = std::min(range_j - offset_j, tile_j);
-  size_t extent_k = std::min(range_k - offset_k, tile_k);
-
-  return {task_i, offset_j, offset_k, extent_j, extent_k};
-}
-
-// XNNPACK tends to choose too small tile sizes that create too many tasks. For
-// dynamic versions of parallel loops we can choose tile size to be any multiple
-// of the original tile size. This function ensures that the tile size is at
-// least `min_tile_size`.
-static size_t AdjustTileSize(size_t tile_size, size_t min_tile_size) {
-  size_t adjusted_tile_size = tile_size;
-  while (adjusted_tile_size < min_tile_size) adjusted_tile_size += tile_size;
-  return adjusted_tile_size;
-}
-
-// In the `Parallelize` implementations below:
+// Parallelize `task` over dimensions `dims` using `ParallelTask`.
 //
 // (1) If done event is already available, execute the task immediately in the
 //     caller thread. In this case we don't need to overwrite the done event,
@@ -225,159 +201,139 @@ static size_t AdjustTileSize(size_t tile_size, size_t min_tile_size) {
 //
 // We wrap all tasks into structs conforming to the `ParallelTest` API, so that
 // in profiles we can see human-readable names of the tasks instead of lambdas.
-
-struct ParallelLoopRunner::ParallelTask1D {
-  ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const {
-    task(task_index);
-  }
-
-  Task1D task;
-};
-
-void ParallelLoopRunner::Parallelize(size_t range, Task1D task) {
-  DCHECK(done_event_) << "Parallel loop runner is in moved-from state";
-  DCHECK_GT(range, 0) << "Expected at least one task";
-
-  // Fast path for the degenerate parallel loop with single task.
-  if (ABSL_PREDICT_TRUE(range == 1)) {
-    // Execute task in the caller thread if done event is already available.
-    if (ABSL_PREDICT_TRUE(done_event_.IsConcrete())) {
-      task(0);
-      return;
-    }
-
-    // Schedule task when done event becomes available.
-    ScheduleOne([task = std::move(task)] { task(0); });
-    return;
-  }
-
-  ScheduleAll(range, ParallelTask1D{std::move(task)});
-}
-
-struct ParallelLoopRunner::ParallelTask1DTile1D {
-  ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const {
-    auto x = Delinearize(task_index, range, tile);
-    task(x.offset, x.extent);
-  }
-
-  size_t range;
-  size_t tile;
-  Task1DTile1D task;
-};
-
-void ParallelLoopRunner::Parallelize(size_t range, size_t tile,
-                                     Task1DTile1D task) {
+template <typename ParallelTask, typename... Dims, typename Task>
+ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::Parallelize(Dims... dims,
+                                                                  Task&& task) {
   DCHECK(done_event_) << "Parallel loop runner is in moved-from state";
 
-  size_t num_tasks = tsl::MathUtil::CeilOfRatio(range, tile);
+  size_t num_tasks = NumTasks(dims...);
   DCHECK_GT(num_tasks, 0) << "Expected at least one task";
 
-  // Fast path for the degenerate parallel loop with single task.
+  // Fast path for the degenerate parallel loop with a single task.
   if (ABSL_PREDICT_TRUE(num_tasks == 1)) {
+    // Converts the dimension into the first task index.
+    auto to_first_task_index = [](auto dim) {
+      if constexpr (std::is_same_v<decltype(dim), RangeDim>) {
+        return RangeIndex{0};
+      } else {
+        return TileIndex{0, dim.range};
+      }
+    };
+
     // Execute task in the caller thread if done event is already available.
     if (ABSL_PREDICT_TRUE(done_event_.IsConcrete())) {
-      task(0, range);
+      task(to_first_task_index(dims)...);
       return;
     }
 
     // Schedule task when done event becomes available.
-    ScheduleOne([range, task = std::move(task)] { task(0, range); });
-    return;
-  }
-
-  ScheduleAll(num_tasks, ParallelTask1DTile1D{range, tile, std::move(task)});
-}
-
-void ParallelLoopRunner::ParallelizeDynamic(size_t range, size_t tile,
-                                            Task1DTile1DDynamic task) {
-  Parallelize(range, AdjustTileSize(tile, 128), std::move(task));
-}
-
-struct ParallelLoopRunner::ParallelTask2DTile1D {
-  ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const {
-    auto x = Delinearize(task_index, range_i, range_j, tile_j);
-    task(x.i, x.offset_j, x.extent_j);
-  }
-
-  size_t range_i;
-  size_t range_j;
-  size_t tile_j;
-  Task2DTile1D task;
-};
-
-void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
-                                     size_t tile_j, Task2DTile1D task) {
-  DCHECK(done_event_) << "Parallel loop runner is in moved-from state";
-  size_t num_tasks = NumTasks(range_i, range_j, tile_j);
-
-  // Fast path for the degenerate parallel loop with single task.
-  if (ABSL_PREDICT_TRUE(num_tasks == 1)) {
-    // Execute task in the caller thread if done event is already available.
-    if (ABSL_PREDICT_TRUE(done_event_.IsConcrete())) {
-      task(0, 0, range_j);
-      return;
-    }
-
-    // Schedule task when done event becomes available.
-    ScheduleOne([range_j, task = std::move(task)] { task(0, 0, range_j); });
-    return;
-  }
-
-  ScheduleAll(num_tasks,
-              ParallelTask2DTile1D{range_i, range_j, tile_j, std::move(task)});
-}
-
-void ParallelLoopRunner::ParallelizeDynamic(size_t range_i, size_t range_j,
-                                            size_t tile_j,
-                                            Task2DTile1DDynamic task) {
-  Parallelize(range_i, range_j, AdjustTileSize(tile_j, 128), std::move(task));
-}
-
-struct ParallelLoopRunner::ParallelTask3DTile2D {
-  ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const {
-    auto x = Delinearize(task_index, range_i, range_j, range_k, tile_j, tile_k);
-    task(x.i, x.offset_j, x.offset_k, x.extent_j, x.extent_k);
-  }
-
-  size_t range_i;
-  size_t range_j;
-  size_t range_k;
-  size_t tile_j;
-  size_t tile_k;
-  Task3DTile2D task;
-};
-
-void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
-                                     size_t range_k, size_t tile_j,
-                                     size_t tile_k, Task3DTile2D task) {
-  DCHECK(done_event_) << "Parallel loop runner is in moved-from state";
-  size_t num_tasks = NumTasks(range_i, range_j, range_k, tile_j, tile_k);
-
-  // Fast path for the degenerate parallel loop with single task.
-  if (ABSL_PREDICT_TRUE(num_tasks == 1)) {
-    // Execute task in the caller thread if done event is already available.
-    if (ABSL_PREDICT_TRUE(done_event_.IsConcrete())) {
-      task(0, 0, 0, range_j, range_k);
-      return;
-    }
-
-    // Schedule task when done event becomes available.
-    ScheduleOne([range_j, range_k, task = std::move(task)] {
-      task(0, 0, 0, range_j, range_k);
+    ScheduleOne([task = std::forward<Task>(task),
+                 idxs = std::make_tuple(to_first_task_index(dims)...)] {
+      std::apply([&task](auto... idxs) { task(idxs...); }, idxs);
     });
     return;
   }
 
-  ScheduleAll(num_tasks, ParallelTask3DTile2D{range_i, range_j, range_k, tile_j,
-                                              tile_k, std::move(task)});
+  ScheduleAll(num_tasks, ParallelTask{dims..., std::forward<Task>(task)});
 }
 
-void ParallelLoopRunner::ParallelizeDynamic(size_t range_i, size_t range_j,
-                                            size_t range_k, size_t tile_j,
-                                            size_t tile_k,
-                                            Task3DTile2DDynamic task) {
-  Parallelize(range_i, range_j, range_k, AdjustTileSize(tile_j, 128),
-              AdjustTileSize(tile_k, 128), std::move(task));
+// Parallelize `task` over dynamic dimensions `dims` using `ParallelTask`.
+template <typename ParallelTask, typename... Dims, typename Task>
+ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::ParallelizeDynamic(
+    Dims... dims, Task&& task) {
+  // We target 4 tasks per thread to enable load balancing and keep task
+  // scheduling overheads low.
+  static constexpr size_t kTasksPerThread = 4;
+  std::apply(
+      [&](auto... dynamic_dims) {
+        Parallelize<ParallelTask, Dims...>(dynamic_dims...,
+                                           std::forward<Task>(task));
+      },
+      DynamicDimensions(kTasksPerThread * num_threads(), dims...));
+}
+
+void ParallelLoopRunner::Parallelize(RangeDim i, Task1D task) {
+  Parallelize<ParallelTask1D, RangeDim>(i, std::move(task));
+}
+
+void ParallelLoopRunner::Parallelize(RangeDim i, RangeDim j, Task2D task) {
+  Parallelize<ParallelTask2D, RangeDim, RangeDim>(i, j, std::move(task));
+}
+
+void ParallelLoopRunner::Parallelize(TileDim i, Task1DTile1D task) {
+  Parallelize<ParallelTask1DTile1D, TileDim>(i, std::move(task));
+}
+
+void ParallelLoopRunner::ParallelizeDynamic(TileDim i, Task1DTile1D task) {
+  ParallelizeDynamic<ParallelTask1DTile1D, TileDim>(i, std::move(task));
+}
+
+void ParallelLoopRunner::Parallelize(RangeDim i, TileDim j, Task2DTile1D task) {
+  Parallelize<ParallelTask2DTile1D, RangeDim, TileDim>(i, j, std::move(task));
+}
+
+void ParallelLoopRunner::ParallelizeDynamic(RangeDim i, TileDim j,
+                                            Task2DTile1D task) {
+  ParallelizeDynamic<ParallelTask2DTile1D, RangeDim, TileDim>(i, j,
+                                                              std::move(task));
+}
+
+void ParallelLoopRunner::Parallelize(TileDim i, TileDim j, Task2DTile2D task) {
+  Parallelize<ParallelTask2DTile2D, TileDim, TileDim>(i, j, std::move(task));
+}
+
+void ParallelLoopRunner::ParallelizeDynamic(TileDim i, TileDim j,
+                                            Task2DTile2D task) {
+  ParallelizeDynamic<ParallelTask2DTile2D, TileDim, TileDim>(i, j,
+                                                             std::move(task));
+}
+
+void ParallelLoopRunner::Parallelize(RangeDim i, RangeDim j, RangeDim k,
+                                     Task3D task) {
+  Parallelize<ParallelTask3D, RangeDim, RangeDim, RangeDim>(i, j, k,
+                                                            std::move(task));
+}
+
+void ParallelLoopRunner::Parallelize(RangeDim i, RangeDim j, TileDim k,
+                                     Task3DTile1D task) {
+  Parallelize<ParallelTask3DTile1D, RangeDim, RangeDim, TileDim>(
+      i, j, k, std::move(task));
+}
+
+void ParallelLoopRunner::Parallelize(RangeDim i, TileDim j, TileDim k,
+                                     Task3DTile2D task) {
+  Parallelize<ParallelTask3DTile2D, RangeDim, TileDim, TileDim>(
+      i, j, k, std::move(task));
+}
+
+void ParallelLoopRunner::ParallelizeDynamic(RangeDim i, TileDim j, TileDim k,
+                                            Task3DTile2D task) {
+  ParallelizeDynamic<ParallelTask3DTile2D, RangeDim, TileDim, TileDim>(
+      i, j, k, std::move(task));
+}
+
+void ParallelLoopRunner::Parallelize(RangeDim i, RangeDim j, TileDim k,
+                                     TileDim l, Task4DTile2D task) {
+  Parallelize<ParallelTask4DTile2D, RangeDim, RangeDim, TileDim, TileDim>(
+      i, j, k, l, std::move(task));
+}
+
+void ParallelLoopRunner::ParallelizeDynamic(RangeDim i, RangeDim j, TileDim k,
+                                            TileDim l, Task4DTile2D task) {
+  ParallelizeDynamic<ParallelTask4DTile2D, RangeDim, RangeDim, TileDim,
+                     TileDim>(i, j, k, l, std::move(task));
+}
+
+void ParallelLoopRunner::Parallelize(RangeDim i, RangeDim j, RangeDim k,
+                                     RangeDim l, RangeDim m, Task5D task) {
+  Parallelize<ParallelTask5D, RangeDim, RangeDim, RangeDim, RangeDim, RangeDim>(
+      i, j, k, l, m, std::move(task));
+}
+
+void ParallelLoopRunner::Parallelize(RangeDim i, RangeDim j, RangeDim k,
+                                     TileDim l, TileDim m, Task5DTile2D task) {
+  Parallelize<ParallelTask5DTile2D, RangeDim, RangeDim, RangeDim, TileDim,
+              TileDim>(i, j, k, l, m, std::move(task));
 }
 
 }  // namespace xla::cpu

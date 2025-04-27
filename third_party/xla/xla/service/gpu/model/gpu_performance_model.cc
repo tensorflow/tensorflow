@@ -93,8 +93,8 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   }
 
   absl::Duration write_time = WriteTime(device_info, bytes_written);
-  absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
-      compute_time, read_time + write_time, config);
+  absl::Duration exec_time =
+      CombineComputeAndMemoryAccessTime(compute_time, read_time + write_time);
 
   EstimateRunTimeData runtime_data = {flops,     bytes_read, bytes_written,
                                       read_time, write_time, compute_time,
@@ -207,8 +207,8 @@ GpuPerformanceModel::EstimateRunTimeForInstructionCached(
     write_time += producer_runtime.write_time;
   }
 
-  auto exec_time = CombineComputeAndMemoryAccessTime(
-      compute_time, read_time + write_time, config);
+  auto exec_time =
+      CombineComputeAndMemoryAccessTime(compute_time, read_time + write_time);
 
   VLOG(3) << "Runtime data for producer-consumer fusion:\n"
           << " producer: " << producer->name() << "\n"

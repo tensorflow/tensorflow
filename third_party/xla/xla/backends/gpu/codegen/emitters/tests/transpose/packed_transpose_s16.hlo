@@ -1,0 +1,49 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize --inline |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+fusion {
+  p0 = s16[2,4,64,10,6] parameter(0)
+  ROOT transpose = s16[4,2,6,10,64] transpose(p0), dimensions={1,0,4,3,2}
+}
+
+// CHECK-LABEL:   func.func @main(
+// CHECK-SAME:      %[[INPUT:.*]]: tensor<2x4x64x10x6xi16>
+// CHECK-SAME:      %[[OUTPU:.*]]: tensor<4x2x6x10x64xi16>
+
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : i16
+// CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:  %[[VC0:.*]] = arith.constant dense<0> : vector<2x2xi16>
+
+// CHECK:  xla_gpu.allocate_shared : tensor<64x64xi16>
+
+// CHECK:      %[[SHMEM_W_DATA:.*]] = xla.loop
+// CHECK:        tensor.extract %[[INPUT]]
+// CHECK:        tensor.insert
+// CHECK:        xla.yield %{{.*}} : tensor<64x64xi16>
+// CHECK:      }
+// CHECK:      %[[SHMEM_SYNC:.*]] = xla_gpu.sync_threads %[[SHMEM_W_DATA]]
+// CHECK:      xla.loop
+
+// Reading the first horizontal vector.
+// CHECK:        %[[V0:.*]] = vector.transfer_read %[[SHMEM_SYNC]]
+// CHECK-SAME:     : tensor<64x64xi16>, vector<2xi16>
+// CHECK:        %[[V1:.*]] = vector.extract %[[V0]][0] : i16 from vector<2xi16>
+// CHECK:        %[[V2:.*]] = vector.insert %[[V1]], %[[VC0]] [0, 0]
+// CHECK:        %[[V3:.*]] = vector.extract %[[V0]][1] : i16 from vector<2xi16>
+// CHECK:        %[[V4:.*]] = vector.insert %[[V3]], %[[V2]] [1, 0]
+// CHECK:        %[[V5:.*]] = arith.addi
+
+// Reading the second horizontal vector.
+// CHECK:        %[[V6:.*]] = vector.transfer_read %[[SHMEM_SYNC]][%[[V5]]
+// CHECK-SAME:     : tensor<64x64xi16>, vector<2xi16>
+// CHECK:        %[[V7:.*]] = vector.extract %{{.*}}[0] : i16 from vector<2xi16>
+// CHECK:        %[[V8:.*]] = vector.insert %{{.*}}[0, 1]
+// CHECK:        %[[V9:.*]] = vector.extract %{{.*}}[1] : i16 from vector<2xi16>
+// CHECK:        %[[V10:.*]] = vector.insert %{{.*}}[1, 1]
+
+// Writing back the transpose <VECTOR_SIZE x VECTOR_SIZE> vector.
+// CHECK:        xla.loop
+// CHECK:          vector.extract %[[V10]]
+// CHECK:          tensor.insert
+// CHECK:          xla.yield %{{.*}} : tensor<4x2x6x10x64xi16>
+// CHECK:        }

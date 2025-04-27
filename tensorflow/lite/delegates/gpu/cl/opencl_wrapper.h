@@ -580,6 +580,23 @@ typedef cl_mem(CL_API_CALL *PFN_clImportMemoryARM)(
     const cl_import_properties_arm * /*properties*/, void * /*memory*/,
     size_t /*size*/, cl_int * /*errcode_ret*/);
 
+// cl_khr_semaphore extension
+typedef cl_semaphore_khr(CL_API_CALL *PFN_clCreateSemaphoreWithPropertiesKHR)(
+    cl_context /*context*/, const cl_semaphore_properties_khr * /*sema_props*/,
+    cl_int * /*errcode_ret*/);
+typedef cl_int(CL_API_CALL *PFN_clEnqueueWaitSemaphoresKHR)(
+    cl_command_queue /*command_queue*/, cl_uint /*num_sema_objects*/,
+    const cl_semaphore_khr * /*sema_objects*/,
+    const cl_semaphore_payload_khr * /*sema_payload_list*/,
+    cl_uint /*num_events_in_wait_list*/, const cl_event * /*event_wait_list*/,
+    cl_event * /*event*/);
+typedef cl_int(CL_API_CALL *PFN_clEnqueueSignalSemaphoresKHR)(
+    cl_command_queue /*command_queue*/, cl_uint /*num_sema_objects*/,
+    const cl_semaphore_khr * /*sema_objects*/,
+    const cl_semaphore_payload_khr * /*sema_payload_list*/,
+    cl_uint /*num_events_in_wait_list*/, const cl_event * /*event_wait_list*/,
+    cl_event * /*event*/);
+
 extern PFN_clGetPlatformIDs clGetPlatformIDs;
 extern PFN_clGetPlatformInfo clGetPlatformInfo;
 extern PFN_clGetDeviceIDs clGetDeviceIDs;
@@ -709,6 +726,12 @@ extern PFN_clGetCommandBufferInfoKHR clGetCommandBufferInfoKHR;
 
 // cl_arm_import_memory extension
 extern PFN_clImportMemoryARM clImportMemoryARM;
+
+// cl_khr_semaphore extension
+extern PFN_clCreateSemaphoreWithPropertiesKHR
+    clCreateSemaphoreWithPropertiesKHR;
+extern PFN_clEnqueueWaitSemaphoresKHR clEnqueueWaitSemaphoresKHR;
+extern PFN_clEnqueueSignalSemaphoresKHR clEnqueueSignalSemaphoresKHR;
 
 // For convenient image creation
 // It uses clCreateImage if it available (clCreateImage available since cl 1.2)

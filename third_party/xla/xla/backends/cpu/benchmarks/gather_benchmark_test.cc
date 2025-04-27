@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/array2d.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
+#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
@@ -31,7 +32,7 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static void BM_GatherS32(benchmark::State& state) {
+static void BM_GatherS32(benchmark::State& state, HloBenchmarkOptions options) {
   int64_t d0 = state.range(0);
   int64_t d1 = state.range(1);
   int64_t slice_size = state.range(2);
@@ -74,10 +75,11 @@ static void BM_GatherS32(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, args,
                            {{"$d0", absl::StrCat(d0)},
                             {"$d1", absl::StrCat(d1)},
-                            {"$slice_size", absl::StrCat(slice_size)}}));
+                            {"$slice_size", absl::StrCat(slice_size)}},
+                           options));
 }
 
-BENCHMARK(BM_GatherS32)
+XLA_CPU_BENCHMARK(BM_GatherS32)
     ->MeasureProcessCPUTime()
     ->Args({3, 3, 1})
     ->Args({3, 3, 2})

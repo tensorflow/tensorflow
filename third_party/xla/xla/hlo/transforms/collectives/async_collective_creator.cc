@@ -142,7 +142,7 @@ absl::StatusOr<ReplacedAsync> CreateAsyncStartDone(
 int64_t GetShapeSize(const Shape& shape) {
   int64_t size_in_bytes = 0;
   if (shape.IsTuple()) {
-    for (int64_t i = 0; i < shape.tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < shape.tuple_shapes().size(); ++i) {
       size_in_bytes += GetShapeSize(shape.tuple_shapes(i));
     }
     return size_in_bytes;

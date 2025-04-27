@@ -23,8 +23,10 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/cleanup_optimization_barrier_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/push_transpose_through_ewise_pass.h"
@@ -289,6 +291,11 @@ inline std::unique_ptr<mlir::Pass> CreateCanonicalizeBoundaryValuePass() {
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePartitionedTopologicalSortPass();
 
+// Create a pass that cleans up optimization barriers.
+inline std::unique_ptr<mlir::Pass> CreateCleanupOptimizationBarrierPass() {
+  return Create<CleanupOptimizationBarrierPass>();
+}
+
 #define GEN_PASS_DECL_DEFAULTQUANTPARAMSPASS
 #define GEN_PASS_DECL_LEGALIZETFPASS
 #define GEN_PASS_DECL_LOWERSTATICTENSORLISTPASS
@@ -340,13 +347,14 @@ inline void registerTensorFlowLitePasses() {
   Register<OptimizePass, OptimizePassOptions>();
   Register<OptimizeBatchMatmulPass>();
   Register<UnfreezeMutableGlobalTensorsPass>();
-  Register<OptimizeBroadcastLikePass>();
+  Register<OptimizeBroadcastLikePass, OptimizeBroadcastLikePassOptions>();
   Register<PushTransposeThroughEwisePass>();
   Register<CanonicalizeBoundaryValuePass>();
 
   // Other TFLite Passes
   Register<UnfoldLargeSplatConstantPass>();
   Register<SplitMergedOperandsPass>();
+  Register<CleanupOptimizationBarrierPass>();
 }
 
 }  // namespace TFL

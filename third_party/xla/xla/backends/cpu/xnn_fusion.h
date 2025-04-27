@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape.h"
@@ -37,7 +38,8 @@ bool XnnShouldUseThreadPool(const HloComputation* computation);
 // if the dot operation shape is invalid.
 absl::StatusOr<bool> IsXnnDotSupported(
     const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
-    const Shape& rhs_shape, const Shape& out_shape);
+    const Shape& rhs_shape, const Shape& out_shape,
+    TargetMachineFeatures* cpu_features = nullptr);
 
 }  // namespace xla::cpu
 

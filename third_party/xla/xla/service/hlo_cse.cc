@@ -120,8 +120,10 @@ struct CseKey {
   template <typename H>
   friend H AbslHashValue(H h, const CseKey& key) {
     auto instruction = key.hlo;
-    h = H::combine(std::move(h), instruction->opcode(),
-                   instruction->shape().dimensions());
+    h = instruction->shape().IsArray()
+            ? H::combine(std::move(h), instruction->opcode(),
+                         instruction->shape().dimensions())
+            : H::combine(std::move(h), instruction->opcode());
     auto window_hash = [](H h, const Window& window) {
       const auto& window_dims = window.dimensions();
       for (const auto& window_dim : window_dims) {

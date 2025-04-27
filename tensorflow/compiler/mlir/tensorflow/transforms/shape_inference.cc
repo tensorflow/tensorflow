@@ -92,6 +92,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
@@ -510,7 +511,7 @@ Type GetNewArgType(Type old_arg_type, ArrayRef<int64_t> shape,
       }
       new_arg_type = tensorflow::GetTypeFromTFTensorShape(
           new_shape, element_type,
-          mhlo::TypeExtensionsAttr::get(context, new_bounds));
+          mlir::mhlo::TypeExtensionsAttr::get(context, new_bounds));
     }
   }
   return new_arg_type;

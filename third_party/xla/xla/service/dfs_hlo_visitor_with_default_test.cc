@@ -19,17 +19,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
 
-class DfsHloVisitorWithDefaultTest : public HloTestBase {};
+class DfsHloVisitorWithDefaultTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(DfsHloVisitorWithDefaultTest, DefaultElementwiseTest) {
   // Verify that HandleElementwiseBinary and HandleElementwiseUnary are called

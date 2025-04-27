@@ -25,9 +25,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -35,7 +35,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class ScatterSimplifierTest : public HloTestBase {};
+class ScatterSimplifierTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(ScatterSimplifierTest, InsertsIndexVectorAndWindowDims) {
   // Verifies that ScatterSimplifier
@@ -355,7 +355,7 @@ TEST_F(ScatterSimplifierTest, VariadicScatterIntoScalar) {
   )");
 }
 
-class SimpleScatterExampleTest : public HloTestBase {};
+class SimpleScatterExampleTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(SimpleScatterExampleTest, 1x1d) {
   constexpr absl::string_view hlo_text = R"(

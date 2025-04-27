@@ -32,6 +32,7 @@
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
@@ -78,6 +79,10 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
       HostBufferSemantics semantics,
       tsl::RCReference<xla::ifrt::UserContext> user_context) override;
+  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+  MakeErrorArrays(const absl::Status& error,
+                  absl::Span<const ArraySpec> array_specs,
+                  tsl::RCReference<UserContext> user_context) override;
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
   AssembleArrayFromSingleDeviceArrays(
       DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
@@ -146,10 +151,7 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultLayout(
       xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
       xla::ifrt::Device* device,
-      xla::ifrt::MemoryKind memory_kind) const override {
-    return absl::UnimplementedError(
-        "GetDefaultLayout is not supported for the IFRT proxy client.");
-  }
+      xla::ifrt::MemoryKind memory_kind) const override;
 
   tsl::RCReference<xla::ifrt::UserContext> CreateUserContext() override {
     return tsl::RCReference<xla::ifrt::UserContext>();

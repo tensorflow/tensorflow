@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
@@ -31,6 +33,11 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::testing::ContainsRegex;
+using ::testing::HasSubstr;
+using ::tsl::testing::IsOk;
+using ::tsl::testing::StatusIs;
 
 class LayoutUtilTest : public ::testing::Test {
  protected:
@@ -176,8 +183,7 @@ TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleDifferentRank) {
   Shape dst = MakeShapeWithLayout(F32, {2, 3}, {1, 0});
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              ::testing::ContainsRegex("cannot copy layout from shape"));
+  EXPECT_THAT(status.message(), ContainsRegex("cannot copy layout from shape"));
 }
 
 TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleTuple) {
@@ -195,8 +201,7 @@ TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleTuple) {
 
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              ::testing::ContainsRegex("cannot copy layout from shape"));
+  EXPECT_THAT(status.message(), ContainsRegex("cannot copy layout from shape"));
 }
 
 TEST_F(LayoutUtilTest, CopyLayoutBogusLayout) {
@@ -207,9 +212,9 @@ TEST_F(LayoutUtilTest, CopyLayoutBogusLayout) {
 
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(status.message(), ::testing::ContainsRegex(
-                                    "layout minor_to_major field contains .* "
-                                    "elements, but shape is rank"));
+  EXPECT_THAT(status.message(),
+              ContainsRegex("layout minor_to_major field contains .* "
+                            "elements, but shape has"));
 }
 
 TEST_F(LayoutUtilTest, CopyTokenLayout) {
@@ -422,14 +427,14 @@ TEST_F(LayoutUtilTest, ValidateLayout_InvalidArrayLayout) {
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              ::testing::HasSubstr("layout minor_to_major field "
-                                   "contains 3 elements, but shape is rank 2"));
+              HasSubstr("layout minor_to_major field "
+                        "contains 3 elements, but shape has 2 dimensions"));
   status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              ::testing::HasSubstr("layout minor_to_major field "
-                                   "contains 3 elements, but shape is rank 2"));
+              HasSubstr("layout minor_to_major field "
+                        "contains 3 elements, but shape has 2 dimensions"));
 }
 
 TEST_F(LayoutUtilTest, ValidateLayout_InvalidDimLevelTypes) {
@@ -442,14 +447,14 @@ TEST_F(LayoutUtilTest, ValidateLayout_InvalidDimLevelTypes) {
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              ::testing::HasSubstr("layout dim_level_types field "
-                                   "contains 3 elements, but shape is rank 2"));
+              HasSubstr("layout dim_level_types field "
+                        "contains 3 elements, but shape has 2 dimensions"));
   status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              ::testing::HasSubstr("layout dim_level_types field "
-                                   "contains 3 elements, but shape is rank 2"));
+              HasSubstr("layout dim_level_types field "
+                        "contains 3 elements, but shape has 2 dimensions"));
 }
 
 TEST_F(LayoutUtilTest, ValidateLayout_MissingArrayLayout) {
@@ -459,7 +464,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_MissingArrayLayout) {
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              ::testing::HasSubstr("shape f32[2,3] does not have a layout"));
+              HasSubstr("shape f32[2,3] does not have a layout"));
   status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
   EXPECT_TRUE(status.ok());
@@ -469,41 +474,37 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   *shape.mutable_layout() = LayoutUtil::MakeLayout(
       {1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}, {}, {Tile({10, 10})});
-  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
-              tsl::testing::StatusIs(
-                  tsl::error::INVALID_ARGUMENT,
-                  ::testing::HasSubstr(
-                      "layout has tiles, but the shape is a sparse array")));
+  EXPECT_THAT(
+      LayoutUtil::ValidateLayoutInShape(shape),
+      StatusIs(tsl::error::INVALID_ARGUMENT,
+               HasSubstr("layout has tiles, but the shape is a sparse array")));
   shape.mutable_layout()->clear_tiles();
-  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape), tsl::testing::IsOk());
+  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape), IsOk());
   *shape.mutable_layout()->mutable_physical_shape() =
       ShapeUtil::MakeShape(F32, {6});
-  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape), tsl::testing::IsOk());
+  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape), IsOk());
   *shape.mutable_layout()
        ->mutable_physical_shape()
        ->mutable_layout()
        ->mutable_physical_shape() = ShapeUtil::MakeShape(S32, {10});
   EXPECT_THAT(
       LayoutUtil::ValidateLayoutInShape(shape),
-      tsl::testing::StatusIs(
+      StatusIs(
           tsl::error::INVALID_ARGUMENT,
-          ::testing::HasSubstr(
-              "layout has a physical_shape, but is not a sparse array")));
+          HasSubstr("layout has a physical_shape, but is not a sparse array")));
   shape.mutable_layout()->mutable_physical_shape()->clear_layout();
   shape.mutable_layout()->clear_dim_level_types();
   EXPECT_THAT(
       LayoutUtil::ValidateLayoutInShape(shape),
-      tsl::testing::StatusIs(
+      StatusIs(
           tsl::error::INVALID_ARGUMENT,
-          ::testing::HasSubstr(
-              "layout has a physical_shape, but is not a sparse array")));
+          HasSubstr("layout has a physical_shape, but is not a sparse array")));
   *shape.mutable_layout() =
       LayoutUtil::MakeLayout({1, 0}, {DIM_DENSE, DIM_DENSE}, {true, false});
   EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
-              tsl::testing::StatusIs(
-                  tsl::error::INVALID_ARGUMENT,
-                  ::testing::HasSubstr("layout dimension 1 has invalid level "
-                                       "encoding DIM_DENSE, non-unique")));
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("layout dimension 1 has invalid level "
+                                 "encoding DIM_DENSE, non-unique")));
 }
 
 TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {
@@ -521,7 +522,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              ::testing::HasSubstr("shape f32[1,2] does not have a layout"));
+              HasSubstr("shape f32[1,2] does not have a layout"));
   status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
   EXPECT_TRUE(status.ok());
@@ -534,8 +535,8 @@ TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
   EXPECT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              ::testing::HasSubstr("layout minor_to_major field "
-                                   "contains 3 elements, but shape is rank 1"));
+              HasSubstr("layout minor_to_major field "
+                        "contains 3 elements, but shape has 1 dimensions"));
 }
 
 TEST_F(LayoutUtilTest, MoveDimToMajor) {

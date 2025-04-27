@@ -24,12 +24,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -86,10 +86,8 @@ class CanShareBufferWrapper {
   const HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
 };
 
-class GpuCopyInsertionTest : public HloTestBase {
+class GpuCopyInsertionTest : public HloHardwareIndependentTestBase {
  public:
-  using HloTestBase::HloTestBase;
-
   CopyInsertion CreateCopyInsertion() const {
     return CopyInsertion(can_share_buffer_wrapper_.GetCanShareBuffer(),
                          /*use_region_based_live_range_analysis=*/0);
@@ -159,7 +157,7 @@ ENTRY main {
   EXPECT_EQ(CountCopies(*module), 2);
 }
 
-class FusionCanShareBufferHintTest : public HloTestBase {
+class FusionCanShareBufferHintTest : public HloHardwareIndependentTestBase {
  public:
   FusionCanShareBufferHintTest()
       : can_share_buffer_(can_share_buffer_wrapper_.GetCanShareBuffer()) {}

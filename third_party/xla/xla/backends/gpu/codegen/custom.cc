@@ -111,10 +111,10 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
   }
 
   // Walk through ShapeIndex to find the real starting point.
-  auto* start = const_cast<HloInstruction*>(&start_instr);
+  const auto* start = &start_instr;
   for (auto idx : shape_idx) {
     CHECK(start->shape().IsTuple());
-    start = const_cast<HloInstruction*>(start->operand(idx));
+    start = start->operand(idx);
   }
 
   if (const auto* param = DynCast<HloParameterInstruction>(start)) {
@@ -264,8 +264,9 @@ std::unique_ptr<HloModule> ExtractOffsetModule(
 std::unique_ptr<HloModule> ExtractWhileUpdateModule(
     const HloInstruction* while_op) {
   std::optional<int64_t> tuple_idx = GetLoopInductionVarTupleIdx(while_op);
-  CHECK(tuple_idx != std::nullopt)
-      << "Unable to get tuple idx for whileop " << while_op->ToString();
+  if (tuple_idx == std::nullopt) {
+    return nullptr;
+  }
   const HloInstruction* update =
       while_op->while_body()->root_instruction()->operand(*tuple_idx);
   return ExtractOffsetModule(update, while_op);
@@ -277,8 +278,9 @@ std::unique_ptr<HloModule> ExtractWhileUpdateModule(
 std::unique_ptr<HloModule> ExtractWhileInitModule(
     const HloInstruction* while_op) {
   std::optional<int64_t> tuple_idx = GetLoopInductionVarTupleIdx(while_op);
-  CHECK(tuple_idx != std::nullopt)
-      << "Unable to get tuple idx for while op: " << while_op->ToString();
+  if (tuple_idx == std::nullopt) {
+    return nullptr;
+  }
   const HloInstruction* init = while_op->operand(0)->operand(*tuple_idx);
   std::unique_ptr<HloModule> init_module = ExtractModule(
       /*instruction=*/init, /*height=*/-1, /*extract_selector=*/nullptr,

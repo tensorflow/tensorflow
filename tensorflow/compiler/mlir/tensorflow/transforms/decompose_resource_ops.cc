@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -32,10 +33,8 @@ namespace {
 // Returns subtype of `resource` if present. Otherwise an unranked tensor type
 // of `element_type` is returned.
 static Type GetResourceSubtypeOrDefault(Value resource, Type element_type) {
-  auto resource_type = resource.getType()
-                           .cast<TensorType>()
-                           .getElementType()
-                           .cast<ResourceType>();
+  auto resource_type = llvm::cast<tf_type::ResourceType>(
+      llvm::cast<TensorType>(resource.getType()).getElementType());
   if (resource_type.getSubtypes().size() == 1)
     return resource_type.getSubtypes().front();
 
@@ -43,19 +42,15 @@ static Type GetResourceSubtypeOrDefault(Value resource, Type element_type) {
 }
 
 static bool HasResourceSubtype(Value resource) {
-  return resource.getType()
-             .cast<TensorType>()
-             .getElementType()
-             .cast<ResourceType>()
+  return llvm::cast<tf_type::ResourceType>(
+             llvm::cast<TensorType>(resource.getType()).getElementType())
              .getSubtypes()
              .size() == 1;
 }
 
 static Type GetResourceSubtype(Value resource) {
-  return resource.getType()
-      .cast<TensorType>()
-      .getElementType()
-      .cast<ResourceType>()
+  return llvm::cast<tf_type::ResourceType>(
+             llvm::cast<TensorType>(resource.getType()).getElementType())
       .getSubtypes()
       .front();
 }

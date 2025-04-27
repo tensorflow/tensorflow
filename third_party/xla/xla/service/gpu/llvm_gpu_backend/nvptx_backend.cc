@@ -330,39 +330,4 @@ absl::StatusOr<std::string> CompileToPtx(
   }
   return ptx;
 }
-
-namespace {
-constexpr stream_executor::SemanticVersion kFallbackPtxVersion{6, 5, 0};
-constexpr stream_executor::SemanticVersion kMaxPtxVersion{8, 7, 0};
-}  // namespace
-
-stream_executor::SemanticVersion
-DetermineHighestSupportedPtxVersionFromCudaVersion(
-    stream_executor::SemanticVersion cuda_version) {
-  if (cuda_version < stream_executor::SemanticVersion{11, 0, 0}) {
-    // For everything below CUDA 11 we just fall back to PTX 6.5.
-    // We don't support CUDA below 11 anymore.
-    return kFallbackPtxVersion;
-  }
-
-  // Mapping determined from
-  // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#release-notes
-  // Examples:
-  // CUDA 11.0 -> PTX 7.0
-  // CUDA 11.1 -> PTX 7.1
-  // CUDA 12.0 -> PTX 8.0
-  // CUDA 12.4 -> PTX 8.4
-  // This versioning scheme is valid until CUDA 12.6
-  if (cuda_version < stream_executor::SemanticVersion{12, 6, 0}) {
-    return {cuda_version.major() - 4, cuda_version.minor(), 0};
-  }
-  // CUDA 12.6 -> PTX 8.5
-  // CUDA 12.8 -> PTX 8.7
-  if (cuda_version < stream_executor::SemanticVersion{12, 9, 0}) {
-    return {cuda_version.major() - 4, cuda_version.minor() - 1, 0};
-  }
-
-  // Return maximum known PTX version.
-  return kMaxPtxVersion;
-}
 }  // namespace xla::gpu::nvptx

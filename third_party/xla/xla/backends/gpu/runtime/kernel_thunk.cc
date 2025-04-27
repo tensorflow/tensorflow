@@ -20,9 +20,11 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/logging.h"
@@ -103,19 +106,29 @@ absl::Status KernelThunk::Initialize(const InitializeParams& params) {
 }
 
 static void PrintBufferContents(
-    se::Stream* stream, absl::Span<const se::DeviceMemoryBase> buffer_args) {
+    se::Stream* stream, absl::Span<const se::KernelArgument> kernel_args) {
   int input_idx = 0;
-  for (const se::DeviceMemoryBase& buf : buffer_args) {
-    auto host_buffer = std::make_unique<char[]>(buf.size());
-    CHECK_OK(stream->Memcpy(host_buffer.get(), buf, buf.size()));
-    CHECK_OK(stream->BlockHostUntilDone());
+  for (const auto& arg : kernel_args) {
+    if (std::holds_alternative<se::DeviceMemoryBase>(arg)) {
+      se::DeviceMemoryBase buf = std::get<se::DeviceMemoryBase>(arg);
 
-    std::string buffer_contents;
-    for (int i = 0; i < buf.size(); i++) {
-      absl::StrAppendFormat(&buffer_contents, "%x ",
-                            static_cast<unsigned>(host_buffer[i]));
+      auto host_buffer = std::make_unique<char[]>(buf.size());
+      CHECK_OK(stream->Memcpy(host_buffer.get(), buf, buf.size()));
+      CHECK_OK(stream->BlockHostUntilDone());
+
+      std::string buffer_contents;
+      for (int i = 0; i < buf.size(); i++) {
+        absl::StrAppendFormat(&buffer_contents, "%x ",
+                              static_cast<unsigned>(host_buffer[i]));
+      }
+      VLOG(100) << "BUF(" << input_idx++ << ") = " << buffer_contents;
+    } else {
+      se::TensorMap tensor_map = std::get<se::TensorMap>(arg);
+      VLOG(100) << "TENSOR_MAP(" << input_idx++ << ") = ";
+      for (auto element : tensor_map.storage) {
+        VLOG(100) << absl::StrFormat("%x ", static_cast<unsigned>(element));
+      }
     }
-    VLOG(100) << "BUF(" << input_idx++ << ") = " << buffer_contents;
   }
 }
 
@@ -141,38 +154,39 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   VLOG(3) << "Launching " << kernel->name();
-  absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
+  absl::InlinedVector<std::variant<se::DeviceMemoryBase, se::TensorMap>, 4>
+      kernel_args;
   stream_executor::gpu::TmaMetadata tma_metadata =
       tma_metadata_.value_or(stream_executor::gpu::TmaMetadata{});
   for (const auto& [idx, arg] : llvm::enumerate(args_)) {
     se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
     VLOG(3) << "  Arg: alloc #" << arg.index() << ", offset: " << arg.offset()
             << ": " << buf.opaque() << " (" << buf.size() << "B)";
+
     auto it = tma_metadata.arg_index_to_tma_info.find(idx);
     if (it != tma_metadata.arg_index_to_tma_info.end()) {
+      // TMA descriptor argument.
       stream_executor::gpu::TmaDescriptor tma_desc = it->second;
-      TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase tensor_map,
+      TF_ASSIGN_OR_RETURN(se::TensorMap tensor_map,
                           executor->CreateTensorMap(tma_desc, buf.opaque()));
       VLOG(3) << "  Using TensorMap for arg #" << arg.index() << ": "
-              << tma_desc.ToString() << "; buffer: " << tensor_map.opaque()
-              << " (" << tensor_map.size() << "B)";
-      buffer_args.push_back(tensor_map);
+              << tma_desc.ToString();
+      kernel_args.push_back(std::move(tensor_map));
     } else {
-      buffer_args.push_back(buf);
+      // Buffer argument.
+      kernel_args.push_back(buf);
     }
   }
 
   if (VLOG_IS_ON(100)) {
-    PrintBufferContents(stream, buffer_args);
+    PrintBufferContents(stream, kernel_args);
   }
 
-  if (cluster_dim.has_value()) {
-    return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
-                                 cluster_dim.value(), stream);
-  } else {
-    return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
-                                 stream);
-  }
+  return ExecuteKernelOnStream(
+      *kernel,
+      absl::Span<std::variant<se::DeviceMemoryBase, se::TensorMap>>(
+          kernel_args.data(), kernel_args.size()),
+      launch_dimensions, cluster_dim, stream);
 }
 
 //===----------------------------------------------------------------------===//
@@ -233,7 +247,11 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   if (VLOG_IS_ON(100)) {
-    PrintBufferContents(params.stream, buffer_args);
+    absl::InlinedVector<se::KernelArgument, 4> kernel_args;
+    for (const auto& arg : buffer_args) {
+      kernel_args.push_back(arg);
+    }
+    PrintBufferContents(params.stream, kernel_args);
   }
 
   se::KernelArgsDeviceMemoryArray args(buffer_args,

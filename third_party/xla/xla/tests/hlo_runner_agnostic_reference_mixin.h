@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/error_spec.h"
@@ -86,7 +87,8 @@ class HloRunnerAgnosticReferenceMixin : public T {
   // reference backend. Note that the program shape of the module must not be
   // modified.
   ::testing::AssertionResult RunAndCompare(
-      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+      std::unique_ptr<HloModule> module,
+      absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr) {
@@ -104,7 +106,7 @@ class HloRunnerAgnosticReferenceMixin : public T {
   // optimization.
   ::testing::AssertionResult RunAndCompareNoHloPasses(
       std::unique_ptr<HloModule> module,
-      const absl::Span<Literal* const> arguments,
+      const absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr) {
@@ -223,7 +225,8 @@ class HloRunnerAgnosticReferenceMixin : public T {
   // compares the results. Returns whether the results are near or equal. If any
   // error happens before the results are computed, returns the error status.
   absl::StatusOr<::testing::AssertionResult> RunAndCompareInternal(
-      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+      std::unique_ptr<HloModule> module,
+      absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr) {

@@ -101,13 +101,14 @@ void HloRunnerAgnosticTestBase::UpdateEntryComputationLayout(
 }
 
 absl::StatusOr<Literal> HloRunnerAgnosticTestBase::Execute(
-    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-    bool run_hlo_passes) {
+    std::unique_ptr<HloModule> module,
+    absl::Span<const Literal* const> arguments, bool run_hlo_passes) {
   return test_runner_->Execute(std::move(module), arguments, run_hlo_passes);
 }
 
 Literal HloRunnerAgnosticTestBase::ExecuteNoHloPasses(
-    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments) {
+    std::unique_ptr<HloModule> module,
+    absl::Span<const Literal* const> arguments) {
   absl::StatusOr<Literal> result = Execute(std::move(module), arguments,
                                            /*run_hlo_passes=*/false);
   CHECK_OK(result.status());
@@ -115,7 +116,8 @@ Literal HloRunnerAgnosticTestBase::ExecuteNoHloPasses(
 }
 
 Literal HloRunnerAgnosticTestBase::ExecuteAndTransfer(
-    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments) {
+    std::unique_ptr<HloModule> module,
+    absl::Span<const Literal* const> arguments) {
   absl::StatusOr<Literal> result =
       test_runner_->Execute(std::move(module), arguments, true, nullptr);
   CHECK_OK(result.status());
@@ -125,8 +127,9 @@ Literal HloRunnerAgnosticTestBase::ExecuteAndTransfer(
 absl::StatusOr<std::vector<Literal>>
 HloRunnerAgnosticTestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
-    const absl::Span<Literal* const> arguments, const int64_t num_replicas,
-    const bool use_threads, const bool run_hlo_passes) {
+    const absl::Span<const Literal* const> arguments,
+    const int64_t num_replicas, const bool use_threads,
+    const bool run_hlo_passes) {
   HloRunnerInterface::ReplicatedExecuteOptions options;
   options.num_replicas = num_replicas;
   options.arguments = {arguments.begin(), arguments.end()};
@@ -138,9 +141,9 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
 absl::StatusOr<std::vector<Literal>>
 HloRunnerAgnosticTestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
-    const absl::Span<Literal* const> arguments, const int64_t num_replicas,
-    DeviceAssignment* const device_assignment, const bool run_hlo_passes,
-    const bool use_threads) {
+    const absl::Span<const Literal* const> arguments,
+    const int64_t num_replicas, DeviceAssignment* const device_assignment,
+    const bool run_hlo_passes, const bool use_threads) {
   HloRunnerInterface::ReplicatedExecuteOptions options;
   options.num_replicas = num_replicas;
   options.arguments = {arguments.begin(), arguments.end()};
@@ -324,7 +327,7 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::RunAndCompareTwoModules(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-    const absl::Span<Literal* const> arguments,
+    const absl::Span<const Literal* const> arguments,
     const std::optional<ErrorSpec>& error, bool run_hlo_passes) {
   const absl::StatusOr<::testing::AssertionResult> result =
       RunAndCompareTwoModulesInternal(std::move(module_0), std::move(module_1),
@@ -414,7 +417,7 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 ::testing::AssertionResult HloRunnerAgnosticTestBase::RunAndCompareTwoModules(
     absl::string_view hlo_string_module_0,
     absl::string_view hlo_string_module_1,
-    const absl::Span<Literal* const> arguments,
+    const absl::Span<const Literal* const> arguments,
     const std::optional<ErrorSpec>& error, const bool run_hlo_passes) {
   auto module_0_or_status = ParseAndReturnVerifiedModule(hlo_string_module_0);
   if (!module_0_or_status.ok()) {
@@ -626,7 +629,7 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesInternalReplicated(
 absl::StatusOr<::testing::AssertionResult>
 HloRunnerAgnosticTestBase::RunAndCompareTwoModulesInternal(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-    const absl::Span<Literal* const> arguments,
+    const absl::Span<const Literal* const> arguments,
     const std::optional<ErrorSpec>& error, bool run_hlo_passes) {
   TF_RETURN_IF_ERROR(verifier().Run(module_0.get()).status());
   TF_RETURN_IF_ERROR(verifier().Run(module_1.get()).status());

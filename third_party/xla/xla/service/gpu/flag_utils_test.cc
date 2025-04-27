@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/latency_hiding_scheduler.h"
-#include "tsl/platform/test.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -44,6 +44,32 @@ TEST(FlagUtilsTest, IsPassEnabledAtOptimizationEffort) {
   EXPECT_TRUE(IsPassEnabledAtOptimizationEffort<HloDCE>(module));
 
   config.set_exec_time_optimization_effort(kExtraCollectiveOptimizations - 1);
+  module.set_config(config);
+
+  // Collective optimization passes.
+  EXPECT_FALSE(IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(module));
+  EXPECT_FALSE(
+      IsPassEnabledAtOptimizationEffort<DoubleBufferLoopUnrolling>(module));
+  EXPECT_FALSE(
+      IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module));
+}
+
+TEST(FlagUtilsTest, IsPassEnabledAtOptimizationLevel) {
+  HloModuleConfig config;
+  config.set_optimization_level(ExecutionOptions::EFFORT_O1);
+  HloModule module("test_module", config);
+
+  // Collective optimization passes.
+  EXPECT_TRUE(IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(module));
+  EXPECT_TRUE(
+      IsPassEnabledAtOptimizationEffort<DoubleBufferLoopUnrolling>(module));
+  EXPECT_TRUE(
+      IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module));
+
+  // Other passes.
+  EXPECT_TRUE(IsPassEnabledAtOptimizationEffort<HloDCE>(module));
+
+  config.set_optimization_level(ExecutionOptions::EFFORT_O0);
   module.set_config(config);
 
   // Collective optimization passes.

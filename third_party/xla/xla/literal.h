@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -292,6 +293,14 @@ class LiteralBase {
   void EachCell(
       absl::FunctionRef<void(absl::Span<const int64_t> indices, NativeT value)>
           per_cell) const;
+  template <typename NativeT>
+  // Like the above, but allows early return. At any time in the iteration, if
+  // the callback returns false, the iteration will be aborted and the function
+  // will return false. Otherwise it will iterate over all elements and return
+  // true.
+  bool EachCellUntilFailure(
+      absl::FunctionRef<bool(absl::Span<const int64_t> indices, NativeT value)>
+          per_cell) const;
 
   // Checks whether all of this literal's values are equal to the given scalar
   // literal.
@@ -428,7 +437,7 @@ class LiteralBase {
       }
     });
 
-    return std::move(state);
+    return state;
   }
 
   // Templated wrapper struct to control layout sensitivity during Absl::Hash.
@@ -874,7 +883,7 @@ class LiteralBase {
     // Gets/sets the buffer holding dynamic sizes.
     const DynamicSizeType* dynamic_size_buffer() const {
       DCHECK(LayoutUtil::IsDenseArray(*subshape_));
-      return reinterpret_cast<const DynamicSizeType*>(
+      return tsl::safe_reinterpret_cast<const DynamicSizeType*>(
           buffer() + dynamic_size_buffer_offset());
     }
     DynamicSizeType* dynamic_size_buffer() {
@@ -1815,8 +1824,8 @@ absl::Span<const NativeT> LiteralBase::Piece::data() const {
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
       << PrimitiveType_Name(subshape().element_type());
-  return absl::Span<const NativeT>(reinterpret_cast<const NativeT*>(buffer()),
-                                   element_count());
+  return absl::Span<const NativeT>(
+      tsl::safe_reinterpret_cast<const NativeT*>(buffer()), element_count());
 }
 
 template <typename NativeT>
@@ -1833,7 +1842,7 @@ absl::Span<NativeT> LiteralBase::Piece::data() {
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
       << PrimitiveType_Name(subshape().element_type());
-  return absl::Span<NativeT>(reinterpret_cast<NativeT*>(buffer()),
+  return absl::Span<NativeT>(tsl::safe_reinterpret_cast<NativeT*>(buffer()),
                              element_count());
 }
 
@@ -1960,10 +1969,21 @@ template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void LiteralBase::EachCell(
     absl::FunctionRef<void(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) const {
+  EachCellUntilFailure<NativeT>(
+      [=](absl::Span<const int64_t> indices, NativeT value) {
+        per_cell(indices, value);
+        return true;
+      });
+}
+
+template <typename NativeT>
+TF_ATTRIBUTE_NOINLINE bool LiteralBase::EachCellUntilFailure(
+    absl::FunctionRef<bool(absl::Span<const int64_t> indices, NativeT value)>
+        per_cell) const {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   if (ShapeUtil::IsZeroElementArray(shape())) {
-    return;
+    return true;
   }
   std::vector<int64_t> indices(shape().dimensions().size(), 0);
 
@@ -1972,8 +1992,9 @@ TF_ATTRIBUTE_NOINLINE void LiteralBase::EachCell(
     shape_dynamic.set_dimensions(i, GetDynamicSize(i));
   }
   do {
-    per_cell(indices, Get<NativeT>(indices));
+    if (!per_cell(indices, Get<NativeT>(indices))) return false;
   } while (IndexUtil::BumpIndices(shape_dynamic, absl::MakeSpan(indices)));
+  return true;
 }
 
 template <typename NativeT>

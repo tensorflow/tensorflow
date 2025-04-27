@@ -147,6 +147,8 @@ absl::StatusOr<bool> WhileLoopPipelineUnroller::Run(
       // Find the original bodies root after inlining. This is the inputs for
       // the next (unrolled) loop iteration.
       input_tuple = inline_map[loop_step->root_instruction()];
+      input_tuple = unrolled_body->AddInstruction(HloInstruction::CreateUnary(
+          input_tuple->shape(), HloOpcode::kOptimizationBarrier, input_tuple));
       original_roots.push_back(input_tuple);
     }
     // The final original root is now the root of the unrolled loop.

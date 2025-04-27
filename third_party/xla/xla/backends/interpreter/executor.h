@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
@@ -62,7 +63,7 @@ class InterpreterStream : public host::HostStream {
 
   absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
                       uint64_t size) override {
-    void *src_mem = const_cast<void *>(gpu_src.opaque());
+    void *src_mem = gpu_src.opaque();
     EnqueueTask(
         [host_dst, src_mem, size]() { memcpy(host_dst, src_mem, size); });
     return BlockUntilDone();

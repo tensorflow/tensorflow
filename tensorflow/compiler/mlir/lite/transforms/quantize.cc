@@ -236,7 +236,7 @@ class StrictQuantizationPattern : public RewritePattern {
       inputs.reserve(quantizing_op->getNumOperands());
       for (auto operand : quantizing_op->getOperands()) {
         Type operand_type = operand.getType();
-        if (operand_type.isa<NoneType>()) {
+        if (mlir::isa<NoneType>(operand_type)) {
           inputs.push_back(operand);
           continue;
         }
@@ -292,7 +292,7 @@ class StrictQuantizationPattern : public RewritePattern {
           Type result_type = result.getType();
           // Add this to the test coverage once we create test ops with none
           // type results.
-          if (result_type.isa<NoneType>()) {
+          if (mlir::isa<NoneType>(result_type)) {
             outputs_replaced.insert({result, enumerated_result.index()});
             output_types.push_back(result_type);
             continue;
@@ -582,7 +582,13 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
         quantized_attr = quant::Quantize(attr, qtype.getValue());
       }
       if (quantized_attr) {
-        rewriter.replaceOpWithNewOp<QConstOp>(op, qtype, quantized_attr);
+        auto qconst_op =
+            rewriter.create<QConstOp>(op.getLoc(), qtype, quantized_attr);
+        if (auto volatile_attr = op->getAttr(quant::kVolatileOpAttrName)) {
+          qconst_op->setAttr(quant::kVolatileOpAttrName, volatile_attr);
+        }
+        op.replaceAllUsesWith(qconst_op.getOutput());
+        rewriter.eraseOp(op);
         return success();
       }
     }

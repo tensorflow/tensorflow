@@ -20,11 +20,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "llvm/IR/LLVMContext.h"
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
+#include "mlir/IR/Value.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
@@ -33,36 +36,37 @@ namespace xla {
 namespace cpu {
 
 // Generic scatter fusion. Lowers to LLVM via MLIR.
-class CpuScatterFusion : public CpuFusionEmitterBase {
+class CpuScatterFusion final : public KernelEmitter {
  public:
-  explicit CpuScatterFusion(mlir::MLIRContext* mlir_context,
-                            llvm::LLVMContext* llvm_context,
-                            const BufferAssignment& buffer_assignment,
+  explicit CpuScatterFusion(const BufferAssignment& buffer_assignment,
                             const HloFusionInstruction* fusion);
 
-  int64_t num_threads() const override;
+  absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
 
-  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override;
-
-  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const override;
-
-  std::string BackendExtraOptions() override;
-
- protected:
+ private:
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
       const emitters::CallTargetProvider& call_targets,
       mlir::func::FuncOp entry_function,
-      const HloFusionInstruction& fusion) const override;
+      const HloFusionInstruction& fusion) const;
 
   std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
-      mlir::MLIRContext* mlir_context) const override;
+      mlir::MLIRContext* mlir_context) const;
 
- private:
+  mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
+
+  // These two methods do not seem to be used @ecg?
+  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
+      int64_t root_index, mlir::MLIRContext* ctx) const;
+
+  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
+      int64_t root_index, int64_t hero_operand_index,
+      mlir::MLIRContext* ctx) const;
+
+  const BufferAssignment& buffer_assignment_;
+  const HloFusionInstruction* fusion_;
+
   int64_t vector_size_;
   int64_t num_threads_;
 };

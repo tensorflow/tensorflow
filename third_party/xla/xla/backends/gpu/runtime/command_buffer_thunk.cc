@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -26,7 +25,6 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -35,10 +33,10 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/profiler_lock.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
@@ -57,7 +55,7 @@ CommandBufferThunk::ExecutorCommandBuffer::ExecutorCommandBuffer(
     : command_buffer(std::move(command_buffer)) {}
 
 CommandBufferThunk::CommandBufferThunk(
-    CommandBufferCmdSequence commands, ThunkInfo thunk_info,
+    CommandBufferCmdExecutor commands, ThunkInfo thunk_info,
     std::unique_ptr<SequentialThunk> thunks,
     bool enable_command_buffers_during_profiling)
     : Thunk(Thunk::kCommandBuffer, std::move(thunk_info)),
@@ -83,7 +81,7 @@ CommandBufferThunk::CommandBufferThunk(
 }
 
 bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
-    const CommandBufferCmdSequence& commands,
+    const CommandBufferCmdExecutor& commands,
     const Thunk::ExecuteParams& params) {
   if (commands.force_update()) {
     return true;
@@ -298,7 +296,7 @@ struct CommandBufferThunk::GlobalState {
 };
 
 CommandBufferThunk::GlobalState* CommandBufferThunk::GetGlobalState() {
-  static auto* global_state = new GlobalState();
+  static auto* const global_state = new GlobalState();
   return global_state;
 }
 
@@ -348,4 +346,11 @@ void CommandBufferThunk::ForAllThunks(
     thunks_->ForAllThunks(fn);
   }
 }
+
+std::string CommandBufferThunk::ToString(int indent) const {
+  std::string result = "\n";
+  absl::StrAppend(&result, thunks_->ToString(indent + 1));
+  return result;
+}
+
 }  // namespace xla::gpu

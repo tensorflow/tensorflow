@@ -64,6 +64,7 @@ cc_library(
         "//xla/service/gpu/transforms:collective_permute_valid_iteration_annotator",
         "//xla/service/gpu/transforms:scatter_expander",
         "//xla/service/gpu/transforms:scatter_slice_simplifier",
+        "//xla/service/spmd:sharding_format_picker",
         "//xla/service/spmd/shardy:shardy_xla_pass",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
@@ -137,7 +138,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:ir_headers",
     ] + if_gpu_is_configured([
-        "//xla/service:gpu_plugin",
+        "//xla/service:gpu_plugin_without_collectives",
         "//xla/service/gpu:gpu_executable",
     ]) + if_cuda_is_configured([
         "//xla/stream_executor:cuda_platform",

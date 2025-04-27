@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -162,6 +163,7 @@ class PriorityFusionQueue {
         fusion_analysis_cache_(fusion_analysis_cache),
         fusion_deduplication_cache_(fusion_deduplication_cache),
         fusion_info_cache_(*device_info_),
+        reachability_(HloDfsReachability::Build(computation)),
         triton_heroless_fusion_enabled_(triton_heroless_fusion_enabled) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
     TF_CHECK_OK(computation_->Accept(&cost_analysis_));
@@ -253,6 +255,10 @@ class PriorityFusionQueue {
       reverse_map_.erase(current_producer_);
 
       current_consumers_ = current_producer_->users();
+      auto preferred_consumer = GetPreferredConsumer(current_producer_);
+      if (preferred_consumer) {
+        current_consumers_ = {*preferred_consumer};
+      }
 
       if (HloPredicateIsOp<HloOpcode::kBitcast>(current_producer_)) {
         // We don't check if bitcasts can be fused with all consumers, so we
@@ -264,6 +270,15 @@ class PriorityFusionQueue {
     }
 
     return !current_consumers_.empty();
+  }
+
+  std::optional<HloInstruction*> GetPreferredConsumer(
+      HloInstruction* producer) {
+    auto it = preferred_consumer_.find(producer);
+    if (it == preferred_consumer_.end()) {
+      return std::nullopt;
+    }
+    return it->second;
   }
 
   absl::Status UpdatePerformanceModelCache(HloInstruction* producer) {
@@ -390,9 +405,19 @@ class PriorityFusionQueue {
   }
 
   // Updates data for the new fusion instruction and its users and operands.
+  // Both `original_producer` and `original_consumer` could have been removed
+  // already from the computation, waiting for deletion. We can still
+  // dereference them though.
   void OnFusingInstruction(HloInstruction* fusion,
                            HloInstruction* original_producer,
-                           HloInstruction* original_consumer) {
+                           HloInstruction* original_consumer,
+                           int64_t original_consumer_operand_index) {
+    bool creates_multi_output_fusion =
+        preferred_consumer_.contains(original_producer);
+    fusion_deduplication_cache_.UpdateFusedInstructionId(
+        fusion, original_producer, original_consumer,
+        original_consumer_operand_index, creates_multi_output_fusion);
+
     if (fusion_process_dump_) {
       auto* fusion_step =
           fusion_process_dump_->add_fusion_steps()->mutable_fusion();
@@ -411,12 +436,23 @@ class PriorityFusionQueue {
           *fusion);
     }
 
-    // The original consumer was replaced with the fusion, but it's pointer can
-    // still be referenced somewhere, for example, in to_update_priority_.
-    // Priority recomputation is called before DCE. Remove all references to
-    // the original consumer here.
-    if (fusion != original_consumer) {
+    if (fusion == original_consumer) {
+      // We need to check again whether we can use `original_consumer` as a
+      // producer for a ProducerConsumer multi-output fusion.
+      preferred_consumer_.erase(original_consumer);
+    } else {
+      // The original consumer was replaced with the fusion, but it's pointer
+      // can still be referenced somewhere, for example, in to_update_priority_.
+      // Priority recomputation is called before DCE. Remove all references to
+      // the original consumer here.
+      reachability_->OnInstructionReplaced(/*previous=*/original_consumer,
+                                           /*now=*/fusion);
       RemoveInstruction(original_consumer);
+    }
+    if (creates_multi_output_fusion) {
+      // After a multi-output fusion was created, we need to rebuild the
+      // HloDfsReachability data structure.
+      reachability_ = HloDfsReachability::Build(computation_);
     }
 
     // Collect the instructions whose priorities need to be updated.
@@ -433,10 +469,21 @@ class PriorityFusionQueue {
       }
 
       to_update_priority_.insert(operand);
-      // update the consumers of this operand that we care about,
-      // so we can do incremental update of the operand
+      // Update the consumers of this operand that we care about,
+      // so we can do incremental update of the operand.
       operands_to_new_consumers_[operand].push_back(fusion);
+
+      // We may need to reset `preferred_consumer_`, as we don't know yet
+      // whether that fusion would still be valid.
+      auto it = preferred_consumer_.find(operand);
+      if (it != preferred_consumer_.end() && it->second == original_consumer) {
+        preferred_consumer_.erase(it);
+      }
     }
+    // TODO(b/390559452): For multi-output fusion, we would also need to update
+    // the priorities of the other consumers of `producer` with which we did not
+    // fuse. For now, as we only allow multi-output fusion if there is just a
+    // single fusible consumer, this is not needed.
     to_update_priority_.insert(fusion);
   }
 
@@ -451,6 +498,7 @@ class PriorityFusionQueue {
     }
     producer_priority_queue_.erase(reverse_it->second);
     reverse_map_.erase(reverse_it);
+    preferred_consumer_.erase(instruction);
   }
 
   // Returns a map from consumer to BlockLevelParameters. This is used to
@@ -485,9 +533,24 @@ class PriorityFusionQueue {
       return -absl::InfiniteDuration();
     }
 
-    // Don't fuse if we can't fuse in all users.
     if (auto fusion_decision = CanFuseWithAllNonBitcastUsers(producer);
         !fusion_decision) {
+      // If we cannot fuse `producer` into all non-bitcast consumers, try
+      // Triton multi-output fusion next.
+      std::vector<HloInstruction*> possible_consumers =
+          FindPossibleConsumersForTritonMultiOutputFusion(producer);
+      if (CanFuseTritonMultiOutputWithSingleUser(producer,
+                                                 possible_consumers)) {
+        GpuPerformanceModel::RunTimes run_times =
+            GpuPerformanceModel::EstimateRunTimes(
+                producer, *device_info_, &cost_analysis_,
+                GpuPerformanceModelOptions::Default(
+                    &fusion_analysis_cache_, &gpu_performance_model_cache_),
+                /*fused_consumers=*/possible_consumers);
+        preferred_consumer_[producer] = possible_consumers[0];
+        return run_times.time_unfused - run_times.time_fused;
+      }
+      // Don't fuse if we can't fuse in all users.
       if (fusion_process_dump_) {
         absl::MutexLock lock(&fusion_process_dump_mutex_);
         auto* step = fusion_process_dump_->add_fusion_steps()
@@ -564,10 +627,12 @@ class PriorityFusionQueue {
   }
 
   TiledRunTimeDataOrError GetTiledRunTimeDataCached(
-      const HloInstruction* producer, const HloInstruction* consumer) {
+      const HloInstruction* producer, const HloInstruction* consumer,
+      bool use_multi_output_fusion = false) {
     FusionDeduplicationCache::FusionId fusion_id = [&]() {
       absl::MutexLock lock(&fusion_deduplication_cache_mutex_);
-      return fusion_deduplication_cache_.GetFusionId(producer, consumer);
+      return fusion_deduplication_cache_.GetFusionId(producer, consumer,
+                                                     use_multi_output_fusion);
     }();
 
     {
@@ -579,7 +644,8 @@ class PriorityFusionQueue {
       }
     }
 
-    auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
+    auto fusion = HloFusionAdaptor::ForProducerConsumer(
+        producer, consumer, use_multi_output_fusion);
 
     absl::StatusOr<TiledRunTimeDataOrError> result_or_status =
         gpu_indexing_performance_model_.TryFindBestTilingForFusion(*fusion);
@@ -611,7 +677,8 @@ class PriorityFusionQueue {
   }
 
   FusionDecision CanFuseTriton(HloInstruction* producer,
-                               HloInstruction* consumer) {
+                               HloInstruction* consumer,
+                               bool use_multi_output_fusion = false) {
     if (!IsGenericTritonFusion(*producer) &&
         !IsGenericTritonFusion(*consumer) && !triton_heroless_fusion_enabled_) {
       return FusionDecision::Forbid("triton heroless fusion is not enabled");
@@ -626,7 +693,7 @@ class PriorityFusionQueue {
     }
 
     TiledRunTimeDataOrError tiled_run_time_data_or_error =
-        GetTiledRunTimeDataCached(producer, consumer);
+        GetTiledRunTimeDataCached(producer, consumer, use_multi_output_fusion);
 
     if (const auto* fusion_decision =
             std::get_if<FusionDecision>(&tiled_run_time_data_or_error)) {
@@ -638,9 +705,14 @@ class PriorityFusionQueue {
 
     // This is our way to pass the runtime estimate to the CalculatePriorities()
     // function.
+    // This is somewhat brittle as we currently don't distinguish between
+    // ProducerConsumer fusion where we allow multi-output fusions to be formed,
+    // and ProducerConsumer fusion where we don't allow it. Same for the
+    // `block_level_parameters_cache_` down below. Currently we only try out
+    // multi-output fusion if we cannot fuse into all consumers, and it is tried
+    // last, so the final cached value should be what we want.
     gpu_performance_model_cache_.Set(
         *producer, *consumer, tiled_run_time_data.runtime_data.exec_time);
-
     {
       absl::MutexLock lock(&block_level_parameters_cache_mutex_);
       block_level_parameters_cache_[producer][consumer] =
@@ -780,6 +852,63 @@ class PriorityFusionQueue {
     return fusion_decision;
   }
 
+  // Checks whether any operand of `consumer` is reachable from `producer`
+  // following user edges in the HLO graph. If that is the case, we would
+  // introduce a cycle by fusing `producer` into `consumer`.
+  bool OperandReachableFromProducer(const HloInstruction* producer,
+                                    const HloInstruction* consumer) {
+    for (const auto* consumer_operand : consumer->operands()) {
+      CHECK(reachability_->IsPresent(consumer_operand) &&
+            reachability_->IsPresent(producer))
+          << "Reachability map is incomplete. This should never "
+             "happen.";
+      if (producer != consumer_operand &&
+          reachability_->IsReachable(producer, consumer_operand)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  std::vector<HloInstruction*> FindPossibleConsumersForTritonMultiOutputFusion(
+      HloInstruction* producer) {
+    bool triton_multi_output_fusion_enabled =
+        producer->GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_unsupported_enable_triton_multi_output_fusion();
+    if (!triton_multi_output_fusion_enabled) {
+      return {};
+    }
+    std::vector<HloInstruction*> possible_consumers;
+    for (const auto& user : producer->users()) {
+      if (HloPredicateIsOp<HloOpcode::kBitcast>(user)) {
+        continue;
+      }
+      if (CanFuseTriton(producer, user, /*use_multi_output_fusion=*/true) &&
+          !OperandReachableFromProducer(producer, user)) {
+        possible_consumers.push_back(user);
+      }
+    }
+    return possible_consumers;
+  }
+
+  FusionDecision CanFuseTritonMultiOutputWithSingleUser(
+      HloInstruction* producer,
+      const std::vector<HloInstruction*>& possible_consumers) {
+    if (possible_consumers.empty()) {
+      return FusionDecision::Forbid("No users to fuse");
+    }
+
+    if (possible_consumers.size() != 1) {
+      // TODO(b/390559452): If there are several possible consumers to fuse
+      // with, decide which one is best. Also depends on what further fusions
+      // might be possible, needs checking the reachability graph.
+      return FusionDecision::Forbid("more than one consumer to fuse with");
+    }
+    return FusionDecision::Allow();
+  }
+
   FusionDecision CanFuseWithAllNonBitcastUsers(HloInstruction* producer) {
     if (producer->users().empty()) {
       return FusionDecision::Forbid("No users to fuse");
@@ -824,6 +953,11 @@ class PriorityFusionQueue {
 
   // A reverse map that helps find an instruction in the priority queue.
   absl::flat_hash_map<HloInstruction*, PriorityQueue::iterator> reverse_map_;
+
+  // Stores a mapping from the producer to the preferred consumer to fuse into.
+  // This is only used in case that we want to use ProducerConsumer multi-output
+  // fusion.
+  absl::flat_hash_map<HloInstruction*, HloInstruction*> preferred_consumer_;
 
   // The current producer being visited.
   HloInstruction* current_producer_;
@@ -879,6 +1013,10 @@ class PriorityFusionQueue {
   // Cache for `FusionFitsInBudget` to avoid recomputing expensive properties
   // like shared memory usage or number of unnested reductions of fusion nodes.
   FusionInfoCache fusion_info_cache_;
+
+  // Allows evaluation of whether an HloInstruction is an ancestor of another
+  // HloInstruction.
+  std::unique_ptr<HloDfsReachability> reachability_;
 
   // If true, redirect all fusion decisions to Triton fusion.
   bool triton_heroless_fusion_enabled_;
@@ -984,7 +1122,12 @@ absl::StatusOr<bool> PriorityFusion::Run(
           block_level_parameters_map =
               fusion_queue->GetBlockLevelParametersMap(producer);
 
-      for (auto* consumer : fusion_queue->current_consumers()) {
+      auto preferred_consumer = fusion_queue->GetPreferredConsumer(producer);
+      std::vector<HloInstruction*> consumers =
+          fusion_queue->current_consumers();
+      bool use_multi_output_fusion = preferred_consumer.has_value();
+
+      for (auto* consumer : consumers) {
         // Don't fuse into single bitcasts. We ignore them in the check
         // CanFuseWithAllNonBitcastUsers(), so we need to check it here.
         if (HloPredicateIsOp<HloOpcode::kBitcast>(consumer)) {
@@ -998,12 +1141,8 @@ absl::StatusOr<bool> PriorityFusion::Run(
         int64_t consumer_operand_index = consumer->operand_index(producer);
 
         fusion_queue->PreFusion(producer, consumer);
-        auto fusion_instruction = Fuse(producer, consumer);
-        fusion_deduplication_cache.UpdateFusedInstructionId(
-            fusion_instruction, producer, consumer, consumer_operand_index);
-        fusion_queue->OnFusingInstruction(fusion_instruction, producer,
-                                          consumer);
-
+        auto fusion_instruction =
+            Fuse(producer, consumer, use_multi_output_fusion);
         auto backend_config_it = block_level_parameters_map.find(consumer);
         if (backend_config_it != block_level_parameters_map.end()) {
           TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(
@@ -1011,20 +1150,25 @@ absl::StatusOr<bool> PriorityFusion::Run(
           fusion_instruction->set_fusion_kind(
               HloInstruction::FusionKind::kCustom);
         }
+        fusion_queue->OnFusingInstruction(fusion_instruction, producer,
+                                          consumer, consumer_operand_index);
 
         changed = true;
       }
 
       fusion_queue->ComputeRuntimesOfRemovedConsumers();
-      if (producer->user_count() == 0) {
+      if (use_multi_output_fusion || producer->user_count() == 0) {
         fusion_queue->InvalidateCaches(producer);
-        producer->DetachFromOperandsAndUsers();
         fusion_queue->RemoveInstruction(producer);
-        // Remove from computation.
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(producer));
+        // When we use ProducerConsumer multi-output fusion, `producer` will
+        // have been removed already.
+        if (!use_multi_output_fusion) {
+          producer->DetachFromOperandsAndUsers();
+          TF_RETURN_IF_ERROR(computation->RemoveInstruction(producer));
+        }
       }
 
-      for (auto* consumer : fusion_queue->current_consumers()) {
+      for (auto* consumer : consumers) {
         fusion_queue->InvalidateCaches(consumer);
       }
       TF_RETURN_IF_ERROR(fusion_queue->UpdatePriorities());
@@ -1094,7 +1238,8 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
 }
 
 HloInstruction* PriorityFusion::Fuse(HloInstruction* producer,
-                                     HloInstruction* consumer) {
+                                     HloInstruction* consumer,
+                                     bool use_multi_output_fusion) {
   VLOG(2) << "Fusing " << producer->ToString() << " into "
           << consumer->ToString();
 
@@ -1115,9 +1260,22 @@ HloInstruction* PriorityFusion::Fuse(HloInstruction* producer,
       /*skip_async_execution_thread_overwrite=*/false);
 
   if (HloPredicateIsOp<HloOpcode::kFusion>(producer)) {
-    fusion_instruction->MergeFusionInstruction(producer);
+    if (use_multi_output_fusion) {
+      fusion_instruction->MergeFusionInstructionIntoMultiOutput(producer);
+    } else {
+      fusion_instruction->MergeFusionInstruction(producer);
+    }
   } else {
-    fusion_instruction->FuseInstruction(producer);
+    if (use_multi_output_fusion) {
+      fusion_instruction->FuseInstructionIntoMultiOutput(producer);
+      // MergeFusionInstructionIntoMultiOutput already removes `producer` from
+      // the computation. Do the same here, so that we have the invariant that
+      // the producer has been cleaned up when multi-output fusion is used.
+      CHECK_EQ(0, producer->user_count());
+      TF_CHECK_OK(producer->parent()->RemoveInstruction(producer));
+    } else {
+      fusion_instruction->FuseInstruction(producer);
+    }
   }
 
   if (fusion_instruction != consumer) {

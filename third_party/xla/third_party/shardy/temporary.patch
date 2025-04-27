@@ -1,611 +1,772 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 2cd88ea..509398d 100644
+index 5a85039..61dd4cf 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,591 +1 @@
+@@ -1,34 +1,19 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
----- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
--+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
--@@ -25557,31 +25557,8 @@
--   if (SDValue NarrowBOp = narrowExtractedVectorBinOp(N, DAG, LegalOperations))
--     return NarrowBOp;
-- 
---  // If only EXTRACT_SUBVECTOR nodes use the source vector we can
---  // simplify it based on the (valid) extractions.
---  if (!V.getValueType().isScalableVector() &&
---      llvm::all_of(V->users(), [&](SDNode *Use) {
---        return Use->getOpcode() == ISD::EXTRACT_SUBVECTOR &&
---               Use->getOperand(0) == V;
---      })) {
---    unsigned NumElts = V.getValueType().getVectorNumElements();
---    APInt DemandedElts = APInt::getZero(NumElts);
---    for (SDNode *User : V->users()) {
---      unsigned ExtIdx = User->getConstantOperandVal(1);
---      unsigned NumSubElts = User->getValueType(0).getVectorNumElements();
---      DemandedElts.setBits(ExtIdx, ExtIdx + NumSubElts);
---    }
---    if (SimplifyDemandedVectorElts(V, DemandedElts, /*AssumeSingleUse=*/true)) {
---      // We simplified the vector operand of this extract subvector. If this
---      // extract is not dead, visit it again so it is folded properly.
---      if (N->getOpcode() != ISD::DELETED_NODE)
---        AddToWorklist(N);
---      return SDValue(N, 0);
---    }
---  } else {
---    if (SimplifyDemandedVectorElts(SDValue(N, 0)))
---      return SDValue(N, 0);
---  }
--+  if (SimplifyDemandedVectorElts(SDValue(N, 0)))
--+    return SDValue(N, 0);
-- 
--   return SDValue();
-- }
--diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp
----- a/llvm/lib/Target/X86/X86ISelLowering.cpp
--+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp
--@@ -58823,8 +58823,6 @@
-- 
--   uint64_t IdxVal = N->getConstantOperandVal(2);
--   MVT SubVecVT = SubVec.getSimpleValueType();
---  int VecNumElts = OpVT.getVectorNumElements();
---  int SubVecNumElts = SubVecVT.getVectorNumElements();
-- 
--   if (Vec.isUndef() && SubVec.isUndef())
--     return DAG.getUNDEF(OpVT);
--@@ -58884,9 +58882,10 @@
--       SubVec.getOperand(0).getSimpleValueType() == OpVT &&
--       (IdxVal != 0 ||
--        !(Vec.isUndef() || ISD::isBuildVectorAllZeros(Vec.getNode())))) {
---    SDValue ExtSrc = SubVec.getOperand(0);
--     int ExtIdxVal = SubVec.getConstantOperandVal(1);
--     if (ExtIdxVal != 0) {
--+      int VecNumElts = OpVT.getVectorNumElements();
--+      int SubVecNumElts = SubVecVT.getVectorNumElements();
--       SmallVector<int, 64> Mask(VecNumElts);
--       // First create an identity shuffle mask.
--       for (int i = 0; i != VecNumElts; ++i)
--@@ -58894,24 +58893,8 @@
--       // Now insert the extracted portion.
--       for (int i = 0; i != SubVecNumElts; ++i)
--         Mask[i + IdxVal] = i + ExtIdxVal + VecNumElts;
---      return DAG.getVectorShuffle(OpVT, dl, Vec, ExtSrc, Mask);
---    }
---    // If we're broadcasting, see if we can use a blend instead of
---    // extract/insert pair. For subvector broadcasts, we must ensure that the
---    // subvector is aligned with the insertion/extractions.
---    if (ExtSrc.getOpcode() == X86ISD::VBROADCAST ||
---        ExtSrc.getOpcode() == X86ISD::VBROADCAST_LOAD ||
---        (ExtSrc.getOpcode() == X86ISD::SUBV_BROADCAST_LOAD &&
---         (ExtIdxVal % SubVecNumElts) == 0 && (IdxVal % SubVecNumElts) == 0 &&
---         cast<MemIntrinsicSDNode>(ExtSrc)->getMemoryVT() == SubVecVT)) {
---      SmallVector<int, 64> Mask(VecNumElts);
---      // First create an identity shuffle mask.
---      for (int i = 0; i != VecNumElts; ++i)
---        Mask[i] = i;
---      // Now blend the broadcast.
---      for (int i = 0; i != SubVecNumElts; ++i)
---        Mask[i + IdxVal] = i + IdxVal + VecNumElts;
---      return DAG.getVectorShuffle(OpVT, dl, Vec, ExtSrc, Mask);
--+
--+      return DAG.getVectorShuffle(OpVT, dl, Vec, SubVec.getOperand(0), Mask);
--     }
+-diff -ruN --strip-trailing-cr a/clang/lib/AST/ItaniumMangle.cpp b/clang/lib/AST/ItaniumMangle.cpp
+---- a/clang/lib/AST/ItaniumMangle.cpp
+-+++ b/clang/lib/AST/ItaniumMangle.cpp
+-@@ -1405,16 +1405,6 @@
+-     //   - a template template parameter with arguments
+-     // In all of these cases, we should have no prefix.
+-     if (NestedNameSpecifier *Prefix = qualifier->getPrefix()) {
+--      if (const auto *DTST =
+--              dyn_cast<DependentTemplateSpecializationType>(type)) {
+--        Out << "srN";
+--        TemplateName Template = getASTContext().getDependentTemplateName(
+--            {Prefix, DTST->getDependentTemplateName().getName(),
+--             /*HasTemplateKeyword=*/true});
+--        mangleTemplatePrefix(Template);
+--        mangleTemplateArgs(Template, DTST->template_arguments());
+--        break;
+--      }
+-       mangleUnresolvedPrefix(Prefix,
+-                              /*recursive=*/true);
+-     } else {
+-@@ -2618,7 +2608,8 @@
+-         cast<DependentTemplateSpecializationType>(Ty);
+-     TemplateName Template = getASTContext().getDependentTemplateName(
+-         DTST->getDependentTemplateName());
+--    mangleTemplatePrefix(Template);
+-+    const DependentTemplateStorage &S = DTST->getDependentTemplateName();
+-+    mangleSourceName(S.getName().getIdentifier());
+-     mangleTemplateArgs(Template, DTST->template_arguments());
+-     break;
 -   }
++diff -ruN --strip-trailing-cr a/clang/lib/Basic/Targets/SPIR.h b/clang/lib/Basic/Targets/SPIR.h
++--- a/clang/lib/Basic/Targets/SPIR.h
+++++ b/clang/lib/Basic/Targets/SPIR.h
++@@ -57,8 +57,9 @@
++ // Used by both the SPIR and SPIR-V targets.
++ static const unsigned SPIRDefIsGenMap[] = {
++     4, // Default
++-    // OpenCL address space values for this map are dummy and they can't be used
++-    0, // opencl_global
+++    // Some OpenCL address space values for this map are dummy and they can't be
+++    // used
+++    1, // opencl_global
++     0, // opencl_local
++     0, // opencl_constant
++     0, // opencl_private
+ diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.cpp b/clang/lib/CodeGen/CGDebugInfo.cpp
+ --- a/clang/lib/CodeGen/CGDebugInfo.cpp
+ +++ b/clang/lib/CodeGen/CGDebugInfo.cpp
+@@ -96,7 +81,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.h b/clang/lib/Code
+ diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.cpp b/clang/lib/CodeGen/CodeGenModule.cpp
+ --- a/clang/lib/CodeGen/CodeGenModule.cpp
+ +++ b/clang/lib/CodeGen/CodeGenModule.cpp
+-@@ -5812,15 +5812,24 @@
++@@ -5837,15 +5837,24 @@
+      }
+  }
+  
+@@ -124,6 +109,45 @@ diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.cpp b/clang/lib/
+      }
+  }
+  
++diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReaderDecl.cpp b/clang/lib/Serialization/ASTReaderDecl.cpp
++--- a/clang/lib/Serialization/ASTReaderDecl.cpp
+++++ b/clang/lib/Serialization/ASTReaderDecl.cpp
++@@ -1076,6 +1076,8 @@
++   FD->setFriendConstraintRefersToEnclosingTemplate(
++       FunctionDeclBits.getNextBit());
++   FD->setUsesSEHTry(FunctionDeclBits.getNextBit());
+++  FD->setIsDestroyingOperatorDelete(FunctionDeclBits.getNextBit());
+++  FD->setIsTypeAwareOperatorNewOrDelete(FunctionDeclBits.getNextBit());
++ 
++   FD->EndRangeLoc = readSourceLocation();
++   if (FD->isExplicitlyDefaulted())
++diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriterDecl.cpp b/clang/lib/Serialization/ASTWriterDecl.cpp
++--- a/clang/lib/Serialization/ASTWriterDecl.cpp
+++++ b/clang/lib/Serialization/ASTWriterDecl.cpp
++@@ -847,6 +847,8 @@
++   FunctionDeclBits.addBit(D->isInstantiatedFromMemberTemplate());
++   FunctionDeclBits.addBit(D->FriendConstraintRefersToEnclosingTemplate());
++   FunctionDeclBits.addBit(D->usesSEHTry());
+++  FunctionDeclBits.addBit(D->isDestroyingOperatorDelete());
+++  FunctionDeclBits.addBit(D->isTypeAwareOperatorNewOrDelete());
++   Record.push_back(FunctionDeclBits);
++ 
++   Record.AddSourceLocation(D->getEndLoc());
++diff -ruN --strip-trailing-cr a/clang/test/CodeGenCUDASPIRV/printf.cu b/clang/test/CodeGenCUDASPIRV/printf.cu
++--- a/clang/test/CodeGenCUDASPIRV/printf.cu
+++++ b/clang/test/CodeGenCUDASPIRV/printf.cu
++@@ -0,0 +1,11 @@
+++// RUN: %clang_cc1 -fcuda-is-device -triple spirv32 -o - -emit-llvm -x cuda %s  | FileCheck --check-prefix=CHECK-SPIRV32 %s
+++// RUN: %clang_cc1 -fcuda-is-device -triple spirv64 -o - -emit-llvm -x cuda %s  | FileCheck --check-prefix=CHECK-SPIRV64 %s
+++
+++// CHECK-SPIRV32: @.str = private unnamed_addr addrspace(4) constant [13 x i8] c"Hello World\0A\00", align 1
+++// CHECK-SPIRV64: @.str = private unnamed_addr addrspace(1) constant [13 x i8] c"Hello World\0A\00", align 1
+++
+++extern "C" __attribute__((device)) int printf(const char* format, ...);
+++
+++__attribute__((global)) void printf_kernel() {
+++  printf("Hello World\n");
+++}
+ diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp b/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp
+ --- a/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp
+ +++ b/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp
+@@ -152,310 +176,301 @@ diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/debug-info-dtor-implicit-a
+ -// MSVC-DAG: !{{[0-9]+}} = !DILocalVariable(name: "should_call_delete", arg: 2, scope: ![[destructor]], type: ![[inttype]], flags: DIFlagArtificial)
+ -// MSVC-DAG: ![[subroutinetype]] = !DISubroutineType(types: ![[types:[0-9]+]])
+ -// MSVC-DAG: [[types]] = !{![[voidpointertype]], !{{[0-9]+}}, ![[inttype]]}
+-diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/mangle-template.cpp b/clang/test/CodeGenCXX/mangle-template.cpp
+---- a/clang/test/CodeGenCXX/mangle-template.cpp
+-+++ b/clang/test/CodeGenCXX/mangle-template.cpp
+-@@ -416,3 +416,20 @@
+-   template enable_if<true> raw_hash_set<int>::AbslHashValue<HashStateBase>();
+-   // CHECH: @_ZN39unresolved_template_specialization_type12raw_hash_setIiE13AbslHashValueINS_13HashStateBaseEEENS_9enable_ifIXsrNT_11is_hashableIiEE5valueEEEv
+- } // namespace unresolved_template_specialization_type
++diff -ruN --strip-trailing-cr a/clang/test/Modules/Inputs/PR137102/module.modulemap b/clang/test/Modules/Inputs/PR137102/module.modulemap
++--- a/clang/test/Modules/Inputs/PR137102/module.modulemap
+++++ b/clang/test/Modules/Inputs/PR137102/module.modulemap
++@@ -0,0 +1 @@
+++module type_aware_destroying_new_delete { header "type_aware_destroying_new_delete.h" export * }
++diff -ruN --strip-trailing-cr a/clang/test/Modules/Inputs/PR137102/type_aware_destroying_new_delete.h b/clang/test/Modules/Inputs/PR137102/type_aware_destroying_new_delete.h
++--- a/clang/test/Modules/Inputs/PR137102/type_aware_destroying_new_delete.h
+++++ b/clang/test/Modules/Inputs/PR137102/type_aware_destroying_new_delete.h
++@@ -0,0 +1,52 @@
+ +
+-+namespace GH133610 {
+-+  template <class T> struct A {
+-+    template <class V> struct B { int MEM; };
+-+  };
+++namespace std {
+++    struct destroying_delete_t { };
+++    template <class T> struct type_identity {
+++        using type = T;
+++    };
+++    typedef __SIZE_TYPE__ size_t;
+++    enum class align_val_t : size_t;
+++};
+ +
+-+  struct D {};
+-+  struct C: public A<int>::B<D> {};
+++struct A {
+++    A();
+++   void *operator new(std::size_t);
+++   void operator delete(A*, std::destroying_delete_t);
+++};
+ +
+-+  template <class T, class U, class V>
+-+  auto k(T t, U u, V v) -> decltype (t.U::template B<V>::MEM) { return {}; }
+++struct B {
+++    B();
+++    void *operator new(std::type_identity<B>, std::size_t, std::align_val_t);
+++    void operator delete(std::type_identity<B>, void*, std::size_t, std::align_val_t);
+++};
+ +
+-+  void t() {
+-+    k( C(), A<int>(), D() );
+-+  }
+-+  // CHECK: @_ZN8GH1336101kINS_1CENS_1AIiEENS_1DEEEDtdtfp_sr1U1BIT1_EE3MEMET_T0_S5_
+-+} // namespace GH133610
+-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp b/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp
+---- a/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp
+-+++ b/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp
+-@@ -1141,8 +1141,6 @@
+-         break;
+-       [[fallthrough]];
+-     case Intrinsic::abs:
+--    case Intrinsic::uadd_sat:
+--    case Intrinsic::usub_sat:
+-       WorkList.push_back(FactOrCheck::getInstFact(DT.getNode(&BB), &I));
+-       break;
+-     }
+-@@ -1893,26 +1891,13 @@
+-         AddFact(CmpInst::ICMP_SGE, CB.Inst, X);
+-         continue;
+-       }
+++struct C {
+++    C();
+++    template <class T> void *operator new(std::type_identity<T>, std::size_t, std::align_val_t);
+++    template <class T> void operator delete(std::type_identity<T>, void*, std::size_t, std::align_val_t);
+++};
+++
+++struct D {
+++    D();
+++};
+++void *operator new(std::type_identity<D>, std::size_t, std::align_val_t);
+++void operator delete(std::type_identity<D>, void*, std::size_t, std::align_val_t);
+++
+++struct E {
+++    E();
+++};
+++template <class T> void *operator new(std::type_identity<T>, std::size_t, std::align_val_t);
+++template <class T> void operator delete(std::type_identity<T>, void*, std::size_t, std::align_val_t);
+++
+++void in_module_tests() {
+++  A* a = new A;
+++  delete a;
+++  B *b = new B;
+++  delete b;
+++  C *c = new C;
+++  delete c;
+++  D *d = new D;
+++  delete d;
+++  E *e = new E;
+++  delete e;
+++}
++diff -ruN --strip-trailing-cr a/clang/test/Modules/type-aware-destroying-new-and-delete-modules.cpp b/clang/test/Modules/type-aware-destroying-new-and-delete-modules.cpp
++--- a/clang/test/Modules/type-aware-destroying-new-and-delete-modules.cpp
+++++ b/clang/test/Modules/type-aware-destroying-new-and-delete-modules.cpp
++@@ -0,0 +1,23 @@
+++// RUN: rm -rf %t
+++// RUN: %clang_cc1 -fmodules -fimplicit-module-maps -x c++ -std=c++26 -fmodules-cache-path=%t -I %S/Inputs/PR137102 -emit-llvm-only %s
+++// RUN: %clang_cc1 -fmodules -fimplicit-module-maps -x c++ -std=c++26 -fmodules-cache-path=%t -I %S/Inputs/PR137102 -emit-llvm-only %s -triple i686-windows
+++
+++#include "type_aware_destroying_new_delete.h"
+++
+++
+++static void call_in_module_function(void) {
+++    in_module_tests();
+++}
+++
+++void out_of_module_tests() {
+++    A* a = new A;
+++    delete a;
+++    B *b = new B;
+++    delete b;
+++    C *c = new C;
+++    delete c;
+++    D *d = new D;
+++    delete d;
+++    E *e = new E;
+++    delete e;
+++}
++diff -ruN --strip-trailing-cr a/clang/test/PCH/Inputs/type_aware_destroying_new_delete.h b/clang/test/PCH/Inputs/type_aware_destroying_new_delete.h
++--- a/clang/test/PCH/Inputs/type_aware_destroying_new_delete.h
+++++ b/clang/test/PCH/Inputs/type_aware_destroying_new_delete.h
++@@ -0,0 +1,52 @@
+++
+++namespace std {
+++    struct destroying_delete_t { };
+++    template <class T> struct type_identity {
+++        using type = T;
+++    };
+++    typedef __SIZE_TYPE__ size_t;
+++    enum class align_val_t : size_t;
+++};
+++
+++struct A {
+++    A();
+++   void *operator new(std::size_t);
+++   void operator delete(A*, std::destroying_delete_t);
+++};
+++
+++struct B {
+++    B();
+++    void *operator new(std::type_identity<B>, std::size_t, std::align_val_t);
+++    void operator delete(std::type_identity<B>, void*, std::size_t, std::align_val_t);
+++};
+++
+++struct C {
+++    C();
+++    template <class T> void *operator new(std::type_identity<T>, std::size_t, std::align_val_t);
+++    template <class T> void operator delete(std::type_identity<T>, void*, std::size_t, std::align_val_t);
+++};
+++
+++struct D {
+++    D();
+++};
+++void *operator new(std::type_identity<D>, std::size_t, std::align_val_t);
+++void operator delete(std::type_identity<D>, void*, std::size_t, std::align_val_t);
+++
+++struct E {
+++    E();
+++};
+++template <class T> void *operator new(std::type_identity<T>, std::size_t, std::align_val_t);
+++template <class T> void operator delete(std::type_identity<T>, void*, std::size_t, std::align_val_t);
+++
+++void in_pch_tests() {
+++  A* a = new A;
+++  delete a;
+++  B *b = new B;
+++  delete b;
+++  C *c = new C;
+++  delete c;
+++  D *d = new D;
+++  delete d;
+++  E *e = new E;
+++  delete e;
+++}
++diff -ruN --strip-trailing-cr a/clang/test/PCH/type-aware-destroying-new-and-delete-pch.cpp b/clang/test/PCH/type-aware-destroying-new-and-delete-pch.cpp
++--- a/clang/test/PCH/type-aware-destroying-new-and-delete-pch.cpp
+++++ b/clang/test/PCH/type-aware-destroying-new-and-delete-pch.cpp
++@@ -0,0 +1,27 @@
+++// Test this without pch.
+++// RUN: %clang_cc1 -x c++ -std=c++26 -include %S/Inputs/type_aware_destroying_new_delete.h -emit-llvm -o - %s
+++
+++// Test with pch.
+++// RUN: %clang_cc1 -x c++ -std=c++26 -emit-pch -o %t %S/Inputs/type_aware_destroying_new_delete.h
+++// RUN: %clang_cc1 -x c++ -std=c++26 -include-pch %t -emit-llvm -o - %s 
+ +
+-       if (auto *MinMax = dyn_cast<MinMaxIntrinsic>(CB.Inst)) {
+-         Pred = ICmpInst::getNonStrictPredicate(MinMax->getPredicate());
+-         AddFact(Pred, MinMax, MinMax->getLHS());
+-         AddFact(Pred, MinMax, MinMax->getRHS());
+-         continue;
+-       }
+--      if (auto *USatI = dyn_cast<SaturatingInst>(CB.Inst)) {
+--        switch (USatI->getIntrinsicID()) {
+--        default:
+--          llvm_unreachable("Unexpected intrinsic.");
+--        case Intrinsic::uadd_sat:
+--          AddFact(ICmpInst::ICMP_UGE, USatI, USatI->getLHS());
+--          AddFact(ICmpInst::ICMP_UGE, USatI, USatI->getRHS());
+--          break;
+--        case Intrinsic::usub_sat:
+--          AddFact(ICmpInst::ICMP_ULE, USatI, USatI->getLHS());
+--          break;
+--        }
+--        continue;
+--      }
+++// RUN: %clang_cc1 -x c++ -std=c++11 -emit-pch -fpch-instantiate-templates -o %t %S/Inputs/type_aware_destroying_new_delete.h
+++// RUN: %clang_cc1 -x c++ -std=c++11 -include-pch %t -emit-llvm -o - %s
+++
+++
+++static void call_in_pch_function(void) {
+++    in_pch_tests();
+++}
+++
+++void out_of_pch_tests() {
+++    A* a = new A;
+++    delete a;
+++    B *b = new B;
+++    delete b;
+++    C *c = new C;
+++    delete c;
+++    D *d = new D;
+++    delete d;
+++    E *e = new E;
+++    delete e;
+++}
++diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/FunctionAttrs.cpp b/llvm/lib/Transforms/IPO/FunctionAttrs.cpp
++--- a/llvm/lib/Transforms/IPO/FunctionAttrs.cpp
+++++ b/llvm/lib/Transforms/IPO/FunctionAttrs.cpp
++@@ -661,8 +661,13 @@
++     auto TypeSize = DL.getTypeStoreSize(Ty);
++     if (!TypeSize.isScalable() && Offset) {
++       int64_t Size = TypeSize.getFixedValue();
++-      return ConstantRange(APInt(64, *Offset, true),
++-                           APInt(64, *Offset + Size, true));
+++      APInt Low(64, *Offset, true);
+++      bool Overflow;
+++      APInt High = Low.sadd_ov(APInt(64, Size, true), Overflow);
+++      // Bail if the range overflows signed 64-bit int.
+++      if (Overflow)
+++        return std::nullopt;
+++      return ConstantRange(Low, High);
+      }
 - 
--@@ -58959,7 +58942,7 @@
--   // If we're splatting the lower half subvector of a full vector load into the
--   // upper half, attempt to create a subvector broadcast.
--   // TODO: Drop hasOneUse checks.
---  if ((int)IdxVal == (VecNumElts / 2) &&
--+  if (IdxVal == (OpVT.getVectorNumElements() / 2) &&
--       Vec.getValueSizeInBits() == (2 * SubVec.getValueSizeInBits()) &&
--       (Vec.hasOneUse() || SubVec.hasOneUse())) {
--     auto *VecLd = dyn_cast<LoadSDNode>(Vec);
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast_from_memory.ll b/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast_from_memory.ll
----- a/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast_from_memory.ll
--+++ b/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast_from_memory.ll
--@@ -2239,7 +2239,7 @@
-- ; AVX512F-NEXT:    vpalignr {{.*#+}} xmm0 = mem[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512F-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[15,0,1,2,3,4,15,6,7,8,9,10,15,12,13,14]
-- ; AVX512F-NEXT:    vpbroadcastb (%rdi), %ymm1
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm0 = ymm0[0,1,2,3],ymm1[4,5,6,7]
--+; AVX512F-NEXT:    vinserti128 $1, %xmm1, %ymm0, %ymm0
-- ; AVX512F-NEXT:    vpaddb (%rsi), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vpaddb 32(%rsi), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vmovdqa %ymm1, 32(%rdx)
--@@ -2253,7 +2253,7 @@
-- ; AVX512DQ-NEXT:    vpalignr {{.*#+}} xmm0 = mem[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512DQ-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[15,0,1,2,3,4,15,6,7,8,9,10,15,12,13,14]
-- ; AVX512DQ-NEXT:    vpbroadcastb (%rdi), %ymm1
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm0 = ymm0[0,1,2,3],ymm1[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm1, %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vpaddb (%rsi), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vpaddb 32(%rsi), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vmovdqa %ymm1, 32(%rdx)
--@@ -2267,7 +2267,7 @@
-- ; AVX512BW-NEXT:    vpalignr {{.*#+}} xmm0 = mem[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512BW-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[15,0,1,2,3,4,15,6,7,8,9,10,15,12,13,14]
-- ; AVX512BW-NEXT:    vpbroadcastb (%rdi), %ymm1
---; AVX512BW-NEXT:    vpblendd {{.*#+}} ymm0 = ymm0[0,1,2,3],ymm1[4,5,6,7]
--+; AVX512BW-NEXT:    vinserti128 $1, %xmm1, %ymm0, %ymm0
-- ; AVX512BW-NEXT:    vinserti64x4 $1, %ymm1, %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vpaddb (%rsi), %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vmovdqa64 %zmm0, (%rdx)
--@@ -2458,7 +2458,7 @@
-- ; AVX512F-NEXT:    vpalignr {{.*#+}} xmm0 = mem[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512F-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[15,0,1,2,3,4,5,6,7,8,9,10,15,12,13,14]
-- ; AVX512F-NEXT:    vpbroadcastb (%rdi), %ymm1
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm0 = ymm0[0,1,2,3],ymm1[4,5,6,7]
--+; AVX512F-NEXT:    vinserti128 $1, %xmm1, %ymm0, %ymm0
-- ; AVX512F-NEXT:    vpaddb (%rsi), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vpaddb 32(%rsi), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vmovdqa %ymm1, 32(%rdx)
--@@ -2472,7 +2472,7 @@
-- ; AVX512DQ-NEXT:    vpalignr {{.*#+}} xmm0 = mem[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512DQ-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[15,0,1,2,3,4,5,6,7,8,9,10,15,12,13,14]
-- ; AVX512DQ-NEXT:    vpbroadcastb (%rdi), %ymm1
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm0 = ymm0[0,1,2,3],ymm1[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm1, %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vpaddb (%rsi), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vpaddb 32(%rsi), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vmovdqa %ymm1, 32(%rdx)
--@@ -2486,7 +2486,7 @@
-- ; AVX512BW-NEXT:    vpalignr {{.*#+}} xmm0 = mem[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512BW-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[15,0,1,2,3,4,5,6,7,8,9,10,15,12,13,14]
-- ; AVX512BW-NEXT:    vpbroadcastb (%rdi), %ymm1
---; AVX512BW-NEXT:    vpblendd {{.*#+}} ymm0 = ymm0[0,1,2,3],ymm1[4,5,6,7]
--+; AVX512BW-NEXT:    vinserti128 $1, %xmm1, %ymm0, %ymm0
-- ; AVX512BW-NEXT:    vinserti64x4 $1, %ymm1, %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vpaddb (%rsi), %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vmovdqa64 %zmm0, (%rdx)
--@@ -3095,7 +3095,7 @@
-- ; AVX512F:       # %bb.0:
-- ; AVX512F-NEXT:    vpbroadcastw (%rdi), %ymm0
-- ; AVX512F-NEXT:    vpblendw {{.*#+}} xmm1 = xmm0[0],mem[1,2,3,4,5],xmm0[6],mem[7]
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512F-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb (%rsi), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb 32(%rsi), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vmovdqa %ymm0, 32(%rdx)
--@@ -3107,7 +3107,7 @@
-- ; AVX512DQ:       # %bb.0:
-- ; AVX512DQ-NEXT:    vpbroadcastw (%rdi), %ymm0
-- ; AVX512DQ-NEXT:    vpblendw {{.*#+}} xmm1 = xmm0[0],mem[1,2,3,4,5],xmm0[6],mem[7]
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb (%rsi), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb 32(%rsi), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vmovdqa %ymm0, 32(%rdx)
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast.ll b/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast.ll
----- a/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast.ll
--+++ b/llvm/test/CodeGen/X86/any_extend_vector_inreg_of_broadcast.ll
--@@ -2573,7 +2573,8 @@
-- ; AVX512F-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512F-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,15,3,4,15,6,7,15,9,10,15,12,13,15]
-- ; AVX512F-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512F-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512F-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -2590,7 +2591,8 @@
-- ; AVX512DQ-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512DQ-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,15,3,4,15,6,7,15,9,10,15,12,13,15]
-- ; AVX512DQ-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -2835,7 +2837,8 @@
-- ; AVX512F-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512F-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,2,3,4,15,6,7,8,9,10,15,12,13,14]
-- ; AVX512F-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512F-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512F-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -2852,7 +2855,8 @@
-- ; AVX512DQ-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512DQ-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,2,3,4,15,6,7,8,9,10,15,12,13,14]
-- ; AVX512DQ-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -2868,7 +2872,7 @@
-- ; AVX512BW-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512BW-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,2,3,4,15,6,7,8,9,10,15,12,13,14]
-- ; AVX512BW-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512BW-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512BW-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512BW-NEXT:    vinserti64x4 $1, %ymm0, %zmm1, %zmm0
-- ; AVX512BW-NEXT:    vpaddb (%rdx), %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vmovdqa64 %zmm0, (%rcx)
--@@ -3096,7 +3100,8 @@
-- ; AVX512F-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512F-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,2,3,4,5,6,7,8,9,10,15,12,13,14]
-- ; AVX512F-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512F-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512F-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -3113,7 +3118,8 @@
-- ; AVX512DQ-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512DQ-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,2,3,4,5,6,7,8,9,10,15,12,13,14]
-- ; AVX512DQ-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -3129,7 +3135,7 @@
-- ; AVX512BW-NEXT:    vpalignr {{.*#+}} xmm1 = xmm1[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],xmm0[0]
-- ; AVX512BW-NEXT:    vpshufb {{.*#+}} xmm1 = xmm1[15,0,1,2,3,4,5,6,7,8,9,10,15,12,13,14]
-- ; AVX512BW-NEXT:    vpbroadcastb %xmm0, %ymm0
---; AVX512BW-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512BW-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512BW-NEXT:    vinserti64x4 $1, %ymm0, %zmm1, %zmm0
-- ; AVX512BW-NEXT:    vpaddb (%rdx), %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vmovdqa64 %zmm0, (%rcx)
--@@ -3608,11 +3614,12 @@
-- ; AVX512F:       # %bb.0:
-- ; AVX512F-NEXT:    vmovdqa (%rdi), %xmm0
-- ; AVX512F-NEXT:    vmovdqa 48(%rdi), %xmm1
---; AVX512F-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512F-NEXT:    vpaddb (%rsi), %xmm0, %xmm0
-- ; AVX512F-NEXT:    vpbroadcastw %xmm0, %ymm0
--+; AVX512F-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512F-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512F-NEXT:    vpblendw {{.*#+}} xmm1 = xmm0[0],xmm1[1,2],xmm0[3],xmm1[4,5],xmm0[6],xmm1[7]
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512F-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -3624,11 +3631,12 @@
-- ; AVX512DQ:       # %bb.0:
-- ; AVX512DQ-NEXT:    vmovdqa (%rdi), %xmm0
-- ; AVX512DQ-NEXT:    vmovdqa 48(%rdi), %xmm1
---; AVX512DQ-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512DQ-NEXT:    vpaddb (%rsi), %xmm0, %xmm0
-- ; AVX512DQ-NEXT:    vpbroadcastw %xmm0, %ymm0
--+; AVX512DQ-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512DQ-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512DQ-NEXT:    vpblendw {{.*#+}} xmm1 = xmm0[0],xmm1[1,2],xmm0[3],xmm1[4,5],xmm0[6],xmm1[7]
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -3860,11 +3868,12 @@
-- ; AVX512F:       # %bb.0:
-- ; AVX512F-NEXT:    vmovdqa (%rdi), %xmm0
-- ; AVX512F-NEXT:    vmovdqa 48(%rdi), %xmm1
---; AVX512F-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512F-NEXT:    vpaddb (%rsi), %xmm0, %xmm0
-- ; AVX512F-NEXT:    vpbroadcastw %xmm0, %ymm0
--+; AVX512F-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512F-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512F-NEXT:    vpblendw {{.*#+}} xmm1 = xmm0[0],xmm1[1,2,3,4,5],xmm0[6],xmm1[7]
---; AVX512F-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512F-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512F-NEXT:    vmovdqa %ymm0, 32(%rcx)
--@@ -3876,11 +3885,12 @@
-- ; AVX512DQ:       # %bb.0:
-- ; AVX512DQ-NEXT:    vmovdqa (%rdi), %xmm0
-- ; AVX512DQ-NEXT:    vmovdqa 48(%rdi), %xmm1
---; AVX512DQ-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512DQ-NEXT:    vpaddb (%rsi), %xmm0, %xmm0
-- ; AVX512DQ-NEXT:    vpbroadcastw %xmm0, %ymm0
--+; AVX512DQ-NEXT:    vinserti64x4 $1, %ymm0, %zmm0, %zmm0
--+; AVX512DQ-NEXT:    vpaddb 48(%rsi), %xmm1, %xmm1
-- ; AVX512DQ-NEXT:    vpblendw {{.*#+}} xmm1 = xmm0[0],xmm1[1,2,3,4,5],xmm0[6],xmm1[7]
---; AVX512DQ-NEXT:    vpblendd {{.*#+}} ymm1 = ymm1[0,1,2,3],ymm0[4,5,6,7]
--+; AVX512DQ-NEXT:    vinserti128 $1, %xmm0, %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb (%rdx), %ymm1, %ymm1
-- ; AVX512DQ-NEXT:    vpaddb 32(%rdx), %ymm0, %ymm0
-- ; AVX512DQ-NEXT:    vmovdqa %ymm0, 32(%rcx)
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/pr42905.ll b/llvm/test/CodeGen/X86/pr42905.ll
----- a/llvm/test/CodeGen/X86/pr42905.ll
--+++ b/llvm/test/CodeGen/X86/pr42905.ll
--@@ -4,10 +4,16 @@
-- define <4 x double> @autogen_SD30452(i1 %L230) {
-- ; CHECK-LABEL: autogen_SD30452:
-- ; CHECK:       # %bb.0: # %BB
---; CHECK-NEXT:    movdqa {{.*#+}} xmm0 = [151829,151829]
---; CHECK-NEXT:    pshufd {{.*#+}} xmm0 = xmm0[0,2,2,3]
---; CHECK-NEXT:    cvtdq2pd %xmm0, %xmm0
---; CHECK-NEXT:    movaps %xmm0, %xmm1
--+; CHECK-NEXT:    movdqa {{.*#+}} xmm1 = [151829,151829]
--+; CHECK-NEXT:    movq %xmm0, %rax
--+; CHECK-NEXT:    cvtsi2sd %rax, %xmm0
--+; CHECK-NEXT:    pshufd {{.*#+}} xmm2 = xmm0[2,3,2,3]
--+; CHECK-NEXT:    movq %xmm2, %rax
--+; CHECK-NEXT:    xorps %xmm2, %xmm2
--+; CHECK-NEXT:    cvtsi2sd %rax, %xmm2
--+; CHECK-NEXT:    unpcklpd {{.*#+}} xmm0 = xmm0[0],xmm2[0]
--+; CHECK-NEXT:    pshufd {{.*#+}} xmm1 = xmm1[0,2,2,3]
--+; CHECK-NEXT:    cvtdq2pd %xmm1, %xmm1
-- ; CHECK-NEXT:    retq
-- BB:
--   %I = insertelement <4 x i64> zeroinitializer, i64 151829, i32 3
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/sad.ll b/llvm/test/CodeGen/X86/sad.ll
----- a/llvm/test/CodeGen/X86/sad.ll
--+++ b/llvm/test/CodeGen/X86/sad.ll
--@@ -927,7 +927,8 @@
-- ; AVX512F-NEXT:    vmovdqu 32(%rdi), %ymm1
-- ; AVX512F-NEXT:    vpsadbw 32(%rdx), %ymm1, %ymm1
-- ; AVX512F-NEXT:    vpsadbw (%rdx), %ymm0, %ymm0
---; AVX512F-NEXT:    vpaddq %ymm1, %ymm0, %ymm0
--+; AVX512F-NEXT:    vinserti64x4 $1, %ymm1, %zmm0, %zmm0
--+; AVX512F-NEXT:    vpaddq %zmm1, %zmm0, %zmm0
-- ; AVX512F-NEXT:    vextracti128 $1, %ymm0, %xmm1
-- ; AVX512F-NEXT:    vpaddq %xmm1, %xmm0, %xmm0
-- ; AVX512F-NEXT:    vpshufd {{.*#+}} xmm1 = xmm0[2,3,2,3]
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/vector-interleaved-store-i16-stride-7.ll b/llvm/test/CodeGen/X86/vector-interleaved-store-i16-stride-7.ll
----- a/llvm/test/CodeGen/X86/vector-interleaved-store-i16-stride-7.ll
--+++ b/llvm/test/CodeGen/X86/vector-interleaved-store-i16-stride-7.ll
--@@ -2079,7 +2079,7 @@
-- ; AVX-NEXT:    vpsrld $16, %xmm8, %xmm10
-- ; AVX-NEXT:    vpunpckhdq {{.*#+}} xmm10 = xmm3[2],xmm10[2],xmm3[3],xmm10[3]
-- ; AVX-NEXT:    vpunpckhwd {{.*#+}} xmm12 = xmm8[4],xmm3[4],xmm8[5],xmm3[5],xmm8[6],xmm3[6],xmm8[7],xmm3[7]
---; AVX-NEXT:    vpshufd {{.*#+}} xmm12 = xmm12[1,1,2,3]
--+; AVX-NEXT:    vpshuflw {{.*#+}} xmm12 = xmm12[2,2,2,2,4,5,6,7]
-- ; AVX-NEXT:    vpshufhw {{.*#+}} xmm12 = xmm12[0,1,2,3,4,5,5,4]
-- ; AVX-NEXT:    vinsertf128 $1, %xmm10, %ymm12, %ymm10
-- ; AVX-NEXT:    vandnps %ymm10, %ymm6, %ymm6
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/vector-interleaved-store-i32-stride-5.ll b/llvm/test/CodeGen/X86/vector-interleaved-store-i32-stride-5.ll
----- a/llvm/test/CodeGen/X86/vector-interleaved-store-i32-stride-5.ll
--+++ b/llvm/test/CodeGen/X86/vector-interleaved-store-i32-stride-5.ll
--@@ -350,7 +350,7 @@
-- ; AVX-NEXT:    vshufpd {{.*#+}} ymm4 = ymm4[0,0,3,3]
-- ; AVX-NEXT:    vblendps {{.*#+}} ymm4 = ymm4[0,1],ymm5[2,3],ymm4[4,5,6],ymm5[7]
-- ; AVX-NEXT:    vbroadcastf128 {{.*#+}} ymm5 = mem[0,1,0,1]
---; AVX-NEXT:    vblendps {{.*#+}} ymm7 = ymm0[0,1,2,3],ymm5[4,5,6,7]
--+; AVX-NEXT:    vinsertf128 $1, %xmm5, %ymm0, %ymm7
-- ; AVX-NEXT:    vblendps {{.*#+}} ymm4 = ymm7[0],ymm4[1,2,3],ymm7[4],ymm4[5,6,7]
-- ; AVX-NEXT:    vpermilps {{.*#+}} ymm1 = ymm1[u,u,u,2,u,u,u,7]
-- ; AVX-NEXT:    vblendps {{.*#+}} ymm0 = ymm1[0,1],ymm0[2],ymm1[3,4,5,6,7]
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/vector-reduce-fmax-fmin-fast.ll b/llvm/test/CodeGen/X86/vector-reduce-fmax-fmin-fast.ll
----- a/llvm/test/CodeGen/X86/vector-reduce-fmax-fmin-fast.ll
--+++ b/llvm/test/CodeGen/X86/vector-reduce-fmax-fmin-fast.ll
--@@ -170,7 +170,7 @@
-- ; AVX512-LABEL: test_v16f32:
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vmaxps %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vmaxps %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vmaxps %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--@@ -264,7 +264,7 @@
-- ; AVX512-LABEL: test_v8f64:
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vminpd %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vminpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vminpd %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--@@ -306,7 +306,7 @@
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vmaxpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vmaxpd %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vmaxpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vmaxpd %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/vector-reduce-fmax-nnan.ll b/llvm/test/CodeGen/X86/vector-reduce-fmax-nnan.ll
----- a/llvm/test/CodeGen/X86/vector-reduce-fmax-nnan.ll
--+++ b/llvm/test/CodeGen/X86/vector-reduce-fmax-nnan.ll
--@@ -175,7 +175,7 @@
-- ; AVX512-LABEL: test_v16f32:
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vmaxps %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vmaxps %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vmaxps %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--@@ -311,7 +311,7 @@
-- ; AVX512-LABEL: test_v8f64:
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vmaxpd %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vmaxpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vmaxpd %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--@@ -353,7 +353,7 @@
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vmaxpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vmaxpd %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vmaxpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vmaxpd %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/vector-reduce-fmin-nnan.ll b/llvm/test/CodeGen/X86/vector-reduce-fmin-nnan.ll
----- a/llvm/test/CodeGen/X86/vector-reduce-fmin-nnan.ll
--+++ b/llvm/test/CodeGen/X86/vector-reduce-fmin-nnan.ll
--@@ -216,7 +216,7 @@
-- ; AVX512-LABEL: test_v16f32:
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vminps %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vminps %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vminps %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--@@ -310,7 +310,7 @@
-- ; AVX512-LABEL: test_v8f64:
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vminpd %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vminpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vminpd %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--@@ -352,7 +352,7 @@
-- ; AVX512:       # %bb.0:
-- ; AVX512-NEXT:    vminpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf64x4 $1, %zmm0, %ymm1
---; AVX512-NEXT:    vminpd %ymm1, %ymm0, %ymm0
--+; AVX512-NEXT:    vminpd %zmm1, %zmm0, %zmm0
-- ; AVX512-NEXT:    vextractf128 $1, %ymm0, %xmm1
-- ; AVX512-NEXT:    vminpd %xmm1, %xmm0, %xmm0
-- ; AVX512-NEXT:    vshufpd {{.*#+}} xmm1 = xmm0[1,0]
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/vector-reduce-mul.ll b/llvm/test/CodeGen/X86/vector-reduce-mul.ll
----- a/llvm/test/CodeGen/X86/vector-reduce-mul.ll
--+++ b/llvm/test/CodeGen/X86/vector-reduce-mul.ll
--@@ -357,14 +357,14 @@
-- ; AVX512BW-LABEL: test_v8i64:
-- ; AVX512BW:       # %bb.0:
-- ; AVX512BW-NEXT:    vextracti64x4 $1, %zmm0, %ymm1
---; AVX512BW-NEXT:    vpsrlq $32, %ymm0, %ymm2
---; AVX512BW-NEXT:    vpmuludq %ymm1, %ymm2, %ymm2
---; AVX512BW-NEXT:    vpsrlq $32, %ymm1, %ymm3
---; AVX512BW-NEXT:    vpmuludq %ymm3, %ymm0, %ymm3
---; AVX512BW-NEXT:    vpaddq %ymm2, %ymm3, %ymm2
---; AVX512BW-NEXT:    vpsllq $32, %ymm2, %ymm2
---; AVX512BW-NEXT:    vpmuludq %ymm1, %ymm0, %ymm0
---; AVX512BW-NEXT:    vpaddq %ymm2, %ymm0, %ymm0
--+; AVX512BW-NEXT:    vpsrlq $32, %zmm0, %zmm2
--+; AVX512BW-NEXT:    vpmuludq %zmm1, %zmm2, %zmm2
--+; AVX512BW-NEXT:    vpsrlq $32, %zmm1, %zmm3
--+; AVX512BW-NEXT:    vpmuludq %zmm3, %zmm0, %zmm3
--+; AVX512BW-NEXT:    vpaddq %zmm2, %zmm3, %zmm2
--+; AVX512BW-NEXT:    vpsllq $32, %zmm2, %zmm2
--+; AVX512BW-NEXT:    vpmuludq %zmm1, %zmm0, %zmm0
--+; AVX512BW-NEXT:    vpaddq %zmm2, %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vextracti128 $1, %ymm0, %xmm1
-- ; AVX512BW-NEXT:    vpsrlq $32, %xmm0, %xmm2
-- ; AVX512BW-NEXT:    vpmuludq %xmm1, %xmm2, %xmm2
--@@ -390,14 +390,14 @@
-- ; AVX512BWVL-LABEL: test_v8i64:
-- ; AVX512BWVL:       # %bb.0:
-- ; AVX512BWVL-NEXT:    vextracti64x4 $1, %zmm0, %ymm1
---; AVX512BWVL-NEXT:    vpsrlq $32, %ymm0, %ymm2
---; AVX512BWVL-NEXT:    vpmuludq %ymm1, %ymm2, %ymm2
---; AVX512BWVL-NEXT:    vpsrlq $32, %ymm1, %ymm3
---; AVX512BWVL-NEXT:    vpmuludq %ymm3, %ymm0, %ymm3
---; AVX512BWVL-NEXT:    vpaddq %ymm2, %ymm3, %ymm2
---; AVX512BWVL-NEXT:    vpsllq $32, %ymm2, %ymm2
---; AVX512BWVL-NEXT:    vpmuludq %ymm1, %ymm0, %ymm0
---; AVX512BWVL-NEXT:    vpaddq %ymm2, %ymm0, %ymm0
--+; AVX512BWVL-NEXT:    vpsrlq $32, %zmm0, %zmm2
--+; AVX512BWVL-NEXT:    vpmuludq %zmm1, %zmm2, %zmm2
--+; AVX512BWVL-NEXT:    vpsrlq $32, %zmm1, %zmm3
--+; AVX512BWVL-NEXT:    vpmuludq %zmm3, %zmm0, %zmm3
--+; AVX512BWVL-NEXT:    vpaddq %zmm2, %zmm3, %zmm2
--+; AVX512BWVL-NEXT:    vpsllq $32, %zmm2, %zmm2
--+; AVX512BWVL-NEXT:    vpmuludq %zmm1, %zmm0, %zmm0
--+; AVX512BWVL-NEXT:    vpaddq %zmm2, %zmm0, %zmm0
-- ; AVX512BWVL-NEXT:    vextracti128 $1, %ymm0, %xmm1
-- ; AVX512BWVL-NEXT:    vpsrlq $32, %xmm0, %xmm2
-- ; AVX512BWVL-NEXT:    vpmuludq %xmm1, %xmm2, %xmm2
--@@ -667,14 +667,14 @@
-- ; AVX512BW-NEXT:    vpmuludq %zmm1, %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vpaddq %zmm2, %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vextracti64x4 $1, %zmm0, %ymm1
---; AVX512BW-NEXT:    vpsrlq $32, %ymm0, %ymm2
---; AVX512BW-NEXT:    vpmuludq %ymm1, %ymm2, %ymm2
---; AVX512BW-NEXT:    vpsrlq $32, %ymm1, %ymm3
---; AVX512BW-NEXT:    vpmuludq %ymm3, %ymm0, %ymm3
---; AVX512BW-NEXT:    vpaddq %ymm2, %ymm3, %ymm2
---; AVX512BW-NEXT:    vpsllq $32, %ymm2, %ymm2
---; AVX512BW-NEXT:    vpmuludq %ymm1, %ymm0, %ymm0
---; AVX512BW-NEXT:    vpaddq %ymm2, %ymm0, %ymm0
--+; AVX512BW-NEXT:    vpsrlq $32, %zmm0, %zmm2
--+; AVX512BW-NEXT:    vpmuludq %zmm1, %zmm2, %zmm2
--+; AVX512BW-NEXT:    vpsrlq $32, %zmm1, %zmm3
--+; AVX512BW-NEXT:    vpmuludq %zmm3, %zmm0, %zmm3
--+; AVX512BW-NEXT:    vpaddq %zmm2, %zmm3, %zmm2
--+; AVX512BW-NEXT:    vpsllq $32, %zmm2, %zmm2
--+; AVX512BW-NEXT:    vpmuludq %zmm1, %zmm0, %zmm0
--+; AVX512BW-NEXT:    vpaddq %zmm2, %zmm0, %zmm0
-- ; AVX512BW-NEXT:    vextracti128 $1, %ymm0, %xmm1
-- ; AVX512BW-NEXT:    vpsrlq $32, %xmm0, %xmm2
-- ; AVX512BW-NEXT:    vpmuludq %xmm1, %xmm2, %xmm2
--@@ -708,14 +708,14 @@
-- ; AVX512BWVL-NEXT:    vpmuludq %zmm1, %zmm0, %zmm0
-- ; AVX512BWVL-NEXT:    vpaddq %zmm2, %zmm0, %zmm0
-- ; AVX512BWVL-NEXT:    vextracti64x4 $1, %zmm0, %ymm1
---; AVX512BWVL-NEXT:    vpsrlq $32, %ymm0, %ymm2
---; AVX512BWVL-NEXT:    vpmuludq %ymm1, %ymm2, %ymm2
---; AVX512BWVL-NEXT:    vpsrlq $32, %ymm1, %ymm3
---; AVX512BWVL-NEXT:    vpmuludq %ymm3, %ymm0, %ymm3
---; AVX512BWVL-NEXT:    vpaddq %ymm2, %ymm3, %ymm2
---; AVX512BWVL-NEXT:    vpsllq $32, %ymm2, %ymm2
---; AVX512BWVL-NEXT:    vpmuludq %ymm1, %ymm0, %ymm0
---; AVX512BWVL-NEXT:    vpaddq %ymm2, %ymm0, %ymm0
--+; AVX512BWVL-NEXT:    vpsrlq $32, %zmm0, %zmm2
--+; AVX512BWVL-NEXT:    vpmuludq %zmm1, %zmm2, %zmm2
--+; AVX512BWVL-NEXT:    vpsrlq $32, %zmm1, %zmm3
--+; AVX512BWVL-NEXT:    vpmuludq %zmm3, %zmm0, %zmm3
--+; AVX512BWVL-NEXT:    vpaddq %zmm2, %zmm3, %zmm2
--+; AVX512BWVL-NEXT:    vpsllq $32, %zmm2, %zmm2
--+; AVX512BWVL-NEXT:    vpmuludq %zmm1, %zmm0, %zmm0
--+; AVX512BWVL-NEXT:    vpaddq %zmm2, %zmm0, %zmm0
-- ; AVX512BWVL-NEXT:    vextracti128 $1, %ymm0, %xmm1
-- ; AVX512BWVL-NEXT:    vpsrlq $32, %xmm0, %xmm2
-- ; AVX512BWVL-NEXT:    vpmuludq %xmm1, %xmm2, %xmm2
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/zero_extend_vector_inreg_of_broadcast_from_memory.ll b/llvm/test/CodeGen/X86/zero_extend_vector_inreg_of_broadcast_from_memory.ll
----- a/llvm/test/CodeGen/X86/zero_extend_vector_inreg_of_broadcast_from_memory.ll
--+++ b/llvm/test/CodeGen/X86/zero_extend_vector_inreg_of_broadcast_from_memory.ll
--@@ -3862,14 +3862,15 @@
-- ; AVX-NEXT:    vpxor %xmm2, %xmm2, %xmm2
-- ; AVX-NEXT:    vpblendw {{.*#+}} xmm0 = xmm0[0,1],xmm2[2,3,4,5,6,7]
-- ; AVX-NEXT:    vpshufd {{.*#+}} xmm0 = xmm0[1,0,1,1]
---; AVX-NEXT:    vbroadcastss (%rdi), %xmm3
--+; AVX-NEXT:    vbroadcastss (%rdi), %ymm3
-- ; AVX-NEXT:    vpaddb 32(%rsi), %xmm0, %xmm0
---; AVX-NEXT:    vpaddb (%rsi), %xmm1, %xmm1
-- ; AVX-NEXT:    vpblendw {{.*#+}} xmm2 = xmm2[0,1,2,3],xmm3[4,5],xmm2[6,7]
-- ; AVX-NEXT:    vpaddb 16(%rsi), %xmm2, %xmm2
---; AVX-NEXT:    vmovdqa %xmm2, 16(%rdx)
--+; AVX-NEXT:    vpaddb (%rsi), %xmm1, %xmm1
-- ; AVX-NEXT:    vmovdqa %xmm1, (%rdx)
--+; AVX-NEXT:    vmovdqa %xmm2, 16(%rdx)
-- ; AVX-NEXT:    vmovdqa %xmm0, 32(%rdx)
--+; AVX-NEXT:    vzeroupper
-- ; AVX-NEXT:    retq
-- ;
-- ; AVX2-SLOW-LABEL: vec384_i32_widen_to_i96_factor3_broadcast_to_v4i96_factor4:
--@@ -4115,7 +4116,7 @@
-- ; AVX:       # %bb.0:
-- ; AVX-NEXT:    vmovdqa 48(%rdi), %xmm0
-- ; AVX-NEXT:    vpblendw {{.*#+}} xmm0 = mem[0,1],xmm0[2,3,4,5,6,7]
---; AVX-NEXT:    vbroadcastss (%rdi), %xmm1
--+; AVX-NEXT:    vbroadcastss (%rdi), %ymm1
-- ; AVX-NEXT:    vmovaps 32(%rsi), %ymm2
-- ; AVX-NEXT:    vxorps %xmm3, %xmm3, %xmm3
-- ; AVX-NEXT:    vblendps {{.*#+}} xmm1 = xmm3[0,1],xmm1[2],xmm3[3]
+-     Value *A = nullptr, *B = nullptr;
++     return std::nullopt;
++   };
+ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+ --- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+ +++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+-@@ -1889,6 +1889,7 @@
+-     LoadEntriesToVectorize.clear();
+-     IsGraphTransformMode = false;
+-     GatheredLoadsEntriesFirst.reset();
+-+    CompressEntryToData.clear();
+-     ExternalUses.clear();
+-     ExternalUsesAsOriginalScalar.clear();
+-     for (auto &Iter : BlocksSchedules) {
+-@@ -4308,6 +4309,11 @@
+-   /// The index of the first gathered load entry in the VectorizeTree.
+-   std::optional<unsigned> GatheredLoadsEntriesFirst;
++@@ -23904,6 +23904,8 @@
++     assert(isValidElementType(V1->getType()) &&
++            isValidElementType(V2->getType()) &&
++            "Expected vectorizable types only.");
+++    if (V1 == V2)
+++      return false;
++     // It is fine to compare type IDs here, since we expect only vectorizable
++     // types, like ints, floats and pointers, we don't care about other type.
++     if (V1->getType()->getTypeID() < V2->getType()->getTypeID())
++@@ -23940,7 +23942,7 @@
++           if (NodeI1 != NodeI2)
++             return NodeI1->getDFSNumIn() < NodeI2->getDFSNumIn();
++           InstructionsState S = getSameOpcode({I1, I2}, *TLI);
++-          if (S && !S.isAltShuffle()) {
+++          if (S && !S.isAltShuffle() && I1->getOpcode() == I2->getOpcode()) {
++             const auto *E1 = dyn_cast<ExtractElementInst>(I1);
++             const auto *E2 = dyn_cast<ExtractElementInst>(I2);
++             if (!E1 || !E2)
++@@ -23972,6 +23974,8 @@
+  
+-+  /// Maps compress entries to their mask data for the final codegen.
+-+  SmallDenseMap<const TreeEntry *,
+-+                std::tuple<SmallVector<int>, VectorType *, unsigned, bool>>
+-+      CompressEntryToData;
+-+
+-   /// This POD struct describes one external user in the vectorized tree.
+-   struct ExternalUser {
+-     ExternalUser(Value *S, llvm::User *U, const TreeEntry &E, int L)
+-@@ -13428,6 +13434,8 @@
+-             *TLI, [](Value *) { return true; }, IsMasked, InterleaveFactor,
+-             CompressMask, LoadVecTy);
+-         assert(IsVectorized && "Expected to be vectorized");
+-+        CompressEntryToData.try_emplace(E, CompressMask, LoadVecTy,
+-+                                        InterleaveFactor, IsMasked);
+-         Align CommonAlignment;
+-         if (IsMasked)
+-           CommonAlignment = computeCommonAlignment<LoadInst>(VL);
+-@@ -17963,10 +17971,6 @@
+-       if (E->State == TreeEntry::Vectorize) {
+-         NewLI = Builder.CreateAlignedLoad(VecTy, PO, LI->getAlign());
+-       } else if (E->State == TreeEntry::CompressVectorize) {
+--        bool IsMasked;
+--        unsigned InterleaveFactor;
+--        SmallVector<int> CompressMask;
+--        VectorType *LoadVecTy;
+-         SmallVector<Value *> Scalars(E->Scalars.begin(), E->Scalars.end());
+-         if (!E->ReorderIndices.empty()) {
+-           SmallVector<int> Mask(E->ReorderIndices.begin(),
+-@@ -17976,11 +17980,8 @@
+-         SmallVector<Value *> PointerOps(Scalars.size());
+-         for (auto [I, V] : enumerate(Scalars))
+-           PointerOps[I] = cast<LoadInst>(V)->getPointerOperand();
+--        [[maybe_unused]] bool IsVectorized = isMaskedLoadCompress(
+--            Scalars, PointerOps, E->ReorderIndices, *TTI, *DL, *SE, *AC, *DT,
+--            *TLI, [](Value *) { return true; }, IsMasked, InterleaveFactor,
+--            CompressMask, LoadVecTy);
+--        assert(IsVectorized && "Expected to be vectorized");
+-+        auto [CompressMask, LoadVecTy, InterleaveFactor, IsMasked] =
+-+            CompressEntryToData.at(E);
+-         Align CommonAlignment;
+-         if (IsMasked)
+-           CommonAlignment = computeCommonAlignment<LoadInst>(E->Scalars);
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll b/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll
+---- a/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll
+-+++ b/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll
+-@@ -1,43 +0,0 @@
+--; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
+--; RUN: opt -passes=constraint-elimination -S %s | FileCheck %s
+--
+--declare i64 @llvm.uadd.sat.i64(i64, i64)
+--declare i64 @llvm.usub.sat.i64(i64, i64)
+--
+--define i1 @uadd_sat_uge(i64 %a, i64 %b) {
+--; CHECK-LABEL: define i1 @uadd_sat_uge(
+--; CHECK-SAME: i64 [[A:%.*]], i64 [[B:%.*]]) {
+--; CHECK-NEXT:    [[ADD_SAT:%.*]] = call i64 @llvm.uadd.sat.i64(i64 [[A]], i64 [[B]])
+--; CHECK-NEXT:    [[CMP:%.*]] = and i1 true, true
+--; CHECK-NEXT:    ret i1 [[CMP]]
+--;
+--  %add.sat = call i64 @llvm.uadd.sat.i64(i64 %a, i64 %b)
+--  %cmp1 = icmp uge i64 %add.sat, %a
+--  %cmp2 = icmp uge i64 %add.sat, %b
+--  %cmp = and i1 %cmp1, %cmp2
+--  ret i1 %cmp
+--}
+--
+--define i1 @usub_sat_ule_lhs(i64 %a, i64 %b) {
+--; CHECK-LABEL: define i1 @usub_sat_ule_lhs(
+--; CHECK-SAME: i64 [[A:%.*]], i64 [[B:%.*]]) {
+--; CHECK-NEXT:    [[SUB_SAT:%.*]] = call i64 @llvm.usub.sat.i64(i64 [[A]], i64 [[B]])
+--; CHECK-NEXT:    ret i1 true
+--;
+--  %sub.sat = call i64 @llvm.usub.sat.i64(i64 %a, i64 %b)
+--  %cmp = icmp ule i64 %sub.sat, %a
+--  ret i1 %cmp
+--}
+--
+--; Negative test
+--define i1 @usub_sat_not_ule_rhs(i64 %a, i64 %b) {
+--; CHECK-LABEL: define i1 @usub_sat_not_ule_rhs(
+--; CHECK-SAME: i64 [[A:%.*]], i64 [[B:%.*]]) {
+--; CHECK-NEXT:    [[SUB_SAT:%.*]] = call i64 @llvm.usub.sat.i64(i64 [[A]], i64 [[B]])
+--; CHECK-NEXT:    [[CMP:%.*]] = icmp ule i64 [[SUB_SAT]], [[B]]
+--; CHECK-NEXT:    ret i1 [[CMP]]
+--;
+--  %sub.sat = call i64 @llvm.usub.sat.i64(i64 %a, i64 %b)
+--  %cmp = icmp ule i64 %sub.sat, %b
+--  ret i1 %cmp
+--}
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll b/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll
+---- a/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll
+-+++ b/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll
+-@@ -0,0 +1,48 @@
+-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
+-+; RUN: opt -S --passes=slp-vectorizer -mtriple=aarch64-unknown-linux-gnu < %s | FileCheck %s
+-+
+-+declare noalias ptr @malloc()
++             continue;
++           }
+++          if (I1->getOpcode() == I2->getOpcode())
+++            continue;
++           return I1->getOpcode() < I2->getOpcode();
++         }
++         if (I1)
++diff -ruN --strip-trailing-cr a/llvm/test/Transforms/FunctionAttrs/initializes.ll b/llvm/test/Transforms/FunctionAttrs/initializes.ll
++--- a/llvm/test/Transforms/FunctionAttrs/initializes.ll
+++++ b/llvm/test/Transforms/FunctionAttrs/initializes.ll
++@@ -635,3 +635,17 @@
++   call void @llvm.memmove.p0.p0.i64(ptr %dst.1, ptr %src, i64 0, i1 false)
++   ret void
++ }
+ +
+-+define void @test() {
+-+; CHECK-LABEL: define void @test() {
+-+; CHECK-NEXT:    [[TMP1:%.*]] = call dereferenceable_or_null(16) ptr @malloc()
+-+; CHECK-NEXT:    [[TMP2:%.*]] = load volatile ptr, ptr null, align 8
+-+; CHECK-NEXT:    [[TMP3:%.*]] = load <15 x i8>, ptr [[TMP1]], align 1
+-+; CHECK-NEXT:    [[TMP4:%.*]] = shufflevector <15 x i8> [[TMP3]], <15 x i8> poison, <8 x i32> <i32 0, i32 2, i32 4, i32 6, i32 8, i32 10, i32 12, i32 14>
+-+; CHECK-NEXT:    store <8 x i8> [[TMP4]], ptr [[TMP2]], align 1
+++; We should bail if the range overflows a singed 64-bit int.
+++define void @range_overflows_signed_64_bit_int(ptr %arg) {
+++; CHECK: Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: write)
+++; CHECK-LABEL: define void @range_overflows_signed_64_bit_int(
+++; CHECK-SAME: ptr writeonly captures(none) [[ARG:%.*]]) #[[ATTR0]] {
+++; CHECK-NEXT:    [[GETELEMENTPTR:%.*]] = getelementptr i8, ptr [[ARG]], i64 9223372036854775804
+++; CHECK-NEXT:    store i32 0, ptr [[GETELEMENTPTR]], align 4
+ +; CHECK-NEXT:    ret void
+ +;
+-+  %1 = call dereferenceable_or_null(16) ptr @malloc()
+-+  %2 = load volatile ptr, ptr null, align 8
+-+  %3 = load i8, ptr %1, align 1
+-+  store i8 %3, ptr %2, align 1
+-+  %4 = getelementptr i8, ptr %1, i64 2
+-+  %5 = load i8, ptr %4, align 1
+-+  %6 = getelementptr i8, ptr %2, i64 1
+-+  store i8 %5, ptr %6, align 1
+-+  %7 = getelementptr i8, ptr %1, i64 4
+-+  %8 = load i8, ptr %7, align 1
+-+  %9 = getelementptr i8, ptr %2, i64 2
+-+  store i8 %8, ptr %9, align 1
+-+  %10 = getelementptr i8, ptr %1, i64 6
+-+  %11 = load i8, ptr %10, align 1
+-+  %12 = getelementptr i8, ptr %2, i64 3
+-+  store i8 %11, ptr %12, align 1
+-+  %13 = getelementptr i8, ptr %1, i64 8
+-+  %14 = load i8, ptr %13, align 1
+-+  %15 = getelementptr i8, ptr %2, i64 4
+-+  store i8 %14, ptr %15, align 1
+-+  %16 = getelementptr i8, ptr %1, i64 10
+-+  %17 = load i8, ptr %16, align 1
+-+  %18 = getelementptr i8, ptr %2, i64 5
+-+  store i8 %17, ptr %18, align 1
+-+  %19 = getelementptr i8, ptr %1, i64 12
+-+  %20 = load i8, ptr %19, align 1
+-+  %21 = getelementptr i8, ptr %2, i64 6
+-+  store i8 %20, ptr %21, align 1
+-+  %22 = getelementptr i8, ptr %1, i64 14
+-+  %23 = load i8, ptr %22, align 1
+-+  %24 = getelementptr i8, ptr %2, i64 7
+-+  store i8 %23, ptr %24, align 1
+++  %getelementptr = getelementptr i8, ptr %arg, i64 9223372036854775804
+++  store i32 0, ptr %getelementptr
+ +  ret void
+ +}
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+-@@ -897,6 +897,26 @@
+- )
+- 
+- mlir_c_api_cc_library(
+-+    name = "CAPISMT",
+-+    srcs = [
+-+        "lib/CAPI/Dialect/SMT.cpp",
+-+        "lib/CAPI/Target/ExportSMTLIB.cpp",
+-+    ],
+-+    hdrs = [
+-+        "include/mlir-c/Dialect/SMT.h",
+-+        "include/mlir-c/Target/ExportSMTLIB.h",
+-+    ],
+-+    capi_deps = [
+-+        ":CAPIIR",
+-+    ],
+-+    includes = ["include"],
+-+    deps = [
+-+        ":SMTDialect",
+-+        ":TargetSMTLIB",
+-+    ],
+-+)
+-+
+-+mlir_c_api_cc_library(
+-     name = "CAPIRegisterEverything",
+-     srcs = ["lib/CAPI/RegisterEverything/RegisterEverything.cpp"],
+-     hdrs = ["include/mlir-c/RegisterEverything.h"],
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
+-@@ -1113,6 +1113,53 @@
+- )
+- 
+- ##---------------------------------------------------------------------------##
+-+# SMT dialect.
+-+##---------------------------------------------------------------------------##
+-+
+-+td_library(
+-+    name = "SMTOpsPyTdFiles",
+-+    srcs = [],
+-+    includes = ["../include"],
+-+    deps = [
+-+        "//mlir:SMTTdFiles",
+-+        "//mlir:OpBaseTdFiles",
+-+    ],
+-+)
++diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll b/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll
++--- a/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll
+++++ b/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll
++@@ -0,0 +1,38 @@
+++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
+++; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-unknown-linux-gnu < %s | FileCheck %s
+ +
+-+gentbl_filegroup(
+-+    name = "SMTOpsPyGen",
+-+    tbl_outs = [
+-+        (
+-+            [
+-+                "-gen-python-enum-bindings",
+-+                "-bind-dialect=smt",
+-+            ],
+-+            "mlir/dialects/_smt_enum_gen.py",
+-+        ),
+-+        (
+-+            [
+-+                "-gen-python-op-bindings",
+-+                "-bind-dialect=smt",
+-+            ],
+-+            "mlir/dialects/_smt_ops_gen.py",
+-+        ),
+-+    ],
+-+    tblgen = "//mlir:mlir-tblgen",
+-+    td_file = "mlir/dialects/SMTOps.td",
+-+    deps = [
+-+        ":SMTOpsPyTdFiles",
+-+    ],
+-+)
+++define void @test(i32 %julianDay, i1 %cmp, i8 %0, i16 %1) {
+++; CHECK-LABEL: define void @test(
+++; CHECK-SAME: i32 [[JULIANDAY:%.*]], i1 [[CMP:%.*]], i8 [[TMP0:%.*]], i16 [[TMP1:%.*]]) {
+++; CHECK-NEXT:  [[ENTRY:.*]]:
+++; CHECK-NEXT:    br i1 [[CMP]], label %[[IF_THEN2:.*]], label %[[IF_END33:.*]]
+++; CHECK:       [[IF_THEN2]]:
+++; CHECK-NEXT:    [[CONV_I:%.*]] = sext i8 [[TMP0]] to i32
+++; CHECK-NEXT:    [[CONV_I2:%.*]] = sext i16 [[TMP1]] to i32
+++; CHECK-NEXT:    br label %[[IF_END33]]
+++; CHECK:       [[IF_END33]]:
+++; CHECK-NEXT:    [[MONTH_0:%.*]] = phi i32 [ [[CONV_I]], %[[IF_THEN2]] ], [ 0, %[[ENTRY]] ]
+++; CHECK-NEXT:    [[DAYOFMONTH_0:%.*]] = phi i32 [ [[CONV_I]], %[[IF_THEN2]] ], [ [[JULIANDAY]], %[[ENTRY]] ]
+++; CHECK-NEXT:    [[DAYOFYEAR_0:%.*]] = phi i32 [ [[CONV_I2]], %[[IF_THEN2]] ], [ 0, %[[ENTRY]] ]
+++; CHECK-NEXT:    store volatile i32 [[MONTH_0]], ptr null, align 4294967296
+++; CHECK-NEXT:    store volatile i32 [[DAYOFMONTH_0]], ptr null, align 4294967296
+++; CHECK-NEXT:    store volatile i32 [[DAYOFYEAR_0]], ptr null, align 4294967296
+++; CHECK-NEXT:    ret void
+++;
+++entry:
+++  br i1 %cmp, label %if.then2, label %if.end33
+ +
+-+filegroup(
+-+    name = "SMTOpsPyFiles",
+-+    srcs = [
+-+        "mlir/dialects/smt.py",
+-+        ":SMTOpsPyGen",
+-+    ],
+-+)
+++if.then2:
+++  %conv.i = sext i8 %0 to i32
+++  %conv.i2 = sext i16 %1 to i32
+++  br label %if.end33
+ +
+-+##---------------------------------------------------------------------------##
+- # SparseTensor dialect.
+- ##---------------------------------------------------------------------------##
+++if.end33:
+++  %month.0 = phi i32 [ %conv.i, %if.then2 ], [ 0, %entry ]
+++  %dayOfMonth.0 = phi i32 [ %conv.i, %if.then2 ], [ %julianDay, %entry ]
+++  %dayOfYear.0 = phi i32 [ %conv.i2, %if.then2 ], [ 0, %entry ]
+++  store volatile i32 %month.0, ptr null, align 4294967296
+++  store volatile i32 %dayOfMonth.0, ptr null, align 4294967296
+++  store volatile i32 %dayOfYear.0, ptr null, align 4294967296
+++  ret void
+++}
++diff -ruN --strip-trailing-cr a/mlir/lib/Transforms/Utils/DialectConversion.cpp b/mlir/lib/Transforms/Utils/DialectConversion.cpp
++--- a/mlir/lib/Transforms/Utils/DialectConversion.cpp
+++++ b/mlir/lib/Transforms/Utils/DialectConversion.cpp
++@@ -2106,6 +2106,7 @@
++     rewriterImpl.logger.startLine() << "* Fold {\n";
++     rewriterImpl.logger.indent();
++   });
+++  (void)rewriterImpl;
+  
++   // Try to fold the operation.
++   SmallVector<Value, 2> replacementValues;
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 5ceac99..725480b 100644
+index 50bc551..6f96b54 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "5eccd71ce4f852c7b2f06ecd1976d9e34040fcaa"
--    LLVM_SHA256 = "fd100fd69425ebac40ed58ff0558e0064b74bd97b6023d5e65e4c706c726a483"
-+    LLVM_COMMIT = "71a977d0d611f3e9f6137a6b8a26b730b2886ce9"
-+    LLVM_SHA256 = "9bdf3ddf45c069248af36080a78b56d839d3aad6f9b727ec1ee1be72682888cc"
+-    LLVM_COMMIT = "f9c01b59e3d5239a4e42f94d5edbeb3698a81032"
+-    LLVM_SHA256 = "3853da5d724e2254c7ff5f55be7d98f47e2fae2576bb5a5a82d26a06bacef5ae"
++    LLVM_COMMIT = "c60f24dca96dad44afc60df3fcb80997737b6306"
++    LLVM_SHA256 = "86ff363de84f28a0acc854e0bafb78d38162b0e09a59e9e57689dc02e4501d6d"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index 3b7eef6..e04865c 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -1,3 +1,14 @@
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
++--- stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+++++ stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
++@@ -61,7 +61,6 @@
++ }  // namespace
++ 
++ LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
++-  addArgumentMaterialization(scalarToTensor);
++   addSourceMaterialization(scalarToTensor);
++   addTargetMaterialization(scalarToTensor);
++ }
+ diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
+ --- stablehlo/stablehlo/dialect/StablehloAttrs.td
+ +++ stablehlo/stablehlo/dialect/StablehloAttrs.td
+@@ -10,4 +21,38 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo
+  }
+  
+  #endif // STABLEHLO_DIALECT_STABLEHLO_ATTRS
++diff --ruN a/stablehlo/stablehlo/dialect/VhloAttrs.td b/stablehlo/stablehlo/dialect/VhloAttrs.td
++--- stablehlo/stablehlo/dialect/VhloAttrs.td
+++++ stablehlo/stablehlo/dialect/VhloAttrs.td
++@@ -102,7 +102,7 @@
++ // Corresponds to IntegerConstant from the StableHLO spec.
++ def VHLO_IntegerAttrV1 : VHLO_AttrDef<"IntegerV1", "0.9.0", "current"> {
++   let mnemonic = "integer_v1";
++-  let parameters = (ins "mlir::Type":$type, "APInt":$value);
+++  let parameters = (ins "mlir::Type":$type, APIntParameter<"">:$value);
++   let genVerifyDecl = 1;
++   let extraClassDefinition = [{
++     LogicalResult IntegerV1Attr::verify(
++diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.cpp b/stablehlo/stablehlo/dialect/VhloTypes.cpp
++--- stablehlo/stablehlo/dialect/VhloTypes.cpp
+++++ stablehlo/stablehlo/dialect/VhloTypes.cpp
++@@ -333,7 +333,6 @@
++ void VhloTypeConverter::addUnrealizedMaterializations() {
++   addTargetMaterialization(materializeIllegalCast);
++   addSourceMaterialization(materializeIllegalCast);
++-  addArgumentMaterialization(materializeIllegalCast);
++ }
++ 
++ namespace {
++diff --ruN a/stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp b/stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
++--- stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
+++++ stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
++@@ -77,7 +77,6 @@
++   addConversion(convertInteger);
++   addConversion(convertShapedType);
++ 
++-  addArgumentMaterialization(materializeCastFromIllegal);
++   addSourceMaterialization(materializeCastToIllegal);
++   addTargetMaterialization(materializeCastFromIllegal);
++ }
+ 

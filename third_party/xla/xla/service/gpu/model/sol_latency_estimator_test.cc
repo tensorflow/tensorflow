@@ -23,12 +23,12 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -45,7 +45,7 @@ struct EstimatorTestCase {
   absl::Duration expected_latency;
 };
 
-class SolLatencyEstimatorTest : public HloTestBase,
+class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
                                 public WithParamInterface<EstimatorTestCase> {
  protected:
   SolLatencyEstimatorTest()

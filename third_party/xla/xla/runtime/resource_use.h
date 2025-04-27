@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
@@ -25,7 +26,7 @@ limitations under the License.
 namespace xla {
 
 // `Resource` models a run time resource that imposes ordering on the thunk
-// execution in addition to thunk buffer uses.
+// execution (scheduling) in addition to thunk buffer uses.
 class Resource {
  public:
   enum class Kind {
@@ -34,7 +35,7 @@ class Resource {
     // enforce ordering at run time.
     kToken,
 
-    // Collective operations must be executed in the same order as they are
+    // Collective operations must be scheduled in the same order as they are
     // defined in the HLO module. We rely on collective communicator resource
     // to enforce ordering at run time.
     kCollectiveCommunicator
@@ -86,6 +87,10 @@ class ResourceUse {
     bool HasConflicts(const ResourceUse& use) const;
     bool HasConflicts(absl::Span<const ResourceUse> uses) const;
     bool HasConflicts(const ReadWriteSet& other);
+
+    // Collects all resource uses that have a conflict with tracked resource
+    // reads or writes.
+    std::vector<ResourceUse> Conflicts(const ReadWriteSet& other);
 
    private:
     absl::flat_hash_set<std::shared_ptr<Resource>> read_;

@@ -1434,8 +1434,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
                     dimension_to_match, broadcast_dimensions.at(i - 1)));
     }
 
-    output_shape.set_dimensions(dimension_to_match, small_dimension_size);
-    output_shape.set_dynamic_dimension(dimension_to_match, small_is_dynamic);
+    output_shape.set_dimensions(dimension_to_match, small_dimension_size,
+                                small_is_dynamic);
   }
 
   return output_shape;
@@ -2508,11 +2508,11 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
           in, in.element_type() == F32 ? C64 : C128);
       // Preserve the size of zero-sized dimensions.
       if (fft_length[fft_rank - 1] != 0) {
-        result.set_dimensions(result.dimensions_size() - 1,
-                              fft_length[fft_rank - 1] / 2 + 1);
-        if (in.is_unbounded_dynamic_dimension(result.dimensions_size() - 1)) {
-          result.set_dynamic_dimension(result.dimensions_size() - 1, false);
-        }
+        const int dim = static_cast<int>(result.dimensions().size()) - 1;
+        const bool is_dynamic = result.is_dynamic_dimension(dim) &&
+                                !in.is_unbounded_dynamic_dimension(dim);
+        result.set_dimensions(dim, fft_length[fft_rank - 1] / 2 + 1,
+                              is_dynamic);
       }
       return result;
     }
@@ -2545,11 +2545,10 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
             in.dimensions_size() - 1, last_in_dimension_size,
             fft_length[fft_rank - 1] / 2 + 1);
       }
-      result.set_dimensions(result.dimensions_size() - 1,
-                            fft_length[fft_rank - 1]);
-      if (in.is_unbounded_dynamic_dimension(result.dimensions_size() - 1)) {
-        result.set_dynamic_dimension(result.dimensions_size() - 1, false);
-      }
+      const int dim = static_cast<int>(result.dimensions().size()) - 1;
+      const bool is_dynamic = result.is_dynamic_dimension(dim) &&
+                              !in.is_unbounded_dynamic_dimension(dim);
+      result.set_dimensions(dim, fft_length[fft_rank - 1], is_dynamic);
       return result;
     }
     default:
@@ -2648,10 +2647,12 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     Shape output_shape = *operand_shape;
     int64_t output_shape_dimension =
         output_shape.dimensions(all_gather_dimension);
+    const bool is_dynamic = IsUnboundedDynamicSize(output_shape_dimension);
     output_shape.set_dimensions(all_gather_dimension,
-                                IsUnboundedDynamicSize(output_shape_dimension)
+                                is_dynamic
                                     ? Shape::kUnboundedSize
-                                    : shard_count * output_shape_dimension);
+                                    : shard_count * output_shape_dimension,
+                                is_dynamic);
     output_shapes.push_back(output_shape);
   }
   if (output_shapes.size() == 1) {
@@ -2716,10 +2717,13 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     }
 
     Shape output_shape = *operand_shape;
-    output_shape.set_dimensions(
-        scatter_dimension, output_shape.is_dynamic_dimension(scatter_dimension)
-                               ? Shape::kUnboundedSize
-                               : scatter_dim_input_size / shard_count);
+    const bool is_dynamic =
+        output_shape.is_dynamic_dimension(scatter_dimension);
+    output_shape.set_dimensions(scatter_dimension,
+                                is_dynamic
+                                    ? Shape::kUnboundedSize
+                                    : scatter_dim_input_size / shard_count,
+                                is_dynamic);
     output_shapes.push_back(output_shape);
   }
 
@@ -4004,10 +4008,9 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
           dimension, on_true.dimensions(dimension),
           on_false.dimensions(dimension), on_true.dimensions(dimension),
           on_false.dimensions(dimension));
-      result.set_dimensions(dimension, (*inferred).dimension);
-      result.set_dynamic_dimension(
-          dimension, on_true.is_dynamic_dimension(dimension) &&
-                         on_false.is_dynamic_dimension(dimension));
+      result.set_dimensions(dimension, (*inferred).dimension,
+                            on_true.is_dynamic_dimension(dimension) &&
+                                on_false.is_dynamic_dimension(dimension));
     } else {
       result.set_dynamic_dimension(
           dimension, (!ShapeUtil::IsScalar(pred) &&

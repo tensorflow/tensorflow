@@ -24,6 +24,25 @@ cc_library(
 )
 
 cc_library(
+    name = "temp_fake_quant_utils",
+    srcs = ["temp_fake_quant_utils.cc"],
+    hdrs = [
+        "temp_fake_quant_utils.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/common/tf_quantization_lib",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "tf_quantize_op_utils",
     srcs = ["tf_quantize_op_utils.cc"],
     hdrs = ["tf_quantize_op_utils.h"],

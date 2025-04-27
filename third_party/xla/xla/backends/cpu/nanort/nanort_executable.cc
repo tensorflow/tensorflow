@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -31,6 +32,8 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/executable_run_options.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
@@ -190,6 +193,25 @@ NanoRtExecutable::ExecuteOptions::set_intra_op_thread_pool(
   return *this;
 }
 
+NanoRtExecutable::ExecuteOptions&
+NanoRtExecutable::ExecuteOptions::set_ffi_context(
+    const ffi::ExecutionContext* ffi_context) {
+  ffi_context_ = ffi_context;
+  return *this;
+}
+
+NanoRtExecutable::ExecuteOptions&
+NanoRtExecutable::ExecuteOptions::set_launch_id(int32_t launch_id) {
+  launch_id_ = launch_id;
+  return *this;
+}
+
+NanoRtExecutable::ExecuteOptions&
+NanoRtExecutable::ExecuteOptions::set_device_ordinal(int32_t device_ordinal) {
+  device_ordinal_ = device_ordinal;
+  return *this;
+}
+
 const Eigen::ThreadPoolDevice*
 NanoRtExecutable::ExecuteOptions::intra_op_thread_pool() const {
   return intra_op_thread_pool_;
@@ -342,17 +364,26 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
                      FunctionLibrary* function_library,
                      const ExecuteOptions& options)
         : allocations(std::move(buffers)),
-          execute_params({function_library, &allocations,
-                          /*xfeed=*/nullptr, options.intra_op_thread_pool(),
-                          options.task_runner()}) {}
+          execute_params(Thunk::ExecuteParams{function_library, &allocations,
+                                              /*xfeed=*/nullptr,
+                                              options.intra_op_thread_pool(),
+                                              options.task_runner()}),
+          custom_call_execute_params(
+              RunId(options.launch_id()), options.device_ordinal(),
+              options.intra_op_thread_pool(), options.ffi_context()) {
+      execute_params.custom_call_params = &custom_call_execute_params;
+    }
 
     cpu::BufferAllocations allocations;
     Thunk::ExecuteParams execute_params;
+    Thunk::CustomCallExecuteParams custom_call_execute_params;
   };
 
-  // Only do a heap allocation if we're running with a thread pool, this allows
-  // us to keep the execution context alive as long as we need it.
-  if (options.intra_op_thread_pool()) {
+  // Do a heap allocation if we're running with a thread pool or using
+  // custom calls. This allows us to keep the execution context
+  // alive as long as we need it, but also to skip a dynamic allocation when it
+  // is not required.
+  if (options.intra_op_thread_pool() || options.ffi_context()) {
     auto execution_context = std::make_unique<ExecutionContext>(
         std::move(buffers), executable->function_library(), options);
 
@@ -366,8 +397,9 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
   } else {
     cpu::BufferAllocations allocations(std::move(buffers));
     Thunk::ExecuteParams execute_params{
-        executable->function_library(), &allocations, /*xfeed=*/nullptr,
-        options.intra_op_thread_pool(), options.task_runner()};
+        executable->function_library(), &allocations,
+        /*xfeed=*/nullptr, options.intra_op_thread_pool(),
+        options.task_runner()};
     return executable->thunks().Execute(execute_params);
   }
 }

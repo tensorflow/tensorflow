@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/variant_visitor.h"
+#include "xla/service/overload.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -120,15 +120,14 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
                     &stream, blocked.message());
   }
 
-  int32_t branch_index = std::visit(
-      VariantVisitor{[](int32_t* branch_index) { return *branch_index; },
-                     [](bool* pred) { return *pred ? 0 : 1; }},
-      branch_index_or_pred);
-
-  absl::string_view branch_kind =
-      std::visit(VariantVisitor{[](int32_t*) { return "index"; },
-                                [](bool*) { return "pred"; }},
+  int32_t branch_index =
+      std::visit(Overload{[](int32_t* branch_index) { return *branch_index; },
+                          [](bool* pred) { return *pred ? 0 : 1; }},
                  branch_index_or_pred);
+
+  absl::string_view branch_kind = std::visit(
+      Overload{[](int32_t*) { return "index"; }, [](bool*) { return "pred"; }},
+      branch_index_or_pred);
 
   VLOG(3) << "ConditionalThunk: branch_index=" << branch_index
           << " (kind: " << branch_kind << ")";

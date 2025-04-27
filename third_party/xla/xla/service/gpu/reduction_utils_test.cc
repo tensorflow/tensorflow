@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla {
 namespace gpu {
@@ -28,7 +28,7 @@ namespace {
 
 using ::testing::ElementsAre;
 
-using ReductionUtilsTest = HloTestBase;
+using ReductionUtilsTest = HloHardwareIndependentTestBase;
 
 const char kModulePrefix[] = R"(
     HloModule test_module

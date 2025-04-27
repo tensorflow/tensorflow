@@ -1,0 +1,2 @@
+interceptor_via_lib:libhsa-runtime64.so
+interceptor_via_lib:libamdhip64.so

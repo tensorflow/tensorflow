@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
@@ -31,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "stablehlo/dialect/Base.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tpu_embedding_ops_registry.h"
@@ -43,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
@@ -75,13 +76,11 @@ bool IsBounded(Type ty) {
 
   if (ranked_ty.hasStaticShape()) return true;
 
-  auto encoding =
-      mlir::dyn_cast_or_null<TypeExtensionsAttr>(ranked_ty.getEncoding());
-  if (!encoding) return false;
+  auto bounds = hlo::encodingToBounds(ranked_ty.getEncoding());
+  if (bounds.empty()) return false;
 
   for (int i = 0; i < ranked_ty.getRank(); ++i) {
-    if (ranked_ty.isDynamicDim(i) &&
-        encoding.getBounds()[i] == ShapedType::kDynamic) {
+    if (ranked_ty.isDynamicDim(i) && bounds[i] == ShapedType::kDynamic) {
       return false;
     }
   }

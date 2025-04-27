@@ -53,7 +53,6 @@ tf_staging/tensorflow/go/stream_executor/BUILD:
 tf_staging/tensorflow/go/tsl/profiler/protobuf/BUILD:
 tf_staging/tensorflow/go/tsl/protobuf/BUILD:
 tf_staging/tensorflow/java/README.md:
-tf_staging/tensorflow/java/src/main/native/BUILD:
 tf_staging/tensorflow/lite/acceleration/configuration/c/delegate_plugin.h:
 tf_staging/tensorflow/lite/acceleration/configuration/c/gpu_plugin.h:
 tf_staging/tensorflow/lite/acceleration/configuration/c/nnapi_plugin.h:
@@ -109,11 +108,9 @@ tf_staging/tensorflow/lite/experimental/acceleration/configuration/configuration
 tf_staging/tensorflow/lite/experimental/acceleration/mini_benchmark/c/c_api.h:
 tf_staging/tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h:
 tf_staging/tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl:
-tf_staging/tensorflow/lite/experimental/litert/build_common/special_rule.bzl:
 tf_staging/tensorflow/lite/interpreter.h:
 tf_staging/tensorflow/lite/interpreter_builder.h:
 tf_staging/tensorflow/lite/ios/BUILD:
-tf_staging/tensorflow/lite/java/jni/BUILD:
 tf_staging/tensorflow/lite/kernels/builtin_op_kernels.h:
 tf_staging/tensorflow/lite/kernels/register.h:
 tf_staging/tensorflow/lite/lib_package/BUILD:
@@ -127,8 +124,6 @@ tf_staging/tensorflow/lite/signature_runner.h:
 tf_staging/tensorflow/lite/special_rules.bzl:
 tf_staging/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/AndroidManifest.xml:
 tf_staging/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/build_defs.bzl:
-tf_staging/tensorflow/lite/tools/pip_package/BUILD:
-tf_staging/tensorflow/lite/tools/pip_package/utils/BUILD:
 tf_staging/tensorflow/lite/tools/verifier.h:
 tf_staging/tensorflow/lite/tools/verifier_internal.h:
 tf_staging/tensorflow/python/autograph/core/config:.py
@@ -179,13 +174,16 @@ tf_staging/tensorflow/tools/pip_package/simple_console_for_windows:.py
 tf_staging/tensorflow/tools/pip_package/utils/BUILD:
 tf_staging/tensorflow/tools/pip_package/xla_build/CMakeLists.txt:
 tf_staging/tensorflow/tools/toolchains/BUILD:
+tf_staging/tensorflow/tools/toolchains/android/BUILD:
 tf_staging/tensorflow/tools/toolchains/clang6/BUILD:
 tf_staging/tensorflow/tools/toolchains/cpus/py/BUILD:
 tf_staging/tensorflow/tools/toolchains/cpus/py3/BUILD:
 tf_staging/tensorflow/tools/toolchains/cross_compile/cc/BUILD:
 tf_staging/tensorflow/tools/toolchains/cross_compile/config/BUILD:
 tf_staging/tensorflow/tools/toolchains/embedded/arm-linux/BUILD:
+tf_staging/tensorflow/tools/toolchains/ios/BUILD:
 tf_staging/tensorflow/tools/toolchains/java/BUILD:
+tf_staging/tensorflow/tools/toolchains/linux/BUILD:
 tf_staging/tensorflow/tools/toolchains/python/BUILD:
 tf_staging/tensorflow/tools/toolchains/remote/BUILD:
 tf_staging/tensorflow/tools/toolchains/remote_config/BUILD:

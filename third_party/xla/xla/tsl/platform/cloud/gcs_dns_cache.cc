@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "tsl/platform/retrying_utils.h"
@@ -64,7 +66,7 @@ GcsDnsCache::GcsDnsCache(Env* env, int64_t refresh_rate_secs)
 
 void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
   // TODO(saeta): Denylist failing IP addresses.
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   if (!started_) {
     VLOG(1) << "Starting GCS DNS cache.";
     DCHECK(!worker_) << "Worker thread already exists!";
@@ -233,9 +235,9 @@ void GcsDnsCache::WorkerThread() {
   while (true) {
     {
       // Don't immediately re-resolve the addresses.
-      mutex_lock l(mu_);
+      absl::MutexLock l(&mu_);
       if (cancelled_) return;
-      cond_var_.wait_for(l, std::chrono::seconds(refresh_rate_secs_));
+      cond_var_.WaitWithTimeout(&mu_, absl::Seconds(refresh_rate_secs_));
       if (cancelled_) return;
     }
 
@@ -243,7 +245,7 @@ void GcsDnsCache::WorkerThread() {
     auto new_addresses = ResolveNames(kCachedDomainNames);
 
     {
-      mutex_lock l(mu_);
+      absl::MutexLock l(&mu_);
       // Update instance variables.
       addresses_.swap(new_addresses);
     }

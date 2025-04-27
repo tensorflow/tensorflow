@@ -26,10 +26,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -37,7 +37,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-using WindowedEinsumHandlerTest = HloTestBase;
+using WindowedEinsumHandlerTest = HloHardwareIndependentTestBase;
 
 HloInstruction* FindInstructionByName(HloComputation* comp, std::string name) {
   for (auto inst : comp->instructions()) {
@@ -1166,7 +1166,7 @@ ENTRY main.12_spmd {
   EXPECT_EQ(inst->operand(0)->tuple_index(), 5);
   EXPECT_EQ(inst->operand(0)->operand(0), ag_loop);
 
-  EXPECT_EQ(ag_loop->operand(0)->shape().tuple_shapes_size(), 7);
+  EXPECT_EQ(ag_loop->operand(0)->shape().tuple_shapes().size(), 7);
   // The root instruction's first operand should now be a reduction.
   EXPECT_EQ(
       module->entry_computation()->root_instruction()->operand(0)->opcode(),

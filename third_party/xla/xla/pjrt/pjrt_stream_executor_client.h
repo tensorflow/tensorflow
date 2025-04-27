@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -95,10 +96,10 @@ struct PjRtStreamExecutorExecutionOutput {
 
 class PjRtStreamExecutorDevice : public PjRtDevice {
  public:
-  explicit PjRtStreamExecutorDevice(
-      int id, std::unique_ptr<LocalDeviceState> local_device_state,
-      std::string device_kind, int process_index = 0)
-      : description_(id, std::move(device_kind), process_index),
+  PjRtStreamExecutorDevice(int id,
+                           std::unique_ptr<LocalDeviceState> local_device_state,
+                           int process_index, std::string device_kind)
+      : description_(id, process_index, std::move(device_kind)),
         local_device_id_(local_device_state
                              ? local_device_state->local_device_id()
                              : PjRtLocalDeviceId(-1)),
@@ -276,13 +277,21 @@ class PjRtStreamExecutorClient : public PjRtClient {
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      mlir::ModuleOp mlir_module, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp mlir_module, CompileOptions options) override;
 
   virtual absl::StatusOr<std::string> SerializeExecutable(
       const PjRtLoadedExecutable& executable) const;
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
 
   // For PjRtStreamExecutorClient, `options` is mandatory.
   // This function returns an InvalidArgument error if `std::nullopt` is passed.
@@ -291,6 +300,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
   LoadSerializedExecutable(absl::string_view serialized,
                            std::optional<CompileOptions> options,
                            const LoadOptions& load_options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::unique_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options) override;
 
   absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
@@ -336,11 +349,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
   absl::Status DmaUnmap(void* data) override;
 
   bool IsDmaMapped(const void* data_start, int64_t transfer_size);
-
-  // TODO(zhangqiaorjc): Experimental. Will be removed.
-  absl::Status Defragment() override {
-    return Unimplemented("Defragment not implemented");
-  }
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
@@ -415,13 +423,37 @@ class PjRtStreamExecutorClient : public PjRtClient {
         addressable_device_logical_ids;
     std::vector<PjRtDevice*> addressable_devices;
   };
-  absl::StatusOr<ExecutableExtras> GetExecutableExtras(CompileOptions* options);
 
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
+  // Updates `options` for compilation.
+  absl::Status UpdateCompileOptions(CompileOptions* options);
+
+  // Same as above, but also returns the executable extras.
+  absl::StatusOr<ExecutableExtras> UpdateCompileOptionsAndGetExecutableExtras(
+      CompileOptions* options);
+
+  // Updates `options` for compilation, and gets the executable extras if
+  // `returned_extras` is not null.
+  absl::Status UpdateCompileOptionsInternal(CompileOptions* options,
+                                            ExecutableExtras* returned_extras);
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
       const XlaComputation& computation,
       const std::vector<const Shape*>& argument_layout_pointers,
       LayoutCanonicalizationCallback layout_canonicalization_callback,
       CompileOptions options);
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> BuildPjRtExecutable(
+      std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+      CompileOptions compile_options);
+
+  absl::StatusOr<
+      std::pair<std::vector<std::unique_ptr<LocalExecutable>>, CompileOptions>>
+  DeserializeToLocalExecutable(absl::string_view serialized,
+                               std::optional<CompileOptions> options);
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
+      std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+      CompileOptions compile_options);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBufferInternal(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -480,110 +512,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
 absl::StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<PjRtDevice*>> devices);
 
-class PjRtStreamExecutorBuffer : public PjRtBuffer {
+class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
  public:
-  // Helper class to retain a "hold" on a PjRtStreamExecutorBuffer. A ScopedHold
-  // may not outlive its parent PjRtStreamExecutorBuffer.
-  //
-  // There are three types of hold, as follows:
-  //
-  // 1) Usage hold: a transient hold while an operation using the buffer is
-  //    being enqueued onto a stream.
-  // A client acquires a usage hold by calling
-  // PjRtStreamExecutorBuffer::GetBufferWithHold(kUsage) or the convenience
-  // wrapper GetBufferWithUsageHold(). If the enqueue completes successfully the
-  // hold should be released using a call to ConvertUsageHold. If the ScopedHold
-  // is deleted without ConvertUsageHold being called, e.g., on error, the hold
-  // is dropped. It is legal to drop a usage hold instead of calling
-  // ConvertUsageHold, even if the buffer was successfully enqueued, as long as
-  // the client ensures that all necessary synchronization has been done.
-  //
-  // 2) External hold: a potentially long-lived hold while the buffer is being
-  //    shared by an external framework, e.g., NumPy.
-  // A client acquires an external hold by calling
-  // PjRtStreamExecutorBuffer::GetBufferWithHold(kExternal) or the convenience
-  // wrapper GetBufferWithExternalReference and releases it by deleting the
-  // ScopedHold. The external framework should not modify the underlying buffer
-  // unless it is confident via its own synchronization that modifications do
-  // not race with reads from the PjRtStreamExecutorBuffer.
-  //
-  // 3) Donation hold: a transient hold while an execution that donates the
-  //    buffer is being enqueued onto the compute stream.
-  // A client acquires a donation hold by calling
-  // PjRtStreamExecutorBuffer::GetBufferWithHold(kDonation). If the enqueue
-  // completes successfully the hold should be released using a call to
-  // ConfirmDonation after which the buffer is invalid. If the ScopedHold is
-  // deleted without ConfirmDonation being called, e.g., on error, the hold is
-  // dropped and the buffer remains valid. If the buffer is successfully
-  // enqueued the client *must* call ConfirmDonation.
-  //
-  // Donation holds behave like exclusive write locks: when a donation hold
-  // has been acquired, any attempt to acquire another hold of any type will
-  // block until the donation hold is dropped or confirmed. Acquiring a donation
-  // hold will fail with an error if there is any outstanding external hold, and
-  // will block if there are any outstanding usage holds until those holds are
-  // dropped or converted.
-  //
-  // Calls to PjRtStreamExecutorBuffer::Release (and transitively to
-  // PjRtStreamExecutorBuffer::Delete() and ~PjRtStreamExecutorBuffer()) will
-  // block until all usage and donation holds are either deleted or
-  // converted/confirmed.
-  class ScopedHold {
+  class ScopedHold : public CommonPjRtBuffer::ScopedHold {
    public:
-    enum Type { kUsage = 0, kExternalReference, kDonation, kMaxValue };
-    // Use a State enum instead of encoding the state in an error absl::Status
-    // to avoid creating absl::Status values in non-error cases. Creating a
-    // absl::Status entails several allocations and can add O(us) to every use
-    // of a hold.
-    enum State {
-      kUninitialized = 0,
-      kValid,
-      kMoved,
-      kConverted,
-      kReleased,
-      kDonated,
-      kError
-    };
-
-    ~ScopedHold();
-    ScopedHold(ScopedHold&& other);
-    ScopedHold(const ScopedHold&) = delete;
-    ScopedHold& operator=(const ScopedHold&) = delete;
-
-    Type type() const { return type_; }
-
-    absl::Status status() const {
-      // Lazily create absl::Status values only when they are requested.
-      switch (state_) {
-        case kUninitialized:
-          return InvalidArgument("Buffer has not been initialized");
-        case kValid:
-          return absl::OkStatus();
-        case kMoved:
-          return InvalidArgument("Buffer has been moved.");
-        case kConverted:
-          return InvalidArgument("Buffer has been converted");
-        case kReleased:
-          return InvalidArgument("Buffer has been released");
-        case kDonated:
-          return InvalidArgument("Buffer has been donated");
-        case kError:
-          return status_;
-        default:
-          CHECK(false) << "Unexpected state value " << state_;
-      }
-    }
-    bool ok() const { return state_ == kValid; }
-
-    // Access to the underlying device buffer storage. Requires this->ok().
-    const std::shared_ptr<TrackedDeviceBuffer>& buffer() const {
-      CHECK_EQ(state_, kValid);
-      CHECK_NE(buffer_, nullptr);
-      return buffer_;
-    }
-    TrackedDeviceBuffer* operator->() const { return buffer().get(); }
-    const TrackedDeviceBuffer& operator*() const { return *buffer(); }
-
     // Converts the hold into a usage event. Only valid for holds of type
     // kUsage.
     //
@@ -598,69 +530,25 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
                           std::shared_ptr<BufferSequencingEvent> event,
                           bool reference_held);
 
-    // Confirms that the buffer was successfully donated to an execution.
-    // Only valid for holds of type kDonation. Causes the buffer to become
-    // invalid.
-    void ConfirmDonation();
+    TrackedDeviceBuffer* buffer() const {
+      return static_cast<TrackedDeviceBuffer*>(
+          CommonPjRtBuffer::ScopedHold::buffer());
+    }
+    TrackedDeviceBuffer* operator->() const { return buffer(); }
+    const TrackedDeviceBuffer& operator*() const { return *buffer(); }
 
-    // Adds the held device buffers in order to 'iterator'. Used to add the
-    // buffers to an ExecutionInput. We require but do not verify that
-    // 'iterator' when passed in is pointing to a sub-tuple of the
-    // ExecutionInput whose on_device_shape matches that of the
-    // TrackedDeviceBuffer. 'end' is used to check that 'iterator' doesn't run
-    // out of bounds. Donates the device buffers if the hold type is kDonation,
-    // otherwise retains ownership of the device buffers.
-    void AddToInput(ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
-                    const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
-                    ExecutionInput* execution_input,
-                    se::DeviceMemoryAllocator* allocator) const;
-
-   private:
-    friend class PjRtStreamExecutorBuffer;
-    friend class PjRtStreamExecutorClient;
-
-    // Helper struct that makes it possible to move a ScopedHold through a
-    // closure.
-    using ForClosure =
-        std::tuple<PjRtStreamExecutorBuffer*, Type, State, absl::Status,
-                   std::shared_ptr<TrackedDeviceBuffer>>;
-
-    ScopedHold(PjRtStreamExecutorBuffer* parent, Type type)
-        : parent_(parent), type_(type), state_(kUninitialized) {}
-    explicit ScopedHold(const ForClosure& closure_helper)
-        : parent_(std::get<0>(closure_helper)),
-          type_(std::get<1>(closure_helper)),
-          state_(std::get<2>(closure_helper)),
-          status_(std::get<3>(closure_helper)),
-          buffer_(std::get<4>(closure_helper)) {
-      // Check the buffer is not in an error state.
-      CHECK(status_.ok() && buffer_ != nullptr);
+    PjRtStreamExecutorBuffer* parent() const {
+      return static_cast<PjRtStreamExecutorBuffer*>(
+          CommonPjRtBuffer::ScopedHold::parent());
     }
 
-    // Sets buffer state.
-    void SetState(State state) { state_ = state; }
-
-    // Sets buffer_ and status_. Called by parent_ to initialize the hold.
-    void Acquire(
-        absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or);
-    // Releases the contents of *this, so *this can subsequently be
-    // deleted without releasing the parent's hold. Should be passed to the
-    // appropriate constructor of another ScopedHold, e.g., when a hold must be
-    // passed through a closure that is incompatible with std::move.
-    ForClosure ToClosure();
-
-    PjRtStreamExecutorBuffer* const parent_;
-    const Type type_;
-
-    // There is an invariant that if ok() then
-    // buffer_.value() != nullptr.
-    State state_;
-    absl::Status status_;
-    std::shared_ptr<TrackedDeviceBuffer> buffer_;
+   private:
+    using CommonPjRtBuffer::ScopedHold::ScopedHold;
+    friend class PjRtStreamExecutorBuffer;
+    friend class PjRtStreamExecutorClient;
   };
-
   PjRtStreamExecutorBuffer(Shape on_device_shape,
-                           std::shared_ptr<TrackedDeviceBuffer> device_buffer,
+                           std::unique_ptr<TrackedDeviceBuffer> device_buffer,
                            PjRtClient* client, PjRtDevice* device,
                            PjRtMemorySpace* memory_space);
   ~PjRtStreamExecutorBuffer() override;
@@ -671,6 +559,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   PjRtStreamExecutorBuffer& operator=(PjRtStreamExecutorBuffer&&) = delete;
 
   const Shape& on_device_shape() const override { return on_device_shape_; }
+
   absl::StatusOr<Shape> logical_on_device_shape() override;
   PjRtMemorySpace* memory_space() const override { return memory_space_; }
   PjRtStreamExecutorDevice* device() const override { return device_; }
@@ -713,12 +602,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   // external framework drops the reference.
   void Delete() override;
 
-  bool IsDeleted() override;
-
-  // Returns a view of the PjRtBuffer device memory as a ShapedBuffer. The
-  // PjRtBuffer retains ownership of the device buffers.
-  absl::StatusOr<ShapedBuffer> AsShapedBuffer() const;
-
   // Returns a hold on the TrackedDeviceBuffer holding the device
   // buffers. See comment on ScopedHold.
   ScopedHold GetBufferWithHold(ScopedHold::Type type);
@@ -754,7 +637,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   // If the buffer was shared via an external reference it is the client's
   // responsibility that accesses via that reference do not interfere with
   // accesses via the buffer returned from Release.
-  absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> Release(
+  absl::StatusOr<tsl::RCReference<RawSEDeviceMemory>> Release(
       bool wait_for_operations_to_complete);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
@@ -763,26 +646,10 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
  private:
   friend class PjRtClient;
 
-  // Blocks in mu_.Await until there are no more usage holds.
-  void WaitForOutstandingUsageHolds() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Blocks in mu_.Await until there is no donation hold.
-  void WaitForOutstandingDonationHold() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Adds a hold of 'type' and returns device_buffer_. Returns an error if
-  // device_buffer_ is null, or if a donation hold was requested when there is
-  // an outstanding external hold.
-  // Requires holds_[kDonation] == 0 (i.e., WaitForOutstandingDonationHolds()
-  // must be called first.)
-  absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> GetBufferForHoldLocked(
-      ScopedHold::Type type) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Adds a hold of hold->type() and initializes `hold` with device_buffer_.
-  // Initializes hold with an error if device_buffer_ is null, or if a donation
-  // hold was requested when there is an outstanding external hold.
-  // Requires holds_[kDonation] == 0 (i.e., WaitForOutstandingDonationHolds()
-  // must be called first.)
-  void AcquireHoldLocked(ScopedHold* hold) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  TrackedDeviceBuffer* device_buffer() const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return static_cast<TrackedDeviceBuffer*>(CommonPjRtBuffer::device_buffer());
+  }
 
   // Drops a usage hold and calls device_buffer_->AddUsageEvent. Does a sanity
   // check that buffer==device_buffer_ or device_buffer_==nullptr. Called after
@@ -791,15 +658,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
                         std::shared_ptr<BufferSequencingEvent> event,
                         bool reference_held);
 
-  // Drops a donation hold and makes *this invalid for further use. Does a
-  // sanity check that buffer==device_buffer_. Called after device_buffer_ was
-  // successfully donated to an execution.
-  void ConfirmDonation(TrackedDeviceBuffer* device_buffer);
-
-  // Drops a hold without taking any other action. Does a sanity check that
-  // buffer==device_buffer_ or device_buffer_==nullptr.
-  void DropHold(ScopedHold::Type type, TrackedDeviceBuffer* buffer);
-
   absl::StatusOr<std::pair<std::unique_ptr<PjRtBuffer>,
                            std::shared_ptr<BufferSequencingEvent>>>
   CopyToDeviceHelper(PjRtDevice* dst_device, LocalDeviceState* dst_local_device,
@@ -807,7 +665,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
                      LocalDeviceState* transfer_local_device,
                      LocalDeviceState* src_local_device,
                      se::Stream* transfer_stream,
-                     std::shared_ptr<TrackedDeviceBuffer> src_device_buffer);
+                     const TrackedDeviceBuffer& src_device_buffer);
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceMemorySpace(
       PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space = nullptr);
 
@@ -815,12 +673,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   const Shape on_device_shape_;
   PjRtStreamExecutorDevice* const device_;
   PjRtMemorySpace* const memory_space_;
-
-  mutable absl::Mutex mu_;
-  std::shared_ptr<TrackedDeviceBuffer> device_buffer_ ABSL_GUARDED_BY(mu_);
-  // Count of holds on the buffer.
-  std::array<int, ScopedHold::Type::kMaxValue> holds_ ABSL_GUARDED_BY(mu_);
-  PjRtFuture<>::Promise definition_promise_ ABSL_GUARDED_BY(mu_);
 };
 
 // Allocates the device buffers for a buffer that will be used as the
@@ -1004,7 +856,7 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       std::shared_ptr<BufferSequencingEvent> definition_event,
       PjRtDevice* device,
       std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks,
-      std::vector<std::shared_ptr<TrackedDeviceBuffer>>& buffers_to_release)
+      std::vector<tsl::RCReference<RawSEDeviceMemory>>& buffers_to_release)
       const;
 
   absl::StatusOr<Result> ExecuteHelper(

@@ -1625,7 +1625,7 @@ SmallBitVector IndexingMap::RemoveUnusedSymbols() {
   if (!CompressVars(/*unused_dims=*/{}, unused_vars.unused_symbols)) {
     return {};
   }
-  return std::move(unused_vars.unused_symbols);
+  return std::move(unused_vars).unused_symbols;
 }
 
 void IndexingMap::ResetToKnownEmpty() {

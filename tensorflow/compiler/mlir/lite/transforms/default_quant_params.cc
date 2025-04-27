@@ -54,7 +54,7 @@ namespace {
 class DefaultQuantParamsPass
     : public impl::DefaultQuantParamsPassBase<DefaultQuantParamsPass> {
  public:
-  using DefaultQuantParamsPassBase::DefaultQuantParamsPassBase;
+  DefaultQuantParamsPass() {}
 
   explicit DefaultQuantParamsPass(double default_min, double default_max,
                                   bool is_signed) {

@@ -77,4 +77,11 @@ def XLA_BackendKindAttr :
   let assemblyFormat = "`<` $value `>`";
 }
 
+def XLA_ExtraBackendOptionsAttr
+  : ArrayOfAttr<XlaDialect,
+                "ExtraBackendOptions",
+                "extra_backend_options",
+                "mlir::StringAttr"> {
+}
+
 #endif // XLA_CODEGEN_EMITTERS_IR_XLA_ATTRS

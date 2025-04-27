@@ -49,9 +49,9 @@ namespace xla {
 namespace spmd {
 namespace {
 using hlo_sharding_util::GroupedSharding;
-PartitioningMethod gather_partition_method = PartitioningMethod::kExplicitBatch;
-PartitioningMethod scatter_partition_method =
-    PartitioningMethod::kExplicitBatch;
+std::vector<GatherScatterPartitioningMethod> preferred_gather_partition_methods;
+std::vector<GatherScatterPartitioningMethod>
+    preferred_scatter_partition_methods;
 
 // Generates per-group partitioned hlo based on given grouped sharding.
 PartitionedHlo PerGroupPartitionedHlo(
@@ -859,17 +859,18 @@ GatherPartitionMethods() {
 }
 
 // Helper function to get the gather partitioning method.
-decltype(PartitionGather)* GetGatherPartitionMethod(PartitioningMethod method) {
+decltype(PartitionGather)* GetGatherPartitionMethod(
+    GatherScatterPartitioningMethod method) {
   switch (method) {
-    case PartitioningMethod::kExplicitBatch:
+    case GatherScatterPartitioningMethod::kExplicitBatch:
       return PartitionGatherExplicitBatchDimensions;
-    case PartitioningMethod::kIndexParallel:
+    case GatherScatterPartitioningMethod::kIndexParallel:
       return PartitionGatherIndexParallelDimensions;
-    case PartitioningMethod::kOperandPassthrough:
+    case GatherScatterPartitioningMethod::kOperandPassthrough:
       return PartitionGatherOperandPassthroughDimensions;
-    case PartitioningMethod::kTrivialSlicedOperand:
+    case GatherScatterPartitioningMethod::kTrivialSlicedOperand:
       return PartitionGatherTrivialSlicedOperandDimensions;
-    case PartitioningMethod::kIndexPassthrough:
+    case GatherScatterPartitioningMethod::kIndexPassthrough:
       return PartitionGatherIndexPassthroughDimensions;
     default:
       return PartitionGatherExplicitBatchDimensions;
@@ -884,7 +885,12 @@ std::pair<int64_t, int64_t> GatherPartitionMethodCostModel(
     const PartitionedHlo& indices, const Shape& output_shape,
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor) {
-  if (partition_method == GetGatherPartitionMethod(gather_partition_method)) {
+  if (absl::c_any_of(
+          preferred_gather_partition_methods,
+          [&](const GatherScatterPartitioningMethod& preferred_method) {
+            return GetGatherPartitionMethod(preferred_method) ==
+                   partition_method;
+          })) {
     // Always prioritize the user's chosen partitioning, and assume it has zero
     // cost. The default method is kExplicitBatch.
     return {0, 0};
@@ -991,7 +997,8 @@ absl::Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
       batch_dims.push_back(i);
     }
   }
-  gather_partition_method = options().gather_partition_method;
+  preferred_gather_partition_methods =
+      options().preferred_gather_partition_methods;
   TF_ASSIGN_OR_RETURN(
       HloInstruction * pgather,
       PartitionGather(gather, operand, indices, gather->shape(),
@@ -1697,17 +1704,17 @@ ScatterPartitionMethods() {
 
 // Helper function to get the actual scatter partitioning method
 decltype(PartitionScatter)* GetScatterPartitionMethod(
-    PartitioningMethod method) {
+    GatherScatterPartitioningMethod method) {
   switch (method) {
-    case PartitioningMethod::kExplicitBatch:
+    case GatherScatterPartitioningMethod::kExplicitBatch:
       return PartitionScatterExplicitBatchDimensions;
-    case PartitioningMethod::kIndexParallel:
+    case GatherScatterPartitioningMethod::kIndexParallel:
       return PartitionScatterIndexParallelDimensions;
-    case PartitioningMethod::kOperandPassthrough:
+    case GatherScatterPartitioningMethod::kOperandPassthrough:
       return PartitionScatterOperandPassthroughDimensions;
-    case PartitioningMethod::kTrivialSlicedOperand:
+    case GatherScatterPartitioningMethod::kTrivialSlicedOperand:
       return PartitionScatterTrivialSlicedOperandDimensions;
-    case PartitioningMethod::kIndexPassthrough:
+    case GatherScatterPartitioningMethod::kIndexPassthrough:
       return PartitionScatterIndexPassthroughDimensions;
     default:
       return PartitionScatterIndexParallelDimensions;
@@ -1723,7 +1730,12 @@ std::pair<int64_t, int64_t> ScatterPartitionMethodCostModel(
     const std::vector<PartitionedHlo>& updates, const Shape& output_shape,
     const HloSharding& output_sharding, absl::Span<const int64_t> slice_sizes,
     SpmdPartitioningVisitor* visitor) {
-  if (partition_method == GetScatterPartitionMethod(scatter_partition_method)) {
+  if (absl::c_any_of(
+          preferred_scatter_partition_methods,
+          [&](const GatherScatterPartitioningMethod& preferred_method) {
+            return GetScatterPartitionMethod(preferred_method) ==
+                   partition_method;
+          })) {
     // Always prioritize index parallel partitioning, and assume it has zero
     // cost.
     return {0, 0};
@@ -1906,7 +1918,8 @@ absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       break;
     }
   }
-  scatter_partition_method = options().scatter_partition_method;
+  preferred_scatter_partition_methods =
+      options().preferred_scatter_partition_methods;
   std::vector<int64_t> slice_sizes = hlo_sharding_util::GetScatterSliceSize(
       operands[0].base_shape(), updates[0].base_shape(),
       scatter->scatter_dimension_numbers());

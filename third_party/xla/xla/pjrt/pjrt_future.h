@@ -253,22 +253,38 @@ class PjRtFutureBase : public PjRtFutureMoveControl<unique> {
 #endif
   };
 
-  PjRtFutureHelpers::ProfilingKeys OnBlockStart() const {
-    return on_block_start_ ? on_block_start_()
-                           : PjRtFutureHelpers::ProfilingKeys();
+  class ProfilingCleanup {
+   public:
+    ProfilingCleanup(const PjRtFutureBase* parent,
+                     PjRtFutureHelpers::ProfilingKeys keys)
+        : parent_(parent), keys_(std::move(keys)) {}
+    ~ProfilingCleanup() {
+      if (parent_ && parent_->on_block_end_)
+        parent_->on_block_end_(std::move(keys_));
+    }
+    ProfilingCleanup(const ProfilingCleanup& other) = delete;
+    ProfilingCleanup(ProfilingCleanup&& other) = delete;
+
+   private:
+    const PjRtFutureBase* parent_;
+    PjRtFutureHelpers::ProfilingKeys keys_;
+  };
+
+  ProfilingCleanup OnBlockStartScope() const {
+    return ProfilingCleanup(this, on_block_start_
+                                      ? on_block_start_()
+                                      : PjRtFutureHelpers::ProfilingKeys());
   }
 
-  void OnBlockEnd(PjRtFutureHelpers::ProfilingKeys keys) const {
-    if (on_block_end_) on_block_end_(std::move(keys));
-  }
-
-  // Blocks the calling thread until the future is ready.
-  void BlockUntilReady() const {
+  // Calls block_until_ready_fn to wait until the underlying AsyncValue is
+  // concrete. block_until_ready_fn should be equivalent to
+  // tsl::BlockUntilReady.
+  template <typename Fn>
+  void BlockUntilReady(Fn&& block_until_ready_fn) const {
     CHECK(IsValid());
     if (!promise_.IsAvailable()) {
-      PjRtFutureHelpers::ProfilingKeys keys = OnBlockStart();
-      tsl::BlockUntilReady(promise_);
-      OnBlockEnd(std::move(keys));
+      ProfilingCleanup scope = OnBlockStartScope();
+      block_until_ready_fn(promise_.GetAsyncValue());
     }
     DCHECK(promise_.IsConcrete());
   }
@@ -276,14 +292,16 @@ class PjRtFutureBase : public PjRtFutureMoveControl<unique> {
   // Blocks the calling thread until the future is ready, then returns the
   // final value.
   const T& Await() const& {
-    BlockUntilReady();
+    BlockUntilReady(
+        static_cast<void (*)(tsl::AsyncValue*)>(tsl::BlockUntilReady));
     return *promise_;
   }
 
   // Blocks the calling thread until the future is ready, then returns the
   // final value.
   std::conditional_t<unique, T, const T&> Await() && {
-    BlockUntilReady();
+    BlockUntilReady(
+        static_cast<void (*)(tsl::AsyncValue*)>(tsl::BlockUntilReady));
 
     if constexpr (unique) {
       return std::move(*promise_);
@@ -483,6 +501,7 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
              std::move(on_block_end)) {}
 
   using Base::Await;
+  using Base::BlockUntilReady;
   using Base::OnReady;
 };
 

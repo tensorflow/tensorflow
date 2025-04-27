@@ -24,6 +24,8 @@ opaque to the frameworks.
 *   [PJRT design docs](https://drive.google.com/drive/folders/18M944-QQPk1E34qRyIjkqDRDnpMa3miN)
 *   [PJRT API ABI versioning and compatibility](https://docs.google.com/document/d/1TKB5NyGtdzrpgw5mpyFjVAhJjpSNdF31T6pjPl_UT2o/edit)
 *   [PJRT Plugin Mechanism design doc](https://docs.google.com/document/d/1Qdptisz1tUPGn1qFAVgCV2omnfjN01zoQPwKLdlizas/edit)
+*   [OpenXLA 2024 Fall DevLab PJRT plugin tutorial slides](https://drive.google.com/file/d/1epUJkMONG2t06WOeMHz4Oi3F_-8cTuz-/view)
+    ([recording](https://www.youtube.com/watch?v=2GlMqaNxP_w&list=PLlFotmaRrOzv2OIEpijqiHGmY7rpscFcj))
 *   [OpenXLA/IREE PJRT plugin implementation](https://github.com/openxla/openxla-pjrt-plugin)
 
 

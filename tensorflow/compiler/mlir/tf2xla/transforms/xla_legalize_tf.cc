@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "mhlo/transforms/rewriters.h"
 #include "absl/log/log.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
@@ -35,18 +36,19 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
+#include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalize_tf_with_tf2xla_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // IWYU pragma: keep, dependent dialect
 #include "xla/mlir_hlo/mhlo/transforms/rewriters.h"
 #include "xla/mlir_hlo/mhlo/utils/type_conversion.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -154,6 +156,22 @@ mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
   return result;
 }
 
+mlir::LogicalResult StablehloToMhlo(Operation *op) {
+  ConversionTarget target(*op->getContext());
+  stablehlo::setupStablehloToHloConversionTarget(target);
+
+  RewritePatternSet patterns(op->getContext());
+  stablehlo::StablehloToHloTypeConverter shlo_converter;
+  stablehlo::populateStablehloToHloPatterns(&patterns, &shlo_converter,
+                                            patterns.getContext());
+  stablehlo::registerFuncOpsForTypeConversion(target, patterns, shlo_converter);
+
+  if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
+    return op->emitError("TF2XLA failed to convert StableHLO to MHLO");
+  }
+  return success();
+}
+
 /// When `tf2xla_fallback_device_type` is not `None`, also uses legalization
 /// patterns from TF2XLA fallback for provided device type (see
 /// legalize_tf_with_tf2xla.cc for details). By default, TF2XLA fallback is
@@ -208,20 +226,30 @@ LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
   // CHLO first.
   stablehlo::StablehloToHloTypeConverter hlo_converter;
+  stablehlo::populateStablehloToHloPatterns(&patterns, &hlo_converter, context);
   if (legalize_chlo) {
-    chlo::populateChloToHloPatterns(context, &hlo_converter, &patterns);
+    chlo::populateChloToHighLevelMhloOpPatterns(context, &patterns);
+    stablehlo::populateChloToStablehloPatterns(context, &patterns);
   }
   // ConstantLike op is convenient to create splat constants, but is
   // canonicalized to plain HLO constant if statically shaped. Add the
   // canonicalization pattern to pattern list to enable multi-hop lowering.
   chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);
 
-  return ApplyPatterns(op, patterns, legalize_chlo);
+  if (failed(ApplyPatterns(op, patterns, legalize_chlo))) {
+    return failure();
+  }
+
+  // HLO->MLIR raises to StableHLO, but users of this pass expect MHLO.
+  return StablehloToMhlo(op);
 }
 
 // Performs the lowering to XLA dialect.
 void LegalizeTF::runOnOperation() {
   auto op = getOperation();
+  VLOG(3) << "LegalizeTF(legalize_chlo=" << legalize_chlo_
+          << ", prefer_tf2xla=" << prefer_tf2xla_ << ") on module:\n"
+          << mlir::debugString(*op);
   auto op_name = op->getName().getStringRef().str();
   mlir_legalization_count->GetCell(op_name)->IncrementBy(1);
   std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt;

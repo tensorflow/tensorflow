@@ -37,7 +37,7 @@ absl::StatusOr<std::unique_ptr<HloSnapshot>> XlaComputation::Snapshot() const {
   }
   auto session = std::make_unique<HloSnapshot>();
   *session->mutable_hlo()->mutable_hlo_module() = proto_;
-  return std::move(session);
+  return session;
 }
 
 }  // namespace xla

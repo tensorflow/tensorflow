@@ -215,10 +215,8 @@ class HloComputation {
     // unreachable, and its instruction is set to null. We still need to regard
     // such computations as fusion computations for HLO scheduling purposes.
     kFusion,
-    // This computation is a conditional branch computation.
-    kConditional,
     // Last Value for range checking.
-    kLast = kConditional,
+    kLast = kFusion,
   };
   static constexpr uintptr_t kInstructionTypeMask = 0b111;
   static_assert(static_cast<int>(InstructionType::kUnset) == 0,
@@ -316,7 +314,10 @@ class HloComputation {
       HloInstruction* instruction,
       std::optional<absl::FunctionRef<void(HloInstruction*)>> cleanup =
           std::nullopt,
-      bool ignore_control_dependencies = false);
+      bool ignore_control_dependencies = false,
+      std::optional<absl::FunctionRef<
+          std::vector<HloInstruction*>(const HloComputation*)>>
+          computation_callers = std::nullopt);
 
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation. In addition it must have
@@ -759,8 +760,10 @@ class HloComputation {
 
   // Returns true if the given instruction can be removed from the computation.
   // Parameter instructions cannot be removed without violating invariants of
-  // the HLO computation with the exception of fusion computation. A parameter
-  // instruction is removable for a fusion computation.
+  // the HLO computation with the exception of those with trivial control flow
+  // (fusion, call, async call). This is determined by checking the call graph
+  // via computation_callers. This is expected to be equivalent to
+  // CallGraph::GetComputationCallers().
   //
   // Note that IsSafelyRemovable() is a necessary condition to remove an
   // instruction rather than a sufficient condition. For example, instructions
@@ -768,8 +771,11 @@ class HloComputation {
   // but the transformation must guarantee the invariants relevant to the
   // instructions still hold (e.g., Send and Recv must be removed together to
   // make each channel complete).
-  bool IsSafelyRemovable(const HloInstruction* instruction,
-                         bool ignore_control_dependency = false);
+  bool IsSafelyRemovable(
+      const HloInstruction* instruction, bool ignore_control_dependency = false,
+      std::optional<absl::FunctionRef<
+          std::vector<HloInstruction*>(const HloComputation*)>>
+          computation_callers = std::nullopt) const;
 
   // Returns a map from an instruction to the group of instructions associated
   // with the same channel. These instructions will be considered as a single
@@ -801,31 +807,6 @@ class HloComputation {
   }
   void SetFusionInstruction(HloInstruction* fusion_instruction) {
     SetInstruction(fusion_instruction, InstructionType::kFusion);
-  }
-
-  // Returns if this computation is a branch computation of a conditional.
-  [[deprecated(
-      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
-  bool IsConditionalBranchComputation() const {
-    return instruction_type() == InstructionType::kConditional;
-  }
-
-  // Returns the owning conditional call instruction, or nullptr if this is not
-  // a conditional branch computation.
-  [[deprecated(
-      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
-  HloInstruction* ConditionalCallInstruction() const {
-    return instruction_type() == InstructionType::kConditional ? instruction()
-                                                               : nullptr;
-  }
-
-  [[deprecated(
-      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
-  void SetConditionalCallInstruction(
-      HloInstruction* conditional_call_instruction) {
-    CHECK(conditional_call_instruction != nullptr);
-    CHECK(conditional_call_instruction->opcode() == HloOpcode::kConditional);
-    SetInstruction(conditional_call_instruction, InstructionType::kConditional);
   }
 
   // Returns if this computation is an async computation.

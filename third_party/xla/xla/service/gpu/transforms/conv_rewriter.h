@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
@@ -36,8 +37,10 @@ namespace gpu {
 
 class ConvRewriter : public HloModulePass {
  public:
-  explicit ConvRewriter(const se::GpuComputeCapability& compute_capability)
-      : compute_capability_(compute_capability) {};
+  explicit ConvRewriter(
+      const se::GpuComputeCapability& compute_capability,
+      se::dnn::VersionInfo dnn_version = se::dnn::VersionInfo{})
+      : compute_capability_(compute_capability), dnn_version_(dnn_version) {};
 
   absl::string_view name() const override { return "conv-rewriter"; }
 
@@ -49,7 +52,8 @@ class ConvRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  se::GpuComputeCapability compute_capability_;
+  const se::GpuComputeCapability compute_capability_;
+  const se::dnn::VersionInfo dnn_version_;
 };
 
 }  // namespace gpu

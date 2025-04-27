@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/bits.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/types.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/numbers.h"
 
 namespace tensorflow {
@@ -339,8 +340,8 @@ class BFCAllocator : public Allocator {
     }
 
     size_t IndexFor(const void* p) const {
-      std::uintptr_t p_int = reinterpret_cast<std::uintptr_t>(p);
-      std::uintptr_t base_int = reinterpret_cast<std::uintptr_t>(ptr_);
+      std::uintptr_t p_int = safe_reinterpret_cast<std::uintptr_t>(p);
+      std::uintptr_t base_int = safe_reinterpret_cast<std::uintptr_t>(ptr_);
       DCHECK_GE(p_int, base_int);
       DCHECK_LT(p_int, base_int + memory_size_);
       return static_cast<size_t>(((p_int - base_int) >> kMinAllocationBits));

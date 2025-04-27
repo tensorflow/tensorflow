@@ -50,8 +50,8 @@ class TpuCustomResizeOp : public XlaOpKernel {
     TF_ASSIGN_OR_RETURN(xla::Shape input_shape, ctx->InputXlaShape(0));
     xla::Shape output_shape =
         TensorShapeToXLAShape(ctx->output_xla_type(0), ctx->InputShape(0));
-    output_shape.mutable_dimensions()[1] = out_size[0];
-    output_shape.mutable_dimensions()[2] = out_size[1];
+    output_shape.set_dimensions(1, out_size[0]);
+    output_shape.set_dimensions(2, out_size[1]);
     output_shape.set_dynamic_dimension(0, input_shape.is_dynamic_dimension(0));
     output_shape.set_dynamic_dimension(3, input_shape.is_dynamic_dimension(3));
     return output_shape;
@@ -75,7 +75,7 @@ class TpuCustomResizeOp : public XlaOpKernel {
     if (input_shape.dimensions(1) / output_shape.dimensions(1) > 3 &&
         input_shape.dimensions(2) / output_shape.dimensions(2) > 3) {
       auto intermediate_shape = output_shape;
-      intermediate_shape.mutable_dimensions()[1] = input_shape.dimensions(1);
+      intermediate_shape.set_dimensions(1, input_shape.dimensions(1));
       input = xla::CustomCall(ctx->builder(), target, {ctx->Input(0)},
                               intermediate_shape, OpaqueField());
     }

@@ -66,8 +66,8 @@ Shape FindMaxShape(absl::Span<const Shape*> shapes) {
   Shape result = *shapes[0];
 
   for (const Shape* shape : shapes) {
-    CHECK(result.dimensions_size() == shape->dimensions_size());
-    for (int64_t dim = 0; dim < result.dimensions_size(); ++dim) {
+    CHECK(result.dimensions().size() == shape->dimensions().size());
+    for (int64_t dim = 0; dim < result.dimensions().size(); ++dim) {
       if (shape->dimensions(dim) > result.dimensions(dim)) {
         result.set_dimensions(dim, shape->dimensions(dim));
       }
@@ -106,15 +106,15 @@ absl::StatusOr<XlaOp> ReconsileBranchDifference(const Shape& left_branch_shape,
         "right_branch_shape should not be a tuple, received %s",
         right_branch_shape.DebugString());
   }
-  if (left_branch_shape.dimensions_size() !=
-      right_branch_shape.dimensions_size()) {
+  if (left_branch_shape.dimensions().size() !=
+      right_branch_shape.dimensions().size()) {
     return InvalidArgument(
         "left_branch_shape.dimensions_size() != "
         "right_branch_shape.dimensions_size() (%d vs %d)",
-        left_branch_shape.dimensions_size(),
-        right_branch_shape.dimensions_size());
+        left_branch_shape.dimensions().size(),
+        right_branch_shape.dimensions().size());
   }
-  for (int64_t dim = 0; dim < left_branch_shape.dimensions_size(); ++dim) {
+  for (int64_t dim = 0; dim < left_branch_shape.dimensions().size(); ++dim) {
     XlaOp original_dim = GetDimensionSize(result, dim);
     if (left_branch_shape.dimensions(dim) <
         right_branch_shape.dimensions(dim)) {
@@ -273,7 +273,7 @@ absl::StatusOr<XlaOp> SetAllDimensionSizes(ValueInference* value_inference,
   TF_RETURN_IF_ERROR(builder->GetCurrentStatus());
   TF_ASSIGN_OR_RETURN(auto shape_ptr, builder->GetShapePtr(operand));
 
-  for (int64_t i = 0; i < shape_ptr->dimensions_size(); ++i) {
+  for (int64_t i = 0; i < shape_ptr->dimensions().size(); ++i) {
     // If a dimension is dynamic, call set-dimension-size on the output.
     auto dim_size = xla::Slice(size_vector, {i}, {i + 1}, {1});
     dim_size = xla::Reshape(dim_size, {});

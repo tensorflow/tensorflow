@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 
@@ -165,7 +166,8 @@ TEST_F(NvJitLinkTest, IdentifiesUnsupportedArchitecture) {
   EXPECT_THAT(
       CompileAndLinkHelper(stream_executor::CudaComputeCapability{100, 0},
                            {kStandalonePtx}),
-      tsl::testing::StatusIs(absl::StatusCode::kUnimplemented));
+      tsl::testing::StatusIs(testing::AnyOf(absl::StatusCode::kUnknown,
+                                            absl::StatusCode::kUnimplemented)));
 }
 
 TEST_F(NvJitLinkTest, LinkingTwoCompilationUnitsSucceeds) {

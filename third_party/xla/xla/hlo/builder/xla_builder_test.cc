@@ -654,7 +654,7 @@ TEST(XlaBuilderTest, BroadcastInDimWithNegativeSize) {
                  /*broadcast_dimensions=*/{0, 1, 2});
   auto statusor = BuildHloModule(b);
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().message(), HasSubstr("invalid shape"));
+  EXPECT_THAT(statusor.status().message(), HasSubstr("Invalid dimension size"));
 }
 
 TEST(XlaBuilderTest, OperandFromWrongBuilder) {

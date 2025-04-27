@@ -34,8 +34,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -46,7 +46,7 @@ using ::mlir::AffineMap;
 using ::testing::AnyOf;
 using ::testing::ElementsAre;
 
-class IndexingMapTest : public HloTestBase {
+class IndexingMapTest : public HloHardwareIndependentTestBase {
  public:
   IndexingMap Parse(absl::string_view indexing_map_str) {
     auto indexing_map = ParseIndexingMap(indexing_map_str, &mlir_context_);

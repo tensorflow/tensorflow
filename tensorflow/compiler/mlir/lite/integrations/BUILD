@@ -20,8 +20,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/mlir/lite/integrations:__subpackages__",
-        "//tensorflow/lite/experimental/litert/python/google/tools/model_utils:__subpackages__",
-        "//third_party/odml/litert/litert/python/google/tools/model_utils:__subpackages__",
+        "//third_party/odml/litert/litert/python/tools/model_utils:__subpackages__",
     ],
     licenses = ["notice"],
 )

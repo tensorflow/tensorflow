@@ -20,14 +20,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {
 namespace {
 
-class FusionWrapperTest : public HloTestBase {};
+class FusionWrapperTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(FusionWrapperTest, Scatter) {
   static constexpr absl::string_view hlo_string = R"(

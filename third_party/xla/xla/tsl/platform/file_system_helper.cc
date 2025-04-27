@@ -19,13 +19,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/str_util.h"
@@ -187,8 +187,8 @@ absl::Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
 
   // Adding to `result` or `new_expand_queue` need to be protected by mutexes
   // since there are multiple threads writing to these.
-  mutex result_mutex;
-  mutex queue_mutex;
+  absl::Mutex result_mutex;
+  absl::Mutex queue_mutex;
 
   while (!expand_queue.empty()) {
     next_expand_queue.clear();
@@ -250,10 +250,10 @@ absl::Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
 
         const std::string path = io::JoinPath(parent, children[j]);
         if (index == dirs.size() - 1) {
-          mutex_lock l(result_mutex);
+          absl::MutexLock l(&result_mutex);
           results->emplace_back(path);
         } else if (children_status[j].ok()) {
-          mutex_lock l(queue_mutex);
+          absl::MutexLock l(&queue_mutex);
           next_expand_queue.emplace_back(path, index);
         }
       }

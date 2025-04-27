@@ -227,11 +227,10 @@ absl::StatusOr<int64_t> EvaluateDynamicOffsets(
     Literal induction_variable_literal(offset.induction_variable->shape());
     TF_RETURN_IF_ERROR(
         induction_variable_literal.SetIntegralAsS64({}, induction_variable));
-    TF_ASSIGN_OR_RETURN(
-        Literal array_index_literal,
-        evaluator.EvaluateWithSubstitutions(
-            offset.offset,
-            {{offset.induction_variable, &induction_variable_literal}}, true));
+    TF_ASSIGN_OR_RETURN(Literal array_index_literal,
+                        evaluator.Evaluate(offset.offset, {}, true,
+                                           {{offset.induction_variable,
+                                             &induction_variable_literal}}));
 
     std::optional<int64_t> array_index =
         LiteralUtil::LiteralAsScalarInt64(array_index_literal);

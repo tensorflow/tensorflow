@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/scatter_simplifier.h"
 #include "xla/service/select_and_scatter_expander.h"
 #include "xla/service/sharding_remover.h"
+#include "xla/service/spmd/sharding_format_picker.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/triangular_solve_expander.h"
@@ -96,11 +97,12 @@ absl::StatusOr<std::optional<std::string>> CompiledOptProvider::GenerateStage(
   return std::nullopt;
 }
 
-absl::StatusOr<Compiler*> CompiledOptProvider::GetCompiler() {
+absl::StatusOr<std::unique_ptr<Compiler>> CompiledOptProvider::GetCompiler() {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform(GetPlatformName()));
 
-  TF_ASSIGN_OR_RETURN(Compiler * compiler, Compiler::GetForPlatform(platform));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+                      Compiler::GetForPlatform(platform));
   return compiler;
 }
 
@@ -110,7 +112,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CompiledOptProvider::GetOptimizedHlo(
 
   DebugOptions debug_opts = GetDebugOptionsFromFlags();
   Compiler::CompileOptions opts;
-  TF_ASSIGN_OR_RETURN(Compiler * compiler, GetCompiler());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
   DebugOptions d = input_module->config().debug_options();
   d.set_xla_embed_ir_in_executable(true);
   input_module->mutable_config().set_debug_options(d);
@@ -133,7 +135,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CompiledOptProvider::GetExecutable(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
                       GetOptimizedHlo(std::move(input_module)));
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
-  TF_ASSIGN_OR_RETURN(Compiler * compiler, GetCompiler());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       compiler->RunBackend(std::move(optimized_module), executor, opts));
@@ -176,6 +178,13 @@ void CompiledOptProvider::RegisterSharedHardwareSpecificPasses() {
   RegisterPass<WhileLoopInvariantCodeMotion>();
   RegisterPass<WhileLoopSimplifier>();
   RegisterPass<sdy::ShardyXLA>();
+  // go/keep-sorted end
+
+  // Test-only passes exposing behavior that isn't easily testable through
+  // standard passes, e.g. internal or config-dependent behavior.
+  // go/keep-sorted start
+  RegisterPass<test_only::ShardingFormatPicker>(
+      test_only::ShardingFormatPicker::ShardingType::kBestEffortV2);
   // go/keep-sorted end
 }
 

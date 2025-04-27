@@ -188,7 +188,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_Callable) {
     }
 
     absl::Status s = session->RunCallable(handle, {}, nullptr, nullptr);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(
         absl::StrContains(s.message(), "`fetch_tensors` must be provided"));
 
@@ -196,12 +196,12 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_Callable) {
 
     std::vector<Tensor> outputs;
     s = session->RunCallable(handle, {}, &outputs, nullptr);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(
         s.message(), "Attempted to run callable after handle was released"));
 
     s = session->RunCallable(handle + 1, {}, &outputs, nullptr);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "No such callable handle"));
   }
 }
@@ -231,7 +231,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_OptimizeForStaticGraph) {
   EXPECT_FLOAT_EQ(5.0, mat(0, 0));
 
   s = session->Extend({});
-  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(absl::IsFailedPrecondition(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "optimize_for_static_graph"));
 }
 
@@ -268,7 +268,7 @@ TEST_F(DirectSessionMinusAXTest,
   s = session->Run(run_options, inputs, output_names, target_nodes, &outputs,
                    &run_metadata);
 
-  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(absl::IsInvalidArgument(s));
   EXPECT_TRUE(
       absl::StrContains(s.message(), "disable_output_partition_graphs"));
 }
@@ -305,7 +305,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_FinalizeWithCallables) {
   // Making a new callable fails because the session has been finalized.
   absl::Status s =
       session->MakeCallable(MakeCallableOptions({}, {y_ + ":0"}, {}), &handle);
-  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(absl::IsFailedPrecondition(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "Session has been finalized."));
 }
 
@@ -337,7 +337,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_FinalizeWithRun) {
 
   // Running a different subgraph fails because the session has been finalized.
   absl::Status s = session->Run({}, {y_ + ":0"}, {}, &outputs);
-  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(absl::IsFailedPrecondition(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "Session has been finalized."));
 }
 
@@ -543,7 +543,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
 
     Session::CallableHandle handle;
     absl::Status s = session->MakeCallable(callable_options, &handle);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "would create a cycle"));
   }
 
@@ -557,7 +557,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
 
     Session::CallableHandle handle;
     absl::Status s = session->MakeCallable(callable_options, &handle);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "unknown node"));
   }
 
@@ -572,7 +572,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
 
     Session::CallableHandle handle;
     absl::Status s = session->MakeCallable(callable_options, &handle);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "unknown edge"));
   }
 
@@ -586,7 +586,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
 
     Session::CallableHandle handle;
     absl::Status s = session->MakeCallable(callable_options, &handle);
-    EXPECT_TRUE(errors::IsNotFound(s));
+    EXPECT_TRUE(absl::IsNotFound(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "unable to find feed output"));
   }
 
@@ -603,7 +603,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
 
     Session::CallableHandle handle;
     absl::Status s = session->MakeCallable(callable_options, &handle);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "fed more than once"));
   }
 
@@ -618,7 +618,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
 
     Session::CallableHandle handle;
     absl::Status s = session->MakeCallable(callable_options, &handle);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
     EXPECT_TRUE(absl::StrContains(s.message(), "fed more than once"));
   }
 }
@@ -1043,7 +1043,7 @@ TEST(DirectSessionTest, MultipleFeedTest) {
       {{first_const->name(), value_11}, {first_const->name(), value_22}},
       {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
       &outputs);
-  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(absl::IsInvalidArgument(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "fed more than once"));
 }
 
@@ -1126,7 +1126,7 @@ TEST(DirectSessionTest, MultipleFeedTest_Callable) {
           {first_const->name(), first_const->name()},
           {first_identity->name() + ":0", second_identity->name() + ":0"}, {}),
       &handle);
-  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(absl::IsInvalidArgument(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "fed more than once"));
 }
 
@@ -1280,7 +1280,7 @@ TEST(DirectSessionTest, MultipleFeedTestSomeSyncRun) {
       {{first_const->name(), value_11}, {first_const->name(), value_22}},
       {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
       &outputs, nullptr);
-  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(absl::IsInvalidArgument(s));
   EXPECT_TRUE(absl::StrContains(s.message(), "fed more than once"));
 }
 
@@ -1463,8 +1463,7 @@ TEST(DirectSessionTest, SessionMetadataKey) {
 
   // Trying to use the same metadata (name, version) will cause an error.
   Session* dup_ptr;
-  EXPECT_TRUE(
-      errors::IsInvalidArgument(NewSession(session_options0, &dup_ptr)));
+  EXPECT_TRUE(absl::IsInvalidArgument(NewSession(session_options0, &dup_ptr)));
 
   // A new (name, version) is fine.
   auto session_options1 = DefaultSessionOptions();
@@ -1503,7 +1502,7 @@ TEST(DirectSessionTest, SessionMetadataInvalid) {
   // Version should be >= 0.
   invalid_metadata->set_version(-1);
   Session* error_sess_ptr;
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       NewSession(invalid_session_options, &error_sess_ptr)));
 }
 
@@ -1657,7 +1656,7 @@ TEST(DirectSessionTest, DarthKernel) {
   TF_ASSERT_OK(sess->Create(def));
   std::vector<Tensor> outputs;
   auto s = sess->Run({}, {y->name() + ":0"}, {}, &outputs);
-  EXPECT_TRUE(errors::IsInternal(s));
+  EXPECT_TRUE(absl::IsInternal(s));
 }
 
 // Have the Darth op in the graph placed on GPU, but don't run it.
@@ -1677,7 +1676,7 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     SessionOptions options;
     std::unique_ptr<Session> sess(NewSession(options));
     auto s = sess->Create(def);
-    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::IsInvalidArgument(s));
   }
 
   {
@@ -1794,7 +1793,7 @@ TEST(DirectSessionTest, PartialRunMissingFeed) {
   value_11.scalar<float>()() = 11.0;
   s = session->PRun(handle, {{first_const->name(), value_11}},
                     {third_identity->name() + ":0"}, &outputs);
-  ASSERT_TRUE(errors::IsInvalidArgument(s));
+  ASSERT_TRUE(absl::IsInvalidArgument(s));
   EXPECT_TRUE(
       absl::StrContains(s.message(), "can't be computed from the feeds"));
 }
@@ -1825,7 +1824,7 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
 
   // Fetch fourth_identity without feeds.
   s = session->PRun(handle, {}, {fourth_identity->name() + ":0"}, &outputs);
-  ASSERT_TRUE(errors::IsInvalidArgument(s));
+  ASSERT_TRUE(absl::IsInvalidArgument(s));
   EXPECT_TRUE(
       absl::StrContains(s.message(), "can't be computed from the feeds"));
 
@@ -1963,7 +1962,7 @@ TEST(DirectSessionTest, CreateGraphFailsWhenAssigningAFedVar) {
   std::vector<Tensor> outputs;
   absl::Status s =
       session->Run({{a->name(), zero}}, {assign->name()}, {}, &outputs);
-  ASSERT_TRUE(errors::IsInvalidArgument(s));
+  ASSERT_TRUE(absl::IsInvalidArgument(s));
 }
 
 TEST(DirectSessionTest, TimeoutSession) {

@@ -420,6 +420,8 @@ class BufferIntervalTree {
   // heap within the time interval [start, end].
   int64_t HeapSizeInInterval(int64_t start, int64_t end) const;
 
+  void Clear();
+
  private:
   // The BufferIntervalTreeNode objects inside the result vector are guaranteed
   // to be non-null.

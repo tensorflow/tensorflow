@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -67,6 +68,8 @@ class IotaReplicaGroupList {
   }
   Array<int64_t> ToArray() const { return iota_tile_assignment_.ToArray(); }
 
+  void Print(Printer* printer) const;
+
   std::string ToString() const;
 
   IotaReplicaGroupListProto ToProto() const;
@@ -105,6 +108,10 @@ class CollectiveDeviceList {
   const std::optional<IotaReplicaGroupList>& iota_replica_group_list() const {
     return iota_replica_group_list_;
   }
+
+  void Print(Printer* printer,
+             bool print_full_replica_group_list = false) const;
+
   std::string ToString(bool print_full_replica_group_list = false) const;
 
   CollectiveDeviceListProto ToProto() const;

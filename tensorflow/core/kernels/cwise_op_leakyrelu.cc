@@ -36,8 +36,8 @@ namespace internal {
 
 template <typename Scalar>
 struct leakyrelu_op {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE explicit leakyrelu_op(float val = 0.2f)
-      EIGEN_NO_THROW {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE explicit leakyrelu_op(
+      float val = 0.2f) {
     m_alpha = Scalar(val);
   }
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar

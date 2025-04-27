@@ -1716,30 +1716,34 @@ void CreateFlexbufferVector(
     const std::unique_ptr<flexbuffers::Builder>& flex_builder,
     std::string& name, const mlir::Attribute& attr) {
   auto start = flex_builder->StartVector(name.c_str());
-  auto array = attr.cast<mlir::vhlo::ArrayV1Attr>().getValue();
+  auto array = mlir::cast<mlir::vhlo::ArrayV1Attr>(attr).getValue();
 
   for (int i = 0; i < array.size(); i++) {
     if (llvm::isa<mlir::BoolAttr>(array[i])) {
       flex_builder->Bool(name.c_str(),
-                         array[i].cast<mlir::BoolAttr>().getValue());
+                         mlir::cast<mlir::BoolAttr>(array[i]).getValue());
     } else if (llvm::isa<mlir::StringAttr>(attr)) {
-      flex_builder->String(name.c_str(),
-                           array[i].cast<mlir::StringAttr>().getValue().str());
+      flex_builder->String(
+          name.c_str(),
+          mlir::cast<mlir::StringAttr>(array[i]).getValue().str());
     } else if (llvm::isa<mlir::vhlo::BooleanV1Attr>(array[i])) {
-      flex_builder->Bool(name.c_str(),
-                         array[i].cast<mlir::vhlo::BooleanV1Attr>().getValue());
+      flex_builder->Bool(
+          name.c_str(),
+          mlir::cast<mlir::vhlo::BooleanV1Attr>(array[i]).getValue());
     } else if (llvm::isa<mlir::vhlo::StringV1Attr>(array[i])) {
       flex_builder->String(
           name.c_str(),
-          array[i].cast<mlir::vhlo::StringV1Attr>().getValue().str());
+          mlir::cast<mlir::vhlo::StringV1Attr>(array[i]).getValue().str());
     } else if (llvm::isa<mlir::vhlo::IntegerV1Attr>(array[i])) {
-      flex_builder->Int(
-          name.c_str(),
-          array[i].cast<mlir::vhlo::IntegerV1Attr>().getValue().getSExtValue());
+      flex_builder->Int(name.c_str(),
+                        mlir::cast<mlir::vhlo::IntegerV1Attr>(array[i])
+                            .getValue()
+                            .getSExtValue());
     } else if (llvm::isa<mlir::vhlo::FloatV1Attr>(array[i])) {
-      flex_builder->Float(
-          name.c_str(),
-          array[i].cast<mlir::vhlo::FloatV1Attr>().getValue().convertToFloat());
+      flex_builder->Float(name.c_str(),
+                          mlir::cast<mlir::vhlo::FloatV1Attr>(array[i])
+                              .getValue()
+                              .convertToFloat());
 
     } else if (llvm::isa<mlir::vhlo::ArrayV1Attr>(array[i])) {
       CreateFlexbufferVector(flex_builder, name, array[i]);
@@ -1835,43 +1839,49 @@ Translator::BuildVhloCompositeV1Op(mlir::vhlo::CompositeOpV1 composite_op,
   uint32_t opcode_index =
       GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_COMPOSITE);
 
-  int32_t api_version = composite_op.getVersion()
-                            .cast<mlir::vhlo::IntegerV1Attr>()
-                            .getValue()
-                            .getSExtValue();
+  int32_t api_version =
+      mlir::cast<mlir::vhlo::IntegerV1Attr>(composite_op.getVersion())
+          .getValue()
+          .getSExtValue();
 
   auto name = builder_.CreateString(
-      composite_op.getName().cast<mlir::vhlo::StringV1Attr>().getValue().str());
+      mlir::cast<mlir::vhlo::StringV1Attr>(composite_op.getName())
+          .getValue()
+          .str());
 
-  auto composite_attributes = composite_op.getCompositeAttributes()
-                                  .cast<mlir::vhlo::DictionaryV1Attr>();
+  auto composite_attributes = mlir::cast<mlir::vhlo::DictionaryV1Attr>(
+      composite_op.getCompositeAttributes());
   auto flex_builder = std::make_unique<flexbuffers::Builder>();
   size_t map_start = flex_builder->StartMap();
 
   for (auto namedAttr : composite_attributes.getValue()) {
     auto name =
-        namedAttr.first.cast<mlir::vhlo::StringV1Attr>().getValue().str();
+        mlir::cast<mlir::vhlo::StringV1Attr>(namedAttr.first).getValue().str();
     auto attr = namedAttr.second;
 
     if (llvm::isa<mlir::BoolAttr>(attr))
-      flex_builder->Bool(name.c_str(), attr.cast<mlir::BoolAttr>().getValue());
+      flex_builder->Bool(name.c_str(),
+                         mlir::cast<mlir::BoolAttr>(attr).getValue());
     else if (llvm::isa<mlir::StringAttr>(attr))
       flex_builder->String(name.c_str(),
-                           attr.cast<mlir::StringAttr>().getValue().str());
+                           mlir::cast<mlir::StringAttr>(attr).getValue().str());
     else if (llvm::isa<mlir::vhlo::BooleanV1Attr>(attr))
-      flex_builder->Bool(name.c_str(),
-                         attr.cast<mlir::vhlo::BooleanV1Attr>().getValue());
+      flex_builder->Bool(
+          name.c_str(), mlir::cast<mlir::vhlo::BooleanV1Attr>(attr).getValue());
     else if (llvm::isa<mlir::vhlo::StringV1Attr>(attr))
       flex_builder->String(
-          name.c_str(), attr.cast<mlir::vhlo::StringV1Attr>().getValue().str());
+          name.c_str(),
+          mlir::cast<mlir::vhlo::StringV1Attr>(attr).getValue().str());
     else if (llvm::isa<mlir::vhlo::IntegerV1Attr>(attr))
-      flex_builder->Int(
-          name.c_str(),
-          attr.cast<mlir::vhlo::IntegerV1Attr>().getValue().getSExtValue());
+      flex_builder->Int(name.c_str(),
+                        mlir::cast<mlir::vhlo::IntegerV1Attr>(attr)
+                            .getValue()
+                            .getSExtValue());
     else if (llvm::isa<mlir::vhlo::FloatV1Attr>(attr))
-      flex_builder->Float(
-          name.c_str(),
-          attr.cast<mlir::vhlo::FloatV1Attr>().getValue().convertToFloat());
+      flex_builder->Float(name.c_str(),
+                          mlir::cast<mlir::vhlo::FloatV1Attr>(attr)
+                              .getValue()
+                              .convertToFloat());
     else if (llvm::isa<mlir::vhlo::ArrayV1Attr>(attr))
       CreateFlexbufferVector(flex_builder, name, attr);
     else if (llvm::isa<mlir::vhlo::TensorV1Attr>(attr)) {
@@ -1932,8 +1942,8 @@ Translator::BuildVhloCompositeV1Op(mlir::vhlo::CompositeOpV1 composite_op,
   flex_builder->Finish();
 
   int32_t decomposition_subgraph_index =
-      subgraph_index_map_[composite_op.getDecomposition()
-                              .cast<mlir::vhlo::StringV1Attr>()
+      subgraph_index_map_[mlir::cast<mlir::vhlo::StringV1Attr>(
+                              composite_op.getDecomposition())
                               .getValue()
                               .str()];
 

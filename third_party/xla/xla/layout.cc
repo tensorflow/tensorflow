@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/layout.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <ostream>
@@ -36,15 +37,10 @@ namespace xla {
 
 TileProto Tile::ToProto() const {
   TileProto tile_proto;
-  SetProto(tile_proto);
-  return tile_proto;
-}
-
-void Tile::SetProto(TileProto& tile_proto) const {
-  tile_proto.Clear();
   for (int64_t i : dimensions()) {
     tile_proto.add_dimensions(i);
   }
+  return tile_proto;
 }
 
 void Tile::Print(Printer* printer) const {
@@ -81,14 +77,6 @@ SplitConfigProto SplitConfig::ToProto() const {
     split_config_proto.add_split_indices(i);
   }
   return split_config_proto;
-}
-
-void SplitConfig::SetProto(SplitConfigProto& split_config_proto) const {
-  split_config_proto.Clear();
-  split_config_proto.set_dimension(dimension_);
-  for (int64_t i : split_indices_) {
-    split_config_proto.add_split_indices(i);
-  }
 }
 
 std::string SplitConfig::ToString() const {
@@ -242,11 +230,6 @@ Layout& Layout::operator=(Layout&& other) = default;
 
 LayoutProto Layout::ToProto() const {
   LayoutProto proto;
-  SetProto(proto);
-  return proto;
-}
-
-void Layout::SetProto(LayoutProto& proto) const {
   proto.Clear();
   for (int i = 0; i < n_dim_level_types_; i++) {
     proto.add_dim_level_types(dim_level_type(i));
@@ -262,7 +245,7 @@ void Layout::SetProto(LayoutProto& proto) const {
     proto.add_minor_to_major(dimension);
   }
   for (const Tile& tile : tiles()) {
-    tile.SetProto(*proto.add_tiles());
+    *proto.add_tiles() = tile.ToProto();
   }
   proto.set_tail_padding_alignment_in_elements(
       tail_padding_alignment_in_elements());
@@ -271,17 +254,23 @@ void Layout::SetProto(LayoutProto& proto) const {
   proto.set_element_size_in_bits(element_size_in_bits_);
   proto.set_memory_space(memory_space_);
   for (const SplitConfig& split_config : split_configs()) {
-    split_config.SetProto(*proto.add_split_configs());
+    *proto.add_split_configs() = split_config.ToProto();
   }
   if (has_physical_shape()) {
     *proto.mutable_physical_shape() = physical_shape_->ToProto();
   }
   proto.set_dynamic_shape_metadata_prefix_bytes(
       dynamic_shape_metadata_prefix_bytes_);
+  return proto;
 }
 
-namespace {
-absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
+// Converts a DimLevelType to a single-character abbreviation:
+//   D: DIM_DENSE
+//   C: DIM_COMPRESSED
+//   S: DIM_SINGLETON
+//   H: DIM_LOOSE_COMPRESSED
+// Crashes if the DimLevelType is invalid.
+static absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
   switch (dim_level_type) {
     case DIM_DENSE:
       return "D";
@@ -295,20 +284,23 @@ absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
       LOG(FATAL) << "Invalid DimLevelType value: " << dim_level_type;
   }
 }
-}  // namespace
 
 void Layout::Print(Printer* printer) const {
   printer->Append("{");
   AppendJoin(printer, minor_to_major(), ",");
 
   bool colon_printed = false;
-  auto print_colon = [&]() {
-    if (colon_printed) return;
-    printer->Append(":");
-    colon_printed = true;
+  auto print_colon_if_have_not = [&]() {
+    if (!colon_printed) {
+      printer->Append(":");
+      colon_printed = true;
+    }
   };
 
-  if (n_dim_level_types_ > 0) {
+  // Print the dimension attributes as D(...) only if the layout is sparse.
+  // By default, all dimensions are dense, so there's no need to print the
+  // attributes when this layout is dense.
+  if (LayoutUtil::IsSparse(*this)) {
     auto print_one = [&](int i) {
       printer->Append(DimLevelTypeAbbrev(dim_level_type(i)));
       if (n_dim_unique_ > 0 && !dim_unique(i)) {
@@ -318,7 +310,7 @@ void Layout::Print(Printer* printer) const {
         printer->Append("~");
       }
     };
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("D(");
     print_one(0);
     for (int i = 1; i < n_dim_level_types_; ++i) {
@@ -328,23 +320,28 @@ void Layout::Print(Printer* printer) const {
     printer->Append(")");
   }
 
+  // Print the tiles as T(...)...(...).
   if (!tiles().empty()) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("T");
     for (const Tile& tile : tiles()) {
       tile.Print(printer);
     }
   }
 
+  // Print the tail padding alignment as L(n). Omit this if n is 1.
   if (tail_padding_alignment_in_elements() != 1) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("L(");
     printer->Append(tail_padding_alignment_in_elements());
     printer->Append(")");
   }
 
+  // Print the primitive type used for indices as #(type). Print
+  // #(invalid) if the type is valid but not an integer. Omit this if the type
+  // is PRIMITIVE_TYPE_INVALID.
   if (index_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-    print_colon();
+    print_colon_if_have_not();
     if (primitive_util::IsIntegralType(index_primitive_type())) {
       printer->Append("#(");
       printer->Append(
@@ -355,8 +352,11 @@ void Layout::Print(Printer* printer) const {
     }
   }
 
+  // Print the primitive type used for poitners as *(type). Print *(invalid) if
+  // the type is valid but not a pointer. Omit this if the type is
+  // PRIMITIVE_TYPE_INVALID.
   if (pointer_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-    print_colon();
+    print_colon_if_have_not();
     if (primitive_util::IsIntegralType(pointer_primitive_type())) {
       printer->Append("*(");
       printer->Append(
@@ -367,36 +367,45 @@ void Layout::Print(Printer* printer) const {
     }
   }
 
+  // Print the element size in bits as E(n). Omit this if n is 0.
   if (element_size_in_bits() != 0) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("E(");
     printer->Append(element_size_in_bits());
     printer->Append(")");
   }
 
+  // Print the memory space as S(n). Omit this if n is 0.
   if (memory_space() != 0) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("S(");
     printer->Append(memory_space());
     printer->Append(")");
   }
+
+  // Print the split configs as SC(...)...(...). Omit this if the split configs
+  // are empty.
   if (!split_configs().empty()) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("SC");
     for (const auto& split_config : split_configs()) {
       printer->Append(split_config.ToString());
     }
   }
 
+  // Print the physical shape as P(physical_shape). Omit this if the physical
+  // shape is not set.
   if (has_physical_shape()) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("P(");
     physical_shape_->Print(printer, /*print_layout=*/true);
     printer->Append(")");
   }
 
+  // Print the dynamic shape metadata prefix bytes as M(n). Omit this if n is
+  // 0.
   if (dynamic_shape_metadata_prefix_bytes_ > 0) {
-    print_colon();
+    print_colon_if_have_not();
     printer->Append("M(");
     printer->Append(dynamic_shape_metadata_prefix_bytes());
     printer->Append(")");
@@ -506,8 +515,10 @@ Shape* Layout::mutable_physical_shape() {
 
 void Layout::clear_physical_shape() { physical_shape_ = nullptr; }
 
-Layout& Layout::DeleteDimension(int64_t dim_to_delete) {
-  for (int64_t i = 0; i < minor_to_major_.size();) {
+Layout& Layout::DeleteDimension(int dim_to_delete) {
+  CHECK_GE(dim_to_delete, 0);
+  CHECK_LT(dim_to_delete, minor_to_major_.size());
+  for (int i = 0; i < minor_to_major_.size();) {
     if (minor_to_major_[i] == dim_to_delete) {
       minor_to_major_.erase(minor_to_major_.begin() + i);
       continue;
@@ -518,10 +529,16 @@ Layout& Layout::DeleteDimension(int64_t dim_to_delete) {
     ++i;
   }
   // Delete the corresponding dim level types.
-  if (LayoutUtil::IsSparse(*this)) {
-    if (dim_to_delete < n_dim_level_types_) n_dim_level_types_--;
-    if (dim_to_delete < n_dim_unique_) n_dim_unique_--;
-    if (dim_to_delete < n_dim_ordered_) n_dim_ordered_--;
+  if (dim_to_delete < n_dim_level_types_) {
+    n_dim_level_types_--;
+  }
+  if (dim_to_delete < n_dim_unique_) {
+    n_dim_unique_--;
+  }
+  if (dim_to_delete < n_dim_ordered_) {
+    n_dim_ordered_--;
+  }
+  if (dim_to_delete < dim_attributes_.size()) {
     dim_attributes_.erase(dim_attributes_.begin() + dim_to_delete);
   }
   return *this;

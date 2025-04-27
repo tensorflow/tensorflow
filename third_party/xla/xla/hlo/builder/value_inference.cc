@@ -547,7 +547,7 @@ PostorderDFSVisitor::AnalyzeConstantValueFallback(int64_t handle,
                          call_context, "callee's root instruction");
       return node.AddVisit([](Literal operand) -> absl::StatusOr<Literal> {
         // Forward result of callee's root to caller.
-        return std::move(operand);
+        return operand;
       });
     }
 

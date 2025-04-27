@@ -134,13 +134,14 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
       }
       return std::make_unique<LoopFusion>(analysis);
     }
-    case HloFusionAnalysis::EmitterFusionKind::kReduction:
+    case HloFusionAnalysis::EmitterFusionKind::kReduction: {
       return CreateReductionFusion(analysis);
+    }
     case HloFusionAnalysis::EmitterFusionKind::kScatter: {
       return CreateScatterFusion(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      return std::make_unique<TransposeFusion>(analysis);
+      return CreateTransposeFusion(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
       return std::make_unique<ConcatenateFusion>(analysis);

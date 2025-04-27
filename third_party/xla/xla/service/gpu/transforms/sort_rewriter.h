@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -33,16 +34,24 @@ namespace gpu {
 
 class SortRewriter : public HloModulePass {
  public:
+  explicit SortRewriter(const se::DeviceDescription& device_description)
+      : device_description_(device_description) {}
   absl::string_view name() const override { return "sort-rewriter"; }
+
+  enum class Mode {
+    kAuto,   // Decide whether to rewrite compatible sorts based on a heuristic.
+    kAlways  // Always rewrite compatible sorts. Used for testing.
+  };
 
   // CUB radix sort is slower than XLA sort on small shapes, so do not rewrite
   // tensors with sizes below this limit.
-  static int SortSizeThreshold() { return sort_size_threshold_; }
-  static void SetSortSizeThresholdForTestingOnly(int threshold) {
-    // We need to be able to reduce the threshold for testing, so that the tests
-    // can run and compare against the reference interpreter, which is quite
-    // slow.
-    sort_size_threshold_ = threshold;
+  static Mode SortMode() { return sort_mode_; }
+  static void SetSortModeForTestingOnly(Mode sort_mode) {
+    // We need to be able to force rewrites for testing for arbitrary shapes.
+    // This enables the tests to run and compare against the reference
+    // interpreter, which is quite slow and needs smaller shapes that would
+    // normally not be rewritten.
+    sort_mode_ = sort_mode;
   }
 
   using HloPassInterface::Run;
@@ -54,11 +63,9 @@ class SortRewriter : public HloModulePass {
   absl::StatusOr<bool> RunOnInstruction(HloSortInstruction* sort_op);
   absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
 
-  static inline int sort_size_threshold_ = 16385;
+  static inline Mode sort_mode_ = Mode::kAuto;
+  const se::DeviceDescription device_description_;
 };
-
-// Verify that the sort tensor shape is supported by CUB.
-bool IsCubCompatibleSort(const HloSortInstruction* sort_op);
 
 }  // namespace gpu
 }  // namespace xla

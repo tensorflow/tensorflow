@@ -22,7 +22,7 @@ def HasSupportedElementType :
   Constraint<CPred<"HasSupportedElementType($0.getDefiningOp())">>;
 
 def IsSupportedElementType :
-  Constraint<CPred<"IsSupportedElementType($0.getType().cast<ShapedType>())">>;
+  Constraint<CPred<"IsSupportedElementType(llvm::cast<ShapedType>($0.getType()))">>;
 
 def LegalizeVarHandle : Pat<
   (TF_VarHandleOp:$result $container, $shared_name),

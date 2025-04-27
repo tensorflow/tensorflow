@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -49,6 +50,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/map_util.h"
@@ -62,9 +65,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -191,20 +191,30 @@ DeepCopyAndAddControlEdges(HloInstruction* from, HloInstruction* to,
   return std::make_pair(from_deep_copy, to_deep_copy);
 }
 
-bool IsSendRecv(const HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kSend ||
-         instruction->opcode() == HloOpcode::kRecv;
+// Returns true if the instruction produces non-copyable results.
+//
+// Currently, only asynchronous start ops produce non-copyable results and the
+// the whole result is non-copyable.
+bool IsNonCopyable(const HloInstruction* instruction) {
+  // Currently, the verifier only allows the pipelining of Send/Recv. As such,
+  // here we only handle to the ops allowed by
+  // HloDataflowAnalysis::IsAsynchronousOperationStart that pass through its
+  // operand for now. For the ops that don't pass through its operand, we need
+  // to add a copy of its operand for the straight line case in order to allow
+  // all ops in HloDataflowAnalysis::IsAsynchronousOperationStart.
+  HloOpcode opcode = instruction->opcode();
+  return opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
+         opcode == HloOpcode::kCopyStart;
 }
 
-bool IsSendRecvDone(const HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kSendDone ||
-         instruction->opcode() == HloOpcode::kRecvDone;
-}
-
-bool IsSendRecvInInit(const HloInstruction* init, const ShapeIndex& index) {
+// Returns true if the value at the given index in the while init is
+// non-copyable.
+bool IsNonCopyableInWhileInit(const HloInstruction* while_init,
+                              const ShapeIndex& index) {
   if (index.empty()) return false;
   int64_t i = index.front();
-  return i < init->operand_count() && IsSendRecv(init->operand(i));
+  return i < while_init->operand_count() &&
+         IsNonCopyable(while_init->operand(i));
 }
 
 // Compute the indices of the loop state which need copies in order to avoid
@@ -223,9 +233,9 @@ bool IndicesToCopyForWhile(const HloDataflowAnalysis& dataflow,
   for (auto& pair : *indices_to_copy) {
     const ShapeIndex& index = pair.first;
     bool& should_copy = pair.second;
-    if (IsSendRecvInInit(init, index)) {
-      // Do not copy partially pipelined send/recv ops. The required copies will
-      // be inserted specifically for the send/recv ops.
+    if (IsNonCopyableInWhileInit(init, index)) {
+      // Do not copy non-copyable values, instead, we will add copies for
+      // transitioning into and out of non-copyable values.
       should_copy = false;
       continue;
     } else if (dataflow.GetValueSet(init, index).values().size() > 1 ||
@@ -604,33 +614,39 @@ class LiveRangeRegions {
   absl::InlinedVector<const HloComputation*, 5> computation_vector_;
 };
 
+#define RUNTIME_ORDER_LIST(V)                                                  \
+  /* Indicates that there is no overlap whatsoever between the two regions. */ \
+  V(kNoOverlap, 0)                                                             \
+  /* Indicates that the first region includes the same set of instructions     \
+     as the second region. */                                                  \
+  V(kSameInstr, 1)                                                             \
+  /* Indicates that the first region is entirely before the second region      \
+     starts. */                                                                \
+  V(kBeforeStart, 2)                                                           \
+  /* Indicates that the first region is before the second region ends. */      \
+  V(kBeforeStartOrSameInstr, kBeforeStart | kSameInstr)                        \
+  /* Indicates that the first region is entirely after the second region       \
+     ends. */                                                                  \
+  V(kAfterEnd, 4)                                                              \
+  /* Indicates that the first region is after the second region                \
+     starts, with some instructions before the second region ends. */          \
+  V(kAfterEndOrSameInstr, kAfterEnd | kSameInstr)                              \
+  /* Indicates that the first region overlaps with the second one, but share   \
+     no common instructions. */                                                \
+  V(kBeforeStartOrAfterEnd, kBeforeStart | kAfterEnd)                          \
+  /* Indicates that the first region overlaps with the second one, and have    \
+     some common instructions. */                                              \
+  V(kBeforeOrAfterOrOverlap, kBeforeStart | kAfterEnd | kSameInstr)
+
 namespace {
 // Represent relations between the locations of two regions of instructions,
 // each region can include 0-n instructions.
 class Relation {
  public:
   enum RuntimeOrder {
-    // Indicate that there is no overlap whatsoever between the two regions.
-    kNoOverlap = 0,
-    // Indicate that the first region includes the same set of instructions as
-    // the second region.
-    kSameInstr = 1,
-    // Indicate that the first region is entirely before the second region
-    // starts.
-    kBeforeStart = 2,
-    // Indicate that the first region is before the second region ends.
-    kBeforeStartOrSameInstr = kBeforeStart | kSameInstr,
-    // Indicate that the first region is entirely after the second region ends.
-    kAfterEnd = 4,
-    // Indicate that the first region is after the second region
-    // starts, with some instructions before the second region ends.
-    kAfterEndOrSameInstr = kAfterEnd | kSameInstr,
-    // Indicate that the first region overlaps with the second one, but share no
-    // common instructions.
-    kBeforeStartOrAfterEnd = kBeforeStart | kAfterEnd,
-    // Indicate that the first region overlaps with the second one, and have
-    // some common instructions.
-    kBeforeOrAfterOrOverlap = kBeforeStart | kAfterEnd | kSameInstr,
+#define DECLARE_ENUM(enum_name, enum_value) enum_name = enum_value,
+    RUNTIME_ORDER_LIST(DECLARE_ENUM)
+#undef DECLARE_ENUM
   };
   Relation() : intercept_def_use_(false) {}
   explicit Relation(RuntimeOrder order, bool intercept_def_use = false)
@@ -688,8 +704,18 @@ class Relation {
     return orders_.size() == 1 && orders_[0] == kAfterEnd;
   }
   std::string ToString() const {
-    return absl::StrCat("Interception = ", intercept_def_use_, ";",
-                        absl::StrJoin(orders_, ","));
+    auto format_order = [](std::string* out, RuntimeOrder order) {
+      switch (order) {
+#define DECLARE_CASE(enum_name, enum_value) \
+  case enum_name:                           \
+    absl::StrAppend(out, #enum_name);       \
+    break;
+        RUNTIME_ORDER_LIST(DECLARE_CASE)
+#undef DECLARE_CASE
+      }
+    };
+    return absl::StrCat("Interception = ", intercept_def_use_, " Orders = ",
+                        absl::StrJoin(orders_, ", ", format_order), ",");
   }
 
   static bool DefinitionImpliesInterception(RuntimeOrder definition) {
@@ -890,7 +916,7 @@ class ComputeRelativeLocation {
     // A proper solution would be to track output index in
     // LiveRangeRegions::InstructionInfo.
     if (use->parent() == def->parent() &&
-        def->parent()->IsConditionalBranchComputation() &&
+        !def->parent()->caller_instructions(HloOpcode::kConditional).empty() &&
         def == entry2.first && def->shape().IsTuple()) {
       VLOG(3) << "Setting interception for multi-output instruction inside "
                  "conditional branch: "
@@ -1314,12 +1340,56 @@ class CopyRemover {
     // used for sorting below.
     absl::flat_hash_map<int, int64_t> instruction_ids;
     int64_t id = 0;
-    for (HloComputation* computation : module.MakeComputationPostOrder()) {
-      for (HloInstruction* instruction :
-           computation->MakeInstructionPostOrder()) {
-        instruction_ids[instruction->unique_id()] = id++;
-      }
-    }
+
+    // Generate instruction ids for all instructions in the module, starting at
+    // the entry computation, processing instructions post-order and recursing
+    // depth-first into called computations.
+    absl::flat_hash_set<HloComputation*> visited;
+    std::function<void(HloComputation*)> assign_ids_dfs =
+        [&](HloComputation* computation) {
+          // Only visit each computation once.
+          auto [it, inserted] = visited.insert(computation);
+          if (!inserted) {
+            return;
+          }
+          // Assign ids to parameters first to match logic in IsDefinedBefore()
+          for (HloInstruction* instruction :
+               computation->parameter_instructions()) {
+            instruction_ids[instruction->unique_id()] = id++;
+          }
+
+          // Use the schedule order if available, otherwise use post order.
+          const HloInstructionSequence* seq =
+              ordering->SequentialOrder(*computation);
+          std::vector<HloInstruction*> instructions =
+              seq != nullptr ? seq->instructions()
+                             : computation->MakeInstructionPostOrder();
+
+          // Traverse depth-first, assigning ids to caller instructions
+          // *after* called computations.
+          for (HloInstruction* instruction : instructions) {
+            switch (instruction->opcode()) {
+              case HloOpcode::kParameter:
+                // Parameters are already assigned ids above.
+                continue;
+              case HloOpcode::kWhile:
+                // While condition executes before body.
+                assign_ids_dfs(instruction->while_condition());
+                assign_ids_dfs(instruction->while_body());
+                break;
+              default:
+                for (HloComputation* called_computation :
+                     instruction->called_computations()) {
+                  assign_ids_dfs(called_computation);
+                }
+                break;
+            }
+            instruction_ids[instruction->unique_id()] = id++;
+          }
+        };
+
+    CHECK(module.has_entry_computation());
+    assign_ids_dfs(module.entry_computation());
 
     // Construct a list for each HLO buffer in the alias analysis. Maintain a
     // map from HloValue to the respective list element representing that
@@ -1512,8 +1582,8 @@ class CopyRemover {
   // live range interference is introduced by the copy's elimination. If
   // elision is possible, then the internal state (value lists) are updated,
   // and true is returned. Returns false otherwise.
-  bool TryElideCopy(const HloInstruction* copy,
-                    int64_t* region_analysis_limit) {
+  bool TryElideCopy(const HloInstruction* copy, int64_t* region_analysis_limit,
+                    bool insert_post_scheduling_control_dependencies) {
     VLOG(2) << "Trying to remove " << copy->name();
     CHECK_NE(region_analysis_limit, nullptr);
     if (copy->shape().has_layout() && copy->operand(0)->shape().has_layout()) {
@@ -1592,6 +1662,29 @@ class CopyRemover {
       VLOG(2) << "Region-based interference is false.";
       return false;
     };
+    auto AddControlDependenciesBetween = [&](ValueNode* src, ValueNode* dst) {
+      if (src == nullptr || dst == nullptr) {
+        return;
+      }
+      for (auto use : src->uses) {
+        if (use->instruction->parent() != dst->value->instruction()->parent() ||
+            use->instruction == dst->value->instruction()) {
+          // Don't add control dependencies if the use is in a different
+          // computation or if the use is the same as the destination.
+          continue;
+        }
+
+        VLOG(2) << "Adding control dependency:";
+        VLOG(2) << "  From: " << use->instruction->ToString();
+        VLOG(2) << "    Use: " << use->ToString();
+
+        VLOG(2) << "  To: " << dst->value->instruction()->ToShortString();
+        VLOG(2) << "    Value: " << dst->value->ToString();
+
+        CHECK_OK(use->instruction->AddControlDependencyTo(
+            dst->value->instruction()));
+      }
+    };
 
     // A kCopy instruction copies an HLO value from a source buffer and
     // defines an HLO value in a destination buffer. Most generally, the
@@ -1669,9 +1762,24 @@ class CopyRemover {
           // Live range of 'last_dest' (d_m) must be before 'next_src' s_{x+1}.
           CheckLiveRangeBefore(copy_node.dest->prev, Next(*copy_node.src));
       VLOG(2) << "LiveRangeBefore result: " << live_range_before;
-      if (!live_range_before &&
-          CheckLiveRangeInterference(copy_node.src, copy_node.dest,
-                                     kMergeFirstDestInSource)) {
+      // If the live range is before, we can add control dependencies to ensure
+      // the ordering. Otherwise, we check for interference (which will
+      // also add control dependencies if needed)
+      if (live_range_before) {
+        if (insert_post_scheduling_control_dependencies) {
+          // Ensure that the last uses of the copy source (e.g. s_x) are
+          // ordered before the next definition of the copy destination buffer
+          // (d_1).
+          AddControlDependenciesBetween(copy_node.src, Next(*copy_node.dest));
+
+          // Also ensure that the last uses of the copy destination (e.g. d_m)
+          // are ordered before the next definition of the copy source buffer
+          // (s_{x+1}).
+          AddControlDependenciesBetween(copy_node.dest->prev,
+                                        Next(*copy_node.src));
+        }
+      } else if (CheckLiveRangeInterference(copy_node.src, copy_node.dest,
+                                            kMergeFirstDestInSource)) {
         return false;
       }
       VLOG(2) << "Splice dest after source.";
@@ -1701,9 +1809,23 @@ class CopyRemover {
           // Live range of 'last_src' must be before next_dest d_{y+1}.
           CheckLiveRangeBefore(copy_node.src, Next(*copy_node.dest));
       VLOG(2) << "LiveRangeBefore result: " << live_range_before;
-      if (!live_range_before &&
-          CheckLiveRangeInterference(copy_node.src, copy_node.dest,
-                                     kMergeLastSourceInDest)) {
+      // If the live range is before, we can add control dependencies to ensure
+      // the ordering. Otherwise, we check for interference (which will
+      // also add control dependencies if needed)
+      if (live_range_before) {
+        if (insert_post_scheduling_control_dependencies) {
+          // Ensure that the last uses of the copy source (e.g. s_n) are
+          // ordered before the next definition of the copy destination buffer
+          // (d_{y+1}).
+          AddControlDependenciesBetween(Prev(*copy_node.dest),
+                                        copy_node.src->next);
+          // Also ensure that the last uses of the copy source (e.g. s_n) are
+          // ordered before next definition of the copy destination (e.g.
+          // d_{y+1}).
+          AddControlDependenciesBetween(copy_node.src, Next(*copy_node.dest));
+        }
+      } else if (CheckLiveRangeInterference(copy_node.src, copy_node.dest,
+                                            kMergeLastSourceInDest)) {
         VLOG(2) << "Region-based analysis concludes interference.";
         return false;
       }
@@ -2018,51 +2140,107 @@ absl::Status CopyInsertion::AddCopiesForConditional(
   return absl::OkStatus();
 }
 
-HloInstruction* FindAsyncSendRecvDoneInWhileBody(
-    const HloComputation* while_body, const HloInstruction* start_op) {
-  // Partially pipelined send/recv must have a single user.
-  if (start_op->user_count() != 1) return nullptr;
-  HloInstruction* unique_user = start_op->users().front();
-  // Send/recv must be consumed by send/recv-done op or be passed through the
-  // loop.
-  if (IsSendRecvDone(unique_user)) return unique_user;
+// If `chain_start` is the head of a chain of non-copyable ops inside a while
+// loop, and part of the chain is rotated to the next iteration, returns the
+// chain end in the rotated part. Otherwise, returns nullptr.
+HloInstruction* FindEndOpForRotatedNonCopyableChain(
+    const HloComputation* while_body, const HloInstruction* chain_start) {
+  // Non-copyable op must have a single user.
+  if (chain_start->user_count() != 1) return nullptr;
+  HloInstruction* unique_user = chain_start->users().front();
   if (unique_user->opcode() != HloOpcode::kTuple || !unique_user->IsRoot())
     return nullptr;
-  int64_t index = unique_user->operand_index(start_op);
+  int64_t index = unique_user->operand_index(chain_start);
   for (const HloInstruction* it :
        while_body->parameter_instruction(0)->users()) {
     const auto* gte = DynCast<HloGetTupleElementInstruction>(it);
     if (gte->tuple_index() == index) {
-      CHECK_EQ(gte->user_count(), 1) << "send/recv in next loop iteration must "
-                                        "be consumed by unique send/recv-done.";
+      CHECK_EQ(gte->user_count(), 1)
+          << "non-copyable value in next loop iteration must "
+             "be consumed by unique instruction.";
       HloInstruction* next_unique_user = gte->users().front();
-      if (IsSendRecvDone(next_unique_user)) return next_unique_user;
+      if (HloDataflowAnalysis::IsAsynchronousOperationDone(
+              next_unique_user->opcode())) {
+        return next_unique_user;
+      }
+      break;
     }
   }
   return nullptr;
 }
 
-// Add copies for partially pipelined async send/recv. Copies are added before
-// starting to send and after finishing to recv. This is to prevent overlapping
-// live times of the buffers. The control flow edges from the added copy to the
-// recv or send-done operation guarantee disjoint live times of the buffers.
-// Note that we have anchor these control flow edges to the copies as the send
-// and recv-done ops are aliasing.
+// Adds copies for non-copyable transitioning between copyable and non-copyable
+// for a chain start with `chain_start` and part of the chain is rotated to the
+// next iteration that ends with `chain_end`.
+absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
+    HloInstruction* chain_start, HloInstruction* chain_end) {
+  HloComputation* while_body = chain_start->parent();
+  // Handle aliasing input for the op, where we transition from copyable to
+  // non-copyable.
+  if (!chain_start->operands().empty()) {
+    // A chain_start may have multiple operands, but we assume only the first
+    // operand is a buffer aliasing with the output, which is true currently.
+    HloInstruction* operand = chain_start->mutable_operand(0);
+    HloInstruction* copied_operand =
+        while_body->AddInstruction(HloInstruction::CreateUnary(
+            operand->shape(), HloOpcode::kCopy, operand));
+    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(chain_start, copied_operand));
+    TF_RETURN_IF_ERROR(chain_end->AddControlDependencyTo(copied_operand));
+  }
+
+  // The chain_end is rotated and semantically paired with the chain_start of
+  // the previous iteration. We add a control dependency from the chain_end to
+  // the chain_start to in the same lexical iteration guarantee disjoint live
+  // times of the buffers involved.
+  TF_RETURN_IF_ERROR(chain_end->AddControlDependencyTo(chain_start));
+
+  // If chain_end has users, insert copies for the result produced by the
+  // chain_end with aliasing input and output buffers, where we transition from
+  // non-copyable to copyable.
+  PtrVec<HloInstruction*> users = chain_end->users();
+  if (users.empty()) return absl::OkStatus();
+
+  ShapeTree<HloInstruction*> copies_added(chain_end->shape());
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * copy,
+      while_body->DeepCopyInstruction(chain_end, /*indices_to_copy=*/nullptr,
+                                      &copies_added));
+  for (auto [shape_index, instr] : copies_added) {
+    if (instr != nullptr)
+      TF_RETURN_IF_ERROR(instr->AddControlDependencyTo(chain_start));
+  }
+  for (HloInstruction* it : users) {
+    TF_RETURN_IF_ERROR(chain_end->ReplaceUseWith(it, copy));
+  }
+  return absl::OkStatus();
+}
+
+// Adds the needed copies for transitioning into and out of non-copyable values,
+// to prevent overlapping live times of buffers. This is needed when the unique
+// user of the non-copyable op is rotated (also called pipelined) in a
+// while-loop. In particlar, if a non-copyable op has an input aliasing with its
+// output, such as async Send, we make a copy of its input to transition from
+// copyable to non-copyable. If a non-copyable op's unique user produces an
+// output aliasing with its input, such as async Recv, we make a copy of the
+// output produced by the unique user, to transition out of non-copyable to
+// copyable. We also add control-flow edges between the copies and the
+// non-copyable op to guarantee disjoint live times of the buffers invovled.
 //
+// Using async Send and Recv as examples, here is the transformation:
 //
 // Before:
 //
-//      kParameter                kParameter
-//          |                         |
-//      kSendDone                 kRecvDone
-//                                    |
-//         ...                     consumer
+//      kParameter               kParameter
+//          |                        |
+//      kSendDone                kRecvDone (end of a non-copyable chain)
+//                                   |
+//         ...                    consumer
 //
-//       producer                    ...
+//       producer                   ...
 //          |
-//        kSend                     kRecv
-//          |                         |
-//     (body root)               (body root)
+//        kSend                    kRecv   (start of a non-copyable op)
+//          |                        |
+//     (body root)              (body root)
 //
 //
 // After:
@@ -2080,73 +2258,53 @@ HloInstruction* FindAsyncSendRecvDoneInWhileBody(
 //          |                         |
 //     (body root)               (body root)
 //
-absl::Status CopyInsertion::AddCopiesForAsyncSendRecv(
-    const HloAliasAnalysis& alias_analysis, HloInstruction* start_op) {
-  // If start op has multiple users, this must be the synchronous use of
-  // send/recv.
-  // TODO(b/369589022): Disambiguate sync and async use of send/recv.
-  if (start_op->users().size() != 1) return absl::OkStatus();
-
-  // If start feeds directly into done, the live time is contained and we don't
-  // need to add any copies.
-  HloInstruction* unique_user = start_op->users().front();
-  const HloOpcode done_opcode = start_op->opcode() == HloOpcode::kSend
-                                    ? HloOpcode::kSendDone
-                                    : HloOpcode::kRecvDone;
-  if (unique_user->opcode() == done_opcode) {
+absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
+    const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start) {
+  if (chain_start->users().empty()) {
     return absl::OkStatus();
   }
 
-  HloComputation* parent = start_op->parent();
-  // If a Send is feeded into a pipelined while-loop, we need to make a copy
-  // of the Send operand and use it in the Send.
-  if (start_op->opcode() == HloOpcode::kSend &&
+  // Currently non-copyable ops can have at most one user.
+  if (chain_start->users().size() != 1) {
+    return absl::InvalidArgumentError(
+        "Non-copyable op must have a single user.");
+  }
+
+  HloInstruction* unique_user = chain_start->users().front();
+  // If start feeds directly into done, the live time is contained and we don't
+  // need to add any copies.
+  if (HloDataflowAnalysis::IsAsynchronousOperationDone(unique_user->opcode())) {
+    return absl::OkStatus();
+  }
+
+  HloComputation* parent = chain_start->parent();
+  // If a start op with an operand is fed into a pipelined while-loop, we
+  // need to make a copy of the operand and use the copy in the start op.
+  if (chain_start->operand_count() > 0 &&
       unique_user->opcode() == HloOpcode::kTuple &&
       unique_user->users().size() == 1 &&
       unique_user->users().front()->opcode() == HloOpcode::kWhile) {
-    HloInstruction* operand = start_op->mutable_operand(0);
+    HloInstruction* operand = chain_start->mutable_operand(0);
     HloInstruction* copied_operand =
         parent->AddInstruction(HloInstruction::CreateUnary(
             operand->shape(), HloOpcode::kCopy, operand));
-    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(start_op, copied_operand));
+    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(chain_start, copied_operand));
     return absl::OkStatus();
   }
 
-  // For other cases that send/recv are outside of the while loop, live times
-  // are disjoint. No copies are needed.
+  // For other cases where a non-copyable chain is outside of the while loop,
+  // live times are disjoint. No copies are needed.
   if (parent->caller_instructions(HloOpcode::kWhile).empty()) {
     return absl::OkStatus();
   }
 
-  // Handle send case.
-  HloInstruction* done_op = FindAsyncSendRecvDoneInWhileBody(parent, start_op);
-  // TODO(b/369589022): Disambiguate sync and async use of send/recv.
-  if (done_op == nullptr) return absl::OkStatus();
-  if (start_op->opcode() == HloOpcode::kSend) {
-    HloInstruction* operand = start_op->mutable_operand(0);
-    HloInstruction* copied_operand =
-        parent->AddInstruction(HloInstruction::CreateUnary(
-            operand->shape(), HloOpcode::kCopy, operand));
-    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(start_op, copied_operand));
-    TF_RETURN_IF_ERROR(done_op->AddControlDependencyTo(copied_operand));
-    return absl::OkStatus();
-  }
+  // For async start ops, the end of the chain is the async done op.
+  HloInstruction* chain_end =
+      FindEndOpForRotatedNonCopyableChain(parent, chain_start);
+  if (chain_end)
+    return AddCopiesForNonCopyableTransitionsRotatedCase(chain_start,
+                                                         chain_end);
 
-  // Handle recv case.
-  CHECK_EQ(start_op->opcode(), HloOpcode::kRecv);
-  PtrVec<HloInstruction*> done_op_users = done_op->users();
-  ShapeTree<HloInstruction*> copies_added(done_op->shape());
-  TF_ASSIGN_OR_RETURN(HloInstruction * done_op_copy,
-                      parent->DeepCopyInstruction(
-                          done_op, /*indices_to_copy=*/nullptr, &copies_added));
-  for (auto [shape_index, instr] : copies_added) {
-    if (instr != nullptr)
-      TF_RETURN_IF_ERROR(instr->AddControlDependencyTo(start_op));
-  }
-  TF_RETURN_IF_ERROR(done_op->AddControlDependencyTo(start_op));
-  for (HloInstruction* it : done_op_users) {
-    TF_RETURN_IF_ERROR(done_op->ReplaceUseWith(it, done_op_copy));
-  }
   return absl::OkStatus();
 }
 
@@ -2170,10 +2328,9 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
       } else if (instruction->opcode() == HloOpcode::kConditional) {
         TF_RETURN_IF_ERROR(
             AddCopiesForConditional(*alias_analysis, instruction));
-      } else if (IsSendRecv(instruction)) {
-        // TODO(b/371225893): Generalize this to all async collectives.
+      } else if (IsNonCopyable(instruction)) {
         TF_RETURN_IF_ERROR(
-            AddCopiesForAsyncSendRecv(*alias_analysis, instruction));
+            AddCopiesForNonCopyableTransitions(*alias_analysis, instruction));
       } else {
         // When an operand is a tuple, we avoid copying the operand multiple
         // times by recording and checking the operand number of operands that
@@ -2407,7 +2564,8 @@ static int64_t GetNumExistingCopies(
 
 absl::Status CopyInsertion::RemoveUnnecessaryCopies(
     HloModule* module, bool check_live_range_ordering,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    bool insert_post_scheduling_control_dependencies) {
   XLA_VLOG_LINES(
       4, module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(false)));
 
@@ -2458,7 +2616,9 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
                 ? 0
                 : std::min(allowance.analysis_allowance(),
                            use_region_based_live_range_analysis_);
-        if (copy_remover.TryElideCopy(instruction, &region_analysis_cost_now)) {
+        if (copy_remover.TryElideCopy(
+                instruction, &region_analysis_cost_now,
+                insert_post_scheduling_control_dependencies)) {
           changed = true;
           TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
           TF_RETURN_IF_ERROR(

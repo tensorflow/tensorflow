@@ -27,7 +27,7 @@ include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 // Quantize attribute $0 by using quantization parameter from %1.
 def QuantizeByQuantizedType : NativeCodeCall<"quant::Quantize($0, $1.getValue())">;
 def F32ElementsAttr : ElementsAttrBase<
-  CPred<"$_self.cast<ElementsAttr>().getShapedType().getElementType().isF32()">, "float constant tensor">;
+  CPred<"llvm::cast<ElementsAttr>($_self).getShapedType().getElementType().isF32()">, "float constant tensor">;
 
 def HasSameType : Constraint<CPred<[{$0.getType() == $1.getType()}]>>;
 

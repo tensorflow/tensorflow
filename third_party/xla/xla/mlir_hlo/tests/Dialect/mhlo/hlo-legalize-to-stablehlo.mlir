@@ -466,6 +466,19 @@ func.func @op_all_reduce(%arg0: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
+// CHECK-LABEL: "op_all_reduce_tuple"
+func.func @op_all_reduce_tuple(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> (tensor<8xf32>, tensor<f32>) {
+  // CHECK: %[[RES:.*]]:2 = "stablehlo.all_reduce"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]])
+  // CHECK-SAME: <{replica_groups = dense<> : tensor<0x0xi64>}>
+  // CHECK: "func.return"(%[[RES]]#0, %[[RES]]#1) : (tensor<8xf32>, tensor<f32>)
+  %0:2 = "mhlo.all_reduce"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %2 = mhlo.add %arg2, %arg3 : tensor<f32>
+    mhlo.return %2 : tensor<f32>
+  }) {replica_groups = dense<> : tensor<0x0xi64>} : (tensor<8xf32>, tensor<f32>) -> (tensor<8xf32>, tensor<f32>)
+  return %0#0, %0#1 : tensor<8xf32>, tensor<f32>
+}
+
 // CHECK-LABEL: "op_all_to_all"
 func.func @op_all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
   //               CHECK: "stablehlo.all_to_all"([[ARG0:%arg[0-9]+]]) <{
@@ -483,6 +496,22 @@ func.func @op_all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
     channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   } : (tensor<4x16xf32>) -> tensor<16x4xf32>
   func.return %0 : tensor<16x4xf32>
+}
+
+// CHECK-LABEL: "op_all_to_all_tuple"
+func.func @op_all_to_all_tuple(%arg0: tensor<2x4xi64>, %arg1: tensor<2x4xi64>) -> (tensor<4x2xi64>, tensor<4x2xi64>) {
+  //  CHECK: %[[RES:.*]]:2 = "stablehlo.all_to_all"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]])
+  // CHECK-SAME: <{concat_dimension = 0 : i64,
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+  // CHECK-SAME:   split_count = 2 : i64, split_dimension = 1 : i64}>
+  // CHECK-SAME:   : (tensor<2x4xi64>, tensor<2x4xi64>) -> (tensor<4x2xi64>, tensor<4x2xi64>)
+  %0:2 = "stablehlo.all_to_all"(%arg0, %arg1) {
+      split_dimension = 1 : i64,
+      concat_dimension = 0 : i64,
+      split_count = 2 : i64,
+      replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+    } : (tensor<2x4xi64>, tensor<2x4xi64>) -> (tensor<4x2xi64>, tensor<4x2xi64>)
+  return %0#0, %0#1 : tensor<4x2xi64>, tensor<4x2xi64>
 }
 
 // CHECK-LABEL: "op_and"
@@ -1809,6 +1838,14 @@ func.func @bounded_dynamism_broadcast_in_dim(%arg0: tensor<1x?xf32, #mhlo.type_e
   return %0 : tensor<2x1x?xf32, #mhlo.type_extensions<bounds = [?, ?, 5]>>
 }
 
+// CHECK-LABEL: bounded_dynamism_with_unknown_op
+func.func @bounded_dynamism_with_unknown_op(%arg0: tensor<1x4xi32>, %arg1: tensor<i32>) -> tensor<1x4xi32> {
+  %0 = "mhlo.set_dimension_size"(%arg0, %arg1) <{dimension = 1 : i64}> : (tensor<1x4xi32>, tensor<i32>) -> tensor<1x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>
+  // CHECK: "tensor.cast"({{.*}}) : (tensor<1x?xi32, #stablehlo.bounds<?, 4>>) -> tensor<1x4xi32> 
+  %cast = tensor.cast %0 : tensor<1x?xi32, #mhlo.type_extensions<bounds = [?, 4]>> to tensor<1x4xi32>
+  return %cast : tensor<1x4xi32>
+}
+
 // ============ TYPES ============
 
 // CHECK-LABEL: "type_i1"
@@ -2085,28 +2122,6 @@ func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
 
 // -----
 
-func.func @attr_precision_config_invalid() -> tensor<8x8xf32> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
-  %0 = "mhlo.custom_call"() {
-    call_target_name = "foo",
-    precision_config = [#mhlo<precision PACKED_NIBBLE>, 1 : i32]
-  } : () -> tensor<8x8xf32>
-  func.return %0 : tensor<8x8xf32>
-}
-
-// -----
-
-func.func @attr_invalid_nested_in_dictionary() -> tensor<8x8xf32> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
-  %0 = "mhlo.custom_call"() {
-    call_target_name = "foo",
-    precision_config = {config = #mhlo<precision PACKED_NIBBLE>}
-  } : () -> tensor<8x8xf32>
-  func.return %0 : tensor<8x8xf32>
-}
-
-// -----
-
 func.func @op_add_dependency(%arg0: tensor<16xf32>, %arg1: !mhlo.token) -> tensor<16xf32> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.add_dependency' that was explicitly marked illegal}}
   %0 = "mhlo.add_dependency"(%arg0, %arg1) : (tensor<16xf32>, !mhlo.token) -> tensor<16xf32>
@@ -2146,8 +2161,7 @@ func.func @op_bitcast(%arg0: tensor<i32>) -> tensor<f32> {
 // -----
 
 func.func @op_copy(%arg0: tensor<f32>) -> tensor<f32> {
-  // mhlo.copy is immediately folded away at the first opportunity,
-  // so it doesn't seem to be possible to capture it in FileCheck tests.
+  // expected-error@+1 {{failed to legalize operation 'mhlo.copy' that was explicitly marked illegal}}
   %0 = "mhlo.copy"(%arg0) : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }

@@ -274,8 +274,8 @@ ShardingParam::LocalShapeFromGlobalShape(
     if (global_shape[i] % num_shards[i] != 0) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Global shape is not divisible by the number of shards in dimension ",
-          i, ". Global size: ", global_shape[i],
-          ", number of shards: ", num_shards[i], "."));
+          i, ". Global shape: [", absl::StrJoin(global_shape, ","),
+          "], number of shards: ", num_shards[i], "."));
     }
     local_shape.push_back(global_shape[i] / num_shards[i]);
   }

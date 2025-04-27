@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -68,6 +69,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -3961,7 +3964,7 @@ absl::Status AlgebraicSimplifierVisitor::RewriteBatchPlusContractingAsReduce(
 }
 
 bool AlgebraicSimplifierVisitor::SupportedDotPrecisionConfig(
-    const PrecisionConfig& config) {
+    const PrecisionConfig& config, bool has_contracting_dim) {
   return config.algorithm() == PrecisionConfig::ALG_UNSET ||
          // TODO(loislo): Fixes a failure on a test with CPU backend.
          config.algorithm() == PrecisionConfig::ALG_DOT_F32_F32_F32;
@@ -3995,14 +3998,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         dot, HloInstruction::CreateBroadcast(dot->shape(), zero, {}));
   }
 
-  const bool is_packed_nibble =
-      absl::c_linear_search(dot->precision_config().operand_precision(),
-                            PrecisionConfig::PACKED_NIBBLE);
-  const bool can_rewrite_dot_with_precision_config_algorithm =
-      SupportedDotPrecisionConfig(dot->precision_config());
   // If there are no contracting dimensions, a dot can be rewritten as
   // mul(broadcast(transpose(x)),broadcast(transpose(y)))
-  if (!is_packed_nibble && can_rewrite_dot_with_precision_config_algorithm &&
+  if (SupportedDotPrecisionConfig(dot->precision_config(),
+                                  /*has_contracting_dim=*/false) &&
       options_.enable_dot_to_multiply_rewrite() &&
       dnums.lhs_contracting_dimensions_size() == 0) {
     return RewriteAsMultiplyDotWithZeroLhsContractingDim(dot, lhs, rhs, dnums);
@@ -4029,7 +4028,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be
   // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
-  if (!is_packed_nibble && can_rewrite_dot_with_precision_config_algorithm &&
+  if (SupportedDotPrecisionConfig(dot->precision_config(),
+                                  /*has_contracting_dim=*/true) &&
       options_.enable_dot_strength_reduction() &&
       DotHasOnlyBatchAndContractingOnOneOperand(lhs->shape().dimensions_size(),
                                                 rhs->shape().dimensions_size(),
@@ -4294,9 +4294,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
     if (info.should_transform) {
       Shape gather_shape = gather->shape();
       for (int64_t padded_dim : padded_dims) {
-        gather_shape.mutable_dimensions()
-            [gather_operand_passthrough_operand_to_output_dims[padded_dim]] =
-            pad->operand(0)->shape().dimensions()[padded_dim];
+        gather_shape.set_dimensions(
+            gather_operand_passthrough_operand_to_output_dims[padded_dim],
+            pad->operand(0)->shape().dimensions()[padded_dim]);
       }
       auto gather_inst = Cast<HloGatherInstruction>(gather);
       std::vector<int64_t> slice_sizes;
@@ -4384,11 +4384,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
         Shape gather_shape = gather->shape();
         for (int64_t padded_dim : padded_dims) {
           int64_t to_dim = reshape_unmodified_dims[padded_dim];
-          reshape_shape.mutable_dimensions()[to_dim] =
-              pad->operand(0)->shape().dimensions()[padded_dim];
-          gather_shape.mutable_dimensions()
-              [gather_operand_passthrough_operand_to_output_dims[to_dim]] =
-              pad->operand(0)->shape().dimensions()[padded_dim];
+          reshape_shape.set_dimensions(
+              to_dim, pad->operand(0)->shape().dimensions()[padded_dim]);
+          gather_shape.set_dimensions(
+              gather_operand_passthrough_operand_to_output_dims[to_dim],
+              pad->operand(0)->shape().dimensions()[padded_dim]);
         }
         HloInstruction* result =
             gather->AddInstruction(HloInstruction::CreateReshape(
@@ -5728,6 +5728,7 @@ absl::Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
       }
       *broadcast->mutable_shape() = broadcast_shape1;
       *broadcast->mutable_dimensions() = broadcast_dimensions;
+      broadcast->clear_sharding();
       simplifier_->UpdateLayout(broadcast->mutable_shape());
       auto pad2 = pad->AddInstruction(pad->CloneWithNewShape(pad_shape1));
       *pad2->mutable_padding_config() = pad_config;
@@ -8256,6 +8257,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   if (arg->opcode() == HloOpcode::kBroadcast &&
       Match(reduce->to_apply()->root_instruction(),
             m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+    TF_RET_CHECK(
+        std::is_sorted(arg->dimensions().begin(), arg->dimensions().end()))
+        << "Broadcasts need to be canonicalized before algebraic "
+           "simplification.";
     bool only_reduce_dims_from_broadcast = true;
     int64_t common_dims_prod = 1;
     int64_t num_common_dims = 0;
@@ -9037,6 +9042,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleTranspose(
   // the reshape/transpose combination can be interpreted as a space-to-depth
   // transformation.
   if (!options_.is_layout_sensitive() &&
+      options_.rewrite_reshape_transpose_as_slice_concatenate() &&
       operand->opcode() == HloOpcode::kReshape &&
       transpose->user_count() == 1 &&
       HloOpcode::kReshape == transpose->users()[0]->opcode()) {
@@ -9655,9 +9661,7 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
 
 absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToMultiply(
     HloInstruction* convolution) {
-  if (options_.is_layout_sensitive() ||
-      absl::c_linear_search(convolution->precision_config().operand_precision(),
-                            PrecisionConfig::PACKED_NIBBLE)) {
+  if (options_.is_layout_sensitive()) {
     return false;
   }
 
