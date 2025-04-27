@@ -88,6 +88,7 @@ cc_library(
         ":triton_xla_dialect_inc_gen",
         ":triton_xla_ops_inc_gen",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:SideEffectInterfaces",

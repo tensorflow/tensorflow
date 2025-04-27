@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <stdbool.h>
-
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -379,8 +377,8 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
 
     // Currently not propagating any function attributes to the new function.
     ArrayRef<NamedAttribute> attrs;
-    auto new_func = rewriter.create<triton::FuncOp>(
-        op.getLoc(), op.getName(), new_function_type, attrs, arg_attrs);
+    auto new_func = builder.create<triton::FuncOp>(
+        op.getName(), new_function_type, attrs, arg_attrs);
 
     for (int i = 0; i < new_func.getNumArguments(); ++i) {
       // TMA arguments don't require tt.divisibility.
@@ -425,44 +423,40 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
   mlir::LogicalResult matchAndRewrite(
       ExtractOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
-    auto original_shape = op.getSrc().getType().getShape();
-    auto tile_shape = op.getResult().getType().getShape();
+    RankedTensorType original_type = op.getSrcType();
+    RankedTensorType tile_type = op.getResultType();
+    ArrayRef<int64_t> original_shape = original_type.getShape();
+    ArrayRef<int64_t> tile_shape = tile_type.getShape();
 
+    auto offsets = op.getOffsetsAsValues(builder);
     if (CanUseTMA(builder, tma_enabled_, *device_description_, tile_shape,
                   op.getSrc())) {
       AddTmaAttributes(builder, op.getSrc(), tile_shape);
 
-      auto reinterpret_tensor_desc = CreateReinterpretTensorDescOp(
-          builder, op.getSrc(), op.getResult().getType());
+      auto reinterpret_tensor_desc =
+          CreateReinterpretTensorDescOp(builder, op.getSrc(), tile_type);
 
-      auto descriptor_load =
-          builder
-              .create<DescriptorLoadOp>(
-                  op.getResult().getType(), reinterpret_tensor_desc,
-                  IndexCastUI(builder, builder.getI32Type(), op.getOffsets()))
-              .getResult();
+      auto descriptor_load = builder.create<DescriptorLoadOp>(
+          op.getResultType(), reinterpret_tensor_desc,
+          IndexCastUI(builder, builder.getI32Type(), offsets));
 
       rewriter.replaceOp(op, descriptor_load);
       return mlir::success();
     }
 
-    auto ptr =
-        CreateAddPtrOp(builder, op.getSrc(), op.getOffsets(), op.getLayout());
-    ptr =
-        CreateMakeTensorPtrOp(builder, ptr, original_shape, tile_shape,
-                              op.getOffsets(), op.getStrides(), op.getLayout());
-
+    auto ptr = CreateAddPtrOp(builder, op.getSrc(), offsets, op.getLayout());
+    auto strides = op.getStridesAsValues(builder);
+    ptr = CreateMakeTensorPtrOp(builder, ptr, original_shape, tile_shape,
+                                offsets, strides, op.getLayout());
     auto boundary_checks = ComputeBoundaryChecks(original_shape, tile_shape);
     std::optional<PaddingOption> padding;
     if (!boundary_checks.empty()) {
       padding = PaddingOption::PAD_ZERO;
     }
-    auto load = builder
-                    .create<LoadOp>(ptr, boundary_checks, padding,
-                                    CacheModifier::NONE, EvictionPolicy::NORMAL,
-                                    /*isVolatile=*/false)
-                    .getResult();
-
+    auto load =
+        builder.create<LoadOp>(ptr, boundary_checks, padding,
+                               CacheModifier::NONE, EvictionPolicy::NORMAL,
+                               /*isVolatile=*/false);
     rewriter.replaceOp(op, load);
     return mlir::success();
   }
@@ -492,35 +486,33 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
   mlir::LogicalResult matchAndRewrite(
       InsertOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
-    auto original_shape = op.getDst().getType().getShape();
-    auto tile_shape = op.getSrc().getType().getShape();
+    RankedTensorType original_type = op.getResultType();
+    RankedTensorType tile_type = op.getSrcType();
+    ArrayRef<int64_t> original_shape = original_type.getShape();
+    ArrayRef<int64_t> tile_shape = tile_type.getShape();
 
+    auto offsets = op.getOffsetsAsValues(builder);
     if (CanUseTMA(builder, tma_enabled_, *device_description_, tile_shape,
                   op.getDst())) {
       AddTmaAttributes(builder, op.getDst(), tile_shape);
 
-      auto reinterpret_tensor_desc = CreateReinterpretTensorDescOp(
-          builder, op.getDst(), op.getSrc().getType());
+      auto reinterpret_tensor_desc =
+          CreateReinterpretTensorDescOp(builder, op.getDst(), tile_type);
 
       builder.create<DescriptorStoreOp>(
           reinterpret_tensor_desc, op.getSrc(),
-          IndexCastUI(builder, builder.getI32Type(), op.getOffsets()));
+          IndexCastUI(builder, builder.getI32Type(), offsets));
     } else {
-      auto ptr =
-          CreateAddPtrOp(builder, op.getDst(), op.getOffsets(), op.getLayout());
+      auto ptr = CreateAddPtrOp(builder, op.getDst(), offsets, op.getLayout());
+      auto strides = op.getStridesAsValues(builder);
       ptr = CreateMakeTensorPtrOp(builder, ptr, original_shape, tile_shape,
-                                  op.getOffsets(), op.getStrides(),
-                                  op.getLayout());
-
-      rewriter.create<StoreOp>(
-          op->getLoc(), ptr, op.getSrc(),
-          ComputeBoundaryChecks(original_shape, tile_shape),
-          CacheModifier::NONE, EvictionPolicy::NORMAL);
+                                  offsets, strides, op.getLayout());
+      builder.create<StoreOp>(ptr, op.getSrc(),
+                              ComputeBoundaryChecks(original_shape, tile_shape),
+                              CacheModifier::NONE, EvictionPolicy::NORMAL);
     }
-
     // InsertOp has a result, so we propagate it to the users.
     op->replaceAllUsesWith(ValueRange(op.getDst()));
-
     return mlir::success();
   }
 
@@ -601,17 +593,19 @@ class TritonXLAExtractInsertToTritonPass
 
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    // clang-format off
     patterns.add<RewriteExtract,
                  RewriteInsert
                 >(mlir_context, &device_description_, is_tma_enabled_);
-    patterns.add<RewriteFuncOp,
-                 RewriteScalarExtract,
-                 RewriteScalarInsert>(mlir_context);
-    // clang-format on
-
+    patterns.add<RewriteScalarExtract, RewriteScalarInsert>(mlir_context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
+      signalPassFailure();
+    }
+
+    mlir::RewritePatternSet func_pattern(mlir_context);
+    func_pattern.add<RewriteFuncOp>(mlir_context);
+    if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),
+                                                 std::move(func_pattern)))) {
       signalPassFailure();
     }
   }

@@ -1507,13 +1507,9 @@ absl::StatusOr<SmallVector<Value>> EmitGeneric(
         << "Unexpected scalar encountered. Expected padded_tile_sizes() to be "
            "non-empty.";
 
-    insert_results.push_back(
-        b.create<mtx::InsertOp>(
-             mlir::RankedTensorType::get(tile_info.original_shape(),
-                                         result_storage_type),
-             result.UnwrapTensor(), parent_base_ptr, tile_info.offsets(),
-             tile_info.tile_strides(), tile_info.minor_to_major_layout())
-            .getResult());
+    insert_results.push_back(b.create<mtx::InsertOp>(
+        result.UnwrapTensor(), parent_base_ptr, tile_info.offsets(),
+        tile_info.tile_strides(), tile_info.minor_to_major_layout()));
   }
 
   return insert_results;
