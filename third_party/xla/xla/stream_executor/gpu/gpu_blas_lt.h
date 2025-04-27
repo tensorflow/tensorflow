@@ -226,16 +226,11 @@ struct BlasLt {
         const Stream* stream, size_t max_algorithm_count = 128,
         size_t max_workspace_size = 1ll << 32) const = 0;
 
-<<<<<<< HEAD
-    // Algorithm needs to be set before calling ExecuteOnStream function
-    virtual absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) const = 0;
-=======
     // Algorithm must to be set before calling ExecuteOnStream function(s).
     // Usually, we call ExecuteOnStream with the same algorithm ID, hence using
     // a separate function here enables BlasLt implementations to do additional
     // optimizations (like preloading matmul kernels) once the algorithm is set.
     virtual absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) = 0;
->>>>>>> upstream/master
 
     virtual ~MatmulPlan() {}
   };  // class MatmulPlan

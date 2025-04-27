@@ -650,10 +650,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:matmul_utils",
-<<<<<<< HEAD
-=======
         "//xla/service/gpu:stream_executor_util",
->>>>>>> upstream/master
         "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",

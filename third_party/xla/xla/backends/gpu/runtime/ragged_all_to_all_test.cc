@@ -90,12 +90,8 @@ TEST_F(RaggedAllToAllKernelTest, SimpleKernelTest) {
   for (int64_t i = 0; i < num_outputs; ++i) {
     output_buffers.emplace_back(executor, executor->AllocateArray<T>(n));
     ASSERT_TRUE(!output_buffers[i].memory().is_null());
-<<<<<<< HEAD:third_party/xla/xla/service/gpu/kernels/ragged_all_to_all_kernel_test.cc
-    TF_ASSERT_OK(stream->MemZero(output_buffers[i].memory_ptr(), n * sizeof(T)));
-=======
     TF_ASSERT_OK(
         stream->MemZero(output_buffers[i].memory_ptr(), n * sizeof(T)));
->>>>>>> upstream/master:third_party/xla/xla/backends/gpu/runtime/ragged_all_to_all_test.cc
   }
 
   stream_executor::DeviceMemoryHandle input_offsets_buffer(

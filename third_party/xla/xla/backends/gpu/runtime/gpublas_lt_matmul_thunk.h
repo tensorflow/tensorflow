@@ -35,21 +35,6 @@ namespace gpu {
 
 class CublasLtMatmulThunk : public Thunk {
  public:
-<<<<<<< HEAD
-  CublasLtMatmulThunk(
-      const HloInstruction *instr, GemmConfig gemm_config,
-      se::gpu::BlasLt::Epilogue epilogue, int64_t algorithm_idx,
-      BufferAllocation::Slice a_buffer, BufferAllocation::Slice b_buffer,
-      BufferAllocation::Slice c_buffer, BufferAllocation::Slice d_buffer,
-      BufferAllocation::Slice bias_buffer /* may be null */,
-      BufferAllocation::Slice aux_buffer /* may be null */,
-      BufferAllocation::Slice a_scale_buffer /* may be null */,
-      BufferAllocation::Slice b_scale_buffer /* may be null */,
-      BufferAllocation::Slice c_scale_buffer /* may be null */,
-      BufferAllocation::Slice d_scale_buffer /* may be null */,
-      BufferAllocation::Slice d_amax_buffer /* may be null */,
-      std::optional<const BufferAllocation::Slice> workspace_buffer);
-=======
   CublasLtMatmulThunk(const HloInstruction* instr, GemmConfig gemm_config,
                       se::gpu::BlasLt::Epilogue epilogue, int64_t algorithm_idx,
                       BufferAllocation::Slice a, BufferAllocation::Slice b,
@@ -62,7 +47,6 @@ class CublasLtMatmulThunk : public Thunk {
                       BufferAllocation::Slice d_scale /* may be null */,
                       BufferAllocation::Slice d_amax /* may be null */,
                       std::optional<const BufferAllocation::Slice> workspace);
->>>>>>> upstream/master
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return ExecuteOnStreamInternal(params.stream, params);
@@ -72,11 +56,6 @@ class CublasLtMatmulThunk : public Thunk {
     return workspace_;
   }
 
-<<<<<<< HEAD
- private:
-   absl::StatusOr<se::gpu::BlasLt::MatmulPlan *> GetCachedMatmulPlan(
-                const ExecuteParams& params);
-=======
  protected:
   CublasLtMatmulThunk(const CublasLtMatmulThunk& rhs);
 
@@ -84,27 +63,12 @@ class CublasLtMatmulThunk : public Thunk {
                                        const ExecuteParams& params);
   absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> GetCachedMatmulPlan(
       const ExecuteParams& params);
->>>>>>> upstream/master
 
  protected:
   GemmConfig gemm_config_;
   se::gpu::BlasLt::Epilogue epilogue_;
   int64_t algorithm_idx_;
   std::string canonical_hlo_;
-<<<<<<< HEAD
-  BufferAllocation::Slice a_buffer_;
-  BufferAllocation::Slice b_buffer_;
-  BufferAllocation::Slice c_buffer_;
-  BufferAllocation::Slice d_buffer_;
-  BufferAllocation::Slice bias_buffer_;
-  BufferAllocation::Slice aux_buffer_;
-  BufferAllocation::Slice a_scale_buffer_;
-  BufferAllocation::Slice b_scale_buffer_;
-  BufferAllocation::Slice c_scale_buffer_;
-  BufferAllocation::Slice d_scale_buffer_;
-  BufferAllocation::Slice d_amax_buffer_;
-  std::optional<const BufferAllocation::Slice> workspace_buffer_;
-=======
   BufferAllocation::Slice a_;
   BufferAllocation::Slice b_;
   BufferAllocation::Slice c_;
@@ -117,7 +81,6 @@ class CublasLtMatmulThunk : public Thunk {
   BufferAllocation::Slice d_scale_;
   BufferAllocation::Slice d_amax_;
   std::optional<const BufferAllocation::Slice> workspace_;
->>>>>>> upstream/master
 };
 
 }  // namespace gpu

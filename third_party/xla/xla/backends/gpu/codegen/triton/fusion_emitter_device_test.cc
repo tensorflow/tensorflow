@@ -1994,16 +1994,11 @@ CHECK:     triton_xla.insert
 // Reproducer from b/384110192.
 TEST_P(TmaParameterizedTritonEmitterTest,
        FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly) {
-<<<<<<< HEAD
-  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-21: Skip Int32 max elements "
-                  "issue with triton.";
-=======
   bool tma_enabled = GetParam();
   if (tma_enabled) {
     GTEST_SKIP() << "TODO(b/413300983): Skipping TMA due to: Wrong results.";
   }
 
->>>>>>> upstream/master
   // The point here is to check the output of the Triton fusion. The `slice` op
   // at the end is inserted to allow the comparison of output to run in a
   // reasonable amount of time, and has been proven to still correctly capture
@@ -2109,38 +2104,11 @@ ENTRY entry_computation {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), kExactMatch));
 }
 
-<<<<<<< HEAD
-TEST_F(TritonEmitterTest, FP8ToFP8EndToEnd) {
-  if (auto cuda_cc =
-          std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {
-    if (!cuda_cc->IsAtLeastHopper()) {
-      GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
-    }
-  }
-
-  if (auto rocm_cc =
-          std::get_if<se::RocmComputeCapability>(&GpuComputeCapability())) {
-    if (!rocm_cc->has_ocp_fp8_support()) {
-      GTEST_SKIP() << "The arch doesn't support OCP FP8.";
-    }
-  }
-
-  const std::string hlo_text = R"(
-HloModule t
-
-triton_dot {
-  parameter_0 = f8e5m2[32,32]{1,0} parameter(0)
-  parameter_1 = f8e4m3fn[32,32]{1,0} parameter(1)
-  convert = f8e4m3fn[32,32]{1,0} convert(parameter_0)
-  ROOT dot = f32[32,32]{1,0} dot(convert, parameter_1),
-                lhs_contracting_dims={1}, rhs_contracting_dims={1}
-=======
 TEST_F(TritonEmitterTest, ConvertS4ToS8Exhaustive) {
   constexpr absl::string_view kHloText = R"(
 computation {
   p0 = s4[16] parameter(0)
   ROOT convert = s8[16] convert(p0)
->>>>>>> upstream/master
 }
 
 ENTRY entry_computation {

@@ -383,11 +383,7 @@ absl::Status BlasLt::MatmulPlan::SetAlgorithm(const MatmulAlgorithm& algorithm) 
 
 absl::Status BlasLt::MatmulPlan::DoMatmul(
     Stream* stream, const void* alpha, const void* beta,
-<<<<<<< HEAD
-    const MatmulAlgorithm& Xalgorithm, const gpu::BlasLt::MemoryArgs& args,
-=======
     const gpu::BlasLt::MemoryArgs& args,
->>>>>>> upstream/master
     blas::ProfileResult* profile_result) const {
   if (!algorithm_.has_value()) {
     return absl::InternalError(

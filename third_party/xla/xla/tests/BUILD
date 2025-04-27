@@ -859,16 +859,10 @@ xla_test(
         "cpu",
         "gpu",
     ],
-<<<<<<< HEAD
-    tags = ["test_xla_cpu_thunks",
-            "cuda-only",
-            "test_xla_cpu_no_thunks",], #(TODO)(rocm): weekly sync 24-11-05
-=======
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
         "test_xla_cpu_no_thunks",
     ],
->>>>>>> upstream/master
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",

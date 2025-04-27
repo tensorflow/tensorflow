@@ -254,10 +254,6 @@ TEST_F(RocmStreamTest, WaitForEvent) {
       stream->DoHostCallback([&callback_called]() { callback_called = true; }),
       IsOk());
 
-<<<<<<< HEAD
-  //EXPECT_FALSE(callback_called); TODO(rocm): This check sometimes fails (depending on when we return from DoHostCallback), weekly sync 24-11-05
-=======
->>>>>>> upstream/master
   EXPECT_THAT(stream->RecordEvent(&event), IsOk());
   EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
   EXPECT_TRUE(callback_called);

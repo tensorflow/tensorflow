@@ -75,14 +75,9 @@ xla_test(
     backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = [
-<<<<<<< HEAD
-        "notsan",   # TODO(b/345034145): Fix tsan error.
-    ],  
-=======
         "notsan",
         "test_migrated_to_hlo_runner_pjrt",
     ],  # TODO(b/345034145): Fix tsan error.
->>>>>>> upstream/master
     deps = if_gpu_is_configured(
         #keep sorted
         [

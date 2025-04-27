@@ -283,13 +283,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 }
 
 TEST(CommandBufferCmdTest, LaunchCmd) {
-<<<<<<< HEAD
-  // TODO(rocm): weekly sync 24-12-10
-  GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  se::StreamExecutor* executor = GpuExecutor();
-=======
   se::StreamExecutor* stream_executor = GpuExecutor();
->>>>>>> upstream/master
 
   auto stream = stream_executor->CreateStream().value();
   int64_t length = 4;
