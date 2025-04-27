@@ -15,6 +15,8 @@ limitations under the License.
 
 // This is a pass to reduce operands without changing the outcome.
 
+#include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
