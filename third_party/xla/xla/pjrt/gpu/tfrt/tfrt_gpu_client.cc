@@ -2583,6 +2583,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
   absl::AnyInvocable<void()> transfer_d2d =
       [src_buffer(src_buffer.CopyRef()), dst_buffer(dst_buffer.CopyRef()),
        dst_definition_event(dst_definition_event.CopyRef()),
+       src_definition_event(src_device_buffer->definition_event().CopyRef()),
        dst_device(gpu_dst_device), usage_event(usage_event.CopyRef())]() {
         tsl::profiler::TraceMe traceme("D2D copy");
         if (const absl::Status* error =
@@ -2593,6 +2594,13 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
           return;
         }
 
+        if (const absl::Status* error =
+                src_definition_event.GetErrorIfPresent()) {
+          dst_buffer.SetError(*error);
+          dst_definition_event.SetError(*error);
+          usage_event.SetStateConcrete();
+          return;
+        }
         MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
         absl::StatusOr<MaybeOwningGpuMemory> allocated_dst_buffer =
             MaybeOwningGpuMemory::AllocateShared(dst_device->allocator(),
