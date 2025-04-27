@@ -41,6 +41,7 @@ default_visibility = [
     # copybara:uncomment #internal tuning service,
     # copybara:uncomment "//third_party/odml/experimental:__subpackages__",
     #internal nexus library,
+    #internal headless cuj tests library,
     #internal nexus library tests,
     "//tensorflow/compiler/jit:__subpackages__",
     #internal library,
