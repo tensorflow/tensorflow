@@ -130,6 +130,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
