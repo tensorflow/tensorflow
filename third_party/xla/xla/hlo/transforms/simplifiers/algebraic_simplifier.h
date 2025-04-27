@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -818,6 +819,32 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // - For example in slices=([0:X:X]), where X == dimension
   absl::StatusOr<bool> RemoveRedundantStride(
       HloInstruction* absl_nonnull slice);
+
+  // Helper function for HandleReduce. Replaces a reduce with a broadcast of the
+  // init values if the reduce is operating on a zero-element array or the
+  // result of the reduce is a zero-element array.
+  absl::Status BroadcastReduce(const Shape& reduce_result_shape,
+                               bool multi_output_reduce,
+                               HloReduceInstruction* reduce);
+
+  // Helper function for HandleReduce. Converts a (both single and multi output)
+  // reduce to a reshape.
+  absl::Status ReplaceReduceWithReshape(const Shape& reduce_result_shape,
+                                        bool multi_output_reduce,
+                                        HloReduceInstruction* reduce);
+
+  // Helper function for HandleReduce. Reorders reduce dot
+  // to a dot reduce. reduce(dot(A, B)) to dot(A, reduce(B))
+  std::optional<absl::Status> ReorderReduceDotToDotReduce(
+      HloInstruction* arg, HloInstruction* init_value, HloComputation* function,
+      HloReduceInstruction* reduce);
+
+  // Helper function for HandleReduce. Merge two reduces with same computation
+  // and initial value into a single reduce.
+  absl::Status MergeReduces(const Shape& reduce_result_shape,
+                            HloInstruction* init_value,
+                            HloComputation* function, HloInstruction* arg,
+                            HloReduceInstruction* reduce);
 
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.

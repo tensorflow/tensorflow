@@ -7728,103 +7728,63 @@ static bool ReductionComputationsEquivalent(const HloComputation& a,
          category_a == category_b;
 }
 
-absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
-  HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
-  bool multi_output_reduce = reduce->shape().IsTuple();
-  // For tuple reduce, we require all reduce shapes to be the same, up to the
-  // element types, so we can just the first operand and the first result as a
-  // representative.
-  auto arg = reduce->inputs()[0];
-  auto init_value = reduce->init_values()[0];
-  const Shape& reduce_result_shape =
-      multi_output_reduce ? reduce->shape().tuple_shapes(0) : reduce->shape();
+// Returns true if the reduce should be replaced with a broadcast.
+static bool ShouldBroadcastReduce(const HloInstruction* arg,
+                                  const Shape& reduce_result_shape) {
+  return ShapeUtil::IsZeroElementArray(arg->shape()) ||
+         ShapeUtil::IsZeroElementArray(reduce_result_shape);
+}
 
-  absl::Span<const int64_t> dimensions(reduce->dimensions());
-  HloComputation* function = reduce->to_apply();
-  if (ShapeUtil::IsZeroElementArray(arg->shape()) ||
-      ShapeUtil::IsZeroElementArray(reduce_result_shape)) {
-    if (multi_output_reduce) {
-      std::vector<HloInstruction*> broadcast_inits;
-      int64_t inputs = reduce->input_count();
-      broadcast_inits.reserve(inputs);
-      for (int64_t i = 0; i < inputs; ++i) {
-        broadcast_inits.push_back(reduce->init_values()[i]->AddInstruction(
-            HloInstruction::CreateBroadcast(reduce->shape().tuple_shapes(i),
-                                            reduce->init_values()[i], {})));
-      }
-      return ReplaceWithNewInstruction(
-          reduce, HloInstruction::CreateTuple(broadcast_inits));
-    } else {
-      return ReplaceWithNewInstruction(
-          reduce,
-          HloInstruction::CreateBroadcast(reduce_result_shape, init_value, {}));
+absl::Status AlgebraicSimplifierVisitor::BroadcastReduce(
+    const Shape& reduce_result_shape, bool multi_output_reduce,
+    HloReduceInstruction* reduce) {
+  auto init_values = reduce->init_values();
+  auto init_for_single_output = init_values[0];
+  if (multi_output_reduce) {
+    std::vector<HloInstruction*> broadcast_inits;
+    int64_t inputs = reduce->input_count();
+    broadcast_inits.reserve(inputs);
+    for (int64_t i = 0; i < inputs; ++i) {
+      broadcast_inits.push_back(
+          init_values[i]->AddInstruction(HloInstruction::CreateBroadcast(
+              reduce->shape().tuple_shapes(i), init_values[i], {})));
     }
+    return ReplaceWithNewInstruction(
+        reduce, HloInstruction::CreateTuple(broadcast_inits));
   }
 
-  // Turn trivial variadic reductions into normal reductions.
-  if (multi_output_reduce && reduce->shape().tuple_shapes_size() == 1 &&
-      reduce->input_count() == 1 &&
-      Match(function->root_instruction(), m::Tuple())) {
-    absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
-        replacements;
-    replacements[function->root_instruction()] = nullptr;
-    auto new_function = computation_->parent()->AddEmbeddedComputation(
-        function->CloneWithReplacements(
-            &replacements, /*extra_parameters=*/{},
-            /*context=*/nullptr,
-            /*suffix=*/"clone",
-            /*new_root=*/function->root_instruction()->operand(0)));
-    auto new_reduce = reduce->AddInstruction(
-        HloInstruction::CreateReduce(reduce_result_shape, arg, init_value,
-                                     reduce->dimensions(), new_function));
-    return ReplaceWithNewInstruction(reduce,
-                                     HloInstruction::CreateTuple({new_reduce}));
-  }
+  return ReplaceWithNewInstruction(
+      reduce, HloInstruction::CreateBroadcast(reduce_result_shape,
+                                              init_for_single_output, {}));
+}
 
-  // If the reduction results in the same number of elements, then the only
-  // possible side effect would be a reshape. Since the init_value is an
-  // identity of the reduction function, we can therefore replace the reduce
-  // with a simple reshape, ignoring the reduction function completely.
-  if (ShapeUtil::ElementsIn(reduce_result_shape) ==
-          ShapeUtil::ElementsIn(arg->shape()) &&
-      (!options_.is_layout_sensitive() ||
-       options_.ReshapeIsBitcast(arg->shape(), reduce_result_shape))) {
-    if (multi_output_reduce) {
-      std::vector<HloInstruction*> reshaped_args;
-      int64_t inputs = reduce->input_count();
-      reshaped_args.reserve(inputs);
-      for (int64_t i = 0; i < inputs; ++i) {
-        reshaped_args.push_back(
-            reduce->AddInstruction(HloInstruction::CreateReshape(
-                reduce->shape().tuple_shapes(i), reduce->inputs()[i])));
-      }
-      return ReplaceWithNewInstruction(
-          reduce, HloInstruction::CreateTuple(reshaped_args));
-    } else {
-      return ReplaceWithNewInstruction(
-          reduce, HloInstruction::CreateReshape(reduce_result_shape, arg));
+absl::Status AlgebraicSimplifierVisitor::ReplaceReduceWithReshape(
+    const Shape& reduce_result_shape, bool multi_output_reduce,
+    HloReduceInstruction* reduce) {
+  auto init_for_single_output = reduce->inputs()[0];
+  if (multi_output_reduce) {
+    std::vector<HloInstruction*> reshaped_args;
+    auto reduce_inputs = reduce->inputs();
+    int64_t inputs = reduce->input_count();
+    reshaped_args.reserve(inputs);
+    for (int64_t i = 0; i < inputs; ++i) {
+      reshaped_args.push_back(
+          reduce->AddInstruction(HloInstruction::CreateReshape(
+              reduce->shape().tuple_shapes(i), reduce_inputs[i])));
     }
+    return ReplaceWithNewInstruction(
+        reduce, HloInstruction::CreateTuple(reshaped_args));
   }
 
-  if (options_.is_layout_sensitive()) {
-    return absl::OkStatus();
-  }
+  return ReplaceWithNewInstruction(
+      reduce, HloInstruction::CreateReshape(reduce_result_shape,
+                                            init_for_single_output));
+}
 
-  HloInstruction* negate_arg;
-  if (ShapeUtil::ElementIsFloating(reduce->shape()) &&
-      Match(arg, m::Negate(m::Op(&negate_arg))) &&
-      IsScalarConstantZero(init_value) &&
-      Match(reduce->to_apply()->root_instruction(),
-            m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
-    TF_RETURN_IF_ERROR(reduce->ReplaceOperandWith(0, negate_arg));
-    auto users = reduce->users();
-    auto* negated_reduce = arg->AddInstruction(HloInstruction::CreateUnary(
-        reduce->shape(), HloOpcode::kNegate, reduce));
-    MarkAsChanged();
-    return reduce->ReplaceUsesWith(users, negated_reduce);
-  }
-
-  // Try to reorder reduce(dot(A, B)) to dot(A, reduce(B))
+std::optional<absl::Status>
+AlgebraicSimplifierVisitor::ReorderReduceDotToDotReduce(
+    HloInstruction* arg, HloInstruction* init_value, HloComputation* function,
+    HloReduceInstruction* reduce) {
   if (options_.raise_slice_and_reduce_through_dot()) {
     HloInstruction *a, *b;
     // Reordering does not seem possible if the dot has batch dimensions. We
@@ -7930,6 +7890,112 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       }
     }
   }
+  return std::nullopt;
+}
+
+absl::Status AlgebraicSimplifierVisitor::MergeReduces(
+    const Shape& reduce_result_shape, HloInstruction* init_value,
+    HloComputation* function, HloInstruction* arg,
+    HloReduceInstruction* reduce) {
+  // Create a new reduce with the combined reduction dimensions of both
+  // reduces.
+  std::vector<int64_t> arg_dims = *arg->mutable_dimensions();
+  absl::c_sort(arg_dims);
+  std::vector<int64_t> reduce_dims = *reduce->mutable_dimensions();
+  absl::c_sort(reduce_dims);
+  // Transform reduce_dims to the same rank as the operand of the operand.
+  // TODO(b/411670134): No need to iterate as the vectors are sorted.
+  VLOG(0) << "arg_dims: " << arg_dims.size()
+          << ", reduce_dims: " << reduce_dims.size();
+  for (int64_t arg_dim : arg_dims) {
+    for (int64_t& dim : reduce_dims) {
+      if (dim >= arg_dim) {
+        ++dim;
+      }
+    }
+  }
+  std::vector<int64_t> new_dimensions;
+  new_dimensions.reserve(arg->dimensions().size() +
+                         reduce->dimensions().size());
+  std::merge(arg_dims.begin(), arg_dims.end(), reduce_dims.begin(),
+             reduce_dims.end(), std::back_inserter(new_dimensions));
+  return ReplaceWithNewInstruction(
+      reduce,
+      HloInstruction::CreateReduce(reduce_result_shape, arg->mutable_operand(0),
+                                   init_value, new_dimensions, function));
+}
+
+absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
+  HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
+  bool multi_output_reduce = reduce->shape().IsTuple();
+  // For tuple reduce, we require all reduce shapes to be the same, up to the
+  // element types, so we can just the first operand and the first result as a
+  // representative.
+  auto arg = reduce->inputs()[0];
+  auto init_value = reduce->init_values()[0];
+  const Shape& reduce_result_shape =
+      multi_output_reduce ? reduce->shape().tuple_shapes(0) : reduce->shape();
+
+  absl::Span<const int64_t> dimensions(reduce->dimensions());
+  HloComputation* function = reduce->to_apply();
+  if (ShouldBroadcastReduce(arg, reduce_result_shape)) {
+    return BroadcastReduce(reduce_result_shape, multi_output_reduce, reduce);
+  }
+
+  // Turn trivial variadic reductions into normal reductions.
+  if (multi_output_reduce && reduce->shape().tuple_shapes().size() == 1 &&
+      reduce->input_count() == 1 &&
+      Match(function->root_instruction(), m::Tuple())) {
+    absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+        replacements;
+    replacements[function->root_instruction()] = nullptr;
+    auto new_function = computation_->parent()->AddEmbeddedComputation(
+        function->CloneWithReplacements(
+            &replacements, /*extra_parameters=*/{},
+            /*context=*/nullptr,
+            /*suffix=*/"clone",
+            /*new_root=*/function->root_instruction()->operand(0)));
+    auto new_reduce = reduce->AddInstruction(
+        HloInstruction::CreateReduce(reduce_result_shape, arg, init_value,
+                                     reduce->dimensions(), new_function));
+    return ReplaceWithNewInstruction(reduce,
+                                     HloInstruction::CreateTuple({new_reduce}));
+  }
+
+  // If the reduction results in the same number of elements, then the only
+  // possible side effect would be a reshape. Since the init_value is an
+  // identity of the reduction function, we can therefore replace the reduce
+  // with a simple reshape, ignoring the reduction function completely.
+  if (ShapeUtil::ElementsIn(reduce_result_shape) ==
+          ShapeUtil::ElementsIn(arg->shape()) &&
+      (!options_.is_layout_sensitive() ||
+       options_.ReshapeIsBitcast(arg->shape(), reduce_result_shape))) {
+    return ReplaceReduceWithReshape(reduce_result_shape, multi_output_reduce,
+                                    reduce);
+  }
+
+  if (options_.is_layout_sensitive()) {
+    return absl::OkStatus();
+  }
+
+  HloInstruction* negate_arg;
+  if (ShapeUtil::ElementIsFloating(reduce->shape()) &&
+      Match(arg, m::Negate(m::Op(&negate_arg))) &&
+      IsScalarConstantZero(init_value) &&
+      Match(reduce->to_apply()->root_instruction(),
+            m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+    TF_RETURN_IF_ERROR(reduce->ReplaceOperandWith(0, negate_arg));
+    auto users = reduce->users();
+    auto* negated_reduce = arg->AddInstruction(HloInstruction::CreateUnary(
+        reduce->shape(), HloOpcode::kNegate, reduce));
+    MarkAsChanged();
+    return reduce->ReplaceUsesWith(users, negated_reduce);
+  }
+
+  // Try to reorder reduce(dot(A, B)) to dot(A, reduce(B))
+  if (ReorderReduceDotToDotReduce(arg, init_value, function, reduce)) {
+    return absl::OkStatus();
+  }
 
   // TODO(b/131122694): Most of those optimizations below can be done for
   // multi-output reduces.
@@ -7990,29 +8056,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   if (arg->opcode() == HloOpcode::kReduce &&
       init_value->Identical(*arg->operand(1)) &&
       ReductionComputationsEquivalent(*function, *arg->to_apply())) {
-    // Create a new reduce with the combined reduction dimensions of both
-    // reduces.
-    std::vector<int64_t> arg_dims = *arg->mutable_dimensions();
-    absl::c_sort(arg_dims);
-    std::vector<int64_t> reduce_dims = *reduce->mutable_dimensions();
-    absl::c_sort(reduce_dims);
-    // Transform reduce_dims to the same rank as the operand of the operand.
-    for (int64_t arg_dim : arg_dims) {
-      for (int64_t& dim : reduce_dims) {
-        if (dim >= arg_dim) {
-          ++dim;
-        }
-      }
-    }
-    std::vector<int64_t> new_dimensions;
-    new_dimensions.reserve(arg->dimensions().size() +
-                           reduce->dimensions().size());
-    std::merge(arg_dims.begin(), arg_dims.end(), reduce_dims.begin(),
-               reduce_dims.end(), std::back_inserter(new_dimensions));
-    return ReplaceWithNewInstruction(
-        reduce, HloInstruction::CreateReduce(
-                    reduce_result_shape, arg->mutable_operand(0), init_value,
-                    new_dimensions, function));
+    return MergeReduces(reduce_result_shape, init_value, function, arg, reduce);
   }
 
   // Handle two cases of reduce(reshape(x)).
