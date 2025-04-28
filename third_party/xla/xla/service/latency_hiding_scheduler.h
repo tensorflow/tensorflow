@@ -530,6 +530,12 @@ class HloGraphNode {
   bool OccupiesSelectiveResource() const {
     return occupies_selective_resource_;
   }
+  void SetReleasesSelectiveResource(bool releases_selective_resource) {
+    releases_selective_resource_ = releases_selective_resource;
+  }
+  void SetOccupiesSelectiveResource(bool occupies_selective_resource) {
+    occupies_selective_resource_ = occupies_selective_resource;
+  }
   int64_t GetNumHopsToClosestSelectiveResourceOccupier() const {
     return num_hops_to_closest_selective_resource_occupier_;
   }
