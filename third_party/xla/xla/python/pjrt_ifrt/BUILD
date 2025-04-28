@@ -336,10 +336,11 @@ cc_library(
     hdrs = ["pjrt_dtype.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/python/ifrt",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 
