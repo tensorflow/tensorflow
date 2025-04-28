@@ -136,12 +136,6 @@ xla_cc_test(
     ],
 )
 
-gpu_only_cc_library(
-    name = "gpu_diagnostics_header",
-    hdrs = ["gpu_diagnostics.h"],
-    deps = ["@com_google_absl//absl/status:statusor"],
-)
-
 cc_library(
     name = "scoped_update_mode",
     hdrs = [
