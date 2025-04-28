@@ -881,3 +881,12 @@ cc_library(
         "//xla/stream_executor:kernel",
     ],
 )
+
+cc_library(
+    name = "topk_kernel",
+    hdrs = ["topk_kernel.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_CU_H_
-#define XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_CU_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_TOPK_KERNEL_CU_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_TOPK_KERNEL_CU_H_
 
 // This file contains bespoke and optimized implementation for TopK shapes. When
 // adding support for new shapes/dtypes, you also need to modify the rewriter
@@ -22,34 +22,26 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 
-#include "xla/service/gpu/kernels/topk_kernel_common.h"
+#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/gpu/topk_kernel.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/tsl/lib/math/math_util.h"
-
-#if GOOGLE_CUDA
-
-#define WAVEFRONT_SIZE 32
-#define FORCEINLINE __forceinline__
-
-#elif TENSORFLOW_USE_ROCM  // GOOGLE_CUDA
+#include "xla/types.h"
 
 #ifdef __AMDGCN_WAVEFRONT_SIZE
 #define WAVEFRONT_SIZE __AMDGCN_WAVEFRONT_SIZE
 #else
 #define WAVEFRONT_SIZE 64
 #endif
-#define FORCEINLINE __forceinline__
 
-#endif  // TENSORFLOW_USE_ROCM
-
-namespace xla::gpu {
+namespace stream_executor::rocm {
 
 enum class ShflType { kSync, kUp, kDown, kXor };
 
 template <ShflType Type, class NT>
-__device__ FORCEINLINE NT GpuShuffle(NT val, uint32_t idx,
-                                     uint32_t allmsk = 0xffffffffu) {
+__device__ __forceinline__ NT GpuShuffle(NT val, uint32_t idx,
+                                         uint32_t allmsk = 0xffffffffu) {
   constexpr uint32_t SZ =
       tsl::MathUtil::CeilOfRatio(sizeof(NT), sizeof(uint32_t));
   union S {
@@ -60,16 +52,6 @@ __device__ FORCEINLINE NT GpuShuffle(NT val, uint32_t idx,
 
 #pragma unroll
   for (uint32_t i = 0; i < SZ; i++) {
-#if GOOGLE_CUDA
-    if constexpr (Type == ShflType::kSync)
-      res.d[i] = __shfl_sync(allmsk, in.d[i], idx);
-    else if constexpr (Type == ShflType::kUp)
-      res.d[i] = __shfl_up_sync(allmsk, in.d[i], idx);
-    else if constexpr (Type == ShflType::kDown)
-      res.d[i] = __shfl_down_sync(allmsk, in.d[i], idx);
-    else if constexpr (Type == ShflType::kXor)
-      res.d[i] = __shfl_xor_sync(allmsk, in.d[i], idx);
-#elif TENSORFLOW_USE_ROCM  // ROcm does not support sync shuffle intrinsics
     if constexpr (Type == ShflType::kSync)
       res.d[i] = __shfl(in.d[i], idx);
     else if constexpr (Type == ShflType::kUp)
@@ -78,7 +60,6 @@ __device__ FORCEINLINE NT GpuShuffle(NT val, uint32_t idx,
       res.d[i] = __shfl_down(in.d[i], idx);
     else if constexpr (Type == ShflType::kXor)
       res.d[i] = __shfl_xor(in.d[i], idx);
-#endif
   }
   return res.v;
 }
@@ -93,7 +74,7 @@ struct Descending {
     V idx;
   };
 
-  __device__ FORCEINLINE static bool cmp(const KVT& lhs, const KVT& rhs) {
+  __device__ __forceinline__ static bool cmp(const KVT& lhs, const KVT& rhs) {
     return lhs.key == rhs.key ? lhs.idx < rhs.idx : lhs.key > rhs.key;
   }
 };
@@ -177,7 +158,7 @@ struct TopK {
   __device__ TopK(void* buffer, int num_outputs)
       : buffer_(reinterpret_cast<KVT*>(buffer)), num_outputs_(num_outputs) {}
 
-  __device__ FORCEINLINE uint32_t Idx(uint32_t i) {
+  __device__ __forceinline__ uint32_t Idx(uint32_t i) {
     return blockDim.x * i + threadIdx.x;
   }
 
@@ -239,7 +220,7 @@ struct TopK {
   // Merge `tmp` (a reverse-sorted array) from (0, `num_lanes`) lanes. The
   // resulting array is stored in the tmp array of lane 0. For all other lanes,
   // `tmp` is unspecified after this function is called.
-  __device__ FORCEINLINE void Reduce(KVT tmp[K], int num_lanes) {
+  __device__ __forceinline__ void Reduce(KVT tmp[K], int num_lanes) {
     constexpr uint32_t WarpSize = WAVEFRONT_SIZE;
     int lane_id = threadIdx.x % WarpSize;
     for (int offset = num_lanes / 2; offset > 0; offset /= 2) {
@@ -261,7 +242,7 @@ struct TopK {
   // tens of thousands of instructions. This increased the size of the
   // compressed JAX wheel by 25MiB, so be very careful to check the generated
   // code size when changing this function.
-  static __device__ FORCEINLINE void Push(KVT tmp[K], const KVT& kv) {
+  static __device__ __forceinline__ void Push(KVT tmp[K], const KVT& kv) {
     bool p = Trait::cmp(tmp[K - 1], kv);
     tmp[K - 1] = p ? tmp[K - 1] : kv;
 #pragma unroll
@@ -286,7 +267,7 @@ struct TopK {
 extern __device__ __shared__ int shmem[];
 
 template <size_t K, typename KT, typename VT>
-__launch_bounds__(kTopKMaxThreadsPerBlock, 1) __global__
+__launch_bounds__(stream_executor::gpu::kTopKMaxThreadsPerBlock, 1) __global__
     void Run(KT* data, int n, KT* result, uint32_t* result_idxs, int k) {
   TopK<K, KT, VT> obj(shmem, k);
 
@@ -303,20 +284,43 @@ __launch_bounds__(kTopKMaxThreadsPerBlock, 1) __global__
   obj.MergeTopKs(vals_out, idxs_out);
 }
 
-template <typename T, size_t K>
-void* GetTopKKernelForK(int n) {
-  // TODO(doak): Switch to uint32_t if we don't have an efficient
-  // implementation for uint16_t.
-  return n < std::numeric_limits<uint16_t>::max()
-             ? reinterpret_cast<void*>(&Run<K, T, uint16_t>)
-             : reinterpret_cast<void*>(&Run<K, T, uint32_t>);
-}
+#define COMA ,
+#define REGISTER_TOPK_KERNEL(K_VAL, TYPE, VT)                                 \
+  GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                             \
+      TopKKernelRocm_K##K_VAL##_##TYPE##_##VT,                                \
+      stream_executor::gpu::TopKKernel<K_VAL COMA TYPE COMA VT>,              \
+      stream_executor::rocm::kROCmPlatformId, ([] {                           \
+        stream_executor::MultiKernelLoaderSpec spec(5);                       \
+        spec.AddInProcessSymbol(absl::bit_cast<void*>(&Run<K_VAL, TYPE, VT>), \
+                                "topk_k" #K_VAL "_" #TYPE "_" #VT);           \
+        return spec;                                                          \
+      }));
 
-template <typename T>
-int32_t GetTopKWaveFrontSize() {
-  return WAVEFRONT_SIZE;
-}
+using xla::bfloat16;
 
-}  // namespace xla::gpu
+REGISTER_TOPK_KERNEL(1, float, uint16_t);
+REGISTER_TOPK_KERNEL(2, float, uint16_t);
+REGISTER_TOPK_KERNEL(4, float, uint16_t);
+REGISTER_TOPK_KERNEL(8, float, uint16_t);
+REGISTER_TOPK_KERNEL(16, float, uint16_t);
 
-#endif  // XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_CU_H_
+REGISTER_TOPK_KERNEL(1, bfloat16, uint16_t);
+REGISTER_TOPK_KERNEL(2, bfloat16, uint16_t);
+REGISTER_TOPK_KERNEL(4, bfloat16, uint16_t);
+REGISTER_TOPK_KERNEL(8, bfloat16, uint16_t);
+REGISTER_TOPK_KERNEL(16, bfloat16, uint16_t);
+
+REGISTER_TOPK_KERNEL(1, float, uint32_t);
+REGISTER_TOPK_KERNEL(2, float, uint32_t);
+REGISTER_TOPK_KERNEL(4, float, uint32_t);
+REGISTER_TOPK_KERNEL(8, float, uint32_t);
+REGISTER_TOPK_KERNEL(16, float, uint32_t);
+
+REGISTER_TOPK_KERNEL(1, bfloat16, uint32_t);
+REGISTER_TOPK_KERNEL(2, bfloat16, uint32_t);
+REGISTER_TOPK_KERNEL(4, bfloat16, uint32_t);
+REGISTER_TOPK_KERNEL(8, bfloat16, uint32_t);
+REGISTER_TOPK_KERNEL(16, bfloat16, uint32_t);
+}  // namespace stream_executor::rocm
+
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_TOPK_KERNEL_CU_H_

@@ -828,6 +828,7 @@ cc_library(
         ":rocblas_plugin",
         ":rocm_helpers",
         ":rocm_platform",
+        ":topk_kernel_rocm",
     ] + [":cub_sort_kernel_rocm_" + suffix for suffix in get_cub_sort_kernel_types()],
     alwayslink = 1,
 )
@@ -1181,3 +1182,23 @@ rocm_library(
     ],
     alwayslink = 1,
 ) for typename in get_cub_sort_kernel_types()]
+
+rocm_library(
+    name = "topk_kernel_rocm",
+    srcs = [
+        "topk_kernel_rocm.cu.cc",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":rocm_platform_id",
+        "//xla:types",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:topk_kernel",
+        "//xla/tsl/lib/math:math_util",
+    ],
+    alwayslink = 1,
+)

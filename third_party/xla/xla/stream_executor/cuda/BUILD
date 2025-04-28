@@ -1045,6 +1045,7 @@ cc_library(
         ":cufft_plugin",
         ":make_batch_pointers_kernel_cuda",
         ":ragged_all_to_all_kernel_cuda",
+        ":topk_kernel_cuda",
         "//xla/tsl/cuda:cusolver",
         "//xla/tsl/cuda:cusparse",
         "//xla/tsl/cuda:tensorrt_rpath",
@@ -2042,3 +2043,23 @@ cuda_library(
     ],
     alwayslink = 1,
 ) for typename in get_cub_sort_kernel_types()]
+
+cuda_library(
+    name = "topk_kernel_cuda",
+    srcs = [
+        "topk_kernel_cuda.cu.cc",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_platform_id",
+        "//xla:types",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:topk_kernel",
+        "//xla/tsl/lib/math:math_util",
+    ],
+    alwayslink = 1,
+)

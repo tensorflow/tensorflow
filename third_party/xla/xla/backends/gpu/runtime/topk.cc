@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/kernels/topk_custom_kernel.h"
+#include "xla/backends/gpu/runtime/topk.h"
+
+#include <sys/types.h>
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -26,12 +29,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
-#include "xla/service/gpu/kernels/topk_kernel_common.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/gpu/topk_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -52,21 +59,11 @@ size_t EstimateOptimalNumThreads(size_t n, size_t k, size_t batch_size) {
   size_t simultaneous_threads_per_block =
       kEstimatedThreadsPerBlock * (kMaxKValue / k);
   size_t threads_per_block =
-      std::min(simultaneous_threads_per_block, kTopKMaxThreadsPerBlock);
+      std::min(simultaneous_threads_per_block,
+               stream_executor::gpu::kTopKMaxThreadsPerBlock);
   // Minimum amount of data that each thread needs to receive for the algorithm.
   size_t min_slice = absl::bit_floor(n / absl::bit_ceil(k));
   return std::min(threads_per_block, min_slice);
-}
-
-// Gets the right version of TopK kernel based on the value of `k`.
-template <typename T>
-absl::StatusOr<void*> GetKernel(int n, int k) {
-  if (k <= 1) return GetTopKKernelForK<T, 1>(n);
-  if (k <= 2) return GetTopKKernelForK<T, 2>(n);
-  if (k <= 4) return GetTopKKernelForK<T, 4>(n);
-  if (k <= 8) return GetTopKKernelForK<T, 8>(n);
-  if (k <= 16) return GetTopKKernelForK<T, 16>(n);
-  return absl::UnimplementedError(absl::StrCat("Unsupported K: ", k));
 }
 
 // Returns the function creating packed arguments for TopK kernel.
@@ -86,14 +83,59 @@ KernelArgsPacking CreateTopKArgsPacking(size_t num_elements, size_t k) {
   };
 }
 
+// Finds the TopK kernel for the given platform registered in the global
+// registry.
+template <size_t K, typename T, typename VT>
+absl::StatusOr<se::MultiKernelLoaderSpec> GetTopKKernelForPlatform(
+    se::Platform::Id id) {
+  return se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+      .FindKernel<se::gpu::TopKKernel<K, T, VT>>(id);
+}
+
+// Gets the right version of TopK kernel based on the value of `k`.
+template <typename T, typename VT>
+absl::StatusOr<se::MultiKernelLoaderSpec> GetTopKKernelForKAndPlatform(
+    size_t k, se::Platform::Id id) {
+  if (k <= 1) {
+    return GetTopKKernelForPlatform<1, T, VT>(id);
+  }
+  if (k <= 2) {
+    return GetTopKKernelForPlatform<2, T, VT>(id);
+  }
+  if (k <= 4) {
+    return GetTopKKernelForPlatform<4, T, VT>(id);
+  }
+  if (k <= 8) {
+    return GetTopKKernelForPlatform<8, T, VT>(id);
+  }
+  if (k <= 16) {
+    return GetTopKKernelForPlatform<16, T, VT>(id);
+  }
+  return absl::UnimplementedError(absl::StrCat("Unsupported K: ", k));
+}
+
+// Gets the right version of TopK kernel based on the value of `n`.
+template <typename T>
+absl::StatusOr<se::MultiKernelLoaderSpec> GetTopKKernelForKAndPlatformAndN(
+    size_t k, se::Platform::Id id, size_t n) {
+  // TODO(doak): Switch to uint32_t if we don't have an efficient
+  // implementation for uint16_t.
+  if (n < std::numeric_limits<uint16_t>::max()) {
+    return GetTopKKernelForKAndPlatform<T, uint16_t>(k, id);
+  }
+  return GetTopKKernelForKAndPlatform<T, uint32_t>(k, id);
+}
+
 // Implementation for creating a CustomKernel for TopK operation with element
 // type `T`.
 template <typename T>
 absl::StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
-                                          size_t k, size_t batch_size) {
+                                          size_t k, size_t batch_size,
+                                          absl::string_view platform_name,
+                                          size_t wavefront_size) {
   constexpr size_t kMaxKVSize = sizeof(uint64_t);
   // Allocate shmem assuming we have a full reduction.
-  int shmem_size = absl::bit_ceil(k) * kMaxKVSize * GetTopKWaveFrontSize<T>();
+  int shmem_size = absl::bit_ceil(k) * kMaxKVSize * wavefront_size;
   int num_threads = EstimateOptimalNumThreads(num_elements, k, batch_size);
   if (num_threads == 0) {
     return absl::FailedPreconditionError(
@@ -101,12 +143,13 @@ absl::StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
         "TopkSpecializer.");
   }
 
-  auto packing = CreateTopKArgsPacking<T>(num_elements, k);
+  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                      se::PlatformManager::PlatformWithName(platform_name));
+  TF_ASSIGN_OR_RETURN(
+      se::MultiKernelLoaderSpec spec,
+      GetTopKKernelForKAndPlatformAndN<T>(k, platform->id(), num_elements));
 
-  se::MultiKernelLoaderSpec spec(/*arity=*/5, std::move(packing));
-  TF_ASSIGN_OR_RETURN(void* kernel_symbol, GetKernel<T>(num_elements, k));
-  spec.AddInProcessSymbol(kernel_symbol, name);
-
+  spec.set_kernel_args_packing(CreateTopKArgsPacking<T>(num_elements, k));
   return CustomKernel(std::move(name), std::move(spec),
                       se::BlockDim(batch_size, 1, 1),
                       se::ThreadDim(num_threads, 1, 1), shmem_size);
@@ -114,16 +157,16 @@ absl::StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
 
 }  // namespace
 
-absl::StatusOr<CustomKernel> GetTopKKernel(std::string name,
-                                           PrimitiveType dtype,
-                                           size_t num_elements, size_t k,
-                                           size_t batch_size) {
+absl::StatusOr<CustomKernel> GetTopKKernel(
+    std::string name, PrimitiveType dtype, size_t num_elements, size_t k,
+    size_t batch_size, absl::string_view platform_name, size_t wavefront_size) {
   switch (dtype) {
     case PrimitiveType::F32:
-      return GetTypedTopK<float>(std::move(name), num_elements, k, batch_size);
+      return GetTypedTopK<float>(std::move(name), num_elements, k, batch_size,
+                                 platform_name, wavefront_size);
     case PrimitiveType::BF16:
       return GetTypedTopK<bfloat16>(std::move(name), num_elements, k,
-                                    batch_size);
+                                    batch_size, platform_name, wavefront_size);
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported GpuTopK data type: ", dtype));

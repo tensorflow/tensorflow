@@ -13,27 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_COMMON_H_
-#define XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_COMMON_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_TOPK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_TOPK_H_
 
 #include <cstddef>
+#include <string>
 
-// Contains shared declarations between topk_kernel.cc and topk_kernel.cu.cc
-// but avoids including ABSL, etc. which some CUDA compilers cannot
-// handle.
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/xla_data.pb.h"
 
-namespace xla::gpu {
+namespace xla::gpu::kernel::topk {
 
-// We perform 2 32-way reductions, which means the largest number of threads per
-// block we support is 1024.
-static constexpr size_t kTopKMaxThreadsPerBlock = 1024;
+// Creates a CustomKernel for TopK operation.
+absl::StatusOr<CustomKernel> GetTopKKernel(
+    std::string name, PrimitiveType dtype, size_t num_elements, size_t k,
+    size_t batch_size, absl::string_view platform_name, size_t wavefront_size);
 
-template <typename T, size_t K>
-void* GetTopKKernelForK(int n);
+}  // namespace xla::gpu::kernel::topk
 
-template <typename T>
-int32_t GetTopKWaveFrontSize();
-
-}  // namespace xla::gpu
-
-#endif  // XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_COMMON_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_TOPK_H_

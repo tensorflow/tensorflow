@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/kernels/topk_custom_kernel.h"
+#include "xla/backends/gpu/runtime/topk.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/substitute.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -108,8 +109,8 @@ TEST_P(TopKKernelTest, TopKFloat) {
   TF_ASSERT_OK(
       stream->MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
 
-  auto custom_kernel =
-      GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
+  auto custom_kernel = GetTopKKernel("topk", PrimitiveType::F32, n, k,
+                                     batch_size, platform->Name(), 32);
 
   TF_ASSERT_OK_AND_ASSIGN(auto kernel,
                           executor->LoadKernel(custom_kernel->kernel_spec()));
@@ -162,8 +163,8 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
   TF_ASSERT_OK(
       stream->MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
 
-  auto custom_kernel =
-      GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
+  auto custom_kernel = GetTopKKernel("topk", PrimitiveType::F32, n, k,
+                                     batch_size, platform->Name(), 32);
 
   TF_ASSERT_OK_AND_ASSIGN(auto kernel,
                           executor->LoadKernel(custom_kernel->kernel_spec()));
