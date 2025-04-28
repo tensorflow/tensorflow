@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
@@ -34,6 +35,19 @@ namespace quant {
 // Creates a pass that add QuantizationUnitLoc to quantizable layers.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTFAddQuantizationUnitLocPass();
+
+// Creates an instance of the PrepareQuantize pass, which will perform similar
+// transformations as TFL::PrepareQuantizePass.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTFPrepareQuantizePass(
+    const tf_quant::QuantizationSpecs& quant_specs,
+    tensorflow::quantization::QuantizationMethod::PresetMethod
+        quantization_method);
+
+// Creates an instance of the PrepareQuantizeDRQ pass, which will
+// perform similar transformations as TFL::PrepareQuantizeDynamicRangePass.
+std::unique_ptr<OperationPass<ModuleOp>> CreateTFPrepareQuantizeDRQPass(
+    const tf_quant::QuantizationSpecs& quant_specs,
+    tensorflow::quantization::OpSet op_set);
 
 // Converts FakeQuant ops to quant.qcast and quant.dcast (QDQ) pairs.
 std::unique_ptr<OperationPass<func::FuncOp>>

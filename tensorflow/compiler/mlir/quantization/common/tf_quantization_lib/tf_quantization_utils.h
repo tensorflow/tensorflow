@@ -253,7 +253,8 @@ struct ConvertStatsToQDQs
           op.getLoc(), num_bits, *op.getAxis(), mins, maxs, narrow_range,
           expressed, is_signed);
       if (legacy_float_scale) {
-        quant_type = DownCastScale(quant_type, mins, maxs, op->getLoc());
+        quant_type =
+            mlir::tf_quant::DownCastScale(quant_type, mins, maxs, op->getLoc());
       }
     } else if (auto stats =
                    llvm::dyn_cast<DenseFPElementsAttr>(op.getLayerStats())) {
@@ -278,7 +279,8 @@ struct ConvertStatsToQDQs
           quantfork::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
                                           narrow_range, expressed, is_signed);
       if (legacy_float_scale) {
-        quant_type = DownCastScale(quant_type, rmin, rmax, op->getLoc());
+        quant_type =
+            mlir::tf_quant::DownCastScale(quant_type, rmin, rmax, op->getLoc());
       }
     } else {
       return failure();
