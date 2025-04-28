@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -60,7 +60,7 @@ PjRtFuture<> JoinFutures(absl::Span<const PjRtFuture<>> futures);
 // The caller indicates that the work tracked by the ScopedAsyncTrackingEvent
 // has completed by letting the event go out of scope.
 //
-// ScopedAsyncTrackingEvents are used by some PjRtClient implementations to
+// ScopedAsyncTrackingEvent is used by some PjRtClient implementations to
 // monitor system-wide dependencies.
 class ScopedAsyncTrackingEvent {
  public:
@@ -195,7 +195,9 @@ class PjRtFutureBase : public PjRtFutureMoveControl<unique> {
   // has no effect.
   void AssertHappensBefore(ScopedAsyncTrackingEvent* event) {
     CHECK(IsValid());
-    if (event) event->AddDependency(promise_.CopyRCRef());
+    if (event) {
+      event->AddDependency(promise_.CopyRCRef());
+    }
   }
 
  protected:
@@ -259,8 +261,9 @@ class PjRtFutureBase : public PjRtFutureMoveControl<unique> {
                      PjRtFutureHelpers::ProfilingKeys keys)
         : parent_(parent), keys_(std::move(keys)) {}
     ~ProfilingCleanup() {
-      if (parent_ && parent_->on_block_end_)
+      if (parent_ && parent_->on_block_end_) {
         parent_->on_block_end_(std::move(keys_));
+      }
     }
     ProfilingCleanup(const ProfilingCleanup& other) = delete;
     ProfilingCleanup(ProfilingCleanup&& other) = delete;
