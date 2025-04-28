@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/scheduling_annotations_util.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -40,6 +41,7 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
     HloPredicate keep_sync_annotation = HloPredicateTrue;
     bool propagate_annotation = false;
     bool check_start_done_annotation_consistency = true;
+    bool remove_loop_iteration_annotation = false;
   };
 
   explicit LegalizeSchedulingAnnotations(Config config)
@@ -50,8 +52,8 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
 
   static absl::StatusOr<bool> PropagateAnnotations(
       const HloComputation* computation,
-      const absl::btree_map<int64_t, std::vector<HloInstruction*>>&
-          annotation_id_to_instructions);
+      const absl::btree_map<Annotation, std::vector<HloInstruction*>>&
+          annotation_to_instruction);
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(

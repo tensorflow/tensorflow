@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/service/scheduling_annotations_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -38,8 +39,9 @@ namespace xla {
 namespace {
 
 using LegalizeSchedulingAnnotationsTest = HloHardwareIndependentTestBase;
-using ::tsl::testing::IsOkAndHolds;
 using SchedulingAnnotationPropagationTest = HloHardwareIndependentTestBase;
+using RemoveLoopIterationAnnotationTest = HloHardwareIndependentTestBase;
+using ::tsl::testing::IsOkAndHolds;
 
 TEST_F(LegalizeSchedulingAnnotationsTest, NonIntegerAnnotation) {
   constexpr absl::string_view hlo_string = R"(
@@ -655,6 +657,93 @@ ENTRY entry {
   VLOG(1) << "error message: " << error_message;
   EXPECT_TRUE(
       absl::StrContains(error_message, "it has an existing annotation"));
+}
+
+TEST_F(RemoveLoopIterationAnnotationTest, CrossComputationAnnotation) {
+  constexpr absl::string_view hlo_string = R"(
+ HloModule module, entry_computation_layout={(bf16[5,8,128]{2,1,0}, bf16[5,1,2,128]{3,2,1,0})->bf16[5,8,128]{2,1,0}}, replica_count=4, num_partitions=2
+
+%while_body.1 (param.2: (s32[], bf16[5,8,128], bf16[5,1,2,128], bf16[1,8,128], s32[])) -> (s32[], bf16[5,8,128], bf16[5,1,2,128], bf16[1,8,128], s32[]) {
+  %c3.2 = s32[] constant(3)
+  %param.2 = (s32[], bf16[5,8,128]{2,1,0}, bf16[5,1,2,128]{3,2,1,0}, bf16[1,8,128]{2,1,0}, s32[]) parameter(0)
+  %slice_input.2 = bf16[5,1,2,128]{3,2,1,0} get-tuple-element(%param.2), index=2
+  %loop_index.2 = s32[] get-tuple-element(%param.2), index=0
+  %three_minus_loop_index.2 = s32[] subtract(%c3.2, %loop_index.2)
+  %c0.2 = s32[] constant(0)
+  %dynamic_slice.2 = bf16[1,1,2,128]{3,2,1,0} dynamic-slice(%slice_input.2, %three_minus_loop_index.2, %c0.2, %c0.2, %c0.2), dynamic_slice_sizes={1,1,2,128}
+  %dynamic_slice_reshape.2 = bf16[1,2,128]{2,1,0} reshape(%dynamic_slice.2)
+  %add.2 = bf16[1,2,128]{2,1,0} add(%dynamic_slice_reshape.2, %dynamic_slice_reshape.2), control-predecessors={%c3.2}
+  %c1.2 = s32[] constant(1)
+  %next_loop_index.1 = s32[] add(%loop_index.2, %c1.2)
+  %partial_output.1 = bf16[5,8,128]{2,1,0} get-tuple-element(%param.2), index=1
+  %get-tuple-element.1 = bf16[1,8,128]{2,1,0} get-tuple-element(%param.2), index=3
+  %updated_partial_output.1 = bf16[5,8,128]{2,1,0} dynamic-update-slice(%partial_output.1, %get-tuple-element.1, %three_minus_loop_index.2, %c0.2, %c0.2)
+  %c3.3 = s32[] constant(3)
+  %get-tuple-element = s32[] get-tuple-element(%param.2), index=4
+  %three_minus_loop_index.3 = s32[] subtract(%c3.3, %get-tuple-element)
+  %c0.3 = s32[] constant(0)
+  %dynamic_slice.3 = bf16[1,1,2,128]{3,2,1,0} dynamic-slice(%slice_input.2, %three_minus_loop_index.3, %c0.3, %c0.3, %c0.3), dynamic_slice_sizes={1,1,2,128}
+  %dynamic_slice_reshape.3 = bf16[1,2,128]{2,1,0} reshape(%dynamic_slice.3)
+  %add.3 = bf16[1,2,128]{2,1,0} add(%dynamic_slice_reshape.3, %dynamic_slice_reshape.3), control-predecessors={%c3.3}
+  %all_gather.2 = bf16[1,8,128]{2,1,0} all-gather(%add.3), replica_groups={}, dimensions={1}, frontend_attributes={_scheduling_group_id="123:-1"}
+  %constant.1 = s32[] constant(1)
+  %add.4 = s32[] add(%next_loop_index.1, %constant.1)
+  ROOT %tuple.2 = (s32[], bf16[5,8,128]{2,1,0}, bf16[5,1,2,128]{3,2,1,0}, bf16[1,8,128]{2,1,0}, s32[]) tuple(%next_loop_index.1, %updated_partial_output.1, %slice_input.2, %all_gather.2, %add.4), control-predecessors={%add.2}
+}
+
+%while_cond.1 (cond_param: (s32[], bf16[5,8,128], bf16[5,1,2,128], bf16[1,8,128], s32[])) -> pred[] {
+  %cond_param = (s32[], bf16[5,8,128]{2,1,0}, bf16[5,1,2,128]{3,2,1,0}, bf16[1,8,128]{2,1,0}, s32[]) parameter(0)
+  %get-tuple-element.2 = s32[] get-tuple-element(%cond_param), index=0
+  %constant.2 = s32[] constant(3)
+  ROOT %compare = pred[] compare(%get-tuple-element.2, %constant.2), direction=LT
+}
+
+ENTRY %entry (p0: bf16[5,8,128], p1: bf16[5,1,2,128]) -> bf16[5,8,128] {
+  %c3.1 = s32[] constant(3)
+  %c1.1 = s32[] constant(1)
+  %p0 = bf16[5,8,128]{2,1,0} parameter(0)
+  %p1 = bf16[5,1,2,128]{3,2,1,0} parameter(1)
+  %tuple.1 = (s32[], bf16[5,8,128]{2,1,0}, bf16[5,1,2,128]{3,2,1,0}) tuple(%c1.1, %p0, %p1)
+  %slice_input.1 = bf16[5,1,2,128]{3,2,1,0} get-tuple-element(%tuple.1), index=2
+  %three_minus_loop_index.1 = s32[] subtract(%c3.1, %c1.1)
+  %c0.1 = s32[] constant(0)
+  %dynamic_slice.1 = bf16[1,1,2,128]{3,2,1,0} dynamic-slice(%slice_input.1, %three_minus_loop_index.1, %c0.1, %c0.1, %c0.1), dynamic_slice_sizes={1,1,2,128}
+  %dynamic_slice_reshape.1 = bf16[1,2,128]{2,1,0} reshape(%dynamic_slice.1)
+  %add.1 = bf16[1,2,128]{2,1,0} add(%dynamic_slice_reshape.1, %dynamic_slice_reshape.1), control-predecessors={%c3.1}
+  %all_gather.1 = bf16[1,8,128]{2,1,0} all-gather(%add.1), replica_groups={}, dimensions={1}, frontend_attributes={_scheduling_group_id="124"}
+  %constant = s32[] constant(2)
+  %tuple.3 = (s32[], bf16[5,8,128]{2,1,0}, bf16[5,1,2,128]{3,2,1,0}, bf16[1,8,128]{2,1,0}, s32[]) tuple(%c1.1, %p0, %p1, %all_gather.1, %constant), control-predecessors={%add.1}
+  %while.1 = (s32[], bf16[5,8,128]{2,1,0}, bf16[5,1,2,128]{3,2,1,0}, bf16[1,8,128]{2,1,0}, s32[]) while(%tuple.3), condition=%while_cond.1, body=%while_body.1
+  %loop_index.3 = s32[] get-tuple-element(%while.1), index=0
+  %c1.3 = s32[] constant(1)
+  %next_loop_index.2 = s32[] add(%loop_index.3, %c1.3)
+  %partial_output.2 = bf16[5,8,128]{2,1,0} get-tuple-element(%while.1), index=1
+  %get-tuple-element.3 = bf16[1,8,128]{2,1,0} get-tuple-element(%while.1), index=3
+  %c3.4 = s32[] constant(3)
+  %three_minus_loop_index.4 = s32[] subtract(%c3.4, %loop_index.3)
+  %c0.4 = s32[] constant(0)
+  %updated_partial_output.2 = bf16[5,8,128]{2,1,0} dynamic-update-slice(%partial_output.2, %get-tuple-element.3, %three_minus_loop_index.4, %c0.4, %c0.4)
+  %slice_input.4 = bf16[5,1,2,128]{3,2,1,0} get-tuple-element(%while.1), index=2
+  %tuple.4 = (s32[], bf16[5,8,128]{2,1,0}, bf16[5,1,2,128]{3,2,1,0}) tuple(%next_loop_index.2, %updated_partial_output.2, %slice_input.4)
+  ROOT %gte = bf16[5,8,128]{2,1,0} get-tuple-element(%tuple.4), index=1
+  %dynamic_slice.4 = bf16[1,1,2,128]{3,2,1,0} dynamic-slice(%slice_input.4, %three_minus_loop_index.4, %c0.4, %c0.4, %c0.4), dynamic_slice_sizes={1,1,2,128}
+  %dynamic_slice_reshape.4 = bf16[1,2,128]{2,1,0} reshape(%dynamic_slice.4)
+  %add.5 = bf16[1,2,128]{2,1,0} add(%dynamic_slice_reshape.4, %dynamic_slice_reshape.4), control-predecessors={%c3.4}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  config.remove_loop_iteration_annotation = true;
+  EXPECT_IS_OK(
+      LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
+  HloInstruction* all_gather =
+      FindInstruction(hlo_module.get(), "all_gather.2");
+  auto annotation = GetSchedulingAnnotation(all_gather).value();
+  EXPECT_TRUE(annotation);
+  EXPECT_TRUE(annotation->group_id);
+  EXPECT_EQ(annotation->group_id.value(), 123);
+  EXPECT_FALSE(annotation->iteration_id);
 }
 
 }  // namespace
