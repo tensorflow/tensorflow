@@ -41,12 +41,17 @@ namespace tsl {
 class PreemptionSyncManager {
  public:
   PreemptionSyncManager() = default;
-  ~PreemptionSyncManager() { shutdown_.Notify(); }
+  ~PreemptionSyncManager() { Shutdown(); }
   absl::Status Initialize(CoordinationServiceAgent* agent);
   absl::Status Initialize(CoordinationServiceAgent* agent,
                           const std::string& preemption_notifier_type);
   absl::Status Initialize(CoordinationServiceAgent* agent,
                           std::unique_ptr<PreemptionNotifier> notifier);
+
+  // Shuts down the PreemptionSyncManager. Shutdown cannot be called
+  // concurrently with other methods. After Shutdown is called, no other methods
+  // should be called.
+  void Shutdown();
 
   // Check if the synchronized point has been reached. When a task has been
   // preempted, a safe sync point will be determined by using the fastest task's
@@ -74,6 +79,8 @@ class PreemptionSyncManager {
   void CancelPreemptionBarrier();
 
   absl::Mutex mu_;
+  // Shutdown flag
+  bool shut_down_ ABSL_GUARDED_BY(mu_) = false;
   // Tracks the last step_counter passed into ReachedSyncPoint();
   int64_t call_counter_ ABSL_GUARDED_BY(mu_) = 0;
   // If set, determines the sync point.
@@ -84,7 +91,7 @@ class PreemptionSyncManager {
   Env* env_;                         // Not owned;
   CoordinationServiceAgent* agent_;  // Not owned.
   absl::Notification shutdown_;
-  std::unique_ptr<Thread> sync_protocol_thread_;
+  std::unique_ptr<Thread> sync_protocol_thread_ ABSL_GUARDED_BY(mu_);
   std::unique_ptr<PreemptionNotifier> preemption_notifier_;
   std::shared_ptr<CallOptions> call_opts_;
 };

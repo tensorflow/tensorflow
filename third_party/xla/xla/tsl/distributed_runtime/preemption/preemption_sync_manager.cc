@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -90,6 +91,11 @@ absl::Status PreemptionSyncManager::Initialize(
 absl::Status PreemptionSyncManager::Initialize(
     CoordinationServiceAgent* agent,
     std::unique_ptr<PreemptionNotifier> notifier) {
+  {
+    absl::MutexLock l(&mu_);
+    CHECK(!shut_down_);
+  }
+
   TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
   env_ = env;
   agent_ = agent;
@@ -172,13 +178,38 @@ absl::Status PreemptionSyncManager::Initialize(
         }
 
         // Trigger protocol in a separate thread: compute max call counter.
-        sync_protocol_thread_ = absl::WrapUnique(env_->StartThread(
-            {}, "PreemptionSyncManager_SyncProtocol",
-            std::bind(&PreemptionSyncManager::ComputeSyncCallCounter, this,
-                      death_time)));
+        {
+          absl::MutexLock l(&mu_);
+          if (shut_down_) {
+            return;
+          }
+          sync_protocol_thread_ = absl::WrapUnique(env_->StartThread(
+              {}, "PreemptionSyncManager_SyncProtocol",
+              std::bind(&PreemptionSyncManager::ComputeSyncCallCounter, this,
+                        death_time)));
+        }
       });
 
   return absl::OkStatus();
+}
+
+void PreemptionSyncManager::Shutdown() {
+  absl::MutexLock l(&mu_);
+  if (shut_down_) {
+    LOG(INFO) << "PreemptionSyncManager already shut down";
+    return;
+  }
+  shut_down_ = true;
+
+  LOG(INFO) << "Shutting down PreemptionSyncManager...";
+  shutdown_.Notify();
+  if (call_opts_) {
+    call_opts_->StartCancel();
+  }
+  if (sync_protocol_thread_) {
+    sync_protocol_thread_.reset();
+  }
+  LOG(INFO) << "PreemptionSyncManager shut down.";
 }
 
 void PreemptionSyncManager::ComputeSyncCallCounter(absl::Time death_time) {
@@ -276,6 +307,7 @@ bool PreemptionSyncManager::ReachedSyncPoint(int step_counter) {
   // prevents updates to `call_counter_` while `preemption_sync_counter_` is
   // being computed, which ensures correctness of the preemption sync protocol.
   absl::MutexLock l(&mu_);
+  CHECK(!shut_down_);
   // Track current call.
   call_counter_ = step_counter;
   VLOG(3) << "Current call counter: " << call_counter_
