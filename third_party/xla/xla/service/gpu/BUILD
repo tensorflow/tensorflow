@@ -140,7 +140,7 @@ cc_library(
 
 xla_test(
     name = "custom_call_test",
-    srcs = if_gpu_is_configured(["custom_call_test.cc"]),
+    srcs = ["custom_call_test.cc"],
     backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [

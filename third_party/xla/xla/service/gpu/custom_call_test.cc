@@ -16,10 +16,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <ostream>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include "xla/shape.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
@@ -228,11 +229,6 @@ struct TokenTestCase {
   std::string output;
   std::string opaque;
 };
-
-std::ostream& operator<<(std::ostream& s, const TokenTestCase& tc) {
-  s << tc.input << "x" << tc.output << "x" << tc.opaque;
-  return s;
-}
 
 void Callback_Tokens(se::gpu::GpuStreamHandle stream, void** buffers,
                      const char* opaque, size_t opaque_len) {
@@ -514,10 +510,11 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
 static absl::Status Opaque(ffi::Result<ffi::AnyBuffer>,
                            const std::string* str) {
   std::string opaque(*str);
-  if (opaque != kExpectedOpaque)
+  if (opaque != kExpectedOpaque) {
     return absl::InternalError(absl::StrFormat(
         "Opaque string does not match. Expected `%s` but got `%s`",
         kExpectedOpaque, opaque));
+  }
   return absl::OkStatus();
 }
 
@@ -645,11 +642,14 @@ TEST_F(CustomCallTest, ExportedFfiWithStatusSucceeded) {
 static absl::Status FfiAttributes(ffi::Result<ffi::AnyBuffer>,
                                   absl::Span<const int32_t> i32_arr,
                                   Range range) {
-  if (i32_arr.size() != 4)
+  if (i32_arr.size() != 4) {
     return absl::InternalError("i32_arr size does not match");
+  }
 
-  if (i32_arr[0] != 1 || i32_arr[1] != 2 || i32_arr[2] != 3 || i32_arr[3] != 4)
+  if (i32_arr[0] != 1 || i32_arr[1] != 2 || i32_arr[2] != 3 ||
+      i32_arr[3] != 4) {
     return absl::InternalError("i32_arr values do not match");
+  }
 
   if (range.lo != 0 || range.hi != 42) {
     return absl::InternalError("range values do not match");
@@ -689,18 +689,24 @@ static absl::Status MemcpyWithCalledComputation(
     se::Stream* stream, int32_t device_ordinal,
     se::OwningScratchAllocator<> scratch_allocator, ffi::AnyBuffer src,
     ffi::Result<ffi::AnyBuffer> dst, const HloComputation* called_computation) {
-  if (called_computation == nullptr)
+  if (called_computation == nullptr) {
     return absl::InternalError("Called computation is not defined");
+  }
 
-  if (called_computation->instruction_count() != 1)
+  if (called_computation->instruction_count() != 1) {
     return absl::InternalError("Unexpected number of instructions");
+  }
 
-  if (!DynCast<HloParameterInstruction>(called_computation->root_instruction()))
+  if (!DynCast<HloParameterInstruction>(
+          called_computation->root_instruction())) {
     return absl::InternalError("ROOT must be a paremeter");
+  }
 
   // Check that scratch allocator is working.
   auto scratch = scratch_allocator.AllocateBytes(1024);
-  if (!scratch.ok()) return scratch.status();
+  if (!scratch.ok()) {
+    return scratch.status();
+  }
 
   return Memcpy(stream, src, dst);
 }
@@ -758,7 +764,9 @@ struct SomeExtraContext {
 template <ffi::ExecutionStage stage>
 static absl::Status ExecutionContext(ffi::Result<ffi::AnyBuffer>,
                                      SomeExtraContext* ctx) {
-  if (ctx->value != 42) return absl::InternalError("Unexpected value");
+  if (ctx->value != 42) {
+    return absl::InternalError("Unexpected value");
+  }
   if constexpr (stage == ffi::ExecutionStage::kPrepare) {
     ctx->prepared = true;
   } else if constexpr (stage == ffi::ExecutionStage::kInitialize) {
