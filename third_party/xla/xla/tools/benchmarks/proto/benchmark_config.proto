@@ -15,7 +15,7 @@ limitations under the License.
 
 syntax = "proto3";
 
-package xla;
+package xla.tools.benchmarks.proto;
 
 // Enum defining the target hardware platform category.
 enum HardwareCategory {
