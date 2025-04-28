@@ -310,7 +310,15 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
                 t);
             return xnn_datatype_invalid;
           }
-          break;
+          switch (tensor.type) {
+            case kTfLiteInt8:
+              return xnn_datatype_qcint8;
+            case kTfLiteInt4:
+              return xnn_datatype_qcint4;
+            default:
+              // Outermost switch prevents this
+              TFL_UNREACHABLE();
+          }
         }
         case kTfLiteBlockwiseQuantization: {
           const auto quantization_params =
@@ -333,7 +341,15 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
                 tensor.name, t);
             return xnn_datatype_invalid;
           }
-          break;
+          switch (tensor.type) {
+            case kTfLiteInt8:
+              return xnn_datatype_qcint8;
+            case kTfLiteInt4:
+              return xnn_datatype_qbint4;
+            default:
+              // Outermost switch prevents this
+              TFL_UNREACHABLE();
+          }
         }
         default:
           TF_LITE_KERNEL_LOG(context,
@@ -343,27 +359,6 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
                              TfLiteTypeGetName(tensor.type), t);
           return xnn_datatype_invalid;
       }
-
-      switch (tensor.type) {
-        case kTfLiteInt4:
-          switch (tensor.quantization.type) {
-            case kTfLiteAffineQuantization:
-              return xnn_datatype_qcint4;
-            case kTfLiteBlockwiseQuantization:
-              return xnn_datatype_qbint4;
-            default:
-              TF_LITE_KERNEL_LOG(context,
-                                 "Unsupported quantization type %d for INT4 "
-                                 "tensor %d in XNNPACK delegate",
-                                 tensor.quantization.type, t);
-              return xnn_datatype_invalid;
-          }
-        case kTfLiteInt8:
-          return xnn_datatype_qcint8;
-        default:
-          return xnn_datatype_invalid;
-      }
-      break;
     }
     case kTfLiteInt32: {
       if (tensor.quantization.type != kTfLiteAffineQuantization) {
@@ -439,12 +434,10 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
             quantization_params->scale->size, SizeOfDimension(&tensor, 0), t);
         return xnn_datatype_invalid;
       }
-      break;
     }
     default:
-      break;
+      return xnn_datatype_invalid;
   }
-  return xnn_datatype_invalid;
 }
 
 // Forward declaration.
