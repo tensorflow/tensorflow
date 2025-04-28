@@ -462,7 +462,6 @@ cc_library(
     name = "dump",
     srcs = ["dump.cc"],
     hdrs = ["dump.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":hlo_graph_dumper",
         ":hlo_proto_cc",
@@ -1045,7 +1044,6 @@ cc_library(
     name = "service",
     srcs = ["service.cc"],
     hdrs = ["service.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":allocation_tracker",
         ":backend",
@@ -1544,7 +1542,6 @@ cc_library(
     name = "llvm_compiler",
     srcs = ["llvm_compiler.cc"],
     hdrs = ["llvm_compiler.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":compiler",
         ":executable",
@@ -5637,14 +5634,14 @@ xla_cc_test(
 
 xla_cc_test(
     name = "xla_aot_compile_gpu_test",
-    srcs = if_cuda_is_configured(["xla_aot_compile_gpu_test.cc"]),
-    data = if_cuda_is_configured([
+    srcs = ["xla_aot_compile_gpu_test.cc"],
+    data = [
         ":xla_aot_compile_test_gpu_executable",
-        ":xla_aot_compile_test_gpu_executable_hlo",
         ":xla_aot_compile_test_gpu_executable_constant",
         ":xla_aot_compile_test_gpu_executable_convolution",
         ":xla_aot_compile_test_gpu_executable_convolution_runtime_autotuning",
-    ]),
+        ":xla_aot_compile_test_gpu_executable_hlo",
+    ],
     tags = [
         "cuda-only",
         "gpu",
@@ -5652,27 +5649,26 @@ xla_cc_test(
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
         "requires-gpu-sm60-only",
     ],
-    deps = if_cuda_is_configured([
+    deps = [
         ":gpu_plugin_impl",
         ":platform_util",
         ":shaped_buffer",
-        "@com_google_googletest//:gtest_main",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "//xla:executable_run_options",
+        "//xla:literal",
         "//xla:literal_util",
         "//xla/client:client_library",
+        "//xla/client:executable_build_options",
         "//xla/client:local_client",
         "//xla/service/cpu:cpu_compiler",
-        "//xla/client:executable_build_options",
-        "//xla:literal",
-        "//xla:shape_util",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-    ]),
+    ],
 )
 
 tf_proto_library(

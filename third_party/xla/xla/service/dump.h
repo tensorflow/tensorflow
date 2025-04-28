@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_DUMP_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_graph_dumper.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/xla.pb.h"
 
 // Consolidated utilities for logging information during compilation, usually
