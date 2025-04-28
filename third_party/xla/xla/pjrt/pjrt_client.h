@@ -864,22 +864,17 @@ class PjRtClient {
   // completes on the return value before letting literal go out of scope.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space) {
-    return tsl::errors::Unimplemented(
-        "BufferFromHostLiteral with PjRtMemorySpace is not implemented on "
-        "platform: ",
-        platform_name());
+    return this->BufferFromHostLiteral(literal, memory_space,
+                                       /*device_layout=*/nullptr);
   }
 
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) {
-    if (device_layout) {
-      return absl::UnimplementedError(absl::StrCat(
-          "BufferFromHostLiteral with device_layout is not implemented on "
-          "platform: ",
-          platform_name()));
-    }
-    return this->BufferFromHostLiteral(literal, memory_space);
+    return tsl::errors::Unimplemented(
+        "BufferFromHostLiteral with PjRtMemorySpace is not implemented on "
+        "platform: ",
+        platform_name());
   }
 
   // Creates a PjRtBuffer that is a non-owned view of an on-device
