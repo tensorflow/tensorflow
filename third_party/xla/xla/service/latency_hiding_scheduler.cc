@@ -932,6 +932,196 @@ class ReadySetLt {
       : sched_state_(*sched_state),
         target_scheduling_rule_(target_scheduling_rule),
         early_target_scheduling_rule_(early_target_scheduling_rule) {}
+
+  std::optional<DefaultSchedulerCore::CandidateResult> MemoryPressurePolicy(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      std::pair<int64_t, int64_t>& a_increase,
+      DefaultSchedulerCore::ScheduleCandidate& b,
+      std::pair<int64_t, int64_t>& b_increase) const {
+    // If out of memory reduce memory at all costs. Choose the instruction
+    // that causes the most decrease (or least further increase) of memory
+    // pressure.
+    if (sched_state_.memory_pressure_tracker->memory_usage() >=
+        sched_state_.config.memory_limit) {
+      if (sched_state_.config.depth_based_memory_pressure_reduction) {
+        // Try to pick a node that actually reduces memory pressure first.
+        if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+                a_increase.first < 0 && a_increase.first < b_increase.first, a,
+                b_increase.first < 0 && b_increase.first < a_increase.first, b,
+                "kOnlyDecreaseMemoryOverLimit")) {
+          return *value;
+        }
+        // If there's none than prefer a node that is the deepest. That
+        // matches well with unlocking pressure-reducing nodes for typical ML
+        // graphs.
+        if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+                a.node->GetGraphDepth() > b.node->GetGraphDepth(), a,
+                b.node->GetGraphDepth() > a.node->GetGraphDepth(), b,
+                "kDepthOverLimit")) {
+          return *value;
+        }
+      }
+      // Otherwise pick a node that increases the pressure the least from the
+      // list.
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              a_increase.first < b_increase.first, a,
+              b_increase.first < a_increase.first, b,
+              "kDecreaseMemoryOverLimit")) {
+        return *value;
+      }
+    }
+    // Avoid to bring peak beyond limit. Choose instruction that doesn't do
+    // so.
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            a_increase.second +
+                    sched_state_.memory_pressure_tracker->memory_usage() <=
+                sched_state_.config.memory_limit,
+            a,
+            b_increase.second +
+                    sched_state_.memory_pressure_tracker->memory_usage() <=
+                sched_state_.config.memory_limit,
+            b, "kMemoryPeakOverLimit")) {
+      return *value;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<DefaultSchedulerCore::CandidateResult> ReleaseStartPolicy(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b) const {
+    // Prioritise scheduling ready "start" ops, to avoid useless extension of
+    // start-done latencies. This benefits future latency ops, as ops
+    // postponed here may be used to hide not-yet-scheduled latency ops.
+    const ApproximateLatencyEstimator::TimeCost a_ready_interval =
+        a.node->GetReadyTime() - sched_state_.current_time;
+    const ApproximateLatencyEstimator::TimeCost b_ready_interval =
+        b.node->GetReadyTime() - sched_state_.current_time;
+    bool a_ready_and_release =
+        a_ready_interval <= 0 &&
+        a.node->DoesReleaseResource(ResourceType::kCollectivePermute);
+    bool b_ready_and_release =
+        b_ready_interval <= 0 &&
+        b.node->DoesReleaseResource(ResourceType::kCollectivePermute);
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            a_ready_and_release, a, b_ready_and_release, b, "kScheduleStart")) {
+      return *value;
+    }
+    if (a_ready_and_release && b_ready_and_release) {
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              a_ready_interval < b_ready_interval, a,
+              b_ready_interval < a_ready_interval, b, "kScheduleStart")) {
+        return *value;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<DefaultSchedulerCore::CandidateResult> UnlockDone(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b) const {
+    //  Check if any operand is an async done operation of the two ops to be
+    //  compared. Prioritize those to unlock async dones to be scheduled.
+    //  TODO(maggioni): Develop a more complete analysis of the graph to
+    //  prioritize candidates that would more likely unlock more async dones
+    //  to be scheduled.
+    bool a_operands = absl::c_any_of(
+        a.node->GetInstr().operands(),
+        [async_tracker = sched_state_.async_tracker](const HloInstruction* i) {
+          return async_tracker->IsSupportedAsyncDone(*i);
+        });
+    bool b_operands = absl::c_any_of(
+        b.node->GetInstr().operands(),
+        [async_tracker = sched_state_.async_tracker](const HloInstruction* i) {
+          return async_tracker->IsSupportedAsyncDone(*i);
+        });
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            a_operands, a, b_operands, b, "kUnlockDone")) {
+      return *value;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<DefaultSchedulerCore::CandidateResult> AsyncDepth0Candidate(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b) const {
+    // If an instruction releasing a resource is not resource constrained and
+    // has an async depth of 0, delay it as much as possible to avoid
+    // potential cost model inefficiencies. For example, if a pair of
+    // async-start and async-done have no dependencies on other ops inside a
+    // loop, the async-start will be pushed to the beginning of the loop.
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            /*first_cond=*/!(a.node->DoesReleaseAnyResource() &&
+                             a.node->GetAsyncDepth() == 0 &&
+                             !IsResourceConstrained(a)),
+            a,
+            /*second_cond=*/
+            !(b.node->DoesReleaseAnyResource() &&
+              b.node->GetAsyncDepth() == 0 && !IsResourceConstrained(b)),
+            b, "kStartAtZeroDepth")) {
+      return value;
+    }
+    return std::nullopt;
+  }
+  std::optional<DefaultSchedulerCore::CandidateResult> AvoidWaste(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b) const {
+    // Favor nodes that are the closest in amount of latency they hide with
+    // the highest amount of latency that needs to be hidden to avoid
+    // wasting / big nodes over small async operations.
+    if (!sched_state_.next_ready_stack.empty()) {
+      HloGraphNode::TimeCost latest_ready =
+          sched_state_.next_ready_stack.front()->GetReadyTime();
+      HloGraphNode::TimeCost a_cost_diff = std::abs(
+          latest_ready - sched_state_.current_time - a.node->GetCost());
+      HloGraphNode::TimeCost b_cost_diff = std::abs(
+          latest_ready - sched_state_.current_time - b.node->GetCost());
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              !a.node->DoesReleaseAnyResource() && a_cost_diff < b_cost_diff, a,
+              !b.node->DoesReleaseAnyResource() && b_cost_diff < a_cost_diff, b,
+              "kAvoidWaste")) {
+        return *value;
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  std::optional<DefaultSchedulerCore::CandidateResult>
+  IsValuableForSelectiveOverlap(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b) const {
+    int64_t distance_to_selective_overlap_for_a =
+        GetNumHopsToClosestSelectiveOverlap(sched_state_.ready_set, a.node);
+    int64_t distance_to_selective_overlap_for_b =
+        GetNumHopsToClosestSelectiveOverlap(sched_state_.ready_set, b.node);
+    // If a is valuable for selective overlap and there is a selective
+    // overlap in the near future a can be scheduled inside, hold off
+    // scheduling a and schedule b instead. Same logic applies in reverse.
+    int64_t max_distance =
+        sched_state_.config.max_hops_to_closest_selective_overlap;
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            (a.node->GetValuableForSelectiveOverlap() &&
+             distance_to_selective_overlap_for_a <= max_distance),
+            b,
+            (b.node->GetValuableForSelectiveOverlap() &&
+             distance_to_selective_overlap_for_b <= max_distance),
+            a, "kNotValuableForSelectiveOverlap")) {
+      return *value;
+    }
+    return std::nullopt;
+  }
+
+  DefaultSchedulerCore::CandidateResult OriginalPosition(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b) const {
+    if (sched_state_.sched_graph.OriginalInstructionPosition(
+            &a.node->GetInstr()) >
+        sched_state_.sched_graph.OriginalInstructionPosition(
+            &b.node->GetInstr())) {
+      return {a, "kOriginalOrder"};
+    }
+    return {b, "kOriginalOrder"};
+  }
   // The comparison here implements the priority for the nodes in the ready set.
   DefaultSchedulerCore::CandidateResult operator()(
       DefaultSchedulerCore::ScheduleCandidate& a,
@@ -948,59 +1138,18 @@ class ReadySetLt {
             "kForceDelay")) {
       return *value;
     }
-    std::pair<int64_t, int64_t> a_increase = std::make_pair(0LL, 0LL);
-    std::pair<int64_t, int64_t> b_increase = std::make_pair(0LL, 0LL);
-    // Check if memory pressure tracking is enabled. Even if it evaluate memory
-    // pressure.
+    std::pair<int64_t, int64_t> a_increase = {0, 0};
+    std::pair<int64_t, int64_t> b_increase = {0, 0};
+
+    // Check if memory pressure tracking is enabled. If it is, evaluate memory
+    // pressure
     if (sched_state_.config.memory_limit != UINT64_MAX &&
         sched_state_.memory_pressure_tracker->memory_usage() >
             (sched_state_.config.memory_limit / 2)) {
       a_increase = GetMemoryPressureChanges(a);
       b_increase = GetMemoryPressureChanges(b);
-      // If out of memory reduce memory at all costs. Choose the instruction
-      // that causes the most decrease (or least further increase) of memory
-      // pressure.
-      if (sched_state_.memory_pressure_tracker->memory_usage() >=
-          sched_state_.config.memory_limit) {
-        if (sched_state_.config.depth_based_memory_pressure_reduction) {
-          // Try to pick a node that actually reduces memory pressure first.
-          if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-                  a_increase.first < 0 && a_increase.first < b_increase.first,
-                  a,
-                  b_increase.first < 0 && b_increase.first < a_increase.first,
-                  b, "kOnlyDecreaseMemoryOverLimit")) {
-            return *value;
-          }
-          // If there's none than prefer a node that is the deepest. That
-          // matches well with unlocking pressure-reducing nodes for typical ML
-          // graphs.
-          if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-                  a.node->GetGraphDepth() > b.node->GetGraphDepth(), a,
-                  b.node->GetGraphDepth() > a.node->GetGraphDepth(), b,
-                  "kDepthOverLimit")) {
-            return *value;
-          }
-        }
-        // Otherwise pick a node that increases the pressure the least from the
-        // list.
-        if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-                a_increase.first < b_increase.first, a,
-                b_increase.first < a_increase.first, b,
-                "kDecreaseMemoryOverLimit")) {
-          return *value;
-        }
-      }
-      // Avoid to bring peak beyond limit. Choose instruction that doesn't do
-      // so.
-      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-              a_increase.second +
-                      sched_state_.memory_pressure_tracker->memory_usage() <=
-                  sched_state_.config.memory_limit,
-              a,
-              b_increase.second +
-                      sched_state_.memory_pressure_tracker->memory_usage() <=
-                  sched_state_.config.memory_limit,
-              b, "kMemoryPeakOverLimit")) {
+
+      if (auto value = MemoryPressurePolicy(a, a_increase, b, b_increase)) {
         return *value;
       }
     }
@@ -1036,56 +1185,17 @@ class ReadySetLt {
       // Prioritise scheduling ready "start" ops, to avoid useless extension of
       // start-done latencies. This benefits future latency ops, as ops
       // postponed here may be used to hide not-yet-scheduled latency ops.
-      const ApproximateLatencyEstimator::TimeCost a_ready_interval =
-          a.node->GetReadyTime() - sched_state_.current_time;
-      const ApproximateLatencyEstimator::TimeCost b_ready_interval =
-          b.node->GetReadyTime() - sched_state_.current_time;
-      bool a_ready_and_release =
-          a_ready_interval <= 0 &&
-          a.node->DoesReleaseResource(ResourceType::kCollectivePermute);
-      bool b_ready_and_release =
-          b_ready_interval <= 0 &&
-          b.node->DoesReleaseResource(ResourceType::kCollectivePermute);
-      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-              a_ready_and_release, a, b_ready_and_release, b,
-              "kScheduleStart")) {
+      if (auto value = ReleaseStartPolicy(a, b)) {
         return *value;
-      }
-      if (a_ready_and_release && b_ready_and_release) {
-        if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-                a_ready_interval < b_ready_interval, a,
-                b_ready_interval < a_ready_interval, b, "kScheduleStart")) {
-          return *value;
-        }
       }
     }
 
-    auto async_depth_0_candidate =
-        [this](DefaultSchedulerCore::ScheduleCandidate& a,
-               DefaultSchedulerCore::ScheduleCandidate& b)
-        -> std::optional<DefaultSchedulerCore::CandidateResult> {
-      // If an instruction releasing a resource is not resource constrained and
-      // has an async depth of 0, delay it as much as possible to avoid
-      // potential cost model inefficiencies. For example, if a pair of
-      // async-start and async-done have no dependencies on other ops inside a
-      // loop, the async-start will be pushed to the beginning of the loop.
-      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-              /*first_cond=*/!(a.node->DoesReleaseAnyResource() &&
-                               a.node->GetAsyncDepth() == 0 &&
-                               !IsResourceConstrained(a)),
-              a,
-              /*second_cond=*/
-              !(b.node->DoesReleaseAnyResource() &&
-                b.node->GetAsyncDepth() == 0 && !IsResourceConstrained(b)),
-              b, "kStartAtZeroDepth")) {
-        return value;
-      }
-      return std::nullopt;
-    };
-
     if (sched_state_.config.aggressive_scheduling_policies &&
         sched_state_.config.prioritize_async_depth_over_stall) {
-      if (auto value = async_depth_0_candidate(a, b)) {
+      // If an instruction releasing a resource is not resource constrained and
+      // has an async depth of 0, delay it as much as possible to avoid
+      // potential cost model inefficiencies.
+      if (auto value = AsyncDepth0Candidate(a, b)) {
         return *value;
       }
     }
@@ -1118,7 +1228,7 @@ class ReadySetLt {
     }
     if (sched_state_.config.aggressive_scheduling_policies &&
         !sched_state_.config.prioritize_async_depth_over_stall) {
-      if (auto value = async_depth_0_candidate(a, b)) {
+      if (auto value = AsyncDepth0Candidate(a, b)) {
         return *value;
       }
     }
@@ -1128,6 +1238,7 @@ class ReadySetLt {
             "kFreeBackedupResource")) {
       return *value;
     }
+
     if (sched_state_.config.aggressive_scheduling_policies) {
       // Try to favor paths that are dependent of chains of async operations
       // with long latency as we want to get to them as soon as possible to
@@ -1141,41 +1252,17 @@ class ReadySetLt {
       // Favor nodes that are the closest in amount of latency they hide with
       // the highest amount of latency that needs to be hidden to avoid
       // wasting / big nodes over small async operations.
-      if (!sched_state_.next_ready_stack.empty()) {
-        HloGraphNode::TimeCost latest_ready =
-            sched_state_.next_ready_stack.front()->GetReadyTime();
-        HloGraphNode::TimeCost a_cost_diff = std::abs(
-            latest_ready - sched_state_.current_time - a.node->GetCost());
-        HloGraphNode::TimeCost b_cost_diff = std::abs(
-            latest_ready - sched_state_.current_time - b.node->GetCost());
-        if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-                !a.node->DoesReleaseAnyResource() && a_cost_diff < b_cost_diff,
-                a,
-                !b.node->DoesReleaseAnyResource() && b_cost_diff < a_cost_diff,
-                b, "kAvoidWaste")) {
-          return *value;
-        }
+      if (auto value = AvoidWaste(a, b)) {
+        return *value;
       }
     }
-    //  Check if any operand is an async done operation of the two ops to be
-    //  compared. Prioritize those to unlock async dones to be scheduled.
-    //  TODO(maggioni): Develop a more complete analysis of the graph to
-    //  prioritize candidates that would more likely unlock more async dones
-    //  to be scheduled.
-    bool a_operands = absl::c_any_of(
-        a.node->GetInstr().operands(),
-        [async_tracker = sched_state_.async_tracker](const HloInstruction* i) {
-          return async_tracker->IsSupportedAsyncDone(*i);
-        });
-    bool b_operands = absl::c_any_of(
-        b.node->GetInstr().operands(),
-        [async_tracker = sched_state_.async_tracker](const HloInstruction* i) {
-          return async_tracker->IsSupportedAsyncDone(*i);
-        });
-    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-            a_operands, a, b_operands, b, "kUnlockDone")) {
+
+    // Check if any operand is an async done operation of the two ops to be
+    // compared. Prioritize those to unlock async dones to be scheduled.
+    if (auto value = UnlockDone(a, b)) {
       return *value;
     }
+
     if (target_scheduling_rule_) {
       if (auto value = target_scheduling_rule_(a, b)) {
         return *value;
@@ -1186,22 +1273,7 @@ class ReadySetLt {
     // that are valuable for selective overlaps.
     if (sched_state_.config.enable_selective_resources &&
         sched_state_.selective_resource_releasers.empty()) {
-      int64_t distance_to_selective_overlap_for_a =
-          GetNumHopsToClosestSelectiveOverlap(sched_state_.ready_set, a.node);
-      int64_t distance_to_selective_overlap_for_b =
-          GetNumHopsToClosestSelectiveOverlap(sched_state_.ready_set, b.node);
-      // If a is valuable for selective overlap and there is a selective
-      // overlap in the near future a can be scheduled inside, hold off
-      // scheduling a and schedule b instead. Same logic applies in reverse.
-      int64_t max_distance =
-          sched_state_.config.max_hops_to_closest_selective_overlap;
-      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-              (a.node->GetValuableForSelectiveOverlap() &&
-               distance_to_selective_overlap_for_a <= max_distance),
-              b,
-              (b.node->GetValuableForSelectiveOverlap() &&
-               distance_to_selective_overlap_for_b <= max_distance),
-              a, "kNotValuableForSelectiveOverlap")) {
+      if (auto value = IsValuableForSelectiveOverlap(a, b)) {
         return *value;
       }
     }
@@ -1226,15 +1298,10 @@ class ReadySetLt {
             "kDecreaseMemory")) {
       return *value;
     }
+
     // If none of the heuristics above triggers then prefer to schedule
     // according the original order so that we don't impact memory pressure.
-    if (sched_state_.sched_graph.OriginalInstructionPosition(
-            &a.node->GetInstr()) >
-        sched_state_.sched_graph.OriginalInstructionPosition(
-            &b.node->GetInstr())) {
-      return {a, "kOriginalOrder"};
-    }
-    return {b, "kOriginalOrder"};
+    return OriginalPosition(a, b);
   }
 
  private:
