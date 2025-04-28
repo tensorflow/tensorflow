@@ -24,10 +24,13 @@
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
+#include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
+#include "xla/hlo/tools/hlo_diff/proto/diff_result.pb.h"
 
 namespace xla {
 namespace hlo_diff {
+
 // Result of diff'ng the left and right HLO modules. Contains the matched and
 // unmatched instructions in the two modules.
 struct DiffResult {
@@ -50,6 +53,14 @@ struct DiffResult {
       map_by;
   absl::flat_hash_map<const HloInstruction*, HloInstructionNodeProps>
       node_props;
+
+  // Converts the diff result to a proto.
+  DiffResultProto ToProto() const;
+
+  // Converts the diff result from a proto.
+  static DiffResult FromProto(const DiffResultProto& proto,
+                              const HloModule& left_module,
+                              const HloModule& right_module);
 };
 
 // Constructs the diff result from the node mappings.

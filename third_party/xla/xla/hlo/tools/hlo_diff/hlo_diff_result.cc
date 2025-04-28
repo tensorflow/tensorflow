@@ -16,17 +16,20 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_bfs.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
+#include "xla/hlo/tools/hlo_diff/proto/diff_result.pb.h"
 #include "xla/hlo/tools/hlo_diff/utils/hlo_diff_util.h"
 
 namespace xla {
@@ -107,6 +110,71 @@ std::unique_ptr<const DiffResult> ConstructDiffResult(
       diff_result->right_module_unmatched_instructions.insert(
           right_node->instruction);
     }
+  }
+
+  return diff_result;
+}
+
+DiffResultProto DiffResult::ToProto() const {
+  DiffResultProto proto;
+  for (const auto& [left_instruction, right_instruction] :
+       unchanged_instructions) {
+    MatchedInstructionPairProto* pair = proto.add_unchanged_instructions();
+    pair->set_left(std::string(left_instruction->name()));
+    pair->set_right(std::string(right_instruction->name()));
+  }
+  for (const auto& [left_instruction, right_instruction] :
+       changed_instructions) {
+    MatchedInstructionPairProto* pair = proto.add_changed_instructions();
+    pair->set_left(std::string(left_instruction->name()));
+    pair->set_right(std::string(right_instruction->name()));
+  }
+  for (const HloInstruction* instruction : left_module_unmatched_instructions) {
+    proto.add_left_unmatched_instructions(std::string(instruction->name()));
+  }
+  for (const HloInstruction* instruction :
+       right_module_unmatched_instructions) {
+    proto.add_right_unmatched_instructions(std::string(instruction->name()));
+  }
+  return proto;
+}
+
+DiffResult DiffResult::FromProto(const DiffResultProto& proto,
+                                 const HloModule& left_module,
+                                 const HloModule& right_module) {
+  // Get instructions from modules.
+  absl::flat_hash_map<std::string, const HloInstruction*>
+      left_instructions_by_name;
+  for (const HloComputation* computation : left_module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      left_instructions_by_name[instruction->name()] = instruction;
+    }
+  }
+  absl::flat_hash_map<std::string, const HloInstruction*>
+      right_instructions_by_name;
+  for (const HloComputation* computation : right_module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      right_instructions_by_name[instruction->name()] = instruction;
+    }
+  }
+
+  DiffResult diff_result;
+  for (const MatchedInstructionPairProto& pair :
+       proto.unchanged_instructions()) {
+    diff_result.unchanged_instructions[left_instructions_by_name[pair.left()]] =
+        right_instructions_by_name[pair.right()];
+  }
+  for (const MatchedInstructionPairProto& pair : proto.changed_instructions()) {
+    diff_result.changed_instructions[left_instructions_by_name[pair.left()]] =
+        right_instructions_by_name[pair.right()];
+  }
+  for (const std::string& name : proto.left_unmatched_instructions()) {
+    diff_result.left_module_unmatched_instructions.insert(
+        left_instructions_by_name[name]);
+  }
+  for (const std::string& name : proto.right_unmatched_instructions()) {
+    diff_result.right_module_unmatched_instructions.insert(
+        right_instructions_by_name[name]);
   }
 
   return diff_result;

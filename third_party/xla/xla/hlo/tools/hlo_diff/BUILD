@@ -35,6 +35,7 @@ cc_library(
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/hlo/tools/hlo_diff/graph/utils:hlo_gumgraph_bfs",
+        "//xla/hlo/tools/hlo_diff/proto:diff_result_proto_cc",
         "//xla/hlo/tools/hlo_diff/utils:hlo_diff_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
