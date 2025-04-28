@@ -3512,10 +3512,14 @@ cc_library(
 
 cc_library(
     name = "copy_insertion",
-    srcs = ["copy_insertion.cc"],
+    srcs = [
+        "copy_insertion.cc",
+        "copy_removal.cc",
+    ],
     hdrs = [
         "compile_time_cap.h",
         "copy_insertion.h",
+        "copy_removal.h",
     ],
     deps = [
         ":call_graph",
@@ -3537,6 +3541,9 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -3548,9 +3555,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
