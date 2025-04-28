@@ -266,6 +266,8 @@ TEST(TF_TStringTest, Conversion) {
 
   EXPECT_STREQ(kLongString, s53.data());
   EXPECT_EQ(kLongStringLen, s53.size());
+
+  EXPECT_EQ(std::string("\0a", 2), absl::StrCat(tstring("\0a", 2)));
 }
 
 TEST(TF_TStringTest, Allocation) {
