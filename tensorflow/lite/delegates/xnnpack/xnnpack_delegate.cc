@@ -273,16 +273,8 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
                               quantization_zero_point)) {
             return xnn_datatype_invalid;
           }
-          if (quantization_scale->size == 1) {
+          if (quantization_scale->size == 1 && tensor.type == kTfLiteInt8) {
             // Per-tensor quantization
-            if (kTfLiteInt8 != tensor.type) {
-              TF_LITE_KERNEL_LOG(
-                  context,
-                  "unsupported per-tensor quantization scale "
-                  "parameter for %s tensor %d in XNNPACK delegate",
-                  TfLiteTypeGetName(tensor.type), t);
-              return xnn_datatype_invalid;
-            }
             if (!CheckZeroPointForPerTensorQuantization<int8_t>(
                     context, tensor, t, *quantization_zero_point)) {
               return xnn_datatype_invalid;
