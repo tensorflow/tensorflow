@@ -1967,8 +1967,6 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     }
 
     // Integrate LLVM matmul kernel into XLA's LLVM module.
-    // TODO(goncharov): remove once we integrated past LLVM
-    // 6c2e170d043d3a7d7b32635e887cfd255ef5c2ce that removes nvvm.annotations.
     auto* nvvm_annotations =
         ll_triton_module->getNamedMetadata("nvvm.annotations");
     if (nvvm_annotations) {
