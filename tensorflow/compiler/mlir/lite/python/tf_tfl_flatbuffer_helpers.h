@@ -27,9 +27,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/types.pb.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -46,8 +46,8 @@ absl::Status RegisterAllCustomOps(
 absl::Status PopulateQuantizationSpecs(
     const tflite::ModelFlags& model_flags,
     tflite::ConverterFlags& converter_flags,
-    mlir::quant::QuantizationSpecs* quant_specs,
-    std::vector<string>* node_names, std::vector<string>* node_dtypes,
+    mlir::TFL::QuantizationSpecs* quant_specs, std::vector<string>* node_names,
+    std::vector<string>* node_dtypes,
     std::vector<std::optional<std::vector<int>>>* node_shapes,
     std::vector<std::optional<double>>* node_mins,
     std::vector<std::optional<double>>* node_maxs);

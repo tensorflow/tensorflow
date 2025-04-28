@@ -81,6 +81,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/offset_buffer.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/debug_metadata_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
@@ -91,7 +92,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -888,7 +888,7 @@ StatusOr<Operation*> ConvertOp(
     op_state.addTypes({type});
   }
 
-  // While the last several tensors could be optional tensors for an tfl op, the
+  // While the last several tensors could be optional tensors for a tfl op, the
   // number of input operands could vary. Gets the min/max number of operands
   // from tflite op name.
   // Also, since the above code special-handles the `tfl.reshape` op and add an
@@ -1124,7 +1124,8 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
       Operation* user = use.getOwner();
       if (user->hasTrait<mlir::OpTrait::IsTerminator>()) continue;
 
-      auto affine_user = llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
+      auto affine_user =
+          llvm::dyn_cast<mlir::TFL::AffineQuantizedOpInterface>(user);
       if (affine_user &&
           affine_user.GetAffineOperandIndex() == use.getOperandNumber() &&
           affine_user.RequiredNarrowRangeAffineOperand())

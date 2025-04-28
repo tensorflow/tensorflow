@@ -34,9 +34,9 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/quantization/device_target.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 #define DEBUG_TYPE "quantization-context"
 
@@ -191,7 +191,7 @@ void QuantizeContext::DumpStates(quantfork::QuantizeRegionOp current_op) {
 // - use the single input if it is ready, or,
 // - use the single output if it is ready, or,
 // - use the first ready one in the collection.
-QuantParams QuantizeContext::GetQuantParamsForSameScaleConstraint(
+TFL::QuantParams QuantizeContext::GetQuantParamsForSameScaleConstraint(
     Operation *op) {
   // Two vector to collect Non-empty operands and results states.
   std::vector<quant::QuantState *> mutable_states, immutable_states;
@@ -255,7 +255,7 @@ QuantParams QuantizeContext::GetQuantParamsForSameScaleConstraint(
 }
 
 LogicalResult QuantizeContext::PropagateQuantParams(
-    Operation *op, const QuantParams params,
+    Operation *op, const TFL::QuantParams params,
     quant::AdjacentOperations *new_items, bool *changed) {
   // Use the final state to set all the operands' parameters.
   for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
@@ -288,7 +288,7 @@ int QuantizeContext::StatesManager::InitializeState(
   } else {
     params_attr = op.getInputSpecs()[index];
   }
-  QuantParams params =
+  TFL::QuantParams params =
       dyn_cast<QuantizedType>(cast<TypeAttr>(params_attr).getValue());
   bool immutable = !EmptyParams(params);
   int next_state_index = states_.size();
@@ -332,7 +332,7 @@ bool QuantizeContext::StatesManager::SetConstantResultParams(Operation *op) {
 
 bool QuantizeContext::StatesManager::SetResultParams(Operation *op,
                                                      int res_index,
-                                                     QuantParams params) {
+                                                     TFL::QuantParams params) {
   auto &state = GetResultQuantState(op, res_index);
   if (state.params == params) {
     return false;
@@ -348,7 +348,7 @@ bool QuantizeContext::StatesManager::SetResultParams(Operation *op,
 }
 
 bool QuantizeContext::StatesManager::SetOperandParams(Operation *op, int index,
-                                                      QuantParams params) {
+                                                      TFL::QuantParams params) {
   auto &state = GetOperandQuantState(op, index);
   if (state.params == params) {
     return false;

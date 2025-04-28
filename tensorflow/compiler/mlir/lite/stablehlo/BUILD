@@ -207,7 +207,7 @@ cc_library(
     deps = [
         ":stablehlo_util",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
+        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",

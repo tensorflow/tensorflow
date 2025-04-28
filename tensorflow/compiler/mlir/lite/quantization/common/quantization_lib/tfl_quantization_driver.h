@@ -34,11 +34,14 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 
 namespace mlir {
 namespace TFL {
+// TODO(b/413355305): Remove temp namespace after TFL's 2 quantization_drivers
+// are merged.
+namespace temp {
 
 // The state for each op result during the quantization parameters propagation.
 struct QuantState {
@@ -104,14 +107,14 @@ class QuantizationDriver {
   // (op, result index) pair.
   using OpWithResultIndex = std::pair<Operation*, int>;
 
-  explicit QuantizationDriver(
-      func::FuncOp func_op, const bool is_signed, const int bit_width,
-      const bool disable_per_channel,
-      quant::OpQuantSpecGetter op_quant_spec_getter,
-      quant::OpQuantScaleSpecGetter op_quant_scale_spec_getter,
-      const bool infer_tensor_range,
-      const quant::QDQConversionMode qdq_conversion_mode,
-      const bool legacy_float_scale = false)
+  explicit QuantizationDriver(func::FuncOp func_op, const bool is_signed,
+                              const int bit_width,
+                              const bool disable_per_channel,
+                              OpQuantSpecGetter op_quant_spec_getter,
+                              OpQuantScaleSpecGetter op_quant_scale_spec_getter,
+                              const bool infer_tensor_range,
+                              const QDQConversionMode qdq_conversion_mode,
+                              const bool legacy_float_scale = false)
       : fn_(func_op),
         builder_(func_op.getBody()),
         is_signed_(is_signed),
@@ -192,8 +195,8 @@ class QuantizationDriver {
   bool IsWeight(Operation* cst) { return llvm::is_contained(weights_, cst); }
 
   // Returns all the related quantization constraints of the op.
-  std::unique_ptr<quant::OpQuantSpec> GetQuantSpec(Operation* op);
-  std::unique_ptr<quant::OpQuantScaleSpec> GetQuantScaleSpec(Operation* op);
+  std::unique_ptr<OpQuantSpec> GetQuantSpec(Operation* op);
+  std::unique_ptr<OpQuantScaleSpec> GetQuantScaleSpec(Operation* op);
 
   // Returns whether quantization parameters have been propagated to the results
   // of this op.
@@ -219,7 +222,7 @@ class QuantizationDriver {
   // parameters are calculated by `func`.
   QuantizedType GetBiasParams(Operation* op, int bias_index,
                               ArrayRef<int> non_bias_operand_indices,
-                              quant::AccumulatorScaleFunc func);
+                              AccumulatorScaleFunc func);
 
   // Sets the quantization parameters of the result to `quantized_type`. If
   // any quantization parameters have been propagated, a requantize will
@@ -344,8 +347,8 @@ class QuantizationDriver {
   // quantized ops for the arguments are deterministically ordered.
   SmallVector<BlockArgument, 4> args_;
 
-  quant::OpQuantSpecGetter op_quant_spec_getter_;
-  quant::OpQuantScaleSpecGetter op_quant_scale_spec_getter_;
+  OpQuantSpecGetter op_quant_spec_getter_;
+  OpQuantScaleSpecGetter op_quant_scale_spec_getter_;
 
   // Infer output ranges for activation ops and constants. This is usually
   // required for post-training quantization.
@@ -356,7 +359,7 @@ class QuantizationDriver {
   const bool legacy_float_scale_;
 
   // The type of qdq conversion.
-  const quant::QDQConversionMode qdq_conversion_mode_;
+  const QDQConversionMode qdq_conversion_mode_;
 };
 
 // Propagates quantization parameters across ops in this function and satisfies
@@ -368,18 +371,20 @@ class QuantizationDriver {
 // Setting `infer_tensor_range` to true, to infer quantization parameters from
 // the activation ops and weight constants. This is only used for post-training
 // quantization.
-void ApplyQuantizationParamsPropagation(
-    func::FuncOp func, bool is_signed, int bit_width, bool disable_per_channel,
-    quant::OpQuantSpecGetter op_quant_spec_getter, bool infer_tensor_ranges,
-    bool legacy_float_scale, quant::QDQConversionMode qdq_conversion_mode);
+void ApplyQuantizationParamsPropagation(func::FuncOp func, bool is_signed,
+                                        int bit_width, bool disable_per_channel,
+                                        OpQuantSpecGetter op_quant_spec_getter,
+                                        bool infer_tensor_ranges,
+                                        bool legacy_float_scale,
+                                        QDQConversionMode qdq_conversion_mode);
 
 void ApplyQuantizationParamsPropagation(
     func::FuncOp func, bool is_signed, int bit_width, bool disable_per_channel,
-    quant::OpQuantSpecGetter op_quant_spec_getter,
-    quant::OpQuantScaleSpecGetter op_quant_scale_spec_getter,
-    bool infer_tensor_ranges, bool legacy_float_scale,
-    quant::QDQConversionMode qdq_conversion_mode);
+    OpQuantSpecGetter op_quant_spec_getter,
+    OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
+    bool legacy_float_scale, QDQConversionMode qdq_conversion_mode);
 
+}  // namespace temp
 }  // namespace TFL
 }  // namespace mlir
 

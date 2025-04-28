@@ -57,13 +57,13 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
@@ -519,7 +519,7 @@ DenseElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
 }
 
 TypeAttr RescaleQtype(Type input, Attribute factor) {
-  return quant::RescaleQuantizedType(input, factor);
+  return RescaleQuantizedType(input, factor);
 }
 
 // Returns `true` if reducing `axes` in `input` with `keep_dims=true` results
@@ -1063,8 +1063,8 @@ struct Convert2DUpscalingToResizeNearestNeighor
   // - tfl.gather_nd -> tfl.transpose -> tfl.gather_nd -> tfl.transpose
   //   where ...
   //     - all tfl.gather_nd op instances take [0, 0, 1, 1, ..., n-1, n-1] as
-  //       the indices arugment,
-  //     - first tranpose op takes perm [2, 1, 0, 3], and
+  //       the indices argument,
+  //     - first transpose op takes perm [2, 1, 0, 3], and
   //     - second transpose op take perm [1, 2, 0, 3].
   //
   // Note the current pattern matching logic only handles when width == height.
@@ -1087,7 +1087,7 @@ struct Convert2DUpscalingToResizeNearestNeighor
       return failure();
     }
 
-    // The pattern matching allows arbitary channel dimension but it handles
+    // The pattern matching allows arbitrary channel dimension but it handles
     // only when height = width.
     if (params_type.getShape().size() != 4 ||
         indices_type.getShape().size() != 2)
@@ -1130,7 +1130,7 @@ struct Convert2DUpscalingToResizeNearestNeighor
       ++i;
     }
 
-    // Check whether first tranpose's perm has [2, 1, 0, 3].
+    // Check whether first transpose's perm has [2, 1, 0, 3].
     DenseIntElementsAttr perm;
     if (!matchPattern(transpose_first.getPerm(), m_Constant(&perm)))
       return failure();
@@ -1140,7 +1140,7 @@ struct Convert2DUpscalingToResizeNearestNeighor
     }
     if (axes != SmallVector<int64_t>({2, 1, 0, 3})) return failure();
 
-    // Check whether second tranpose's perm has [1, 2, 0, 3].
+    // Check whether second transpose's perm has [1, 2, 0, 3].
     if (!matchPattern(transpose_second.getPerm(), m_Constant(&perm)))
       return failure();
     axes.clear();

@@ -28,11 +28,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 //===----------------------------------------------------------------------===//
 // The Pass to add default quantization parameters for the activations which
@@ -41,8 +41,8 @@ limitations under the License.
 
 namespace mlir {
 namespace TFL {
-// Includs an auto-generated function, which can retrieve the quantization
-// specification for an TFL operation. The signature of the function is
+// Includes an auto-generated function, which can retrieve the quantization
+// specification for a TFL operation. The signature of the function is
 //   std::unique_pointer<OpQuantSpec> TFL::GetOpQuantSpec(Operation *)
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
 
@@ -87,21 +87,20 @@ class DefaultQuantParamsPass
 
   // Uses `quant_params` to quantize `value` and inserting a pair of
   // tfl.quantize and tfl.dequantize ops for this `value`.
-  void QuantizeValue(OpBuilder builder, Value value,
-                     quant::QuantParams quant_params);
+  void QuantizeValue(OpBuilder builder, Value value, QuantParams quant_params);
 
   // If the value hasn't been quantized, the functions adds it to `values`.
   void AddToWorkListIfUnquantized(Value value, std::vector<Value> *values);
 
   // Converts the default min/max to the default quantization parameters.
-  quant::QuantParams GetDefaultQuantParams(Builder builder);
+  QuantParams GetDefaultQuantParams(Builder builder);
 
   // Gets the quantization parameters for the bias of an operation by using the
   // quantization parameters from the non-biases operands.
-  quant::QuantParams GetQuantParamsForBias(Operation *op, int bias,
-                                           const std::vector<int> &non_biases,
-                                           quant::AccumulatorScaleFunc func);
-  quant::QuantParams default_quant_params_;
+  QuantParams GetQuantParamsForBias(Operation *op, int bias,
+                                    const std::vector<int> &non_biases,
+                                    AccumulatorScaleFunc func);
+  QuantParams default_quant_params_;
 };
 }  // namespace
 
@@ -123,7 +122,7 @@ void DefaultQuantParamsPass::runOnOperation() {
   }
 
   func.walk([&](Operation *op) {
-    if (!quant::IsOpQuantizable(op) || op->getParentOfType<TFL::CustomTfOp>()) {
+    if (!IsOpQuantizable(op) || op->getParentOfType<TFL::CustomTfOp>()) {
       return;
     }
 
@@ -137,7 +136,7 @@ void DefaultQuantParamsPass::runOnOperation() {
   });
 
   // Apply the default quantization parameters for these activation values.
-  quant::QuantParams default_params = GetDefaultQuantParams(builder);
+  QuantParams default_params = GetDefaultQuantParams(builder);
   for (Value value : activation_values) {
     QuantizeValue(builder, value, default_params);
   }
@@ -148,7 +147,7 @@ void DefaultQuantParamsPass::runOnOperation() {
     Operation *op = *bias.user_begin();
     auto spec = TFL::GetOpQuantSpec(op);
     for (auto &it : spec->biases_params) {
-      quant::QuantParams bias_params = GetQuantParamsForBias(
+      QuantParams bias_params = GetQuantParamsForBias(
           op, it.first, it.second.first, it.second.second);
       if (!bias_params) continue;
       QuantizeValue(builder, bias, bias_params);
@@ -177,7 +176,7 @@ void DefaultQuantParamsPass::AddToWorkListIfUnquantized(
 }
 
 void DefaultQuantParamsPass::QuantizeValue(OpBuilder builder, Value value,
-                                           quant::QuantParams quant_params) {
+                                           QuantParams quant_params) {
   Type expressed_type = value.getType();
   Type new_type = quant_params.castFromExpressedType(expressed_type);
   // This value isn't an expressed type (float), skip.
@@ -202,9 +201,9 @@ void DefaultQuantParamsPass::QuantizeValue(OpBuilder builder, Value value,
   quantize.getOperation()->replaceUsesOfWith(dequantize, value);
 }
 
-quant::QuantParams DefaultQuantParamsPass::GetQuantParamsForBias(
+QuantParams DefaultQuantParamsPass::GetQuantParamsForBias(
     Operation *op, int bias, const std::vector<int> &non_biases,
-    quant::AccumulatorScaleFunc func) {
+    AccumulatorScaleFunc func) {
   std::vector<quant::QuantizedType> non_bias_types;
   non_bias_types.reserve(non_biases.size());
   for (int non_bias : non_biases) {
@@ -226,8 +225,7 @@ quant::QuantParams DefaultQuantParamsPass::GetQuantParamsForBias(
               /*legacy_float_scale=*/false);
 }
 
-quant::QuantParams DefaultQuantParamsPass::GetDefaultQuantParams(
-    Builder builder) {
+QuantParams DefaultQuantParamsPass::GetDefaultQuantParams(Builder builder) {
   if (!default_quant_params_) {
     default_quant_params_ = quantfork::fakeQuantAttrsToType(
         builder.getUnknownLoc(),

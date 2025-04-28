@@ -23,14 +23,14 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 
 namespace mlir {
 namespace TFL {
 
 // A config that controls which passes get run as part TFLite converter.
 struct PassConfig {
-  explicit PassConfig(quant::QuantizationSpecs specs)
+  explicit PassConfig(QuantizationSpecs specs)
       : quant_specs(std::move(specs)) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
@@ -42,7 +42,7 @@ struct PassConfig {
   // The allowlist of functions that would be preserved after trimming.
   llvm::ArrayRef<std::string> trim_functions_allowlist;
   // All information about quantization.
-  quant::QuantizationSpecs quant_specs;
+  QuantizationSpecs quant_specs;
   // If `form_clusters` is true , clusters are formed by grouping consecutive
   // ops of the same device, under a `tf_device.launch` op.
   bool form_clusters = false;
@@ -90,8 +90,7 @@ struct PassConfig {
   bool reduce_type_precision = false;
   // Whether to consider this model a quantized model with quantize/dequantize
   // ops and to convert kernels to quantized kernels wherever appropriate.
-  quant::QDQConversionMode qdq_conversion_mode =
-      quant::QDQConversionMode::kQDQNone;
+  QDQConversionMode qdq_conversion_mode = QDQConversionMode::kQDQNone;
 
   // When set to true, StableHLO Quantizer is run. The full configuration for
   // the quantizer is at `ConverterFlags::quantization_config`.

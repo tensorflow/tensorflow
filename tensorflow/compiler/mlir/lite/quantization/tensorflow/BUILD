@@ -55,8 +55,8 @@ cc_library(
     deps = [
         ":ptq_fallback_to_flex_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/core:protos_all_cc",

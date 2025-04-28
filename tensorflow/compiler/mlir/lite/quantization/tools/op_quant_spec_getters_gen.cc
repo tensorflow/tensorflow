@@ -53,7 +53,7 @@ static bool OpQuantSpecWriter(raw_ostream &os, const RecordKeeper &records) {
   std::vector<const Record *> defs = records.getAllDerivedDefinitions("Op");
   llvm::sort(defs, LessRecord());
 
-  OUT(0) << "static std::unique_ptr<quant::OpQuantSpec> "
+  OUT(0) << "static std::unique_ptr<OpQuantSpec> "
             "GetOpQuantSpec(mlir::Operation *op, bool "
             "disable_per_channel_for_dense_layers = false) {\n";
   // TODO(b/176258587): Move to OpTrait if this should be generalized.
@@ -66,15 +66,14 @@ static bool OpQuantSpecWriter(raw_ostream &os, const RecordKeeper &records) {
             "GetLstmOpQuantSpec<TFL::UnidirectionalSequenceLSTMOp>(lstm_op);\n";
   OUT(2) << "}\n";
 
-  OUT(2) << "auto spec = std::make_unique<quant::OpQuantSpec>();\n";
+  OUT(2) << "auto spec = std::make_unique<OpQuantSpec>();\n";
   llvm::SmallVector<llvm::StringRef, 3> matches;
   for (auto *def : defs) {
     Operator op(def);
     for (const auto t : op.getTraits()) {
       if (auto opTrait = llvm::dyn_cast<mlir::tblgen::NativeTrait>(&t)) {
         auto trait_str = opTrait->getFullyQualifiedTraitName();
-        if (!llvm::StringRef{trait_str}.consume_front(
-                "::mlir::OpTrait::quant::"))
+        if (!llvm::StringRef{trait_str}.consume_front("::mlir::OpTrait::TFL::"))
           continue;
 
         OUT(2) << "if (auto tfl = llvm::dyn_cast<" << op.getQualCppClassName()
@@ -84,7 +83,7 @@ static bool OpQuantSpecWriter(raw_ostream &os, const RecordKeeper &records) {
           OUT(4) << "for (int i = 0, e = op->getNumResults(); i != e; ++i)\n";
           OUT(6) << "spec->restricted_output_params[std::make_pair("
                  << matches[1] << ", " << matches[2]
-                 << ")].push_back(tfl.::mlir::OpTrait::quant::" << trait_str
+                 << ")].push_back(tfl.::mlir::OpTrait::TFL::" << trait_str
                  << "<" << op.getQualCppClassName()
                  << ">::GetResultQuantizedType(i));\n";
           matches.clear();
@@ -93,7 +92,7 @@ static bool OpQuantSpecWriter(raw_ostream &os, const RecordKeeper &records) {
         if (acc_uniform_trait_regex.match(trait_str, &matches)) {
           OUT(4) << "spec->biases_params.emplace(std::make_pair(" << matches[1]
                  << ", std::make_pair(tfl.GetAllNonBiasOperands(),"
-                 << "quant::GetUniformQuantizedTypeForBias)));\n";
+                 << "GetUniformQuantizedTypeForBias)));\n";
           matches.clear();
         }
         // There is a "QuantChannelDim" trait, set the quantization dimension.
