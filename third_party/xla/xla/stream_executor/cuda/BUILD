@@ -4,6 +4,7 @@ load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
 )
+load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -1045,7 +1046,7 @@ cc_library(
         "//xla/tsl/cuda:cusolver",
         "//xla/tsl/cuda:cusparse",
         "//xla/tsl/cuda:tensorrt_rpath",
-    ],
+    ] + [":cub_sort_kernel_cuda_" + suffix for suffix in get_cub_sort_kernel_types()],
     alwayslink = 1,
 )
 
@@ -1989,3 +1990,53 @@ cuda_library(
     ],
     alwayslink = 1,
 )
+
+# NVCC from CUDA 12.4 and below doesn't get along with Abseil which gets
+# transitively included via the XLA FFI headers. That's why we split
+# the logic into 2 targets - the `*_impl_*` target which contains the CUDA
+# C++ code and the non-impl target which contains the FFI handle registration.
+# This can be merged into a single compilation unit when we don't care about
+# compiling with NVCC below version 12.4.1 anymore.
+[cuda_library(
+    name = "cub_sort_kernel_cuda_impl_{}".format(typename),
+    srcs = [
+        "cub_sort_kernel_cuda.h",
+        "cub_sort_kernel_cuda_impl.cu.cc",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    local_defines = ["CUB_TYPE_" + typename.upper()],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "//xla/stream_executor/cuda:cuda_status",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@local_config_cuda//cuda:cub_headers",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+) for typename in get_cub_sort_kernel_types()]
+
+[cc_library(
+    name = "cub_sort_kernel_cuda_{}".format(typename),
+    srcs = [
+        "cub_sort_kernel_cuda.cc",
+        "cub_sort_kernel_cuda.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    local_defines = ["CUB_TYPE_" + typename.upper()],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cub_sort_kernel_cuda_impl_{}".format(typename),
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+    alwayslink = 1,
+) for typename in get_cub_sort_kernel_types()]

@@ -6,6 +6,7 @@ load(
     "rocm_library",
 )
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -828,7 +829,7 @@ cc_library(
         ":rocblas_plugin",
         ":rocm_helpers",
         ":rocm_platform",
-    ],
+    ] + [":cub_sort_kernel_rocm_" + suffix for suffix in get_cub_sort_kernel_types()],
     alwayslink = 1,
 )
 
@@ -1159,3 +1160,25 @@ rocm_library(
     ],
     alwayslink = 1,
 )
+
+[rocm_library(
+    name = "cub_sort_kernel_rocm_{}".format(typename),
+    srcs = ["cub_sort_kernel_rocm.cu.cc"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    local_defines = ["CUB_TYPE_" + typename.upper()],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/stream_executor/rocm:rocm_status",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@eigen_archive//:eigen3",
+        "@local_config_rocm//rocm:rocprim",
+        "@local_tsl//tsl/platform:bfloat16",
+    ],
+    alwayslink = 1,
+) for typename in get_cub_sort_kernel_types()]

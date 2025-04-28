@@ -13,57 +13,44 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/cub_sort_kernel.h"
-
 #include <cstddef>
-#include <cstdint>
 
-#include "xla/service/gpu/gpu_prim.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
+#include "cub/device/device_radix_sort.cuh"
+#include "cub/device/device_segmented_radix_sort.cuh"
+#include "absl/status/status.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_fp16.h"
+#include "xla/stream_executor/cuda/cub_sort_kernel_cuda.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
 
-namespace xla {
-namespace gpu {
-namespace {
-
-#if GOOGLE_CUDA
-#define CHK_GPU_ERR(err)            \
-  if (err != cudaSuccess) {         \
-    return cudaGetErrorString(err); \
-  }
-#elif TENSORFLOW_USE_ROCM
-#define CHK_GPU_ERR(err)           \
-  if (err != hipSuccess) {         \
-    return hipGetErrorString(err); \
-  }
-#endif
+namespace stream_executor {
+namespace cuda {
 
 template <typename KeyT>
-const char* CubSortKeys(
-    void* d_temp_storage, size_t& temp_bytes, const void* d_keys_in,
-    void* d_keys_out, size_t num_items, bool descending,
-    stream_executor::gpu::GpuStreamHandle gpu_stream_handle) {
+absl::Status CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
+                         const void* d_keys_in, void* d_keys_out,
+                         size_t num_items, bool descending, CUstream stream) {
   auto err =
       descending
-          ? gpuprim::DeviceRadixSort::SortKeysDescending<KeyT>(
+          ? cub::DeviceRadixSort::SortKeysDescending<KeyT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out), num_items, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, gpu_stream_handle)
-          : gpuprim::DeviceRadixSort::SortKeys<KeyT>(
+                /*end_bit=*/sizeof(KeyT) * 8, stream)
+          : cub::DeviceRadixSort::SortKeys<KeyT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out), num_items, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, gpu_stream_handle);
-  CHK_GPU_ERR(err)
-  return nullptr;
+                /*end_bit=*/sizeof(KeyT) * 8, stream);
+  return ToStatus(err);
 }
 
 template <typename KeyT>
-const char* CubSortKeys(
-    void* d_temp_storage, size_t& temp_bytes, const void* d_keys_in,
-    void* d_keys_out, size_t num_items, bool descending, size_t batch_size,
-    stream_executor::gpu::GpuStreamHandle gpu_stream_handle) {
+absl::Status CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
+                         const void* d_keys_in, void* d_keys_out,
+                         size_t num_items, bool descending, size_t batch_size,
+                         CUstream stream) {
   if (batch_size == 1) {
     return CubSortKeys<KeyT>(d_temp_storage, temp_bytes, d_keys_in, d_keys_out,
-                             num_items, descending, gpu_stream_handle);
+                             num_items, descending, stream);
   }
   void* d_offsets = static_cast<char*>(d_temp_storage) + temp_bytes;
   int* start_offsets =
@@ -71,53 +58,51 @@ const char* CubSortKeys(
   int* end_offsets = start_offsets != nullptr ? start_offsets + 1 : nullptr;
   auto err =
       descending
-          ? gpuprim::DeviceSegmentedRadixSort::SortKeysDescending<KeyT>(
+          ? cub::DeviceSegmentedRadixSort::SortKeysDescending<KeyT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out), num_items, batch_size,
                 start_offsets, end_offsets, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, gpu_stream_handle)
-          : gpuprim::DeviceSegmentedRadixSort::SortKeys<KeyT>(
+                /*end_bit=*/sizeof(KeyT) * 8, stream)
+          : cub::DeviceSegmentedRadixSort::SortKeys<KeyT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out), num_items, batch_size,
                 start_offsets, end_offsets, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, gpu_stream_handle);
-  CHK_GPU_ERR(err) return nullptr;
+                /*end_bit=*/sizeof(KeyT) * 8, stream);
+  return ToStatus(err);
 }
 
 template <typename KeyT, typename ValT>
-const char* CubSortPairs(
-    void* d_temp_storage, size_t& temp_bytes, const void* d_keys_in,
-    void* d_keys_out, const void* d_values_in, void* d_values_out,
-    size_t num_items, bool descending,
-    stream_executor::gpu::GpuStreamHandle gpu_stream_handle) {
+absl::Status CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
+                          const void* d_keys_in, void* d_keys_out,
+                          const void* d_values_in, void* d_values_out,
+                          size_t num_items, bool descending, CUstream stream) {
   auto err =
       descending
-          ? gpuprim::DeviceRadixSort::SortPairsDescending<KeyT, ValT>(
+          ? cub::DeviceRadixSort::SortPairsDescending<KeyT, ValT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out),
                 static_cast<const ValT*>(d_values_in),
                 static_cast<ValT*>(d_values_out), num_items, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, gpu_stream_handle)
-          : gpuprim::DeviceRadixSort::SortPairs<KeyT, ValT>(
+                /*end_bit=*/sizeof(KeyT) * 8, stream)
+          : cub::DeviceRadixSort::SortPairs<KeyT, ValT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out),
                 static_cast<const ValT*>(d_values_in),
                 static_cast<ValT*>(d_values_out), num_items, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, gpu_stream_handle);
-  CHK_GPU_ERR(err)
-  return nullptr;
+                /*end_bit=*/sizeof(KeyT) * 8, stream);
+  return stream_executor::cuda::ToStatus(err);
 }
 
 template <typename KeyT, typename ValT>
-const char* CubSortPairs(
-    void* d_temp_storage, size_t& temp_bytes, const void* d_keys_in,
-    void* d_keys_out, const void* d_values_in, void* d_values_out,
-    size_t num_items, bool descending, size_t batch_size,
-    stream_executor::gpu::GpuStreamHandle gpu_stream_handle) {
+absl::Status CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
+                          const void* d_keys_in, void* d_keys_out,
+                          const void* d_values_in, void* d_values_out,
+                          size_t num_items, bool descending, size_t batch_size,
+                          CUstream stream) {
   if (batch_size == 1) {
     return CubSortPairs<KeyT, ValT>(d_temp_storage, temp_bytes, d_keys_in,
                                     d_keys_out, d_values_in, d_values_out,
-                                    num_items, descending, gpu_stream_handle);
+                                    num_items, descending, stream);
   }
   void* d_offsets = static_cast<char*>(d_temp_storage) + temp_bytes;
   int* start_offsets =
@@ -125,54 +110,35 @@ const char* CubSortPairs(
   int* end_offsets = start_offsets != nullptr ? start_offsets + 1 : nullptr;
   auto err =
       descending
-          ? gpuprim::DeviceSegmentedRadixSort::SortPairsDescending<KeyT, ValT>(
+          ? cub::DeviceSegmentedRadixSort::SortPairsDescending<KeyT, ValT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out),
                 static_cast<const ValT*>(d_values_in),
                 static_cast<ValT*>(d_values_out), num_items, batch_size,
                 start_offsets, end_offsets, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, gpu_stream_handle)
-          : gpuprim::DeviceSegmentedRadixSort::SortPairs<KeyT, ValT>(
+                /*end_bit=*/sizeof(KeyT) * 8, stream)
+          : cub::DeviceSegmentedRadixSort::SortPairs<KeyT, ValT>(
                 d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
                 static_cast<KeyT*>(d_keys_out),
                 static_cast<const ValT*>(d_values_in),
                 static_cast<ValT*>(d_values_out), num_items, batch_size,
                 start_offsets, end_offsets, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, gpu_stream_handle);
-  CHK_GPU_ERR(err)
-  return nullptr;
+                /*end_bit=*/sizeof(KeyT) * 8, stream);
+  return stream_executor::cuda::ToStatus(err);
 }
 
-}  // namespace
-
 #define XLA_CUB_DEFINE_SORT_KEYS(suffix, type)                                \
-  const char* CubSortKeys_##suffix(                                           \
-      void* d_temp_storage, size_t& temp_bytes, const void* d_keys_in,        \
-      void* d_keys_out, size_t num_items, bool descending, size_t batch_size, \
-      stream_executor::gpu::GpuStreamHandle gpu_stream_handle) {              \
-    return CubSortKeys<type>(d_temp_storage, temp_bytes, d_keys_in,           \
-                             d_keys_out, num_items, descending, batch_size,   \
-                             gpu_stream_handle);                              \
-  }
+  template absl::Status CubSortKeys<type>(void*, size_t&, const void*, void*, \
+                                          size_t, bool, size_t, CUstream);
 
-#define XLA_CUB_DEFINE_SORT_PAIRS(suffix, type1, type2)                      \
-  const char* CubSortPairs_##suffix(                                         \
-      void* d_temp_storage, size_t& temp_bytes, const void* d_keys_in,       \
-      void* d_keys_out, const void* d_values_in, void* d_values_out,         \
-      size_t num_items, bool descending, size_t batch_size,                  \
-      stream_executor::gpu::GpuStreamHandle gpu_stream_handle) {             \
-    return CubSortPairs<type1, type2>(                                       \
-        d_temp_storage, temp_bytes, d_keys_in, d_keys_out, d_values_in,      \
-        d_values_out, num_items, descending, batch_size, gpu_stream_handle); \
-  }
+#define XLA_CUB_DEFINE_SORT_PAIRS(suffix, type1, type2)                     \
+  template absl::Status CubSortPairs<type1, type2>(                         \
+      void*, size_t&, const void*, void*, const void*, void*, size_t, bool, \
+      size_t, CUstream);
 
 // Floating point types.
 #ifdef CUB_TYPE_BF16
-#if GOOGLE_CUDA
 XLA_CUB_DEFINE_SORT_KEYS(bf16, __nv_bfloat16)
-#elif TENSORFLOW_USE_ROCM
-XLA_CUB_DEFINE_SORT_KEYS(bf16, hip_bfloat16)
-#endif
 #endif
 #ifdef CUB_TYPE_F16
 XLA_CUB_DEFINE_SORT_KEYS(f16, __half)
@@ -265,5 +231,5 @@ XLA_CUB_DEFINE_SORT_PAIRS(u64_b32, uint64_t, uint32_t)
 XLA_CUB_DEFINE_SORT_PAIRS(u64_b64, uint64_t, uint64_t)
 #endif
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace cuda
+}  // namespace stream_executor
