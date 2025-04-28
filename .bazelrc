@@ -738,6 +738,7 @@ build:release_macos_x86 --config=release_macos_base
 # Build with the AVX instruction set when on macOS x86
 build:release_macos_x86 --config=avx_linux
 build:release_macos_x86 --cpu=darwin
+build:release_macos_x86 --platforms=@build_bazel_apple_support//configs/platforms:darwin_x86_64
 # Target Catalina as the minimum compatible OS version
 build:release_macos_x86 --macos_minimum_os=10.15
 build:release_macos_x86 --action_env MACOSX_DEPLOYMENT_TARGET=10.15
@@ -745,6 +746,7 @@ build:release_macos_x86 --action_env MACOSX_DEPLOYMENT_TARGET=10.15
 # Build configs for macOS Arm64
 build:release_macos_arm64 --config=release_macos_base
 build:release_macos_arm64 --cpu=darwin_arm64
+build:release_macos_arm64 --platforms=@build_bazel_apple_support//configs/platforms:darwin_arm64
 build:release_macos_arm64 --define=tensorflow_mkldnn_contraction_kernel=0
 # Target Moneterey as the minimum compatible OS version
 build:release_macos_arm64 --macos_minimum_os=12.0
