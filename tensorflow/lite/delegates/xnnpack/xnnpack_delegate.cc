@@ -163,29 +163,38 @@ bool CheckFp32Scale(TfLiteContext* context, const TfLiteTensor& tensor, int t,
   return true;
 }
 
-xnn_datatype CheckPerTensorQuantization(
+template <typename T>
+bool CheckZeroPointForPerTensorQuantization(
     TfLiteContext* context, const TfLiteTensor& tensor, int t,
-    const TfLiteFloatArray* quantization_scale,
-    const TfLiteIntArray* quantization_zero_point) {
-  // Per-tensor quantization parameters
-  if (kTfLiteInt8 != tensor.type) {
+    const TfLiteIntArray& quantization_zero_point) {
+  // The single zero point must be within the min-max range of the tensor type.
+  const int zero_point = quantization_zero_point.data[0];
+  if (zero_point < std::numeric_limits<T>::min() ||
+      zero_point > std::numeric_limits<T>::max()) {
     TF_LITE_KERNEL_LOG(context,
-                       "unsupported per-tensor quantization scale "
-                       "parameter for %s tensor %d in XNNPACK delegate",
-                       TfLiteTypeGetName(tensor.type), t);
-    return xnn_datatype_invalid;
+                       "unsupported zero-point value (%d) for %s tensor "
+                       "%d in XNNPACK delegate",
+                       zero_point, TfLiteTypeGetName(tensor.type), t);
+    return false;
   }
+  return true;
+}
 
-  const int zero_point = quantization_zero_point->data[0];
-  if (zero_point < std::numeric_limits<int8_t>::min() ||
-      zero_point > std::numeric_limits<int8_t>::max()) {
-    TF_LITE_KERNEL_LOG(context,
-                       "unsupported zero-point value (%d) for INT8 "
-                       "tensor %d in XNNPACK delegate",
-                       zero_point, t);
-    return xnn_datatype_invalid;
+bool CheckZeroPointForPerChannelQuantization(
+    TfLiteContext* context, const TfLiteTensor& tensor, int t,
+    const TfLiteIntArray& quantization_zero_point) {
+  // All zero points must be 0, except for INT4 tensors where it can also be 8.
+  for (int c = 0; c < quantization_zero_point.size; c++) {
+    const int zero_point = quantization_zero_point.data[c];
+    if (zero_point != 0 && (tensor.type != kTfLiteInt4 && zero_point != 8)) {
+      TF_LITE_KERNEL_LOG(context,
+                         "unsupported zero-point value (%d) in channel %d of "
+                         "%s tensor %d in XNNPACK delegate",
+                         zero_point, c, TfLiteTypeGetName(tensor.type), t);
+      return false;
+    }
   }
-  return xnn_datatype_qint8;
+  return true;
 }
 
 xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
@@ -245,17 +254,10 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
                            scale, t);
         return xnn_datatype_invalid;
       }
-
-      const int zero_point = quantization_params->zero_point->data[0];
-      if (zero_point < std::numeric_limits<uint8_t>::min() ||
-          zero_point > std::numeric_limits<uint8_t>::max()) {
-        TF_LITE_KERNEL_LOG(context,
-                           "unsupported zero-point value (%d) for UINT8 tensor "
-                           "%d in XNNPACK delegate",
-                           zero_point, t);
+      if (!CheckZeroPointForPerTensorQuantization<uint8_t>(
+              context, tensor, t, *(quantization_params->zero_point))) {
         return xnn_datatype_invalid;
       }
-
       return xnn_datatype_quint8;
     }
     case kTfLiteInt8:
@@ -272,9 +274,20 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
             return xnn_datatype_invalid;
           }
           if (quantization_scale->size == 1) {
-            return CheckPerTensorQuantization(context, tensor, t,
-                                              quantization_scale,
-                                              quantization_zero_point);
+            // Per-tensor quantization
+            if (kTfLiteInt8 != tensor.type) {
+              TF_LITE_KERNEL_LOG(
+                  context,
+                  "unsupported per-tensor quantization scale "
+                  "parameter for %s tensor %d in XNNPACK delegate",
+                  TfLiteTypeGetName(tensor.type), t);
+              return xnn_datatype_invalid;
+            }
+            if (!CheckZeroPointForPerTensorQuantization<int8_t>(
+                    context, tensor, t, *quantization_zero_point)) {
+              return xnn_datatype_invalid;
+            }
+            return xnn_datatype_qint8;
           }
           if (!CheckZeroPoint(context, tensor, t, quantization_zero_point)) {
             return xnn_datatype_invalid;
@@ -283,21 +296,10 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
               quantization_scale->size ==
                   SizeOfDimension(&tensor,
                                   quantization_params->quantized_dimension)) {
-            // Per-channel quantization parameters
-            for (int c = 0;
-                 c < SizeOfDimension(&tensor,
-                                     quantization_params->quantized_dimension);
-                 c++) {
-              if (quantization_params->zero_point->data[c] != 0 &&
-                  (tensor.type != kTfLiteInt4 &&
-                   quantization_params->zero_point->data[c] != 8)) {
-                TF_LITE_KERNEL_LOG(context,
-                                   "unsupported zero-point value %d in channel "
-                                   "%d of %s tensor %d in XNNPACK delegate",
-                                   quantization_params->zero_point->data[c], c,
-                                   TfLiteTypeGetName(tensor.type), t);
-                return xnn_datatype_invalid;
-              }
+            // Per-channel quantization
+            if (!CheckZeroPointForPerChannelQuantization(
+                    context, tensor, t, *(quantization_params->zero_point))) {
+              return xnn_datatype_invalid;
             }
           } else {
             TF_LITE_KERNEL_LOG(
@@ -402,29 +404,19 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
                            quantization_params->quantized_dimension, t);
         return xnn_datatype_invalid;
       }
+      // Note, for INT32 tensors, the zero-point values for per-tensor
+      // quantization follow the stricter per-channel quantization requirements.
+      if (!CheckZeroPointForPerChannelQuantization(
+              context, tensor, t, *(quantization_params->zero_point))) {
+        return xnn_datatype_invalid;
+      }
       if (quantization_params->scale->size == 1) {
-        // Per-tensor quantization parameters
-        if (quantization_params->zero_point->data[0] != 0) {
-          TF_LITE_KERNEL_LOG(context,
-                             "unsupported zero-point value %d for INT32 "
-                             "tensor %d in XNNPACK delegate",
-                             quantization_params->zero_point->data[0], t);
-          return xnn_datatype_invalid;
-        }
+        // Per-tensor quantization
         return xnn_datatype_qint32;
       } else if (NumDimensions(&tensor) >= 1 &&
                  quantization_params->scale->size ==
                      SizeOfDimension(&tensor, 0)) {
-        // Per-channel quantization parameters
-        for (int c = 0; c < SizeOfDimension(&tensor, 0); c++) {
-          if (quantization_params->zero_point->data[c] != 0) {
-            TF_LITE_KERNEL_LOG(context,
-                               "unsupported zero-point value %d in channel "
-                               "%d of INT32 tensor %d in XNNPACK delegate",
-                               quantization_params->zero_point->data[c], c, t);
-            return xnn_datatype_invalid;
-          }
-        }
+        // Per-channel quantization
         return xnn_datatype_qcint32;
       } else {
         TF_LITE_KERNEL_LOG(
