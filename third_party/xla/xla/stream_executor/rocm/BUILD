@@ -3,6 +3,7 @@
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_hipblaslt",
+    "if_rocm_miopen_beta_api_supported",
     "rocm_library",
 )
 load("//xla:xla.default.bzl", "xla_cc_test")
@@ -496,6 +497,7 @@ cc_library(
         # setting of template depth 256
         "-ftemplate-depth-512",
     ],
+    local_defines = if_rocm_miopen_beta_api_supported(["MIOPEN_BETA_API=1"]),
     tags = [
         "gpu",
         "rocm-only",

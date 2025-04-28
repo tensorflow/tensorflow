@@ -73,6 +73,11 @@ def is_rocm_configured():
 def rocm_hipblaslt():
     return %{rocm_is_configured} and %{rocm_hipblaslt}
 
+def if_rocm_miopen_beta_api_supported(x):
+    if %{rocm_is_configured} and %{rocm_version_number} >= 60300:
+      return select({"//conditions:default": x})
+    return select({"//conditions:default": []})
+
 def if_rocm_hipblaslt(x):
     if %{rocm_is_configured} and (%{rocm_hipblaslt} == "True"):
       return select({"//conditions:default": x})
