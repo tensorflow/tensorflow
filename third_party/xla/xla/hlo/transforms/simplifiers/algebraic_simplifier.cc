@@ -7905,8 +7905,6 @@ absl::Status AlgebraicSimplifierVisitor::MergeReduces(
   absl::c_sort(reduce_dims);
   // Transform reduce_dims to the same rank as the operand of the operand.
   // TODO(b/411670134): No need to iterate as the vectors are sorted.
-  VLOG(0) << "arg_dims: " << arg_dims.size()
-          << ", reduce_dims: " << reduce_dims.size();
   for (int64_t arg_dim : arg_dims) {
     for (int64_t& dim : reduce_dims) {
       if (dim >= arg_dim) {
