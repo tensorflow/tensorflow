@@ -3318,6 +3318,15 @@ TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutions) {
                                               {square, &square_literal}}));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({11, 22, 33, 44}), result));
+
+  // Evaluate again, with a different substitution. This verifies we don't
+  // accidentally cache anything.
+  Literal param0_literal2 = LiteralUtil::CreateR1<float>({5, 6, 7, 8});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result2,
+      evaluator.Evaluate(add, {}, true, {{param0, &param0_literal2}}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({30, 42, 56, 72}), result2));
 }
 
 TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsRecursive) {
@@ -4461,6 +4470,31 @@ ENTRY main {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, Reduction2D) {
+  const std::string hlo_text = R"(
+HloModule Reduction2D
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  arg0 = f32[2,4] parameter(0)
+  init = f32[] constant(0)
+  ROOT %reduce = f32[2] reduce(arg0, init), dimensions={1}, to_apply=add_f32
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal arg = LiteralUtil::CreateR2<float>(
+      {{1.0f, 3.0f, -2.0f, 42.0f}, {4.0f, 5.0f, 6.0f, 7.0f}});
+  Literal expected = LiteralUtil::CreateR1<float>({44.0f, 22.0f});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&arg}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_F(HloEvaluatorTest, DontFailOnCallUnimplementedOps) {
   // Outfeed triggers unimplemented error within HandleCall, and we verify that
   // the Evaluator does fail in such case.
@@ -4794,6 +4828,44 @@ TEST_F(HloEvaluatorTest, PreserveMOFusionOutputLayout) {
       absl::c_equal(args[0].data<float>(), actual_literals[0].data<float>()));
 }
 
+TEST_F(HloEvaluatorTest, ConvolutionWithNestedFusionWithoutLayout) {
+  // This is a regression test for a case where missing layouts weren't handled
+  // correctly
+  const absl::string_view hlo_text = R"(
+    copy_fusion {
+      p0 = f32[16,4] parameter(0)
+      ROOT copy = f32[16,4] copy(p0)
+    }
+
+    conv_fusion {
+      p0 = f32[8,16] parameter(0)
+      p1 = f32[16,4] parameter(1)
+      p1_copy = f32[16,4] fusion(p1), kind=kLoop, calls=copy_fusion
+      ROOT conv = f32[8,4] convolution(p0, p1_copy), dim_labels=bf_io->bf
+    }
+
+    ENTRY main {
+      p0 = f32[8,16] parameter(0)
+      p1 = f32[16,4] parameter(1)
+      ROOT fusion.2 = f32[8,4] fusion(p0, p1), kind=kOutput, calls=conv_fusion
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  // Layout assignment would clear the layout on the copy fusion. We do it
+  // manually to avoid the dependency.
+  auto* conv_fusion = m_->GetComputationWithName("conv_fusion");
+  auto* p1_copy = conv_fusion->GetInstructionWithName("p1_copy");
+  p1_copy->mutable_shape()->clear_layout();
+
+  auto args = MakeFakeArguments(m_.get()).value();
+  absl::Status evaluate_status = Evaluate({&args[0], &args[1]}).status();
+  // Just verify this executes correctly. We are testing for issues around the
+  // handling of missing layouts here, which will cause the entire evaluation
+  // to fail.
+  EXPECT_IS_OK(evaluate_status);
+}
+
 // Tests that custom_calls fail to evaluate when no handler is specified.
 TEST_F(HloEvaluatorTest, EvaluateCustomCall_NoHandler) {
   const absl::string_view hlo_text = R"(
@@ -4988,6 +5060,23 @@ TEST_F(HloEvaluatorTest, AsyncOps) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   Literal expected = LiteralUtil::CreateR0<float>(-42.0f);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, AsyncOpsWithLayout) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+  ENTRY AsyncOps {
+    init = f32[2,2]{0,1} constant({{1.0, 2.0}, {3.0, 4.0}})
+    async-start = ((f32[2,2]{0,1}), f32[2,2]{0,1}, u32[]) negate-start(init)
+    async-update = ((f32[2,2]{0,1}), f32[2,2]{0,1}, u32[]) negate-update(async-start)
+    ROOT async-done = f32[2,2]{0,1} negate-done(async-update)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR2<float>({{-1.0, -2.0}, {-3.0, -4.0}});
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
@@ -6207,6 +6296,41 @@ TEST_F(HloEvaluatorTest, SimpleConvTraced) {
   };
 
   EXPECT_EQ(macs_traced, macs_expected);
+}
+
+TEST_F(HloEvaluatorTest, Simple4x4Conv2DWith2x2KernelNoOutputLayout) {
+  const char* hlo_text = R"(
+    ENTRY main {
+      lhs = f32[1,1,4,4] constant(
+          {{{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}, {13, 14, 15, 16}}}})
+      rhs = f32[1,1,2,2] constant({{{{5, 6}, {7, 8}}}})
+      ROOT conv = f32[1,1,4,4] convolution(lhs, rhs),
+          window={size=2x2 pad=0_1x0_1}, dim_labels=bf01_oi01->bf01
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  // Explicitly clear the layout, like it would be done by LayoutAssignment if
+  // the convolution was in a fusion.
+  m_->entry_computation()->root_instruction()->mutable_shape()->clear_layout();
+
+  // The multiply-accumulate handler computes a linear index, which requires a
+  // layout.
+  evaluator_.set_trace_mac_handler([](int64_t result_index, int64_t lhs_index,
+                                      int64_t rhs_index) -> void {});
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  Array4D<float> expected_array(1, 1, 4, 4);
+  // clang-format off
+  expected_array.FillWithYX(Array2D<float>({
+    {100, 126, 152,  76},
+    {204, 230, 256, 124},
+    {308, 334, 360, 172},
+    {149, 160, 171,  80},
+  }));
+  // clang-format on
+  auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST(EvalErrorTest, OK) {
