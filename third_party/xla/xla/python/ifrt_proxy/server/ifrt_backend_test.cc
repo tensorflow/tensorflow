@@ -262,6 +262,12 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
       mock_devices_.push_back(std::move(mock_device));
     }
 
+    xla::DeviceAssignment device_assignment(1, 1);
+    device_assignment(0, 0) = mock_devices_[0]->Id().value();
+    ON_CALL(*mock_client, GetDefaultDeviceAssignment(_, _))
+        .WillByDefault(Return(device_assignment));
+    ON_CALL(*mock_client, addressable_devices())
+        .WillByDefault(Return(raw_device_ptrs));
     ON_CALL(*mock_client, devices()).WillByDefault(Return(raw_device_ptrs));
     ON_CALL(*mock_client, GetAllDevices())
         .WillByDefault(Return(raw_device_ptrs));

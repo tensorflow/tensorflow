@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/program.h"
@@ -97,7 +99,8 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
   return PjRtLoadedExecutable::Create(
       client_, xla_program->mlir_module,
       std::move(xla_compile_options->compile_options),
-      std::move(xla_compile_options->loaded_host_callbacks));
+      std::move(xla_compile_options->loaded_host_callbacks),
+      std::move(xla_compile_options->devices));
 }
 
 absl::StatusOr<std::unique_ptr<Executable>> PjRtCompiler::Compile(
@@ -139,11 +142,22 @@ PjRtCompiler::DeserializeLoadedExecutable(
       client_->pjrt_client()->LoadSerializedExecutable(
           serialized, std::move(xla_deserialize_options->compile_options),
           xla::LoadOptions()));
+  // TODO(emilyaf): Remove the else branch once devices are plumbed through from
+  // Australis and are always present in the DeserializeExecutableOptions.
+  DeviceListRef device_list;
+  if (xla_deserialize_options->devices.has_value()) {
+    device_list = std::move(xla_deserialize_options->devices.value());
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        device_list, GetDeviceListFromDeviceAssignment(
+                         client_, pjrt_loaded_executable->device_assignment()));
+  }
   return PjRtLoadedExecutable::Create(
       client_,
       std::shared_ptr<xla::PjRtLoadedExecutable>(
           std::move(pjrt_loaded_executable)),
-      std::move(xla_deserialize_options->loaded_host_callbacks));
+      std::move(xla_deserialize_options->loaded_host_callbacks),
+      std::move(device_list));
 }
 
 }  // namespace ifrt

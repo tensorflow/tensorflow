@@ -28,8 +28,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -67,8 +69,12 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
   for (const auto& [key, value] : proto.compile_option_overrides()) {
     TF_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
                         xla::CompileOptions::FromProto(value));
+    // TODO(emilyaf): XlaCompileOptions should be built with the correct
+    // devices. Pass `ifrt::Client*` to `IfrtIRCompileOptions::FromProto` and
+    // look up the IFRT devices corresponding to `device_ids`.
+    DeviceListRef devices = BasicDeviceList::Create({});
     compile_options_overrides->insert(
-        {key, std::make_unique<XlaCompileOptions>(compile_options)});
+        {key, std::make_unique<XlaCompileOptions>(compile_options, devices)});
   }
   return std::make_unique<IfrtIRCompileOptions>(
       std::move(device_ids),
