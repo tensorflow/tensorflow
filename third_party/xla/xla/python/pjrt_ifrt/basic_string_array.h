@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/strings/cord.h"
 #include "absl/synchronization/mutex.h"
@@ -105,7 +104,8 @@ class BasicStringArray final
     return sharding_;
   }
 
-  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override;
+  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout()
+      const override;
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(

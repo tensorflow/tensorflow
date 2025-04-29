@@ -82,8 +82,8 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(const Sharding&, sharding, (), (const, final));
   MOCK_METHOD(absl_nonnull std::shared_ptr<const Sharding>, shared_ptr_sharding,
               (), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::shared_ptr<const PjRtLayout>>, layout, (),
-              (const, final));
+  MOCK_METHOD(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>, layout,
+              (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
               DisassembleIntoSingleDeviceArrays,
               (ArrayCopySemantics array_copy_semantics,
@@ -183,7 +183,7 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(Compiler*, GetDefaultCompiler, (), (final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<Topology>>, GetTopologyForDevices,
               (const xla::ifrt::DeviceListRef& devices), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::shared_ptr<const PjRtLayout>>,
+  MOCK_METHOD(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>,
               GetDefaultLayout,
               (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
                xla::ifrt::Device* device, xla::ifrt::MemoryKind memory_kind),
@@ -276,10 +276,12 @@ class MockExecutable : public llvm::RTTIExtends<MockExecutable, Executable> {
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
-              GetParameterLayouts, (), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
-              GetOutputLayouts, (), (const, final));
+  MOCK_METHOD(
+      absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>,
+      GetParameterLayouts, (), (const, final));
+  MOCK_METHOD(
+      absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>,
+      GetOutputLayouts, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>,
               GetHloModules, (), (const, final));
   MOCK_METHOD(absl::StatusOr<xla::ifrt::AttributeMap>, GetCostAnalysis, (),
@@ -305,12 +307,14 @@ class MockLoadedExecutable
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
-              GetParameterLayouts, (), (const, final));
+  MOCK_METHOD(
+      absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>,
+      GetParameterLayouts, (), (const, final));
   MOCK_METHOD(absl::StatusOr<absl::Span<const int>>, GetDonatableInputIndices,
               (), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
-              GetOutputLayouts, (), (const, final));
+  MOCK_METHOD(
+      absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>,
+      GetOutputLayouts, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
               GetOutputMemoryKinds, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>,

@@ -363,9 +363,9 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // `dtype` and single-shard dimensions `dims`.
   // TODO(hyeontaek): Change the API to take `Shape` and `Sharding` instead of
   // single-shard dimensions and device.
-  virtual absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultLayout(
-      DType dtype, absl::Span<const int64_t> dims, Device* device,
-      xla::ifrt::MemoryKind memory_kind) const = 0;
+  virtual absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
+  GetDefaultLayout(DType dtype, absl::Span<const int64_t> dims, Device* device,
+                   xla::ifrt::MemoryKind memory_kind) const = 0;
 
   // Returns a UserContext that captures the current context information such as
   // the stack trace. IFRT implementations that do not support UserContext will
