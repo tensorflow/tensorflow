@@ -1119,7 +1119,7 @@ absl::Status HloValueTracing::InitializeInstructionValueSets() {
           // data are optional.
           define_value_at(/*index=*/{});
           define_value_at(/*index=*/{1});
-          for (int i = 2; i < instruction->shape().tuple_shapes_size(); ++i) {
+          for (int i = 2; i < instruction->shape().tuple_shapes().size(); ++i) {
             define_value_at(/*index=*/{i});
           }
 
