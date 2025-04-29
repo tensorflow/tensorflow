@@ -241,16 +241,14 @@ nanobind_pywrap_extension(
     ],
 )
 
-cc_library(
-    name = "ops",
+nanobind_pywrap_extension(
+    name = "_ops",
     srcs = ["ops.cc"],
-    hdrs = ["ops.h"],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
+    pytype_deps = [
+        ":_xla_builder",
+        "//third_party/py/jax/jaxlib:_jax",
     ],
-    features = ["-use_header_modules"],
+    pytype_srcs = ["_ops.pyi"],
     deps = [
         ":nb_absl_span",
         ":nb_helpers",
@@ -275,20 +273,6 @@ cc_library(
         "//xla/hlo/builder/lib:svd",
         "//xla/pjrt:status_casters",
         "//xla/service:hlo_proto_cc",
-    ],
-)
-
-nanobind_pywrap_extension(
-    name = "_ops",
-    srcs = ["_ops.cc"],
-    pytype_deps = [
-        ":_xla_builder",
-        "//third_party/py/jax/jaxlib:_jax",
-    ],
-    pytype_srcs = ["_ops.pyi"],
-    deps = [
-        ":ops",
-        "@nanobind",
     ],
 )
 
@@ -342,17 +326,10 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "profiler",
+nanobind_pywrap_extension(
+    name = "_profiler",
     srcs = ["profiler.cc"],
-    hdrs = ["profiler.h"],
-    # TODO(b/172353882): figure out why compatible_with is needed to avoid some internal errors.
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
+    pytype_srcs = ["_profiler.pyi"],
     deps = [
         ":aggregate_profile",
         ":profiler_utils",
@@ -378,16 +355,6 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-    ],
-)
-
-nanobind_pywrap_extension(
-    name = "_profiler",
-    srcs = ["_profiler.cc"],
-    pytype_srcs = ["_profiler.pyi"],
-    deps = [
-        ":profiler",
-        "@nanobind",
     ],
 )
 

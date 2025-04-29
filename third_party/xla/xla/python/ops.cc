@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ops.h"
-
 #include <algorithm>
 #include <cstdint>
 #include <optional>
@@ -315,14 +313,7 @@ struct type_caster<xla::ResultAccuracy> {
 
 namespace xla {
 
-void BuildOpsSubmodule(nb::module_& m) {
-  // ops submodule, containing free functions that add operators to an
-  // XlaBuilder.
-  nb::module_ ops = m.def_submodule("ops", "XLA operations");
-  BuildOpsModule(ops);
-}
-
-void BuildOpsModule(nb::module_& m) {
+NB_MODULE(_ops, m) {
   nb::class_<ShapeIndex>(m, "ShapeIndex", R"(Represents an XLA ShapeIndex.
 
   An index for specifying a particular nested subshape within a shape. Used in

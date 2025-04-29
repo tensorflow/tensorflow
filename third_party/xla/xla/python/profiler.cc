@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/profiler.h"
-
 #include <memory>
 #include <string>
 #include <utility>
@@ -144,13 +142,7 @@ static std::string GetFdoProfile(const std::string& xspace,
   return fdo_profile.SerializeAsString();
 }
 
-void BuildProfilerSubmodule(nb::module_& m) {
-  nb::module_ profiler =
-      m.def_submodule("profiler", "TensorFlow profiler integration");
-  BuildProfilerModule(profiler);
-}
-
-void BuildProfilerModule(nb::module_& m) {
+NB_MODULE(_profiler, m) {
   nb::class_<tsl::profiler::ProfilerServer> profiler_server_class(
       m, "ProfilerServer");
   m.def(
