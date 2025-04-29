@@ -61,7 +61,7 @@ __global__ void __launch_bounds__(128) RaggedAllToAllKernelImpl(
   int64_t update_idx = blockIdx.x;
   int64_t output_idx = update_idx / num_updates_per_replica;
 
-  T* output_ptr = absl::bit_cast<T* __restrict__>(output_ptrs[output_idx]);
+  T* output_ptr = static_cast<T* __restrict__>(output_ptrs[output_idx]);
 
   int64_t input_offset = input_offsets_ptr[update_idx];
   int64_t send_size = send_sizes_ptr[update_idx];
