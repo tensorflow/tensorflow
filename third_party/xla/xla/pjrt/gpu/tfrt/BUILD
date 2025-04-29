@@ -25,6 +25,7 @@ cc_library(
         ":host_memory_allocator",
         ":stream_pool",
         ":tracked_tfrt_gpu_device_buffer",
+        "//xla:debug_options_flags",
         "//xla:executable_run_options",
         "//xla:literal",
         "//xla:shape_layout",
