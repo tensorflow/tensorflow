@@ -69,11 +69,9 @@ cc_library(
     hdrs = ["hlo_diff_summary.h"],
     deps = [
         ":hlo_diff_result",
-        ":hlo_gumgraph_mappings",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
-        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/hlo/tools/hlo_diff/utils:connected_components",
+        "@boost//:bimap",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",

@@ -102,7 +102,7 @@ absl::StatusOr<HloGumgraphDiffResults> ComputeDiff(const HloModule& left,
   std::unique_ptr<const DiffResult> diff_result =
       ConstructDiffResult(*left_graph, *right_graph, *mappings);
   std::unique_ptr<const DiffSummary> diff_summary =
-      ConstructDiffSummary(*left_graph, *right_graph, *mappings, *diff_result);
+      ConstructDiffSummary(left, right, *diff_result);
   std::unique_ptr<const DiffEval> diff_eval = nullptr;
   if (run_eval) {
     diff_eval = ComputeDiffEval(*left_graph, *right_graph, *mappings,
