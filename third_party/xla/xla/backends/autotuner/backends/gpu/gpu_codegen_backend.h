@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_GPU_BACKEND_H_
-#define XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_GPU_BACKEND_H_
+#ifndef XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_GPU_CODEGEN_BACKEND_H_
+#define XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_GPU_CODEGEN_BACKEND_H_
 
 #include <memory>
 #include <optional>
@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/autotuner/backend.h"
+#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
@@ -32,12 +32,13 @@ limitations under the License.
 #include "xla/xla.pb.h"
 
 namespace xla {
+namespace  gpu {
 
 // Abstract base class for GPU backends, implementing the Backend interface.
-class GpuBackend : public Backend {
+class GpuCodegenBackend : public CodegenBackend {
  public:
   // target_config, debug_options and compiler should outlive the backend.
-  GpuBackend(absl::string_view name,
+  GpuCodegenBackend(absl::string_view name,
              const Compiler::TargetConfig* target_config,
              const DebugOptions* debug_options, Compiler* compiler)
       : name_(name),
@@ -86,6 +87,7 @@ class GpuBackend : public Backend {
   Compiler* compiler_;
 };
 
+}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_GPU_BACKEND_H_
+#endif  // XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_GPU_CODEGEN_BACKEND_H_

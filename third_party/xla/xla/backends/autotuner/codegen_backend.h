@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_AUTOTUNER_BACKEND_H_
-#define XLA_BACKENDS_AUTOTUNER_BACKEND_H_
+#ifndef XLA_BACKENDS_AUTOTUNER_CODEGEN_BACKEND_H_
+#define XLA_BACKENDS_AUTOTUNER_CODEGEN_BACKEND_H_
 
 #include <memory>
 #include <vector>
@@ -33,9 +33,9 @@ using BackendConfig = tsl::protobuf::Message;
 // Interface for a codegen backend which can compile HLO instructions with
 // different configurations. This can be used to get the supported configs, and
 // compile HLO instructions with different configs.
-class Backend {
+class CodegenBackend {
  public:
-  virtual ~Backend() = default;
+  virtual ~CodegenBackend() = default;
 
   virtual absl::string_view name() const = 0;
 
@@ -57,4 +57,4 @@ class Backend {
 
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_AUTOTUNER_BACKEND_H_
+#endif  // XLA_BACKENDS_AUTOTUNER_CODEGEN_BACKEND_H_
