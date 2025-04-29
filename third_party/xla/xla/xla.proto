@@ -766,10 +766,6 @@ message DebugOptions {
   // `xla_gpu_cublas_fallback` set to false.
   bool xla_gpu_triton_gemm_any = 190;
 
-  // TODO(b/409940111): Remove this flag and use high precision reductions for
-  // Split-K GEMMs unconditionally.
-  bool xla_gpu_triton_gemm_disable_reduced_precision_reduction = 226;
-
   // It is usually preferable to not fallback to the driver; it can consume more
   // memory, or have bugs.
   bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
@@ -824,6 +820,7 @@ message DebugOptions {
   // go/keep-sorted end
 
   reserved 276;  // xla_gpu_enable_nccl_per_stream_comms
+  reserved 226;  // xla_gpu_triton_gemm_disable_reduced_precision_reduction
 
   //--------------------------------------------------------------------------//
   // XLA:TPU options.

@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/layout.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo_verifier.h"
@@ -68,95 +67,6 @@ TEST(HasDivisibleSuffixAllowingSplitTest, AllTests) {
 
 using SplitKTest = HloHardwareIndependentTestBase;
 
-// TODO(b/409940111): Remove these tests once the flag is deprecated.
-class SplitKTestWithLowPreciseReduction
-    : public HloHardwareIndependentTestBase,
-      public ::testing::WithParamInterface<int> {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(
-        false);
-    return debug_options;
-  }
-};
-
-class SplitKTestWithMorePreciseReduction
-    : public HloHardwareIndependentTestBase,
-      public ::testing::WithParamInterface<int> {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(
-        true);
-    return debug_options;
-  }
-};
-
-TEST_F(SplitKTestWithLowPreciseReduction, MakeSplitK) {
-  const std::string hlo_text = R"(
-HloModule t
-
-triton_gemm_dot {
-  parameter_0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
-  bitcast.1 = s8[3,5,32,128]{2,1,3,0} bitcast(parameter_0)
-  copy.1 = s8[3,5,32,128]{3,2,1,0} copy(bitcast.1)
-  reshape.5 = s8[480,128]{1,0} reshape(copy.1)
-  convert.8 = bf16[480,128]{1,0} convert(reshape.5)
-  parameter_1 = bf16[16,128]{1,0} parameter(1)
-  ROOT dot.0 = bf16[480,16]{1,0} dot(convert.8, parameter_1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-}
-
-ENTRY e {
-  p0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
-  p1 = bf16[16,128]{1,0} parameter(1)
-  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm",
-    metadata={op_name="foo"}
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kReduce);
-  EXPECT_EQ(root->metadata().op_name(), "foo");
-}
-
-TEST_F(SplitKTestWithLowPreciseReduction, MakeSplitKWithOutputFusion) {
-  const std::string hlo_text = R"(
-HloModule t
-
-triton_gemm_dot {
-  p0 = f16[480,128]{1,0} parameter(0)
-  p1 = f16[16,128]{1,0} parameter(1)
-  d = f16[480,16]{1,0} dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-  c = bf16[] constant(123)
-  n = bf16[] negate(c)
-  bc = bf16[480,16]{1,0} broadcast(n)
-  cv = bf16[480,16]{1,0} convert(d)
-  ROOT a = bf16[480,16]{1,0} multiply(bc, cv)
-}
-
-ENTRY e {
-  p0 = f16[480,128]{1,0} parameter(0)
-  p1 = f16[16,128]{1,0} parameter(1)
-  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
-  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
-            HloOpcode::kReduce);
-}
 
 TEST_F(SplitKTest, PreventSplitKWithNonDistributiveOperations) {
   const std::string hlo_text = R"(
@@ -242,43 +152,7 @@ ENTRY e {
                       "Sliced contracting dimension is not supported yet.")));
 }
 
-TEST_F(SplitKTestWithLowPreciseReduction,
-       MakeSplitKWithNonStandardOutputLayout) {
-  const std::string kHloText = R"(
-HloModule t
-
-triton_gemm_dot {
-  parameter_0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
-  bitcast.1 = s8[3,5,32,128]{2,1,3,0} bitcast(parameter_0)
-  copy.1 = s8[3,5,32,128]{3,2,1,0} copy(bitcast.1)
-  reshape.5 = s8[480,128]{1,0} reshape(copy.1)
-  convert.8 = bf16[480,128]{1,0} convert(reshape.5)
-  parameter_1 = bf16[16,128]{1,0} parameter(1)
-  ROOT dot.0 = bf16[480,16]{0,1} dot(convert.8, parameter_1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-}
-
-ENTRY e {
-  p0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
-  p1 = bf16[16,128]{1,0} parameter(1)
-  ROOT fusion = bf16[480,16]{0,1} fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
-  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
-
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
-
-  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
-            HloOpcode::kReduce);
-  EXPECT_EQ(module->entry_computation()->root_instruction()->shape().layout(),
-            Layout({0, 1}));
-}
-
-TEST_F(SplitKTestWithMorePreciseReduction,
-       MakeSplitKWithNonStandardOutputLayout) {
+TEST_F(SplitKTest, MakeSplitKWithNonStandardOutputLayout) {
   const std::string kHloText = R"(
 HloModule t
 
@@ -561,62 +435,7 @@ ENTRY e {
                   "Too small divisible part of the contracting dimension."));
 }
 
-TEST_F(SplitKTestWithLowPreciseReduction, FragmentedKSupported) {
-  const std::string hlo_text = R"(
-HloModule t
-
-triton_gemm_dot {
-  p0 = f16[7,2,16,4,20] parameter(0)
-  t0 = f16[2,16,4,20,7] transpose(p0), dimensions={1,2,3,4,0}
-  b0 = f16[2560,7] bitcast(t0)
-  a1 = f16[2560,5] parameter(1)
-  ROOT r = f16[7,5] dot(b0, a1),
-    lhs_contracting_dims={0}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  p0 = f16[7,2,16,4,20] parameter(0)
-  p1 = f16[2560,5] parameter(1)
-  ROOT fusion = f16[7,5] fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-
-  TritonGemmConfig config(32, 32, 16, 1, 1, 4);
-  // 5 divides the contracting dimension, but not its major subdimensions.
-  config.split_k = 5;
-  EXPECT_THAT(
-      MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
-                         config),
-      tsl::testing::StatusIs(tsl::error::CANCELLED,
-                             "Contracting dimension is too fragmented."));
-
-  // 8 fits the constraints.
-  config.split_k = 8;
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kReduce);
-  const HloComputation* dot_computation = module->entry_computation()
-                                              ->root_instruction()
-                                              ->operand(0)
-                                              ->called_computations()[0];
-  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
-  TF_ASSERT_OK_AND_ASSIGN(
-      const auto analysis,
-      TritonFusionAnalysis::Execute(*dot_computation, config.split_k));
-  EXPECT_EQ(dot_computation->root_instruction()->shape(),
-            ShapeUtil::MakeShapeWithDescendingLayout(F16, {8, 7, 5}));
-  EXPECT_THAT(
-      *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
-      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2560, /*slice_start=*/0,
-                            /*slice_limit=*/2560,
-                            /*subfragments=*/ElementsAre(20, 4, 4, 4, 2),
-                            /*broadcast_multiplier=*/1)));
-}
-
-TEST_F(SplitKTestWithMorePreciseReduction, FragmentedKSupported) {
+TEST_F(SplitKTest, FragmentedKSupported) {
   const std::string hlo_text = R"(
 HloModule t
 
@@ -701,41 +520,7 @@ ENTRY e {
                              "Contracting dimension is too fragmented."));
 }
 
-TEST_F(SplitKTestWithLowPreciseReduction,
-       MakeSplitKWithNonDefaultOutputLayout) {
-  const std::string kHloText = R"(
-triton_gemm_dot.4842_computation {
-  parameter_0 = bf16[96,96]{1,0} parameter(0)
-  parameter_1 = bf16[96,7]{1,0} parameter(1)
-  dot.0 = bf16[96,7]{0,1} dot(parameter_0, parameter_1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT bitcast.2 = bf16[7,3,32]{2,1,0} bitcast(dot.0)
-}
-
-ENTRY e {
-  parameter_0.91 = bf16[96,96]{1,0} parameter(0)
-  parameter_1.86 = bf16[96,7]{1,0} parameter(1)
-  ROOT triton_gemm_dot.4842 = bf16[7,3,32]{2,1,0}
-    fusion(parameter_0.91, parameter_1.86), kind=kCustom,
-    calls=triton_gemm_dot.4842_computation
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
-  TritonGemmConfig config(16, 16, 16, 2, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
-  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
-            HloOpcode::kReduce);
-  const HloComputation* dot_computation = module->entry_computation()
-                                              ->root_instruction()
-                                              ->operand(0)
-                                              ->called_computations()[0];
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
-}
-
-TEST_F(SplitKTestWithMorePreciseReduction,
-       MakeSplitKWithNonDefaultOutputLayout) {
+TEST_F(SplitKTest, MakeSplitKWithNonDefaultOutputLayout) {
   const std::string kHloText = R"(
 triton_gemm_dot.4842_computation {
   parameter_0 = bf16[96,96]{1,0} parameter(0)
@@ -834,7 +619,7 @@ ENTRY e {
   EXPECT_FALSE(result.ok());
 }
 
-TEST_F(SplitKTestWithMorePreciseReduction, MakeSplitK) {
+TEST_F(SplitKTest, MakeSplitK) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -874,7 +659,7 @@ ENTRY e {
   EXPECT_EQ(reduce->metadata().op_name(), "foo");
 }
 
-TEST_F(SplitKTestWithMorePreciseReduction, MakeSplitKForInt32Dot) {
+TEST_F(SplitKTest, MakeSplitKForInt32Dot) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -906,7 +691,7 @@ ENTRY e {
       << module->ToString();
 }
 
-TEST_F(SplitKTestWithMorePreciseReduction, MakeSplitKHonorsDotAlgorithm) {
+TEST_F(SplitKTest, MakeSplitKHonorsDotAlgorithm) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -941,7 +726,7 @@ ENTRY e {
       << module->ToString();
 }
 
-TEST_F(SplitKTestWithMorePreciseReduction, MakeSplitKWithOutputFusion) {
+TEST_F(SplitKTest, MakeSplitKWithOutputFusion) {
   const std::string hlo_text = R"(
 HloModule t
 
@@ -982,7 +767,7 @@ ENTRY e {
       << module->ToString();
 }
 
-TEST_F(SplitKTestWithMorePreciseReduction, MakeSplitKTuple) {
+TEST_F(SplitKTest, MakeSplitKTuple) {
   const std::string hlo_text = R"(
 HloModule t
 
@@ -1018,38 +803,7 @@ ENTRY e {
       << module->ToString();
 }
 
-TEST_F(SplitKTestWithLowPreciseReduction, MakeSplitKWithTransposeAfterDot) {
-  const std::string hlo_text = R"(
-triton_gemm_dot {
-  p0 = f16[8,288,288]{2,1,0} parameter(0)
-  p1 = f16[8,288,32]{2,0,1} parameter(1)
-  d = f16[8,288,32]{2,1,0} dot(p0, p1),
-    lhs_batch_dims={0}, lhs_contracting_dims={2},
-    rhs_batch_dims={0}, rhs_contracting_dims={1}
-  ROOT t = f16[288,8,32]{2,1,0} transpose(d), dimensions={1,0,2}
-}
-
-ENTRY e {
-  p0 = f16[8,288,288]{2,1,0} parameter(0)
-  p1 = f16[8,288,32]{2,0,1} parameter(1)
-  ROOT fusion = f16[288,8,32]{2,1,0} fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TritonGemmConfig config(16, 128, 32, 8, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
-  const auto* transpose =
-      Cast<HloTransposeInstruction>(module->entry_computation()
-                                        ->root_instruction()
-                                        ->operand(0)
-                                        ->fused_instructions_computation()
-                                        ->root_instruction());
-  EXPECT_THAT(transpose->dimensions(), ElementsAre(0, 2, 1, 3));
-}
-
-TEST_F(SplitKTestWithMorePreciseReduction, MakeSplitKWithTransposeAfterDot) {
+TEST_F(SplitKTest, MakeSplitKWithTransposeAfterDot) {
   const std::string hlo_text = R"(
 triton_gemm_dot {
   p0 = f16[8,288,288]{2,1,0} parameter(0)
