@@ -594,6 +594,9 @@ HloModuleProto HloModule::ToProto() const {
     profile_info_proto.set_fingerprint(profile_info.fingerprint());
     profile_info_proto.set_profile_generation_strategy(
         profile_info.profile_generation_strategy());
+    profile_info_proto.set_original_changelist(
+        profile_info.original_changelist());
+    profile_info_proto.set_changelist(profile_info.changelist());
   }
   if (config().has_static_device_assignment()) {
     DeviceAssignmentProto device_assignment;
