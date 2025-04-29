@@ -1173,6 +1173,7 @@ xla_test(
     args = [
         "--xla_tpu_order_dot_after_layout=true",
     ],
+    # placeholder for extra args for dot_operation_test_canonicalization_after_layout
     disabled_backends = [
         "cpu",
         "gpu",
