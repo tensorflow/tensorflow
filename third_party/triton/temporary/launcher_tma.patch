@@ -1,0 +1,66 @@
+diff --git a/third_party/nvidia/backend/cuda_utils.cc b/third_party/nvidia/backend/cuda_utils.cc
+--- a/third_party/nvidia/backend/cuda_utils.cc
++++ b/third_party/nvidia/backend/cuda_utils.cc
+@@ -248,6 +248,54 @@ bool extractPointer(PyObject* obj, void*
+   return true;
+ }
+ 
++// Extract a CUtensorMap descriptor from a python object, and store it to the
++// memory location pointed by ptr.
++bool extractTmaDesc(PyObject* obj, void* ptr) {
++  if (sizeof(CUtensorMap*) != 8) {
++    PyErr_SetString(PyExc_SystemError,
++                "extractTmaDesc() requires 64-bit compilation");
++    return false;
++  }
++
++  UniquePyObjectPtr method_ret(
++      PyObject_CallMethod(obj, "tma_desc_cpu_ptr", nullptr));
++  // Checking the error retains context if tma_desc_cpu_ptr raises an exception.
++  if (PyErr_Occurred()) {
++    return false;
++  }
++
++  if (!method_ret) {
++    PyErr_SetString(PyExc_SystemError, "Call to tma_desc_cpu_ptr() failed");
++    return false;
++  }
++
++  if (!PyLong_Check(method_ret.get())) {
++    PyErr_SetString(PyExc_TypeError,
++                    "tma_desc_cpu_ptr() must return 64-bit int");
++    return false;
++  }
++
++  uint64_t ptr_as_uint = PyLong_AsUnsignedLongLong(method_ret.get());
++  if (PyErr_Occurred()) {
++    return false;
++  }
++
++  if (!ptr_as_uint) {
++    PyErr_SetString(PyExc_ValueError,
++                    "received NULL ptr from tma_desc_cpu_ptr()");
++    return false;
++  }
++  if (ptr_as_uint % 64 != 0) {
++    PyErr_SetString(PyExc_ValueError,
++                    "tma_desc_cpu_ptr() must be 64-byte aligned");
++    return false;
++  }
++
++  *static_cast<CUtensorMap*>(ptr) =
++      *reinterpret_cast<CUtensorMap*>(ptr_as_uint);
++  return true;
++}
++
+ // For a given type T, maps to the Python API with signature `U (*)(PyObject*)`
+ // that can extract values of that type from a PyObject. Note that the return
+ // type U is not guaranteed to be the same as T, but it can be explicitly casted
+@@ -320,6 +368,7 @@ const ExtractionInfo kExtractionInfos[]{
+     ExtractionInfo::build<void*>({"'*"}, extractPointer),
+     ExtractionInfo{
+         {"None", "'none'"}, 0, nullptr},  // Represent constexprs as None
++    ExtractionInfo::build<CUtensorMap>({"'nvTmaDesc'"}, extractTmaDesc),
+ };
+ 
+ // Finds an extractor that supports a given type_repr in the extractor list.
