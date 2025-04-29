@@ -178,7 +178,7 @@ std::optional<double> GetConstantValue(const HloInstruction* inst) {
   if (!IsScalarConstant(inst)) {
     return std::nullopt;
   }
-  return primitive_util::PrimitiveTypeSwitch<std::optional<double>>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> std::optional<double> {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
@@ -200,7 +200,7 @@ static bool IsScalarConstantZero(const HloInstruction* hlo) {
   if (!IsScalarConstant(hlo)) {
     return false;
   }
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
@@ -219,7 +219,7 @@ static bool IsScalarConstantNegInf(const HloInstruction* hlo) {
   if (primitive_util::IsComplexType(hlo->shape().element_type())) {
     return false;
   }
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
@@ -242,7 +242,7 @@ static bool IsScalarConstantInf(const HloInstruction* hlo) {
   if (primitive_util::IsComplexType(hlo->shape().element_type())) {
     return false;
   }
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
@@ -613,7 +613,7 @@ bool IsOpCodeMultiplyCommutative(HloOpcode opcode) {
 
 std::unique_ptr<HloInstruction> MakeScalarInstruction(HloInstruction* target,
                                                       float multiplier) {
-  return primitive_util::PrimitiveTypeSwitch<std::unique_ptr<HloInstruction>>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> std::unique_ptr<HloInstruction> {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
@@ -2240,7 +2240,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
 
   // A / B => A >> log2(B) if B is a power of 2.
   if (std::unique_ptr<HloInstruction> shift =
-          primitive_util::PrimitiveTypeSwitch<std::unique_ptr<HloInstruction>>(
+          primitive_util::PrimitiveTypeSwitch(
               [&](auto kType) -> std::unique_ptr<HloInstruction> {
                 if constexpr (primitive_util::IsIntegralType(kType)) {
                   using NativeT = primitive_util::NativeTypeOf<kType>;
@@ -2325,7 +2325,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
       (Match(b, m::Constant(&c)) || Match(b, m::Broadcast(m::Constant(&c))))) {
     Shape result_shape = c->literal().shape();
     Literal new_literal(result_shape);
-    return primitive_util::PrimitiveTypeSwitch<absl::Status>(
+    return primitive_util::PrimitiveTypeSwitch(
         [&](auto primitive_type_constant) -> absl::Status {
           if constexpr (primitive_util::IsFloatingPointType(
                             primitive_type_constant) ||
@@ -6038,7 +6038,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleRemainder(
 
   // A % B => A & (B - 1) if B is a power of 2.
   if (std::unique_ptr<HloInstruction> shift =
-          primitive_util::PrimitiveTypeSwitch<std::unique_ptr<HloInstruction>>(
+          primitive_util::PrimitiveTypeSwitch(
               [&](auto kType) -> std::unique_ptr<HloInstruction> {
                 if constexpr (primitive_util::IsIntegralType(kType)) {
                   using NativeT = primitive_util::NativeTypeOf<kType>;

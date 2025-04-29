@@ -107,7 +107,7 @@ absl::StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape,
   if (shape.IsArray()) {
     Shape new_shape = shape;
     new_shape.mutable_layout()->clear_tiles();
-    return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
+    return primitive_util::PrimitiveTypeSwitch(
         [&](auto type) -> absl::StatusOr<Literal> {
           if constexpr (primitive_util::IsArrayType(type)) {
             using NativeT = primitive_util::NativeTypeOf<type>;

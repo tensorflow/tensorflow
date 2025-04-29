@@ -104,7 +104,7 @@ Literal CreateScalarImpl(F&& value_provider, Args... args) {
 
 template <template <PrimitiveType> class F, typename... Args>
 Literal CreateScalar(PrimitiveType primitive_type, Args... args) {
-  return primitive_util::PrimitiveTypeSwitch<Literal>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> Literal {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           return CreateScalarImpl<primitive_type_constant>(
@@ -514,7 +514,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 
 /* static */ absl::StatusOr<Literal> LiteralUtil::NanValue(
     PrimitiveType primitive_type) {
-  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
@@ -584,7 +584,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
         IndexUtil::LinearIndexToMultidimensionalIndex(literal.shape(), i);
     auto to_multi_index =
         IndexUtil::LinearIndexToMultidimensionalIndex(shape_with_layout, i);
-    primitive_util::PrimitiveTypeSwitch<void>(
+    primitive_util::PrimitiveTypeSwitch(
         [&](auto primitive_type_constant) -> void {
           if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
             using NativeT = typename primitive_util::PrimitiveTypeToNative<
@@ -619,7 +619,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 /*static*/ void LiteralUtil::SetScalarLiteral(
     MutableLiteralBase& literal, absl::Span<const int64_t> multi_index,
     const LiteralBase& scalar) {
-  primitive_util::PrimitiveTypeSwitch<void>(
+  primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> void {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           SetScalarAtIndexImpl<primitive_type_constant>(literal, multi_index,
@@ -735,7 +735,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
   new_shape.mutable_layout()->set_element_size_in_bits(0);
   Literal literal(new_shape);
 
-  TF_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
+  TF_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;

@@ -4365,7 +4365,7 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
 bool HloParserImpl::SetValueInLiteral(LocTy loc, int64_t value, int64_t index,
                                       Literal* literal) {
   const Shape& shape = literal->shape();
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         if constexpr (primitive_type_constant == PRED) {
           return SetValueInLiteralHelper<bool>(loc, static_cast<bool>(value),
@@ -4384,7 +4384,7 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, int64_t value, int64_t index,
 bool HloParserImpl::SetValueInLiteral(LocTy loc, double value, int64_t index,
                                       Literal* literal) {
   const Shape& shape = literal->shape();
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
@@ -4412,7 +4412,7 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, bool value, int64_t index,
 bool HloParserImpl::SetValueInLiteral(LocTy loc, std::complex<double> value,
                                       int64_t index, Literal* literal) {
   const Shape& shape = literal->shape();
-  return primitive_util::PrimitiveTypeSwitch<bool>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
