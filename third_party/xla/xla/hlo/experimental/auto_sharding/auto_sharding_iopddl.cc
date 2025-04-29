@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_iopddl.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -37,15 +38,32 @@ iopddl::Cost ConvertCost(const double cost) {
 }
 
 iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request) {
-  CHECK(request.live().empty());  // Contest files don't support live matrices.
   CHECK(request.node_groups().empty());  // Contest files don't support groups.
   iopddl::Problem problem = {.name = request.request_name()};
+  std::vector<iopddl::Interval> node_intervals;
   for (int64_t node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
-    CHECK_LT(node_idx, request.node_intervals_size());
-    const auto& interval = request.node_intervals(node_idx);
+    iopddl::Interval node_interval = {kInfinityInt, -1};
+    if (request.live().empty()) {
+      CHECK_LT(node_idx, request.node_intervals_size());
+      const auto& interval = request.node_intervals(node_idx);
+      if (interval.first() <= interval.second()) {
+        node_interval = {interval.first(), interval.second() + 1};
+      }
+    }
+    node_intervals.push_back(node_interval);
+  }
+  for (LivenessIdx t = 0; t < request.live_size(); ++t) {
+    for (int64_t node_idx : request.live(t).nodes()) {
+      node_intervals[node_idx] = {
+          std::min(node_intervals[node_idx].first, t),
+          std::max(node_intervals[node_idx].second, t + 1)};
+    }
+  }
+  for (int64_t node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
+    const auto& interval = node_intervals[node_idx];
     iopddl::Interval node_interval = {0, 0};
-    if (interval.first() <= interval.second()) {
-      node_interval = {interval.first(), interval.second() + 1};
+    if (interval.first <= interval.second) {
+      node_interval = {interval.first, interval.second};
     }
     problem.nodes.push_back({node_interval});
     CHECK_LT(node_idx, request.s_len_size());
