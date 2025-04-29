@@ -84,7 +84,7 @@ absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     std::optional<xla::OpSharding> sharding, bool fast_mem) {
   if (original_shape.IsTuple()) {
     std::vector<xla::XlaOp> elements;
-    for (int i = 0; i < original_shape.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < original_shape.tuple_shapes().size(); ++i) {
       auto subsharding = sharding ? sharding->tuple_shardings(i) : sharding;
       TF_ASSIGN_OR_RETURN(
           auto element,

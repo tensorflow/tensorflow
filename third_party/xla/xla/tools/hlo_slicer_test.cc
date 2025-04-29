@@ -1072,12 +1072,12 @@ TEST_F(HloSlicerTest, TestSliceModuleAndExtractReduceTupleParameter) {
     // Check that the new p.0 only has one element.
     HloInstruction* p_0 = FindInstruction(sliced_module.get(), "p.0");
     EXPECT_NE(p_0, nullptr);
-    EXPECT_EQ(p_0->shape().tuple_shapes_size(), 1);
+    EXPECT_EQ(p_0->shape().tuple_shapes().size(), 1);
 
     // Check that the new p.1 only has one element.
     HloInstruction* p_1 = FindInstruction(sliced_module.get(), "p.1");
     EXPECT_NE(p_1, nullptr);
-    EXPECT_EQ(p_1->shape().tuple_shapes_size(), 1);
+    EXPECT_EQ(p_1->shape().tuple_shapes().size(), 1);
   }
 }
 

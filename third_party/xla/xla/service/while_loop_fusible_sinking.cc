@@ -52,7 +52,7 @@ namespace {
 bool IsPurelyExpanding(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kBroadcast ||
          (instr->opcode() == HloOpcode::kConstant &&
-          instr->shape().dimensions_size() == 0) ||
+          instr->shape().dimensions().size() == 0) ||
          instr->opcode() == HloOpcode::kIota;
 }
 

@@ -89,7 +89,7 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
 
     std::vector<Shape> output_shapes;
     if (shape.IsTuple()) {
-      for (int i = 0; i < shape.tuple_shapes_size(); i++) {
+      for (int i = 0; i < shape.tuple_shapes().size(); i++) {
         output_shapes.push_back(ShapeUtil::GetTupleElementShape(shape, i));
         TF_RET_CHECK(output_shapes[i].layout() == output_shapes[0].layout());
       }
