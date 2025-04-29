@@ -442,6 +442,7 @@ xla_cc_test(
     tags = ["no_oss"],  # Doesn't pass in OSS when building with the `fusion_emitter_stub`.
     deps = [
         ":fusion_emitter",
+        "//xla:xla_proto_cc",
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
