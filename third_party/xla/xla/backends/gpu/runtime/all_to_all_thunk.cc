@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/nccl_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -326,7 +327,7 @@ absl::Status RunMemCpyAllToAll(GpuCollectives* collectives,
 
       size_t chunk_element_count = buffer.element_count / num_ranks;
 
-      TF_RETURN_IF_ERROR(collectives->GroupStart());
+      TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupStart());
       for (int peer = 0; peer < num_ranks; ++peer) {
         se::DeviceMemoryBase recv_slice =
             collectives->Slice(buffer.destination_buffer, buffer.element_type,
@@ -338,7 +339,7 @@ absl::Status RunMemCpyAllToAll(GpuCollectives* collectives,
         TF_RETURN_IF_ERROR(RecvPtrFromPeer(&receive_pointer_map[peer],
                                            RankId(peer), comm, stream));
       }
-      TF_RETURN_IF_ERROR(collectives->GroupEnd());
+      TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupEnd());
       TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
       for (int peer = 0; peer < num_ranks; ++peer) {
@@ -355,7 +356,7 @@ absl::Status RunMemCpyAllToAll(GpuCollectives* collectives,
     TF_RET_CHECK(buffers.size() == num_ranks)
         << "Number of inputs didn't match the number of participants.";
 
-    TF_RETURN_IF_ERROR(collectives->GroupStart());
+    TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupStart());
     for (int peer = 0; peer < num_ranks; ++peer) {
       send_pointer_map[peer] =
           (uint64_t)buffers[peer].destination_buffer.opaque();
@@ -365,7 +366,7 @@ absl::Status RunMemCpyAllToAll(GpuCollectives* collectives,
       TF_RETURN_IF_ERROR(RecvPtrFromPeer(&receive_pointer_map[peer],
                                          RankId(peer), comm, stream));
     }
-    TF_RETURN_IF_ERROR(collectives->GroupEnd());
+    TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupEnd());
     TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
     for (int peer = 0; peer < num_ranks; ++peer) {

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/nccl_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -110,7 +111,7 @@ absl::Status RunAllGather(GpuCollectives* collectives,
   TF_RETURN_IF_ERROR(
       MaybeRegisterBuffers(collectives, stream.parent(), buffers, comm));
 
-  TF_RETURN_IF_ERROR(collectives->GroupStart());
+  TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupStart());
 
   for (DeviceBufferPair& buffer : buffers) {
     auto event = comm->AllGather(
@@ -123,7 +124,7 @@ absl::Status RunAllGather(GpuCollectives* collectives,
     }
   }
 
-  TF_RETURN_IF_ERROR(collectives->GroupEnd());
+  TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupEnd());
 
   VLOG(3) << "Done performing all-gather for ordinal: " << device_ordinal;
   return absl::OkStatus();

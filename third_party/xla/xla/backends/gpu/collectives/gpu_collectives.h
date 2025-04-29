@@ -96,12 +96,6 @@ class GpuCollectives : public Collectives {
       stream_executor::DeviceMemoryBase buff, PrimitiveType dtype,
       size_t offset, size_t count);
 
-  // Starts a group call.
-  virtual absl::Status GroupStart() = 0;
-
-  // Ends a group call.
-  virtual absl::Status GroupEnd() = 0;
-
   // Tries to cast a Collectives::Device to a GpuCollectives::Device.
   static absl::StatusOr<Device*> TryCast(Collectives::Device* device);
 

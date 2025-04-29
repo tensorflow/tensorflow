@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/nccl_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -73,7 +74,7 @@ absl::Status CollectiveBroadcastStartThunk::RunCollective(
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
                                     se::Stream& stream, Communicator* comm,
                                     GpuCollectives* collectives) {
-  TF_RETURN_IF_ERROR(collectives->GroupStart());
+  TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupStart());
   for (auto buffer : buffers) {
     se::DeviceMemoryBase src_addr = buffer.source_buffer;
     se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
@@ -88,7 +89,7 @@ absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
       return event.GetError();
     }
   }
-  return collectives->GroupEnd();
+  return CastCommunicator(comm)->GroupEnd();
 }
 
 }  // namespace xla::gpu

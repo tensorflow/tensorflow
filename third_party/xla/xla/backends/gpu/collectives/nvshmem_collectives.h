@@ -54,13 +54,6 @@ class NvshmemCollectives : public GpuCollectives {
     return absl::UnimplementedError("Not implemented.");
   }
 
-  absl::Status GroupStart() final {
-    return absl::UnimplementedError("Not implemented.");
-  }
-  absl::Status GroupEnd() final {
-    return absl::UnimplementedError("Not implemented.");
-  }
-
   bool IsImplemented() const final { return true; }
 
   bool IsGlobalConfig() const final { return false; }

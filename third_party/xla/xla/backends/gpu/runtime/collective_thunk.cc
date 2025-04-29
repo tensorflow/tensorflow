@@ -500,6 +500,18 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::vector<Communicator*>> CollectiveThunk::GetCommunicators(
+    const ExecuteParams& params) const {
+  AsyncStreamKind stream_kind = GetAsyncStreamKind();
+  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
+  TF_ASSIGN_OR_RETURN(
+      CommunicatorHandle comm_handle,
+      GetComm(collectives, *params.collective_params,
+              *params.collective_cliques, config().replica_groups,
+              config().group_mode, stream_kind));
+  return std::vector<Communicator*>{comm_handle.comm};
+}
+
 std::string CollectiveThunk::GetDeviceString(
     const Thunk::CollectiveExecuteParams& collective_params) {
   GlobalDeviceId global_device_id = collective_params.global_device_id;

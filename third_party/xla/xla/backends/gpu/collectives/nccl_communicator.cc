@@ -18,17 +18,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
-#include <string>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
-#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/collectives/nccl_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -43,7 +36,6 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/casts.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -136,22 +128,20 @@ namespace {
 // An RAII handle for user buffers registered with an NCCL communicator.
 class NcclRegisteredBufferHandle : public Communicator::RegisteredBufferHandle {
  public:
-  NcclRegisteredBufferHandle(NcclCollectives* collectives,
-                             NcclCommunicator* comm, void* handle);
+  NcclRegisteredBufferHandle(NcclCommunicator* comm, void* handle);
   ~NcclRegisteredBufferHandle() override;
 
   absl::Status Unregister() final;
 
  private:
-  NcclCollectives* collectives_;
   NcclCommunicator* comm_;
   void* handle_;
 };
 }  // namespace
 
-NcclRegisteredBufferHandle::NcclRegisteredBufferHandle(
-    NcclCollectives* collectives, NcclCommunicator* comm, void* handle)
-    : collectives_(collectives), comm_(comm), handle_(handle) {}
+NcclRegisteredBufferHandle::NcclRegisteredBufferHandle(NcclCommunicator* comm,
+                                                       void* handle)
+    : comm_(comm), handle_(handle) {}
 
 NcclRegisteredBufferHandle::~NcclRegisteredBufferHandle() {
   if (auto status = Unregister(); !status.ok()) {
@@ -165,18 +155,14 @@ absl::Status NcclRegisteredBufferHandle::Unregister() {
       comm_);
 #if (NCCL_VERSION_CODE >= 21901)
   XLA_NCCL_RETURN_IF_ERROR(ncclCommDeregister(comm_->comm(), handle_));
-  if (!collectives_->JoinGroup(comm_)) {
-    TF_RETURN_IF_ERROR(PollUntilDone(comm_->comm()));
-  }
+  TF_RETURN_IF_ERROR(PollUntilDone(comm_->comm()));
   return absl::OkStatus();
 #else
   return Unimplemented("NCCL version does not support ncclCommDeregister");
 #endif  // NCCL_VERSION_CODE >= 21901
 }
 
-NcclCommunicator::NcclCommunicator(NcclCollectives* collectives,
-                                   ncclComm_t comm)
-    : collectives_(collectives), comm_(comm) {
+NcclCommunicator::NcclCommunicator(ncclComm_t comm) : comm_(comm) {
   VLOG(1) << "Created " << *this;
 }
 
@@ -195,6 +181,34 @@ NcclCommunicator::~NcclCommunicator() {
   // Note that we intentionally don't call PollUntilDone. Once comm_ has been
   // destroyed, we can no longer safely touch it.
   XLA_NCCL_LOG_IF_ERROR(ncclCommDestroy(comm_));
+}
+
+absl::Status NcclCommunicator::GroupStart() {
+  VLOG(5) << "Start NCCL group";
+  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+  group_nesting_level_++;
+  VLOG(5) << "NCCL group nesting level = " << group_nesting_level_;
+  return absl::OkStatus();
+}
+
+absl::Status NcclCommunicator::GroupEnd() {
+  VLOG(5) << "End NCCL group";
+  XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+  group_nesting_level_--;
+  CHECK_GE(group_nesting_level_, 0);
+  VLOG(5) << "NCCL group nesting level = " << group_nesting_level_;
+
+  if (group_nesting_level_ > 0) {
+    // Though NCCL allows groups to be nested, no operations are actually
+    // performed until the outermost group ends. The inner calls to GroupStart()
+    // and GroupEnd() are effectively noops.
+    //
+    // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/groups.html
+    return absl::OkStatus();
+  }
+
+  // Wait for the communicator to finish.
+  return PollUntilDone(comm());
 }
 
 absl::Status NcclCommunicator::Abort() {
@@ -216,7 +230,9 @@ absl::Status NcclCommunicator::HealthCheck() const {
 
   ncclResult_t async_err;
   XLA_NCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm_, &async_err));
-  if (async_err == ncclSuccess) return absl::OkStatus();
+  if (async_err == ncclSuccess) {
+    return absl::OkStatus();
+  }
 
   return Internal("%s. Last NCCL error (maybe unrelated): %s",
                   ncclGetLastError(comm_), ncclGetErrorString(async_err));
@@ -246,11 +262,10 @@ NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer) {
   void* handle = nullptr;
   XLA_NCCL_RETURN_IF_ERROR(
       ncclCommRegister(comm_, buffer.opaque(), buffer.size(), &handle));
-  if (!collectives_->JoinGroup(this)) {
+  if (group_nesting_level_ == 0) {
     TF_RETURN_IF_ERROR(PollUntilDone(comm_));
   }
-  return std::make_unique<NcclRegisteredBufferHandle>(collectives_, this,
-                                                      handle);
+  return std::make_unique<NcclRegisteredBufferHandle>(this, handle);
 #else
   return Unimplemented("NCCL version does not support ncclCommRegister");
 #endif  // NCCL_VERSION_CODE >= 21901
@@ -279,7 +294,7 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::AllReduce(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), comm_,
       se::gpu::AsGpuStreamValue(stream))));
-  if (!collectives_->JoinGroup(this)) {
+  if (group_nesting_level_ == 0) {
     TF_RETURN_IF_ERROR(PollUntilDone(comm_));
   }
   return OkEvent();
@@ -306,7 +321,7 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::Broadcast(
   TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclBroadcast(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, root.value(), comm_, se::gpu::AsGpuStreamValue(stream))));
-  if (!collectives_->JoinGroup(this)) {
+  if (group_nesting_level_ == 0) {
     TF_RETURN_IF_ERROR(PollUntilDone(comm_));
   }
   return OkEvent();
@@ -335,7 +350,7 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::ReduceScatter(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), comm_,
       se::gpu::AsGpuStreamValue(stream))));
-  if (!collectives_->JoinGroup(this)) {
+  if (group_nesting_level_ == 0) {
     TF_RETURN_IF_ERROR(PollUntilDone(comm_));
   }
   return OkEvent();
@@ -361,11 +376,10 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::AllGather(
   TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclAllGather(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, comm_, se::gpu::AsGpuStreamValue(stream))));
-  if (!collectives_->JoinGroup(this)) {
+  if (group_nesting_level_ == 0) {
     TF_RETURN_IF_ERROR(PollUntilDone(comm_));
   }
   return OkEvent();
-  return absl::OkStatus();
 }
 
 tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::AllToAll(
@@ -406,7 +420,7 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::AllToAll(
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(collectives_->GroupStart());
+  TF_RETURN_IF_ERROR(GroupStart());
 
   for (size_t i = 0; i < send_buffers.size(); ++i) {
     se::DeviceMemoryBase send_buffer = send_buffers[i];
@@ -421,11 +435,7 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::AllToAll(
                  comm_, se::gpu::AsGpuStreamValue(stream)));
   }
 
-  collectives_->JoinGroup(this);
-  TF_RETURN_IF_ERROR(collectives_->GroupEnd());
-  if (!collectives_->JoinGroup(this)) {
-    TF_RETURN_IF_ERROR(PollUntilDone(comm_));
-  }
+  TF_RETURN_IF_ERROR(GroupEnd());
 
   return OkEvent();
 }
@@ -459,7 +469,7 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::CollectivePermute(
     return OkEvent();
   }
 
-  TF_RETURN_IF_ERROR(collectives_->GroupStart());
+  TF_RETURN_IF_ERROR(GroupStart());
 
   if (source_rank) {
     XLA_NCCL_RETURN_IF_ERROR(ncclRecv(
@@ -473,11 +483,7 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::CollectivePermute(
         target_rank.value(), comm_, se::gpu::AsGpuStreamValue(stream)));
   }
 
-  collectives_->JoinGroup(this);
-  TF_RETURN_IF_ERROR(collectives_->GroupEnd());
-  if (!collectives_->JoinGroup(this)) {
-    TF_RETURN_IF_ERROR(PollUntilDone(comm_));
-  }
+  TF_RETURN_IF_ERROR(GroupEnd());
 
   return OkEvent();
 }
@@ -502,7 +508,7 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::Send(
   TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(
       ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
                peer.value(), comm_, se::gpu::AsGpuStreamValue(stream))));
-  if (!collectives_->JoinGroup(this)) {
+  if (group_nesting_level_ == 0) {
     TF_RETURN_IF_ERROR(PollUntilDone(comm_));
   }
   return OkEvent();
@@ -528,7 +534,7 @@ tsl::AsyncValueRef<NcclCommunicator::Event> NcclCommunicator::Recv(
   TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(
       ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
                peer.value(), comm_, se::gpu::AsGpuStreamValue(stream))));
-  if (!collectives_->JoinGroup(this)) {
+  if (group_nesting_level_ == 0) {
     TF_RETURN_IF_ERROR(PollUntilDone(comm_));
   }
   return OkEvent();

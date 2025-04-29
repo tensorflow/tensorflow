@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/nccl_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -398,7 +399,7 @@ absl::Status RunCollectivePermute(
     // for multiple buffers
     const bool is_nccl_group_needed = (buffers.size() > 1);
     if (is_nccl_group_needed) {
-      TF_RETURN_IF_ERROR(collectives->GroupStart());
+      TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupStart());
     }
 
     std::optional<RankId> source_rank;
@@ -421,7 +422,7 @@ absl::Status RunCollectivePermute(
     }
 
     if (is_nccl_group_needed) {
-      TF_RETURN_IF_ERROR(collectives->GroupEnd());
+      TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupEnd());
     }
   }
 

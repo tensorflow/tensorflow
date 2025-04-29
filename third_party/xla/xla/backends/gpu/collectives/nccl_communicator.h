@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COMMUNICATOR_H_
 
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,7 +30,6 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 #if TENSORFLOW_USE_ROCM
@@ -47,12 +45,14 @@ limitations under the License.
 
 namespace xla::gpu {
 
-class NcclCollectives;
-
 // XLA collectives communicator wrapping an NCCL communicator.
+//
+// NcclCommunicator is NOT thread-safe. A NcclCommunicator should only be used
+// on the same thread that created the ncclComm_t passed to the constructor. See
+// ThreadSafeNcclCommunicator for dealing with this odd lack of thread safety.
 class NcclCommunicator : public Communicator {
  public:
-  explicit NcclCommunicator(NcclCollectives* collectives, ncclComm_t comm);
+  explicit NcclCommunicator(ncclComm_t comm);
   ~NcclCommunicator() override;
 
   // NcclCommunicator is not copyable or movable.
@@ -60,6 +60,12 @@ class NcclCommunicator : public Communicator {
   NcclCommunicator(NcclCommunicator&&) = delete;
   NcclCommunicator& operator=(const NcclCommunicator&) = delete;
   NcclCommunicator& operator=(NcclCommunicator&&) = delete;
+
+  // Group calls can be used to merge multiple NCCL operations into one. See
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/groups.html
+  // for more information on how groups work and when they are needed.
+  absl::Status GroupStart();
+  absl::Status GroupEnd();
 
   absl::Status Abort() final;
   absl::Status HealthCheck() const final;
@@ -116,9 +122,9 @@ class NcclCommunicator : public Communicator {
  private:
   static absl::StatusOr<se::Stream*> ToStream(const Executor& executor);
 
-  NcclCollectives* collectives_;  // Parent NcclCollectives instance
-  ncclComm_t comm_;               // Underlying NCCL communicator
-  bool aborted_ = false;          // Has Abort() been called?
+  ncclComm_t comm_;              // Underlying NCCL communicator
+  bool aborted_ = false;         // Has Abort() been called?
+  int group_nesting_level_ = 0;  // Nesting level of current NCCL group
 };
 
 }  // namespace xla::gpu

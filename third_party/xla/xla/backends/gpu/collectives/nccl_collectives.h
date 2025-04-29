@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/thread_safe_nccl_communicator.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
@@ -32,6 +33,9 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 
 namespace xla::gpu {
+
+ThreadSafeNcclCommunicator* CastCommunicator(Communicator* comm);
+const ThreadSafeNcclCommunicator* CastCommunicator(const Communicator* comm);
 
 // XLA host-initiated collectives implemented on top of NCCL.
 class NcclCollectives : public GpuCollectives {
@@ -44,9 +48,6 @@ class NcclCollectives : public GpuCollectives {
       const CliqueIdCallback* clique_id_callback, bool is_local) final;
 
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final;
-
-  absl::Status GroupStart() final;
-  absl::Status GroupEnd() final;
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
   CreateCommunicators(const CliqueKey& clique_key,
@@ -63,11 +64,6 @@ class NcclCollectives : public GpuCollectives {
   absl::Status Deallocate(void* location) final;
 
   absl::Status InitializeTopology(Topology topology) final;
-
-  // Adds the provided communicator to the current NCCL group, if there is one.
-  // If there is no active group, JoinGroup is a noop. JoinGroup returns true if
-  // the communicator was added to a group, and false otherwise.
-  bool JoinGroup(const Communicator* communicator);
 };
 
 }  // namespace xla::gpu

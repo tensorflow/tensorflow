@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/nccl_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -112,7 +113,7 @@ absl::Status RunAllToAllOnIndexBuffer(
     se::Stream& stream, Communicator* comm) {
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
-  TF_RETURN_IF_ERROR(collectives->GroupStart());
+  TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupStart());
   for (int peer = 0; peer < num_ranks; ++peer) {
     int64_t offset = peer * num_updates_per_replica;
     se::DeviceMemoryBase send_slice = collectives->Slice(
@@ -140,7 +141,7 @@ absl::Status RunAllToAllOnIndexBuffer(
     }
   }
 
-  TF_RETURN_IF_ERROR(collectives->GroupEnd());
+  TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupEnd());
   return stream.BlockHostUntilDone();
 }
 
@@ -182,7 +183,7 @@ absl::Status RunRaggedAllToAll(
   const int64_t* output_offsets = ragged_metadata_allocs[2];
   const int64_t* recv_sizes = ragged_metadata_allocs[3];
 
-  TF_RETURN_IF_ERROR(collectives->GroupStart());
+  TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupStart());
 
   PrimitiveType element_type = buffers[0].element_type;
 
@@ -222,7 +223,7 @@ absl::Status RunRaggedAllToAll(
     }
   }
 
-  return collectives->GroupEnd();
+  return CastCommunicator(comm)->GroupEnd();
 }
 
 // Contains the values that are passed between host threads with rendezvous.

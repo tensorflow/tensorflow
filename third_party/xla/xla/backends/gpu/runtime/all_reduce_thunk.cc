@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/nccl_collectives.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -240,7 +241,7 @@ absl::Status RunAllReduce(GpuCollectives* collectives,
   TF_RETURN_IF_ERROR(
       MaybeRegisterBuffers(collectives, stream.parent(), buffers, comm));
 
-  TF_RETURN_IF_ERROR(collectives->GroupStart());
+  TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupStart());
   for (DeviceBufferPair& buffer : buffers) {
     auto event = comm->AllReduce(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
@@ -252,7 +253,7 @@ absl::Status RunAllReduce(GpuCollectives* collectives,
     }
   }
 
-  return collectives->GroupEnd();
+  return CastCommunicator(comm)->GroupEnd();
 }
 
 AllReduceReduceScatterThunkBase::AllReduceReduceScatterThunkBase(
@@ -451,7 +452,7 @@ absl::Status RunReduceScatter(GpuCollectives* collectives,
 
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
-  TF_RETURN_IF_ERROR(collectives->GroupStart());
+  TF_RETURN_IF_ERROR(CastCommunicator(comm)->GroupStart());
 
   for (DeviceBufferPair& buffer : buffers) {
     // buffer.element_count is the source buffers element count. For
@@ -471,7 +472,7 @@ absl::Status RunReduceScatter(GpuCollectives* collectives,
     }
   }
 
-  return collectives->GroupEnd();
+  return CastCommunicator(comm)->GroupEnd();
 }
 
 }  // namespace gpu
