@@ -105,6 +105,21 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "tf_uniform_op_quant_spec",
+    srcs = [
+        "tf_uniform_op_quant_spec.cc",
+    ],
+    hdrs = ["tf_uniform_op_quant_spec.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/common/tf_quantization_lib",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "uniform_op_quant_spec",
     srcs = [
         "uniform_op_quant_spec.cc",
