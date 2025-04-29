@@ -215,6 +215,13 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
       const auto quantization_params =
           static_cast<const TfLiteAffineQuantization*>(
               tensor.quantization.params);
+      if (quantization_params == nullptr) {
+        TF_LITE_KERNEL_LOG(context,
+                           "missing quantization parameters for affine "
+                           "quantized tensor %d in XNNPACK delegate",
+                           t);
+        return xnn_datatype_invalid;
+      }
       if (quantization_params->scale == nullptr) {
         TF_LITE_KERNEL_LOG(context,
                            "missing scale quantization parameters for UINT8 "
@@ -267,6 +274,13 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
           const auto quantization_params =
               static_cast<const TfLiteAffineQuantization*>(
                   tensor.quantization.params);
+          if (quantization_params == nullptr) {
+            TF_LITE_KERNEL_LOG(context,
+                               "missing quantization parameters for affine "
+                               "quantized tensor %d in XNNPACK delegate",
+                               t);
+            return xnn_datatype_invalid;
+          }
           const auto quantization_scale = quantization_params->scale;
           const auto quantization_zero_point = quantization_params->zero_point;
           if (!CheckFp32Scale(context, tensor, t, quantization_scale,
@@ -365,6 +379,13 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
       const auto quantization_params =
           static_cast<const TfLiteAffineQuantization*>(
               tensor.quantization.params);
+      if (quantization_params == nullptr) {
+        TF_LITE_KERNEL_LOG(context,
+                           "missing quantization parameters for affine "
+                           "quantized tensor %d in XNNPACK delegate",
+                           t);
+        return xnn_datatype_invalid;
+      }
       if (quantization_params->scale == nullptr) {
         TF_LITE_KERNEL_LOG(context,
                            "missing scale quantization parameters for "
