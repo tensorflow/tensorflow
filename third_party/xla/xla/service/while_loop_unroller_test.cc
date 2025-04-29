@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/service/scheduling_annotations_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -1033,10 +1032,8 @@ TEST_F(WhileLoopUnrollerTest, LoopWithCollective2) {
   absl::flat_hash_map<int64_t, int64_t> num_instrs_per_group;
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
-    TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
-                            GetSchedulingAnnotationGroupId(instr));
-    if (id) {
-      num_instrs_per_group[*id]++;
+    if (std::optional<int64_t> id = GetSchedulingAnnotation(instr)) {
+      num_instrs_per_group[id.value()]++;
     }
   }
   for (const auto& [group_id, num_instrs] : num_instrs_per_group) {

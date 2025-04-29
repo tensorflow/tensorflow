@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/legalize_scheduling_annotations.h"
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <queue>
 #include <string>
@@ -29,6 +28,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/service/scheduling_annotations_util.h"
 #include "xla/side_effect_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -101,23 +100,44 @@ absl::flat_hash_set<HloInstruction*> PropagateAnnotationFromSources(
 // Attach the annotation ID to the given instructions. Returns error if any of
 // the instructions already has an annotation.
 absl::Status AttachAnnotation(
-    Annotation annotation,
+    int64_t annotation_id,
     const absl::flat_hash_set<HloInstruction*>& instructions) {
   for (HloInstruction* instr : instructions) {
-    TF_ASSIGN_OR_RETURN(std::optional<Annotation> instr_annotation,
-                        GetSchedulingAnnotation(instr));
-    if (instr_annotation) {
-      return absl::InternalError("Trying to propagate scheduling annotation " +
-                                 annotation.ToString() + " to " +
-                                 std::string(instr->name()) +
-                                 " but it has an existing annotation: " +
-                                 instr_annotation->ToString());
+    if (std::optional<int64_t> id = GetSchedulingAnnotation(instr)) {
+      return absl::InternalError(
+          "Trying to propagate scheduling annotation " +
+          absl::StrCat(annotation_id) + " to " + std::string(instr->name()) +
+          " but it has an existing annotation: " + absl::StrCat(*id));
     }
-    LOG(INFO) << "Propagating annotation " << annotation.ToString() << " to "
+    LOG(INFO) << "Propagating annotation " << annotation_id << " to "
               << instr->name();
-    TF_RETURN_IF_ERROR(SetSchedulingAnnotation(instr, annotation));
+    SetSchedulingAnnotation(instr, annotation_id);
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<int64_t> ExtractAnnotation(
+    const ::google::protobuf::Map<std::string, std::string>& attrs,
+    absl::string_view instr_name) {
+  int64_t annotation_id;
+  if (!absl::SimpleAtoi(attrs.at(kXlaSchedulingGroupIdAttr), &annotation_id)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Instruction has a non-integer scheduling annotation, inst: ",
+        instr_name, ", annotation: ", attrs.at(kXlaSchedulingGroupIdAttr)));
+  }
+  if (annotation_id < 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Instruction has a negative scheduling annotation, inst: ", instr_name,
+        ", annotation: ", attrs.at(kXlaSchedulingGroupIdAttr)));
+  }
+  return annotation_id;
+}
+
+void DropSchedulingAnnotation(HloInstruction* instr) {
+  VLOG(2) << "Dropping annotation from " << instr->name();
+  FrontendAttributes frontend_attributes = instr->frontend_attributes();
+  frontend_attributes.mutable_map()->erase("_scheduling_group_id");
+  instr->set_frontend_attributes(frontend_attributes);
 }
 
 bool IsSupportedAsyncOp(HloInstruction* instr) {
@@ -131,27 +151,24 @@ bool IsSupportedAsyncOp(HloInstruction* instr) {
 
 absl::Status CheckStartDoneAnnotationConsistency(
     const absl::flat_hash_map<
-        Annotation,
+        int64_t,
         absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
-        annotation_to_instruction,
-    const absl::flat_hash_map<HloInstruction*, Annotation>&
-        instruction_to_annotation) {
-  for (const auto& [annotation, comp_inst_vector] : annotation_to_instruction) {
+        annotation_to_instructions,
+    const absl::flat_hash_map<HloInstruction*, int64_t>& annotation) {
+  for (const auto& [id, comp_inst_vector] : annotation_to_instructions) {
     for (const auto& [comp, annotated_instructions] : comp_inst_vector) {
       for (HloInstruction* instr : annotated_instructions) {
-        CHECK(instruction_to_annotation.contains(instr));
-        CHECK(instruction_to_annotation.at(instr) == annotation);
+        CHECK(annotation.contains(instr));
+        CHECK_EQ(annotation.at(instr), id);
         if (HloPredicateIsOp<
                 HloOpcode::kAllGatherDone, HloOpcode::kAllReduceDone,
                 HloOpcode::kCollectivePermuteDone, HloOpcode::kAsyncDone>(
                 instr) &&
-            (!instruction_to_annotation.contains(instr->operand(0)) ||
-             instruction_to_annotation.at(instr->mutable_operand(0)) !=
-                 annotation)) {
+            (!annotation.contains(instr->operand(0)) ||
+             annotation.at(instr->mutable_operand(0)) != id)) {
           return absl::InternalError(absl::StrCat(
               "Done instruction's operand is not annotated with the same id: ",
-              instr->operand(0)->name(),
-              ", annotation: ", annotation.ToString()));
+              instr->operand(0)->name(), ", annotation: ", id));
         }
       }
     }
@@ -161,38 +178,36 @@ absl::Status CheckStartDoneAnnotationConsistency(
 
 absl::Status CheckGapBetweenAnnotatedInstructions(
     const absl::flat_hash_map<
-        Annotation,
+        int64_t,
         absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
-        annotation_to_instruction,
-    const absl::flat_hash_map<HloInstruction*, Annotation>&
-        instruction_to_annotation) {
+        annotation_to_instructions,
+    const absl::flat_hash_map<HloInstruction*, int64_t>& annotation) {
   absl::flat_hash_map<HloInstruction*, HloInstruction*> parent;
-  for (const auto& [annotation, comp_inst_vector] : annotation_to_instruction) {
+  for (const auto& [id, comp_inst_vector] : annotation_to_instructions) {
     for (const auto& [comp, annotated_instructions] : comp_inst_vector) {
       // First find the frontier nodes that are not annotated with id but use an
       // annotated instruction with id.
       std::vector<HloInstruction*> stack;
       absl::flat_hash_set<HloInstruction*> visited;
       for (HloInstruction* instr : annotated_instructions) {
-        CHECK(instruction_to_annotation.contains(instr));
-        CHECK(instruction_to_annotation.at(instr) == annotation);
+        CHECK(annotation.contains(instr));
+        CHECK_EQ(annotation.at(instr), id);
         for (const PtrVec<HloInstruction*>& users :
              {instr->users(), instr->control_successors()}) {
           for (HloInstruction* user : users) {
             if (!visited.contains(user) &&
-                (!instruction_to_annotation.contains(user) ||
-                 instruction_to_annotation.at(user) != annotation)) {
+                (!annotation.contains(user) || annotation.at(user) != id)) {
               stack.push_back(user);
               parent[user] = instr;
               visited.insert(user);
-              VLOG(2) << "Annotation : " << annotation.ToString()
+              VLOG(2) << "Annotation group: " << id
                       << ", frontier using a root: " << user->name();
             }
           }
         }
       }
-      VLOG(2) << "Annotation : " << annotation.ToString() << ", frontier has "
-              << stack.size() << " instructions";
+      VLOG(2) << "Annotation group: " << id << ", frontier has " << stack.size()
+              << " instructions";
       // Traverse the HLO graph starting from the frontier instructions and move
       // to the users. If there are gaps in the annotation, the traversal will
       // hit an instruction that is annotated with the same id.
@@ -202,8 +217,7 @@ absl::Status CheckGapBetweenAnnotatedInstructions(
         for (const PtrVec<HloInstruction*>& users :
              {instr->users(), instr->control_successors()}) {
           for (HloInstruction* user : users) {
-            if (instruction_to_annotation.contains(user) &&
-                instruction_to_annotation.at(user) == annotation) {
+            if (annotation.contains(user) && annotation.at(user) == id) {
               LOG(INFO) << "PATH: " << user->name();
               HloInstruction* current = instr;
               LOG(INFO) << "PATH: " << current->name();
@@ -214,7 +228,7 @@ absl::Status CheckGapBetweenAnnotatedInstructions(
               return absl::UnimplementedError(absl::StrCat(
                   "Support for annotation groups with gaps doesn't "
                   "exist yet, annotation: ",
-                  annotation.ToString(), ", instr: ", user->name(),
+                  id, ", instr: ", user->name(),
                   " has the same annotation in its operand tree but "
                   "has gaps on the way from that operand to itself."));
             }
@@ -232,77 +246,18 @@ absl::Status CheckGapBetweenAnnotatedInstructions(
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> HaulAnnotationToFusionInstruction(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads,
-    const absl::flat_hash_map<
-        Annotation,
-        absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
-        annotation_to_instruction,
-    const absl::flat_hash_map<HloInstruction*, Annotation>&
-        instruction_to_annotation,
-    std::function<bool(HloInstruction*)> keep_sync_annotation) {
-  bool changed = false;
-  for (HloComputation* computation : module->computations(execution_threads)) {
-    if (!computation->IsFusionComputation() ||
-        !keep_sync_annotation(computation->FusionInstruction()) ||
-        instruction_to_annotation.contains(computation->FusionInstruction())) {
-      continue;
-    }
-    changed = true;
-    std::optional<Annotation> seen_annotation;
-    for (HloInstruction* instr : computation->instructions()) {
-      TF_ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
-                          GetSchedulingAnnotation(instr));
-      if (!annotation) {
-        continue;
-      }
-      if (!seen_annotation) {
-        seen_annotation = annotation;
-        continue;
-      }
-      if (seen_annotation != annotation) {
-        return absl::InternalError(absl::StrCat(
-            "Found a fusion with multiple annotations in the fused "
-            "computation. fusion: ",
-            computation->FusionInstruction()->name(), ", annotations: ",
-            seen_annotation->ToString(), " and ", annotation->ToString()));
-      }
-    }
-    // No fused instructions are annotated, nothing to do.
-    if (!seen_annotation) {
-      continue;
-    }
-    TF_RETURN_IF_ERROR(SetSchedulingAnnotation(computation->FusionInstruction(),
-                                               seen_annotation->ToString()));
-  }
-  return changed;
-}
-
-absl::StatusOr<bool> RemoveLoopIterationAnnotation(HloModule* module) {
-  bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    for (HloInstruction* instr : computation->instructions()) {
-      TF_ASSIGN_OR_RETURN(bool removed,
-                          RemoveSchedulingAnnotationIterationId(instr));
-      changed |= removed;
-    }
-  }
-  return changed;
-}
-
 }  // namespace
 
 absl::StatusOr<bool> LegalizeSchedulingAnnotations::PropagateAnnotations(
     const HloComputation* computation,
-    const absl::btree_map<Annotation, std::vector<HloInstruction*>>&
-        annotation_to_instruction) {
+    const absl::btree_map<int64_t, std::vector<HloInstruction*>>&
+        annotation_id_to_instructions) {
   bool changed = false;
-  for (auto& [annotation, sources] : annotation_to_instruction) {
+  for (auto& [annotation_id, sources] : annotation_id_to_instructions) {
     absl::flat_hash_set<HloInstruction*> to_annotate =
         PropagateAnnotationFromSources(sources, computation);
     changed |= (!to_annotate.empty());
-    auto status = AttachAnnotation(annotation, to_annotate);
+    auto status = AttachAnnotation(annotation_id, to_annotate);
     if (!status.ok()) {
       return status;
     }
@@ -324,65 +279,94 @@ bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
 absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  absl::flat_hash_map<HloInstruction*, Annotation> instruction_to_annotation;
+  absl::flat_hash_map<HloInstruction*, int64_t> annotation;
   absl::flat_hash_map<
-      Annotation,
+      int64_t,
       absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>
-      annotation_to_instruction;
-  bool changed = false;
+      annotation_to_instructions;
   // Filter the annotated ops (using config) to keep the annotations only in the
   // desired sync ops. Annotations in all async ops are kept.
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instr : computation->instructions()) {
-      if (HasSchedulingAnnotation(instr) && !KeepSchedulingAnnotation(instr)) {
-        changed |= RemoveSchedulingAnnotation(instr);
+      const auto& attrs = instr->frontend_attributes().map();
+      if (!attrs.contains(kXlaSchedulingGroupIdAttr) ||
+          KeepSchedulingAnnotation(instr)) {
+        continue;
       }
+      DropSchedulingAnnotation(instr);
     }
-  }
-
-  // Remove loop iteration annotation if needed.
-  if (config_.remove_loop_iteration_annotation) {
-    TF_ASSIGN_OR_RETURN(bool remove_loop_iteration_annotation,
-                        RemoveLoopIterationAnnotation(module));
-    changed |= remove_loop_iteration_annotation;
   }
 
   // Find the annotated instructions and save relevant information.
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : computation->instructions()) {
-      TF_ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
-                          GetSchedulingAnnotation(instr));
-      if (!annotation) {
+      const auto& attrs = instr->frontend_attributes().map();
+      if (!attrs.contains(kXlaSchedulingGroupIdAttr)) {
         continue;
       }
-      instruction_to_annotation[instr] = *annotation;
-      annotation_to_instruction[*annotation][computation].push_back(instr);
+      VLOG(1) << "Annotated instruction: " << instr->name() << " "
+              << attrs.at(kXlaSchedulingGroupIdAttr);
+      TF_ASSIGN_OR_RETURN(int64_t annotation_id,
+                          ExtractAnnotation(attrs, instr->name()));
+
+      annotation[instr] = annotation_id;
+      annotation_to_instructions[annotation_id][computation].push_back(instr);
     }
   }
-
   // Move the annotation from inside fusion computation to the caller
   // instruction if the caller doesn't have an annotation. Return an error if
   // there are some fused instructions with different annotations.
-  TF_ASSIGN_OR_RETURN(
-      bool haul_annotation_to_top_level,
-      HaulAnnotationToFusionInstruction(
-          module, execution_threads, annotation_to_instruction,
-          instruction_to_annotation, config_.keep_sync_annotation));
-  changed |= haul_annotation_to_top_level;
-
-  if (annotation_to_instruction.empty()) {
-    return changed;
+  for (HloComputation* computation : module->computations(execution_threads)) {
+    if (!computation->IsFusionComputation() ||
+        !config_.keep_sync_annotation(computation->FusionInstruction()) ||
+        annotation.contains(computation->FusionInstruction())) {
+      continue;
+    }
+    int64_t seen_annotation = -1;
+    for (HloInstruction* instr : computation->instructions()) {
+      const auto& attrs = instr->frontend_attributes().map();
+      if (!attrs.contains(kXlaSchedulingGroupIdAttr)) {
+        continue;
+      }
+      TF_ASSIGN_OR_RETURN(int64_t annotation_id,
+                          ExtractAnnotation(attrs, instr->name()));
+      if (seen_annotation == -1) {
+        seen_annotation = annotation_id;
+        continue;
+      }
+      if (seen_annotation != annotation_id) {
+        return absl::InternalError(absl::StrCat(
+            "Found a fusion with multiple annotations in the fused "
+            "computation. fusion: ",
+            computation->FusionInstruction()->name(),
+            ", annotations: ", seen_annotation, " and ", annotation_id));
+      }
+    }
+    // No fused instructions are annotated, nothing to do.
+    if (seen_annotation == -1) {
+      continue;
+    }
+    FrontendAttributes frontend_attributes =
+        computation->FusionInstruction()->frontend_attributes();
+    frontend_attributes.mutable_map()->insert(
+        {kXlaSchedulingGroupIdAttr, std::to_string(seen_annotation)});
+    computation->FusionInstruction()->set_frontend_attributes(
+        frontend_attributes);
+  }
+  if (annotation_to_instructions.empty()) {
+    return false;
   }
 
   if (config_.check_start_done_annotation_consistency) {
     auto status = CheckStartDoneAnnotationConsistency(
-        annotation_to_instruction, instruction_to_annotation);
+        annotation_to_instructions, annotation);
     if (!status.ok()) {
       return status;
     }
   }
 
+  bool changed = false;
   // Either propagate the annotation to fill the gaps between instructions with
   // the same annotation ID or check (and return error) if there are gaps.
   if (config_.propagate_annotation) {
@@ -390,20 +374,20 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     // same annotation ID.
     for (HloComputation* computation :
          module->MakeNonfusionComputations(execution_threads)) {
-      absl::btree_map<Annotation, std::vector<HloInstruction*>>
-          per_computation_annotation_to_instruction;
-      for (const auto& [annotation, comp_inst_vector] :
-           annotation_to_instruction) {
+      absl::btree_map<int64_t, std::vector<HloInstruction*>>
+          per_computation_annotation_to_instructions;
+      for (const auto& [annotation_id, comp_inst_vector] :
+           annotation_to_instructions) {
         if (comp_inst_vector.contains(computation)) {
-          per_computation_annotation_to_instruction[annotation] =
+          per_computation_annotation_to_instructions[annotation_id] =
               comp_inst_vector.at(computation);
         }
       }
-      if (per_computation_annotation_to_instruction.empty()) {
+      if (per_computation_annotation_to_instructions.empty()) {
         continue;
       }
       auto result = PropagateAnnotations(
-          computation, per_computation_annotation_to_instruction);
+          computation, per_computation_annotation_to_instructions);
       if (!result.ok()) {
         return result.status();
       }
@@ -411,7 +395,7 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     }
   } else {
     auto result = CheckGapBetweenAnnotatedInstructions(
-        annotation_to_instruction, instruction_to_annotation);
+        annotation_to_instructions, annotation);
     if (!result.ok()) {
       return result;
     }

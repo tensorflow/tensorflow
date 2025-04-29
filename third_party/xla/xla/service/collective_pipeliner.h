@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/collective_pipeliner_utils.h"
 
 namespace xla {
 
@@ -61,6 +60,12 @@ namespace xla {
 // }
 class CollectivePipeliner : public HloModulePass {
  public:
+  enum PipeliningDirection {
+    kBackward,
+    kForward,
+    kForwardSink,
+  };
+
   // Postprocessing cloned collective instructions, such as peeled instructions
   // before and after the loop, and rotated instructions. The new while op is
   // only passed for the peeled trailing ops when the new while op was already
@@ -80,8 +85,7 @@ class CollectivePipeliner : public HloModulePass {
     // iteration.
     bool pipeline_use_tree = false;
     bool process_different_sized_ops = false;
-    collective_pipeliner_utils::PipeliningDirection pipelining_direction =
-        collective_pipeliner_utils::PipeliningDirection::kForward;
+    PipeliningDirection pipelining_direction = PipeliningDirection::kForward;
     HloPredicate should_process;
     // Filter acceptable formatting ops for for forward pipelining to discard
     // cases that pipeline formatting operations that we don't want to support.
@@ -115,16 +119,15 @@ class CollectivePipeliner : public HloModulePass {
   explicit CollectivePipeliner(const Config& config) : config_(config) {}
   CollectivePipeliner(CollectivePipeliner&& other) = default;
   CollectivePipeliner& operator=(CollectivePipeliner&& other) = default;
-  absl::string_view GetPipelineDirectionString(
-      collective_pipeliner_utils::PipeliningDirection direction) {
+  absl::string_view GetPipelineDirectionString(PipeliningDirection direction) {
     switch (direction) {
-      case collective_pipeliner_utils::PipeliningDirection::kForward: {
+      case PipeliningDirection::kForward: {
         return "forward";
       }
-      case collective_pipeliner_utils::PipeliningDirection::kBackward: {
+      case PipeliningDirection::kBackward: {
         return "backward";
       }
-      case collective_pipeliner_utils::PipeliningDirection::kForwardSink: {
+      case PipeliningDirection::kForwardSink: {
         return "forwardsink";
       }
     }
@@ -132,11 +135,9 @@ class CollectivePipeliner : public HloModulePass {
 
   static constexpr absl::string_view kName = "collective-pipeliner";
   absl::string_view name() const override {
-    if (config_.pipelining_direction ==
-        collective_pipeliner_utils::PipeliningDirection::kForward) {
+    if (config_.pipelining_direction == kForward) {
       return "collective-pipeliner-forward";
-    } else if (config_.pipelining_direction ==
-               collective_pipeliner_utils::PipeliningDirection::kBackward) {
+    } else if (config_.pipelining_direction == kBackward) {
       return "collective-pipeliner-backward";
     } else {
       return "collective-pipeliner-forwardsink";

@@ -116,7 +116,6 @@ xla_cc_test(
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:collective_pipeliner",
-        "//xla/service:collective_pipeliner_utils",
         "//xla/service:hlo_module_config",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",

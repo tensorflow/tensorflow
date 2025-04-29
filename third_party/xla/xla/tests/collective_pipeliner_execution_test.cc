@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/collective_pipeliner.h"
-#include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
@@ -45,8 +44,8 @@ using CollectivePipelinerExecutionTest = HloPjRtTestBase;
 absl::StatusOr<bool> RunOptimizer(
     HloModule* module, bool last_run, int64_t level_to_operate_on = 0,
     HloPredicate should_process = HloPredicateIsOp<HloOpcode::kNegate>,
-    collective_pipeliner_utils::PipeliningDirection pipelining_direction =
-        collective_pipeliner_utils::PipeliningDirection::kForward,
+    CollectivePipeliner::PipeliningDirection pipelining_direction =
+        CollectivePipeliner::PipeliningDirection::kForward,
     bool pipeline_use_tree = false,
     HloPredicate acceptable_formatting = HloPredicateTrue,
     HloPredicate reuse_pipelined_op_buffer = HloPredicateTrue) {
@@ -187,7 +186,7 @@ ENTRY entry {
       RunOptimizer(module.get(), /*last_run=*/true, /*level_to_operate_on=*/0,
                    /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
                    /*pipelining_direction=*/
-                   collective_pipeliner_utils::PipeliningDirection::kForward,
+                   CollectivePipeliner::PipeliningDirection::kForward,
                    /*pipeline_use_tree=*/false,
                    /*acceptable_formatting=*/HloPredicateTrue,
                    /*reuse_pipelined_op_buffer=*/HloPredicateFalse)
@@ -815,11 +814,11 @@ ENTRY entry {
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(
-      RunOptimizer(module.get(), /*last_run=*/true, 0, /*should_process=*/
-                   HloPredicateIsOp<HloOpcode::kConcatenate>,
-                   collective_pipeliner_utils::PipeliningDirection::kBackward)
-          .value());
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true,
+                           0, /*should_process=*/
+                           HloPredicateIsOp<HloOpcode::kConcatenate>,
+                           CollectivePipeliner::PipeliningDirection::kBackward)
+                  .value());
   EXPECT_FALSE(RunOptimizer(module2.get(), /*last_run=*/true, 0).value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
@@ -886,7 +885,7 @@ ENTRY entry {
   EXPECT_TRUE(
       RunOptimizer(module.get(), /*last_run=*/true, 0,
                    /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
-                   collective_pipeliner_utils::PipeliningDirection::kForward,
+                   CollectivePipeliner::PipeliningDirection::kForward,
                    /*pipeline_use_tree=*/true)
           .value());
   XLA_VLOG_LINES(1, module->ToString());
@@ -950,7 +949,7 @@ ENTRY entry {
   EXPECT_TRUE(
       RunOptimizer(module.get(), /*last_run=*/true, 0,
                    /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
-                   collective_pipeliner_utils::PipeliningDirection::kForward,
+                   CollectivePipeliner::PipeliningDirection::kForward,
                    /*pipeline_use_tree=*/true)
           .value());
   XLA_VLOG_LINES(1, module->ToString());
@@ -1014,12 +1013,12 @@ ENTRY entry {
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(RunOptimizer(
-                  module.get(), /*last_run=*/true, 0,
-                  /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
-                  collective_pipeliner_utils::PipeliningDirection::kForwardSink,
-                  /*pipeline_use_tree=*/true)
-                  .value());
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, 0,
+                   /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
+                   CollectivePipeliner::PipeliningDirection::kForwardSink,
+                   /*pipeline_use_tree=*/true)
+          .value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -1080,12 +1079,12 @@ ENTRY entry {
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(RunOptimizer(
-                  module.get(), /*last_run=*/true, 0,
-                  /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
-                  collective_pipeliner_utils::PipeliningDirection::kForwardSink,
-                  /*pipeline_use_tree=*/true)
-                  .value());
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, 0,
+                   /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
+                   CollectivePipeliner::PipeliningDirection::kForwardSink,
+                   /*pipeline_use_tree=*/true)
+          .value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -1153,7 +1152,7 @@ ENTRY entry {
       RunOptimizer(module.get(), /*last_run=*/true, 0,
                    /*should_process=*/
                    HloPredicateIsOp<HloOpcode::kNegate, HloOpcode::kSqrt>,
-                   collective_pipeliner_utils::PipeliningDirection::kForward,
+                   CollectivePipeliner::PipeliningDirection::kForward,
                    /*pipeline_use_tree=*/true)
           .value());
   XLA_VLOG_LINES(1, module->ToString());
@@ -1216,12 +1215,12 @@ ENTRY entry {
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(RunOptimizer(
-                  module.get(), /*last_run=*/true, 0,
-                  /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
-                  collective_pipeliner_utils::PipeliningDirection::kForwardSink,
-                  /*pipeline_use_tree=*/true)
-                  .value());
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, 0,
+                   /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
+                   CollectivePipeliner::PipeliningDirection::kForwardSink,
+                   /*pipeline_use_tree=*/true)
+          .value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -1292,7 +1291,7 @@ ENTRY entry {
       RunOptimizer(
           module.get(), /*last_run=*/true, 0,
           /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
-          collective_pipeliner_utils::PipeliningDirection::kForwardSink,
+          CollectivePipeliner::PipeliningDirection::kForwardSink,
           /*pipeline_use_tree=*/true,
           /*acceptable_formatting=*/HloPredicateIsNotOp<HloOpcode::kNegate>)
           .value());
@@ -1384,13 +1383,13 @@ ENTRY entry {
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(RunOptimizer(
-                  module.get(), /*last_run=*/true, 0,
-                  /*should_process=*/
-                  HloPredicateIsOp<HloOpcode::kNegate, HloOpcode::kExp>,
-                  collective_pipeliner_utils::PipeliningDirection::kForwardSink,
-                  /*pipeline_use_tree=*/true)
-                  .value());
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, 0,
+                   /*should_process=*/
+                   HloPredicateIsOp<HloOpcode::kNegate, HloOpcode::kExp>,
+                   CollectivePipeliner::PipeliningDirection::kForwardSink,
+                   /*pipeline_use_tree=*/true)
+          .value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),

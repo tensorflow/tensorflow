@@ -136,7 +136,6 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_permute_decomposer.h"
 #include "xla/service/collective_pipeliner.h"
-#include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/collective_utils.h"
 #include "xla/service/compiler.h"
 #include "xla/service/conditional_simplifier.h"
@@ -935,7 +934,7 @@ absl::Status RunCollectiveOptimizationPasses(
         /*pipeline_use_tree=*/true,
         /*process_different_sized_ops=*/true,
         /*pipelining_direction=*/
-        collective_pipeliner_utils::PipeliningDirection::kForward,
+        CollectivePipeliner::PipeliningDirection::kForward,
         /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>,
         /*acceptable_formatting=*/HloPredicateTrue,
         /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
@@ -958,7 +957,7 @@ absl::Status RunCollectiveOptimizationPasses(
         /*pipeline_use_tree=*/true,
         /*process_different_sized_ops=*/true,
         /*pipelining_direction=*/
-        collective_pipeliner_utils::PipeliningDirection::kBackward,
+        CollectivePipeliner::PipeliningDirection::kBackward,
         /*should_process=*/HloPredicateIsOp<HloOpcode::kAllGather>,
         /*acceptable_formatting=*/HloPredicateTrue,
         /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
@@ -981,7 +980,7 @@ absl::Status RunCollectiveOptimizationPasses(
         /*pipeline_use_tree=*/true,
         /*process_different_sized_ops=*/true,
         /*pipelining_direction=*/
-        collective_pipeliner_utils::PipeliningDirection::kForward,
+        CollectivePipeliner::PipeliningDirection::kForward,
         /*should_process=*/HloPredicateIsOp<HloOpcode::kReduceScatter>,
         /*acceptable_formatting=*/HloPredicateTrue,
         /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
