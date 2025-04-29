@@ -35,6 +35,10 @@ load(
     "tsl_gpu_library",
 )
 load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
+load(
     "//xla/tsl/platform:build_config_root.bzl",
     "if_static",
 )
@@ -535,6 +539,15 @@ cc_library(
     ]) + if_static([
         "@local_tsl//tsl/platform:tensor_float_32_utils",
     ]),
+)
+
+tf_proto_library(
+    name = "gpu_blas_lt_proto",
+    srcs = ["gpu_blas_lt.proto"],
+    protodeps = [
+        "//xla:xla_data_proto",
+        "//xla/stream_executor:blas_proto",
+    ],
 )
 
 gpu_kernel_library(

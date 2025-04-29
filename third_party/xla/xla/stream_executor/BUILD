@@ -359,6 +359,14 @@ cc_library(
     ] + if_google(["@com_google_protobuf//:wrappers_cc_proto"]),
 )
 
+tf_proto_library(
+    name = "blas_proto",
+    srcs = ["blas.proto"],
+    protodeps = [
+        "//xla:xla_data_proto",
+    ],
+)
+
 cc_library(
     name = "fft",
     hdrs = ["fft.h"],
