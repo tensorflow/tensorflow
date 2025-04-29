@@ -1184,8 +1184,8 @@ class Subgraph {
       }
     }
     status = xnn_create_runtime_v4(subgraph.get(), delegate.weights_cache(),
-                                   delegate.workspace(), nullptr, flags,
-                                   &runtime_ptr);
+                                   delegate.workspace(), delegate.threadpool(),
+                                   flags, &runtime_ptr);
     if (delegate.weight_cache_provider_.IsActive() &&
         delegate.weight_cache_provider_.CanStartBuildStep()) {
       if (!delegate.weight_cache_provider_.StopBuildStep()) {
