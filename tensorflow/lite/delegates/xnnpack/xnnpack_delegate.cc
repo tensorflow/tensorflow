@@ -309,6 +309,13 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
           }
         }
         case kTfLiteBlockwiseQuantization: {
+          if (tensor.type != kTfLiteInt4) {
+            TF_LITE_KERNEL_LOG(context,
+                               "unsupported tensor type %d for blockwise "
+                               "quantized tensor %d in XNNPACK delegate",
+                               tensor.type, t);
+            return xnn_datatype_invalid;
+          }
           const auto quantization_params =
               reinterpret_cast<const TfLiteBlockwiseQuantization*>(
                   tensor.quantization.params);
@@ -329,15 +336,7 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
                 tensor.name, t);
             return xnn_datatype_invalid;
           }
-          switch (tensor.type) {
-            case kTfLiteInt8:
-              return xnn_datatype_qcint8;
-            case kTfLiteInt4:
-              return xnn_datatype_qbint4;
-            default:
-              // Outermost switch prevents this
-              TFL_UNREACHABLE();
-          }
+          return xnn_datatype_qbint4;
         }
         default:
           TF_LITE_KERNEL_LOG(context,
