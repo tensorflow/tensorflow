@@ -640,6 +640,10 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
            "PjRtLoadedExecutable::GetOutputDimensions().";
   }
 
+  absl::StatusOr<struct CompileOptions> GetCompileOptions() const override {
+    return absl::UnimplementedError("`GetCompileOptions` is not implemented");
+  }
+
   absl::StatusOr<std::vector<std::vector<PrimitiveType>>>
   GetOutputElementTypes() const override {
     return executable_->GetOutputElementTypes();
