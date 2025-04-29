@@ -57,7 +57,7 @@ TEST(FunctionOptimizationPassRegistry, PassWithError) {
       /*flib_def=*/nullptr,
       /*control_ret_node_names=*/nullptr, /*control_rets_updated=*/nullptr);
 
-  EXPECT_TRUE(errors::IsUnknown(status));
+  EXPECT_TRUE(absl::IsUnknown(status));
   EXPECT_TRUE(FailingFunctionPass::ran_);
 }
 

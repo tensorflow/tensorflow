@@ -1520,7 +1520,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               buffer_.push_back(std::move(elem));
               num_elements_read_++;
               cond_var_.notify_all();
-            } else if (errors::IsOutOfRange(s)) {
+            } else if (absl::IsOutOfRange(s)) {
               return absl::OkStatus();
             } else {
               return s;

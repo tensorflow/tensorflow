@@ -852,8 +852,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         HloInstruction* input = operands(0);
         HloInstruction* input_start_indices = operands(2);
         if (input->shape().IsTuple() &&
-            input->shape().tuple_shapes_size() > 1) {
-          slice_sizes.resize(input->shape().tuple_shapes_size());
+            input->shape().tuple_shapes().size() > 1) {
+          slice_sizes.resize(input->shape().tuple_shapes().size());
         } else {
           slice_sizes.resize(1);
         }
@@ -863,8 +863,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                   .tuple_shapes(0)
                   .tuple_shapes(0)
                   .IsArray()) {
-            slice_sizes.resize(input->shape().tuple_shapes_size());
-            for (int i = 0; i < input->shape().tuple_shapes_size(); ++i) {
+            slice_sizes.resize(input->shape().tuple_shapes().size());
+            for (int i = 0; i < input->shape().tuple_shapes().size(); ++i) {
               slice_sizes[i].resize(
                   input->shape().tuple_shapes(i).dimensions().size());
               for (int j = 0;
@@ -877,11 +877,11 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             }
           } else {
             slice_sizes.resize(
-                input->shape().tuple_shapes_size() *
+                input->shape().tuple_shapes().size() *
                 ShapeUtil::TupleElementCount(
                     input_start_indices->shape().tuple_shapes(0)));
             int slice_sizes_count = 0;
-            for (int i = 0; i < input->shape().tuple_shapes_size(); ++i) {
+            for (int i = 0; i < input->shape().tuple_shapes().size(); ++i) {
               for (int j = 0;
                    j < ShapeUtil::TupleElementCount(
                            input_start_indices->shape().tuple_shapes(i));
@@ -2130,7 +2130,7 @@ HloInstruction::CreateStochasticConvert(const Shape& shape,
                         dimensions_to_reduce, reduce_computation);
   }
   absl::InlinedVector<HloInstruction*, 4> inputs;
-  for (int idx = 0; idx < tuple_of_instructions->shape().tuple_shapes_size();
+  for (int idx = 0; idx < tuple_of_instructions->shape().tuple_shapes().size();
        idx++) {
     std::unique_ptr<HloInstruction> gte =
         HloInstruction::CreateGetTupleElement(tuple_of_instructions, idx);
