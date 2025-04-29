@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -246,9 +247,10 @@ absl::StatusOr<KernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
   std::unique_ptr<mlir::MLIRContext> context = FusionCompiler::CreateContext();
 
   mlir::OpBuilder builder(context.get());
-  auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion_->name()));
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      llvm_ir::CreateMlirModuleOp(loc);
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                      CreateNamedMlirModuleOp(*fusion_, builder));
+
+  absl::string_view module_name(mlir_module->getName().value());
   SetDataLayoutAttribute(mlir_module.get(), *fusion_);
 
   mlir::StringAttr disable_loop_unrolling_attr =
@@ -258,11 +260,10 @@ absl::StatusOr<KernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
       builder.getAttr<xla::ExtraBackendOptionsAttr>(
           llvm::ArrayRef{disable_loop_unrolling_attr}));
 
-  TF_ASSIGN_OR_RETURN(
-      mlir::func::FuncOp entry_func,
-      EmitFusionKernelApi(mlir_module.get(), *fusion_,
-                          std::string(fusion_->name()) + "_entry",
-                          buffer_assignment_));
+  TF_ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
+                      EmitFusionKernelApi(mlir_module.get(), *fusion_,
+                                          std::string(module_name) + "_entry",
+                                          buffer_assignment_));
 
   std::vector<emitters::EpilogueSpecification> epilogues =
       GetEpilogues(*fusion_, context.get());
@@ -310,7 +311,7 @@ absl::StatusOr<KernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
     }
   }
 
-  KernelSpec kernel_spec(fusion_->name(), se::ThreadDim(num_threads_),
+  KernelSpec kernel_spec(module_name, se::ThreadDim(num_threads_),
                          std::move(argument_buffers), std::move(result_buffers),
                          std::move(invariant_arguments));
   return KernelDefinition(std::move(kernel_spec),
