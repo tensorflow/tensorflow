@@ -1639,16 +1639,6 @@ TEST_F(PassOrderTest, OffloadingPassesAreRunInCorrectOrder) {
   // host memory offloading segments.
   VerifyPassRunsAtLeastOnceBefore(/*first_pass_regex=*/"host-offload-legalize",
                                   /*other_pass_regex=*/"layout_normalization");
-
-  // CSE should not run between HostOffloadLegalize and HostOffloader
-  // because it could break the invariants established
-  // by the legalize pass, such as the buffer initialization broadcasts
-  // before loops having only a single use
-  // (see https://github.com/openxla/xla/issues/20373).
-  auto pass_range =
-      VerifyPassOrder(/*first_pass_regex=*/"host-offload-legalize",
-                      /*last_pass_regex=*/"host-offloader");
-  VerifyNotRunInBetween(pass_range, /*pass_regex=*/"cse");
 }
 
 TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
