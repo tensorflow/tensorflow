@@ -36,6 +36,11 @@ namespace quant {
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTFAddQuantizationUnitLocPass();
 
+// Lifts the quantizable spots as composite functions.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFLiftQuantizableSpotsAsFunctionsPass(
+    const tensorflow::quantization::QuantizationOptions& quant_options);
+
 // Creates an instance of the PrepareQuantize pass, which will perform similar
 // transformations as TFL::PrepareQuantizePass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTFPrepareQuantizePass(

@@ -13,11 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -27,8 +32,10 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -38,20 +45,22 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
 
 namespace mlir {
 namespace quant {
 namespace {
 
 using ::tensorflow::quantization::OpSet;
+using tf_quant::CloneOpWithReplacedOperands;
+using tf_quant::HasStaticShape;
 
 class TFPrepareLiftingPass
     : public PassWrapper<TFPrepareLiftingPass, OperationPass<func::FuncOp>> {
@@ -141,7 +150,7 @@ Value ReshapeTo1DTensor(OpBuilder& builder, Location loc, Value value) {
     SmallVector<int64_t> new_shape;
     new_shape.push_back(shape.getNumElements());
     value = builder.create<TF::ReshapeOp>(
-        loc, value, Create1DConstValue(builder, loc, new_shape));
+        loc, value, tf_quant::Create1DConstValue(builder, loc, new_shape));
   }
   return ConstantFoldOpIfPossible(value.getDefiningOp()).front();
 }
@@ -204,7 +213,7 @@ Value MakeOneDimValueBroadcastable(OpBuilder& builder, Location loc,
   absl::c_reverse(new_shape);
 
   auto reshape_op = builder.create<TF::ReshapeOp>(
-      loc, value, Create1DConstValue(builder, loc, new_shape));
+      loc, value, tf_quant::Create1DConstValue(builder, loc, new_shape));
   return ConstantFoldOpIfPossible(reshape_op).front();
 }
 
