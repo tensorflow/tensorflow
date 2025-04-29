@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -250,50 +249,6 @@ void RandomizeCosts(iopddl::Problem& problem) {
       randomize(strategy.cost, multiplier);
     }
   }
-}
-
-// TODO(moffitt): Re-implement this using an XLA-friendly library (eg, jsoncpp).
-std::string ConvertToJsonString(const iopddl::Problem& problem) {
-/*
-  nlohmann::json json;
-  json["problem"]["name"] = problem.name;
-  json["problem"]["nodes"]["intervals"] = nlohmann::json::array();
-  json["problem"]["nodes"]["costs"] = nlohmann::json::array();
-  json["problem"]["nodes"]["usages"] = nlohmann::json::array();
-  for (const iopddl::Node& node : problem.nodes) {
-    auto intervals = nlohmann::json::array();
-    auto costs = nlohmann::json::array();
-    auto usages = nlohmann::json::array();
-    intervals.push_back(node.interval.first);
-    intervals.push_back(node.interval.second);
-    for (const iopddl::Strategy& strategy : node.strategies) {
-      costs.push_back(strategy.cost);
-      usages.push_back(strategy.usage);
-    }
-    json["problem"]["nodes"]["intervals"].push_back(intervals);
-    json["problem"]["nodes"]["costs"].push_back(costs);
-    json["problem"]["nodes"]["usages"].push_back(usages);
-  }
-  json["problem"]["edges"]["nodes"] = nlohmann::json::array();
-  json["problem"]["edges"]["costs"] = nlohmann::json::array();
-  for (const iopddl::Edge& edge : problem.edges) {
-    auto nodes = nlohmann::json::array();
-    auto costs = nlohmann::json::array();
-    for (const iopddl::NodeIdx node_idx : edge.nodes) {
-      nodes.push_back(node_idx);
-    }
-    for (const iopddl::Strategy& strategy : edge.strategies) {
-      costs.push_back(strategy.cost);
-    }
-    json["problem"]["edges"]["nodes"].push_back(nodes);
-    json["problem"]["edges"]["costs"].push_back(costs);
-  }
-  if (problem.usage_limit.has_value()) {
-    json["problem"]["usage_limit"] = *problem.usage_limit;
-  }
-  return json.dump();
-*/
-  return "";
 }
 
 }  // namespace spmd
