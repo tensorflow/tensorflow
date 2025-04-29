@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_COMMON_PJRT_CLIENT_H_
 #define XLA_PJRT_COMMON_PJRT_CLIENT_H_
 
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -26,6 +27,17 @@ namespace xla {
 class CommonPjRtClient : public PjRtClient {
  public:
   using PjRtClient::PjRtClient;
+
+  // A thread pool for dispatching background work.
+  // TODO(parkers): make pure virtual and update all clients.
+  virtual AsyncWorkRunner* async_work_runner() const { return nullptr; }
+
+  // Computes the memory requirements for storing shape on memory_space.
+  // TODO(parkers): make pure virtual and update all clients.
+  virtual absl::StatusOr<int64_t> GetOnDeviceBytesCount(
+      PjRtMemorySpace* memory_space, const xla::Shape& shape) const {
+    return absl::UnimplementedError("GetOnDeviceBytesCount is not supported.");
+  }
 
   // Allocates a raw buffer of a particular size after an optional
   // allocate_after.

@@ -102,13 +102,38 @@ cc_library(
 
 cc_library(
     name = "common_pjrt_client",
-    srcs = ["common_pjrt_client.cc"],
-    hdrs = ["common_pjrt_client.h"],
+    srcs = [
+        "common_pjrt_client.cc",
+        "host_to_device_transfer_manager.cc",
+    ],
+    hdrs = [
+        "common_pjrt_client.h",
+        "host_to_device_transfer_manager.h",
+    ],
     deps = [
+        ":async_work_runner",
         ":device_event",
         ":pjrt_client",
         ":raw_buffer",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:util",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/profiler/lib:connected_traceme",
+        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
+        "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
     ],
 )
 
