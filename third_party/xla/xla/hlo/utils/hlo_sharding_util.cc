@@ -107,6 +107,11 @@ HloInstruction* FormatShape(HloInstruction* data,
             step.output_shape, data, *step.xpose_permutation));
         break;
       }
+      case HloOpcode::kCustomCall: {
+        data = computation->AddInstruction(HloInstruction::CreateCustomCall(
+            step.output_shape, {data}, "ZeroCrop"));
+        break;
+      }
       default:
         LOG(FATAL) << "Unsupported formatting step";
     }
@@ -133,6 +138,7 @@ HloInstruction* ReverseFormatShape(
             HloInstruction::CreateReshape(previous_shape, data));
         break;
       }
+      case HloOpcode::kCustomCall:
       case HloOpcode::kPad: {
         std::vector<int64_t> start_indices(previous_shape.dimensions().size(),
                                            0);
