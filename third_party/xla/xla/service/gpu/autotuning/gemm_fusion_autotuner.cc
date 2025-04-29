@@ -887,7 +887,14 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
   bool small_dot = ShapeUtil::ElementsIn(dot.operand(0)->shape()) +
                        ShapeUtil::ElementsIn(dot.operand(1)->shape()) <=
                    kMinGemmElements;
+  // TODO: b/393299275 - Remove this once the new emitter lands and we can
+  // support slices in contracting dimension with splits.
+  bool supports_contracting_split =
+      HloBfsFindAll({&dot}, [&](const HloInstruction* node) {
+        return node->opcode() == HloOpcode::kSlice;
+      }).empty();
   bool autotune_contracting_split =
+      supports_contracting_split &&
       debug_options_.xla_gpu_enable_split_k_autotuning();
 
   if (debug_options_.xla_gpu_experimental_enable_dynamic_dot_search_space()) {
