@@ -103,6 +103,7 @@ TEST(FuelTest, FuelPassCountsAreSeparate) {
   int* pargc;
   std::vector<char*>* pargv;
   ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+  ParseDebugOptionFlagsFromEnv();
 
   EXPECT_TRUE(ConsumeFuel("ABC"));
   EXPECT_FALSE(ConsumeFuel("ABC"));
@@ -114,16 +115,16 @@ TEST(FuelTest, FuelPassCountsAreSeparate) {
 
 TEST(FuelTest,
      PassFuelIsSetReturnsTrueOnExplicitlyFueledPassesAndFalseOtherwise) {
-  tsl::setenv("XLA_FLAGS", "--xla_fuel=ABC=1,PQR=2", /*overwrite=*/true);
+  tsl::setenv("XLA_FLAGS", "--xla_fuel=MNO=1,XYZ=2", /*overwrite=*/true);
   // Parse flags from the environment variable.
   int* pargc;
   std::vector<char*>* pargv;
   ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
-
-  EXPECT_TRUE(PassFuelIsSet("ABC"));
-  EXPECT_FALSE(PassFuelIsSet("MNO"));
-  EXPECT_TRUE(PassFuelIsSet("PQR"));
-  EXPECT_FALSE(PassFuelIsSet("XYZ"));
+  ParseDebugOptionFlagsFromEnv();
+  EXPECT_FALSE(PassFuelIsSet("ABC"));
+  EXPECT_TRUE(PassFuelIsSet("MNO"));
+  EXPECT_FALSE(PassFuelIsSet("PQR"));
+  EXPECT_TRUE(PassFuelIsSet("XYZ"));
 }
 }  // namespace
 }  // namespace xla

@@ -2399,6 +2399,11 @@ static void AllocateFlags(DebugOptions* defaults) {
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
 
+void ParseDebugOptionFlagsFromEnv() {
+  absl::call_once(flags_init, &AllocateFlags, nullptr);
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
+}
+
 void AppendDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                              DebugOptions* debug_options) {
   absl::call_once(flags_init, &AllocateFlags, debug_options);
