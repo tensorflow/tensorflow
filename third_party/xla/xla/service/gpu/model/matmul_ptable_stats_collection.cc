@@ -15,11 +15,9 @@ limitations under the License.
 
 #include "xla/service/gpu/model/matmul_ptable_stats_collection.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -29,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -107,17 +104,7 @@ HloDotInstruction* GetTritonGemmInstruction(const HloInstruction& dot_fusion) {
 absl::StatusOr<BlockLevelParameters> GetBlockLevelParams(
     HloDotInstruction& dot, TritonGemmConfig& config) {
   mlir::MLIRContext ctx;
-  TF_ASSIGN_OR_RETURN(
-      llvm::SmallVector<int64_t> output_tile_sizes,
-      ::xla::gpu::detail::FindOutputTileSizesForEpilogue(&dot, config, &ctx));
-
-  BlockLevelParameters block_level_parameters;
-  block_level_parameters.output_tile_sizes = {
-      std::vector<int64_t>(output_tile_sizes.begin(), output_tile_sizes.end())};
-  block_level_parameters.num_warps = config.num_warps;
-  block_level_parameters.num_ctas = config.num_ctas;
-  block_level_parameters.num_stages = config.num_stages;
-  return block_level_parameters;
+  return ::xla::gpu::detail::FindBlockLevelParameters(&dot, config, &ctx);
 }
 
 absl::Status SetReificationCost(HloInstruction& instr, absl::Duration exec_time,

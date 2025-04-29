@@ -279,10 +279,6 @@ absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
                           /*remove_cross_partition_collective_ops=*/false));
 
   // Annotate the fusion itself.
-  TF_ASSIGN_OR_RETURN(
-      llvm::SmallVector<int64_t> output_tile_sizes,
-      ::xla::gpu::detail::FindOutputTileSizesForEpilogue(dot, config, ctx));
-
   TF_ASSIGN_OR_RETURN(auto gpu_config,
                       fusion->backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
@@ -290,12 +286,9 @@ absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
   backend_config.clear_triton_gemm_config();
   backend_config.set_kind(std::string(kTritonNestedGemmFusionKind));
 
-  BlockLevelParameters block_level_parameters;
-  block_level_parameters.output_tile_sizes = {
-      std::vector<int64_t>(output_tile_sizes.begin(), output_tile_sizes.end())};
-  block_level_parameters.num_warps = config.num_warps;
-  block_level_parameters.num_ctas = config.num_ctas;
-  block_level_parameters.num_stages = config.num_stages;
+  TF_ASSIGN_OR_RETURN(
+      BlockLevelParameters block_level_parameters,
+      ::xla::gpu::detail::FindBlockLevelParameters(dot, config, ctx));
 
   *backend_config.mutable_block_level_fusion_config() =
       block_level_parameters.ToBlockLevelFusionConfig();
@@ -758,7 +751,7 @@ absl::StatusOr<bool> NestGemmFusion::Run(
 
 namespace detail {
 
-absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
+absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     HloDotInstruction* dot, const TritonGemmConfig& config,
     mlir::MLIRContext* ctx) {
   HloComputation* computation = dot->parent();
@@ -827,7 +820,13 @@ absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
     auto mapped_dot_tile_sizes =
         EvaluateTileSizes(tiled_dot.symbolic_tile(), output_tile_sizes);
     if (mapped_dot_tile_sizes == expected_dot_tile_sizes) {
-      return output_tile_sizes;
+      BlockLevelParameters params;
+      params.output_tile_sizes = {std::vector<int64_t>(
+          output_tile_sizes.begin(), output_tile_sizes.end())};
+      params.num_warps = config.num_warps;
+      params.num_ctas = config.num_ctas;
+      params.num_stages = config.num_stages;
+      return params;
     }
   } while (std::next_permutation(output_tile_sizes.begin(),
                                  output_tile_sizes.end()));
