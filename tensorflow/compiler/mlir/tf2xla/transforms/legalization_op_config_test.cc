@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def.pb.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 
 TEST(LegalizationOpConfigTest, ExpectsTrueForMlirTypeID) {
   EXPECT_TRUE(IsTypeLegalizedWithMlir(TypeID::get<TF::ModOp>()));
@@ -121,7 +121,7 @@ TEST(LegalizationOpConfigTest, CountAllMlirLoweringPatterns) {
   context.loadAllAvailableDialects();
 
   RewritePatternSet mlir_legalize_lower_patterns(&context);
-  PopulateLegalizeTfPatterns(&context, &mlir_legalize_lower_patterns);
+  hlo::PopulateLegalizeTfPatterns(&context, &mlir_legalize_lower_patterns);
 
   int mlir_only_patterns = 0;
   for (auto& pattern : mlir_legalize_lower_patterns.getNativePatterns()) {
@@ -161,7 +161,7 @@ TEST(LegalizationOpConfigTest, MlirLoweringWithoutXlaKernel) {
   context.loadAllAvailableDialects();
 
   RewritePatternSet mlir_legalize_lower_patterns(&context);
-  PopulateLegalizeTfPatterns(&context, &mlir_legalize_lower_patterns);
+  hlo::PopulateLegalizeTfPatterns(&context, &mlir_legalize_lower_patterns);
 
   int mlir_without_xla_count = 0;
   for (auto& pattern : mlir_legalize_lower_patterns.getNativePatterns()) {
@@ -179,5 +179,5 @@ TEST(LegalizationOpConfigTest, MlirLoweringWithoutXlaKernel) {
   EXPECT_EQ(mlir_without_xla_count, 13);
 }
 
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir

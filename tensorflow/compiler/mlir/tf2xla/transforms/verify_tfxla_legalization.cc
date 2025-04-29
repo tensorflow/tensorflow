@@ -147,7 +147,7 @@ bool IsDefaultConversionLegal(
 void VerifyTFXLALegalization::runOnOperation() {
   Operation* func_op = getOperation();
   ConversionTarget default_conversion_target =
-      GetDefaultLegalConversionTargets(getContext(), legalize_chlo_);
+      hlo::GetDefaultLegalConversionTargets(getContext(), legalize_chlo_);
 
   bool has_invalid_ops = false;
   func_op->walk([&](Operation* op) {
@@ -168,10 +168,13 @@ void VerifyTFXLALegalization::runOnOperation() {
 
 }  // namespace
 
+}  // namespace mhlo
+
+namespace hlo {
+
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateVerifyTFXLALegalizationPass(bool legalize_chlo) {
-  return std::make_unique<VerifyTFXLALegalization>(legalize_chlo);
+  return std::make_unique<mhlo::VerifyTFXLALegalization>(legalize_chlo);
 }
-
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir

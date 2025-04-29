@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tpu_embedding_ops_registry.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 
 namespace {
 
@@ -557,5 +557,5 @@ bool IsDynamicPadderOp(const TypeID& type_id) {
   return DynamicTensorflowOps().contains(type_id);
 }
 
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir

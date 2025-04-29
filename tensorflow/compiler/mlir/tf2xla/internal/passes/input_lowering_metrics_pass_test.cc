@@ -37,7 +37,7 @@ namespace {
 
 using ::mlir::LogicalResult;
 using ::mlir::ModuleOp;
-using ::mlir::mhlo::test::GetMlirModuleFromString;
+using ::mlir::hlo::test::GetMlirModuleFromString;
 using ::tensorflow::monitoring::testing::CellReader;
 
 constexpr char kNotDynamicFunctionName[] = "kNotDynamicFunction";

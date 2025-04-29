@@ -98,8 +98,8 @@ RewritePatternSet PatternsIncludeOps(RewritePatternSet &from) {
     // If the pattern does not have a specific operation, always include it,
     // If the pattern is in include_ops then include it.
     bool include =
-        !pat_op_name ||
-        IsTypeLegalizedWithMlir(pat_op_name->getRegisteredInfo()->getTypeID());
+        !pat_op_name || hlo::IsTypeLegalizedWithMlir(
+                            pat_op_name->getRegisteredInfo()->getTypeID());
     if (include) to.add(std::move(pattern));
   }
 
@@ -141,7 +141,7 @@ void IncrementFailedLegalizationCount(Operation *op,
 mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
                                   bool legalize_chlo) {
   ConversionTarget target =
-      GetDefaultLegalConversionTargets(*op->getContext(), legalize_chlo);
+      hlo::GetDefaultLegalConversionTargets(*op->getContext(), legalize_chlo);
 
   DenseSet<Operation *> unconverted_ops;
   ConversionConfig config;
@@ -193,7 +193,7 @@ LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
   // 4) Order of patterns in `RewritePatternSet`.
 
   // Add TF->HLO legalization patterns.
-  PopulateLegalizeTfPatterns(context, &legalize_lower_patterns);
+  hlo::PopulateLegalizeTfPatterns(context, &legalize_lower_patterns);
 
   // Add TF->TF lowering patterns.
   TF::PopulateTFLoweringBeforeHLOPatterns(context, &legalize_lower_patterns);

@@ -31,7 +31,7 @@ namespace TFDevice {
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
 using ::mlir::OwningOpRef;
-using ::mlir::mhlo::test::GetMlirModuleFromString;
+using ::mlir::hlo::test::GetMlirModuleFromString;
 
 class VerifyNoOutsideCompilationMarkersPassTest : public ::testing::Test {
  protected:

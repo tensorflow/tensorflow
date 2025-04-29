@@ -34,7 +34,7 @@ namespace {
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
 using ::mlir::OwningOpRef;
-using ::mlir::mhlo::test::GetMlirModuleFromString;
+using ::mlir::hlo::test::GetMlirModuleFromString;
 using ::tensorflow::monitoring::testing::CellReader;
 
 static constexpr char kHasTpuPartitionedCallStreamzName[] =

@@ -1370,11 +1370,11 @@ LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext *context) {
   mhlo::Tf2XlaTypeConverter converter;
   mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context,
                                              converter);
-  mhlo::PopulateLegalizeTfPatterns(context, &patterns);
+  hlo::PopulateLegalizeTfPatterns(context, &patterns);
   mlir::odml::PopulateLegalizeHloToTfPatterns(&patterns, context);
   mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
 
-  // mhlo::PopulateLegalizeTfPatterns emits StableHLO ops, until this pipeline
+  // hlo::PopulateLegalizeTfPatterns emits StableHLO ops, until this pipeline
   // handles StableHLO ops directly, we need to convert them to MHLO ops.
   stablehlo::StablehloToHloTypeConverter hlo_converter;
   stablehlo::populateStablehloToHloPatterns(&patterns, &hlo_converter, context);

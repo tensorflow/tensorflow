@@ -92,7 +92,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 namespace {
 
 using ::mlir::ModuleOp;
@@ -522,5 +522,5 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(
   return tensorflow::XlaExpression::XlaOp(xla_op, dtype);
 }
 
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir
