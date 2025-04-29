@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_ffi_extension.h"
@@ -27,6 +31,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
@@ -39,9 +44,21 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       "PJRT_Client_Create_Args", PJRT_Client_Create_Args_STRUCT_SIZE,
       args->struct_size));
 
-  // TODO(b/414377960): Pass in CPU device count from the client create options.
   xla::CpuClientOptions options;
   options.cpu_device_count = 4;
+
+  if (args->create_options != nullptr) {
+    absl::flat_hash_map<std::string, xla::PjRtValueType> create_options =
+        ConvertFromPjRtNamedValueList(args->create_options, args->num_options);
+    if (create_options.contains("cpu_device_count")) {
+      int64_t device_count_option =
+          std::get<int64_t>(create_options["cpu_device_count"]);
+      options.cpu_device_count = device_count_option;
+      LOG(INFO) << "cpu_device_count set via create_options: "
+                << device_count_option;
+    }
+  }
+
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetXlaPjrtCpuClient(std::move(options)));
   args->client = pjrt::CreateWrapperClient(std::move(client));

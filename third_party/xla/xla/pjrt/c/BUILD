@@ -303,9 +303,12 @@ cc_library(
         ":pjrt_c_api_memory_descriptions_extension_hdrs",
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
     ],
 )
@@ -548,6 +551,7 @@ xla_cc_test(
     srcs = ["pjrt_c_api_cpu_test.cc"],
     deps = [
         ":pjrt_c_api_cpu",
+        ":pjrt_c_api_hdrs",
         ":pjrt_c_api_test_common",
         "@com_google_googletest//:gtest_main",
     ],
