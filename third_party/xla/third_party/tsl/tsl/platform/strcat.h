@@ -158,10 +158,14 @@ class AlphaNum {
 // ----------------------------------------------------------------------
 
 // For performance reasons, we have specializations for <= 4 args.
+ABSL_DEPRECATED("Use absl::StrCat() instead.")
 std::string StrCat(const AlphaNum &a) TF_MUST_USE_RESULT;
+ABSL_DEPRECATED("Use absl::StrCat() instead.")
 std::string StrCat(const AlphaNum &a, const AlphaNum &b) TF_MUST_USE_RESULT;
+ABSL_DEPRECATED("Use absl::StrCat() instead.")
 std::string StrCat(const AlphaNum &a, const AlphaNum &b,
                    const AlphaNum &c) TF_MUST_USE_RESULT;
+ABSL_DEPRECATED("Use absl::StrCat() instead.")
 std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
                    const AlphaNum &d) TF_MUST_USE_RESULT;
 
@@ -176,11 +180,13 @@ void AppendPieces(std::string *dest,
 
 // Support 5 or more arguments
 template <typename... AV>
+ABSL_DEPRECATED("Use absl::StrCat() instead.")
 std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
                    const AlphaNum &d, const AlphaNum &e,
                    const AV &...args) TF_MUST_USE_RESULT;
 
 template <typename... AV>
+ABSL_DEPRECATED("Use absl::StrCat() instead.")
 std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
                    const AlphaNum &d, const AlphaNum &e, const AV &...args) {
   return internal::CatPieces({a.Piece(), b.Piece(), c.Piece(), d.Piece(),
@@ -209,15 +215,20 @@ std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
 //    worked around as consecutive calls to StrAppend are quite efficient.
 // ----------------------------------------------------------------------
 
+ABSL_DEPRECATED("Use absl::StrAppend() instead.")
 void StrAppend(std::string *dest, const AlphaNum &a);
+ABSL_DEPRECATED("Use absl::StrAppend() instead.")
 void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b);
+ABSL_DEPRECATED("Use absl::StrAppend() instead.")
 void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b,
                const AlphaNum &c);
+ABSL_DEPRECATED("Use absl::StrAppend() instead.")
 void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b,
                const AlphaNum &c, const AlphaNum &d);
 
 // Support 5 or more arguments
 template <typename... AV>
+ABSL_DEPRECATED("Use absl::StrAppend() instead.")
 inline void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b,
                       const AlphaNum &c, const AlphaNum &d, const AlphaNum &e,
                       const AV &...args) {
