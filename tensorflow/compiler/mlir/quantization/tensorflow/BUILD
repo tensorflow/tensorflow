@@ -447,6 +447,7 @@ cc_library(
         "passes/tf_prepare_lifting.cc",
         "passes/tf_prepare_quantize.cc",
         "passes/tf_prepare_quantize_drq.cc",
+        "passes/tf_quantize.cc",
     ],
     hdrs = [
         "passes/tf_passes.h",
@@ -472,7 +473,9 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:temp_fake_quant_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
