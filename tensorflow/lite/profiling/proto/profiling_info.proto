@@ -17,6 +17,8 @@ syntax = "proto2";
 
 package tflite.profiling;
 
+option java_api_version = 2;
+option java_package = "com.google.tflite.profiling";
 option java_multiple_files = true;
 
 message BenchmarkProfilingData {
