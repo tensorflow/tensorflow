@@ -570,7 +570,7 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
   PjRtStreamExecutorClient* client() const override { return client_; }
   bool IsEmptyTuple() const {
     return on_device_shape_.IsTuple() &&
-           on_device_shape_.tuple_shapes_size() == 0;
+           on_device_shape_.tuple_shapes().size() == 0;
   }
 
   absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
