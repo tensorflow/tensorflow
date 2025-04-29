@@ -58,6 +58,7 @@ cc_library(
         "//xla/pjrt/gpu:gpu_topology",
         "//xla/pjrt/gpu:gpu_topology_proto_cc",
         "//xla/pjrt/gpu:se_gpu_topology_description",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:compiler",
         "//xla/service:computation_placer_hdr",

@@ -187,6 +187,8 @@ class TfrtGpuDevice final : public PjRtDevice {
     return nullptr;
   }
 
+  absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
+
   tsl::Allocator* allocator() { return allocator_.get(); }
 
   // Returns a fresh, PRNG-generated random seed for an XLA computation.

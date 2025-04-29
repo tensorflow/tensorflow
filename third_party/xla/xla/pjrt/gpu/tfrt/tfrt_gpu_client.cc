@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/stream_executor_executable.h"
@@ -1056,6 +1057,27 @@ absl::StatusOr<PjRtMemorySpace*> TfrtGpuDevice::default_memory_space() const {
   return default_memory_space_;
 }
 
+absl::StatusOr<tsl::AllocatorStats> TfrtGpuDevice::GetAllocatorStats() const {
+  if (!IsAddressable()) {
+    return FailedPrecondition(
+        "GetAllocatorStats() is allowed only for addressable devices");
+  }
+  auto* allocator_adapter =
+      dynamic_cast<se::TfAllocatorAdapter*>(se_allocator_.get());
+  if (!allocator_adapter) {
+    return Unimplemented(
+        "GetAllocatorStats() is only implemented with TfAllocatorAdapter"
+        "allocator");
+  }
+
+  TF_ASSIGN_OR_RETURN(auto allocator, allocator_adapter->GetAllocator(
+                                          local_device_id().value()));
+
+  auto stats = allocator->GetStats();
+  TF_RET_CHECK(stats.has_value());
+  return stats.value();
+}
+
 void TfrtGpuDevice::SetLastCollectiveLaunchEvent(
     tsl::AsyncValueRef<GpuEvent> event) {
   absl::MutexLock lock(&mu_);
@@ -2011,15 +2033,17 @@ bool TfrtGpuClient::IsDmaMapped(const void* data_start, int64_t transfer_size) {
 }
 
 static absl::StatusOr<std::vector<std::unique_ptr<TfrtGpuDevice>>>
-GetTfrtGpuDevices(LocalClient* xla_client) {
+GetTfrtGpuDevices(LocalClient* xla_client,
+                  const GpuAllocatorConfig& allocator_config) {
   std::vector<std::unique_ptr<TfrtGpuDevice>> devices;
   int i = 0;
   for (se::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {
-    // TODO: b/382117736 - allow GPU allocator parameters to be configurable.
-    TF_ASSIGN_OR_RETURN(auto allocator,
-                        CreateBFCAllocator(executor, /*memory_fraction=*/0.9,
-                                           /*preallocate=*/true, std::nullopt));
+    TF_ASSIGN_OR_RETURN(
+        auto allocator,
+        CreateBFCAllocator(executor, allocator_config.memory_fraction,
+                           allocator_config.preallocate,
+                           allocator_config.gpu_system_memory_size));
 
     TfrtGpuDevice::Options options;
     options.id = i;
@@ -2061,7 +2085,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
         GetGpuHostAllocator(xla_client->backend().stream_executors().front()));
   }
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
-                      GetTfrtGpuDevices(xla_client));
+                      GetTfrtGpuDevices(xla_client, options.allocator_config));
 
   GpuTopologyProto gpu_topology_proto;
   for (const auto& device : devices) {
