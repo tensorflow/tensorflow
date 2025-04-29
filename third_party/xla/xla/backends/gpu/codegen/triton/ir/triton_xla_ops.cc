@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"  // IWYU pragma: keep
 #include "mlir/IR/TypeUtilities.h"  // IWYU pragma: keep
+#include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.cc.inc"
@@ -64,18 +65,18 @@ void ExtractOp::build(OpBuilder &b, OperationState &result,
                       ArrayRef<OpFoldResult> offsets,
                       ArrayRef<OpFoldResult> strides, ArrayRef<int64_t> layout,
                       ArrayRef<NamedAttribute> attrs) {
-  SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
-  SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
-  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets);
-  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
+  SmallVector<int64_t> static_offsets, static_sizes, static_strides;
+  SmallVector<Value> dynamic_offsets, dynamic_sizes, dynamic_strides;
+  dispatchIndexOpFoldResults(offsets, dynamic_offsets, static_offsets);
+  dispatchIndexOpFoldResults(strides, dynamic_strides, static_strides);
   result.addAttribute(InsertOp::getLayoutAttrName(OperationName(
                           InsertOp::getOperationName(), b.getContext())),
                       b.getDenseI64ArrayAttr(layout));
   result.addAttributes(attrs);
-  build(b, result, result_type, src, dynamicOffsets, {}, dynamicStrides,
-        b.getDenseI64ArrayAttr(staticOffsets),
+  build(b, result, result_type, src, dynamic_offsets, {}, dynamic_strides,
+        b.getDenseI64ArrayAttr(static_offsets),
         b.getDenseI64ArrayAttr(result_type.getShape()),
-        b.getDenseI64ArrayAttr(staticStrides), {});
+        b.getDenseI64ArrayAttr(static_strides), {});
 }
 
 void ExtractOp::build(OpBuilder &b, OperationState &result,
@@ -85,6 +86,34 @@ void ExtractOp::build(OpBuilder &b, OperationState &result,
                       ArrayRef<NamedAttribute> attrs) {
   build(b, result, result_type, src, getAsOpFoldResult(offsets),
         getAsOpFoldResult(strides), layout, attrs);
+}
+
+class ExtractOpOffsetsSizesStridesFolder final
+    : public OpRewritePattern<ExtractOp> {
+ public:
+  using OpRewritePattern<ExtractOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ExtractOp op,
+                                PatternRewriter &rewriter) const override {
+    SmallVector<OpFoldResult> mixed_offsets(op.getMixedOffsets());
+    SmallVector<OpFoldResult> mixed_strides(op.getMixedStrides());
+
+    // No constant operands were folded, just return;
+    if (failed(foldDynamicIndexList(mixed_offsets, /*onlyNonNegative=*/true)) &&
+        failed(foldDynamicIndexList(mixed_strides))) {
+      return failure();
+    }
+    // Create the new op in canonical form.
+    rewriter.replaceOpWithNewOp<ExtractOp>(
+        op, op.getResultType(), op.getSrc(), mixed_offsets, mixed_strides,
+        op.getLayout(), llvm::to_vector(op->getDiscardableAttrs()));
+    return success();
+  }
+};
+
+void ExtractOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                            MLIRContext *context) {
+  results.add<ExtractOpOffsetsSizesStridesFolder>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -113,18 +142,18 @@ void InsertOp::build(OpBuilder &b, OperationState &result, Value src, Value dst,
                      ArrayRef<NamedAttribute> attrs) {
   RankedTensorType src_type = mlir::cast<RankedTensorType>(src.getType());
   RankedTensorType dst_type = mlir::cast<RankedTensorType>(dst.getType());
-  SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
-  SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
-  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets);
-  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
+  SmallVector<int64_t> static_offsets, static_sizes, static_strides;
+  SmallVector<Value> dynamic_offsets, dynamic_sizes, dynamic_strides;
+  dispatchIndexOpFoldResults(offsets, dynamic_offsets, static_offsets);
+  dispatchIndexOpFoldResults(strides, dynamic_strides, static_strides);
   result.addAttribute(InsertOp::getLayoutAttrName(OperationName(
                           InsertOp::getOperationName(), b.getContext())),
                       b.getDenseI64ArrayAttr(layout));
   result.addAttributes(attrs);
-  build(b, result, dst_type, src, dst, dynamicOffsets, {}, dynamicStrides,
-        b.getDenseI64ArrayAttr(staticOffsets),
+  build(b, result, dst_type, src, dst, dynamic_offsets, {}, dynamic_strides,
+        b.getDenseI64ArrayAttr(static_offsets),
         b.getDenseI64ArrayAttr(src_type.getShape()),
-        b.getDenseI64ArrayAttr(staticStrides), {});
+        b.getDenseI64ArrayAttr(static_strides), {});
 }
 
 void InsertOp::build(OpBuilder &b, OperationState &result, Value src, Value dst,
@@ -132,6 +161,33 @@ void InsertOp::build(OpBuilder &b, OperationState &result, Value src, Value dst,
                      ArrayRef<int64_t> layout, ArrayRef<NamedAttribute> attrs) {
   build(b, result, src, dst, getAsOpFoldResult(offsets),
         getAsOpFoldResult(strides), layout, attrs);
+}
+
+class InsertOpOffsetsSizesStridesFolder final
+    : public OpRewritePattern<InsertOp> {
+ public:
+  using OpRewritePattern<InsertOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(InsertOp op,
+                                PatternRewriter &rewriter) const override {
+    SmallVector<OpFoldResult> mixed_offsets(op.getMixedOffsets());
+    SmallVector<OpFoldResult> mixed_strides(op.getMixedStrides());
+    // No constant operands were folded, just return;
+    if (failed(foldDynamicIndexList(mixed_offsets, /*onlyNonNegative=*/true)) &&
+        failed(foldDynamicIndexList(mixed_strides))) {
+      return failure();
+    }
+    // Create the new op in canonical form.
+    rewriter.replaceOpWithNewOp<InsertOp>(
+        op, op.getSrc(), op.getDst(), mixed_offsets, mixed_strides,
+        op.getLayout(), llvm::to_vector(op->getDiscardableAttrs()));
+    return success();
+  }
+};
+
+void InsertOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                           MLIRContext *context) {
+  results.add<InsertOpOffsetsSizesStridesFolder>(context);
 }
 
 }  // namespace mlir::triton::xla

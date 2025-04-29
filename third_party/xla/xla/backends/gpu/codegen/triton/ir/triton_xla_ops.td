@@ -81,7 +81,7 @@ class TTXLA_OpWithOffsetSizesAndStrides<string mnemonic,
     }
   }];
   let hasVerifier = 1;
-  let hasCanonicalizer = 0;
+  let hasCanonicalizer = 1;
 }
 
 def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", []> {
@@ -113,7 +113,7 @@ def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", []> {
   ];
 
   let arguments = (ins
-    AnyRankedTensor:$src,
+    AnyStaticShapeTensor:$src,
     Variadic<Index>:$offsets,
     Variadic<Index>:$sizes,
     Variadic<Index>:$strides,
@@ -169,8 +169,8 @@ def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert", [
   ];
 
   let arguments = (ins
-    AnyRankedTensor:$src,
-    AnyRankedTensor:$dst,
+    AnyStaticShapeTensor:$src,
+    AnyStaticShapeTensor:$dst,
     Variadic<Index>:$offsets,
     Variadic<Index>:$sizes,
     Variadic<Index>:$strides,

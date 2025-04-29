@@ -93,6 +93,7 @@ cc_library(
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:ViewLikeInterface",
         "@triton//:TritonDialects",
     ],
 )
