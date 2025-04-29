@@ -45,7 +45,7 @@ class CheckPreemptionOp : public OpKernel {
     auto status_or_task = agent->TryGetKeyValue(preemption_key_);
 
     // No-op if preemption key is not found.
-    if (errors::IsNotFound(status_or_task.status())) {
+    if (absl::IsNotFound(status_or_task.status())) {
       return;
     }
 
