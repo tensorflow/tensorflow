@@ -742,7 +742,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           *end_of_sequence = false;
           return absl::OkStatus();
         }
-        if (errors::IsOutOfRange(result->status)) {
+        if (absl::IsOutOfRange(result->status)) {
           // To guarantee that the transformation preserves the cardinality of
           // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
           // former may be interpreted by a caller as the end of sequence.

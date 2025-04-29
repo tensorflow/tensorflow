@@ -282,7 +282,7 @@ void RandomDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
     absl::Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);
     owns_resource = false;
-    if (errors::IsNotFound(s)) {
+    if (absl::IsNotFound(s)) {
       owns_resource = true;
     } else {
       OP_REQUIRES_OK(ctx, s);
