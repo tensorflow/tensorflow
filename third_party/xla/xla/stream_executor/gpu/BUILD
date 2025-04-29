@@ -255,15 +255,6 @@ tsl_gpu_library(
 )
 
 gpu_only_cc_library(
-    name = "gpu_stream_header",
-    hdrs = ["gpu_stream.h"],
-    deps = [
-        ":gpu_types_header",
-        "//xla/stream_executor:stream",
-    ],
-)
-
-gpu_only_cc_library(
     name = "gpu_stream",
     srcs = ["gpu_stream.cc"],
     hdrs = ["gpu_stream.h"],
