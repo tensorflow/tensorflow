@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_value.h"
 
 namespace xla {
@@ -53,6 +54,22 @@ inline BufferAssigner::Colorer CollectiveColorer(bool use_user_buffers,
             HloOpcode::kCollectivePermuteDone,
             HloOpcode::kAllToAll,
         };
+
+    auto is_nvshmem_op = [](const HloInstruction* inst) {
+      bool is_nvshmem_collective = false;
+      if (inst->has_backend_config()) {
+        auto gpu_config = inst->backend_config<GpuBackendConfig>();
+        if (!gpu_config.ok()) {
+          return false;
+        }
+        const CollectiveBackendConfig& backend_config =
+            gpu_config.value().collective_backend_config();
+        is_nvshmem_collective =
+            backend_config.backend() == CollectiveBackendConfig::NVSHMEM;
+      }
+      return is_nvshmem_collective;
+    };
+
     auto is_mosaic_gpu_nvshmem_instr = [](const HloInstruction* instr) {
       return instr->opcode() == HloOpcode::kCustomCall &&
              (instr->custom_call_target() == "mosaic_gpu" ||
@@ -69,7 +86,7 @@ inline BufferAssigner::Colorer CollectiveColorer(bool use_user_buffers,
                 kSupportedOpcodes->contains(instr->async_wrapped_opcode()));
       }
       if (use_nvshmem) {
-        return is_mosaic_gpu_nvshmem_instr(instr);
+        return is_mosaic_gpu_nvshmem_instr(instr) || is_nvshmem_op(instr);
       }
       return false;
     };

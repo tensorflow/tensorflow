@@ -340,6 +340,42 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, MultipleInFlightNestedPartial) {
   EXPECT_THAT(IsSync(module.get(), "start2"), IsTrue());
 }
 
+TEST_F(GpuConvertAsyncCollectivesToSyncTest,
+       SimpleAllReducePreserveBackendConfig) {
+  const absl::string_view hlo_string = R"(
+      HloModule test, is_scheduled=true
+
+      apply_op {
+        x = u32[] parameter(0)
+        y = u32[] parameter(1)
+        ROOT apply_op = u32[] add(x, y)
+      }
+
+      ENTRY test_computation {
+        id = u32[] replica-id()
+        start = u32[] all-reduce-start(id), to_apply=apply_op, channel_id=3, replica_groups={{0,1}, {2,3}}, backend_config={"collective_backend_config":{"backend":"NVSHMEM"}}
+        id2 = f32[] bitcast(id)
+        ROOT done = u32[] all-reduce-done(start)
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction *inst_orig = FindInstruction(module.get(), "start");
+  const CollectiveBackendConfig backend_config_orig =
+      inst_orig->backend_config<GpuBackendConfig>()
+          .value()
+          .collective_backend_config();
+
+  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  EXPECT_THAT(IsSync(module.get(), "start"), IsTrue());
+  const HloInstruction *inst = FindInstruction(module.get(), "start");
+  const CollectiveBackendConfig backend_config =
+      inst->backend_config<GpuBackendConfig>()
+          .value()
+          .collective_backend_config();
+  EXPECT_EQ(backend_config.backend(), backend_config_orig.backend());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

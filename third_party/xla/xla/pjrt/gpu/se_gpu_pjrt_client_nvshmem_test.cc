@@ -158,6 +158,52 @@ TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
   EXPECT_EQ(memory_space, 1);
 }
 
+// Verify that all-reduce ops that use nvshmem buffers
+// are colored correctly
+TEST(StreamExecutorGpuClientTest, NvshmemMemArCanBeColored) {
+  const absl::string_view kProgram = R"(
+    HloModule test
+    apply_op {
+    x = u32[] parameter(0)
+    y = u32[] parameter(1)
+    ROOT apply_op = u32[] add(x, y)
+    }
+    ENTRY test_computation {
+    id = u32[] replica-id()
+    all-reduce = u32[] all-reduce-start(id), to_apply=apply_op, backend_config={"collective_backend_config":{"backend":"NVSHMEM"}}
+    ROOT all-reduce-done = u32[] all-reduce-done(all-reduce)
+    }
+    )";
+  // Nvshmem requires one gpu per process.
+  GpuClientOptions client_options;
+  client_options.node_id = 0;
+  client_options.allowed_devices = {0};
+  client_options.num_nodes = 1;
+  client_options.kv_store = std::make_shared<InMemoryKeyValueStore>();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetStreamExecutorGpuClient(client_options));
+  xla::CompileOptions options;
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_experimental_enable_nvshmem(true);
+
+  options.executable_build_options.set_run_backend_only(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  xla::XlaComputation xla_computation(hlo_module->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+                          client->CompileAndLoad(xla_computation, options));
+
+  // Verify that the collective memory space is used.
+  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+  HloInstruction* all_reduce_start =
+      FindInstruction(modules[0].get(), HloOpcode::kAllReduceStart);
+  EXPECT_THAT(all_reduce_start, NotNull());
+  EXPECT_EQ(all_reduce_start->shape().layout().memory_space(), 1);
+  EXPECT_THAT(all_reduce_start->operands(), SizeIs(1));
+  const HloInstruction* input = all_reduce_start->operand(0);
+  EXPECT_EQ(input->shape().layout().memory_space(), 1);
+}
+
 absl::Status UserBufferWithNvshmemMallocTestBody(const int node_id,
                                                  const int num_nodes) {
   const absl::string_view kModuleStr = R"(

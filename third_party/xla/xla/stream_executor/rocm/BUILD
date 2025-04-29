@@ -1199,6 +1199,7 @@ rocm_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:topk_kernel",
         "//xla/tsl/lib/math:math_util",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
