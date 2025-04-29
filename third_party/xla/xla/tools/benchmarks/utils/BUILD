@@ -21,6 +21,7 @@ cc_library(
     deps = [
         "//xla/tools/benchmarks/proto:benchmark_config_proto_cc",
         "//xla/tsl/platform:file_system_helper",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
