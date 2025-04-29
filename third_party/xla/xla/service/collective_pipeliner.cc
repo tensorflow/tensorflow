@@ -58,11 +58,14 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/scheduling_annotations_util.h"
 #include "xla/service/value_range.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -702,16 +705,19 @@ void UpdateInstructionChannelId(HloInstruction* cloned_instr,
 // Update scheduling annotation with a new id. If the original id was not seen
 // before (checking annotation_map), use a new id and save it in the map. If it
 // was seen before, use the saved id.
-void UpdateInstructionSchedulingAnnotation(
+absl::Status UpdateInstructionSchedulingAnnotation(
     HloInstruction* cloned_instr, int64_t& scheduling_id,
     absl::flat_hash_map<int64_t, int64_t>& annotation_map) {
-  if (std::optional<int64_t> annotation_idx =
-          GetSchedulingAnnotation(cloned_instr)) {
+  TF_ASSIGN_OR_RETURN(std::optional<int64_t> annotation_idx,
+                      GetSchedulingAnnotationGroupId(cloned_instr));
+  if (annotation_idx) {
     if (!annotation_map.contains(*annotation_idx)) {
       annotation_map[*annotation_idx] = scheduling_id++;
     }
-    SetSchedulingAnnotation(cloned_instr, annotation_map[*annotation_idx]);
+    TF_RETURN_IF_ERROR(SetSchedulingAnnotationGroupId(
+        cloned_instr, annotation_map[*annotation_idx]));
   }
+  return absl::OkStatus();
 }
 
 // Clones a chain of instructions from a move_info for backward movement, and
@@ -743,8 +749,8 @@ absl::StatusOr<HloInstruction*> CloneBackwardChain(
     TF_RETURN_IF_ERROR(UpdateControlDependencies(chain_op, cloned, clone_map));
     UpdateInstructionChannelId(cloned, next_channel_id);
     if (next_scheduling_id != -1) {
-      UpdateInstructionSchedulingAnnotation(cloned, next_scheduling_id,
-                                            annotation_map);
+      TF_RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
+          cloned, next_scheduling_id, annotation_map));
     }
     clone_map[chain_op] = cloned;
     if (postprocess_pipelined_ops) {
@@ -812,7 +818,7 @@ class WhileLoopAnalysis {
       const HloDynamicUpdateSliceInstruction* dyn_update,
       const HloInstruction* instr,
       const std::vector<HloInstruction*>& formatting_ops,
-      CollectivePipeliner::PipeliningDirection direction,
+      collective_pipeliner_utils::PipeliningDirection direction,
       int64_t level_to_operate_on,
       const absl::flat_hash_map<int64_t, int64_t>& parameter_gtes_count,
       absl::flat_hash_map<const HloInstruction*, Range>& index_ranges) const;
@@ -849,10 +855,10 @@ class WhileLoopAnalysis {
       absl::flat_hash_map<const HloInstruction*, int64_t>&
           index_per_dyn_update_slice,
       absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order,
-      CollectivePipeliner::PipeliningDirection direction);
+      collective_pipeliner_utils::PipeliningDirection direction);
   void CollectCollectivesToMove(
       int64_t level_to_operate_on,
-      CollectivePipeliner::PipeliningDirection direction,
+      collective_pipeliner_utils::PipeliningDirection direction,
       HloPredicate should_process, HloPredicate acceptable_formatting,
       HloPredicate should_allow_loop_variant_parameter_in_chain =
           HloPredicateFalse,
@@ -1003,7 +1009,7 @@ WhileLoopAnalysis::IsSupportedDynamicUpdateSlice(
     const HloDynamicUpdateSliceInstruction* dyn_update,
     const HloInstruction* instr,
     const std::vector<HloInstruction*>& formatting_ops,
-    CollectivePipeliner::PipeliningDirection direction,
+    collective_pipeliner_utils::PipeliningDirection direction,
     int64_t level_to_operate_on,
     const absl::flat_hash_map<int64_t, int64_t>& parameter_gtes_count,
     absl::flat_hash_map<const HloInstruction*, Range>& index_ranges) const {
@@ -1016,7 +1022,8 @@ WhileLoopAnalysis::IsSupportedDynamicUpdateSlice(
             << " because couldn't find sliced dimension";
     return std::nullopt;
   }
-  if (direction == CollectivePipeliner::PipeliningDirection::kForwardSink &&
+  if (direction ==
+          collective_pipeliner_utils::PipeliningDirection::kForwardSink &&
       (*sliced_dim != 0 || dyn_update->shape().dimensions(0) !=
                                loop_iteration_count_->GetUnsignedValue())) {
     VLOG(5) << "Skipping " << instr->name()
@@ -1226,14 +1233,15 @@ void WhileLoopAnalysis::MergeIntoExistingCollectives(
     absl::flat_hash_map<const HloInstruction*, int64_t>&
         index_per_dyn_update_slice,
     absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order,
-    CollectivePipeliner::PipeliningDirection direction) {
-  if (direction == CollectivePipeliner::PipeliningDirection::kForwardSink) {
+    collective_pipeliner_utils::PipeliningDirection direction) {
+  if (direction ==
+      collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
     MergeIntoExistingCollectivesForwardSink(
         instr, formatting_ops, dyn_updates, sliced_idx, output_indices,
         indices_to_merge, index_per_dyn_update_slice, instruction_order);
     return;
   }
-  if (direction == CollectivePipeliner::PipeliningDirection::kForward) {
+  if (direction == collective_pipeliner_utils::PipeliningDirection::kForward) {
     MergeIntoExistingCollectivesForward(instr, formatting_ops, dyn_updates,
                                         indices_to_merge, instruction_order);
     return;
@@ -1253,7 +1261,7 @@ static int GetNumArrayDimensionsOrZero(const Shape& shape) {
 
 void WhileLoopAnalysis::CollectCollectivesToMove(
     int64_t level_to_operate_on,
-    CollectivePipeliner::PipeliningDirection direction,
+    collective_pipeliner_utils::PipeliningDirection direction,
     HloPredicate should_process, HloPredicate acceptable_formatting,
     HloPredicate should_allow_loop_variant_parameter_in_chain,
     bool should_allow_control_dependencies,
@@ -1310,7 +1318,8 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
   }
 
   for (auto* instr : instructions_post_order) {
-    if (direction == CollectivePipeliner::PipeliningDirection::kForward &&
+    if (direction ==
+            collective_pipeliner_utils::PipeliningDirection::kForward &&
         (instr->operand_count() != 1 ||
          GetNumArrayDimensionsOrZero(instr->shape()) !=
              GetNumArrayDimensionsOrZero(instr->operand(0)->shape()))) {
@@ -1319,20 +1328,23 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
     if (!should_process(instr)) {
       continue;
     }
-    if (direction == CollectivePipeliner::PipeliningDirection::kForward ||
-        direction == CollectivePipeliner::PipeliningDirection::kForwardSink) {
+    if (direction ==
+            collective_pipeliner_utils::PipeliningDirection::kForward ||
+        direction ==
+            collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
       auto [dyn_updates, formatting_ops] = CheckStoreIntoSliceIsCompatible(
           instr, while_body, level_to_operate_on, pipeline_use_tree_,
           acceptable_formatting,
           /*multi_dyn_updates=*/direction ==
-              CollectivePipeliner::PipeliningDirection::kForwardSink);
+              collective_pipeliner_utils::PipeliningDirection::kForwardSink);
       if (dyn_updates.empty()) {
         VLOG(5)
             << "Skipping " << instr->name()
             << " because storing into slice is not compatible with pipelining";
         continue;
       }
-      CHECK(direction != CollectivePipeliner::PipeliningDirection::kForward ||
+      CHECK(direction !=
+                collective_pipeliner_utils::PipeliningDirection::kForward ||
             dyn_updates.size() == 1);
 
       // Collect the information for each dynamic-update-slice. Skip the
@@ -1402,7 +1414,8 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
                                std::move(output_indices)});
       }
     } else {
-      CHECK_EQ(direction, CollectivePipeliner::PipeliningDirection::kBackward);
+      CHECK_EQ(direction,
+               collective_pipeliner_utils::PipeliningDirection::kBackward);
       auto chain_collected = CollectChainsToPushBackwards(
           instr, *loop_iteration_idx_, while_body, level_to_operate_on,
           invariant_loop_parameters_,
@@ -1421,7 +1434,7 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
       break;
     }
   }
-  if (direction != CollectivePipeliner::PipeliningDirection::kForward) {
+  if (direction != collective_pipeliner_utils::PipeliningDirection::kForward) {
     return;
   }
   dus_index_map_.clear();
@@ -1589,7 +1602,7 @@ absl::StatusOr<std::vector<Interval>> ParseVectorOfPairs(
 // {{0,4},{0,4},{1,5},{1,5},{2,5}}.
 absl::Status UpdateSendRecvValidation(
     HloInstruction* instruction, bool is_peeled,
-    CollectivePipeliner::PipeliningDirection direction,
+    collective_pipeliner_utils::PipeliningDirection direction,
     const WhileLoopAnalysis& loop_analysis) {
   if (instruction->opcode() != HloOpcode::kCollectivePermute) {
     return absl::OkStatus();
@@ -1608,7 +1621,7 @@ absl::Status UpdateSendRecvValidation(
 
   Intervals intervals;
 
-  if (direction == CollectivePipeliner::kForward) {
+  if (direction == collective_pipeliner_utils::PipeliningDirection::kForward) {
     // It is a forward pipelining which means that the peeled collective permute
     // is before the loop. It should run once for the devices executing the
     // first iteration and the internal collective permute now sees each
@@ -1629,7 +1642,8 @@ absl::Status UpdateSendRecvValidation(
             {std::max(int64_t{0}, a - 1), std::max(int64_t{0}, b - 1)});
       }
     }
-  } else if (direction == CollectivePipeliner::kBackward) {
+  } else if (direction ==
+             collective_pipeliner_utils::PipeliningDirection::kBackward) {
     // It is a backward pipelining which means that the peeled collective is
     // after the loop. It should run once for the devices executing the last
     // iteration and the internal collective permute doesn't see the last
@@ -1774,7 +1788,8 @@ absl::Status TransformLoopForward(
 
   // Duplicate the loop body into the loop parent computation, so that the first
   // iteration happens there.
-  int64_t next_scheduling_id = NextSchedulingId(*while_loop->GetModule());
+  TF_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
+                      NextSchedulingGroupId(*while_loop->GetModule()));
   absl::flat_hash_map<int64_t, int64_t> annotation_map;
   for (auto* instr : while_body->MakeInstructionPostOrder()) {
     if (instr == loop_parameter) {
@@ -1802,12 +1817,13 @@ absl::Status TransformLoopForward(
     TF_RETURN_IF_ERROR(
         UpdateControlDependencies(instr, cloned_instr, while_body_to_peeled));
     UpdateInstructionChannelId(cloned_instr, next_channel_id);
-    UpdateInstructionSchedulingAnnotation(cloned_instr, next_scheduling_id,
-                                          annotation_map);
+    TF_RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
+        cloned_instr, next_scheduling_id, annotation_map));
     // TODO(b/398891001): Remove this once we have eliminated the need for
     // send/recv validation.
     TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
-        cloned_instr, true, CollectivePipeliner::PipeliningDirection::kForward,
+        cloned_instr, true,
+        collective_pipeliner_utils::PipeliningDirection::kForward,
         loop_analysis));
     while_body_to_peeled[instr] = cloned_instr;
     auto output_it = is_output_instruction.find(instr);
@@ -1876,7 +1892,8 @@ absl::Status TransformLoopForward(
     // TODO(b/398891001): Remove this once we have eliminated the need for
     // send/recv validation.
     TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
-        instruction, false, CollectivePipeliner::PipeliningDirection::kForward,
+        instruction, false,
+        collective_pipeliner_utils::PipeliningDirection::kForward,
         loop_analysis));
   }
   HloInstruction* new_init = loop_computation->AddInstruction(
@@ -1903,8 +1920,9 @@ absl::Status TransformLoopForward(
       loop_analysis.GetLoopStart()->add(*loop_analysis.GetLoopIncrement()));
   new_loop_analysis.ComputeLoopStatistics();
   new_loop_analysis.CollectCollectivesToMove(
-      level_to_operate_on, CollectivePipeliner::PipeliningDirection::kForward,
-      should_process, acceptable_formatting);
+      level_to_operate_on,
+      collective_pipeliner_utils::PipeliningDirection::kForward, should_process,
+      acceptable_formatting);
   CHECK_EQ(new_loop_analysis.GetMoveInfos().size(),
            loop_analysis.GetMoveInfos().size());
   for (int64_t i = new_loop_tuple_operand_count;
@@ -1944,8 +1962,8 @@ absl::Status TransformLoopForward(
             move_info.collectives_to_move.front()->shape(), {stacked_data}));
     UpdateInstructionChannelId(processed, next_channel_id);
     if (update_annotations) {
-      UpdateInstructionSchedulingAnnotation(processed, next_scheduling_id,
-                                            annotation_map);
+      TF_RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
+          processed, next_scheduling_id, annotation_map));
     }
     if (insert_non_alias_custom_call) {
       HloInstruction* level =
@@ -1970,8 +1988,8 @@ absl::Status TransformLoopForward(
           formatting_op->CloneWithNewOperands(formatting_op->shape(),
                                               new_operands));
       if (update_annotations) {
-        UpdateInstructionSchedulingAnnotation(processed, next_scheduling_id,
-                                              annotation_map);
+        TF_RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
+            processed, next_scheduling_id, annotation_map));
       }
       cloned_map[formatting_op] = processed;
       if (post_processing_fn) {
@@ -2789,7 +2807,8 @@ static absl::Status TransformLoopBackward(
   // Add to the rewritten loop the new parameter/output data that is going to be
   // pipelined. Clone chains of pipelined data in the parent computation in the
   // process (they will endup being executed before the loop).
-  int64_t next_scheduling_id = NextSchedulingId(*while_loop->GetModule());
+  TF_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
+                      NextSchedulingGroupId(*while_loop->GetModule()));
   absl::flat_hash_map<int64_t, int64_t> annotation_map;
   for (int i = 0; i < loop_analysis.GetMoveInfos().size(); ++i) {
     const int64_t idx = i + loop_parameter->shape().tuple_shapes().size();
@@ -2930,7 +2949,8 @@ static absl::Status TransformLoopBackward(
     // TODO(b/398891001): Remove this once we have eliminated the need for
     // send/recv validation.
     TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
-        instruction, false, CollectivePipeliner::PipeliningDirection::kBackward,
+        instruction, false,
+        collective_pipeliner_utils::PipeliningDirection::kBackward,
         loop_analysis));
   }
   auto cond_builder =
@@ -3017,12 +3037,13 @@ static absl::Status TransformLoopBackward(
     TF_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
                                                  while_body_replacement_map));
     UpdateInstructionChannelId(cloned_instr, next_channel_id);
-    UpdateInstructionSchedulingAnnotation(cloned_instr, next_scheduling_id,
-                                          annotation_map);
+    TF_RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
+        cloned_instr, next_scheduling_id, annotation_map));
     // TODO(b/398891001): Remove this once we have eliminated the need for
     // send/recv validation.
     TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
-        cloned_instr, true, CollectivePipeliner::PipeliningDirection::kBackward,
+        cloned_instr, true,
+        collective_pipeliner_utils::PipeliningDirection::kBackward,
         loop_analysis));
     while_body_replacement_map[instr] = cloned_instr;
     if (instruction_is_output_it != is_output_instruction.end()) {
@@ -3108,7 +3129,8 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
   for (auto& [instruction, loop_analysis] : loop_analyses) {
     VLOG(1) << "While iterations: "
             << loop_analysis->GetLoopIterationCount()->ToString();
-    if (config_.pipelining_direction == PipeliningDirection::kForwardSink &&
+    if (config_.pipelining_direction ==
+            collective_pipeliner_utils::PipeliningDirection::kForwardSink &&
         !IsForwardSinkIterationFeasible(
             instruction, config_.collective_size_threshold_to_stop_sinking)) {
       continue;
@@ -3130,7 +3152,8 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
         VLOG(1) << "MoveInfo #" << id++ << "\n" << ToString(to_move);
       }
     }
-    if (config_.pipelining_direction == PipeliningDirection::kForward) {
+    if (config_.pipelining_direction ==
+        collective_pipeliner_utils::PipeliningDirection::kForward) {
       CHECK(config_.reuse_pipelined_op_buffer);
       TF_RETURN_IF_ERROR(TransformLoopForward(
           *loop_analysis, !config_.last_run, config_.level_to_operate_on,
@@ -3139,13 +3162,14 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
           config_.reuse_pipelined_op_buffer, next_channel_id,
           config_.postprocess_pipelined_ops));
     } else if (config_.pipelining_direction ==
-               PipeliningDirection::kForwardSink) {
+               collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
       TF_RETURN_IF_ERROR(TransformLoopForwardSink(
           *loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.pipeline_use_tree, config_.process_different_sized_ops,
           config_.should_process, next_channel_id));
     } else {
-      CHECK_EQ(config_.pipelining_direction, PipeliningDirection::kBackward);
+      CHECK_EQ(config_.pipelining_direction,
+               collective_pipeliner_utils::PipeliningDirection::kBackward);
       TF_RETURN_IF_ERROR(TransformLoopBackward(
           *loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.process_different_sized_ops, config_.acceptable_formatting,
@@ -3196,7 +3220,8 @@ absl::StatusOr<bool> CollectivePipeliner::Run(
   CHECK(config_.acceptable_formatting);
   CHECK(config_.should_process);
 
-  if (config_.pipelining_direction != PipeliningDirection::kForwardSink) {
+  if (config_.pipelining_direction !=
+      collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
     return RunPipeliner(module, execution_threads);
   }
 

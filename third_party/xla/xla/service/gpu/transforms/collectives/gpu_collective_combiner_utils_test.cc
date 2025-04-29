@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_pipeliner.h"
+#include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
@@ -155,7 +156,7 @@ TEST_F(CollectiveCombinerUtilsTest,
       /*pipeline_use_tree=*/false,
       /*process_different_sized_ops=*/true,
       /*pipelining_direction=*/
-      CollectivePipeliner::PipeliningDirection::kForward,
+      collective_pipeliner_utils::PipeliningDirection::kForward,
       /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>,
       /*acceptable_formatting=*/HloPredicateTrue,
       /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
@@ -243,7 +244,7 @@ TEST_F(CollectiveCombinerUtilsTest,
       /*pipeline_use_tree=*/false,
       /*process_different_sized_ops=*/true,
       /*pipelining_direction=*/
-      CollectivePipeliner::PipeliningDirection::kForward,
+      collective_pipeliner_utils::PipeliningDirection::kForward,
       /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>,
       /*acceptable_formatting=*/HloPredicateTrue,
       /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
@@ -326,7 +327,7 @@ TEST_F(CollectiveCombinerUtilsTest,
       /*pipeline_use_tree=*/false,
       /*process_different_sized_ops=*/true,
       /*pipelining_direction=*/
-      CollectivePipeliner::PipeliningDirection::kBackward,
+      collective_pipeliner_utils::PipeliningDirection::kBackward,
       /*should_process=*/HloPredicateIsOp<HloOpcode::kAllGather>,
       /*acceptable_formatting=*/HloPredicateTrue,
       /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
@@ -421,7 +422,7 @@ TEST_F(CollectiveCombinerUtilsTest,
       /*pipeline_use_tree=*/false,
       /*process_different_sized_ops=*/true,
       /*pipelining_direction=*/
-      CollectivePipeliner::PipeliningDirection::kBackward,
+      collective_pipeliner_utils::PipeliningDirection::kBackward,
       /*should_process=*/HloPredicateIsOp<HloOpcode::kAllGather>,
       /*acceptable_formatting=*/HloPredicateTrue,
       /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
