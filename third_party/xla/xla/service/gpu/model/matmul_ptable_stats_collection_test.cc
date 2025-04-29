@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/stream_executor/device_description.h"
@@ -96,9 +97,9 @@ DeviceHloInstructionProfiles TestProfiles(
   return profiles;
 }
 
-class MatmulPerfTableStatsCollectionTest : public Test {
+class MatmulStatsCollectionTest : public Test {
  public:
-  explicit MatmulPerfTableStatsCollectionTest()
+  explicit MatmulStatsCollectionTest()
       : device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo()),
         profiles_path_(tsl::io::JoinPath(tsl::testing::TmpDir(), kFile)) {}
 
@@ -112,7 +113,7 @@ class MatmulPerfTableStatsCollectionTest : public Test {
   const std::string profiles_path_;
 };
 
-TEST_F(MatmulPerfTableStatsCollectionTest,
+TEST_F(MatmulStatsCollectionTest,
        CollectsMatmulPerfTableDataForGemmCustomCalls) {
   absl::string_view hlo = R"(
     HloModule m
@@ -154,7 +155,7 @@ TEST_F(MatmulPerfTableStatsCollectionTest,
   )"));
 }
 
-TEST_F(MatmulPerfTableStatsCollectionTest,
+TEST_F(MatmulStatsCollectionTest,
        CollectsMatmulPerfTableDataForTritonFusionConfig) {
   absl::string_view hlo = R"(
     HloModule m
@@ -199,11 +200,65 @@ TEST_F(MatmulPerfTableStatsCollectionTest,
   VLOG(1) << module->ToString();
 
   EXPECT_FALSE(changed);
-  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-  CHECK: triton_gemm
-  CHECK-SAME: fusion_backend_config
-  CHECK-SAME: "exec_time_us":1000000
-  )"));
+  EXPECT_FALSE(module->entry_computation()
+                   ->root_instruction()
+                   ->backend_config<GpuBackendConfig>()
+                   ->fusion_backend_config()
+                   .has_reification_cost());
+}
+
+TEST_F(MatmulStatsCollectionTest,
+       CollectsMatmulGEMMCostModelDataForTritonFusionConfig) {
+  absl::string_view hlo = R"(
+    HloModule m
+
+    comp {
+      p0 = bf16[1024,1024] parameter(0)
+      p1 = bf16[1024,1024] parameter(1)
+      ROOT _ = bf16[1024,1024] dot(p0,p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+
+    ENTRY e {
+      p0 = bf16[1024,1024] parameter(0)
+      p1 = bf16[1024,1024] parameter(1)
+      ROOT triton_gemm =  bf16[1024,1024] fusion(p0,p1),
+        kind=kCustom,
+        calls=comp,
+        backend_config={
+          "operation_queue_id":"0",
+          "wait_on_operation_queues":[],
+          "fusion_backend_config": {
+            "kind":"__triton_gemm",
+            "triton_gemm_config":{
+              "block_m":"128",
+              "block_n":"128",
+              "block_k":"64",
+              "split_k":"1",
+              "num_stages":"1",
+              "num_warps":"8",
+              "num_ctas":"1"
+            }
+          },
+        }
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, MatmulPerfTableStatsCollection(profiles_path_, device_info_)
+                        .Run(module.get()));
+
+  VLOG(1) << module->ToString();
+
+  EXPECT_FALSE(changed);
+  EXPECT_NEAR(module->entry_computation()
+                  ->root_instruction()
+                  ->backend_config<GpuBackendConfig>()
+                  ->fusion_backend_config()
+                  .reification_cost()
+                  .exec_time_us(),
+              199, /*abs_error=*/1);
 }
 
 }  // namespace

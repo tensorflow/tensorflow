@@ -168,7 +168,7 @@ MatmulInterpolator::Create(const HloInstructionProfileList& profiles,
 }
 
 std::optional<absl::Duration> MatmulInterpolator::EstimatedRuntime(
-    const HloInstruction& instr) {
+    const HloInstruction& instr) const {
   InterpolationSpecification spec;
   if (instr.opcode() == HloOpcode::kDot) {
     auto* dot = Cast<HloDotInstruction>(&instr);
