@@ -101,6 +101,8 @@ namespace scf = ::mlir::scf;
 namespace ml = ::mlir::LLVM;
 namespace vector = ::mlir::vector;
 
+constexpr int kGPUSharedMemoryAddrSpace = 3;
+
 Value GetDestinationBuffer(Value dest) {
   while (dest.getDefiningOp()) {
     int result_number = mlir::cast<OpResult>(dest).getResultNumber();
@@ -655,7 +657,6 @@ struct RewriteAllocateShared : OpRewritePattern<gpu::AllocateSharedOp> {
       mlir::PatternRewriter& rewriter) const override {
     auto module = op->getParentOfType<mlir::ModuleOp>();
     auto shaped_ty = mlir::cast<mlir::ShapedType>(op.getResult().getType());
-    constexpr int kGPUSharedMemoryAddrSpace = 3;
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     auto global =
@@ -1300,7 +1301,8 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       return;
     }
 
-    getOperation()->walk([this](ml::LoadOp load) {
+    auto module = getOperation();
+    module->walk([this](ml::LoadOp load) {
       Value addr = load.getAddr();
       while (auto gep = addr.getDefiningOp<ml::GEPOp>()) {
         addr = gep.getBase();
@@ -1330,6 +1332,25 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
         signalPassFailure();
       }
     });
+
+    // Calculate the total size of the shared memory used by the module.
+    mlir::DataLayout data_layout = mlir::DataLayout::closest(module);
+    int64_t shmem_bytes = 0;
+    module->walk([&](ml::GlobalOp global_op) {
+      if (global_op.getAddrSpace() != kGPUSharedMemoryAddrSpace) {
+        return;
+      }
+      if (auto array = mlir::dyn_cast<ml::LLVMArrayType>(global_op.getType())) {
+        int64_t element_size =
+            data_layout.getTypeSizeInBits(array.getElementType());
+        shmem_bytes += CeilOfRatio(
+            static_cast<int64_t>(array.getNumElements()) * element_size,
+            int64_t{8});
+      }
+    });
+    module->setAttr(kShmemBytesAttr,
+                    mlir::IntegerAttr::get(
+                        mlir::IntegerType::get(mlir_context, 64), shmem_bytes));
   }
 
  private:

@@ -131,6 +131,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//xla/codegen/emitters/ir:xla",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

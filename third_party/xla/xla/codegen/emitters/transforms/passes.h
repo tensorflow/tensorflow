@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/Pass.h"
 
 namespace stream_executor {
@@ -30,6 +31,8 @@ namespace emitters {
 
 #define GEN_PASS_DECL
 #include "xla/codegen/emitters/transforms/passes.h.inc"
+
+inline constexpr llvm::StringRef kShmemBytesAttr = "xla.shmem_bytes";
 
 std::unique_ptr<mlir::Pass> CreateConvertPureCallOpsPass();
 std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass();

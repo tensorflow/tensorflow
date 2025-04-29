@@ -292,6 +292,7 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
           fusion.fused_instructions_computation(), args.args(),
           /*discriminator=*/"",
           [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
+            int64_t shmem_bytes = 0;
             std::string kernel_name =
                 ir_emitter_context.name_uniquer()->GetUniqueName(
                     llvm_ir::SanitizeFunctionName(std::string(fusion.name())));
@@ -302,7 +303,7 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
                       *ir_emitter_context.mlir_context(),
                       ir_emitter_context.llvm_module()->getContext(),
                       ir_emitter_context.gpu_device_info(), fusion, kernel_name,
-                      &ir_emitter_context.buffer_assignment()));
+                      &ir_emitter_context.buffer_assignment(), &shmem_bytes));
               auto* kernel_func = module->getFunction(kernel_name);
               AddRanges(kernel_func, launch_dims, module.get());
 
@@ -324,10 +325,8 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
             } else {
               VLOG(3) << "Skipped kernel compilation.";
             }
-
             return KernelReuseCache::Entry{kernel_name, launch_dims,
-                                           std::nullopt,
-                                           /*shmem_bytes=*/0};
+                                           std::nullopt, shmem_bytes};
           });
   TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
@@ -346,7 +345,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
     mlir::MLIRContext& mlir_context, llvm::LLVMContext& llvm_context,
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
-    const BufferAssignment* buffer_assignment) const {
+    const BufferAssignment* buffer_assignment, int64_t* shmem_bytes) const {
   TF_ASSIGN_OR_RETURN(
       auto module, CreateMLIRModule(mlir_context, fusion, entry_function_name,
                                     buffer_assignment));
@@ -358,6 +357,10 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
 
   auto pipeline_status = RunPassPipeline(module.get(), *fusion.GetModule(), pm,
                                          entry_function_name);
+  CHECK(shmem_bytes);
+  *shmem_bytes = mlir::cast<mlir::IntegerAttr>(
+                     module.get()->getAttr(emitters::kShmemBytesAttr))
+                     .getInt();
 
   auto llvm_module = mlir::translateModuleToLLVMIR(module.get(), llvm_context);
   TF_RET_CHECK(llvm_module != nullptr)

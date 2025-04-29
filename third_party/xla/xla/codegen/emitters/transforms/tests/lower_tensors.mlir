@@ -58,6 +58,7 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
   }
 }
 
+// CHECK:        xla.shmem_bytes = 0
 // CHECK:        func.func private @add(%{{.*}}: f32, %{{.*}}: f32) -> f32 {
 // CHECK-NEXT:     arith.addf
 // CHECK-NEXT:     return
@@ -143,6 +144,7 @@ func.func @extract_from_constant(%arg0: tensor<2xf32>, %arg1: index) -> f32 {
   %0 = arith.addf %extracted, %extracted_0 : f32
   return %0 : f32
 }
+// CHECK: xla.shmem_bytes = 0
 // CHECK: llvm.mlir.global private constant @global_cst_0(dense<
 // CHECK-SAME: [1.000000e+00, 2.000000e+00]> : tensor<2xf32>) {addr_space = 0 : i32} : !llvm.array<2 x f32>
 // CHECK-LABEL: @extract_from_constant
@@ -223,6 +225,7 @@ func.func @transpose_shared(%in: tensor<1024xf32>,
 
   return %written_tile : tensor<1024xf32>
 }
+// CHECK:      xla.shmem_bytes = 4096
 // CHECK:      llvm.mlir.global private @[[SHARED:shared_.*]]()
 // CHECK-SAME:     {addr_space = 3 : i32} : !llvm.array<1024 x f32>
 // CHECK:      @transpose_shared
@@ -373,6 +376,7 @@ func.func @shared_complex() -> tensor<10xcomplex<f32>> {
   %shared = xla_gpu.allocate_shared : tensor<10xcomplex<f32>>
   return %shared : tensor<10xcomplex<f32>>
 }
+// CHECK: xla.shmem_bytes = 80
 // CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<10 x struct<(f32, f32)>>
 // CHECK-LABEL: @shared_complex
 
@@ -382,6 +386,7 @@ func.func @shared_i4() -> tensor<10xi4> {
   %shared = xla_gpu.allocate_shared : tensor<10xi4>
   return %shared : tensor<10xi4>
 }
+// CHECK: xla.shmem_bytes = 5
 // CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<10 x i4>
 // CHECK-LABEL: @shared_i4
 

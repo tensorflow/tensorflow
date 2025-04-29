@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_EMITTERS_EMITTER_BASE_H_
 #define XLA_BACKENDS_GPU_CODEGEN_EMITTERS_EMITTER_BASE_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -61,7 +62,7 @@ class EmitterBase : public KernelFusionInterface {
       mlir::MLIRContext& mlir_context, llvm::LLVMContext& llvm_context,
       const se::DeviceDescription& device, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
-      const BufferAssignment* buffer_assignment) const;
+      const BufferAssignment* buffer_assignment, int64_t* shmem_bytes) const;
 
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).
