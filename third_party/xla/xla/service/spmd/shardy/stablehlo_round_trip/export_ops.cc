@@ -65,6 +65,7 @@ using ::mlir::sdy::AllToAllOp;
 using ::mlir::sdy::CollectivePermuteOp;
 using ::mlir::sdy::ConstantOp;
 using ::mlir::sdy::PropagationBarrierOp;
+using ::mlir::sdy::ReduceScatterOp;
 using ::mlir::sdy::ReshardOp;
 using ::mlir::sdy::ShardingConstraintOp;
 using ::mlir::sdy::TensorShardingAttr;
@@ -162,7 +163,8 @@ class ExportOpsPass
     // Hence, we add ShardingConstraintOp as an illegal op.
     target.addIllegalOp<ConstantOp, ReshardOp, AllGatherOp, AllReduceOp,
                         AllSliceOp, AllToAllOp, CollectivePermuteOp,
-                        ShardingConstraintOp, PropagationBarrierOp>();
+                        ReduceScatterOp, ShardingConstraintOp,
+                        PropagationBarrierOp>();
     target.addLegalOp<stablehlo::ConstantOp, mhlo::CopyOp>();
     mlir::RewritePatternSet patterns(&context);
     // After converting `sdy.constant` into `stablehlo.constant`, the constants
@@ -172,7 +174,8 @@ class ExportOpsPass
     patterns.add<ConstantPattern, AllReducePattern, ReshardPattern,
                  PropagationBarrierPattern, CollectivePattern<AllGatherOp>,
                  CollectivePattern<AllSliceOp>, CollectivePattern<AllToAllOp>,
-                 CollectivePattern<CollectivePermuteOp>>(&context);
+                 CollectivePattern<CollectivePermuteOp>,
+                 CollectivePattern<ReduceScatterOp>>(&context);
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
       signalPassFailure();
