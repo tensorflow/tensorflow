@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -69,7 +68,7 @@ KernelThunk::KernelThunk(
       tma_metadata_(std::move(tma_metadata)) {
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
-  for (const auto& kernel_argument : kernel_arguments) {
+  for (const KernelArgument& kernel_argument : kernel_arguments) {
     if (!kernel_argument.first_with_same_slice().has_value()) {
       args_.push_back(kernel_argument.slice());
       written_.push_back(kernel_argument.written());
@@ -92,8 +91,7 @@ absl::Status KernelThunk::Initialize(const InitializeParams& params) {
   // We could alternatively do this within ExecuteOnStream, but doing it here
   // lets the time spent loading the kernel not count towards our execution
   // profiles.
-  auto it = kernel_cache_.find(params.executor);
-  if (kernel_cache_.end() == it) {
+  if (!kernel_cache_.contains(params.executor)) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<se::Kernel> kernel,
         CreateKernel(kernel_name_, args_.size(), params.src.text,
@@ -108,7 +106,7 @@ absl::Status KernelThunk::Initialize(const InitializeParams& params) {
 static void PrintBufferContents(
     se::Stream* stream, absl::Span<const se::KernelArgument> kernel_args) {
   int input_idx = 0;
-  for (const auto& arg : kernel_args) {
+  for (const se::KernelArgument& arg : kernel_args) {
     if (std::holds_alternative<se::DeviceMemoryBase>(arg)) {
       se::DeviceMemoryBase buf = std::get<se::DeviceMemoryBase>(arg);
 
@@ -117,7 +115,7 @@ static void PrintBufferContents(
       CHECK_OK(stream->BlockHostUntilDone());
 
       std::string buffer_contents;
-      for (int i = 0; i < buf.size(); i++) {
+      for (int i = 0; i < buf.size(); ++i) {
         absl::StrAppendFormat(&buffer_contents, "%x ",
                               static_cast<unsigned>(host_buffer[i]));
       }
@@ -125,7 +123,7 @@ static void PrintBufferContents(
     } else {
       se::TensorMap tensor_map = std::get<se::TensorMap>(arg);
       VLOG(100) << "TENSOR_MAP(" << input_idx++ << ") = ";
-      for (auto element : tensor_map.storage) {
+      for (std::byte element : tensor_map.storage) {
         VLOG(100) << absl::StrFormat("%x ", static_cast<unsigned>(element));
       }
     }
@@ -135,8 +133,6 @@ static void PrintBufferContents(
 absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Load the kernel.
   se::StreamExecutor* executor = params.stream->parent();
-  LaunchDimensions launch_dimensions;
-  std::optional<se::ClusterDim> cluster_dim;
   se::Kernel* kernel = nullptr;
 
   TF_ASSIGN_OR_RETURN(
@@ -148,8 +144,6 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     auto it = kernel_cache_.find(executor);
     CHECK(it != kernel_cache_.end())
         << "Initialize() not called for StreamExecutor " << executor;
-    launch_dimensions = launch_dimensions_;
-    cluster_dim = cluster_dim_;
     kernel = it->second.get();
   }
 
@@ -163,8 +157,8 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     VLOG(3) << "  Arg: alloc #" << arg.index() << ", offset: " << arg.offset()
             << ": " << buf.opaque() << " (" << buf.size() << "B)";
 
-    auto it = tma_metadata.arg_index_to_tma_info.find(idx);
-    if (it != tma_metadata.arg_index_to_tma_info.end()) {
+    if (auto it = tma_metadata.arg_index_to_tma_info.find(idx);
+        it != tma_metadata.arg_index_to_tma_info.end()) {
       // TMA descriptor argument.
       stream_executor::gpu::TmaDescriptor tma_desc = it->second;
       TF_ASSIGN_OR_RETURN(se::TensorMap tensor_map,
@@ -186,7 +180,7 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
       *kernel,
       absl::Span<std::variant<se::DeviceMemoryBase, se::TensorMap>>(
           kernel_args.data(), kernel_args.size()),
-      launch_dimensions, cluster_dim, stream);
+      launch_dimensions_, cluster_dim_, stream);
 }
 
 //===----------------------------------------------------------------------===//
@@ -201,7 +195,7 @@ CustomKernelThunk::CustomKernelThunk(
       custom_kernel_(std::move(custom_kernel)) {
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
-  for (const auto& kernel_argument : kernel_arguments) {
+  for (const KernelArgument& kernel_argument : kernel_arguments) {
     if (!kernel_argument.first_with_same_slice().has_value()) {
       args_.push_back(kernel_argument.slice());
       written_.push_back(kernel_argument.written());
@@ -216,8 +210,7 @@ std::string CustomKernelThunk::ToString(int indent) const {
 absl::Status CustomKernelThunk::Initialize(const InitializeParams& params) {
   absl::MutexLock lock(&mutex_);
 
-  auto it = kernel_cache_.find(params.executor);
-  if (kernel_cache_.end() == it) {
+  if (!kernel_cache_.contains(params.executor)) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<se::Kernel> kernel,
         params.executor->LoadKernel(custom_kernel_.kernel_spec()));
@@ -248,7 +241,7 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   if (VLOG_IS_ON(100)) {
     absl::InlinedVector<se::KernelArgument, 4> kernel_args;
-    for (const auto& arg : buffer_args) {
+    for (const se::DeviceMemoryBase& arg : buffer_args) {
       kernel_args.push_back(arg);
     }
     PrintBufferContents(params.stream, kernel_args);
