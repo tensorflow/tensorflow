@@ -201,56 +201,41 @@ void convertShardingsToStablehloShardings(
   StringRef meshName = sharding.getMeshName();
   MeshAttr mesh = sharding.getMesh(symbolTable);
   CHECK(mesh);
+  auto getMeshAttr = [&](TensorShardingAttr) { return mesh; };
 
   // The axes that are manual inside `op`'s region.
   ManualAxesHierarchy manualAxes =
       getManualAxesHierarchy(op, parentManualCompAxes);
   MLIRContext* context = op.getContext();
-  std::function<StringAttr(const HloSharding&)> getStringAttr =
-      [&](const HloSharding& hloSharding) {
-        return StringAttr::get(context, hloSharding.ToString());
-      };
 
-  if (mesh.getAxes().size() == manualAxes.region.size()) {
-    // All operations in the body have fully manual sharding.
-    StringAttr fullyManualSharding =
-        StringAttr::get(context, HloSharding::Manual().ToString());
-    op.getBody().front().walk<mlir::WalkOrder::PreOrder>(
-        [&](Operation* opInBody) {
-          if (mlir::isa<ManualComputationOp>(opInBody)) {
-            // Skip `ManualComputationOp`s, they will be converted separately.
-            return mlir::WalkResult::skip();
-          }
-          opInBody->setAttr(kXlaShardingAttr, fullyManualSharding);
-          // Remove the possible fully replicated sdy.sharding attribute.
-          opInBody->removeAttr(kShardingAttr);
-          return mlir::WalkResult::advance();
-        });
-  } else {
-    auto getMeshAttr = [&](TensorShardingAttr) { return mesh; };
-    // All operations in the body must be sharded or replicated along free
-    // axes. If an operation does not have sharding annotation, it is fully
-    // replicated along free axes.
-    op.getBody().front().walk<mlir::WalkOrder::PreOrder>(
-        [&](Operation* opInBody) {
-          if (mlir::isa<ManualComputationOp>(opInBody)) {
-            return mlir::WalkResult::skip();
-          }
+  // All operations in the body are sharded or replicated along free axes. If an
+  // operation does not have sharding annotation, it is fully replicated along
+  // free axes.
+  op.getBody().front().walk<mlir::WalkOrder::PreOrder>(
+      [&](Operation* opInBody) {
+        if (mlir::isa<ManualComputationOp>(opInBody)) {
+          // Skip `ManualComputationOp`s and their nested operations, they will
+          // be converted separately.
+          return mlir::WalkResult::skip();
+        }
+
+        if (mesh.getAxes().size() == manualAxes.region.size()) {
+          opInBody->setAttr(
+              kXlaShardingAttr,
+              StringAttr::get(context, HloSharding::Manual().ToString()));
+        } else {
           TensorShardingPerValueAttr shardingPerValue =
-              opInBody->getAttrOfType<TensorShardingPerValueAttr>(
-                  kShardingAttr);
+              mlir::sdy::getShardingPerValue(opInBody);
           if (!shardingPerValue) {
             shardingPerValue = TensorShardingPerValueAttr::getFullyOpen(
                 context, opInBody->getResultTypes(), meshName);
           }
-          opInBody->setAttr(kXlaShardingAttr,
-                            convertToHloShardingAttr(
-                                opInBody, shardingPerValue.getShardings(),
-                                getMeshAttr, manualAxes.region));
-          opInBody->removeAttr(kShardingAttr);
-          return mlir::WalkResult::advance();
-        });
-  }
+          setHloShardingAttr(opInBody, shardingPerValue.getShardings(),
+                             getMeshAttr, manualAxes.region);
+        }
+        opInBody->removeAttr(kShardingAttr);
+        return mlir::WalkResult::advance();
+      });
 }
 
 // Converts `op` to the pattern that XLA recognizes.
