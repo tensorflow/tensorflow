@@ -217,12 +217,6 @@ TfLiteXNNPackDelegateOptions xnnpack_options =
 xnnpack_options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS;
 ```
 
-When XNNPACK handles resource variables,
-[tflite::Subgraph::resources](https://github.com/tensorflow/tensorflow/blob/5b4239ba9cf127fd26cd9f03c04dfc4c94c078d4/tensorflow/lite/core/subgraph.h#L197)
-cannot be used to access resources, because the resources are now internal to
-XNNPACK, and the changes are not reflected in tflite::Subgraph::resources. There
-is currently no way to access resources if XNNPACK handles resource variables.
-
 ## Profiling
 When TfLite profiling is enabled, XNNPACK will time each operator and report the
 results to TfLite which will print them as part of the overall execution profile.
