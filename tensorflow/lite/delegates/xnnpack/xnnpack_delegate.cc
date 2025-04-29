@@ -99,18 +99,6 @@ void CopyTensorDataInt32OrInt64(int64_t* dst, const TfLiteTensor& tensor,
   }
 }
 
-bool CheckZeroPoint(TfLiteContext* context, const TfLiteTensor& tensor, int t,
-                    const TfLiteIntArray* quantization_zero_point) {
-  if (quantization_zero_point == nullptr) {
-    TF_LITE_KERNEL_LOG(context,
-                       "missing zero point quantization parameters for "
-                       "%s tensor %d in XNNPACK delegate",
-                       TfLiteTypeGetName(tensor.type), t);
-    return false;
-  }
-  return true;
-}
-
 bool CheckFp16Scale(TfLiteContext* context, const TfLiteTensor& tensor, int t,
                     const TfLiteBlockwiseQuantization* quantization_params) {
   const TfLiteTensor& scale = context->tensors[quantization_params->scale];
@@ -131,28 +119,40 @@ bool CheckFp16Scale(TfLiteContext* context, const TfLiteTensor& tensor, int t,
   return true;
 }
 
-bool CheckFp32Scale(TfLiteContext* context, const TfLiteTensor& tensor, int t,
-                    const TfLiteFloatArray* quantization_scale,
-                    const TfLiteIntArray* quantization_zero_point) {
-  if (quantization_scale == nullptr) {
+bool CheckAffineQuantization(
+    TfLiteContext* context, const TfLiteTensor& tensor, int t,
+    const TfLiteAffineQuantization& quantization_params) {
+  if (quantization_params.scale == nullptr) {
     TF_LITE_KERNEL_LOG(context,
                        "missing scale quantization parameters for %s "
                        "tensor %d in XNNPACK delegate",
                        TfLiteTypeGetName(tensor.type), t);
     return false;
   }
-  if (quantization_zero_point != nullptr &&
-      quantization_scale->size != quantization_zero_point->size) {
+  if (quantization_params.zero_point == nullptr) {
+    TF_LITE_KERNEL_LOG(context,
+                       "missing zero point quantization parameters for "
+                       "%s tensor %d in XNNPACK delegate",
+                       TfLiteTypeGetName(tensor.type), t);
+    return false;
+  }
+  if (quantization_params.scale->size != quantization_params.zero_point->size) {
     TF_LITE_KERNEL_LOG(context,
                        "mismatching number of scale (%d) and zero "
                        "point (%d) quantization parameters for %s "
                        "tensor %d in XNNPACK delegate",
-                       quantization_scale->size, quantization_zero_point->size,
+                       quantization_params.scale->size,
+                       quantization_params.zero_point->size,
                        TfLiteTypeGetName(tensor.type), t);
     return false;
   }
-  for (int i = 0; i < quantization_scale->size; i++) {
-    const float scale = quantization_scale->data[i];
+  return true;
+}
+
+bool CheckFp32Scale(TfLiteContext* context, const TfLiteTensor& tensor, int t,
+                    const TfLiteFloatArray& quantization_scale) {
+  for (int i = 0; i < quantization_scale.size; i++) {
+    const float scale = quantization_scale.data[i];
     if (!std::isnormal(scale) || scale <= 0.0f) {
       TF_LITE_KERNEL_LOG(context,
                          "unsupported scale value (%f) in channel %d for "
@@ -223,18 +223,7 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
                            t);
         return xnn_datatype_invalid;
       }
-      if (quantization_params->scale == nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "missing scale quantization parameters for UINT8 "
-                           "tensor %d in XNNPACK delegate",
-                           t);
-        return xnn_datatype_invalid;
-      }
-      if (quantization_params->zero_point == nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "missing zero point quantization parameters for "
-                           "UINT8 tensor %d in XNNPACK delegate",
-                           t);
+      if (!CheckAffineQuantization(context, tensor, t, *quantization_params)) {
         return xnn_datatype_invalid;
       }
       if (quantization_params->scale->size != 1) {
@@ -245,21 +234,11 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
             quantization_params->scale->size, t);
         return xnn_datatype_invalid;
       }
-      if (quantization_params->zero_point->size != 1) {
-        TF_LITE_KERNEL_LOG(
-            context,
-            "unsupported number (%d) of zero point quantization parameters "
-            "for UINT8 tensor %d in XNNPACK delegate",
-            quantization_params->zero_point->size, t);
-        return xnn_datatype_invalid;
-      }
+      // Checking if quantization_params->zero_point->size != 1 is redundant,
+      // CheckAffineQuantization already checks if it is the same as
+      // quantization_params->scale->size.
 
-      const float scale = quantization_params->scale->data[0];
-      if (!std::isnormal(scale) || scale <= 0.0f) {
-        TF_LITE_KERNEL_LOG(context,
-                           "unsupported scale value (%f) for UINT8 tensor %d "
-                           "in XNNPACK delegate",
-                           scale, t);
+      if (!CheckFp32Scale(context, tensor, t, *(quantization_params->scale))) {
         return xnn_datatype_invalid;
       }
       if (!CheckZeroPointForPerTensorQuantization<uint8_t>(
@@ -282,10 +261,13 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
                                t);
             return xnn_datatype_invalid;
           }
+          if (!CheckAffineQuantization(context, tensor, t,
+                                       *quantization_params)) {
+            return xnn_datatype_invalid;
+          }
           const auto quantization_scale = quantization_params->scale;
           const auto quantization_zero_point = quantization_params->zero_point;
-          if (!CheckFp32Scale(context, tensor, t, quantization_scale,
-                              quantization_zero_point)) {
+          if (!CheckFp32Scale(context, tensor, t, *quantization_scale)) {
             return xnn_datatype_invalid;
           }
           if (quantization_scale->size == 1 && tensor.type == kTfLiteInt8) {
@@ -295,9 +277,6 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
               return xnn_datatype_invalid;
             }
             return xnn_datatype_qint8;
-          }
-          if (!CheckZeroPoint(context, tensor, t, quantization_zero_point)) {
-            return xnn_datatype_invalid;
           }
           if (NumDimensions(&tensor) >= 1 &&
               quantization_scale->size ==
@@ -387,28 +366,7 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
                            t);
         return xnn_datatype_invalid;
       }
-      if (quantization_params->scale == nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "missing scale quantization parameters for "
-                           "INT32 tensor %d in XNNPACK delegate",
-                           t);
-        return xnn_datatype_invalid;
-      }
-      if (quantization_params->zero_point == nullptr) {
-        TF_LITE_KERNEL_LOG(context,
-                           "missing zero point quantization parameters for "
-                           "INT32 tensor %d in XNNPACK delegate",
-                           t);
-        return xnn_datatype_invalid;
-      }
-      if (quantization_params->scale->size !=
-          quantization_params->zero_point->size) {
-        TF_LITE_KERNEL_LOG(context,
-                           "mismatching number of scale (%d) and zero "
-                           "point (%d) quantization parameters for INT32 "
-                           "tensor %d in XNNPACK delegate",
-                           quantization_params->scale->size,
-                           quantization_params->zero_point->size, t);
+      if (!CheckAffineQuantization(context, tensor, t, *quantization_params)) {
         return xnn_datatype_invalid;
       }
       if (quantization_params->quantized_dimension != 0) {
