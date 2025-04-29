@@ -75,7 +75,7 @@ void Relation::UnionRelationFromDifferentSource(const Relation& rel) {
   CHECK_EQ(rel.orders_.size(), 1);
   intercept_def_use_ = intercept_def_use_ || rel.intercept_def_use_;
   for (auto& local_order : orders_) {
-    if (OverwriteIfSubsume(rel.orders_[0], &local_order)) {
+    if (OverwriteIfSubsumes(rel.orders_[0], &local_order)) {
       return;
     }
   }
@@ -102,17 +102,17 @@ Relation::RuntimeOrder Relation::ReverseRuntimeOrder(RuntimeOrder order) {
 
 // Overwrites o1 with o2 if o2 subsumes o1 (as defined above by the Subsume
 // function). Return whether o2 is subsumed by the new value in o1.
-bool Relation::OverwriteIfSubsume(RuntimeOrder o2, RuntimeOrder* o1) {
+bool Relation::OverwriteIfSubsumes(RuntimeOrder o2, RuntimeOrder* o1) {
   if (*o1 == o2) {
     return true;
   }
   CHECK_NE(o1, nullptr);
   // Overwrite o1 with o2 if it is subsumed by o2.
-  if (Subsume(o2, *o1)) {
+  if (Subsumes(o2, *o1)) {
     *o1 = o2;
     return true;
   }
-  if (Subsume(*o1, o2)) {
+  if (Subsumes(*o1, o2)) {
     // If o2 is already subsumed by o1, do nothing.
     return true;
   }
@@ -125,9 +125,9 @@ bool Relation::OverwriteIfSubsume(RuntimeOrder o2, RuntimeOrder* o1) {
 // the source instruction, in that the returned value describes the relation
 // of entry2 in terms of whether it is before or after entry1, and whether it
 // can intercept the def-use data flow of entry1.
-Relation ComputeRelativeLocation::Compute(const InstructionEntry& entry1,
-                                          const InstructionEntry& entry2,
-                                          bool instr2_can_modify) {
+Relation ComputeRelativeLocation::ComputeBetweenInstructionEntries(
+    const InstructionEntry& entry1, const InstructionEntry& entry2,
+    bool instr2_can_modify) {
   auto def = entry1.second.value_definition;
   auto use = entry1.first;
   Relation::RuntimeOrder order =
@@ -148,7 +148,8 @@ Relation ComputeRelativeLocation::Compute(const InstructionEntry& entry1,
   // computation, then any modification is considered intercepting.
   if (def->opcode() == HloOpcode::kParameter &&
       use == use->parent()->root_instruction()) {
-    VLOG(3) << "Setting interception due to parameter/root relation";
+    VLOG(3) << "ComputeBetweenInstructionEntries: Setting interception due to "
+               "parameter/root relation";
     return Relation(order, true);
   }
 
@@ -167,6 +168,8 @@ Relation ComputeRelativeLocation::Compute(const InstructionEntry& entry1,
       ComputeRuntimeOrdering(use, entry2.first) == Relation::kAfterEnd &&
       def->opcode() == HloOpcode::kWhile &&
       entry2.first->parent() == def->while_body()) {
+    VLOG(3) << "ComputeBetweenInstructionEntries: Setting interception due to "
+               "def-while body relation";
     return Relation(order, false);
   }
 
@@ -174,6 +177,8 @@ Relation ComputeRelativeLocation::Compute(const InstructionEntry& entry1,
       ComputeRuntimeOrdering(def, entry2.first) == Relation::kBeforeStart &&
       use->opcode() == HloOpcode::kWhile &&
       entry2.first->parent() == use->while_body()) {
+    VLOG(3) << "ComputeBetweenInstructionEntries: Setting interception due to "
+               "use-while body relation";
     return Relation(order, false);
   }
 
@@ -221,17 +226,19 @@ Relation ComputeRelativeLocation::Compute(const InstructionEntry& entry1,
   if (use->parent() == def->parent() &&
       !def->parent()->caller_instructions(HloOpcode::kConditional).empty() &&
       def == entry2.first && def->shape().IsTuple()) {
-    VLOG(3) << "Setting interception for multi-output instruction inside "
-               "conditional branch: "
+    VLOG(3) << "ComputeBetweenInstructionEntries: Setting interception for "
+               "multi-output instruction inside conditional branch: "
             << def->name();
     return Relation(order, true);
   }
 
   if (Relation::UseImpliesInterception(order)) {
     auto order2 = ComputeRuntimeOrdering(entry2.first, def);
+    VLOG(3) << "ComputeRuntimeOrdering result: "
+            << Relation::GetRuntimeOrderName(order2);
     if (Relation::DefinitionImpliesInterception(order2)) {
-      VLOG(3) << "Setting interception for " << def->ToString()
-              << " with use: " << entry1.first->ToString();
+      VLOG(3) << "ComputeBetweenInstructionEntries: Setting interception for "
+              << def->ToString() << " with use: " << entry1.first->ToString();
       intercept = true;
     }
   }
@@ -240,32 +247,36 @@ Relation ComputeRelativeLocation::Compute(const InstructionEntry& entry1,
 
 // Return the relative locations (defined above) of range2 in relation to
 // instructions in range1. Return kNoOverlap if range2 is outside of range1.
-Relation ComputeRelativeLocation::Compute(const LiveRangeRegions& range1,
-                                          const LiveRangeRegions& range2) {
+Relation ComputeRelativeLocation::ComputeBetweenLiveRangeRegions(
+    const LiveRangeRegions& range1, const LiveRangeRegions& range2) {
   Relation dir_src_dest;
   for (const auto* computation1 : range1) {
     for (const auto* computation2 : range2) {
+      VLOG(3) << "Computing relative location constraints between: ";
+      VLOG(3) << "        computation1: " << computation1->name();
+      VLOG(3) << "    and computation2: " << computation2->name();
       for (auto instr_entry2 : range2[computation2]) {
         if (!ordering_->call_graph().Dominates(computation1, computation2)) {
           continue;
         }
-        VLOG(3) << "Locationing " << instr_entry2.first->ToString();
+        VLOG(3) << "              instr2: " << instr_entry2.first->ToString();
         // Saves relations between instr2 and other instructions in range1.
         bool instr2_can_modify = InstructionCanIntercept(instr_entry2, range1);
         Relation instr2_relation;
         std::vector<InstructionEntry> unordered_ops;
         bool unordered_intercept = false;
         for (auto instr_entry1 : range1[computation1]) {
-          auto rel = Compute(instr_entry1, instr_entry2, instr2_can_modify);
-          VLOG(3) << "New relation with " << instr_entry1.first->name() << ": "
-                  << rel.ToString();
+          auto rel = ComputeBetweenInstructionEntries(
+              instr_entry1, instr_entry2, instr2_can_modify);
+          VLOG(3) << "  Target Instruction: " << instr_entry1.first->name();
+          VLOG(3) << "            Relation: " << rel.ToString();
           if (!rel.RuntimeOrderIsUnordered()) {
             instr2_relation.UnionRelationFromSameSource(rel);
           } else {
             unordered_ops.push_back(instr_entry1);
             unordered_intercept |= rel.InterceptDefUse();
           }
-          VLOG(3) << "instr2 relation: " << instr2_relation.ToString();
+          VLOG(3) << "     instr2 relation: " << instr2_relation.ToString();
         }
         // Here instr2_relation is guaranteed to have at most a single entry,
         // because it was initialized to be empty, and has been updated only
@@ -278,7 +289,8 @@ Relation ComputeRelativeLocation::Compute(const LiveRangeRegions& range1,
               Relation(Relation::kBeforeStartOrAfterEnd, unordered_intercept));
         }
         dir_src_dest.UnionRelationFromDifferentSource(instr2_relation);
-        VLOG(3) << "Resulting relation: " << dir_src_dest.ToString();
+        VLOG(3) << "  Resulting relation: " << dir_src_dest.ToString();
+        VLOG(3) << "--------------------------------------------------------";
       }
     }
   }
@@ -303,8 +315,9 @@ bool ComputeRelativeLocation::AddControlDependenceForUnorderedOps() {
     for (const auto& instr_it : comp_it.second) {
       HloInstruction* entry1 = instr_it.first;
       for (HloInstruction* entry2 : instr_it.second) {
-        VLOG(3) << "Add control dependence between " << entry2->name() << " vs "
-                << entry1->name();
+        VLOG(3) << "   Adding control dependence between:";
+        VLOG(3) << "     predecessor: " << entry2->name();
+        VLOG(3) << "       successor: " << entry1->name();
         TF_CHECK_OK(entry2->AddControlDependencyTo(entry1));
       }
       reachability_map.UpdateReachabilityThroughInstruction(entry1);
@@ -328,6 +341,8 @@ bool ComputeRelativeLocation::ForceRuntimeOrder(
   }
   if (desired_relation != Relation::kBeforeStart &&
       desired_relation != Relation::kAfterEnd) {
+    VLOG(3) << "      ForceRuntimeOrder: desired_relation is not "
+               "kBeforeStart or kAfterEnd";
     return false;
   }
   auto ModifiesNonCopy = [](HloInstruction* instr, const HloInstruction* op) {
@@ -347,6 +362,8 @@ bool ComputeRelativeLocation::ForceRuntimeOrder(
   for (const InstructionEntry& entry1 : unordered_ops) {
     // Only consider instructions in the same computation.
     if (entry1.first->parent() != entry2.first->parent()) {
+      VLOG(3) << "      ForceRuntimeOrder: instructions are not in the same "
+                 "computation";
       return false;
     }
     HloInstruction* pred = (desired_relation == Relation::kBeforeStart)
@@ -356,6 +373,8 @@ bool ComputeRelativeLocation::ForceRuntimeOrder(
                                ? entry1.first
                                : entry2.first;
     if (pred == pred->parent()->root_instruction()) {
+      VLOG(3) << "      ForceRuntimeOrder: predecessor (" << pred->name()
+              << ") is the root instruction";
       return false;
     }
     if (succ->opcode() == HloOpcode::kCopy &&
@@ -368,6 +387,11 @@ bool ComputeRelativeLocation::ForceRuntimeOrder(
   for (const InstructionEntry& entry1 : unordered_ops) {
     Save(entry2.first, entry1.first, desired_relation,
          /*is_unordered_originally=*/true);
+    VLOG(3) << "      ForceRuntimeOrder: saved unordered relation: ";
+    VLOG(3) << "        entry2: " << entry2.first->name();
+    VLOG(3) << "        entry1: " << entry1.first->name();
+    VLOG(3) << "        relation: "
+            << Relation::GetRuntimeOrderName(desired_relation);
   }
   return true;
 }
@@ -517,9 +541,11 @@ Relation::RuntimeOrder ComputeRelativeLocation::Save(
 Relation::RuntimeOrder ComputeRelativeLocation::ComputeRuntimeOrdering(
     HloInstruction* instr1, HloInstruction* instr2) {
   auto saved_relation = AlreadyComputed(instr1, instr2);
+  VLOG(3) << "   ComputeRuntimeOrdering: " << instr1->name() << " vs "
+          << instr2->name();
   if (saved_relation.first != kNotComputed) {
-    VLOG(3) << "Already computed between " << instr1->name() << " vs "
-            << instr2->name();
+    VLOG(3) << "   ComputeRuntimeOrdering: Already computed between "
+            << instr1->name() << " vs " << instr2->name();
     return saved_relation.second;
   }
   auto constraint = ordering_->GetExecutionConstraint(instr1, instr2);
@@ -821,6 +847,21 @@ LiveRangeRegions CopyRemover::ComputeLiveRangeRegions(const ValueNode* head) {
   return live_range;
 }
 
+bool CopyRemover::IsCopyToFromHost(const HloInstruction* copy) {
+  if (copy->shape().has_layout() && copy->operand(0)->shape().has_layout()) {
+    if (copy->shape().layout().memory_space() == Layout::kHostMemorySpace &&
+        copy->operand(0)->shape().layout().memory_space() !=
+            Layout::kHostMemorySpace) {
+      return true;
+    }
+    if (copy->shape().layout().memory_space() != Layout::kHostMemorySpace &&
+        copy->operand(0)->shape().layout().memory_space() ==
+            Layout::kHostMemorySpace) {
+      return true;
+    }
+  }
+  return false;
+}
 // Try to elide the given copy. Elision of a copy is possible only if no
 // live range interference is introduced by the copy's elimination. If
 // elision is possible, then the internal state (value lists) are updated,
@@ -828,25 +869,21 @@ LiveRangeRegions CopyRemover::ComputeLiveRangeRegions(const ValueNode* head) {
 bool CopyRemover::TryElideCopy(
     const HloInstruction* copy, int64_t* region_analysis_limit,
     bool insert_post_scheduling_control_dependencies) {
-  VLOG(2) << "Trying to remove " << copy->name();
+  VLOG(3) << "TryElideCopy starting for: " << copy->name();
   CHECK_NE(region_analysis_limit, nullptr);
-  if (copy->shape().has_layout() && copy->operand(0)->shape().has_layout()) {
-    if (copy->shape().layout().memory_space() == Layout::kHostMemorySpace &&
-        copy->operand(0)->shape().layout().memory_space() !=
-            Layout::kHostMemorySpace) {
-      return false;
-    }
-    if (copy->shape().layout().memory_space() != Layout::kHostMemorySpace &&
-        copy->operand(0)->shape().layout().memory_space() ==
-            Layout::kHostMemorySpace) {
-      return false;
-    }
+
+  // Don't elide copies to/from the host.
+  if (IsCopyToFromHost(copy)) {
+    return false;
   }
 
+  // Don't elide copies that are not in the copy map.
   if (!ContainsKey(copy_map_, copy)) {
     VLOG(2) << copy->name() << " is not removable";
     return false;
   }
+
+  // Don't elide copies with different shapes.
   if (!ShapeUtil::Equal(copy->shape(), copy->operand(0)->shape())) {
     VLOG(2) << copy->name() << " is not removable (shape mismatch)";
     return false;
@@ -855,12 +892,12 @@ bool CopyRemover::TryElideCopy(
   DCHECK(copy_node.src != nullptr);
   DCHECK(copy_node.dest != nullptr);
 
-  int64_t live_range_size1 = 0, live_range_size2 = 0;
+  int64_t src_total_read_writes = 0, dst_total_read_writes = 0;
   ForEachValueInRange(copy_node.src, [&](const ValueNode* node) {
-    live_range_size1 += 1 + node->uses.size();
+    src_total_read_writes += 1 + node->uses.size();
   });
   ForEachValueInRange(copy_node.dest, [&](const ValueNode* node) {
-    live_range_size2 += 1 + node->uses.size();
+    dst_total_read_writes += 1 + node->uses.size();
   });
   // Use the more accurate region-based live range interference analysis if
   // the live range size is within a given limit (or if no limit is given).
@@ -869,10 +906,9 @@ bool CopyRemover::TryElideCopy(
   bool use_region_analysis =
       copy->operand(0)->opcode() != HloOpcode::kBroadcast &&
       (*region_analysis_limit < 0 ||
-       live_range_size1 * live_range_size2 <= *region_analysis_limit);
+       src_total_read_writes * dst_total_read_writes <= *region_analysis_limit);
+
   *region_analysis_limit = 0;
-  VLOG(3) << copy->name() << " copies value "
-          << copy_node.src->value->ToShortString();
   VLOG(3) << "Source buffer values: " << ValueListToString(copy_node.src);
   VLOG(3) << "Dest buffer values: " << ValueListToString(copy_node.dest);
   // Checks whether the live range at src is before that defined by dest.
@@ -882,8 +918,9 @@ bool CopyRemover::TryElideCopy(
       for (ValueNode* prev_src = src; prev_src != nullptr;
            prev_src = Prev(*prev_src)) {
         if (!LiveRangeBefore(*prev_src, *next_dest)) {
-          VLOG(2) << "Live range of " << prev_src->value->ToShortString()
-                  << " is not before " << next_dest->value->ToShortString();
+          VLOG(4) << "   CheckLiveRangeBefore - live range of: "
+                  << prev_src->value->ToShortString() << ", is not before; "
+                  << next_dest->value->ToShortString();
           return false;
         }
       }
@@ -895,15 +932,15 @@ bool CopyRemover::TryElideCopy(
     CHECK_NE(src, nullptr);
     CHECK_NE(dest, nullptr);
     if (!use_region_analysis) {
-      VLOG(2) << "Configured to not use region-based analysis.";
+      VLOG(2) << " TryElideCopy: Configured to not use region-based analysis.";
       return true;
     }
-    *region_analysis_limit += live_range_size1 * live_range_size2;
+    *region_analysis_limit += src_total_read_writes * dst_total_read_writes;
     if (ValuesInterfere(src, dest, option)) {
-      VLOG(2) << "Region-based interference is true.";
+      VLOG(2) << " TryElideCopy: Region-based interference is true.";
       return true;
     }
-    VLOG(2) << "Region-based interference is false.";
+    VLOG(2) << " TryElideCopy: Region-based interference is false.";
     return false;
   };
   auto AddControlDependenciesBetween = [&](ValueNode* src, ValueNode* dst) {
@@ -918,12 +955,17 @@ bool CopyRemover::TryElideCopy(
         continue;
       }
 
-      VLOG(2) << "Adding control dependency:";
-      VLOG(2) << "  From: " << use->instruction->ToString();
-      VLOG(2) << "    Use: " << use->ToString();
+      VLOG(2)
+          << "      AddControlDependenciesBetween: Adding control dependency:";
+      VLOG(2) << "      AddControlDependenciesBetween:  From: "
+              << use->instruction->ToString();
+      VLOG(2) << "      AddControlDependenciesBetween:   Use: "
+              << use->ToString();
 
-      VLOG(2) << "  To: " << dst->value->instruction()->ToShortString();
-      VLOG(2) << "    Value: " << dst->value->ToString();
+      VLOG(2) << "      AddControlDependenciesBetween:    To: "
+              << dst->value->instruction()->ToShortString();
+      VLOG(2) << "      AddControlDependenciesBetween: Value: "
+              << dst->value->ToString();
 
       CHECK_OK(
           use->instruction->AddControlDependencyTo(dst->value->instruction()));
@@ -952,20 +994,22 @@ bool CopyRemover::TryElideCopy(
   //
   // For the remaining case where the kCopy copies a not-last value from the
   // source buffer to a not-first value of the destination buffer, the kCopy
-  // instruction cannot be removed. This case is generated, for example, if
+  // instruction cannot be removed. This case is generated for example, if
   // the kCopy copies a while body parameter of the loop state at one tuple
   // index to a different tuple index in the while body root. Removal of the
   // copy necessarily results in live range interference of values in the
   // loop state at the two different tuple indices.
   //
-  //  We can only perform copy elision if the resulting merged values have
+  //  We can only perform copy elision if the merged values have
   //  totally ordered live ranges; otherwise the merged buffer would have
   //  live range interference.
   if (copy_node.src->next == copy_node.dest) {
     // In the process of eliding copies, it's possible for a copy to have the
     // same source and destination buffer. In this case, the copy can be
     // safely removed.
-    VLOG(2) << copy->name() << " source and destination buffers are same.";
+    VLOG(2) << "TryElideCopy - copy (" << copy->name()
+            << ") has same source / destination buffers";
+
   } else if (IsHead(*copy_node.dest)) {
     // The copy copies an arbitrary value in the source buffer (call it s_x)
     // and defines d_0, the first value in the destination buffer. After
@@ -999,13 +1043,33 @@ bool CopyRemover::TryElideCopy(
     //    we simply check for the case where *all* values of the destination
     //    buffer (d_1 through d_m) are spliced into the point where the copy
     //    used to be.
-    VLOG(2) << copy->name() << " defines the first value in its buffer";
-    bool live_range_before =
-        // Live range of (s_x, s_{x-1},...) must be before 'next_dest' (d_1);
-        CheckLiveRangeBefore(copy_node.src, Next(*copy_node.dest)) &&
-        // Live range of 'last_dest' (d_m) must be before 'next_src' s_{x+1}.
+    VLOG(2) << "TryElideCopy - copy (" << copy->name()
+            << ") defines the first value in its buffer.";
+    // Live range of (s_x, s_{x-1},...) must be before 'next_dest' (d_1);
+    bool src_use_before_first_dest_def =
+        CheckLiveRangeBefore(copy_node.src, Next(*copy_node.dest));
+    std::string a = copy_node.src->value->ToShortString();
+    std::string b = Next(*copy_node.dest) == nullptr
+                        ? "null"
+                        : Next(*copy_node.dest)->value->ToShortString();
+    VLOG(6) << "TryElideCopy - source uses of value defined by (" << a
+            << ") complete before next dest definition (" << b
+            << "): " << src_use_before_first_dest_def;
+    // Live range of 'last_dest' (d_m) must be before 'next_src' s_{x+1}.
+    bool src_def_after_last_dest_use =
         CheckLiveRangeBefore(copy_node.dest->prev, Next(*copy_node.src));
-    VLOG(2) << "LiveRangeBefore result: " << live_range_before;
+    a = copy_node.dest->prev->value->ToShortString();
+    b = Next(*copy_node.src) == nullptr
+            ? "null"
+            : Next(*copy_node.src)->value->ToShortString();
+    VLOG(6) << "TryElideCopy - dest uses of value defined by (" << a
+            << ") complete before next src definition (" << b
+            << "): " << src_def_after_last_dest_use;
+
+    bool live_range_before =
+        src_use_before_first_dest_def && src_def_after_last_dest_use;
+    VLOG(3) << "TryElideCopy - LiveRangeBefore result: " << live_range_before;
+
     // If the live range is before, we can add control dependencies to ensure
     // the ordering. Otherwise, we check for interference (which will
     // also add control dependencies if needed)
@@ -1026,7 +1090,7 @@ bool CopyRemover::TryElideCopy(
                                           kMergeFirstDestInSource)) {
       return false;
     }
-    VLOG(2) << "Splice dest after source.";
+    VLOG(2) << "TryElideCopy - splicing dest after source.";
     // Splice in destination buffer values list right after 'src'.
     SpliceAfter(copy_node.dest, copy_node.src);
   } else if (IsTail(*copy_node.src)) {
@@ -1043,16 +1107,38 @@ bool CopyRemover::TryElideCopy(
     // before the live range of d_{y+1}.
     //
     // ** See comment above in the code handling Case (1).
-    VLOG(2) << copy->name() << " copies the last value ("
-            << copy_node.src->value->ToShortString() << ") in its buffer";
-    bool live_range_before =
-        // Live range of d_0, ..., d_{y-1} must be before s_0;
-        // Since copy_node.src is tail for this if branch, copy_node.src->next
-        // is s0 because the list is circularly linked.
-        CheckLiveRangeBefore(Prev(*copy_node.dest), copy_node.src->next) &&
-        // Live range of 'last_src' must be before next_dest d_{y+1}.
+    VLOG(2) << "TryElideCopy - copy (" << copy->name()
+            << ") copies the last value in its buffer.";
+    // Live range of d_0, ..., d_{y-1} must be before s_0;
+    // Since copy_node.src is tail for this if branch, copy_node.src->next
+    // is s0 because the list is circularly linked.
+    bool prev_dest_use_before_next_src_def =
+        CheckLiveRangeBefore(Prev(*copy_node.dest), copy_node.src->next);
+
+    std::string a = Prev(*copy_node.dest) == nullptr
+                        ? "null"
+                        : Prev(*copy_node.dest)->value->ToShortString();
+    std::string b = copy_node.src->next->value->ToShortString();
+
+    VLOG(6) << "TryElideCopy - prev dest uses of value defined by (" << a
+            << ") complete before src definition (" << b
+            << "): " << prev_dest_use_before_next_src_def;
+    // Live range of 'last_src' must be before next_dest d_{y+1}.
+    bool src_use_before_next_dest_def =
         CheckLiveRangeBefore(copy_node.src, Next(*copy_node.dest));
-    VLOG(2) << "LiveRangeBefore result: " << live_range_before;
+
+    a = copy_node.src->value->ToShortString();
+    b = Next(*copy_node.dest) == nullptr
+            ? "null"
+            : Next(*copy_node.dest)->value->ToShortString();
+    VLOG(6) << "TryElideCopy - src uses of value defined by (" << a
+            << ") complete before dest definition (" << b
+            << "): " << src_use_before_next_dest_def;
+
+    bool live_range_before =
+        prev_dest_use_before_next_src_def && src_use_before_next_dest_def;
+
+    VLOG(2) << "TryElideCopy - LiveRangeBefore result: " << live_range_before;
     // If the live range is before, we can add control dependencies to ensure
     // the ordering. Otherwise, we check for interference (which will
     // also add control dependencies if needed)
@@ -1087,7 +1173,7 @@ bool CopyRemover::TryElideCopy(
 
   XLA_VLOG_LINES(4, ToString());
   TF_DCHECK_OK(Verify());
-
+  VLOG(3) << "TryElideCopy succeeded for: " << copy->name();
   return true;
 }
 
@@ -1179,32 +1265,36 @@ bool CopyRemover::ValuesInterfere(const ValueNode* src, const ValueNode* dest,
   auto src_live_range = ComputeLiveRangeRegions(src);
   auto dest_live_range = ComputeLiveRangeRegions(dest);
 
-  VLOG(5) << "src value: " << src->value->ToString();
-  VLOG(5) << "src live range:\n" << src_live_range.ToString();
-
-  VLOG(5) << "dest value: " << dest->value->ToString();
-  VLOG(5) << "dest live range:\n" << dest_live_range.ToString();
+  VLOG(3) << "    ValuesInterfere source value: " << src->value->ToString();
+  VLOG(5) << "    ValuesInterfere source live range:\n"
+          << src_live_range.ToString();
+  VLOG(3) << "    ValuesInterfere destination value: "
+          << dest->value->ToString();
+  VLOG(5) << "    ValuesInterfere destination live range:\n"
+          << dest_live_range.ToString();
 
   ComputeRelativeLocation relative_location_analysis(ordering_);
-  auto rel1 =
-      relative_location_analysis.Compute(src_live_range, dest_live_range);
-  VLOG(3) << "Location of dest in relation to src: " << rel1.ToString()
-          << " with interception set to " << rel1.InterceptDefUse();
-  auto rel2 =
-      relative_location_analysis.Compute(dest_live_range, src_live_range);
-  VLOG(3) << "Location of src in relation to dest: " << rel2.ToString()
-          << " with interception set to " << rel2.InterceptDefUse();
+  auto rel1 = relative_location_analysis.ComputeBetweenLiveRangeRegions(
+      src_live_range, dest_live_range);
+  VLOG(3) << "    ValuesInterfere - location of dest in relation to src: ";
+  VLOG(3) << "            " << rel1.ToString();
+
+  auto rel2 = relative_location_analysis.ComputeBetweenLiveRangeRegions(
+      dest_live_range, src_live_range);
+  VLOG(3) << "    ValuesInterfere - location of src in relation to dest: ";
+  VLOG(3) << "            " << rel2.ToString();
+
   // If src and dest are interleaved with each other, they interfere.
   if (rel1.RuntimeOrderOverlap() && rel2.RuntimeOrderOverlap()) {
-    VLOG(3) << "Both relations are overlap.";
+    VLOG(3) << "    ValuesInterfere: Both relations are overlapped.";
     return true;
   }
   // If src and dest belong to the same group of computations and do not
   // overlap, they do not interfere.
   if (rel1.RuntimeOrderOverlap() || rel2.RuntimeOrderOverlap()) {
-    VLOG(3) << "At least one relation is overlap.";
+    VLOG(3) << "    ValuesInterfere: At least one relation is overlapped.";
     if (rel1.RuntimeOrderOverlap()) {
-      VLOG(3) << "rel1 is overlap, with interception = "
+      VLOG(3) << "    ValuesInterfere: rel1 is overlapped, with interception = "
               << rel1.InterceptDefUse();
       if (rel1.InterceptDefUse() ||
           (merge_location != kMergeFirstDestInSource &&
@@ -1212,7 +1302,7 @@ bool CopyRemover::ValuesInterfere(const ValueNode* src, const ValueNode* dest,
         return true;
       }
     } else {
-      VLOG(3) << "rel2 is overlap, with interception = "
+      VLOG(3) << "    ValuesInterfere: rel2 is overlapped, with interception = "
               << rel2.InterceptDefUse();
       // Here src is at the end of a nested computation inside dest.
       if (rel2.InterceptDefUse() || (merge_location != kMergeLastSourceInDest &&
@@ -1229,23 +1319,16 @@ bool CopyRemover::ValuesInterfere(const ValueNode* src, const ValueNode* dest,
 }
 
 // Calls `visitor` on each item in the sequence of HloValues starting from
-// `element`.
-//
-// If element is not head, traverse from element to tail, then wrap
-// around. The ordering is important for live range region analysis.
+// `element` and wrapping around.
 void CopyRemover::ForEachValueInRange(
     const ValueNode* element,
     absl::FunctionRef<void(const ValueNode*)> visitor) {
-  const ValueNode* head = element;
-  for (const ValueNode* p = head; p != nullptr; p = Next(*p)) {
+  const ValueNode* p = element;
+  do {
+    CHECK_NE(p, nullptr);
     visitor(p);
-  }
-  while (!IsHead(*head)) {
-    head = Prev(*head);
-  }
-  for (const ValueNode* p = head; p != element; p = Next(*p)) {
-    visitor(p);
-  }
+    p = p->next;
+  } while (p != element);
 }
 
 std::string CopyRemover::ValueListToString(const ValueNode* element) {

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -1008,14 +1009,14 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
   int64_t num_existing_copies = GetNumExistingCopies(module, execution_threads);
   bool changed = true;
   int64_t num_iterations = -1;
-  VLOG(6) << "Copy Insertion analyzing module with instruction count = "
-          << module->instruction_count();
+  VLOG(6) << "Copy removal analyzing module (" << module->name()
+          << ") with instruction count = " << module->instruction_count();
   BoundNonLinearCompilerAnalysis allowance(module, name(), 10);
   while (changed) {
     CHECK_LE(++num_iterations, num_existing_copies);
     changed = false;
-    VLOG(2) << "Running fixpoint iteration " << num_iterations
-            << " of copy elision";
+    VLOG(2) << "RemoveUnnecessaryCopies running fixpoint iteration "
+            << num_iterations << " of copy elision";
     for (HloComputation* computation :
          module->computations(execution_threads)) {
       VLOG(2) << "computation:" << computation->name();
@@ -1039,7 +1040,9 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
           TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
           TF_RETURN_IF_ERROR(
               instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
-          VLOG(6) << "succeeded in eliminating copy.";
+          VLOG(3) << "Copy removed successfully: " << instruction->ToString();
+          XLA_VLOG_LINES(
+              6, absl::StrCat("   Resulting Module: ", module->ToString()));
         }
         if (allowance.ContinueAnalysis() && region_analysis_cost_now > 0) {
           VLOG(6) << "Copy Insertion analyzing module cost: "

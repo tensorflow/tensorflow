@@ -224,19 +224,25 @@ class Relation {
   bool RuntimeOrderIsRunAfter() const {
     return orders_.size() == 1 && orders_[0] == kAfterEnd;
   }
-  std::string ToString() const {
-    auto format_order = [](std::string* out, RuntimeOrder order) {
-      switch (order) {
+  static std::string GetRuntimeOrderName(const RuntimeOrder order) {
+    std::string out;
+    FormatRuntimeOrder(&out, order);
+    return out;
+  }
+
+  static void FormatRuntimeOrder(std::string* out, const RuntimeOrder order) {
+    switch (order) {
 #define DECLARE_CASE(enum_name, enum_value) \
   case enum_name:                           \
     absl::StrAppend(out, #enum_name);       \
     break;
-        RUNTIME_ORDER_LIST(DECLARE_CASE)
+      RUNTIME_ORDER_LIST(DECLARE_CASE)
 #undef DECLARE_CASE
-      }
-    };
+    }
+  }
+  std::string ToString() const {
     return absl::StrCat("Interception = ", intercept_def_use_, " Orders = ",
-                        absl::StrJoin(orders_, ", ", format_order), ",");
+                        absl::StrJoin(orders_, ", ", FormatRuntimeOrder), ",");
   }
 
   static bool DefinitionImpliesInterception(RuntimeOrder definition) {
@@ -271,12 +277,12 @@ class Relation {
   }
   // Returns whether ordering constraint o1 includes o2 as a subset, when they
   // represent runtime orderings (interleavings) of two different regions.
-  static bool Subsume(RuntimeOrder o1, RuntimeOrder o2) {
+  static bool Subsumes(RuntimeOrder o1, RuntimeOrder o2) {
     return Union(o1, o2) == o1;
   }
   // Overwrites o1 with o2 if o2 subsumes o1 (as defined above by the Subsume
   // function). Return whether o2 is subsumed by the new value in o1.
-  static bool OverwriteIfSubsume(RuntimeOrder o2, RuntimeOrder* o1);
+  static bool OverwriteIfSubsumes(RuntimeOrder o2, RuntimeOrder* o1);
 };
 
 class ComputeRelativeLocation {
@@ -291,13 +297,14 @@ class ComputeRelativeLocation {
   // the source instruction, in that the returned value describes the relation
   // of entry2 in terms of whether it is before or after entry1, and whether it
   // can intercept the def-use data flow of entry1.
-  Relation Compute(const InstructionEntry& entry1,
-                   const InstructionEntry& entry2, bool instr2_can_modify);
+  Relation ComputeBetweenInstructionEntries(const InstructionEntry& entry1,
+                                            const InstructionEntry& entry2,
+                                            bool instr2_can_modify);
 
   // Return the relative locations (defined above) of range2 in relation to
   // instructions in range1. Return kNoOverlap if range2 is outside of range1.
-  Relation Compute(const LiveRangeRegions& range1,
-                   const LiveRangeRegions& range2);
+  Relation ComputeBetweenLiveRangeRegions(const LiveRangeRegions& range1,
+                                          const LiveRangeRegions& range2);
 
   // Return whether control dependences, if exist, are added successfully.
   bool AddControlDependenceForUnorderedOps();
@@ -419,6 +426,9 @@ class CopyRemover {
   // Compute the set of instructions where values are alive and organize these
   // instructions by separating them into their respective computations.
   LiveRangeRegions ComputeLiveRangeRegions(const ValueNode* head);
+
+  // Returns true if the copy is to or from the host.
+  static bool IsCopyToFromHost(const HloInstruction* copy);
 
   // Try to elide the given copy. Elision of a copy is possible only if no
   // live range interference is introduced by the copy's elimination. If
