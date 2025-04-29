@@ -1121,6 +1121,7 @@ inline const char* GetErrorMessage(const XLA_FFI_Api* api,
 // Encodes `Error` as an FFI error.
 template <ExecutionStage stage>
 struct ResultEncoding<stage, Error> {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
                                XLA_FFI_ExecutionContext* ctx, Error error) {
     if (XLA_FFI_PREDICT_TRUE(error.success())) {
@@ -1138,6 +1139,7 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
   static_assert(std::is_same_v<decltype(T::id), TypeId>,
                 "State type must have a static `TypeId id` field");
 
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
                                XLA_FFI_ExecutionContext* ctx,
                                ErrorOr<std::unique_ptr<T>> state) {
@@ -1159,6 +1161,7 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
 // Encodes `Future` as an asynchronous FFI result.
 template <ExecutionStage stage>
 struct ResultEncoding<stage, Future> {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::variant<XLA_FFI_Error*, XLA_FFI_Future*> Encode(
       const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx, Future future) {
     // Create XLA_FFI_Future object that will signal completion to the runtime.
