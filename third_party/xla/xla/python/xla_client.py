@@ -21,10 +21,10 @@ import inspect
 import os
 from typing import Sequence
 
-from jax.jaxlib.xla.xla_client import *  # pylint: disable=wildcard-import
-from jax.jaxlib.xla.xla_client import _xla
-from jax.jaxlib.xla.xla_client import PrimitiveType
-from jax.jaxlib.xla.xla_client import Shape
+from jax.jaxlib.xla_client import *  # pylint: disable=wildcard-import
+from jax.jaxlib.xla_client import _xla
+from jax.jaxlib.xla_client import PrimitiveType
+from jax.jaxlib.xla_client import Shape
 
 import ml_dtypes
 import numpy as np

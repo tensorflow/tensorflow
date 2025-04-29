@@ -48,7 +48,7 @@ pytype_strict_library(
         ":_ops",
         ":_profiler",
         ":_xla_builder",
-        "//third_party/py/jax/jaxlib/xla:xla_client",
+        "//third_party/py/jax/jaxlib:xla_client",
         "@ml_dtypes_py//ml_dtypes",
         "//third_party/py/numpy",
     ]),
@@ -58,7 +58,7 @@ pytype_strict_library(
     name = "xla_extension",
     srcs = ["xla_extension.py"],
     visibility = ["//visibility:public"],
-    deps = if_google(["//third_party/py/jax/jaxlib/xla:xla_extension"]),
+    deps = if_google(["//third_party/py/jax/jaxlib:_jax"]),
 )
 
 tsl_pybind_extension(
