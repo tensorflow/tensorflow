@@ -462,7 +462,7 @@ struct MergeAssumingOpsPass
     RewritePatternSet patterns(ctx);
     populateMergeAssumingOpsPatterns(ctx, &patterns);
     GreedyRewriteConfig config;
-    config.maxIterations = GreedyRewriteConfig::kNoLimit;
+    config.setMaxIterations(GreedyRewriteConfig::kNoLimit);
     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns),
                                      config))) {
       return signalPassFailure();

@@ -47,12 +47,12 @@ struct RegionToFunctionalPass
     GreedyRewriteConfig config;
     // Use top-down traversal for more efficient conversion. Disable region
     // simplification as all regions are single block.
-    config.useTopDownTraversal = true;
-    config.enableRegionSimplification =
-        mlir::GreedySimplifyRegionLevel::Disabled;
+    config.setUseTopDownTraversal(true);
+    config.setRegionSimplificationLevel(
+        mlir::GreedySimplifyRegionLevel::Disabled);
     // Iterate until all regions have been outlined. This is guaranteed to
     // terminate because the IR can only hold a finite depth of regions.
-    config.maxIterations = GreedyRewriteConfig::kNoLimit;
+    config.setMaxIterations(GreedyRewriteConfig::kNoLimit);
     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns),
                                      config))) {
       getOperation()->emitError(getArgument() + " pass failed");

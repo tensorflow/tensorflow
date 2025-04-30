@@ -41,7 +41,7 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
     mlir::RewritePatternSet patterns(mlir_context);
     PopulateXlaCpuConversionPatterns(patterns);
     mlir::GreedyRewriteConfig config;
-    config.fold = true;
+    config.enableFolding(true);
     if (mlir::failed(mlir::applyPatternsGreedily(
             getOperation(), std::move(patterns), config))) {
       signalPassFailure();

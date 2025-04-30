@@ -339,11 +339,11 @@ struct ChloRecomposeOpsPass
   void runOnOperation() override {
     // Do a single traversal to recompose CustomCallOp to CHLO ops.
     GreedyRewriteConfig config;
-    config.useTopDownTraversal = true;
-    config.enableRegionSimplification = GreedySimplifyRegionLevel::Aggressive;
-    config.maxIterations = 1;
-    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
-    config.strictMode = GreedyRewriteStrictness::ExistingOps;
+    config.setUseTopDownTraversal(true)
+        .setRegionSimplificationLevel(GreedySimplifyRegionLevel::Aggressive)
+        .setMaxIterations(1)
+        .setMaxNumRewrites(GreedyRewriteConfig::kNoLimit)
+        .setStrictness(GreedyRewriteStrictness::ExistingOps);
 
     RewritePatternSet patterns(&getContext());
     // CustomCall Patterns
@@ -368,7 +368,7 @@ struct ChloRecomposeOpsPass
     if (failed(applyOpPatternsGreedily(candidateOps, std::move(patterns),
                                        config))) {
       moduleOp.emitError("Failed to converge ChloRecomposeOps in ")
-          << config.maxIterations << " iterations";
+          << config.getMaxIterations() << " iterations";
       return signalPassFailure();
     }
   }

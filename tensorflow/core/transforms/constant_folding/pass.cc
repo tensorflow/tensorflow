@@ -3721,7 +3721,7 @@ void ConstantFolding::runOnOperation() {
     }
     bool changed = false;
     GreedyRewriteConfig config;
-    config.strictMode = GreedyRewriteStrictness::ExistingAndNewOps;
+    config.setStrictness(GreedyRewriteStrictness::ExistingAndNewOps);
     (void)applyOpPatternsAndFold(ops, final_patterns_, config, &changed);
     if (!changed) break;
   } while (iteration++ < max_iterations);

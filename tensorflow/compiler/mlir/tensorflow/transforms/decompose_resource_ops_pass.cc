@@ -97,7 +97,7 @@ LogicalResult ApplyPatternsLocallyUntilConverged(
     auto walk_result =
         op_with_regions->walk([&patterns, &changed](Operation* operation) {
           GreedyRewriteConfig config;
-          config.strictMode = mlir::GreedyRewriteStrictness::ExistingOps;
+          config.setStrictness(mlir::GreedyRewriteStrictness::ExistingOps);
           bool op_erased;
           if (failed(applyOpPatternsAndFold(operation, patterns, config,
                                             &op_erased)))

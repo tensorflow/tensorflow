@@ -26,7 +26,9 @@ class PassManager;
 namespace gpu {
 class GPUModuleOp;
 }  // namespace gpu
-
+namespace amdgpu {
+class Chipset;
+}
 #define GEN_PASS_DECL
 #include "transforms/gpu_passes.h.inc"
 
@@ -41,7 +43,7 @@ createGpuKernelToNvvmPass(bool useBarePtrCallConv = false);
 
 /// Pass that transforms gpu modules in standard dialect to ROCDL.
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
-createGpuKernelToRocdlPass();
+createGpuKernelToRocdlPass(const std::string& chipset = "gfx000");
 
 #define GEN_PASS_REGISTRATION
 #include "transforms/gpu_passes.h.inc"
