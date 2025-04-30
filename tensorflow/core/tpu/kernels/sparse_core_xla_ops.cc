@@ -717,7 +717,7 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
     builder->SetFrontendAttributes(tuple_frontend_attributes);
 
     // Updated embedding table.
-    for (int i = 0; i < tables_shape.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < tables_shape.tuple_shapes().size(); ++i) {
       ctx->SetOutput(i, xla::GetTupleElement(updated_tables, i));
     }
 
@@ -895,7 +895,7 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
     builder->SetFrontendAttributes(tuple_frontend_attributes);
 
     // Updated embedding table.
-    for (int i = 0; i < tables_shape.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < tables_shape.tuple_shapes().size(); ++i) {
       ctx->SetOutput(i, xla::GetTupleElement(updated_tables, i));
     }
 
