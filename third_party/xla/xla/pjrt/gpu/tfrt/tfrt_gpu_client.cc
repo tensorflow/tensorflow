@@ -3006,8 +3006,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   std::vector<tsl::AsyncValueRef<MaybeOwningGpuMemory>> output_buffers;
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   auto gpu_executable = executables_[executable_idx];
-  Executable* executable = gpu_executable->executable();
-  const Shape& result_shape = executable->result_shape();
+  TF_ASSIGN_OR_RETURN(std::vector<Shape> output_shapes, GetOutputShapes());
+  const Shape& result_shape = output_shapes[executable_idx];
   bool untuple_result = options.untuple_result;
   bool result_is_tuple = result_shape.IsTuple();
   if (options.untuple_result && result_shape.IsTuple()) {
