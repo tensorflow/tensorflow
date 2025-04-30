@@ -3672,6 +3672,14 @@ TfrtGpuBuffer::AcquireDonation() {
         "Donation requested for buffer with external reference");
   }
 
+  // Wait on the definition and usage events before we can donate the buffer.
+  // This is might not be optimal but avoids issues where a buffer is donated
+  // before its usage event is ready.
+  auto usage_events = tracked_device_buffer_->LockUseAndTransferUsageEvents();
+  auto definition_event = tracked_device_buffer_->definition_event();
+  tsl::BlockUntilReady(usage_events);
+  tsl::BlockUntilReady(definition_event);
+
   CHECK(donation_event_.IsAvailable());
   CHECK(!donation_event_.get());
   donation_event_ = tsl::MakeUnconstructedAsyncValueRef<bool>();
