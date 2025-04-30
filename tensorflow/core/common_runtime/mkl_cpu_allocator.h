@@ -185,11 +185,13 @@ class MklCPUAllocator : public Allocator {
     small_size_allocator_ =
         new MklSmallSizeAllocator(sub_allocator_, max_mem_bytes, kName);
 
-    BFCAllocator::Options large_allocator_opts;
-    large_allocator_opts.allow_growth = kAllowGrowth;
-    large_size_allocator_ =
-        new BFCAllocator(absl::WrapUnique(sub_allocator_), max_mem_bytes, kName,
-                         large_allocator_opts);
+    if (!UseSystemAlloc()) {
+      BFCAllocator::Options large_allocator_opts;
+      large_allocator_opts.allow_growth = kAllowGrowth;
+      large_size_allocator_ =
+          new BFCAllocator(absl::WrapUnique(sub_allocator_), max_mem_bytes,
+                           kName, large_allocator_opts);
+    }
     return OkStatus();
   }
 
@@ -245,7 +247,8 @@ class MklCPUAllocator : public Allocator {
   }
   absl::optional<AllocatorStats> GetStats() override {
     auto s_stats = small_size_allocator_->GetStats();
-    auto l_stats = large_size_allocator_->GetStats();
+    auto l_stats = large_size_allocator_ ? large_size_allocator_->GetStats()
+                                         : AllocatorStats();
 
     // Combine statistics from small-size and large-size allocator.
     mutex_lock l(mutex_);
@@ -264,6 +267,9 @@ class MklCPUAllocator : public Allocator {
 
   bool ClearStats() override {
     bool stats_cleared = small_size_allocator_->ClearStats();
+    if (!large_size_allocator_) {
+      return stats_cleared;
+    }
     stats_cleared &= large_size_allocator_->ClearStats();
     return stats_cleared;
   }
@@ -303,8 +309,9 @@ class MklCPUAllocator : public Allocator {
   // The alignment that we need for the allocations
   static constexpr const size_t kAlignment = 64;
 
-  Allocator* large_size_allocator_;              // owned by this class
-  MklSmallSizeAllocator* small_size_allocator_;  // owned by this class.
+  Allocator* large_size_allocator_ = nullptr;              // owned by this class
+  MklSmallSizeAllocator* small_size_allocator_ =
+      nullptr;  // owned by this class.
 
   SubAllocator* sub_allocator_;  // not owned by this class
   mutable mutex mutex_;
