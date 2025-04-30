@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 
@@ -60,9 +61,10 @@ TEST_F(ShapeTest, ShapeToFromProto) {
   for (const Shape& shape :
        {opaque_, token_, scalar_, matrix_, matrix2_, tuple_, nested_tuple_,
         dynamic_matrix_, unbounded_}) {
-    Shape shape_copy(shape.ToProto());
-    EXPECT_TRUE(ShapeUtil::Equal(shape, shape_copy))
-        << shape << " != " << shape_copy;
+    auto shape_copy = Shape::FromProto(shape.ToProto());
+    TF_ASSERT_OK(shape_copy);
+    EXPECT_TRUE(ShapeUtil::Equal(shape, *shape_copy))
+        << shape << " != " << *shape_copy;
   }
 }
 
@@ -234,7 +236,8 @@ TEST_F(ShapeTest, ProgramShapeToFromProto) {
   *program_shape.mutable_result() = ShapeUtil::MakeShape(F32, {7});
 
   // Create a copy of the program shape by round-tripping through a proto.
-  ProgramShape program_shape_copy(program_shape.ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(auto program_shape_copy,
+                          ProgramShape::FromProto(program_shape.ToProto()));
   ASSERT_EQ(program_shape.parameters_size(),
             program_shape_copy.parameters_size());
   for (int i = 0; i < program_shape.parameters_size(); ++i) {
@@ -326,7 +329,9 @@ void BM_ShapeCopy(::testing::benchmark::State& state) {
   state.SetLabel(shape.ToString(true));
 
   for (auto s : state) {
-    Shape copy(shape);
+    auto copy = Shape::FromProto(shape.ToProto());
+    TF_ASSERT_OK(copy);
+    CHECK(ShapeUtil::Equal(shape, *copy));
   }
 }
 BENCHMARK(BM_ShapeCopy)->Arg(0)->Arg(1)->Arg(2);

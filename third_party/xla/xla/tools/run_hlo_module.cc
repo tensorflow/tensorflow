@@ -229,9 +229,12 @@ absl::Status RunAndCompareInternal(
           "number of expected arguments.");
     } else {
       for (int i = 0; i < args.size(); ++i) {
-        if (!literal_comparison::EqualShapes(
-                 xla::Shape(args[i].shape()),
-                 xla::Shape(iteration_literals_proto->arguments(i).shape()))
+        TF_ASSIGN_OR_RETURN(
+            auto expected_shape,
+            xla::Shape::FromProto(
+                iteration_literals_proto->arguments(i).shape()));
+        if (!literal_comparison::EqualShapes(xla::Shape(args[i].shape()),
+                                             expected_shape)
                  .ok()) {
           if (test_run_result != nullptr) {
             *test_run_result = ModuleResult::kOtherError;

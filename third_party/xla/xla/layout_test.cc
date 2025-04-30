@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout_util.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -221,7 +222,10 @@ TEST(Layout, Equality) {
 TEST(Layout, LayoutToFromProto) {
   // Round-trips a Layout through proto de/serialization.
   auto expect_unchanged = [](const Layout& layout) {
-    EXPECT_EQ(layout, Layout::CreateFromProto(layout.ToProto()));
+    auto layout_proto = layout.ToProto();
+    auto from_proto_result = Layout::FromProto(layout_proto);
+    TF_ASSERT_OK(from_proto_result);
+    EXPECT_EQ(layout, from_proto_result.value());
   };
 
   expect_unchanged(Layout());

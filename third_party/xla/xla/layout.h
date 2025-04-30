@@ -24,9 +24,11 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/printer.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -44,8 +46,14 @@ class Tile {
       : dimensions_(dimensions.begin(), dimensions.end()) {}
 
   // De/Serialize a Tile to and from a TileProto.
-  static Tile CreateFromProto(const TileProto& tile_proto) {
-    return Tile(tile_proto.dimensions());
+  static absl::StatusOr<Tile> FromProto(const TileProto& tile_proto) {
+    Tile tile;
+    tile.dimensions_.reserve(tile_proto.dimensions_size());
+    for (int64_t dimension : tile_proto.dimensions()) {
+      TF_RET_CHECK(dimension >= 0);
+      tile.add_dimensions(dimension);
+    }
+    return tile;
   }
   TileProto ToProto() const;
 
@@ -191,10 +199,13 @@ class Layout {
   Layout& operator=(const Layout& other);
   Layout& operator=(Layout&& other);
 
-  // Creates a Layout from a LayoutProto. If the proto has logically invalid
-  // fields, this will return a Layout that will fail to validate, but will not
-  // crash.
-  static Layout CreateFromProto(const LayoutProto& proto);
+  // Creates a Layout from a LayoutProto.
+  static absl::StatusOr<Layout> FromProto(const LayoutProto& proto);
+
+  ABSL_DEPRECATED("Use FromProto instead.")
+  static Layout CreateFromProto(const LayoutProto& proto) {
+    return FromProto(proto).value();
+  }
 
   // Returns a LayoutProto representation of the Layout.
   LayoutProto ToProto() const;
@@ -436,10 +447,9 @@ class Layout {
     return tail_padding_alignment_in_elements_;
   }
 
-  // Sets the tail_padding_alignment_in_elements value. If the value is less
-  // than 1, it will log a fatal error.
   Layout& set_tail_padding_alignment_in_elements(int64_t value) {
-    set_tail_padding_alignment_in_elements(value, ActionOnError::kCheckFail);
+    CHECK_GE(value, 1);
+    tail_padding_alignment_in_elements_ = value;
     return *this;
   }
 
@@ -513,12 +523,6 @@ class Layout {
   }
 
  private:
-  // What to do if a method encounters an error.
-  enum class ActionOnError {
-    kCheckFail,
-    kWarning,
-  };
-
   // We store a single inlined vector to hold
   struct DimInfo {
     DimInfo()
@@ -528,23 +532,6 @@ class Layout {
     bool dim_unique : 1;
     bool dim_ordered : 1;
   };
-
-  // Sets the tail_padding_alignment_in_elements value. If the value is less
-  // than 1, it will log a warning or fatal error depending on the error action.
-  void set_tail_padding_alignment_in_elements(
-      const int64_t value, const ActionOnError error_action) {
-    if (value < 1) {
-      const std::string error_message = absl::StrCat(
-          "tail_padding_alignment_in_elements must be >= 1. Actual value: ",
-          value);
-      if (error_action == ActionOnError::kCheckFail) {
-        LOG(FATAL) << error_message;
-      } else {
-        LOG(WARNING) << error_message;
-      }
-    }
-    tail_padding_alignment_in_elements_ = value;
-  }
 
   absl::InlinedVector<DimInfo, InlineRank()> dim_attributes_;
 

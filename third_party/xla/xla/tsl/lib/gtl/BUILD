@@ -115,6 +115,18 @@ cc_library(
     hdrs = ["map_util.h"],
 )
 
+cc_library(
+    name = "value_or_die",
+    srcs = ["value_or_die.cc"],
+    hdrs = ["value_or_die.h"],
+    deps = [
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
 filegroup(
     name = "legacy_lib_gtl_headers",
     srcs = [
@@ -203,6 +215,7 @@ filegroup(
         "int_type.h",
         "iterator_range.h",
         "map_util.h",
+        "value_or_die.h",
         "//xla/tsl/lib/gtl/subtle:map_traits",
     ],
     visibility = internal_visibility([
@@ -220,6 +233,7 @@ tsl_cc_test(
         "int_type_test.cc",
         "iterator_range_test.cc",
         "map_util_test.cc",
+        "value_or_die_test.cc",
     ],
     deps = [
         ":compactptrset",
@@ -228,9 +242,12 @@ tsl_cc_test(
         ":int_type",
         ":iterator_range",
         ":map_util",
+        ":value_or_die",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:hash",
     ],

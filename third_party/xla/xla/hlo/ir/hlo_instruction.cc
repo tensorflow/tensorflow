@@ -366,7 +366,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                      [&](int64_t id) { return computation_map.contains(id); }))
       << proto.name() << " instruction references invalid computation id(s)";
 
-  Shape shape(proto.shape());
+  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
 
   std::optional<int> arity = HloOpcodeArity(opcode);
@@ -715,7 +715,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           CreateInfeed(data_shape, operands(0), proto.infeed_config());
     } break;
     case HloOpcode::kOutfeed: {
-      Shape outfeed_shape(proto.outfeed_shape());
+      TF_ASSIGN_OR_RETURN(Shape outfeed_shape,
+                          Shape::FromProto(proto.outfeed_shape()));
       TF_RETURN_IF_ERROR(
           ShapeUtil::ValidateShapeWithOptionalLayout(outfeed_shape));
       instruction = CreateOutfeed(outfeed_shape, operands(0), operands(1),

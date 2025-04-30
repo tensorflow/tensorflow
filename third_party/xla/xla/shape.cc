@@ -33,7 +33,9 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -82,28 +84,23 @@ Shape::Shape(std::vector<Shape> tuple_shapes) {
 }
 
 Shape::Shape(const ShapeProto& shape_proto) {
-  set_element_type(shape_proto.element_type());
-  if (auto* const state = if_array_state()) {
+  *this = FromProto(shape_proto).value_or(Shape());
+}
+
+absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& shape_proto) {
+  Shape shape;
+  shape.set_element_type(shape_proto.element_type());
+  if (auto* const state = shape.if_array_state()) {
     const int num_dims = shape_proto.dimensions_size();
     const int num_is_dynamic_dims = shape_proto.is_dynamic_dimension_size();
     state->dimensions.reserve(num_dims);
     state->dynamic_dimensions.reserve(num_dims);
-    // A malformed proto may have different is_dynamic_dimension_size and
-    // dimensions_size. Since C++ is evil, and we have no good way of bailing
-    // out in a constructor, conservatively trim the is_dynamic_dimension size.
-    // TODO(b/120111794): Make this a hard error when we have a factory method
-    // instead of a constructor.
-    if (num_dims != num_is_dynamic_dims) {
-      if (num_is_dynamic_dims != 0) {
-        LOG(ERROR) << "Malformed shape proto: number of is_dynamic_dimension "
-                      "fields ("
-                   << num_is_dynamic_dims
-                   << ") does not match number of dimension fields ("
-                   << num_dims << ").";
-      } else {
-        LOG(WARNING) << "Malformed shape proto: is_dynamic_dimension is empty "
-                        "- assuming all dimensions are static.";
-      }
+    if (num_is_dynamic_dims != 0) {
+      TF_RET_CHECK(num_dims == num_is_dynamic_dims)
+          << "Malformed shape proto: number of is_dynamic_dimension "
+             "fields ("
+          << num_is_dynamic_dims << ") does not match number of dimension "
+          << "fields (" << num_dims << ").";
     }
     for (int i = 0; i < num_dims; ++i) {
       const bool is_dynamic =
@@ -112,23 +109,23 @@ Shape::Shape(const ShapeProto& shape_proto) {
       // UnsafeAddDimension. We expect that the caller will eventually call a
       // validation routine that will detect the error in case the dimension
       // value is invalid.
-      UnsafeAddDimension(shape_proto.dimensions(i), is_dynamic);
+      shape.UnsafeAddDimension(shape_proto.dimensions(i), is_dynamic);
     }
-  } else if (auto* const state = if_tuple_state()) {
+  } else if (auto* const state = shape.if_tuple_state()) {
     state->tuple_shapes.reserve(shape_proto.tuple_shapes_size());
     for (const ShapeProto& element_shape : shape_proto.tuple_shapes()) {
-      state->tuple_shapes.emplace_back(element_shape);
+      TF_ASSIGN_OR_RETURN(Shape tuple_shape, Shape::FromProto(element_shape));
+      state->tuple_shapes.emplace_back(std::move(tuple_shape));
     }
   }
   if (shape_proto.has_layout()) {
-    if (!IsArray()) {
-      LOG(ERROR) << "Malformed shape proto: element_type "
-                 << PrimitiveType_Name(element_type())
-                 << " should not have a layout.";
-    } else {
-      *mutable_layout() = Layout::CreateFromProto(shape_proto.layout());
-    }
+    TF_RET_CHECK(shape.IsArray()) << "Malformed shape proto: element_type "
+                                  << PrimitiveType_Name(shape.element_type())
+                                  << " should not have a layout.";
+    TF_ASSIGN_OR_RETURN(*shape.mutable_layout(),
+                        Layout::FromProto(shape_proto.layout()));
   }
+  return shape;
 }
 
 void Shape::SetProto(ShapeProto& proto) const {
@@ -491,21 +488,36 @@ ProgramShape& ProgramShape::operator=(const ProgramShape&) = default;
 ProgramShape& ProgramShape::operator=(ProgramShape&&) = default;
 
 ProgramShape::ProgramShape(const ProgramShapeProto& program_shape_proto) {
+  auto program_shape = FromProto(program_shape_proto);
+  if (!program_shape.ok()) {
+    LOG(ERROR) << "Failed to parse ProgramShapeProto: "
+               << program_shape_proto.DebugString();
+    return;
+  }
+  *this = std::move(*program_shape);
+}
+
+absl::StatusOr<ProgramShape> ProgramShape::FromProto(
+    const ProgramShapeProto& program_shape_proto) {
+  ProgramShape program_shape;
   const int num_params = program_shape_proto.parameters_size();
   const int num_param_names = program_shape_proto.parameter_names_size();
-  if (num_params != num_param_names) {
-    LOG(ERROR) << "ProgramShapeProto has different numbers of parameters and "
-                  "parameter names: "
-               << num_params << " vs " << num_param_names;
-  }
-  parameters_.reserve(num_params);
-  parameter_names_.reserve(num_params);
+  TF_RET_CHECK(num_params == num_param_names)
+      << "ProgramShapeProto has different numbers of parameters and "
+         "parameter names: "
+      << num_params << " vs " << num_param_names;
+  program_shape.parameters_.reserve(num_params);
+  program_shape.parameter_names_.reserve(num_params);
   for (int i = 0; i < num_params; ++i) {
     const std::string& name =
         i < num_param_names ? program_shape_proto.parameter_names(i) : "";
-    AddParameter(Shape(program_shape_proto.parameters(i)), name);
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        Shape::FromProto(program_shape_proto.parameters(i)));
+    program_shape.AddParameter(shape, name);
   }
-  *mutable_result() = Shape(program_shape_proto.result());
+  TF_ASSIGN_OR_RETURN(*program_shape.mutable_result(),
+                      Shape::FromProto(program_shape_proto.result()));
+  return program_shape;
 }
 
 ProgramShapeProto ProgramShape::ToProto() const {

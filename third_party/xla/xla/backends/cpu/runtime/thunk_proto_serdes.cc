@@ -244,7 +244,7 @@ DeserializeSliceShapeFromProto(
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice slice,
       DeserializeSliceFromProto(proto.slice(), buffer_allocations));
-  Shape shape(proto.shape());
+  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   return std::make_pair(slice, shape);
 }
 

@@ -495,7 +495,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   if (!proto.has_shape()) {
     return InvalidArgument("LiteralProto has no shape");
   }
-  Shape shape(proto.shape());
+  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   if (ShapeUtil::HasPrimitiveType(shape, OPAQUE_TYPE)) {
     return InvalidArgument(
         "Literal shape cannot include OPAQUE_TYPE sub-shape");
@@ -2470,7 +2470,7 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   // These conditions should have been checked in
   // MutableLiteralBase::CreateFromProto.
   TF_RET_CHECK(proto.has_shape());
-  Shape shape(proto.shape());
+  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   TF_RET_CHECK(LayoutUtil::HasLayout(shape));
   TF_RET_CHECK(ShapeUtil::Equal(shape, subshape()));
 

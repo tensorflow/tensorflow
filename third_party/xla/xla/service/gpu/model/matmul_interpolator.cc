@@ -106,8 +106,10 @@ absl::StatusOr<InterpolationSpecification> Spec(
         "Expected dot, got: ", profile.instruction().DebugString()));
   }
 
-  Shape lhs_shape = Shape(profile.operands(0).shape());
-  Shape rhs_shape = Shape(profile.operands(1).shape());
+  TF_ASSIGN_OR_RETURN(Shape lhs_shape,
+                      Shape::FromProto(profile.operands(0).shape()));
+  TF_ASSIGN_OR_RETURN(Shape rhs_shape,
+                      Shape::FromProto(profile.operands(1).shape()));
   DotDimensionNumbers dot_dims = profile.instruction().dot_dimension_numbers();
   return ExtractDotSpec(dot_dims, lhs_shape, rhs_shape);
 }
