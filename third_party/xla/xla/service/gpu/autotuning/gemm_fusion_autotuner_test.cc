@@ -1612,6 +1612,23 @@ ENTRY e {
 )");
 }
 
+TEST_F(DynamicSearchSpaceAutotunerTest,
+       FindsValidConfigForSlicedContractingDimension) {
+  const std::string hlo = R"(
+ENTRY e {
+  p0 = f16[32,16400] parameter(0)
+  s0 = f16[32,16384] slice(p0), slice={[0:32], [11:16395]}
+  p1 = f16[16384,32] parameter(1)
+  ROOT _ = f16[32,32] dot(s0, p1),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  CheckTritonAutotuning(hlo, R"(
+// CHECK: ENTRY
+// CHECK: __triton_gemm
+)");
+}
+
 TEST_F(DynamicSearchSpaceAutotunerDisabledTest,
        ReturnsSingleConfigWhenAutotuningIsDisabled) {
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
