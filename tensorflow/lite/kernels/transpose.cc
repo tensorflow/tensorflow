@@ -115,7 +115,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // each cell. It's safe to implement per size of scalar type and this trick
   // keeps the total code size in a reasonable range.
   switch (op_context.input->type) {
+    case kTfLiteBFloat16:
+      TF_LITE_TRANSPOSE(reference_ops, Eigen::bfloat16);
+      break;
+    case kTfLiteFloat16:
+      TF_LITE_TRANSPOSE(reference_ops, Eigen::half);
+      break;
     case kTfLiteFloat32:
+      TF_LITE_TRANSPOSE(reference_ops, float);
+      break;
     case kTfLiteInt32:
       TF_LITE_TRANSPOSE(reference_ops, int32_t);
       break;

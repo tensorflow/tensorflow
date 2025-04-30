@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 
+#include "Eigen/Core"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
