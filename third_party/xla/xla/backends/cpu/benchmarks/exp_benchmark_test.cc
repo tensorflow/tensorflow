@@ -74,6 +74,27 @@ static void BM_ExpF16(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
 }
 
+static void BM_ExpF64(benchmark::State& state, HloBenchmarkOptions options) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule exp_f64_$d0
+
+    ENTRY e {
+      input = f64[$d0] parameter(0)
+      ROOT output = exponential(input)
+    }
+  )";
+  std::minstd_rand0 engine;
+
+  auto input_shape = ShapeUtil::MakeShape(F64, {d0});
+  auto p0 =
+      *LiteralUtil::CreateRandomLiteral<F64>(input_shape, &engine, 1.0f, 0.1f);
+  std::vector<const Literal*> args = {&p0};
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+}
+
 #define REGISTER_EXP_BENCHMARK(NAME) \
   XLA_CPU_BENCHMARK(NAME)            \
       ->MeasureProcessCPUTime()      \
@@ -84,6 +105,7 @@ static void BM_ExpF16(benchmark::State& state) {
       ->Arg(4096);
 
 REGISTER_EXP_BENCHMARK(BM_ExpF32);
+REGISTER_EXP_BENCHMARK(BM_ExpF64);
 // TODO(b/406431945): add AOT for f16 exp
 BENCHMARK(BM_ExpF16)
     ->MeasureProcessCPUTime()
