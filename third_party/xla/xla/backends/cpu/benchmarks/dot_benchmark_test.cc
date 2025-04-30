@@ -126,6 +126,7 @@ BENCHMARK_BATCHED_DOT(BF16);  // Shown as "16" in the benchmark name.
 
 namespace {
 
+// LINT.IfChange
 struct GenericDot {
   std::string name;
   PrimitiveType lhs_type;
@@ -139,6 +140,7 @@ struct GenericDot {
   std::vector<int64_t> lhs_contracting_dims;
   std::vector<int64_t> rhs_contracting_dims;
 };
+// LINT.ThenChange(//tensorflow/compiler/xla/tools/extract_dots_for_benchmark.cc)
 
 void BM_GenericDot(benchmark::State& state, GenericDot info) {
   HloComputation::Builder builder("BM_GenericDot");
@@ -177,6 +179,8 @@ std::vector<GenericDot> GetGenericDotList() {
   std::vector<GenericDot> list;
   // clang-format off
   // NOLINTBEGIN
+  // Generate dot entries from an HLO module file by running
+  // //xla/tools:extract_dots_for_benchmark
   std::string name = "Gemma3_1B_Call";
   list.insert(list.end(), {
     GenericDot{name, BF16, {1,11,1152}, BF16, {2,6912,1152}, BF16, {1,11,2,6912}, {}, {}, {2}, {2}},

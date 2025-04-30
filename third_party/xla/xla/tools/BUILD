@@ -1103,3 +1103,23 @@ xla_cc_binary(
         "@local_tsl//tsl/platform:platform_port",
     ],
 )
+
+xla_cc_binary(
+    name = "extract_dots_for_benchmark",
+    srcs = ["extract_dots_for_benchmark.cc"],
+    deps = [
+        ":hlo_module_loader",
+        "//xla:debug_options_flags",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service/gpu/model:gpu_hlo_cost_analysis",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:protobuf",
+    ],
+)
