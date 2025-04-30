@@ -2087,8 +2087,8 @@ TEST(StreamExecutorGpuClientTest, AutoLayoutIsSupported) {
   EXPECT_NE(layouts[1]->ToString(), "{2,1,0}");
 }
 
-// Same test as SendRecvChunked, but check GPU device time measurement.
-TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurement) {
+// Same test as SendRecvChunked, but check non-zero GPU device time measurement.
+TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementSingleGPU) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
 
@@ -2140,6 +2140,61 @@ TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurement) {
   EXPECT_EQ(sent_value[1], 3.0f);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<float>({5.0f, 6.0f}),
                                      *result_literal));
+
+  // Check measurement after execution completes.
+  EXPECT_GT(
+      measurement0->GetTotalDuration(DeviceTimeMeasurement::DeviceType::kGpu),
+      absl::ZeroDuration());
+}
+
+// Same test as MockNcclClientWithGpuTopologyExecuteTest, but check non-zero
+// GPU device time measurement.
+TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementMultiGPU) {
+  GpuClientOptions client_options;
+  client_options.enable_mock_nccl = true;
+  client_options.num_nodes = 4;
+  client_options.mock_gpu_topology = "2x2x2";
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(client_options));
+
+  auto devices_per_host = client->addressable_device_count();
+  EXPECT_EQ(devices_per_host, 2) << "This test requires 2 local GPUs.";
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, xla::ParseMlirModuleString(kMlirDistributedSum, context));
+
+  xla::CompileOptions options;
+  options.executable_build_options.set_num_partitions(8)
+      .set_use_spmd_partitioning(true)
+      .set_allow_spmd_sharding_propagation_to_output({true});
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          client->CompileAndLoad(*module, options));
+
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {1}, {0});
+  std::vector<std::unique_ptr<PjRtBuffer>> inputs;
+  std::vector<std::vector<PjRtBuffer*>> input_ptrs;
+  for (int i = 0; i < devices_per_host; i++) {
+    auto device = client->addressable_devices()[i];
+    std::vector<int32_t> data{i};
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto input,
+        client->BufferFromHostBuffer(
+            data.data(), shape.element_type(), shape.dimensions(),
+            /*byte_strides=*/std::nullopt,
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+            /*on_done_with_host_buffer=*/nullptr,
+            *device->default_memory_space(), /*device_layout=*/nullptr));
+    input_ptrs.push_back({input.get()});
+    inputs.push_back(std::move(input));
+  }
+
+  // Test non-zero GPU device time measurement.
+  auto measurement0 = CreateDeviceTimeMeasurement();
+
+  // Test that running the program does not crash/hang.
+  TF_ASSERT_OK(
+      executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
 
   // Check measurement after execution completes.
   EXPECT_GT(

@@ -118,6 +118,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/profiling/device_time_measurement.h"
+#include "xla/pjrt/profiling/profiling_context.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/tracked_device_buffer.h"
@@ -2976,6 +2977,7 @@ PjRtStreamExecutorLoadedExecutable::Execute(
     results[0] = ExecuteHelper(argument_handles[0], replica, partition, run_id,
                                options, returned_futures.has_value());
   } else {
+    std::unique_ptr<ProfilingContext> pc = CreateProfilingContext();
     absl::Mutex mu;
     int running = num_addressable_devices;
     int failed = 0;
@@ -2989,6 +2991,8 @@ PjRtStreamExecutorLoadedExecutable::Execute(
           *tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                ->local_device_state();
       device_state.execute_thread()->Schedule([&, replica, partition, i] {
+        std::unique_ptr<WithProfilingContext> wpc =
+            CreateWithProfilingContext(pc.get());
         results[i] =
             ExecuteHelper(argument_handles[i], replica, partition, run_id,
                           options, returned_futures.has_value());

@@ -19,6 +19,7 @@ exports_files(
     [
         "device_time_measurement.h",
         "no_op_device_time_measurement.h",
+        "profiling_context.h",
     ],
     visibility = internal_visibility([
         "//learning/brain/google/runtime:__subpackages__",
@@ -46,6 +47,19 @@ cc_library(
 )
 
 cc_library(
+    name = "profiling_context_no_op",
+    srcs = [
+        "profiling_context.h",
+        "profiling_context_no_op.cc",
+        "profiling_context_no_op.h",
+    ],
+    # copybara:uncomment_begin(google-only)
+    # compatible_with = ["//buildenv/target:non_prod"],
+    # copybara:uncomment_end
+    deps = ["@llvm-project//llvm:Support"],
+)
+
+cc_library(
     name = "device_time_measurement",
     # copybara:uncomment_begin(google-only)
     # compatible_with = ["//buildenv/target:non_prod"],
@@ -62,5 +76,22 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "//xla/pjrt:pjrt_compiler",
+    ],
+)
+
+cc_library(
+    name = "profiling_context",
+    # copybara:uncomment_begin(google-only)
+    # compatible_with = ["//buildenv/target:non_prod"],
+    # copybara:uncomment_end
+    textual_hdrs = ["profiling_context.h"],
+    deps = [
+        # copybara:comment_begin(oss-only)
+        ":profiling_context_no_op",
+        # copybara:comment_end
+        # copybara:uncomment_begin(google-only)
+        # "//learning/brain/google/runtime:profiling_context",
+        # copybara:uncomment_end
+        "@llvm-project//llvm:Support",
     ],
 )
