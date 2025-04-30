@@ -388,12 +388,19 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "collective_pipeliner_utils",
+    hdrs = ["collective_pipeliner_utils.h"],
+    deps = [],
+)
+
+cc_library(
     name = "collective_pipeliner",
     srcs = ["collective_pipeliner.cc"],
     hdrs = ["collective_pipeliner.h"],
     deps = [
         ":call_graph",
         ":collective_ops_utils",
+        ":collective_pipeliner_utils",
         ":constant_value",
         ":scheduling_annotations_util",
         ":value_range",
@@ -411,6 +418,8 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/utils:hlo_query",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -433,8 +442,10 @@ xla_cc_test(
     srcs = ["collective_pipeliner_test.cc"],
     deps = [
         ":collective_pipeliner",
+        ":collective_pipeliner_utils",
         ":hlo_module_config",
         ":hlo_verifier",
+        ":legalize_scheduling_annotations",
         ":memory_annotations_hdr",
         ":scheduling_annotations_util",
         "//xla:literal_util",
@@ -447,6 +458,7 @@ xla_cc_test(
         "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
@@ -2774,6 +2786,7 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -5846,6 +5859,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:ptrvec",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -5864,6 +5878,7 @@ xla_cc_test(
     srcs = ["legalize_scheduling_annotations_test.cc"],
     deps = [
         ":legalize_scheduling_annotations",
+        ":scheduling_annotations_util",
         "//xla:side_effect_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
@@ -5906,9 +5921,32 @@ cc_library(
     srcs = ["scheduling_annotations_util.cc"],
     hdrs = ["scheduling_annotations_util.h"],
     deps = [
+        ":collective_pipeliner_utils",
         "//xla:side_effect_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "scheduling_annotations_util_test",
+    srcs = ["scheduling_annotations_util_test.cc"],
+    deps = [
+        ":scheduling_annotations_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

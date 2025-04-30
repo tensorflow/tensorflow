@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/collective_conflict_analysis.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_pipeliner.h"
+#include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -592,7 +593,7 @@ absl::StatusOr<bool> GpuP2PPipeliner::Run(
       /*pipeline_use_tree=*/false,
       /*process_different_sized_ops=*/true,
       /*pipelining_direction=*/
-      CollectivePipeliner::PipeliningDirection::kBackward,
+      collective_pipeliner_utils::PipeliningDirection::kBackward,
       /*should_process=*/should_process,
       /*acceptable_formatting=*/HloPredicateTrue,
       /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
