@@ -78,8 +78,11 @@ class GenerateBenchmarkMatricesTest : public testing::Test {
         owner: "juliagmt-google@"
         hlo_gcs_bucket_path: "https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo"
         model_source_info: ["Gemma3 1B"]
-        hardware_category: GPU_B200
-        topology: { num_hosts: 1, num_devices_per_host: 1 }
+        hardware_targets: [{
+          hardware_category: GPU_B200
+          topology: { num_hosts: 1, num_devices_per_host: 1 }
+          target_metrics: [WALL_TIME, GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME, PEAK_GPU_MEMORY]
+        }]
         run_frequencies: [POSTSUBMIT]
         update_frequency_policy: QUARTERLY
         runtime_flags: ["--num_repeat=5"]
@@ -91,9 +94,13 @@ class GenerateBenchmarkMatricesTest : public testing::Test {
         owner: "company-A@"
         hlo_path: "benchmarks/hlo/gemma2_2b_keras_jax.hlo"
         model_source_info: ["Gemma2 2B"]
-        hardware_category: CPU_X86
-        topology: { num_hosts: 1, num_devices_per_host: 1 }
-        target_metrics: [CPU_TIME, PEAK_CPU_MEMORY] # Note: PEAK_CPU_MEMORY isn't in the default maps
+        hardware_targets: [
+          {
+            hardware_category: CPU_X86
+            topology: { num_hosts: 1, num_devices_per_host: 1 }
+            target_metrics: [CPU_TIME, PEAK_CPU_MEMORY]
+          }
+          ]
         run_frequencies: [PRESUBMIT, POSTSUBMIT]
         update_frequency_policy: QUARTERLY
         runtime_flags: ["--num_repeat=5"]
@@ -131,7 +138,16 @@ TEST_F(GenerateBenchmarkMatricesTest, ParseRegistrySpecificContentSuccess) {
   // Verify basic structure parsed correctly.
   EXPECT_EQ(suite.configs_size(), 2);
   EXPECT_EQ(suite.configs(0).name(), "gemma3_1b_flax_call");
-  EXPECT_EQ(suite.configs(0).hardware_category(), HardwareCategory::GPU_B200);
+  ASSERT_EQ(suite.configs(0).hardware_targets_size(), 1);
+  EXPECT_EQ(suite.configs(0).hardware_targets(0).hardware_category(),
+            HardwareCategory::GPU_B200);
+  ASSERT_EQ(suite.configs(0).hardware_targets(0).target_metrics_size(), 4);
+  EXPECT_EQ(suite.configs(0).hardware_targets(0).target_metrics(0),
+            TargetMetric::WALL_TIME);
+  EXPECT_EQ(suite.configs(0).hardware_targets(0).target_metrics(1),
+            TargetMetric::GPU_DEVICE_TIME);
+  EXPECT_EQ(suite.configs(0).hardware_targets(0).target_metrics(3),
+            TargetMetric::PEAK_GPU_MEMORY);
   EXPECT_EQ(suite.configs(0).run_frequencies_size(), 1);
   EXPECT_EQ(suite.configs(0).run_frequencies(0), RunFrequency::POSTSUBMIT);
   EXPECT_EQ(suite.configs(0).hlo_gcs_bucket_path(),
@@ -141,17 +157,20 @@ TEST_F(GenerateBenchmarkMatricesTest, ParseRegistrySpecificContentSuccess) {
       suite.configs(0).hlo_path().empty());  // Check it wasn't misparsed
 
   EXPECT_EQ(suite.configs(1).name(), "gemma2_2b_keras_jax");
-  EXPECT_EQ(suite.configs(1).hardware_category(), HardwareCategory::CPU_X86);
+  ASSERT_EQ(suite.configs(1).hardware_targets_size(), 1);
+  EXPECT_EQ(suite.configs(1).hardware_targets(0).hardware_category(),
+            HardwareCategory::CPU_X86);
+  ASSERT_EQ(suite.configs(1).hardware_targets(0).target_metrics_size(), 2);
+  EXPECT_EQ(suite.configs(1).hardware_targets(0).target_metrics(0),
+            TargetMetric::CPU_TIME);
+  EXPECT_EQ(suite.configs(1).hardware_targets(0).target_metrics(1),
+            TargetMetric::PEAK_CPU_MEMORY);
   EXPECT_EQ(suite.configs(1).run_frequencies_size(), 2);
   EXPECT_EQ(suite.configs(1).run_frequencies(0), RunFrequency::PRESUBMIT);
   EXPECT_EQ(suite.configs(1).run_frequencies(1), RunFrequency::POSTSUBMIT);
   EXPECT_EQ(suite.configs(1).hlo_path(),
             "benchmarks/hlo/gemma2_2b_keras_jax.hlo");
   EXPECT_TRUE(suite.configs(1).hlo_gcs_bucket_path().empty());
-  // Check explicitly defined target metrics were parsed.
-  ASSERT_EQ(suite.configs(1).target_metrics_size(), 2);
-  EXPECT_EQ(suite.configs(1).target_metrics(0), TargetMetric::CPU_TIME);
-  EXPECT_EQ(suite.configs(1).target_metrics(1), TargetMetric::PEAK_CPU_MEMORY);
 }
 
 // Other ParseRegistry tests (FileNotFound, InvalidFormat) remain valid.

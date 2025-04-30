@@ -63,6 +63,22 @@ enum TargetMetric {
   PEAK_GPU_MEMORY = 6;         // Measures peak GPU memory in gigabytes.
 }
 
+// Associates a hardware category with its specific topology requirements.
+message HardwareTarget {
+  // REQUIRED: Specifies the primary hardware category needed, e.g., GPU_L4.
+  HardwareCategory hardware_category = 1;
+
+  // REQUIRED: Defines the host/device topology required *for this hardware
+  // category*.
+  ExecutionTopology topology = 2;
+
+  // Optional: List of target metrics relevant *for this hardware target*.
+  // For example, GPU_L4 has have [WALL_TIME, GPU_DEVICE_TIME,
+  // GPU_DEVICE_MEMCPY_TIME, PEAK_GPU_MEMORY] as default target metrics,
+  // and CPU_X86 has [CPU_TIME, PEAK_CPU_MEMORY] as default target metrics.
+  repeated TargetMetric target_metrics = 3;
+}
+
 // Defines a specific benchmark configuration.
 message BenchmarkConfig {
   // REQUIRED: Unique identifier for this specific benchmark configuration.
@@ -95,36 +111,29 @@ message BenchmarkConfig {
   // (e.g., "Llama2-7B Attention Layer").
   repeated string model_source_info = 7;
 
-  // REQUIRED: Specifies the primary hardware category needed.
-  HardwareCategory hardware_category = 8;
-
-  // REQUIRED: Defines the host/device topology required.
-  ExecutionTopology topology = 9;
+  // REQUIRED: Defines the specific hardware configurations this benchmark runs
+  // on. Each entry specifies a hardware category and its required topology.
+  repeated HardwareTarget hardware_targets = 8;
 
   // REQUIRED: Defines when this benchmark configuration should run.
-  repeated RunFrequency run_frequencies = 10;
-
-  // Automatically mapped by hardware category, for example, CPU_X86 ->
-  // [CPU_TIME], GPU_L4 -> [WALL_TIME, GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME,
-  // PEAK_GPU_MEMORY].
-  repeated TargetMetric target_metrics = 11;
+  repeated RunFrequency run_frequencies = 9;
 
   // REQUIRED: Metadata about how often this definition should be
   // reviewed/updated.
-  UpdateFrequency update_frequency_policy = 12;
+  UpdateFrequency update_frequency_policy = 10;
 
   // Optional: List of XLA compilation flags to enable/disable.
   // Example: ["--xla_gpu_enable_cudnn_fusion=false",
   // "--xla_gpu_triton_gemm_any=True"]
-  repeated string xla_compilation_flags = 13;
+  repeated string xla_compilation_flags = 11;
 
   // Optional: List of flags for the benchmark runner itself
   // (e.g., specific flags for multihost_hlo_runner).
-  repeated string runtime_flags = 14;
+  repeated string runtime_flags = 12;
 
   // Optional: List of GitHub labels used for filtering/triggering.
   // e.g., If a PR has 'ci:nvidia-benchmarks', run configs with this label.
-  repeated string github_labels = 15;
+  repeated string github_labels = 13;
 }
 
 // Represents a collection of benchmark configurations, typically loaded
