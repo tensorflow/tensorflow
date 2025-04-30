@@ -334,7 +334,7 @@ static void SetLayout(xla::Shape& shape, mlir::DenseIntElementsAttr layout) {
 
 static void SetLayout(xla::Shape& shape, mlir::ArrayAttr layouts) {
   if (shape.IsTuple()) {
-    for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < shape.tuple_shapes().size(); ++i) {
       SetLayout(*shape.mutable_tuple_shapes(i),
                 mlir::cast<mlir::DenseIntElementsAttr>(layouts[i]));
     }

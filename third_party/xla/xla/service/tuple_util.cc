@@ -72,8 +72,8 @@ namespace xla {
   HloComputation* computation = input_tuple->parent();
   const Shape& input_shape = input_tuple->shape();
   std::vector<HloInstruction*> tuple_elements;
-  tuple_elements.reserve(input_shape.tuple_shapes_size());
-  for (int i = 0; i < input_shape.tuple_shapes_size(); i++) {
+  tuple_elements.reserve(input_shape.tuple_shapes().size());
+  for (int i = 0; i < input_shape.tuple_shapes().size(); i++) {
     tuple_elements.push_back(
         computation->AddInstruction(HloInstruction::CreateGetTupleElement(
             input_shape.tuple_shapes(i), input_tuple, i)));
@@ -114,9 +114,9 @@ namespace xla {
   }
 
   HloComputation* computation = new_instruction->parent();
-  std::vector<HloInstruction*> tuple_args(tuple_shape.tuple_shapes_size());
-  CHECK_GE(tuple_shape.tuple_shapes_size(), shape_index[0]);
-  for (int i = 0; i < tuple_shape.tuple_shapes_size(); ++i) {
+  std::vector<HloInstruction*> tuple_args(tuple_shape.tuple_shapes().size());
+  CHECK_GE(tuple_shape.tuple_shapes().size(), shape_index[0]);
+  for (int i = 0; i < tuple_shape.tuple_shapes().size(); ++i) {
     const Shape& subshape = tuple_shape.tuple_shapes(i);
     // If tuple is a tuple instruction, we can get the tuple instruction's
     // operand to construct the new tuple to improve compilation time
@@ -161,7 +161,7 @@ namespace xla {
       tuple_args[i] = get_operand();
     }
   }
-  if (shape_index[0] == tuple_shape.tuple_shapes_size()) {
+  if (shape_index[0] == tuple_shape.tuple_shapes().size()) {
     // If shape_index[0] is equal to the tuple shape size, add the new
     // instruction as an additional argument.
     tuple_args.push_back(new_instruction);
@@ -225,7 +225,7 @@ HloInstruction* TupleUtil::AssembleTupleInstruction(
         if (subshape.IsTuple()) {
           absl::InlinedVector<HloInstruction*, 2> children;
           ShapeIndex child_index = index;
-          for (int i = 0; i < subshape.tuple_shapes_size(); ++i) {
+          for (int i = 0; i < subshape.tuple_shapes().size(); ++i) {
             child_index.push_back(i);
             children.push_back(elements.element(child_index));
             child_index.pop_back();

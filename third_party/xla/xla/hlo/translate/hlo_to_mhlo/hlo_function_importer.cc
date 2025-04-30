@@ -2438,7 +2438,7 @@ absl::Status HloFunctionImporter::ConvertShapeToMlirLayout(
   }
   if (shape.IsTuple()) {
     std::vector<mlir::Attribute> tuple_layouts;
-    for (int i = 0; i < shape.tuple_shapes_size(); i++) {
+    for (int i = 0; i < shape.tuple_shapes().size(); i++) {
       TF_RETURN_IF_ERROR(
           ConvertShapeToMlirLayout(shape.tuple_shapes(i), flattened_attr));
     }

@@ -55,7 +55,7 @@ void ReduceTupleParameterHelper(HloModule* hlo_module,
 
   VLOG(1) << "Parameter instruction to be reduced: "
           << tuple_parameter->ToString()
-          << " shape size: " << tuple_parameter->shape().tuple_shapes_size()
+          << " shape size: " << tuple_parameter->shape().tuple_shapes().size()
           << " users size: " << tuple_parameter->users().size();
 
   // Collect the shapes of the elements that have users.

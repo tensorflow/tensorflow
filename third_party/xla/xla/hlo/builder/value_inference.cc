@@ -1356,11 +1356,11 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
               auto accum = b.AddInstruction(HloInstruction::CreateConstant(
                   LiteralUtil::CreateR0<bool>(false)));
 
-              for (int i = 0; i < root_shape.tuple_shapes_size(); ++i) {
+              for (int i = 0; i < root_shape.tuple_shapes().size(); ++i) {
                 auto lhs = b.AddInstruction(
                     HloInstruction::CreateParameter(i, scalar_shape, "lhs"));
                 auto rhs = b.AddInstruction(HloInstruction::CreateParameter(
-                    i + root_shape.tuple_shapes_size(), scalar_shape, "rhs"));
+                    i + root_shape.tuple_shapes().size(), scalar_shape, "rhs"));
                 accum = b.AddInstruction(HloInstruction::CreateBinary(
                     scalar_shape, HloOpcode::kOr, accum, lhs));
                 accum = b.AddInstruction(HloInstruction::CreateBinary(
@@ -1368,7 +1368,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
               }
               // `Broadcast` the result to all positions in the result.
               std::vector<HloInstruction*> results(
-                  root_shape.tuple_shapes_size(), accum);
+                  root_shape.tuple_shapes().size(), accum);
               b.AddInstruction(HloInstruction::CreateTuple(results));
               reduce_or = b.Build();
             } else {
@@ -1745,7 +1745,7 @@ absl::StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
     case HloOpcode::kAdd: {
       // a + (b - a) => b
       // a + b + (c - a) => b + c
-      if (output_shape->dimensions_size() == 0) {
+      if (output_shape->dimensions().size() == 0) {
         TF_ASSIGN_OR_RETURN(auto lhs, SimplifyOp(inst->operand_ids(0)));
         TF_ASSIGN_OR_RETURN(auto rhs, SimplifyOp(inst->operand_ids(1)));
         int64_t lhs_handle = lhs.Get<int64_t>({});
