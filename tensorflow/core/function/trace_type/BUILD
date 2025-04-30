@@ -34,7 +34,7 @@ pytype_strict_library(
     srcs = [
         "util.py",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
     deps = [
         "//third_party/py/numpy",
     ],
@@ -75,7 +75,7 @@ pytype_strict_library(
     srcs = [
         "default_types.py",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
     deps = [
         ":serialization",
         ":util",
@@ -103,7 +103,7 @@ pytype_strict_library(
     srcs = [
         "custom_nest_trace_type.py",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
     deps = [
         ":util",
         "//tensorflow/python/types:trace",
@@ -160,7 +160,7 @@ tf_proto_library(
     protodeps = [
         ":serialization_proto",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
 )
 
 tf_proto_library(
@@ -171,25 +171,25 @@ tf_proto_library(
     protodeps = [
         ":serialization_proto",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:private"],
 )
 
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "serialization_py_pb2",
-#     visibility = ["//tensorflow:internal"],
+#     visibility = ["//visibility:private"],
 #     deps = [":serialization_proto"],
 # )
 #
 # py_proto_library(
 #     name = "serialization_test_py_pb2",
-#     visibility = ["//tensorflow:internal"],
+#     visibility = ["//visibility:private"],
 #     deps = [":serialization_test_proto"],
 # )
 #
 # py_proto_library(
 #     name = "default_types_py_pb2",
-#     visibility = ["//tensorflow:internal"],
+#     visibility = ["//visibility:private"],
 #     deps = [":default_types_proto"],
 # )
 # copybara:uncomment_end
