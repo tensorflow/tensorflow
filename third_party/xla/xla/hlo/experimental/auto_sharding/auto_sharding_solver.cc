@@ -1256,6 +1256,16 @@ std::optional<AutoShardingViolationCode> ShardingStrategyHasViolation(
       return AutoShardingViolationCode::kInfiniteCostViolationCode;
     }
   }
+  // Check that the peak-memory constraint is satisfied at each time step t.
+  for (LivenessIdx t = 0; t < request.live_size(); ++t) {
+    double live_memory = 0.0;
+    for (NodeIdx v : request.live(t).nodes()) {
+      live_memory += request.memory_costs(v).costs(node_strategies[v]);
+      if (live_memory > request.memory_budget()) {
+        return AutoShardingViolationCode::kMemoryViolationCode;
+      }
+    }
+  }
   return std::nullopt;
 }
 
