@@ -143,7 +143,6 @@ cc_library(
     deps = [
         ":tfr",
         ":utils",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
