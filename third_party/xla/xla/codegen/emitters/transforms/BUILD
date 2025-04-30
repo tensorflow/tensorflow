@@ -45,7 +45,6 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
-        "convert_pure_call_ops.cc",
         "erase_dead_functions.cc",
         "expand_float_ops.cc",
         "flatten_tensors.cc",
@@ -54,15 +53,16 @@ cc_library(
         "lower_xla_to_scf.cc",
         "merge_pointers_to_same_slice.cc",
         "propagate_slice_indices.cc",
-        "simplify_affine.cc",
-        "simplify_arith.cc",
         "unswitch_loops.cc",
         "vectorize_loads_stores.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
         ":atomic_rmw_utils",
+        ":convert_pure_call_ops_pass",
         ":passes_inc_gen",
+        ":simplify_affine_pass",
+        ":simplify_arith_pass",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -79,15 +79,12 @@ cc_library(
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:AffineUtils",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithToLLVM",
         "@llvm-project//mlir:ArithTransforms",
@@ -121,5 +118,71 @@ cc_library(
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
         "@local_tsl//tsl/platform:protobuf",
+    ],
+)
+
+cc_library(
+    name = "convert_pure_call_ops_pass",
+    srcs = [
+        "convert_pure_call_ops.cc",
+    ],
+    hdrs = ["passes.h"],
+    deps = [
+        ":passes_inc_gen",
+        "//xla/codegen/emitters/ir:xla",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "simplify_affine_pass",
+    srcs = [
+        "simplify_affine.cc",
+    ],
+    hdrs = ["passes.h"],
+    deps = [
+        ":passes_inc_gen",
+        "//xla/codegen/emitters/ir:xla",
+        "//xla/hlo/analysis:indexing_analysis",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:AffineUtils",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:DataLayoutInterfaces",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "simplify_arith_pass",
+    srcs = [
+        "simplify_arith.cc",
+    ],
+    hdrs = ["passes.h"],
+    deps = [
+        ":passes_inc_gen",
+        "//xla/codegen/emitters/ir:xla",
+        "//xla/hlo/analysis:indexing_analysis",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )

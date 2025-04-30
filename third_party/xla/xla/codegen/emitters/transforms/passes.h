@@ -20,7 +20,10 @@ limitations under the License.
 #include <string>
 
 #include "mlir/Pass/Pass.h"
-#include "xla/stream_executor/device_description.h"
+
+namespace stream_executor {
+class DeviceDescription;
+}  // namespace stream_executor
 
 namespace xla {
 namespace emitters {
