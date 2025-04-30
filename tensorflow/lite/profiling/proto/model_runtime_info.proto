@@ -19,8 +19,7 @@ package tflite.profiling;
 
 import "tensorflow/lite/profiling/proto/profiling_info.proto";
 
-option java_api_version = 2;
-option java_package = "com.google.tflite.profiling";
+option java_package = "tflite.profiling";
 option java_multiple_files = true;
 
 // Corresponds to a TFLite Model.
