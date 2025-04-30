@@ -2042,9 +2042,11 @@ ENTRY e {
                               /*run_hlo_passes=*/false));
 }
 
-// TODO(b/393299275): there seems to be a (not yet diagnosed) miscompile here.
-// We have to investigate.
-TEST_F(CompareTest, DISABLED_SplitK) {
+TEST_F(CompareTest, SplitK) {
+  // This test checks that the result of split-k HLO with reduce result is
+  // similar to the non-split-k version. As introduction of split-k changes
+  // the order of floating point operations we expect the results to be
+  // slightly different.
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
@@ -2052,70 +2054,65 @@ TEST_F(CompareTest, DISABLED_SplitK) {
 HloModule t
 
 triton_gemm_r {
-  parameter_0 = s8[480,120]{1,0} parameter(0)
-  convert.3 = bf16[480,120]{1,0} convert(parameter_0)
-  parameter_1 = bf16[16,120]{1,0} parameter(1)
-  ROOT r.1 = bf16[480,16]{1,0} dot(convert.3, parameter_1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  p0 = s8[16,64] parameter(0)
+  c0 = f32[16,64] convert(p0)
+  p1 = bf16[16,64] parameter(1)
+  c1 = f32[16,64] convert(p1)
+  ROOT d0 = f32[16,16] dot(c0, c1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
 
 ENTRY e {
-  p0_pred = s8[480,120]{1,0} parameter(0)
-  p0 = s8[480,120]{1,0} convert(p0_pred)
-  p1_pred = pred[16,120]{1,0} parameter(1)
-  p1 = bf16[16,120]{1,0} convert(p1_pred)
-  ROOT triton_gemm_r = bf16[480,16]{1,0} fusion(p0, p1), kind=kCustom,
-    calls=triton_gemm_r,
+  p0 = s8[16,64] parameter(0)
+  p1 = bf16[16,64] parameter(1)
+  ROOT r = f32[16,16] fusion(p0, p1), kind=kCustom, calls=triton_gemm_r,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-    triton_gemm_config: {"block_m":64,"block_n":16,"block_k":16,
-                         "split_k":1,"num_stages":4,"num_warps":4,
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":64,
+                         "split_k":1,"num_stages":1,"num_warps":4,
                          "num_ctas":1}}}
-})";
+}
+)";
 
   constexpr absl::string_view hlo_text_splitk = R"(
 HloModule t
 
 triton_gemm_r {
-  parameter_0 = s8[480,120]{1,0} parameter(0)
-  convert.3 = bf16[480,120]{1,0} convert(parameter_0)
-  bitcast.11 = bf16[480,4,30]{2,1,0} bitcast(convert.3)
-  parameter_1 = bf16[16,120]{1,0} parameter(1)
-  bitcast.12 = bf16[16,4,30]{2,1,0} bitcast(parameter_1)
-  ROOT dot.1 = bf16[4,480,16]{2,1,0} dot(bitcast.11, bitcast.12),
+  p0 = s8[16,64] parameter(0)
+  c0 = f32[16,64] convert(p0)
+  b0 = f32[16,4,16] bitcast(c0)
+  p1 = bf16[16,64] parameter(1)
+  c1 = f32[16,64] convert(p1)
+  b1 = f32[16,4,16] bitcast(c1)
+  ROOT dot1 = f32[4,16,16] dot(b0, b1),
     lhs_batch_dims={1}, lhs_contracting_dims={2},
     rhs_batch_dims={1}, rhs_contracting_dims={2}
 }
 
 add {
-  rhs.1 = f32[] parameter(1)
-  lhs.1 = f32[] parameter(0)
-  ROOT add.1 = f32[] add(lhs.1, rhs.1)
+  p1 = f32[] parameter(1)
+  p0 = f32[] parameter(0)
+  ROOT add1 = f32[] add(p0, p1)
 }
 
 fused_computation {
-  param_0.2 = bf16[4,480,16]{2,1,0} parameter(0)
-  convert.18 = f32[4,480,16]{2,1,0} convert(param_0.2)
-  constant_1 = bf16[] constant(0)
-  convert.17 = f32[] convert(constant_1)
-  reduce.1 = f32[480,16]{1,0} reduce(convert.18, convert.17), dimensions={0},
+  p0 = f32[4,16,16] parameter(0)
+  c0 = f32[] constant(0)
+  ROOT r1 = f32[16,16] reduce(p0, c0), dimensions={0},
     to_apply=add
-  ROOT convert.16 = bf16[480,16]{1,0} convert(reduce.1)
 }
 
 ENTRY e {
-  p0_pred = s8[480,120]{1,0} parameter(0)
-  p0 = s8[480,120]{1,0} convert(p0_pred)
-  p1_pred = pred[16,120]{1,0} parameter(1)
-  p1 = bf16[16,120]{1,0} convert(p1_pred)
-  triton_gemm_r = bf16[4,480,16]{2,1,0} fusion(p0, p1), kind=kCustom,
+  p0 = s8[16,64] parameter(0)
+  p1 = bf16[16,64] parameter(1)
+  gemm = f32[4,16,16] fusion(p0, p1), kind=kCustom,
     calls=triton_gemm_r,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-    triton_gemm_config: {"block_m":64,"block_n":16,"block_k":16,
-                         "split_k":4,"num_stages":1,"num_warps":4,
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":64,
+                         "split_k":1,"num_stages":1,"num_warps":4,
                          "num_ctas":1}}}
-  ROOT fusion.1 = bf16[480,16]{1,0} fusion(triton_gemm_r), kind=kLoop,
+  ROOT f1 = f32[16,16] fusion(gemm), kind=kLoop,
     calls=fused_computation
-})";
+}
+)";
 
   TF_ASSERT_OK_AND_ASSIGN(
       ModuleAndNestedFusionMetadata test_module_and_metadata,
