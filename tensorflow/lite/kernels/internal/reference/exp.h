@@ -28,7 +28,7 @@ inline void Exp(const T* input_data, const size_t num_elements,
                 T* output_data) {
   ruy::profiler::ScopeLabel label("Exp");
   for (size_t idx = 0; idx < num_elements; ++idx) {
-    output_data[idx] = std::exp(input_data[idx]);
+    output_data[idx] = static_cast<T>(std::exp(input_data[idx]));
   }
 }
 

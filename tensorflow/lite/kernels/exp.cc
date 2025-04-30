@@ -99,6 +99,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            NumElements(op_context.input),
                            GetTensorData<float>(op_context.output));
         break;
+      case kTfLiteFloat16:
+        reference_ops::Exp(GetTensorData<Eigen::half>(op_context.input),
+                           NumElements(op_context.input),
+                           GetTensorData<Eigen::half>(op_context.output));
+        break;
+      case kTfLiteBFloat16:
+        reference_ops::Exp(GetTensorData<Eigen::bfloat16>(op_context.input),
+                           NumElements(op_context.input),
+                           GetTensorData<Eigen::bfloat16>(op_context.output));
+        break;
       case kTfLiteInt8:
         reference_integer_ops::LookupTable(
             GetTensorData<int8_t>(op_context.input),

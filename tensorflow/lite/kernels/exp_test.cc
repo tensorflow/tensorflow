@@ -51,11 +51,15 @@ class FloatExpOpModel : public BaseExpOpModel {
  public:
   using BaseExpOpModel::BaseExpOpModel;
 
-  void SetInput(std::initializer_list<float> data) {
+  template <typename T>
+  void SetInput(std::initializer_list<T> data) {
     PopulateTensor(input_, data);
   }
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  template <typename T>
+  std::vector<T> GetOutput() {
+    return ExtractVector<T>(output_);
+  }
 };
 
 class QuantizedExpOpModel : public BaseExpOpModel {
@@ -93,14 +97,55 @@ TEST(ExpOpTest, ExpFloat) {
   std::initializer_list<float> data = {0.0f,    1.0f,  -1.0f, 100.0f,
                                        -100.0f, 0.01f, -0.01f};
   FloatExpOpModel m({TensorType_FLOAT32, {1, 1, 7}}, {TensorType_FLOAT32, {}});
-  m.SetInput(data);
+  m.SetInput<float>(data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 7}));
   EXPECT_THAT(
-      m.GetOutput(),
+      m.GetOutput<float>(),
       ElementsAreArray(ArrayFloatNear(
           {std::exp(0.0f), std::exp(1.0f), std::exp(-1.0f), std::exp(100.0f),
            std::exp(-100.0f), std::exp(0.01f), std::exp(-0.01f)})));
+}
+
+TEST(ExpOpTest, ExpFloat16) {
+  std::initializer_list<Eigen::half> data = {
+      Eigen::half(0.0f),   Eigen::half(1.0f),    Eigen::half(-1.0f),
+      Eigen::half(100.0f), Eigen::half(-100.0f), Eigen::half(0.01f),
+      Eigen::half(-0.01f)};
+  FloatExpOpModel m({TensorType_FLOAT16, {1, 1, 7}}, {TensorType_FLOAT16, {}});
+  m.SetInput<Eigen::half>(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 7}));
+  EXPECT_THAT(m.GetOutput<Eigen::half>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {Eigen::half(std::exp(Eigen::half(0.0f))),
+                   Eigen::half(std::exp(Eigen::half(1.0f))),
+                   Eigen::half(std::exp(Eigen::half(-1.0f))),
+                   Eigen::half(std::exp(Eigen::half(100.0f))),
+                   Eigen::half(std::exp(Eigen::half(-100.0f))),
+                   Eigen::half(std::exp(Eigen::half(0.01f))),
+                   Eigen::half(std::exp(Eigen::half(-0.01f)))})));
+}
+
+TEST(ExpOpTest, ExpBFloat16) {
+  std::initializer_list<Eigen::bfloat16> data = {
+      Eigen::bfloat16(0.0f),   Eigen::bfloat16(1.0f),    Eigen::bfloat16(-1.0f),
+      Eigen::bfloat16(100.0f), Eigen::bfloat16(-100.0f), Eigen::bfloat16(0.01f),
+      Eigen::bfloat16(-0.01f)};
+  FloatExpOpModel m({TensorType_BFLOAT16, {1, 1, 7}},
+                    {TensorType_BFLOAT16, {}});
+  m.SetInput<Eigen::bfloat16>(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 7}));
+  EXPECT_THAT(m.GetOutput<Eigen::bfloat16>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {Eigen::bfloat16(std::exp(Eigen::bfloat16(0.0f))),
+                   Eigen::bfloat16(std::exp(Eigen::bfloat16(1.0f))),
+                   Eigen::bfloat16(std::exp(Eigen::bfloat16(-1.0f))),
+                   Eigen::bfloat16(std::exp(Eigen::bfloat16(100.0f))),
+                   Eigen::bfloat16(std::exp(Eigen::bfloat16(-100.0f))),
+                   Eigen::bfloat16(std::exp(Eigen::bfloat16(0.01f))),
+                   Eigen::bfloat16(std::exp(Eigen::bfloat16(-0.01f)))})));
 }
 
 template <TensorType tensor_type, typename integer_dtype>
