@@ -2903,6 +2903,7 @@ xla_test(
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/service:collective_pipeliner",
+        "//xla/service:collective_pipeliner_utils",
         "//xla/service:hlo_verifier",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
