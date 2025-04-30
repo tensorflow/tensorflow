@@ -310,7 +310,8 @@ absl::Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
 }
 
 absl::Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
-                                           bool apply_cl_options) {
+                                           bool apply_cl_options,
+                                           const std::string& architecture) {
 #if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
   return absl::InternalError(
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
@@ -338,7 +339,7 @@ absl::Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
   kernelPm.addPass(::mlir::createSCFToControlFlowPass());
 #if TENSORFLOW_USE_ROCM
-  kernelPm.addPass(mlir::createGpuKernelToRocdlPass());
+  kernelPm.addPass(mlir::createGpuKernelToRocdlPass(architecture));
 #elif GOOGLE_CUDA
   kernelPm.addPass(mlir::createGpuKernelToNvvmPass());
   kernelPm.addPass(mlir::NVVM::createOptimizeForTargetPass());
@@ -461,8 +462,15 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForHloCode(
         jit_i64_indexed_for_large_tensors, apply_cl_options));
     TF_RETURN_IF_ERROR(
         LowerLoopsToGPU(module.get(), index_64bit, apply_cl_options));
-    TF_RETURN_IF_ERROR(
-        LowerKernelBodiesToLowLevelIr(module.get(), apply_cl_options));
+
+    // Note: we're just passing the first architecture out of the list. This
+    // should be sufficient for now, but in the future perhaps we'll need
+    // restructure this code to generate separate MLIR modules for each
+    // architecture.
+    const std::string& first_architecture =
+        architectures.size() > 0 ? architectures[0] : "";
+    TF_RETURN_IF_ERROR(LowerKernelBodiesToLowLevelIr(
+        module.get(), apply_cl_options, first_architecture));
     TF_RETURN_IF_ERROR(
         AmendKernelLLVMIRWithStaticKnowledge(module.get(), apply_cl_options));
     TF_RETURN_IF_ERROR(GenerateDeviceCode(

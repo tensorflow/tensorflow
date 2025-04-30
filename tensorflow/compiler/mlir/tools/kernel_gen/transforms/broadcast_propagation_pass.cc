@@ -447,7 +447,7 @@ struct BroadcastPropagationPass
     // Apply broadcast propagation in reverse order to start propagation at
     // the root of broadcast chains. This avoids duplicate work.
     GreedyRewriteConfig config;
-    config.useTopDownTraversal = false;
+    config.setUseTopDownTraversal(false);
 
     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns),
                                      config))) {
