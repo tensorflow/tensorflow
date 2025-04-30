@@ -1281,7 +1281,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -1293,7 +1292,6 @@ xla_cc_test(
         ":hlo_op_profile_proto_cc",
         ":matmul_ptable_stats_collection",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:filecheck",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",

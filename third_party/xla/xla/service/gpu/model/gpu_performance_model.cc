@@ -336,8 +336,7 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
 
   auto gpu_config = instruction->backend_config<GpuBackendConfig>();
   TF_CHECK_OK(gpu_config.status()) << instruction->ToString();
-  auto reification_cost =
-      gpu_config->mutable_fusion_backend_config()->mutable_reification_cost();
+  auto reification_cost = gpu_config->add_reification_cost();
   reification_cost->set_end_to_end_cycles(cycles);
   reification_cost->set_compute_time_us(
       absl::ToDoubleMicroseconds(data.compute_time));

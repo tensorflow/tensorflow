@@ -136,9 +136,8 @@ ENTRY e {
 
   GpuPerformanceModel::RecordEstimatedRunTime(
       root, device_info_, &analysis_, GpuPerformanceModelOptions::Default());
-  auto reification_cost = root->backend_config<GpuBackendConfig>()
-                              ->fusion_backend_config()
-                              .reification_cost();
+  auto reification_cost =
+      root->backend_config<GpuBackendConfig>()->reification_cost()[0];
   EXPECT_NEAR(reification_cost.end_to_end_cycles(), 38.4, 0.1);
   EXPECT_NEAR(reification_cost.exec_time_us(), 0, 1);
 
@@ -173,9 +172,8 @@ ENTRY e {
 
   GpuPerformanceModel::RecordEstimatedRunTime(
       root, device_info_, &analysis_, GpuPerformanceModelOptions::Default());
-  auto reification_cost = root->backend_config<GpuBackendConfig>()
-                              ->fusion_backend_config()
-                              .reification_cost();
+  auto reification_cost =
+      root->backend_config<GpuBackendConfig>()->reification_cost()[0];
   EXPECT_NEAR(reification_cost.end_to_end_cycles(), 220284, 100);
   EXPECT_NEAR(reification_cost.exec_time_us(), 156, 10);
   EXPECT_NEAR(reification_cost.compute_time_us(), 1, 1);

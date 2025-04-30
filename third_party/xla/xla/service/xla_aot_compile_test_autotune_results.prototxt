@@ -24,7 +24,7 @@ results {
 }
 results {
   device: "CUDA: 6.0, Cores: 56, GPU clock: 1.4805 GHz, Memory bandwidth: 732 GB/s, L2 cache: 4 MB"
-  hlo: "(f32[1,1,2,3]{3,2,1,0}, u8[0]{0}) custom-call(f32[1,2,4,4]{3,2,1,0}, f32[1,2,3,2]{3,2,1,0}), window={size=3x2}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convForward\", backend_config={\"cudnn_conv_backend_config\":{\"activation_mode\":\"kNone\",\"conv_result_scale\":1,\"leakyrelu_alpha\":0,\"side_input_scale\":0},\"force_earliest_schedule\":false,\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[]}"
+  hlo: "(f32[1,1,2,3]{3,2,1,0}, u8[0]{0}) custom-call(f32[1,2,4,4]{3,2,1,0}, f32[1,2,3,2]{3,2,1,0}), window={size=3x2}, dim_labels=bf01_oi01->bf01, custom_call_target=\"__cudnn$convForward\", backend_config={\"cudnn_conv_backend_config\":{\"activation_mode\":\"kNone\",\"conv_result_scale\":1,\"leakyrelu_alpha\":0,\"side_input_scale\":0},\"force_earliest_schedule\":false,\"operation_queue_id\":\"0\",\"reification_cost\":[],\"wait_on_operation_queues\":[]}"
   result {
     run_time {
       nanos: 8192

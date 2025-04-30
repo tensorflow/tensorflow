@@ -87,7 +87,6 @@ TEST_F(SolGpuCostModelStatsCollectionTest,
   EXPECT_FALSE(changed);
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
   CHECK: ar-start
-  CHECK-SAME: collective_backend_config
   CHECK-SAME: "exec_time_us":1
   )"));
 }

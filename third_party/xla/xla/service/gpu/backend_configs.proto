@@ -106,7 +106,7 @@ message GemmBackendConfig {
   optional bool grad_y = 17;
   bool damax_output = 18;
 
-  repeated ReificationCost reification_cost = 19;
+  reserved 19;
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.
@@ -124,10 +124,6 @@ message CollectiveBackendConfig {
   // Determines whether the collective op of interested has been pipelined
   // within a loop.
   bool is_pipelined = 3;
-  // Cost model prediction.
-  repeated ReificationCost reification_cost = 4;
-
-  reserved 2;
 
   enum CollectiveBackend {
     // Default backend is NCCL.
@@ -135,6 +131,7 @@ message CollectiveBackendConfig {
     NVSHMEM = 1;
   }
   CollectiveBackend backend = 5;
+  reserved 2, 4;
 }
 
 // Backend config for cost model estimates.
@@ -221,9 +218,10 @@ message FusionBackendConfig {
   CustomFusionConfig custom_fusion_config = 4;
 
   // Cost model prediction.
-  ReificationCost reification_cost = 3;
 
   CuDnnFusionConfig cudnn_fusion_config = 5;
+
+  reserved 3;
 }
 
 // Backed config for norm executed by cuDNN.
@@ -312,7 +310,7 @@ message CustomCallBackendConfig {
 }
 
 // Generic backend config for XLA:GPU
-// Next-Id: 12
+// Next-Id: 13
 message GpuBackendConfig {
   // Specifies which operation queue the current instruction will run on.
   // A backend may have multiple operation queues to run instructions
@@ -355,4 +353,8 @@ message GpuBackendConfig {
   // is always scheduled first as it's not SM-heavy.
   // In this case we can use this flag to enforce the ordering.
   bool force_earliest_schedule = 10;
+
+  // Reification cost for the instruction which attaches this
+  // `GpuBackendConfig`.
+  repeated ReificationCost reification_cost = 12;
 }

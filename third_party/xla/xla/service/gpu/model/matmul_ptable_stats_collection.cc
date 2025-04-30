@@ -75,17 +75,6 @@ absl::StatusOr<HloInstructionProfileList> CollectProfiles(
   return profile.entries().at(key);
 }
 
-ReificationCost* GetReificationCost(HloOpcode opcode,
-                                    GpuBackendConfig& config) {
-  if (opcode == HloOpcode::kCustomCall) {
-    return config.mutable_gemm_backend_config()->add_reification_cost();
-  }
-  if (opcode == HloOpcode::kFusion) {
-    return config.mutable_fusion_backend_config()->mutable_reification_cost();
-  }
-  return nullptr;
-}
-
 HloDotInstruction* GetTritonGemmInstruction(const HloInstruction& dot_fusion) {
   if (!(HloPredicateIsOp<HloOpcode::kFusion>(&dot_fusion) &&
         IsTritonFusedComputation(
@@ -111,14 +100,9 @@ absl::Status SetReificationCost(HloInstruction& instr, absl::Duration exec_time,
                                 absl::string_view reification_name) {
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       instr.backend_config<GpuBackendConfig>());
-  ReificationCost* reification_cost =
-      GetReificationCost(instr.opcode(), gpu_config);
-  if (reification_cost == nullptr) {
-    return absl::InternalError(
-        absl::StrCat("Cannot add reification cost to: ", instr.ToString()));
-  }
-  reification_cost->set_exec_time_us(absl::ToDoubleMicroseconds(exec_time));
-  *reification_cost->mutable_name() = reification_name;
+  ReificationCost& reification_cost = *gpu_config.add_reification_cost();
+  reification_cost.set_exec_time_us(absl::ToDoubleMicroseconds(exec_time));
+  *reification_cost.mutable_name() = reification_name;
   return instr.set_backend_config(gpu_config);
 }
 

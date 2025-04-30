@@ -58,11 +58,9 @@ TEST_F(GpuCostModelStatsCollectionTest, FusinInEntryComputation) {
   HloInstruction* root = module->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
                           root->backend_config<GpuBackendConfig>());
-  const FusionBackendConfig& backend_config =
-      gpu_config.fusion_backend_config();
 
-  EXPECT_TRUE(backend_config.has_reification_cost());
-  EXPECT_GT(backend_config.reification_cost().end_to_end_cycles(), 0);
+  EXPECT_EQ(gpu_config.reification_cost_size(), 1);
+  EXPECT_GT(gpu_config.reification_cost()[0].end_to_end_cycles(), 0);
 }
 
 TEST_F(GpuCostModelStatsCollectionTest, FusinInWhileComputation) {
@@ -97,11 +95,9 @@ TEST_F(GpuCostModelStatsCollectionTest, FusinInWhileComputation) {
                              ->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
                           root->backend_config<GpuBackendConfig>());
-  const FusionBackendConfig& backend_config =
-      gpu_config.fusion_backend_config();
 
-  EXPECT_TRUE(backend_config.has_reification_cost());
-  EXPECT_GT(backend_config.reification_cost().end_to_end_cycles(), 0);
+  EXPECT_EQ(gpu_config.reification_cost_size(), 1);
+  EXPECT_GT(gpu_config.reification_cost()[0].end_to_end_cycles(), 0);
 }
 
 }  // namespace gpu
