@@ -18,6 +18,7 @@ limitations under the License.
 #include <initializer_list>
 #include <vector>
 
+#include "Eigen/Core"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -85,17 +86,20 @@ class TransposeOpInt4Model : public SingleOpModel {
   int output_;
 };
 
+
+template <typename input_type>
 class TransposeOpModel : public SingleOpModel {
  public:
-  void SetInput(std::initializer_list<float> data) {
-    PopulateTensor<float>(input_, data);
+  void SetInput(std::vector<input_type> data) {
+    PopulateTensor<input_type>(input_, data);
   }
 
   void SetPerm(std::initializer_list<int> data) {
     PopulateTensor<int>(perm_, data);
   }
-
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<input_type> GetOutput() {
+    return ExtractVector<input_type>(output_);
+  }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
  protected:
@@ -107,52 +111,69 @@ class TransposeOpModel : public SingleOpModel {
 // Tests case where perm is a const tensor.
 //
 // Example usage is as follows:
-//    TransposeModel m(input_shape, perm_shape, perm_data);
+//    TransposeModel <input_type> m (input_shape, perm_shape, perm_data);
 //    m.SetInput(input_data);
 //    m.Invoke();
-class TransposeOpConstModel : public TransposeOpModel {
+template <typename input_type>
+class TransposeOpConstModel : public TransposeOpModel<input_type> {
  public:
   TransposeOpConstModel(std::initializer_list<int> input_shape,
                         std::initializer_list<int> perm_shape,
                         std::initializer_list<int> perm) {
-    input_ = AddInput({TensorType_FLOAT32, input_shape});
-    perm_ = AddConstInput(TensorType_INT32, perm, perm_shape);
-    output_ = AddOutput(TensorType_FLOAT32);
-    SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
-                 CreateTransposeOptions(builder_).Union());
-    BuildInterpreter({input_shape});
+    this->input_ = this->AddInput({GetTensorType<input_type>(), input_shape});
+    this->perm_ = this->AddConstInput(TensorType_INT32, perm, perm_shape);
+    this->output_ = this->AddOutput(GetTensorType<input_type>());
+    this->SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                 CreateTransposeOptions(this->builder_).Union());
+    this->BuildInterpreter({input_shape});
   }
 };
 
 // Tests case where perm is a non-const tensor.
 //
 // Example usage is as follows:
-//    TransposeOpDynamicModel m(input_shape, perm_shape);
+//    TransposeOpDynamicModel <input_type> m (input_shape, perm_shape);
 //    m.SetInput(input_data);
 //    m.SetPerm(perm_data);
 //    m.Invoke();
-class TransposeOpDynamicModel : public TransposeOpModel {
+template <typename input_type>
+class TransposeOpDynamicModel : public TransposeOpModel <input_type> {
  public:
   TransposeOpDynamicModel(std::initializer_list<int> input_shape,
                           std::initializer_list<int> perm_shape) {
-    input_ = AddInput(TensorType_FLOAT32);
-    perm_ = AddInput(TensorType_INT32);
-    output_ = AddOutput(TensorType_FLOAT32);
-    SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
-                 CreateTransposeOptions(builder_).Union());
-    BuildInterpreter({input_shape, perm_shape});
+    this->input_ = this->AddInput(GetTensorType<input_type>());
+    this->perm_ = this->AddInput(TensorType_INT32);
+    this->output_ = this->AddOutput(GetTensorType<input_type>());
+    this->SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                 CreateTransposeOptions(this->builder_).Union());
+    this->BuildInterpreter({input_shape, perm_shape});
   }
 };
 
-#if GTEST_HAS_DEATH_TEST
-TEST(TransposeTest, TestUnequalPermSize) {
-  EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {2}, {2, 2}), "2 != 4");
+template <typename T>
+class TransposeTest : public ::testing::Test {};
+
+using DataTypes = ::testing::Types<bool, Eigen::bfloat16, Eigen::half, int8_t,
+                                   int16_t, int32_t, int64_t, uint8_t>;
+TYPED_TEST_SUITE(TransposeTest, DataTypes);
+
+template <typename T>
+std::vector<T> CastVector(const std::vector<int>& input_data) {
+  std::vector<T> casted_input(input_data.size());
+
+  std::transform(input_data.begin(), input_data.end(), casted_input.begin(),
+                   [](int x) { return static_cast<T>(x); });
+  return casted_input;
 }
 
+#if GTEST_HAS_DEATH_TEST
+TEST(TransposeTest, TestUnequalPermSize) {
+  EXPECT_DEATH(TransposeOpConstModel<float>({1, 3, 3, 1}, {2}, {2, 2}), "2 != 4");
+}
 TEST(TransposeTest, TestPermOutOfBounds) {
-  EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {4}, {0, -1, -2, -5}),
+  EXPECT_DEATH(TransposeOpConstModel<float>({1, 3, 3, 1}, {4}, {0, -1, -2, -5}),
                "Transpose op permutations array is out of bounds.");
-  EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {4}, {0, 1, 2, 4}),
+  EXPECT_DEATH(TransposeOpConstModel<float>({1, 3, 3, 1}, {4}, {0, 1, 2, 4}),
                "Transpose op permutations array is out of bounds.");
 }
 #endif
@@ -184,35 +205,40 @@ TEST(TransposeTest, TestInt43DInputConstTensor) {
                                 2, 6, 3, 3, 3, 2, 3, 0, 4, 0, 4, 3}));
 }
 
-TEST(TransposeTest, Test1DInputConstTensor) {
-  TransposeOpConstModel m({3}, {1}, {0});
-  m.SetInput({1, 2, 3});
+TYPED_TEST(TransposeTest, Test1DInputConstTensor) {
+  TransposeOpConstModel<TypeParam> m({3}, {1}, {0});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({1, 2, 3});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3}));
 }
 
-TEST(TransposeTest, Test1DInputDynamicTensor) {
-  TransposeOpDynamicModel m({3}, {1});
-  m.SetInput({1, 2, 3});
+TYPED_TEST(TransposeTest, Test1DInputDynamicTensor) {
+  TransposeOpDynamicModel<TypeParam> m({3}, {1});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({1, 2, 3});
+  m.SetInput(input_data);
   m.SetPerm({0});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3}));
 }
 
-TEST(TransposeTest, Test2DInputConstTensor) {
-  TransposeOpConstModel m({3, 2}, {2}, {1, 0});
-  m.SetInput({0, 1, 2, 3, 4, 5});
+TYPED_TEST(TransposeTest, Test2DInputConstTensor) {
+  TransposeOpConstModel<TypeParam> m({3, 2}, {2}, {1, 0});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0, 1, 2, 3, 4, 5});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2, 4, 1, 3, 5}));
 }
 
-TEST(TransposeTest, Test2D4x4KernelTestLeftOverRightSide) {
-  TransposeOpConstModel m({4, 6}, {2}, {1, 0});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-              12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+TYPED_TEST(TransposeTest, Test2D4x4KernelTestLeftOverRightSide) {
+  TransposeOpConstModel<TypeParam> m({4, 6}, {2}, {1, 0});
+  std::vector<TypeParam> input_data =
+      CastVector<TypeParam>({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                             12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6, 4}));
   EXPECT_THAT(m.GetOutput(),
@@ -220,10 +246,12 @@ TEST(TransposeTest, Test2D4x4KernelTestLeftOverRightSide) {
                                 3, 9, 15, 21, 4, 10, 16, 22, 5, 11, 17, 23}));
 }
 
-TEST(TransposeTest, Test2D4x4KernelTest2LeftOverBottomSide) {
-  TransposeOpConstModel m({6, 4}, {2}, {1, 0});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-              12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+TYPED_TEST(TransposeTest, Test2D4x4KernelTest2LeftOverBottomSide) {
+  TransposeOpConstModel<TypeParam> m({6, 4}, {2}, {1, 0});
+  std::vector<TypeParam> input_data =
+      CastVector<TypeParam>({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                             12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 6}));
   EXPECT_THAT(m.GetOutput(),
@@ -231,19 +259,22 @@ TEST(TransposeTest, Test2D4x4KernelTest2LeftOverBottomSide) {
                                 2, 6, 10, 14, 18, 22, 3, 7, 11, 15, 19, 23}));
 }
 
-TEST(TransposeTest, Test2DInputDynamicTensor) {
-  TransposeOpDynamicModel m({3, 2}, {2});
-  m.SetInput({0, 1, 2, 3, 4, 5});
+TYPED_TEST(TransposeTest, Test2DInputDynamicTensor) {
+  TransposeOpDynamicModel<TypeParam> m({3, 2}, {2});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0, 1, 2, 3, 4, 5});
+  m.SetInput(input_data);
   m.SetPerm({1, 0});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2, 4, 1, 3, 5}));
 }
 
-TEST(TransposeTest, Test3DInputConstTensor) {
-  TransposeOpConstModel m({2, 3, 4}, {3}, {2, 0, 1});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-              12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+TYPED_TEST(TransposeTest, Test3DInputConstTensor) {
+  TransposeOpConstModel<TypeParam> m({2, 3, 4}, {3}, {2, 0, 1});
+  std::vector<TypeParam> input_data =
+      CastVector<TypeParam>({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                             12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 2, 3}));
   EXPECT_THAT(m.GetOutput(),
@@ -251,10 +282,12 @@ TEST(TransposeTest, Test3DInputConstTensor) {
                                 2, 6, 10, 14, 18, 22, 3, 7, 11, 15, 19, 23}));
 }
 
-TEST(TransposeTest, Test3DInputDynamicTensor) {
-  TransposeOpDynamicModel m({2, 3, 4}, {3});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-              12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+TYPED_TEST(TransposeTest, Test3DInputDynamicTensor) {
+  TransposeOpDynamicModel<TypeParam> m({2, 3, 4}, {3});
+  std::vector<TypeParam> input_data =
+      CastVector<TypeParam>({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                             12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+  m.SetInput(input_data);
   m.SetPerm({2, 0, 1});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 2, 3}));
@@ -263,108 +296,125 @@ TEST(TransposeTest, Test3DInputDynamicTensor) {
                                 2, 6, 10, 14, 18, 22, 3, 7, 11, 15, 19, 23}));
 }
 
-TEST(TransposeTest, Test1DNotShrinked) {
-  TransposeOpConstModel m({1}, {1}, {0});
-  m.SetInput({0});
+TYPED_TEST(TransposeTest, Test1DNotShrinked) {
+  TransposeOpConstModel<TypeParam> m({1}, {1}, {0});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0}));
 }
 
-TEST(TransposeTest, Test2DShrinkedOneTime) {
-  TransposeOpConstModel m({2, 1}, {2}, {1, 0});
-  m.SetInput({0, 1});
+TYPED_TEST(TransposeTest, Test2DShrinkedOneTime) {
+  TransposeOpConstModel<TypeParam> m({2, 1}, {2}, {1, 0});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0, 1});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1}));
 }
 
-TEST(TransposeTest, Test2DShrinkedTwoTimes) {
-  TransposeOpConstModel m({1, 1}, {2}, {1, 0});
-  m.SetInput({0});
+TYPED_TEST(TransposeTest, Test2DShrinkedTwoTimes) {
+  TransposeOpConstModel<TypeParam> m({1, 1}, {2}, {1, 0});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0}));
 }
 
-TEST(TransposeTest, Test3DShrinkedOneTime) {
-  TransposeOpConstModel m({2, 1, 3}, {3}, {0, 2, 1});
-  m.SetInput({0, 1, 2, 3, 4, 5});
+TYPED_TEST(TransposeTest, Test3DShrinkedOneTime) {
+  TransposeOpConstModel<TypeParam> m({2, 1, 3}, {3}, {0, 2, 1});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0, 1, 2, 3, 4, 5});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1, 2, 3, 4, 5}));
 }
 
-TEST(TransposeTest, Test3DShrinkedTwoTimes) {
-  TransposeOpConstModel m({1, 1, 3}, {3}, {1, 2, 0});
-  m.SetInput({0, 1, 2});
+TYPED_TEST(TransposeTest, Test3DShrinkedTwoTimes) {
+  TransposeOpConstModel<TypeParam> m({1, 1, 3}, {3}, {1, 2, 0});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0, 1, 2});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1, 2}));
 }
 
-TEST(TransposeTest, Test3DShrinkedAll) {
-  TransposeOpConstModel m({1, 1, 1}, {3}, {1, 2, 0});
-  m.SetInput({0});
+TYPED_TEST(TransposeTest, Test3DShrinkedAll) {
+  TransposeOpConstModel<TypeParam> m({1, 1, 1}, {3}, {1, 2, 0});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0}));
 }
 
-TEST(TransposeTest, Test4DShrinkedOneTimes) {
-  TransposeOpConstModel m({2, 2, 3, 1}, {4}, {3, 0, 1, 2});
-  m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+TYPED_TEST(TransposeTest, Test4DShrinkedOneTimes) {
+  TransposeOpConstModel<TypeParam> m({2, 2, 3, 1}, {4}, {3, 0, 1, 2});
+  std::vector<TypeParam> input_data =
+      CastVector<TypeParam>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2, 3}));
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}));
 }
 
-TEST(TransposeTest, Test4DShrinkedTwoTimes) {
-  TransposeOpConstModel m({2, 1, 3, 1}, {4}, {0, 3, 1, 2});
-  m.SetInput({0, 1, 2, 3, 4, 5});
+TYPED_TEST(TransposeTest, Test4DShrinkedTwoTimes) {
+  TransposeOpConstModel<TypeParam> m({2, 1, 3, 1}, {4}, {0, 3, 1, 2});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0, 1, 2, 3, 4, 5});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 1, 3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1, 2, 3, 4, 5}));
 }
 
-TEST(TransposeTest, Test4DShrinkedThirdTimes) {
-  TransposeOpConstModel m({2, 1, 1, 1}, {4}, {3, 2, 1, 0});
-  m.SetInput({0, 1});
+TYPED_TEST(TransposeTest, Test4DShrinkedThirdTimes) {
+  TransposeOpConstModel<TypeParam> m({2, 1, 1, 1}, {4}, {3, 2, 1, 0});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0, 1});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1}));
 }
 
-TEST(TransposeTest, Test4DShrinkedFourTimes) {
-  TransposeOpConstModel m({1, 1, 1, 1}, {4}, {2, 3, 1, 0});
-  m.SetInput({0});
+TYPED_TEST(TransposeTest, Test4DShrinkedFourTimes) {
+  TransposeOpConstModel<TypeParam> m({1, 1, 1, 1}, {4}, {2, 3, 1, 0});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0}));
 }
 
-TEST(TransposeTest, Test3DFlatten) {
-  TransposeOpConstModel m({2, 2, 3}, {3}, {0, 2, 1});
-  m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+TYPED_TEST(TransposeTest, Test3DFlatten) {
+  TransposeOpConstModel<TypeParam> m({2, 2, 3}, {3}, {0, 2, 1});
+  std::vector<TypeParam> input_data =
+      CastVector<TypeParam>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2}));
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 3, 1, 4, 2, 5, 6, 9, 7, 10, 8, 11}));
 }
 
-TEST(TransposeTest, Test4DFlattenOne) {
-  TransposeOpConstModel m({2, 2, 2, 2}, {4}, {0, 1, 3, 2});
-  m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+TYPED_TEST(TransposeTest, Test4DFlattenOne) {
+  TransposeOpConstModel<TypeParam> m({2, 2, 2, 2}, {4}, {0, 1, 3, 2});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>(
+      {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2, 1, 3, 4, 6, 5, 7, 8, 10, 9,
                                                11, 12, 14, 13, 15}));
 }
 
-TEST(TransposeTest, Test4DFlattenTwo) {
-  TransposeOpConstModel m({2, 2, 2, 2}, {4}, {0, 2, 3, 1});
-  m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+TYPED_TEST(TransposeTest, Test4DFlattenTwo) {
+  TransposeOpConstModel<TypeParam> m({2, 2, 2, 2}, {4}, {0, 2, 3, 1});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>(
+      {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 4, 1, 5, 2, 6, 3, 7, 8, 12, 9,
@@ -373,18 +423,22 @@ TEST(TransposeTest, Test4DFlattenTwo) {
 
 TEST(TransposeTest, 3DDividedIntoTwo2DsOne) {
   std::vector<float> out = RunTestPermutation<float>({2, 3, 4}, {1, 2, 0});
-  TransposeOpConstModel m({2, 3, 4}, {3}, {1, 2, 0});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-              12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+  TransposeOpConstModel<float> m({2, 3, 4}, {3}, {1, 2, 0});
+  std::vector<float> input_data =
+      CastVector<float>({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                         12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
 
 TEST(TransposeTest, 3DDividedIntoTwo2DsTwo) {
   std::vector<float> out = RunTestPermutation<float>({2, 3, 4}, {2, 0, 1});
-  TransposeOpConstModel m({2, 3, 4}, {3}, {2, 0, 1});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-              12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+  TransposeOpConstModel<float> m({2, 3, 4}, {3}, {2, 0, 1});
+  std::vector<float> input_data =
+      CastVector<float>({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                         12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
@@ -392,10 +446,12 @@ TEST(TransposeTest, 3DDividedIntoTwo2DsTwo) {
 TEST(TransposeTest, 4DDividedIntoTwo2DsOne) {
   std::vector<float> out =
       RunTestPermutation<float>({2, 3, 4, 2}, {1, 2, 3, 0});
-  TransposeOpConstModel m({2, 3, 4, 2}, {4}, {1, 2, 3, 0});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
-              16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-              32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  TransposeOpConstModel<float> m({2, 3, 4, 2}, {4}, {1, 2, 3, 0});
+  std::vector<float> input_data = CastVector<float>(
+      {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+       16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+       32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
@@ -403,10 +459,12 @@ TEST(TransposeTest, 4DDividedIntoTwo2DsOne) {
 TEST(TransposeTest, 4DDividedIntoTwo2DsTwo) {
   std::vector<float> out =
       RunTestPermutation<float>({2, 3, 4, 2}, {2, 3, 0, 1});
-  TransposeOpConstModel m({2, 3, 4, 2}, {4}, {2, 3, 0, 1});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
-              16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-              32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  TransposeOpConstModel<float> m({2, 3, 4, 2}, {4}, {2, 3, 0, 1});
+  std::vector<float> input_data = CastVector<float>(
+      {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+       16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+       32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
@@ -414,10 +472,12 @@ TEST(TransposeTest, 4DDividedIntoTwo2DsTwo) {
 TEST(TransposeTest, 4DDividedIntoTwo2DsThird) {
   std::vector<float> out =
       RunTestPermutation<float>({2, 3, 4, 2}, {3, 0, 1, 2});
-  TransposeOpConstModel m({2, 3, 4, 2}, {4}, {3, 0, 1, 2});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
-              16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-              32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  TransposeOpConstModel<float> m({2, 3, 4, 2}, {4}, {3, 0, 1, 2});
+  std::vector<float> input_data = CastVector<float>(
+      {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+       16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+       32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
@@ -425,10 +485,12 @@ TEST(TransposeTest, 4DDividedIntoTwo2DsThird) {
 TEST(TransposeTest, 5DDividedIntoTwo2DsOne) {
   std::vector<float> out =
       RunTestPermutation<float>({2, 3, 2, 2, 2}, {1, 4, 2, 3, 0});
-  TransposeOpConstModel m({2, 3, 2, 2, 2}, {5}, {1, 4, 2, 3, 0});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
-              16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-              32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  TransposeOpConstModel<float> m({2, 3, 2, 2, 2}, {5}, {1, 4, 2, 3, 0});
+  std::vector<float> input_data = CastVector<float>(
+      {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+       16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+       32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
@@ -436,10 +498,12 @@ TEST(TransposeTest, 5DDividedIntoTwo2DsOne) {
 TEST(TransposeTest, 5DDividedIntoTwo2DsTwo) {
   std::vector<float> out =
       RunTestPermutation<float>({2, 3, 2, 2, 2}, {2, 3, 0, 4, 1});
-  TransposeOpConstModel m({2, 3, 2, 2, 2}, {5}, {2, 3, 0, 4, 1});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
-              16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-              32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  TransposeOpConstModel<float> m({2, 3, 2, 2, 2}, {5}, {2, 3, 0, 4, 1});
+  std::vector<float> input_data = CastVector<float>(
+      {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+       16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+       32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
@@ -447,10 +511,12 @@ TEST(TransposeTest, 5DDividedIntoTwo2DsTwo) {
 TEST(TransposeTest, 5DDividedIntoTwo2DsThird) {
   std::vector<float> out =
       RunTestPermutation<float>({2, 3, 2, 2, 2}, {3, 0, 4, 1, 2});
-  TransposeOpConstModel m({2, 3, 2, 2, 2}, {5}, {3, 0, 4, 1, 2});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
-              16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-              32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  TransposeOpConstModel<float> m({2, 3, 2, 2, 2}, {5}, {3, 0, 4, 1, 2});
+  std::vector<float> input_data = CastVector<float>(
+      {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+       16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+       32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
@@ -458,39 +524,44 @@ TEST(TransposeTest, 5DDividedIntoTwo2DsThird) {
 #if GTEST_HAS_DEATH_TEST
 TEST(TransposeTest, Test7DInputTensor) {
   EXPECT_DEATH(
-      TransposeOpConstModel({1, 2, 3, 4, 5, 6, 7}, {6}, {0, 1, 2, 3, 4, 5}),
+      TransposeOpConstModel<int32_t>({1, 2, 3, 4, 5, 6, 7}, {6}, {0, 1, 2, 3, 4, 5}),
       "Transpose op only supports 1D-6D input arrays.");
 }
 #endif
 
-TEST(TransposeTest, SimpleTestNoReorderConstTensor) {
-  TransposeOpConstModel m({1, 2, 3, 1}, {4}, {0, 1, 2, 3});
-  m.SetInput({1, 2, 3, 4, 5, 6});
+TYPED_TEST(TransposeTest, SimpleTestNoReorderConstTensor) {
+  TransposeOpConstModel <TypeParam> m({1, 2, 3, 1}, {4}, {0, 1, 2, 3});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
-TEST(TransposeTest, SimpleTestNoReorderDynamicTensor) {
-  TransposeOpDynamicModel m({1, 2, 3, 1}, {4});
-  m.SetInput({1, 2, 3, 4, 5, 6});
+TYPED_TEST(TransposeTest, SimpleTestNoReorderDynamicTensor) {
+  TransposeOpDynamicModel <TypeParam> m({1, 2, 3, 1}, {4});
+  std::vector<TypeParam> input_data =
+      CastVector<TypeParam>({{1, 2, 3, 4, 5, 6}});
+  m.SetInput(input_data);
   m.SetPerm({0, 1, 2, 3});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
-TEST(TransposeTest, SimpleTestWithReorderConstTensor) {
-  TransposeOpConstModel m({1, 2, 3, 1}, {4}, {2, 1, 3, 0});
-  m.SetInput({1, 2, 3, 4, 5, 6});
+TYPED_TEST(TransposeTest, SimpleTestWithReorderConstTensor) {
+  TransposeOpConstModel <TypeParam> m({1, 2, 3, 1}, {4}, {2, 1, 3, 0});
+  std::vector<TypeParam> input_data =
+      CastVector<TypeParam>({{1, 2, 3, 4, 5, 6}});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2, 1, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
 }
 
-TEST(TransposeTest, ComplexTestWithReorderConstTensor) {
-  TransposeOpConstModel m({2, 3, 4, 5}, {4}, {2, 0, 1, 3});
-  m.SetInput({0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,
+TYPED_TEST(TransposeTest, ComplexTestWithReorderConstTensor) {
+  TransposeOpConstModel <TypeParam> m({2, 3, 4, 5}, {4}, {2, 0, 1, 3});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,
               12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,
               24,  25,  26,  27,  28,  29,  30,  31,  32,  33,  34,  35,
               36,  37,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,
@@ -500,6 +571,7 @@ TEST(TransposeTest, ComplexTestWithReorderConstTensor) {
               84,  85,  86,  87,  88,  89,  90,  91,  92,  93,  94,  95,
               96,  97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107,
               108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 2, 3, 5}));
@@ -515,9 +587,9 @@ TEST(TransposeTest, ComplexTestWithReorderConstTensor) {
   EXPECT_THAT(m.GetOutput(), result);
 }
 
-TEST(TransposeTest, ComplexTestWithReorderDynamicTensor) {
-  TransposeOpDynamicModel m({2, 3, 4, 5}, {4});
-  m.SetInput({0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,
+TYPED_TEST(TransposeTest, ComplexTestWithReorderDynamicTensor) {
+  TransposeOpDynamicModel <TypeParam> m({2, 3, 4, 5}, {4});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,
               12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,
               24,  25,  26,  27,  28,  29,  30,  31,  32,  33,  34,  35,
               36,  37,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,
@@ -527,6 +599,7 @@ TEST(TransposeTest, ComplexTestWithReorderDynamicTensor) {
               84,  85,  86,  87,  88,  89,  90,  91,  92,  93,  94,  95,
               96,  97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107,
               108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119});
+  m.SetInput(input_data);
   m.SetPerm({2, 0, 1, 3});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
@@ -543,9 +616,9 @@ TEST(TransposeTest, ComplexTestWithReorderDynamicTensor) {
   EXPECT_THAT(m.GetOutput(), result);
 }
 
-TEST(TransposeTest, Complex5DTestWithReorderConstTensor) {
-  TransposeOpConstModel m({2, 3, 2, 2, 5}, {5}, {2, 0, 1, 4, 3});
-  m.SetInput({0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,
+TYPED_TEST(TransposeTest, Complex5DTestWithReorderConstTensor) {
+  TransposeOpConstModel <TypeParam> m({2, 3, 2, 2, 5}, {5}, {2, 0, 1, 4, 3});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,
               12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,
               24,  25,  26,  27,  28,  29,  30,  31,  32,  33,  34,  35,
               36,  37,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,
@@ -555,6 +628,7 @@ TEST(TransposeTest, Complex5DTestWithReorderConstTensor) {
               84,  85,  86,  87,  88,  89,  90,  91,  92,  93,  94,  95,
               96,  97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107,
               108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119});
+  m.SetInput(input_data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 3, 5, 2}));
@@ -570,9 +644,9 @@ TEST(TransposeTest, Complex5DTestWithReorderConstTensor) {
   EXPECT_THAT(m.GetOutput(), result);
 }
 
-TEST(TransposeTest, Complex5DTestWithReorderDynamicTensor) {
-  TransposeOpDynamicModel m({2, 3, 2, 2, 5}, {5});
-  m.SetInput({0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,
+TYPED_TEST(TransposeTest, Complex5DTestWithReorderDynamicTensor) {
+  TransposeOpDynamicModel <TypeParam> m({2, 3, 2, 2, 5}, {5});
+  std::vector<TypeParam> input_data = CastVector<TypeParam>({0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,
               12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,
               24,  25,  26,  27,  28,  29,  30,  31,  32,  33,  34,  35,
               36,  37,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,
@@ -582,6 +656,7 @@ TEST(TransposeTest, Complex5DTestWithReorderDynamicTensor) {
               84,  85,  86,  87,  88,  89,  90,  91,  92,  93,  94,  95,
               96,  97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107,
               108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119});
+  m.SetInput(input_data);
   m.SetPerm({2, 0, 1, 4, 3});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
