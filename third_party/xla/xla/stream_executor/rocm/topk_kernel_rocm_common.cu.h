@@ -283,17 +283,18 @@ __launch_bounds__(stream_executor::gpu::kTopKMaxThreadsPerBlock, 1) __global__
   obj.MergeTopKs(vals_out, idxs_out);
 }
 
-#define COMA ,
+#define KERNEL_TRAIT(K_VAL, TYPE, VT) \
+  stream_executor::gpu::TopKKernel<K_VAL, TYPE, VT>
 #define REGISTER_TOPK_KERNEL(K_VAL, TYPE, VT)                                 \
   GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                             \
-      TopKKernelRocm_K##K_VAL##_##TYPE##_##VT,                                \
-      stream_executor::gpu::TopKKernel<K_VAL COMA TYPE COMA VT>,              \
+      TopKKernelRocm_K##K_VAL##_##TYPE##_##VT, KERNEL_TRAIT(K_VAL, TYPE, VT), \
       stream_executor::rocm::kROCmPlatformId, ([] {                           \
         stream_executor::MultiKernelLoaderSpec spec(5);                       \
         spec.AddInProcessSymbol(absl::bit_cast<void*>(&Run<K_VAL, TYPE, VT>), \
                                 "topk_k" #K_VAL "_" #TYPE "_" #VT);           \
         return spec;                                                          \
       }));
+
 }  // namespace stream_executor::rocm
 
 #endif  // XLA_STREAM_EXECUTOR_ROCM_TOPK_KERNEL_ROCM_COMMON_CU_H_

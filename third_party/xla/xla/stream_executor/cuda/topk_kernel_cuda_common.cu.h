@@ -294,4 +294,3 @@ __launch_bounds__(stream_executor::gpu::kTopKMaxThreadsPerBlock, 1) __global__
 }  // namespace stream_executor::cuda
 
 #endif  // XLA_STREAM_EXECUTOR_CUDA_TOPK_KERNEL_CUDA_COMMON_CU_H_
-
