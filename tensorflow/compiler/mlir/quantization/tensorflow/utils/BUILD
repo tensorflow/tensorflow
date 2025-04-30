@@ -54,6 +54,28 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_tf_to_uniform_attribute_utils",
+    srcs = ["tf_tf_to_uniform_attribute_utils.cc"],
+    hdrs = ["tf_tf_to_uniform_attribute_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/common:tf_attrs_and_constraints",
+        "//tensorflow/compiler/mlir/quantization/common/tf_quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/ops:tf_uniform_op_quant_spec",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "tf_to_uniform_attribute_utils",
     srcs = ["tf_to_uniform_attribute_utils.cc"],
     hdrs = ["tf_to_uniform_attribute_utils.h"],
