@@ -597,16 +597,19 @@ absl::StatusOr<size_t> CudaCommandBuffer::GetNodeCount() const {
 }
 
 absl::Status CudaCommandBuffer::PrepareFinalization() {
-  // TODO(b/362769658): Remove this workaround when cuda supports conditionals
-  // with empty graphs.
-  TF_ASSIGN_OR_RETURN(auto node_count, GetNodeCount());
-  if (node_count > 0) {
-    return absl::OkStatus();
+  if (parent_->GetDeviceDescription().driver_version() <
+      SemanticVersion{12, 8, 0}) {
+    // For CUDA < 12080, cuda graph conditional node does not support
+    // empty body graph.
+    TF_ASSIGN_OR_RETURN(auto node_count, GetNodeCount());
+    if (node_count > 0) {
+      return absl::OkStatus();
+    }
+
+    TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel());
+    TF_RETURN_IF_ERROR(
+        CreateLaunch(*noop, ThreadDim(), BlockDim(), {}).status());
   }
-
-  TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel());
-  TF_RETURN_IF_ERROR(CreateLaunch(*noop, ThreadDim(), BlockDim(), {}).status());
-
   return absl::OkStatus();
 }
 
@@ -710,6 +713,5 @@ absl::Status CudaCommandBuffer::CheckCanBeUpdated() {
   }
   return absl::OkStatus();
 }
-
 
 }  // namespace stream_executor::gpu
