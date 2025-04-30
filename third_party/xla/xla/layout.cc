@@ -30,9 +30,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
-#include "xla/status_macros.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -190,8 +188,7 @@ Layout& Layout::operator=(const Layout& other) {
 
 Layout& Layout::operator=(Layout&& other) = default;
 
-/* static */ absl::StatusOr<Layout> Layout::FromProto(
-    const LayoutProto& proto) {
+/* static */ Layout Layout::CreateFromProto(const LayoutProto& proto) {
   Layout layout;
   for (int dim_level_type : proto.dim_level_types()) {
     layout.add_dim_level_type(static_cast<DimLevelType>(dim_level_type));
@@ -207,15 +204,15 @@ Layout& Layout::operator=(Layout&& other) = default;
     layout.add_minor_to_major(dimension);
   }
   for (const TileProto& tile_proto : proto.tiles()) {
-    TF_ASSIGN_OR_RETURN(*layout.add_tiles(), Tile::FromProto(tile_proto));
+    *layout.add_tiles() = Tile::CreateFromProto(tile_proto);
   }
   // If the proto does not have tail_padding_alignment_in_elements set, or have
   // it set to 0, we treat it as 1.
   const auto alignment = proto.tail_padding_alignment_in_elements() != 0
                              ? proto.tail_padding_alignment_in_elements()
                              : 1;
-  TF_RET_CHECK(alignment > 0);
-  layout.set_tail_padding_alignment_in_elements(alignment);
+  layout.set_tail_padding_alignment_in_elements(alignment,
+                                                ActionOnError::kWarning);
   layout.set_index_primitive_type(proto.index_primitive_type());
   layout.set_pointer_primitive_type(proto.pointer_primitive_type());
   layout.set_element_size_in_bits(proto.element_size_in_bits());
@@ -224,8 +221,7 @@ Layout& Layout::operator=(Layout&& other) = default;
     layout.add_split_configs(SplitConfig::CreateFromProto(split_config_proto));
   }
   if (proto.has_physical_shape()) {
-    TF_ASSIGN_OR_RETURN(*layout.mutable_physical_shape(),
-                        Shape::FromProto(proto.physical_shape()));
+    *layout.mutable_physical_shape() = Shape(proto.physical_shape());
   }
   layout.set_dynamic_shape_metadata_prefix_bytes(
       proto.dynamic_shape_metadata_prefix_bytes());

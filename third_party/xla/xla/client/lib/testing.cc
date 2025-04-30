@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/service/service.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/gtl/value_or_die.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -113,8 +112,7 @@ std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
 
   std::vector<std::unique_ptr<GlobalData>> results;
   for (const ShapeProto& shape : program_shape.parameters()) {
-    results.push_back(MakeFakeDataOrDie(
-        tsl::gtl::ValueOrDie(Shape::FromProto(shape)), client, debug_opts));
+    results.push_back(MakeFakeDataOrDie(Shape(shape), client, debug_opts));
   }
   return results;
 }

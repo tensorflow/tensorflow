@@ -121,12 +121,10 @@ CompileOnlyService::CompileAheadOfTime(
     }
 
     TF_ASSIGN_OR_RETURN(
-        ProgramShape program_shape,
-        ProgramShape::FromProto(instance.computation.host_program_shape()));
-    TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
-        CreateModuleConfig(program_shape, instance.argument_layouts,
-                           &execution_options, &options));
+        CreateModuleConfig(
+            ProgramShape(instance.computation.host_program_shape()),
+            instance.argument_layouts, &execution_options, &options));
 
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> hlo_module,

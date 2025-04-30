@@ -249,7 +249,7 @@ absl::StatusOr<xla::Shape> ReadHloShape(JAX_CustomCallPartitioner_string data) {
     return absl::InternalError(
         "custom_call_sharding.cc: error parsing xla::Shape");
   }
-  return xla::Shape::FromProto(proto);
+  return xla::Shape(proto);
 }
 
 bool PopulateErrorHeader(JAX_CustomCallPartitioner_version_and_error& header,

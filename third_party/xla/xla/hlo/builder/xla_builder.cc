@@ -115,7 +115,7 @@ bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
 absl::Status NormalizeAndAssignSharing(HloInstructionProto* instr,
                                        const OpSharding& op_sharding) {
   // Normalize tuple sharding and fail the call if the sharding is invalid.
-  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(instr->shape()));
+  Shape shape(instr->shape());
   TF_ASSIGN_OR_RETURN(HloSharding sharding,
                       HloSharding::FromProto(op_sharding));
   sharding = sharding.NormalizeTupleSharding(shape);
@@ -578,8 +578,7 @@ absl::StatusOr<ProgramShape> XlaBuilder::GetProgramShape(
 
   ProgramShape program_shape;
 
-  TF_ASSIGN_OR_RETURN(*program_shape.mutable_result(),
-                      Shape::FromProto(root_proto->shape()));
+  *program_shape.mutable_result() = Shape(root_proto->shape());
 
   // Check that the parameter numbers are continuous from 0, and add parameter
   // shapes and names to the program shape.
@@ -595,8 +594,7 @@ absl::StatusOr<ProgramShape> XlaBuilder::GetProgramShape(
       const int64_t index = instr.parameter_number();
       TF_RET_CHECK(index >= 0 && index < param_count)
           << "invalid parameter number: " << index;
-      TF_ASSIGN_OR_RETURN(*program_shape.mutable_parameters(index),
-                          Shape::FromProto(instr.shape()));
+      *program_shape.mutable_parameters(index) = Shape(instr.shape());
       program_shape.set_parameter_names(index, instr.name());
     }
   }
@@ -3015,7 +3013,7 @@ XlaOp XlaBuilder::Map(absl::Span<const XlaOp> operands,
                          operand_shape_ptrs, called_program_shape, dimensions));
     *instr.mutable_shape() = shape.ToProto();
 
-    TF_ASSIGN_OR_RETURN(Shape output_shape, Shape::FromProto(instr.shape()));
+    Shape output_shape(instr.shape());
     const int64_t output_rank = output_shape.dimensions().size();
     AddCalledComputation(computation, &instr);
     std::vector<XlaOp> new_operands(operands.begin(), operands.end());
@@ -4863,9 +4861,8 @@ absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(
 
   handle_to_index_[handle] = instructions_.size();
   instructions_.push_back(std::move(instr));
-  TF_ASSIGN_OR_RETURN(Shape shape,
-                      Shape::FromProto(instructions_.back().shape()));
-  instruction_shapes_.push_back(std::make_unique<Shape>(std::move(shape)));
+  instruction_shapes_.push_back(
+      std::make_unique<Shape>(instructions_.back().shape()));
 
   XlaOp op(handle, this);
   return op;

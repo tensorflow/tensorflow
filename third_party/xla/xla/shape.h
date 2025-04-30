@@ -25,7 +25,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -75,7 +74,6 @@ class Shape {
 
   // Constructs a shape from a ShapeProto. Results in an invalid shape (as
   // opposed to crashing) if the proto has logically invalid fields.
-  ABSL_DEPRECATED("Use FromProto instead.")
   explicit Shape(const ShapeProto& shape_proto);
 
   // Creates a token or opaque shape.
@@ -95,10 +93,6 @@ class Shape {
   // Creates a tuple shape. `tuple_shapes` can be empty, in which case the
   // shape is a nil shape (empty tuple).
   explicit Shape(std::vector<Shape> tuple_shapes);
-
-  // Constructs a shape from a ShapeProto. Results in an invalid shape (as
-  // opposed to crashing) if the proto has logically invalid fields.
-  static absl::StatusOr<Shape> FromProto(const ShapeProto& shape_proto);
 
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
@@ -649,12 +643,8 @@ class ProgramShape {
   ProgramShape& operator=(const ProgramShape&);
   ProgramShape& operator=(ProgramShape&&);
 
-  ABSL_DEPRECATED("Use FromProto instead.")
-  explicit ProgramShape(const ProgramShapeProto& program_shape_proto);
-
   // Creates a ProgramShape from a ProgramShapeProto protobuf.
-  static absl::StatusOr<ProgramShape> FromProto(
-      const ProgramShapeProto& program_shape_proto);
+  explicit ProgramShape(const ProgramShapeProto& program_shape_proto);
 
   // Returns a proto representation of the object.
   ProgramShapeProto ToProto() const;
