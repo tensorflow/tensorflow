@@ -338,6 +338,43 @@ cc_library(
 )
 
 cc_library(
+    name = "embedded_constant_buffers",
+    srcs = ["embedded_constant_buffers.cc"],
+    hdrs = ["embedded_constant_buffers.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:MC",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
+        "@local_xla//xla:util",
+        "@local_xla//xla/service/llvm_ir:llvm_type_conversion_util",
+    ],
+)
+
+tf_cc_test(
+    name = "embedded_constant_buffers_test",
+    srcs = ["embedded_constant_buffers_test.cc"],
+    deps = [
+        ":embedded_constant_buffers",
+        ":llvm_targets",  # fixdeps: keep
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/service/cpu:test_header_helper",
+    ],
+)
+
+cc_library(
     name = "aot_only_var_handle_op",
     srcs = ["aot_only_var_handle_op.cc"],
     hdrs = ["aot_only_var_handle_op.h"],
