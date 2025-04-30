@@ -1186,7 +1186,9 @@ rocm_library(
 rocm_library(
     name = "topk_kernel_rocm",
     srcs = [
-        "topk_kernel_rocm.cu.cc",
+        "topk_kernel_rocm_bfloat16.cu.cc",
+        "topk_kernel_rocm_common.cu.h",
+        "topk_kernel_rocm_float.cu.cc",
     ],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     tags = [
