@@ -154,7 +154,7 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
 ## Upgrade hermetic CUDA/CUDNN version
 
 1.  Create and submit a pull request with updated `CUDA_REDIST_JSON_DICT`,
-    `CUDA_REDIST_JSON_DICT` dictionaries in
+    `CUDNN_REDIST_JSON_DICT` dictionaries in
     [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
     Update `CUDA_NCCL_WHEELS` in
@@ -175,6 +175,20 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
     The PR presubmit job executions will launch bazel tests and download
     hermetic CUDA/CUDNN distributions. Verify that the presubmit jobs passed
     before submitting the PR.
+
+3.  For the time optimization some build/test configurations utilize mirrored
+    `.tar` redistributions. The `json` file with information about the mirrored
+    `.tar` redistributions is uploaded some time later after
+    `CUDA_REDIST_JSON_DICT` and `CUDNN_REDIST_JSON_DICT` are updated. One can
+    download these files using
+    `wget "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_<cuda_version>_tar.json"`
+    for `CUDA` and
+    `wget "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_<cudnn_version>_tar.json"`
+    for `CUDNN`.
+    After that create and submit a pull request with updated
+    `MIRRORED_TARS_CUDA_REDIST_JSON_DICT`,
+    `MIRRORED_TARS_CUDNN_REDIST_JSON_DICT` dictionaries in
+    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
 ## Pointing to CUDA/CUDNN/NCCL redistributions on local file system
 
