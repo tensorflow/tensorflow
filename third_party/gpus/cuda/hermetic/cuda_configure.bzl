@@ -23,6 +23,7 @@
     environment variable is used by GCC compiler.
 """
 
+load("@cuda_cccl//:version.bzl", _cccl_version = "VERSION")
 load("@cuda_cublas//:version.bzl", _cublas_version = "VERSION")
 load("@cuda_cudart//:version.bzl", _cudart_version = "VERSION")
 load("@cuda_cudnn//:version.bzl", _cudnn_version = "VERSION")
@@ -31,6 +32,10 @@ load("@cuda_cupti//:version.bzl", _cupti_version = "VERSION")
 load("@cuda_curand//:version.bzl", _curand_version = "VERSION")
 load("@cuda_cusolver//:version.bzl", _cusolver_version = "VERSION")
 load("@cuda_cusparse//:version.bzl", _cusparse_version = "VERSION")
+load("@cuda_nvcc//:version.bzl", _nvcc_version = "VERSION")
+load("@cuda_nvjitlink//:version.bzl", _nvjitlink_version = "VERSION")
+load("@cuda_nvml//:version.bzl", _nvml_version = "VERSION")
+load("@cuda_nvtx//:version.bzl", _nvtx_version = "VERSION")
 load(
     "//third_party/gpus:compiler_common_tools.bzl",
     "get_cxx_inc_directories",
@@ -287,6 +292,11 @@ def _get_cuda_config(repository_ctx):
         cufft_version = _cufft_version,
         cusparse_version = _cusparse_version,
         cudnn_version = _cudnn_version,
+        cccl_version = _cccl_version,
+        nvcc_version = _nvcc_version,
+        nvjitlink_version = _nvjitlink_version,
+        nvml_version = _nvml_version,
+        nvtx_version = _nvtx_version,
         compute_capabilities = _compute_capabilities(repository_ctx),
         cpu_value = get_cpu_value(repository_ctx),
     )
