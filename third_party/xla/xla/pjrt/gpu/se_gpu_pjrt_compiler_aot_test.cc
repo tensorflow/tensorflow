@@ -99,9 +99,8 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           compiler.Compile(opts, mlir_module.get(), *topology,
                                            /*client=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto loaded_executable,
-      se_client->Load(std::move(executable), LoadOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
+                          se_client->Load(std::move(executable)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
@@ -130,7 +129,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
       compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
-      se_client->Load(std::move(executable), LoadOptions()));
+      se_client->Load(std::move(executable)));
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
       loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
@@ -193,7 +192,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
       compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
-      se_client->Load(std::move(executable), LoadOptions()));
+      se_client->Load(std::move(executable)));
 
   // Serialize the executable and deserialize it without failure.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,

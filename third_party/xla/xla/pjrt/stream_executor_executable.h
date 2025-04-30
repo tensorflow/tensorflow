@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/client/local_client.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -40,37 +39,15 @@ class StreamExecutorExecutable : public PjRtExecutable {
       const CompileOptions& compile_options,
       std::vector<std::unique_ptr<xla::AotCompilationResult>> executables,
       int num_replicas, int num_partitions, absl::string_view name,
-      absl::string_view fingerprint, absl::string_view default_memory_kind)
+      absl::string_view fingerprint,
+      std::optional<std::vector<std::vector<absl::string_view>>>
+          output_memory_kinds)
       : compile_options_(compile_options),
-        executables_(std::move(executables)),
+        aot_executables_(std::move(executables)),
         num_replicas_(num_replicas),
         num_partitions_(num_partitions),
         name_(name),
-        fingerprint_(fingerprint),
-        default_memory_kind_(default_memory_kind) {}
-
-  StreamExecutorExecutable(
-      const CompileOptions& compile_options,
-      std::vector<std::unique_ptr<LocalExecutable>> local_executables,
-      LocalClient* local_client, int num_replicas, int num_partitions,
-      absl::string_view name, absl::string_view fingerprint,
-      absl::string_view default_memory_kind)
-      : compile_options_(compile_options),
-        executables_(std::move(local_executables)),
-        local_client_(local_client),
-        num_replicas_(num_replicas),
-        num_partitions_(num_partitions),
-        name_(name),
-        fingerprint_(fingerprint),
-        default_memory_kind_(default_memory_kind) {
-    std::vector<std::shared_ptr<HloModule>> hlo_modules;
-    for (const auto& local_executable :
-         std::get<std::vector<std::unique_ptr<LocalExecutable>>>(
-             executables_)) {
-      hlo_modules.push_back(local_executable->executable()->shared_module());
-    }
-    hlo_modules_ = std::move(hlo_modules);
-  }
+        fingerprint_(fingerprint) {}
 
   absl::StatusOr<std::string> SerializeExecutable() const override;
 
@@ -82,64 +59,27 @@ class StreamExecutorExecutable : public PjRtExecutable {
   }
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
-    if (!hlo_modules_.has_value()) {
-      return absl::UnimplementedError("GetHloModules is not supported.");
-    }
-    return *hlo_modules_;
-  }
-
-  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
-    if (std::holds_alternative<
-            std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
-            executables_)) {
-      return absl::UnimplementedError(
-          "Retrieving CompiledMemoryStats is not supported.");
-    }
-    const auto& local_executables =
-        std::get<std::vector<std::unique_ptr<LocalExecutable>>>(executables_);
-    if (local_executables.size() != 1) {
-      return absl::UnimplementedError(
-          "Retrieving CompiledMemoryStats is not supported for multiple "
-          "executables.");
-    }
-    CompiledMemoryStats memory_stats = CompiledMemoryStats();
-    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
-    const HloProto* proto = local_executables[0]->executable()->hlo_proto();
-    if (proto != nullptr) {
-      memory_stats.serialized_hlo_proto = proto->SerializeAsString();
-    }
-    memory_stats.PopulateBufferStatsFromAllocations(
-        local_executables[0]->executable()->GetAllocations());
-    return memory_stats;
+    return absl::UnimplementedError("GetHloModules is not supported.");
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-  GetOutputMemoryKinds() const override;
-
+  GetOutputMemoryKinds() const override {
+    if (output_memory_kinds_.has_value()) {
+      return *output_memory_kinds_;
+    }
+    return absl::UnimplementedError("GetOutputMemoryKinds is not supported.");
+  }
   absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
   GetCostAnalysis() const override {
     return absl::UnimplementedError("GetCostAnalysis is not supported.");
   }
 
-  int64_t SizeOfGeneratedCodeInBytes() const override {
-    if (std::holds_alternative<
-            std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
-            executables_)) {
-      return 0;
-    }
-    int64_t size = 0;
-    for (auto& executable :
-         std::get<std::vector<std::unique_ptr<LocalExecutable>>>(
-             executables_)) {
-      size += executable->executable()->SizeOfGeneratedCodeInBytes();
-    }
-    return size;
-  }
+  int64_t SizeOfGeneratedCodeInBytes() const override { return 0; }
 
   const CompileOptions& compile_options() const { return compile_options_; }
-
-  absl::StatusOr<std::vector<std::unique_ptr<LocalExecutable>>>
-  ConsumeExecutable(LocalClient* client, const CompileOptions& compile_options);
+  std::vector<std::unique_ptr<xla::AotCompilationResult>>& aot_executables() {
+    return aot_executables_;
+  }
 
   absl::StatusOr<std::string> FingerprintExecutable() const override {
     return fingerprint_;
@@ -147,16 +87,13 @@ class StreamExecutorExecutable : public PjRtExecutable {
 
  private:
   CompileOptions compile_options_;
-  std::variant<std::vector<std::unique_ptr<xla::AotCompilationResult>>,
-               std::vector<std::unique_ptr<LocalExecutable>>>
-      executables_;
-  LocalClient* local_client_ = nullptr;
-  std::optional<std::vector<std::shared_ptr<HloModule>>> hlo_modules_;
+  std::vector<std::unique_ptr<xla::AotCompilationResult>> aot_executables_;
   int num_replicas_;
   int num_partitions_;
   std::string name_;
   std::string fingerprint_;
-  absl::string_view default_memory_kind_;
+  std::optional<std::vector<std::vector<absl::string_view>>>
+      output_memory_kinds_;
 };
 }  // namespace xla
 
