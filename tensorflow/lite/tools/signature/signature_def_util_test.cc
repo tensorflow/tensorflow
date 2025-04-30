@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/signature/signature_def_util.h"
 
+#include <map>
+#include <memory>
 #include <string>
 
 #include <gtest/gtest.h>
