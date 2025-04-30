@@ -529,6 +529,9 @@ class TfrtGpuBuffer final : public PjRtBuffer {
             /*sends_were_enqueued=*/false);
   }
 
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
+      PjRtFuture<> dependency) override;
+
   PjRtFuture<> GetReadyFuture() override;
 
   bool IsOnCpu() const override;

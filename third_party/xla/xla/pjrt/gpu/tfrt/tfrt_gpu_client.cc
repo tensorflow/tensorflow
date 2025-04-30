@@ -2242,6 +2242,66 @@ PjRtFuture<> TfrtGpuBuffer::GetReadyFuture() {
       });
 }
 
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+TfrtGpuBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
+  VLOG(3) << "TfrtGpuBuffer::DonateWithControlDependency";
+
+  // Acquire donation hold.
+  TF_ASSIGN_OR_RETURN(auto donation_transaction, AcquireDonation());
+  TrackedTfrtGpuDeviceBuffer* original_tracked_buffer =
+      donation_transaction.device_buffer();
+
+  // Check if the original buffer is valid.
+  if (original_tracked_buffer == nullptr) {
+    // Donation hold is released on destruction, return error.
+    return InvalidArgument(
+        "DonateWithControlDependency was called on a deleted or donated "
+        "buffer.");
+  }
+
+  // Get definition event and buffer data Async Values.
+  tsl::AsyncValueRef<MaybeOwningGpuMemory> buffer_data_av =
+      original_tracked_buffer->buffer();
+  tsl::AsyncValueRef<GpuEvent> original_def_event =
+      original_tracked_buffer->definition_event();
+
+  // Create new event for donated buffer, the dependency will resolve it.
+  tsl::AsyncValueRef<GpuEvent> donation_event =
+      tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+
+  // Create new buffer with the combined event and underlying data from the
+  // original buffer.
+  absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> new_definition_events{
+      donation_event.CopyRef(), original_def_event.CopyRef()};
+  auto new_tracked_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+      std::move(buffer_data_av), new_definition_events,
+      std::move(original_tracked_buffer->on_delete_callback_));
+
+  // Create the new PjRtBuffer wrapper.
+  auto new_pjrt_buffer = std::make_unique<TfrtGpuBuffer>(
+      on_device_shape(),  // Reuse the shape
+      std::move(new_tracked_buffer),
+      client_,  // Reuse client, device, memory space
+      device_, memory_space_);
+
+  // Resolve the donation event when the dependency is ready.
+  dependency.OnReady([donation_event](absl::Status status) mutable {
+    if (status.ok()) {
+      donation_event.SetStateConcrete();
+    } else {
+      donation_event.SetError(status);
+    }
+  });
+
+  // Commit the donation transaction when the original definition event is ready
+  original_def_event.AndThen(
+      [donation_transaction = std::move(donation_transaction)]() mutable {
+        std::move(donation_transaction).Commit();
+      });
+
+  return new_pjrt_buffer;
+}
+
 bool TfrtGpuBuffer::IsOnCpu() const {
   return memory_space() != nullptr &&
          memory_space()->kind() == PinnedHostMemorySpace::kKind;

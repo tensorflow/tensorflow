@@ -495,6 +495,43 @@ TEST(TfrtGpuClientTest, AcquireDonation) {
       DonationTransactionPeer::GetDonationEvent(tfrt_buffer.get()).get());
 }
 
+TEST(TfrtGpuClientTest, DonateWithControlDependency) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  auto literal = LiteralUtil::CreateR2({{1, 2, 3}, {4, 5, 6}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+
+  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
+  auto blocked_buffer =
+      std::move(*(buffer->DonateWithControlDependency(future)));
+  EXPECT_TRUE(buffer->IsDeleted());
+
+  buffer.reset();
+  absl::Mutex mu;
+  auto result_literal = std::make_shared<Literal>(
+      ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
+  bool got_literal = false;
+  blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
+    absl::MutexLock l(&mu);
+    TF_ASSERT_OK(s);
+    got_literal = true;
+  });
+  blocked_buffer.reset();
+
+  EXPECT_FALSE(got_literal);
+  promise.Set();
+  EXPECT_TRUE(future.IsReady());
+
+  {
+    absl::MutexLock l(&mu);
+    mu.Await(absl::Condition(&got_literal));
+  }
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal, *result_literal));
+}
+
 TEST(TfrtGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
   GpuClientOptions options_staging;
   options_staging.should_stage_host_to_device_transfers = true;

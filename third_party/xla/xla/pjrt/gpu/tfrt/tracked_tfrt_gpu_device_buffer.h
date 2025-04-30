@@ -155,6 +155,8 @@ class TrackedTfrtGpuDeviceBuffer {
   // non-owning. Used for buffer donation.
   void SetUnOwned();
 
+  friend class TfrtGpuBuffer;
+
  private:
   tsl::AsyncValueRef<MaybeOwningGpuMemory> buffer_;
 
