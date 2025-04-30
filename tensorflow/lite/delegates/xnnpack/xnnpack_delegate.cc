@@ -599,17 +599,17 @@ class Delegate {
 
   bool support_variable_ops() const {
     if (options_.flags & TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS) {
-      return true;
+      TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_ERROR,
+                           "Variable ops support is enabled by default, "
+                           "TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS is "
+                           "deprecated and will be removed in the future.");
     } else if (options_.handle_variable_ops) {
-      TFLITE_LOG_PROD_ONCE(
-          tflite::TFLITE_LOG_ERROR,
-          "TfLiteXNNPackDelegateOptions::handle_variable_ops "
-          "is deprecated and will be removed in the future. "
-          "Use TfLiteXNNPackDelegateOptions::flags with "
-          "TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS mask");
-      return true;
+      TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_ERROR,
+                           "Variable ops support is enabled by default, "
+                           "TfLiteXNNPackDelegateOptions::handle_variable_ops "
+                           "is deprecated and will be removed in the future.");
     }
-    return false;
+    return true;
   }
 
   bool transient_indirection_buffer() const {

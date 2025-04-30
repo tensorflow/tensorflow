@@ -205,18 +205,6 @@ does not allow new instances to be created, and has lower memory overhead. Soft
 finalization allows new instances to be created, and has higher memory overhead
 (up to the size of the largest packed weights, rounded up to page alignment).
 
-### Using XNNPACK for variable operations
-
-XNNPACK can handle resource variables and associated operations: `VAR_HANDLE`,
-`READ_VARIABLE`, and `ASSIGN_VARIABLE`, but needs to be opted in by the user
-using delegate options:
-
-```c++
-TfLiteXNNPackDelegateOptions xnnpack_options =
-    TfLiteXNNPackDelegateOptionsDefault();
-xnnpack_options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS;
-```
-
 ## Profiling
 When TfLite profiling is enabled, XNNPACK will time each operator and report the
 results to TfLite which will print them as part of the overall execution profile.
