@@ -198,6 +198,7 @@ Status PlanAndAlgorithms::ExecuteOnStream(
   if (!plan || algorithm_idx >= algorithms.size()) {
     return errors::Internal("MatmulPlan or algorithms are not initialized!");
   }
+  TF_RETURN_IF_ERROR(plan->SetAlgorithm(algorithms[algorithm_idx]));
   return plan->ExecuteOnStream(stream, a, b, c, c,
                                bias,                    // bias_buffer
                                se::DeviceMemoryBase{},  // aux_buffer
@@ -206,8 +207,7 @@ Status PlanAndAlgorithms::ExecuteOnStream(
                                se::DeviceMemoryBase{},  // c_scale_buffer
                                se::DeviceMemoryBase{},  // d_scale_buffer
                                se::DeviceMemoryBase{},  // d_amax_buffer
-                               algorithms[algorithm_idx], scratch_allocator,
-                               profile_result);
+                               scratch_allocator, profile_result);
 }
 
 }  // namespace tensorflow
