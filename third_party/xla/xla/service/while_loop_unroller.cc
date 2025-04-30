@@ -117,7 +117,7 @@ absl::Status HandleDynamicGteOrTuple(HloInstruction* instr) {
     auto index = LiteralUtil::LiteralAsScalarInt64(std::move(index_lit));
     // The index must have a compile-time integer value at this point.
     TF_RET_CHECK(index.has_value());
-    for (int64_t i = 0; i < instr->operand(0)->shape().tuple_shapes_size();
+    for (int64_t i = 0; i < instr->operand(0)->shape().tuple_shapes().size();
          i++) {
       if (i == index.value()) {
         tuple_operands.push_back(instr->mutable_operand(1));
@@ -589,8 +589,9 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     }
 
     const Shape& operand_shape = operand->shape();
-    CHECK_EQ(result_shape.dimensions_size(), operand_shape.dimensions_size());
-    for (int64_t i = 0; i < result_shape.dimensions_size(); ++i) {
+    CHECK_EQ(result_shape.dimensions().size(),
+             operand_shape.dimensions().size());
+    for (int64_t i = 0; i < result_shape.dimensions().size(); ++i) {
       if (i != dynamic_index &&
           result_shape.dimensions(i) != operand_shape.dimensions(i)) {
         VLOG(3) << "The slice sizes must match the operand-shape on "
@@ -637,8 +638,8 @@ std::optional<int64_t> AdvancedMatchShapeCoveringDynamicIndexInstruction(
   input = instr->operand(0);
   const Shape& input_shape = input->shape();
 
-  const int64_t num_indices = slice_shape->dimensions_size();
-  CHECK_EQ(num_indices, input_shape.dimensions_size());
+  const int64_t num_indices = slice_shape->dimensions().size();
+  CHECK_EQ(num_indices, input_shape.dimensions().size());
   CHECK_EQ(num_indices, instr->operand_count() - start_indices_offset);
 
   std::vector<int64_t> dynamic_indices;

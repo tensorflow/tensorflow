@@ -65,7 +65,7 @@ struct MovableAllReduceContext {
 };
 
 bool IsZero(const HloInstruction* hlo) {
-  if (hlo->IsConstant() && hlo->shape().dimensions_size() == 0 &&
+  if (hlo->IsConstant() && hlo->shape().dimensions().size() == 0 &&
       hlo->literal().IsZero({})) {
     return true;
   }
@@ -873,7 +873,7 @@ HloInstruction* CreateNewWhileResult(
   HloComputation* while_parent = new_while_instruction->parent();
   CHECK(new_while_instruction->shape().IsTuple());
   std::vector<HloInstruction*> new_while_result_elements(
-      new_while_instruction->shape().tuple_shapes_size(), nullptr);
+      new_while_instruction->shape().tuple_shapes().size(), nullptr);
   for (int i = 0; i < new_while_result_elements.size(); i++) {
     if (ContainsKey(tuple_index_to_new_buffer, i)) {
       new_while_result_elements[i] = tuple_index_to_new_buffer.at(i);
