@@ -248,11 +248,10 @@ struct StablehloCanonicalizeFromHloImportPass
 
     // Apply patterns without folding
     GreedyRewriteConfig config;
-    config.useTopDownTraversal = true;
-    config.enableRegionSimplification =
-        mlir::GreedySimplifyRegionLevel::Disabled;
-    config.fold = false;
-    config.cseConstants = false;
+    config.setUseTopDownTraversal(true)
+        .setRegionSimplificationLevel(mlir::GreedySimplifyRegionLevel::Disabled)
+        .enableFolding(false)
+        .enableConstantCSE(false);
     if (failed(applyPatternsGreedily(func, std::move(patterns), config)))
       signalPassFailure();
   }

@@ -1,772 +1,895 @@
+diff --git a/shardy/dialect/sdy/transforms/import/import_pipeline.cc b/shardy/dialect/sdy/transforms/import/import_pipeline.cc
+index 941273c..602fd7b 100644
+--- a/shardy/dialect/sdy/transforms/import/import_pipeline.cc
++++ b/shardy/dialect/sdy/transforms/import/import_pipeline.cc
+@@ -28,14 +28,13 @@ namespace sdy {
+ namespace {
+ 
+ GreedyRewriteConfig getCanonicalizerConfig(bool enableRegionSimplification) {
+-  GreedyRewriteConfig config;
+-  config.useTopDownTraversal = true;
+-  config.enableRegionSimplification = enableRegionSimplification
+-                                          ? GreedySimplifyRegionLevel::Normal
+-                                          : GreedySimplifyRegionLevel::Disabled;
+-  config.fold = false;
+-  config.cseConstants = false;
+-  return config;
++  return GreedyRewriteConfig()
++      .setUseTopDownTraversal(true)
++      .setRegionSimplificationLevel(enableRegionSimplification
++                                        ? GreedySimplifyRegionLevel::Normal
++                                        : GreedySimplifyRegionLevel::Disabled)
++      .enableFolding(false)
++      .enableConstantCSE(false);
+ }
+ 
+ }  // namespace
+diff --git a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
+index 1e16cfe..204347a 100644
+--- a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
+@@ -627,19 +627,19 @@ LogicalResult BasicPropagationPassImpl::propagate(
+   // set the max iterations to 1, to avoid the redundant iteration to check
+   // convergence.
+   GreedyRewriteConfig config;
+-  config.useTopDownTraversal = true;
+-  config.enableRegionSimplification = mlir::GreedySimplifyRegionLevel::Disabled;
+-  config.maxIterations = 1;
++  config.setUseTopDownTraversal(true)
++      .setRegionSimplificationLevel(mlir::GreedySimplifyRegionLevel::Disabled)
++      .enableFolding(false)
++      .enableConstantCSE(false)
++      .setMaxIterations(1);
+ #ifndef NDEBUG
+-  config.maxIterations = 2;
++  config.setMaxIterations(2);
+ #endif
+-  config.fold = false;
+-  config.cseConstants = false;
+   if (failed(applyPatternsGreedily(moduleOp, std::move(patterns), config)) &&
+-      config.maxIterations > 1) {
++      config.getMaxIterations() > 1) {
+     // We should always converge in 2 iterations, otherwise something is wrong.
+     emitWarning(moduleOp->getLoc(), "Failed to converge after ")
+-        << config.maxIterations << " iterations, this shouldn't happen. "
++        << config.getMaxIterations() << " iterations, this shouldn't happen. "
+         << "please contact the Shardy team.";
+   }
+ 
+diff --git a/shardy/round_trip_import/pipelines.cc b/shardy/round_trip_import/pipelines.cc
+index 3d69f5c..f1269be 100644
+--- a/shardy/round_trip_import/pipelines.cc
++++ b/shardy/round_trip_import/pipelines.cc
+@@ -35,10 +35,10 @@ namespace sdy {
+ 
+ void addSdyRoundTripImportPipeline(OpPassManager& pm) {
+   GreedyRewriteConfig config;
+-  config.useTopDownTraversal = true;
+-  config.enableRegionSimplification = GreedySimplifyRegionLevel::Disabled;
+-  config.fold = false;
+-  config.cseConstants = false;
++  config.setUseTopDownTraversal(true)
++      .setRegionSimplificationLevel(GreedySimplifyRegionLevel::Disabled)
++      .enableFolding(false)
++      .enableConstantCSE(false);
+   pm.addNestedPass<func::FuncOp>(
+       stablehlo::createStablehloAggressiveSimplificationPass(config));
+   pm.addPass(createSdyRoundTripImportCallbackCustomCallsPass());
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 5a85039..61dd4cf 100644
+index 61dd4cf..1c6b5a1 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,34 +1,19 @@
+@@ -1,476 +1,76 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/clang/lib/AST/ItaniumMangle.cpp b/clang/lib/AST/ItaniumMangle.cpp
----- a/clang/lib/AST/ItaniumMangle.cpp
--+++ b/clang/lib/AST/ItaniumMangle.cpp
--@@ -1405,16 +1405,6 @@
--     //   - a template template parameter with arguments
--     // In all of these cases, we should have no prefix.
--     if (NestedNameSpecifier *Prefix = qualifier->getPrefix()) {
---      if (const auto *DTST =
---              dyn_cast<DependentTemplateSpecializationType>(type)) {
---        Out << "srN";
---        TemplateName Template = getASTContext().getDependentTemplateName(
---            {Prefix, DTST->getDependentTemplateName().getName(),
---             /*HasTemplateKeyword=*/true});
---        mangleTemplatePrefix(Template);
---        mangleTemplateArgs(Template, DTST->template_arguments());
---        break;
---      }
--       mangleUnresolvedPrefix(Prefix,
--                              /*recursive=*/true);
--     } else {
--@@ -2618,7 +2608,8 @@
--         cast<DependentTemplateSpecializationType>(Ty);
--     TemplateName Template = getASTContext().getDependentTemplateName(
--         DTST->getDependentTemplateName());
---    mangleTemplatePrefix(Template);
--+    const DependentTemplateStorage &S = DTST->getDependentTemplateName();
--+    mangleSourceName(S.getName().getIdentifier());
--     mangleTemplateArgs(Template, DTST->template_arguments());
--     break;
+-diff -ruN --strip-trailing-cr a/clang/lib/Basic/Targets/SPIR.h b/clang/lib/Basic/Targets/SPIR.h
+---- a/clang/lib/Basic/Targets/SPIR.h
+-+++ b/clang/lib/Basic/Targets/SPIR.h
+-@@ -57,8 +57,9 @@
+- // Used by both the SPIR and SPIR-V targets.
+- static const unsigned SPIRDefIsGenMap[] = {
+-     4, // Default
+--    // OpenCL address space values for this map are dummy and they can't be used
+--    0, // opencl_global
+-+    // Some OpenCL address space values for this map are dummy and they can't be
+-+    // used
+-+    1, // opencl_global
+-     0, // opencl_local
+-     0, // opencl_constant
+-     0, // opencl_private
+-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.cpp b/clang/lib/CodeGen/CGDebugInfo.cpp
+---- a/clang/lib/CodeGen/CGDebugInfo.cpp
+-+++ b/clang/lib/CodeGen/CGDebugInfo.cpp
+-@@ -2018,17 +2018,8 @@
+-   return getOrCreateInstanceMethodType(ThisType, Func, Unit);
+- }
+- 
+--llvm::DISubroutineType *CGDebugInfo::getOrCreateMethodTypeForDestructor(
+--    const CXXMethodDecl *Method, llvm::DIFile *Unit, QualType FNType) {
+--  const FunctionProtoType *Func = FNType->getAs<FunctionProtoType>();
+--  // skip the first param since it is also this
+--  return getOrCreateInstanceMethodType(Method->getThisType(), Func, Unit, true);
+--}
+--
+--llvm::DISubroutineType *
+--CGDebugInfo::getOrCreateInstanceMethodType(QualType ThisPtr,
+--                                           const FunctionProtoType *Func,
+--                                           llvm::DIFile *Unit, bool SkipFirst) {
+-+llvm::DISubroutineType *CGDebugInfo::getOrCreateInstanceMethodType(
+-+    QualType ThisPtr, const FunctionProtoType *Func, llvm::DIFile *Unit) {
+-   FunctionProtoType::ExtProtoInfo EPI = Func->getExtProtoInfo();
+-   Qualifiers &Qc = EPI.TypeQuals;
+-   Qc.removeConst();
+-@@ -2068,7 +2059,7 @@
 -   }
-+diff -ruN --strip-trailing-cr a/clang/lib/Basic/Targets/SPIR.h b/clang/lib/Basic/Targets/SPIR.h
-+--- a/clang/lib/Basic/Targets/SPIR.h
-++++ b/clang/lib/Basic/Targets/SPIR.h
-+@@ -57,8 +57,9 @@
-+ // Used by both the SPIR and SPIR-V targets.
-+ static const unsigned SPIRDefIsGenMap[] = {
-+     4, // Default
-+-    // OpenCL address space values for this map are dummy and they can't be used
-+-    0, // opencl_global
-++    // Some OpenCL address space values for this map are dummy and they can't be
-++    // used
-++    1, // opencl_global
-+     0, // opencl_local
-+     0, // opencl_constant
-+     0, // opencl_private
- diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.cpp b/clang/lib/CodeGen/CGDebugInfo.cpp
- --- a/clang/lib/CodeGen/CGDebugInfo.cpp
- +++ b/clang/lib/CodeGen/CGDebugInfo.cpp
-@@ -96,7 +81,7 @@ diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.h b/clang/lib/Code
- diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.cpp b/clang/lib/CodeGen/CodeGenModule.cpp
- --- a/clang/lib/CodeGen/CodeGenModule.cpp
- +++ b/clang/lib/CodeGen/CodeGenModule.cpp
--@@ -5812,15 +5812,24 @@
-+@@ -5837,15 +5837,24 @@
-      }
-  }
+- 
+-   // Copy rest of the arguments.
+--  for (unsigned i = (SkipFirst ? 2 : 1), e = Args.size(); i != e; ++i)
+-+  for (unsigned i = 1, e = Args.size(); i != e; ++i)
+-     Elts.push_back(Args[i]);
+- 
+-   // Attach FlagObjectPointer to the explicit "this" parameter.
+-@@ -4381,12 +4372,6 @@
+-     // subprogram DIE will miss DW_AT_decl_file and DW_AT_decl_line fields.
+-     return DBuilder.createSubroutineType(DBuilder.getOrCreateTypeArray({}));
++diff -ruN --strip-trailing-cr a/clang/include/clang/AST/OperationKinds.def b/clang/include/clang/AST/OperationKinds.def
++--- a/clang/include/clang/AST/OperationKinds.def
+++++ b/clang/include/clang/AST/OperationKinds.def
++@@ -119,7 +119,8 @@
++ CAST_OPERATION(FunctionToPointerDecay)
   
-@@ -124,6 +109,45 @@ diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.cpp b/clang/lib/
-      }
-  }
-  
-+diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReaderDecl.cpp b/clang/lib/Serialization/ASTReaderDecl.cpp
-+--- a/clang/lib/Serialization/ASTReaderDecl.cpp
-++++ b/clang/lib/Serialization/ASTReaderDecl.cpp
-+@@ -1076,6 +1076,8 @@
-+   FD->setFriendConstraintRefersToEnclosingTemplate(
-+       FunctionDeclBits.getNextBit());
-+   FD->setUsesSEHTry(FunctionDeclBits.getNextBit());
-++  FD->setIsDestroyingOperatorDelete(FunctionDeclBits.getNextBit());
-++  FD->setIsTypeAwareOperatorNewOrDelete(FunctionDeclBits.getNextBit());
-+ 
-+   FD->EndRangeLoc = readSourceLocation();
-+   if (FD->isExplicitlyDefaulted())
-+diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriterDecl.cpp b/clang/lib/Serialization/ASTWriterDecl.cpp
-+--- a/clang/lib/Serialization/ASTWriterDecl.cpp
-++++ b/clang/lib/Serialization/ASTWriterDecl.cpp
-+@@ -847,6 +847,8 @@
-+   FunctionDeclBits.addBit(D->isInstantiatedFromMemberTemplate());
-+   FunctionDeclBits.addBit(D->FriendConstraintRefersToEnclosingTemplate());
-+   FunctionDeclBits.addBit(D->usesSEHTry());
-++  FunctionDeclBits.addBit(D->isDestroyingOperatorDelete());
-++  FunctionDeclBits.addBit(D->isTypeAwareOperatorNewOrDelete());
-+   Record.push_back(FunctionDeclBits);
-+ 
-+   Record.AddSourceLocation(D->getEndLoc());
-+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCUDASPIRV/printf.cu b/clang/test/CodeGenCUDASPIRV/printf.cu
-+--- a/clang/test/CodeGenCUDASPIRV/printf.cu
-++++ b/clang/test/CodeGenCUDASPIRV/printf.cu
-+@@ -0,0 +1,11 @@
-++// RUN: %clang_cc1 -fcuda-is-device -triple spirv32 -o - -emit-llvm -x cuda %s  | FileCheck --check-prefix=CHECK-SPIRV32 %s
-++// RUN: %clang_cc1 -fcuda-is-device -triple spirv64 -o - -emit-llvm -x cuda %s  | FileCheck --check-prefix=CHECK-SPIRV64 %s
-++
-++// CHECK-SPIRV32: @.str = private unnamed_addr addrspace(4) constant [13 x i8] c"Hello World\0A\00", align 1
-++// CHECK-SPIRV64: @.str = private unnamed_addr addrspace(1) constant [13 x i8] c"Hello World\0A\00", align 1
-++
-++extern "C" __attribute__((device)) int printf(const char* format, ...);
-++
-++__attribute__((global)) void printf_kernel() {
-++  printf("Hello World\n");
-++}
- diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp b/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp
- --- a/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp
- +++ b/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp
-@@ -152,310 +176,301 @@ diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/debug-info-dtor-implicit-a
- -// MSVC-DAG: !{{[0-9]+}} = !DILocalVariable(name: "should_call_delete", arg: 2, scope: ![[destructor]], type: ![[inttype]], flags: DIFlagArtificial)
- -// MSVC-DAG: ![[subroutinetype]] = !DISubroutineType(types: ![[types:[0-9]+]])
- -// MSVC-DAG: [[types]] = !{![[voidpointertype]], !{{[0-9]+}}, ![[inttype]]}
--diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/mangle-template.cpp b/clang/test/CodeGenCXX/mangle-template.cpp
----- a/clang/test/CodeGenCXX/mangle-template.cpp
--+++ b/clang/test/CodeGenCXX/mangle-template.cpp
--@@ -416,3 +416,20 @@
--   template enable_if<true> raw_hash_set<int>::AbslHashValue<HashStateBase>();
--   // CHECH: @_ZN39unresolved_template_specialization_type12raw_hash_setIiE13AbslHashValueINS_13HashStateBaseEEENS_9enable_ifIXsrNT_11is_hashableIiEE5valueEEEv
-- } // namespace unresolved_template_specialization_type
-+diff -ruN --strip-trailing-cr a/clang/test/Modules/Inputs/PR137102/module.modulemap b/clang/test/Modules/Inputs/PR137102/module.modulemap
-+--- a/clang/test/Modules/Inputs/PR137102/module.modulemap
-++++ b/clang/test/Modules/Inputs/PR137102/module.modulemap
-+@@ -0,0 +1 @@
-++module type_aware_destroying_new_delete { header "type_aware_destroying_new_delete.h" export * }
-+diff -ruN --strip-trailing-cr a/clang/test/Modules/Inputs/PR137102/type_aware_destroying_new_delete.h b/clang/test/Modules/Inputs/PR137102/type_aware_destroying_new_delete.h
-+--- a/clang/test/Modules/Inputs/PR137102/type_aware_destroying_new_delete.h
-++++ b/clang/test/Modules/Inputs/PR137102/type_aware_destroying_new_delete.h
-+@@ -0,0 +1,52 @@
- +
--+namespace GH133610 {
--+  template <class T> struct A {
--+    template <class V> struct B { int MEM; };
--+  };
-++namespace std {
-++    struct destroying_delete_t { };
-++    template <class T> struct type_identity {
-++        using type = T;
-++    };
-++    typedef __SIZE_TYPE__ size_t;
-++    enum class align_val_t : size_t;
-++};
- +
--+  struct D {};
--+  struct C: public A<int>::B<D> {};
-++struct A {
-++    A();
-++   void *operator new(std::size_t);
-++   void operator delete(A*, std::destroying_delete_t);
-++};
- +
--+  template <class T, class U, class V>
--+  auto k(T t, U u, V v) -> decltype (t.U::template B<V>::MEM) { return {}; }
-++struct B {
-++    B();
-++    void *operator new(std::type_identity<B>, std::size_t, std::align_val_t);
-++    void operator delete(std::type_identity<B>, void*, std::size_t, std::align_val_t);
-++};
- +
--+  void t() {
--+    k( C(), A<int>(), D() );
--+  }
--+  // CHECK: @_ZN8GH1336101kINS_1CENS_1AIiEENS_1DEEEDtdtfp_sr1U1BIT1_EE3MEMET_T0_S5_
--+} // namespace GH133610
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp b/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp
----- a/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp
--+++ b/llvm/lib/Transforms/Scalar/ConstraintElimination.cpp
--@@ -1141,8 +1141,6 @@
--         break;
--       [[fallthrough]];
--     case Intrinsic::abs:
---    case Intrinsic::uadd_sat:
---    case Intrinsic::usub_sat:
--       WorkList.push_back(FactOrCheck::getInstFact(DT.getNode(&BB), &I));
--       break;
+--  if (const auto *Method = dyn_cast<CXXDestructorDecl>(D)) {
+--    // Read method type from 'FnType' because 'D.getType()' does not cover
+--    // implicit arguments for destructors.
+--    return getOrCreateMethodTypeForDestructor(Method, F, FnType);
+--  }
+--
+-   if (const auto *Method = dyn_cast<CXXMethodDecl>(D))
+-     return getOrCreateMethodType(Method, F);
+- 
+-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.h b/clang/lib/CodeGen/CGDebugInfo.h
+---- a/clang/lib/CodeGen/CGDebugInfo.h
+-+++ b/clang/lib/CodeGen/CGDebugInfo.h
+-@@ -249,14 +249,9 @@
+-   /// to get a method type which includes \c this pointer.
+-   llvm::DISubroutineType *getOrCreateMethodType(const CXXMethodDecl *Method,
+-                                                 llvm::DIFile *F);
+--
+--  llvm::DISubroutineType *
+--  getOrCreateMethodTypeForDestructor(const CXXMethodDecl *Method,
+--                                     llvm::DIFile *F, QualType FNType);
+--
+-   llvm::DISubroutineType *
+-   getOrCreateInstanceMethodType(QualType ThisPtr, const FunctionProtoType *Func,
+--                                llvm::DIFile *Unit, bool SkipFirst = false);
+-+                                llvm::DIFile *Unit);
+-   llvm::DISubroutineType *
+-   getOrCreateFunctionType(const Decl *D, QualType FnType, llvm::DIFile *F);
+-   /// \return debug info descriptor for vtable.
+-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.cpp b/clang/lib/CodeGen/CodeGenModule.cpp
+---- a/clang/lib/CodeGen/CodeGenModule.cpp
+-+++ b/clang/lib/CodeGen/CodeGenModule.cpp
+-@@ -5837,15 +5837,24 @@
 -     }
--@@ -1893,26 +1891,13 @@
--         AddFact(CmpInst::ICMP_SGE, CB.Inst, X);
--         continue;
--       }
-++struct C {
-++    C();
-++    template <class T> void *operator new(std::type_identity<T>, std::size_t, std::align_val_t);
-++    template <class T> void operator delete(std::type_identity<T>, void*, std::size_t, std::align_val_t);
-++};
-++
-++struct D {
-++    D();
-++};
-++void *operator new(std::type_identity<D>, std::size_t, std::align_val_t);
-++void operator delete(std::type_identity<D>, void*, std::size_t, std::align_val_t);
-++
-++struct E {
-++    E();
-++};
-++template <class T> void *operator new(std::type_identity<T>, std::size_t, std::align_val_t);
-++template <class T> void operator delete(std::type_identity<T>, void*, std::size_t, std::align_val_t);
-++
-++void in_module_tests() {
-++  A* a = new A;
-++  delete a;
-++  B *b = new B;
-++  delete b;
-++  C *c = new C;
-++  delete c;
-++  D *d = new D;
-++  delete d;
-++  E *e = new E;
-++  delete e;
-++}
-+diff -ruN --strip-trailing-cr a/clang/test/Modules/type-aware-destroying-new-and-delete-modules.cpp b/clang/test/Modules/type-aware-destroying-new-and-delete-modules.cpp
-+--- a/clang/test/Modules/type-aware-destroying-new-and-delete-modules.cpp
-++++ b/clang/test/Modules/type-aware-destroying-new-and-delete-modules.cpp
-+@@ -0,0 +1,23 @@
-++// RUN: rm -rf %t
-++// RUN: %clang_cc1 -fmodules -fimplicit-module-maps -x c++ -std=c++26 -fmodules-cache-path=%t -I %S/Inputs/PR137102 -emit-llvm-only %s
-++// RUN: %clang_cc1 -fmodules -fimplicit-module-maps -x c++ -std=c++26 -fmodules-cache-path=%t -I %S/Inputs/PR137102 -emit-llvm-only %s -triple i686-windows
-++
-++#include "type_aware_destroying_new_delete.h"
-++
-++
-++static void call_in_module_function(void) {
-++    in_module_tests();
-++}
-++
-++void out_of_module_tests() {
-++    A* a = new A;
-++    delete a;
-++    B *b = new B;
-++    delete b;
-++    C *c = new C;
-++    delete c;
-++    D *d = new D;
-++    delete d;
-++    E *e = new E;
-++    delete e;
-++}
-+diff -ruN --strip-trailing-cr a/clang/test/PCH/Inputs/type_aware_destroying_new_delete.h b/clang/test/PCH/Inputs/type_aware_destroying_new_delete.h
-+--- a/clang/test/PCH/Inputs/type_aware_destroying_new_delete.h
-++++ b/clang/test/PCH/Inputs/type_aware_destroying_new_delete.h
-+@@ -0,0 +1,52 @@
-++
-++namespace std {
-++    struct destroying_delete_t { };
-++    template <class T> struct type_identity {
-++        using type = T;
-++    };
-++    typedef __SIZE_TYPE__ size_t;
-++    enum class align_val_t : size_t;
-++};
-++
-++struct A {
-++    A();
-++   void *operator new(std::size_t);
-++   void operator delete(A*, std::destroying_delete_t);
-++};
-++
-++struct B {
-++    B();
-++    void *operator new(std::type_identity<B>, std::size_t, std::align_val_t);
-++    void operator delete(std::type_identity<B>, void*, std::size_t, std::align_val_t);
-++};
-++
-++struct C {
-++    C();
-++    template <class T> void *operator new(std::type_identity<T>, std::size_t, std::align_val_t);
-++    template <class T> void operator delete(std::type_identity<T>, void*, std::size_t, std::align_val_t);
-++};
-++
-++struct D {
-++    D();
-++};
-++void *operator new(std::type_identity<D>, std::size_t, std::align_val_t);
-++void operator delete(std::type_identity<D>, void*, std::size_t, std::align_val_t);
-++
-++struct E {
-++    E();
-++};
-++template <class T> void *operator new(std::type_identity<T>, std::size_t, std::align_val_t);
-++template <class T> void operator delete(std::type_identity<T>, void*, std::size_t, std::align_val_t);
-++
-++void in_pch_tests() {
-++  A* a = new A;
-++  delete a;
-++  B *b = new B;
-++  delete b;
-++  C *c = new C;
-++  delete c;
-++  D *d = new D;
-++  delete d;
-++  E *e = new E;
-++  delete e;
-++}
-+diff -ruN --strip-trailing-cr a/clang/test/PCH/type-aware-destroying-new-and-delete-pch.cpp b/clang/test/PCH/type-aware-destroying-new-and-delete-pch.cpp
-+--- a/clang/test/PCH/type-aware-destroying-new-and-delete-pch.cpp
-++++ b/clang/test/PCH/type-aware-destroying-new-and-delete-pch.cpp
-+@@ -0,0 +1,27 @@
-++// Test this without pch.
-++// RUN: %clang_cc1 -x c++ -std=c++26 -include %S/Inputs/type_aware_destroying_new_delete.h -emit-llvm -o - %s
-++
-++// Test with pch.
-++// RUN: %clang_cc1 -x c++ -std=c++26 -emit-pch -o %t %S/Inputs/type_aware_destroying_new_delete.h
-++// RUN: %clang_cc1 -x c++ -std=c++26 -include-pch %t -emit-llvm -o - %s 
- +
--       if (auto *MinMax = dyn_cast<MinMaxIntrinsic>(CB.Inst)) {
--         Pred = ICmpInst::getNonStrictPredicate(MinMax->getPredicate());
--         AddFact(Pred, MinMax, MinMax->getLHS());
--         AddFact(Pred, MinMax, MinMax->getRHS());
--         continue;
--       }
---      if (auto *USatI = dyn_cast<SaturatingInst>(CB.Inst)) {
---        switch (USatI->getIntrinsicID()) {
---        default:
---          llvm_unreachable("Unexpected intrinsic.");
---        case Intrinsic::uadd_sat:
---          AddFact(ICmpInst::ICMP_UGE, USatI, USatI->getLHS());
---          AddFact(ICmpInst::ICMP_UGE, USatI, USatI->getRHS());
---          break;
---        case Intrinsic::usub_sat:
---          AddFact(ICmpInst::ICMP_ULE, USatI, USatI->getLHS());
---          break;
---        }
---        continue;
---      }
-++// RUN: %clang_cc1 -x c++ -std=c++11 -emit-pch -fpch-instantiate-templates -o %t %S/Inputs/type_aware_destroying_new_delete.h
-++// RUN: %clang_cc1 -x c++ -std=c++11 -include-pch %t -emit-llvm -o - %s
-++
-++
-++static void call_in_pch_function(void) {
-++    in_pch_tests();
-++}
-++
-++void out_of_pch_tests() {
-++    A* a = new A;
-++    delete a;
-++    B *b = new B;
-++    delete b;
-++    C *c = new C;
-++    delete c;
-++    D *d = new D;
-++    delete d;
-++    E *e = new E;
-++    delete e;
-++}
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/FunctionAttrs.cpp b/llvm/lib/Transforms/IPO/FunctionAttrs.cpp
-+--- a/llvm/lib/Transforms/IPO/FunctionAttrs.cpp
-++++ b/llvm/lib/Transforms/IPO/FunctionAttrs.cpp
-+@@ -661,8 +661,13 @@
-+     auto TypeSize = DL.getTypeStoreSize(Ty);
-+     if (!TypeSize.isScalable() && Offset) {
-+       int64_t Size = TypeSize.getFixedValue();
-+-      return ConstantRange(APInt(64, *Offset, true),
-+-                           APInt(64, *Offset + Size, true));
-++      APInt Low(64, *Offset, true);
-++      bool Overflow;
-++      APInt High = Low.sadd_ov(APInt(64, Size, true), Overflow);
-++      // Bail if the range overflows signed 64-bit int.
-++      if (Overflow)
-++        return std::nullopt;
-++      return ConstantRange(Low, High);
-      }
-- 
--     Value *A = nullptr, *B = nullptr;
-+     return std::nullopt;
-+   };
- diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
- --- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
- +++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
--@@ -1889,6 +1889,7 @@
--     LoadEntriesToVectorize.clear();
--     IsGraphTransformMode = false;
--     GatheredLoadsEntriesFirst.reset();
--+    CompressEntryToData.clear();
--     ExternalUses.clear();
--     ExternalUsesAsOriginalScalar.clear();
--     for (auto &Iter : BlocksSchedules) {
--@@ -4308,6 +4309,11 @@
--   /// The index of the first gathered load entry in the VectorizeTree.
--   std::optional<unsigned> GatheredLoadsEntriesFirst;
-+@@ -23904,6 +23904,8 @@
-+     assert(isValidElementType(V1->getType()) &&
-+            isValidElementType(V2->getType()) &&
-+            "Expected vectorizable types only.");
-++    if (V1 == V2)
-++      return false;
-+     // It is fine to compare type IDs here, since we expect only vectorizable
-+     // types, like ints, floats and pointers, we don't care about other type.
-+     if (V1->getType()->getTypeID() < V2->getType()->getTypeID())
-+@@ -23940,7 +23942,7 @@
-+           if (NodeI1 != NodeI2)
-+             return NodeI1->getDFSNumIn() < NodeI2->getDFSNumIn();
-+           InstructionsState S = getSameOpcode({I1, I2}, *TLI);
-+-          if (S && !S.isAltShuffle()) {
-++          if (S && !S.isAltShuffle() && I1->getOpcode() == I2->getOpcode()) {
-+             const auto *E1 = dyn_cast<ExtractElementInst>(I1);
-+             const auto *E2 = dyn_cast<ExtractElementInst>(I2);
-+             if (!E1 || !E2)
-+@@ -23972,6 +23974,8 @@
++ /// CK_NullToPointer - Null pointer constant to pointer, ObjC
++-/// pointer, or block pointer.
+++/// pointer, or block pointer. The result of this conversion can
+++/// still be a null pointer constant if it has type std::nullptr_t.
++ ///   (void*) 0
++ ///   void (^block)() = 0;
++ CAST_OPERATION(NullToPointer)
++diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenTypes.cpp b/clang/lib/CodeGen/CodeGenTypes.cpp
++--- a/clang/lib/CodeGen/CodeGenTypes.cpp
+++++ b/clang/lib/CodeGen/CodeGenTypes.cpp
++@@ -850,12 +850,14 @@
+  }
   
--+  /// Maps compress entries to their mask data for the final codegen.
--+  SmallDenseMap<const TreeEntry *,
--+                std::tuple<SmallVector<int>, VectorType *, unsigned, bool>>
--+      CompressEntryToData;
+-+static GlobalDecl getBaseVariantGlobalDecl(const FunctionDecl *FD) {
+-+  if (auto const *CD = dyn_cast<const CXXConstructorDecl>(FD))
+-+    return GlobalDecl(CD, CXXCtorType::Ctor_Base);
+-+  else if (auto const *DD = dyn_cast<const CXXDestructorDecl>(FD))
+-+    return GlobalDecl(DD, CXXDtorType::Dtor_Base);
+-+  return GlobalDecl(FD);
+-+}
 -+
--   /// This POD struct describes one external user in the vectorized tree.
--   struct ExternalUser {
--     ExternalUser(Value *S, llvm::User *U, const TreeEntry &E, int L)
--@@ -13428,6 +13434,8 @@
--             *TLI, [](Value *) { return true; }, IsMasked, InterleaveFactor,
--             CompressMask, LoadVecTy);
--         assert(IsVectorized && "Expected to be vectorized");
--+        CompressEntryToData.try_emplace(E, CompressMask, LoadVecTy,
--+                                        InterleaveFactor, IsMasked);
--         Align CommonAlignment;
--         if (IsMasked)
--           CommonAlignment = computeCommonAlignment<LoadInst>(VL);
--@@ -17963,10 +17971,6 @@
--       if (E->State == TreeEntry::Vectorize) {
--         NewLI = Builder.CreateAlignedLoad(VecTy, PO, LI->getAlign());
--       } else if (E->State == TreeEntry::CompressVectorize) {
---        bool IsMasked;
---        unsigned InterleaveFactor;
---        SmallVector<int> CompressMask;
---        VectorType *LoadVecTy;
--         SmallVector<Value *> Scalars(E->Scalars.begin(), E->Scalars.end());
--         if (!E->ReorderIndices.empty()) {
--           SmallVector<int> Mask(E->ReorderIndices.begin(),
--@@ -17976,11 +17980,8 @@
--         SmallVector<Value *> PointerOps(Scalars.size());
--         for (auto [I, V] : enumerate(Scalars))
--           PointerOps[I] = cast<LoadInst>(V)->getPointerOperand();
---        [[maybe_unused]] bool IsVectorized = isMaskedLoadCompress(
---            Scalars, PointerOps, E->ReorderIndices, *TTI, *DL, *SE, *AC, *DT,
---            *TLI, [](Value *) { return true; }, IsMasked, InterleaveFactor,
---            CompressMask, LoadVecTy);
---        assert(IsVectorized && "Expected to be vectorized");
--+        auto [CompressMask, LoadVecTy, InterleaveFactor, IsMasked] =
--+            CompressEntryToData.at(E);
--         Align CommonAlignment;
--         if (IsMasked)
--           CommonAlignment = computeCommonAlignment<LoadInst>(E->Scalars);
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll b/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll
----- a/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll
--+++ b/llvm/test/Transforms/ConstraintElimination/uadd-usub-sat.ll
--@@ -1,43 +0,0 @@
---; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
---; RUN: opt -passes=constraint-elimination -S %s | FileCheck %s
---
---declare i64 @llvm.uadd.sat.i64(i64, i64)
---declare i64 @llvm.usub.sat.i64(i64, i64)
---
---define i1 @uadd_sat_uge(i64 %a, i64 %b) {
---; CHECK-LABEL: define i1 @uadd_sat_uge(
---; CHECK-SAME: i64 [[A:%.*]], i64 [[B:%.*]]) {
---; CHECK-NEXT:    [[ADD_SAT:%.*]] = call i64 @llvm.uadd.sat.i64(i64 [[A]], i64 [[B]])
---; CHECK-NEXT:    [[CMP:%.*]] = and i1 true, true
---; CHECK-NEXT:    ret i1 [[CMP]]
---;
---  %add.sat = call i64 @llvm.uadd.sat.i64(i64 %a, i64 %b)
---  %cmp1 = icmp uge i64 %add.sat, %a
---  %cmp2 = icmp uge i64 %add.sat, %b
---  %cmp = and i1 %cmp1, %cmp2
---  ret i1 %cmp
---}
---
---define i1 @usub_sat_ule_lhs(i64 %a, i64 %b) {
---; CHECK-LABEL: define i1 @usub_sat_ule_lhs(
---; CHECK-SAME: i64 [[A:%.*]], i64 [[B:%.*]]) {
---; CHECK-NEXT:    [[SUB_SAT:%.*]] = call i64 @llvm.usub.sat.i64(i64 [[A]], i64 [[B]])
---; CHECK-NEXT:    ret i1 true
---;
---  %sub.sat = call i64 @llvm.usub.sat.i64(i64 %a, i64 %b)
---  %cmp = icmp ule i64 %sub.sat, %a
---  ret i1 %cmp
---}
---
---; Negative test
---define i1 @usub_sat_not_ule_rhs(i64 %a, i64 %b) {
---; CHECK-LABEL: define i1 @usub_sat_not_ule_rhs(
---; CHECK-SAME: i64 [[A:%.*]], i64 [[B:%.*]]) {
---; CHECK-NEXT:    [[SUB_SAT:%.*]] = call i64 @llvm.usub.sat.i64(i64 [[A]], i64 [[B]])
---; CHECK-NEXT:    [[CMP:%.*]] = icmp ule i64 [[SUB_SAT]], [[B]]
---; CHECK-NEXT:    ret i1 [[CMP]]
---;
---  %sub.sat = call i64 @llvm.usub.sat.i64(i64 %a, i64 %b)
---  %cmp = icmp ule i64 %sub.sat, %b
---  ret i1 %cmp
---}
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll b/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll
----- a/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll
--+++ b/llvm/test/Transforms/SLPVectorizer/AArch64/masked-loads-side-effects-after-vec.ll
--@@ -0,0 +1,48 @@
--+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
--+; RUN: opt -S --passes=slp-vectorizer -mtriple=aarch64-unknown-linux-gnu < %s | FileCheck %s
+- void CodeGenModule::EmitExternalFunctionDeclaration(const FunctionDecl *FD) {
+-   if (CGDebugInfo *DI = getModuleDebugInfo())
+-     if (getCodeGenOpts().hasReducedDebugInfo()) {
+-+      GlobalDecl GD = getBaseVariantGlobalDecl(FD);
+-       auto *Ty = getTypes().ConvertType(FD->getType());
+--      StringRef MangledName = getMangledName(FD);
+-+      StringRef MangledName = getMangledName(GD);
+-       auto *Fn = cast<llvm::Function>(
+--          GetOrCreateLLVMFunction(MangledName, Ty, FD, /* ForVTable */ false));
+-+          GetOrCreateLLVMFunction(MangledName, Ty, GD, /* ForVTable */ false));
+-       if (!Fn->getSubprogram())
+--        DI->EmitFunctionDecl(FD, FD->getLocation(), FD->getType(), Fn);
+-+        DI->EmitFunctionDecl(GD, FD->getLocation(), FD->getType(), Fn);
+-     }
++ bool CodeGenTypes::isPointerZeroInitializable(QualType T) {
++-  assert((T->isAnyPointerType() || T->isBlockPointerType()) && "Invalid type");
+++  assert((T->isAnyPointerType() || T->isBlockPointerType() ||
+++          T->isNullPtrType()) &&
+++         "Invalid type");
++   return isZeroInitializable(T);
+  }
+  
+-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReaderDecl.cpp b/clang/lib/Serialization/ASTReaderDecl.cpp
+---- a/clang/lib/Serialization/ASTReaderDecl.cpp
+-+++ b/clang/lib/Serialization/ASTReaderDecl.cpp
+-@@ -1076,6 +1076,8 @@
+-   FD->setFriendConstraintRefersToEnclosingTemplate(
+-       FunctionDeclBits.getNextBit());
+-   FD->setUsesSEHTry(FunctionDeclBits.getNextBit());
+-+  FD->setIsDestroyingOperatorDelete(FunctionDeclBits.getNextBit());
+-+  FD->setIsTypeAwareOperatorNewOrDelete(FunctionDeclBits.getNextBit());
++ bool CodeGenTypes::isZeroInitializable(QualType T) {
++-  if (T->getAs<PointerType>())
+++  if (T->getAs<PointerType>() || T->isNullPtrType())
++     return Context.getTargetNullPointerValue(T) == 0;
+  
+-   FD->EndRangeLoc = readSourceLocation();
+-   if (FD->isExplicitlyDefaulted())
+-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriterDecl.cpp b/clang/lib/Serialization/ASTWriterDecl.cpp
+---- a/clang/lib/Serialization/ASTWriterDecl.cpp
+-+++ b/clang/lib/Serialization/ASTWriterDecl.cpp
+-@@ -847,6 +847,8 @@
+-   FunctionDeclBits.addBit(D->isInstantiatedFromMemberTemplate());
+-   FunctionDeclBits.addBit(D->FriendConstraintRefersToEnclosingTemplate());
+-   FunctionDeclBits.addBit(D->usesSEHTry());
+-+  FunctionDeclBits.addBit(D->isDestroyingOperatorDelete());
+-+  FunctionDeclBits.addBit(D->isTypeAwareOperatorNewOrDelete());
+-   Record.push_back(FunctionDeclBits);
+- 
+-   Record.AddSourceLocation(D->getEndLoc());
+-diff -ruN --strip-trailing-cr a/clang/test/CodeGenCUDASPIRV/printf.cu b/clang/test/CodeGenCUDASPIRV/printf.cu
+---- a/clang/test/CodeGenCUDASPIRV/printf.cu
+-+++ b/clang/test/CodeGenCUDASPIRV/printf.cu
+-@@ -0,0 +1,11 @@
+-+// RUN: %clang_cc1 -fcuda-is-device -triple spirv32 -o - -emit-llvm -x cuda %s  | FileCheck --check-prefix=CHECK-SPIRV32 %s
+-+// RUN: %clang_cc1 -fcuda-is-device -triple spirv64 -o - -emit-llvm -x cuda %s  | FileCheck --check-prefix=CHECK-SPIRV64 %s
 -+
--+declare noalias ptr @malloc()
-+             continue;
-+           }
-++          if (I1->getOpcode() == I2->getOpcode())
-++            continue;
-+           return I1->getOpcode() < I2->getOpcode();
-+         }
-+         if (I1)
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/FunctionAttrs/initializes.ll b/llvm/test/Transforms/FunctionAttrs/initializes.ll
-+--- a/llvm/test/Transforms/FunctionAttrs/initializes.ll
-++++ b/llvm/test/Transforms/FunctionAttrs/initializes.ll
-+@@ -635,3 +635,17 @@
-+   call void @llvm.memmove.p0.p0.i64(ptr %dst.1, ptr %src, i64 0, i1 false)
-+   ret void
-+ }
+-+// CHECK-SPIRV32: @.str = private unnamed_addr addrspace(4) constant [13 x i8] c"Hello World\0A\00", align 1
+-+// CHECK-SPIRV64: @.str = private unnamed_addr addrspace(1) constant [13 x i8] c"Hello World\0A\00", align 1
+-+
+-+extern "C" __attribute__((device)) int printf(const char* format, ...);
+-+
+-+__attribute__((global)) void printf_kernel() {
+-+  printf("Hello World\n");
+-+}
+-diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp b/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp
+---- a/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp
+-+++ b/clang/test/CodeGenCXX/debug-info-dtor-implicit-args.cpp
+-@@ -1,24 +0,0 @@
+--// RUN: %clang_cc1 -triple x86_64-none-linux-gnu -emit-llvm -debug-info-kind=limited %s -o - | FileCheck %s
+--// RUN: %clang_cc1 -triple x86_64-pc-windows-msvc -emit-llvm -debug-info-kind=limited %s -o - | FileCheck --check-prefix MSVC %s
+--
+--struct B {
+--    virtual ~B() {}
+--};
+--
+--struct A : virtual B {
+--};
+--
+--A a;
+--
+--
+--// CHECK-DAG: !{{[0-9]+}} = !DILocalVariable(name: "vtt", arg: 2, scope: ![[destructor:[0-9]+]], type: ![[vtttype:[0-9]+]], flags: DIFlagArtificial)
+--// CHECK-DAG: ![[destructor]] = distinct !DISubprogram(name: "~A", {{.*}}, type: ![[subroutinetype:[0-9]+]]
+--// CHECK-DAG: ![[subroutinetype]] = !DISubroutineType(types: ![[types:[0-9]+]])
+--// CHECK-DAG: [[types]] = !{null, !{{[0-9]+}}, ![[vtttype]]}
+--
+--// MSVC-DAG: ![[inttype:[0-9]+]] = !DIBasicType(name: "int", size: 32, encoding: DW_ATE_signed)
+--// MSVC-DAG: ![[voidpointertype:[0-9]+]] = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: null, size: 64)
+--// MSVC-DAG: ![[destructor:[0-9]+]] = distinct !DISubprogram(name: "~A", linkageName: "??_GA@@UEAAPEAXI@Z", {{.*}}, type: ![[subroutinetype:[0-9]+]]
+--// MSVC-DAG: !{{[0-9]+}} = !DILocalVariable(name: "should_call_delete", arg: 2, scope: ![[destructor]], type: ![[inttype]], flags: DIFlagArtificial)
+--// MSVC-DAG: ![[subroutinetype]] = !DISubroutineType(types: ![[types:[0-9]+]])
+--// MSVC-DAG: [[types]] = !{![[voidpointertype]], !{{[0-9]+}}, ![[inttype]]}
+-diff -ruN --strip-trailing-cr a/clang/test/Modules/Inputs/PR137102/module.modulemap b/clang/test/Modules/Inputs/PR137102/module.modulemap
+---- a/clang/test/Modules/Inputs/PR137102/module.modulemap
+-+++ b/clang/test/Modules/Inputs/PR137102/module.modulemap
+-@@ -0,0 +1 @@
+-+module type_aware_destroying_new_delete { header "type_aware_destroying_new_delete.h" export * }
+-diff -ruN --strip-trailing-cr a/clang/test/Modules/Inputs/PR137102/type_aware_destroying_new_delete.h b/clang/test/Modules/Inputs/PR137102/type_aware_destroying_new_delete.h
+---- a/clang/test/Modules/Inputs/PR137102/type_aware_destroying_new_delete.h
+-+++ b/clang/test/Modules/Inputs/PR137102/type_aware_destroying_new_delete.h
+-@@ -0,0 +1,52 @@
+-+
+-+namespace std {
+-+    struct destroying_delete_t { };
+-+    template <class T> struct type_identity {
+-+        using type = T;
+-+    };
+-+    typedef __SIZE_TYPE__ size_t;
+-+    enum class align_val_t : size_t;
+-+};
+-+
+-+struct A {
+-+    A();
+-+   void *operator new(std::size_t);
+-+   void operator delete(A*, std::destroying_delete_t);
+-+};
+-+
+-+struct B {
+-+    B();
+-+    void *operator new(std::type_identity<B>, std::size_t, std::align_val_t);
+-+    void operator delete(std::type_identity<B>, void*, std::size_t, std::align_val_t);
+-+};
+-+
+-+struct C {
+-+    C();
+-+    template <class T> void *operator new(std::type_identity<T>, std::size_t, std::align_val_t);
+-+    template <class T> void operator delete(std::type_identity<T>, void*, std::size_t, std::align_val_t);
+-+};
+-+
+-+struct D {
+-+    D();
+-+};
+-+void *operator new(std::type_identity<D>, std::size_t, std::align_val_t);
+-+void operator delete(std::type_identity<D>, void*, std::size_t, std::align_val_t);
+-+
+-+struct E {
+-+    E();
+-+};
+-+template <class T> void *operator new(std::type_identity<T>, std::size_t, std::align_val_t);
+-+template <class T> void operator delete(std::type_identity<T>, void*, std::size_t, std::align_val_t);
+-+
+-+void in_module_tests() {
+-+  A* a = new A;
+-+  delete a;
+-+  B *b = new B;
+-+  delete b;
+-+  C *c = new C;
+-+  delete c;
+-+  D *d = new D;
+-+  delete d;
+-+  E *e = new E;
+-+  delete e;
+-+}
+-diff -ruN --strip-trailing-cr a/clang/test/Modules/type-aware-destroying-new-and-delete-modules.cpp b/clang/test/Modules/type-aware-destroying-new-and-delete-modules.cpp
+---- a/clang/test/Modules/type-aware-destroying-new-and-delete-modules.cpp
+-+++ b/clang/test/Modules/type-aware-destroying-new-and-delete-modules.cpp
+-@@ -0,0 +1,23 @@
+-+// RUN: rm -rf %t
+-+// RUN: %clang_cc1 -fmodules -fimplicit-module-maps -x c++ -std=c++26 -fmodules-cache-path=%t -I %S/Inputs/PR137102 -emit-llvm-only %s
+-+// RUN: %clang_cc1 -fmodules -fimplicit-module-maps -x c++ -std=c++26 -fmodules-cache-path=%t -I %S/Inputs/PR137102 -emit-llvm-only %s -triple i686-windows
+-+
+-+#include "type_aware_destroying_new_delete.h"
+-+
+-+
+-+static void call_in_module_function(void) {
+-+    in_module_tests();
+-+}
+-+
+-+void out_of_module_tests() {
+-+    A* a = new A;
+-+    delete a;
+-+    B *b = new B;
+-+    delete b;
+-+    C *c = new C;
+-+    delete c;
+-+    D *d = new D;
+-+    delete d;
+-+    E *e = new E;
+-+    delete e;
+-+}
+-diff -ruN --strip-trailing-cr a/clang/test/PCH/Inputs/type_aware_destroying_new_delete.h b/clang/test/PCH/Inputs/type_aware_destroying_new_delete.h
+---- a/clang/test/PCH/Inputs/type_aware_destroying_new_delete.h
+-+++ b/clang/test/PCH/Inputs/type_aware_destroying_new_delete.h
+-@@ -0,0 +1,52 @@
+-+
+-+namespace std {
+-+    struct destroying_delete_t { };
+-+    template <class T> struct type_identity {
+-+        using type = T;
+-+    };
+-+    typedef __SIZE_TYPE__ size_t;
+-+    enum class align_val_t : size_t;
+-+};
+-+
+-+struct A {
+-+    A();
+-+   void *operator new(std::size_t);
+-+   void operator delete(A*, std::destroying_delete_t);
+-+};
+-+
+-+struct B {
+-+    B();
+-+    void *operator new(std::type_identity<B>, std::size_t, std::align_val_t);
+-+    void operator delete(std::type_identity<B>, void*, std::size_t, std::align_val_t);
+-+};
+-+
+-+struct C {
+-+    C();
+-+    template <class T> void *operator new(std::type_identity<T>, std::size_t, std::align_val_t);
+-+    template <class T> void operator delete(std::type_identity<T>, void*, std::size_t, std::align_val_t);
+-+};
+-+
+-+struct D {
+-+    D();
+-+};
+-+void *operator new(std::type_identity<D>, std::size_t, std::align_val_t);
+-+void operator delete(std::type_identity<D>, void*, std::size_t, std::align_val_t);
+-+
+-+struct E {
+-+    E();
+-+};
+-+template <class T> void *operator new(std::type_identity<T>, std::size_t, std::align_val_t);
+-+template <class T> void operator delete(std::type_identity<T>, void*, std::size_t, std::align_val_t);
+-+
+-+void in_pch_tests() {
+-+  A* a = new A;
+-+  delete a;
+-+  B *b = new B;
+-+  delete b;
+-+  C *c = new C;
+-+  delete c;
+-+  D *d = new D;
+-+  delete d;
+-+  E *e = new E;
+-+  delete e;
+-+}
+-diff -ruN --strip-trailing-cr a/clang/test/PCH/type-aware-destroying-new-and-delete-pch.cpp b/clang/test/PCH/type-aware-destroying-new-and-delete-pch.cpp
+---- a/clang/test/PCH/type-aware-destroying-new-and-delete-pch.cpp
+-+++ b/clang/test/PCH/type-aware-destroying-new-and-delete-pch.cpp
+-@@ -0,0 +1,27 @@
+-+// Test this without pch.
+-+// RUN: %clang_cc1 -x c++ -std=c++26 -include %S/Inputs/type_aware_destroying_new_delete.h -emit-llvm -o - %s
+-+
+-+// Test with pch.
+-+// RUN: %clang_cc1 -x c++ -std=c++26 -emit-pch -o %t %S/Inputs/type_aware_destroying_new_delete.h
+-+// RUN: %clang_cc1 -x c++ -std=c++26 -include-pch %t -emit-llvm -o - %s 
+-+
+-+// RUN: %clang_cc1 -x c++ -std=c++11 -emit-pch -fpch-instantiate-templates -o %t %S/Inputs/type_aware_destroying_new_delete.h
+-+// RUN: %clang_cc1 -x c++ -std=c++11 -include-pch %t -emit-llvm -o - %s
+-+
+-+
+-+static void call_in_pch_function(void) {
+-+    in_pch_tests();
+-+}
+-+
+-+void out_of_pch_tests() {
+-+    A* a = new A;
+-+    delete a;
+-+    B *b = new B;
+-+    delete b;
+-+    C *c = new C;
+-+    delete c;
+-+    D *d = new D;
+-+    delete d;
+-+    E *e = new E;
+-+    delete e;
+-+}
+-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/FunctionAttrs.cpp b/llvm/lib/Transforms/IPO/FunctionAttrs.cpp
+---- a/llvm/lib/Transforms/IPO/FunctionAttrs.cpp
+-+++ b/llvm/lib/Transforms/IPO/FunctionAttrs.cpp
+-@@ -661,8 +661,13 @@
+-     auto TypeSize = DL.getTypeStoreSize(Ty);
+-     if (!TypeSize.isScalable() && Offset) {
+-       int64_t Size = TypeSize.getFixedValue();
+--      return ConstantRange(APInt(64, *Offset, true),
+--                           APInt(64, *Offset + Size, true));
+-+      APInt Low(64, *Offset, true);
+-+      bool Overflow;
+-+      APInt High = Low.sadd_ov(APInt(64, Size, true), Overflow);
+-+      // Bail if the range overflows signed 64-bit int.
+-+      if (Overflow)
+-+        return std::nullopt;
+-+      return ConstantRange(Low, High);
+-     }
+-     return std::nullopt;
+-   };
+-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+---- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+-+++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+-@@ -23904,6 +23904,8 @@
+-     assert(isValidElementType(V1->getType()) &&
+-            isValidElementType(V2->getType()) &&
+-            "Expected vectorizable types only.");
+-+    if (V1 == V2)
+-+      return false;
+-     // It is fine to compare type IDs here, since we expect only vectorizable
+-     // types, like ints, floats and pointers, we don't care about other type.
+-     if (V1->getType()->getTypeID() < V2->getType()->getTypeID())
+-@@ -23940,7 +23942,7 @@
+-           if (NodeI1 != NodeI2)
+-             return NodeI1->getDFSNumIn() < NodeI2->getDFSNumIn();
+-           InstructionsState S = getSameOpcode({I1, I2}, *TLI);
+--          if (S && !S.isAltShuffle()) {
+-+          if (S && !S.isAltShuffle() && I1->getOpcode() == I2->getOpcode()) {
+-             const auto *E1 = dyn_cast<ExtractElementInst>(I1);
+-             const auto *E2 = dyn_cast<ExtractElementInst>(I2);
+-             if (!E1 || !E2)
+-@@ -23972,6 +23974,8 @@
+- 
+-             continue;
+-           }
+-+          if (I1->getOpcode() == I2->getOpcode())
+-+            continue;
+-           return I1->getOpcode() < I2->getOpcode();
+-         }
+-         if (I1)
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/FunctionAttrs/initializes.ll b/llvm/test/Transforms/FunctionAttrs/initializes.ll
+---- a/llvm/test/Transforms/FunctionAttrs/initializes.ll
+-+++ b/llvm/test/Transforms/FunctionAttrs/initializes.ll
+-@@ -635,3 +635,17 @@
+-   call void @llvm.memmove.p0.p0.i64(ptr %dst.1, ptr %src, i64 0, i1 false)
+-   ret void
++   if (const auto *AT = Context.getAsArrayType(T)) {
++diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/nullptr.cpp b/clang/test/CodeGenCXX/nullptr.cpp
++--- a/clang/test/CodeGenCXX/nullptr.cpp
+++++ b/clang/test/CodeGenCXX/nullptr.cpp
++@@ -70,3 +70,10 @@
++   void f(nullptr_t);
++   void g() { f(null); }
+  }
  +
--+define void @test() {
--+; CHECK-LABEL: define void @test() {
--+; CHECK-NEXT:    [[TMP1:%.*]] = call dereferenceable_or_null(16) ptr @malloc()
--+; CHECK-NEXT:    [[TMP2:%.*]] = load volatile ptr, ptr null, align 8
--+; CHECK-NEXT:    [[TMP3:%.*]] = load <15 x i8>, ptr [[TMP1]], align 1
--+; CHECK-NEXT:    [[TMP4:%.*]] = shufflevector <15 x i8> [[TMP3]], <15 x i8> poison, <8 x i32> <i32 0, i32 2, i32 4, i32 6, i32 8, i32 10, i32 12, i32 14>
--+; CHECK-NEXT:    store <8 x i8> [[TMP4]], ptr [[TMP2]], align 1
-++; We should bail if the range overflows a singed 64-bit int.
-++define void @range_overflows_signed_64_bit_int(ptr %arg) {
-++; CHECK: Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: write)
-++; CHECK-LABEL: define void @range_overflows_signed_64_bit_int(
-++; CHECK-SAME: ptr writeonly captures(none) [[ARG:%.*]]) #[[ATTR0]] {
-++; CHECK-NEXT:    [[GETELEMENTPTR:%.*]] = getelementptr i8, ptr [[ARG]], i64 9223372036854775804
-++; CHECK-NEXT:    store i32 0, ptr [[GETELEMENTPTR]], align 4
- +; CHECK-NEXT:    ret void
- +;
--+  %1 = call dereferenceable_or_null(16) ptr @malloc()
--+  %2 = load volatile ptr, ptr null, align 8
--+  %3 = load i8, ptr %1, align 1
--+  store i8 %3, ptr %2, align 1
--+  %4 = getelementptr i8, ptr %1, i64 2
--+  %5 = load i8, ptr %4, align 1
--+  %6 = getelementptr i8, ptr %2, i64 1
--+  store i8 %5, ptr %6, align 1
--+  %7 = getelementptr i8, ptr %1, i64 4
--+  %8 = load i8, ptr %7, align 1
--+  %9 = getelementptr i8, ptr %2, i64 2
--+  store i8 %8, ptr %9, align 1
--+  %10 = getelementptr i8, ptr %1, i64 6
--+  %11 = load i8, ptr %10, align 1
--+  %12 = getelementptr i8, ptr %2, i64 3
--+  store i8 %11, ptr %12, align 1
--+  %13 = getelementptr i8, ptr %1, i64 8
--+  %14 = load i8, ptr %13, align 1
--+  %15 = getelementptr i8, ptr %2, i64 4
--+  store i8 %14, ptr %15, align 1
--+  %16 = getelementptr i8, ptr %1, i64 10
--+  %17 = load i8, ptr %16, align 1
--+  %18 = getelementptr i8, ptr %2, i64 5
--+  store i8 %17, ptr %18, align 1
--+  %19 = getelementptr i8, ptr %1, i64 12
--+  %20 = load i8, ptr %19, align 1
--+  %21 = getelementptr i8, ptr %2, i64 6
--+  store i8 %20, ptr %21, align 1
--+  %22 = getelementptr i8, ptr %1, i64 14
--+  %23 = load i8, ptr %22, align 1
--+  %24 = getelementptr i8, ptr %2, i64 7
--+  store i8 %23, ptr %24, align 1
-++  %getelementptr = getelementptr i8, ptr %arg, i64 9223372036854775804
-++  store i32 0, ptr %getelementptr
- +  ret void
+-+; We should bail if the range overflows a singed 64-bit int.
+-+define void @range_overflows_signed_64_bit_int(ptr %arg) {
+-+; CHECK: Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: write)
+-+; CHECK-LABEL: define void @range_overflows_signed_64_bit_int(
+-+; CHECK-SAME: ptr writeonly captures(none) [[ARG:%.*]]) #[[ATTR0]] {
+-+; CHECK-NEXT:    [[GETELEMENTPTR:%.*]] = getelementptr i8, ptr [[ARG]], i64 9223372036854775804
+-+; CHECK-NEXT:    store i32 0, ptr [[GETELEMENTPTR]], align 4
+-+; CHECK-NEXT:    ret void
+-+;
+-+  %getelementptr = getelementptr i8, ptr %arg, i64 9223372036854775804
+-+  store i32 0, ptr %getelementptr
+-+  ret void
+++// CHECK-LABEL: define {{.*}}pr137276
+++// CHECK: {{^}}  store i64 0, ptr %arr, align 8{{$}}
+++void pr137276(nullptr_t np, int i) {
+++  long arr[] = { long(np), i, 0 };
+++  (void)arr;
  +}
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
--@@ -897,6 +897,26 @@
-- )
-- 
-- mlir_c_api_cc_library(
--+    name = "CAPISMT",
--+    srcs = [
--+        "lib/CAPI/Dialect/SMT.cpp",
--+        "lib/CAPI/Target/ExportSMTLIB.cpp",
--+    ],
--+    hdrs = [
--+        "include/mlir-c/Dialect/SMT.h",
--+        "include/mlir-c/Target/ExportSMTLIB.h",
--+    ],
--+    capi_deps = [
--+        ":CAPIIR",
--+    ],
--+    includes = ["include"],
--+    deps = [
--+        ":SMTDialect",
--+        ":TargetSMTLIB",
--+    ],
--+)
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll b/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll
+---- a/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll
+-+++ b/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll
+-@@ -0,0 +1,38 @@
+-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
+-+; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-unknown-linux-gnu < %s | FileCheck %s
 -+
--+mlir_c_api_cc_library(
--     name = "CAPIRegisterEverything",
--     srcs = ["lib/CAPI/RegisterEverything/RegisterEverything.cpp"],
--     hdrs = ["include/mlir-c/RegisterEverything.h"],
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
--@@ -1113,6 +1113,53 @@
-- )
-- 
-- ##---------------------------------------------------------------------------##
--+# SMT dialect.
--+##---------------------------------------------------------------------------##
+-+define void @test(i32 %julianDay, i1 %cmp, i8 %0, i16 %1) {
+-+; CHECK-LABEL: define void @test(
+-+; CHECK-SAME: i32 [[JULIANDAY:%.*]], i1 [[CMP:%.*]], i8 [[TMP0:%.*]], i16 [[TMP1:%.*]]) {
+-+; CHECK-NEXT:  [[ENTRY:.*]]:
+-+; CHECK-NEXT:    br i1 [[CMP]], label %[[IF_THEN2:.*]], label %[[IF_END33:.*]]
+-+; CHECK:       [[IF_THEN2]]:
+-+; CHECK-NEXT:    [[CONV_I:%.*]] = sext i8 [[TMP0]] to i32
+-+; CHECK-NEXT:    [[CONV_I2:%.*]] = sext i16 [[TMP1]] to i32
+-+; CHECK-NEXT:    br label %[[IF_END33]]
+-+; CHECK:       [[IF_END33]]:
+-+; CHECK-NEXT:    [[MONTH_0:%.*]] = phi i32 [ [[CONV_I]], %[[IF_THEN2]] ], [ 0, %[[ENTRY]] ]
+-+; CHECK-NEXT:    [[DAYOFMONTH_0:%.*]] = phi i32 [ [[CONV_I]], %[[IF_THEN2]] ], [ [[JULIANDAY]], %[[ENTRY]] ]
+-+; CHECK-NEXT:    [[DAYOFYEAR_0:%.*]] = phi i32 [ [[CONV_I2]], %[[IF_THEN2]] ], [ 0, %[[ENTRY]] ]
+-+; CHECK-NEXT:    store volatile i32 [[MONTH_0]], ptr null, align 4294967296
+-+; CHECK-NEXT:    store volatile i32 [[DAYOFMONTH_0]], ptr null, align 4294967296
+-+; CHECK-NEXT:    store volatile i32 [[DAYOFYEAR_0]], ptr null, align 4294967296
+-+; CHECK-NEXT:    ret void
+-+;
+-+entry:
+-+  br i1 %cmp, label %if.then2, label %if.end33
 -+
--+td_library(
--+    name = "SMTOpsPyTdFiles",
--+    srcs = [],
--+    includes = ["../include"],
--+    deps = [
--+        "//mlir:SMTTdFiles",
--+        "//mlir:OpBaseTdFiles",
--+    ],
--+)
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll b/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll
-+--- a/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll
-++++ b/llvm/test/Transforms/SLPVectorizer/X86/phi-comparator.ll
-+@@ -0,0 +1,38 @@
-++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
-++; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-unknown-linux-gnu < %s | FileCheck %s
- +
--+gentbl_filegroup(
--+    name = "SMTOpsPyGen",
--+    tbl_outs = [
--+        (
--+            [
--+                "-gen-python-enum-bindings",
--+                "-bind-dialect=smt",
--+            ],
--+            "mlir/dialects/_smt_enum_gen.py",
--+        ),
--+        (
--+            [
--+                "-gen-python-op-bindings",
--+                "-bind-dialect=smt",
--+            ],
--+            "mlir/dialects/_smt_ops_gen.py",
--+        ),
--+    ],
--+    tblgen = "//mlir:mlir-tblgen",
--+    td_file = "mlir/dialects/SMTOps.td",
--+    deps = [
--+        ":SMTOpsPyTdFiles",
--+    ],
--+)
-++define void @test(i32 %julianDay, i1 %cmp, i8 %0, i16 %1) {
-++; CHECK-LABEL: define void @test(
-++; CHECK-SAME: i32 [[JULIANDAY:%.*]], i1 [[CMP:%.*]], i8 [[TMP0:%.*]], i16 [[TMP1:%.*]]) {
-++; CHECK-NEXT:  [[ENTRY:.*]]:
-++; CHECK-NEXT:    br i1 [[CMP]], label %[[IF_THEN2:.*]], label %[[IF_END33:.*]]
-++; CHECK:       [[IF_THEN2]]:
-++; CHECK-NEXT:    [[CONV_I:%.*]] = sext i8 [[TMP0]] to i32
-++; CHECK-NEXT:    [[CONV_I2:%.*]] = sext i16 [[TMP1]] to i32
-++; CHECK-NEXT:    br label %[[IF_END33]]
-++; CHECK:       [[IF_END33]]:
-++; CHECK-NEXT:    [[MONTH_0:%.*]] = phi i32 [ [[CONV_I]], %[[IF_THEN2]] ], [ 0, %[[ENTRY]] ]
-++; CHECK-NEXT:    [[DAYOFMONTH_0:%.*]] = phi i32 [ [[CONV_I]], %[[IF_THEN2]] ], [ [[JULIANDAY]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[DAYOFYEAR_0:%.*]] = phi i32 [ [[CONV_I2]], %[[IF_THEN2]] ], [ 0, %[[ENTRY]] ]
-++; CHECK-NEXT:    store volatile i32 [[MONTH_0]], ptr null, align 4294967296
-++; CHECK-NEXT:    store volatile i32 [[DAYOFMONTH_0]], ptr null, align 4294967296
-++; CHECK-NEXT:    store volatile i32 [[DAYOFYEAR_0]], ptr null, align 4294967296
-++; CHECK-NEXT:    ret void
-++;
-++entry:
-++  br i1 %cmp, label %if.then2, label %if.end33
- +
--+filegroup(
--+    name = "SMTOpsPyFiles",
--+    srcs = [
--+        "mlir/dialects/smt.py",
--+        ":SMTOpsPyGen",
--+    ],
--+)
-++if.then2:
-++  %conv.i = sext i8 %0 to i32
-++  %conv.i2 = sext i16 %1 to i32
-++  br label %if.end33
- +
--+##---------------------------------------------------------------------------##
-- # SparseTensor dialect.
-- ##---------------------------------------------------------------------------##
-++if.end33:
-++  %month.0 = phi i32 [ %conv.i, %if.then2 ], [ 0, %entry ]
-++  %dayOfMonth.0 = phi i32 [ %conv.i, %if.then2 ], [ %julianDay, %entry ]
-++  %dayOfYear.0 = phi i32 [ %conv.i2, %if.then2 ], [ 0, %entry ]
-++  store volatile i32 %month.0, ptr null, align 4294967296
-++  store volatile i32 %dayOfMonth.0, ptr null, align 4294967296
-++  store volatile i32 %dayOfYear.0, ptr null, align 4294967296
-++  ret void
-++}
-+diff -ruN --strip-trailing-cr a/mlir/lib/Transforms/Utils/DialectConversion.cpp b/mlir/lib/Transforms/Utils/DialectConversion.cpp
-+--- a/mlir/lib/Transforms/Utils/DialectConversion.cpp
-++++ b/mlir/lib/Transforms/Utils/DialectConversion.cpp
-+@@ -2106,6 +2106,7 @@
-+     rewriterImpl.logger.startLine() << "* Fold {\n";
-+     rewriterImpl.logger.indent();
-+   });
-++  (void)rewriterImpl;
-  
-+   // Try to fold the operation.
-+   SmallVector<Value, 2> replacementValues;
+-+if.then2:
+-+  %conv.i = sext i8 %0 to i32
+-+  %conv.i2 = sext i16 %1 to i32
+-+  br label %if.end33
+-+
+-+if.end33:
+-+  %month.0 = phi i32 [ %conv.i, %if.then2 ], [ 0, %entry ]
+-+  %dayOfMonth.0 = phi i32 [ %conv.i, %if.then2 ], [ %julianDay, %entry ]
+-+  %dayOfYear.0 = phi i32 [ %conv.i2, %if.then2 ], [ 0, %entry ]
+-+  store volatile i32 %month.0, ptr null, align 4294967296
+-+  store volatile i32 %dayOfMonth.0, ptr null, align 4294967296
+-+  store volatile i32 %dayOfYear.0, ptr null, align 4294967296
+-+  ret void
+-+}
+-diff -ruN --strip-trailing-cr a/mlir/lib/Transforms/Utils/DialectConversion.cpp b/mlir/lib/Transforms/Utils/DialectConversion.cpp
+---- a/mlir/lib/Transforms/Utils/DialectConversion.cpp
+-+++ b/mlir/lib/Transforms/Utils/DialectConversion.cpp
+-@@ -2106,6 +2106,7 @@
+-     rewriterImpl.logger.startLine() << "* Fold {\n";
+-     rewriterImpl.logger.indent();
+-   });
+-+  (void)rewriterImpl;
+- 
+-   // Try to fold the operation.
+-   SmallVector<Value, 2> replacementValues;
++diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/SampleProfileMatcher.cpp b/llvm/lib/Transforms/IPO/SampleProfileMatcher.cpp
++--- a/llvm/lib/Transforms/IPO/SampleProfileMatcher.cpp
+++++ b/llvm/lib/Transforms/IPO/SampleProfileMatcher.cpp
++@@ -737,14 +737,16 @@
++     auto FunctionName = FName.str();
++     if (Demangler.partialDemangle(FunctionName.c_str()))
++       return std::string();
++-    constexpr size_t MaxBaseNameSize = 65536;
++-    std::vector<char> BaseNameBuf(MaxBaseNameSize, 0);
++-    size_t BaseNameSize = MaxBaseNameSize;
++-    char *BaseNamePtr =
++-        Demangler.getFunctionBaseName(BaseNameBuf.data(), &BaseNameSize);
++-    return (BaseNamePtr && BaseNameSize)
++-               ? std::string(BaseNamePtr, BaseNameSize)
++-               : std::string();
+++    size_t BaseNameSize = 0;
+++    // The demangler API follows the __cxa_demangle one, and thus needs a
+++    // pointer that originates from malloc (or nullptr) and the caller is
+++    // responsible for free()-ing the buffer.
+++    char *BaseNamePtr = Demangler.getFunctionBaseName(nullptr, &BaseNameSize);
+++    std::string Result = (BaseNamePtr && BaseNameSize)
+++                             ? std::string(BaseNamePtr, BaseNameSize)
+++                             : std::string();
+++    free(BaseNamePtr);
+++    return Result;
++   };
++   auto IRBaseName = GetBaseName(IRFunc.getName());
++   auto ProfBaseName = GetBaseName(ProfFunc.stringRef());
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 50bc551..6f96b54 100644
+index 6f96b54..246aeb6 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "f9c01b59e3d5239a4e42f94d5edbeb3698a81032"
--    LLVM_SHA256 = "3853da5d724e2254c7ff5f55be7d98f47e2fae2576bb5a5a82d26a06bacef5ae"
-+    LLVM_COMMIT = "c60f24dca96dad44afc60df3fcb80997737b6306"
-+    LLVM_SHA256 = "86ff363de84f28a0acc854e0bafb78d38162b0e09a59e9e57689dc02e4501d6d"
+-    LLVM_COMMIT = "c60f24dca96dad44afc60df3fcb80997737b6306"
+-    LLVM_SHA256 = "86ff363de84f28a0acc854e0bafb78d38162b0e09a59e9e57689dc02e4501d6d"
++    LLVM_COMMIT = "cfc5baf6e6fc083fdbb584534a3fb8ea289752d2"
++    LLVM_SHA256 = "1c592b928d3f60ff36a98d76c0fc1606f0508342f01791aca1ae7d206697c361"
  
      tf_http_archive(
          name = name,
 diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index 3b7eef6..e04865c 100755
+index e04865c..bdca7e0 100755
 --- a/third_party/stablehlo/temporary.patch
 +++ b/third_party/stablehlo/temporary.patch
-@@ -1,3 +1,14 @@
-+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
-+--- stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
-++++ stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
-+@@ -61,7 +61,6 @@
-+ }  // namespace
+@@ -1,3 +1,65 @@
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/gather.mlir b/stablehlo/stablehlo/conversions/linalg/tests/gather.mlir
++--- stablehlo/stablehlo/conversions/linalg/tests/gather.mlir
+++++ stablehlo/stablehlo/conversions/linalg/tests/gather.mlir
++@@ -30,12 +30,11 @@
++ // CHECK-SAME:           outs(%[[INIT]] : tensor<1x8x8xi32>)
++ // CHECK-SAME:           {someattr}
++ // CHECK:           ^bb0
++-// CHECK-DAG:         %[[IDX0:.+]] = linalg.index 0
++-// CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
++-// CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
++-// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[IDX1]], %[[C0]]] : tensor<1x8x2xi32>
++-// CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
++-// CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[IDX1]], %[[C1]]] : tensor<1x8x2xi32>
+++// CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
+++// CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
+++// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[C0]], %[[IDX1]], %[[C0]]] : tensor<1x8x2xi32>
+++// CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
+++// CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[C0]], %[[IDX1]], %[[C1]]] : tensor<1x8x2xi32>
++ // CHECK-DAG:         %[[S1:.+]] = arith.index_cast %[[S1_INT]] : i32 to index
++ // CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[S0]], %[[C0]]  : index
++ // CHECK-DAG:         %[[IN0:.+]] = arith.minsi %[[CLAMP0]], %[[C0]]
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++--- stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+++++ stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++@@ -1233,6 +1233,7 @@
++ //      CHECK: func @torch_index_select
++ // CHECK-SAME:   %[[INPUT:[a-zA-Z0-9_]*]]
++ // CHECK-SAME:   %[[INDEX:[a-zA-Z0-9_]*]]
+++//      CHECK: %[[C0:.+]] = arith.constant 0 : index
++ //      CHECK: %[[INIT1:.+]] = tensor.empty() :
++ //      CHECK: %[[INIT2:.+]] = tensor.empty() :
++ //      CHECK: linalg.generic {
++@@ -1244,9 +1245,8 @@
++ // CHECK-SAME: {someattr}
++ //      CHECK: ^{{.+}}(%[[VAL:.+]]: i32, %{{.+}}: i32, %{{.+}}: i32):
++ //      CHECK:   %[[CAST:.+]] = arith.index_cast %[[VAL]] : i32 to index
++-//      CHECK:   %[[J:.+]] = linalg.index 1
++ //      CHECK:   %[[K:.+]] = linalg.index 2
++-//      CHECK:   %[[VAL2:.+]] = tensor.extract %[[INPUT]][%[[CAST]], %[[J]], %[[K]]] : tensor<5x1x5xi32>
+++//      CHECK:   %[[VAL2:.+]] = tensor.extract %[[INPUT]][%[[CAST]], %[[C0]], %[[K]]] : tensor<5x1x5xi32>
++ //      CHECK:   linalg.yield %[[VAL2]] : i32
 + 
-+ LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
-+-  addArgumentMaterialization(scalarToTensor);
-+   addSourceMaterialization(scalarToTensor);
-+   addTargetMaterialization(scalarToTensor);
++ // -----
++@@ -1265,6 +1265,7 @@
++   } : (tensor<5x1x5xui32>, tensor<2xi32>) -> tensor<2x1x5xui32>
++   func.return %0 : tensor<2x1x5xui32>
 + }
- diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
- --- stablehlo/stablehlo/dialect/StablehloAttrs.td
- +++ stablehlo/stablehlo/dialect/StablehloAttrs.td
-@@ -10,4 +21,38 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo
+++//      CHECK:   %[[C0:.+]] = arith.constant 0 : index
++ //      CHECK:   %[[INPUT_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[INPUT]] : tensor<5x1x5xui32> to tensor<5x1x5xi32>
++ //      CHECK:   %[[INIT:.*]] = tensor.empty() : tensor<1x5xi32>
++ //      CHECK:   %[[RES:.+]] = linalg.generic {
++@@ -1274,9 +1275,8 @@
++ // CHECK-SAME:   ins(%[[INDEX]], %[[INIT]] : tensor<2xi32>, tensor<1x5xi32>)
++ //      CHECK:   ^{{.+}}(%[[VAL:.+]]: i32, %{{.+}}: i32, %{{.+}}: i32):
++ //      CHECK:     %[[CAST:.+]] = arith.index_cast %[[VAL]] : i32 to index
++-//      CHECK:     %[[J:.+]] = linalg.index 1
++ //      CHECK:     %[[K:.+]] = linalg.index 2
++-//      CHECK:     %[[VAL2:.+]] = tensor.extract %[[INPUT_SIGNLESS]][%[[CAST]], %[[J]], %[[K]]] : tensor<5x1x5xi32>
+++//      CHECK:     %[[VAL2:.+]] = tensor.extract %[[INPUT_SIGNLESS]][%[[CAST]], %[[C0]], %[[K]]] : tensor<5x1x5xi32>
++ //      CHECK:     linalg.yield %[[VAL2]] : i32
++ //      CHECK:   %[[RES_UNSIGNED:.+]] = builtin.unrealized_conversion_cast %[[RES]] : tensor<2x1x5xi32> to tensor<2x1x5xui32>
++ //      CHECK:   return %[[RES_UNSIGNED]]
+ diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+ --- stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+ +++ stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+@@ -44,6 +106,162 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.cpp b/stablehlo/stablehlo/dia
   }
   
-  #endif // STABLEHLO_DIALECT_STABLEHLO_ATTRS
-+diff --ruN a/stablehlo/stablehlo/dialect/VhloAttrs.td b/stablehlo/stablehlo/dialect/VhloAttrs.td
-+--- stablehlo/stablehlo/dialect/VhloAttrs.td
-++++ stablehlo/stablehlo/dialect/VhloAttrs.td
-+@@ -102,7 +102,7 @@
-+ // Corresponds to IntegerConstant from the StableHLO spec.
-+ def VHLO_IntegerAttrV1 : VHLO_AttrDef<"IntegerV1", "0.9.0", "current"> {
-+   let mnemonic = "integer_v1";
-+-  let parameters = (ins "mlir::Type":$type, "APInt":$value);
-++  let parameters = (ins "mlir::Type":$type, APIntParameter<"">:$value);
-+   let genVerifyDecl = 1;
-+   let extraClassDefinition = [{
-+     LogicalResult IntegerV1Attr::verify(
-+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.cpp b/stablehlo/stablehlo/dialect/VhloTypes.cpp
-+--- stablehlo/stablehlo/dialect/VhloTypes.cpp
-++++ stablehlo/stablehlo/dialect/VhloTypes.cpp
-+@@ -333,7 +333,6 @@
-+ void VhloTypeConverter::addUnrealizedMaterializations() {
-+   addTargetMaterialization(materializeIllegalCast);
-+   addSourceMaterialization(materializeIllegalCast);
-+-  addArgumentMaterialization(materializeIllegalCast);
-+ }
+  namespace {
++diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
++--- stablehlo/stablehlo/tests/TestUtils.cpp
+++++ stablehlo/stablehlo/tests/TestUtils.cpp
++@@ -172,9 +172,9 @@
 + 
-+ namespace {
-+diff --ruN a/stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp b/stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
-+--- stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
-++++ stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
-+@@ -77,7 +77,6 @@
-+   addConversion(convertInteger);
-+   addConversion(convertShapedType);
++   void runOnOperation() override {
++     GreedyRewriteConfig config;
++-    config.maxIterations = 1;
++-    config.useTopDownTraversal = true;
++-    config.enableRegionSimplification = GreedySimplifyRegionLevel::Disabled;
+++    config.setMaxIterations(1)
+++        .setUseTopDownTraversal(true)
+++        .setRegionSimplificationLevel(GreedySimplifyRegionLevel::Disabled);
++     (void)applyPatternsGreedily(getOperation(), std::move(patterns));
++   }
 + 
-+-  addArgumentMaterialization(materializeCastFromIllegal);
-+   addSourceMaterialization(materializeCastToIllegal);
-+   addTargetMaterialization(materializeCastFromIllegal);
++diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
++--- stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+++++ stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
++@@ -308,11 +308,11 @@
++       StablehloCanonicalizeDynamismPassBase;
++ 
++   LogicalResult initialize(MLIRContext* context) override {
++-    config.useTopDownTraversal = true;
++-    config.enableRegionSimplification = GreedySimplifyRegionLevel::Aggressive;
++-    config.maxIterations = 2;
++-    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
++-    config.strictMode = GreedyRewriteStrictness::AnyOp;
+++    config.setUseTopDownTraversal(true)
+++        .setRegionSimplificationLevel(GreedySimplifyRegionLevel::Aggressive)
+++        .setMaxIterations(2)
+++        .setMaxNumRewrites(GreedyRewriteConfig::kNoLimit)
+++        .setStrictness(GreedyRewriteStrictness::AnyOp);
++ 
++     RewritePatternSet patterns_(context);
++     populateStablehloCanonicalizeDynamismPatterns(&patterns_, context);
++@@ -325,7 +325,7 @@
++     auto func = getOperation();
++     if (failed(applyPatternsGreedily(func, patterns, config))) {
++       func.emitError("Failed to converge StablehloCanonicalizeDynamism in ")
++-          << config.maxIterations << " iterations";
+++          << config.getMaxIterations() << " iterations";
++     }
++   }
++ 
++diff --ruN a/stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp b/stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp
++--- stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp
+++++ stablehlo/stablehlo/transforms/StablehloCompatibilityExpander.cpp
++@@ -329,7 +329,7 @@
++   LogicalResult initialize(MLIRContext *context) override {
++     auto targetVersion = validateTargetVersion(targetVersionOption);
++ 
++-    config.useTopDownTraversal = true;
+++    config.setUseTopDownTraversal(true);
++ 
++     RewritePatternSet patterns_(context);
++     populateStablehloCompatibilityExpanderPatterns(&patterns_, context,
++@@ -347,7 +347,7 @@
++         failed(applyPatternsGreedily(module, patterns, config))) {
++       module.emitError(
++           "Failed to converge StableHLOCompatibilityExpanderPass in ")
++-          << config.maxIterations << " iterations";
+++          << config.getMaxIterations() << " iterations";
++       signalPassFailure();
++     }
++   }
++diff --ruN a/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp b/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
++--- stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
+++++ stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
++@@ -49,7 +49,7 @@
++ 
++  public:
++   LogicalResult initialize(MLIRContext *context) override {
++-    config.useTopDownTraversal = true;
+++    config.setUseTopDownTraversal(true);
++     RewritePatternSet patterns_(context);
++     populateStablehloComplexMathExpanderPatterns(&patterns_, context);
++     patterns = std::move(patterns_);
++@@ -60,7 +60,7 @@
++     auto func = getOperation();
++     if (failed(applyPatternsGreedily(func, patterns, config))) {
++       func.emitError("Failed to converge StableHLOComplexMathExpanderPass in ")
++-          << config.maxIterations << " iterations";
+++          << config.getMaxIterations() << " iterations";
++       signalPassFailure();
++     }
++   }
++diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp
++--- stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp
+++++ stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp
++@@ -115,7 +115,7 @@
++     if (failed(applyPatternsGreedily(func, patterns, config))) {
++       func.emitError(
++           "Failed to converge StablehloLegalizeQDQToQuantizedOpPass in ")
++-          << config.maxIterations << " iterations";
+++          << config.getMaxIterations() << " iterations";
++       signalPassFailure();
++     }
++   }
++diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp
++--- stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp
+++++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp
++@@ -125,7 +125,7 @@
++     auto func = getOperation();
++     if (failed(applyPatternsGreedily(func, patterns, config))) {
++       func.emitError("Failed to converge StablehloLegalizeQuantizedOpToQDQ in ")
++-          << config.maxIterations << " iterations";
+++          << config.getMaxIterations() << " iterations";
++       signalPassFailure();
++     }
++   }
++diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++--- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++@@ -1023,14 +1023,14 @@
++   // The algorithm behind this pass consists of a single traversal of the
++   // function. This is sufficient because we only support one function per
++   // program at the moment.
++-  // TODO(#1048): Find out why .maxIterations = 1 no longer works.
+++  // TODO(#1048): Find out why .setMaxIterations(1) no longer works.
++   // There have been recent refactors to applyPatternsGreedily
++   // upstream, and that might be the reason.
++-  config.useTopDownTraversal = true;
++-  config.enableRegionSimplification = GreedySimplifyRegionLevel::Aggressive;
++-  config.maxIterations = 2;
++-  config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
++-  config.strictMode = GreedyRewriteStrictness::AnyOp;
+++  config.setUseTopDownTraversal(true)
+++      .setRegionSimplificationLevel(GreedySimplifyRegionLevel::Aggressive)
+++      .setMaxIterations(2)
+++      .setMaxNumRewrites(GreedyRewriteConfig::kNoLimit)
+++      .setStrictness(GreedyRewriteStrictness::AnyOp);
++ 
++   populateStablehloRefineShapesPatterns(&patterns, context);
++   patterns.add<RefineCallOpPattern>(context, state);
++@@ -1046,7 +1046,7 @@
++ 
++   if (failed(applyPatternsGreedily(func, std::move(patterns), config)))
++     func.emitError("Failed to converge StablehloRefineShapes in ")
++-        << config.maxIterations << " iterations";
+++        << config.getMaxIterations() << " iterations";
++ 
++   return success();
 + }
++diff --ruN a/stablehlo/stablehlo/transforms/StablehloWrapInComposite.cpp b/stablehlo/stablehlo/transforms/StablehloWrapInComposite.cpp
++--- stablehlo/stablehlo/transforms/StablehloWrapInComposite.cpp
+++++ stablehlo/stablehlo/transforms/StablehloWrapInComposite.cpp
++@@ -183,7 +183,7 @@
++ 
++   void runOnOperation() override {
++     GreedyRewriteConfig config;
++-    config.strictMode = GreedyRewriteStrictness::ExistingOps;
+++    config.setStrictness(GreedyRewriteStrictness::ExistingOps);
++     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns),
++                                      config))) {
++       signalPassFailure();
+ diff --ruN a/stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp b/stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
+ --- stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
+ +++ stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp
+@@ -55,4 +273,22 @@ diff --ruN a/stablehlo/stablehlo/transforms/conversions/TypeConversion.cpp b/sta
+    addSourceMaterialization(materializeCastToIllegal);
+    addTargetMaterialization(materializeCastFromIllegal);
+  }
++diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloTargetIndependentOptimization.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloTargetIndependentOptimization.cpp
++--- stablehlo/stablehlo/transforms/optimization/StablehloTargetIndependentOptimization.cpp
+++++ stablehlo/stablehlo/transforms/optimization/StablehloTargetIndependentOptimization.cpp
++@@ -56,10 +56,10 @@
++ 
++   void runOnOperation() override {
++     GreedyRewriteConfig config;
++-    config.fold = true;
++-    config.cseConstants = true;
++-    config.maxIterations = kFoldOpEltLimit;
++-    config.useTopDownTraversal = false;
+++    config.enableFolding(true)
+++        .enableConstantCSE(true)
+++        .setMaxIterations(kFoldOpEltLimit)
+++        .setUseTopDownTraversal(false);
++     if (failed(applyPatternsGreedily(getOperation(), patterns, config)))
++       signalPassFailure();
++   }
  
