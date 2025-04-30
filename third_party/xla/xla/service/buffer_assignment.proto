@@ -103,3 +103,9 @@ message BufferIsolationConfig {
   uint64 isolation_order_salt = 4;
   repeated int32 isolation_colors = 5;
 }
+
+message BufferAllocationSlice {
+  int64 allocation_index = 1;
+  int64 offset = 2;
+  int64 size = 3;
+}

@@ -362,9 +362,6 @@ cc_library(
 tf_proto_library(
     name = "blas_proto",
     srcs = ["blas.proto"],
-    protodeps = [
-        "//xla:xla_data_proto",
-    ],
 )
 
 cc_library(

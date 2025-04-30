@@ -3,6 +3,7 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility", "nvtx_headers")
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
@@ -636,6 +637,15 @@ cc_library(
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+tf_proto_library(
+    name = "gemm_thunk_proto",
+    srcs = ["gemm_thunk.proto"],
+    protodeps = [
+        "//xla/service:buffer_assignment_proto",
+        "//xla/stream_executor/gpu:gpu_blas_lt_proto",
     ],
 )
 

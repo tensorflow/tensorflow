@@ -2046,7 +2046,9 @@ cuda_library(
 cuda_library(
     name = "topk_kernel_cuda",
     srcs = [
-        "topk_kernel_cuda.cu.cc",
+        "topk_kernel_cuda_bfloat16.cu.cc",
+        "topk_kernel_cuda_common.cu.h",
+        "topk_kernel_cuda_float.cu.cc",
     ],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     tags = [
