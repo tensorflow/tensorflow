@@ -38,6 +38,28 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "tf_tf_quantize_op",
+    srcs = [
+        "tf_tf_quantize_op.cc",
+    ],
+    hdrs = ["tf_tf_quantize_op.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/common/tf_quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:tf_quantize_op_utils",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "temp_tf_op_quant_spec",
     srcs = [
         "temp_tf_op_quant_spec.cc",
