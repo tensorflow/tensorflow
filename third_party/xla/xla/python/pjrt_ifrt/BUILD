@@ -41,6 +41,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes",
+        "//xla/service:computation_placer_hdr",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/hash",
@@ -335,10 +336,88 @@ cc_library(
     hdrs = ["pjrt_dtype.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/python/ifrt",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "pjrt_layout",
+    srcs = ["pjrt_layout.cc"],
+    hdrs = ["pjrt_layout.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":pjrt_dtype",
+        "//xla:shape_util",
+        "//xla/pjrt:pjrt_layout",
+        "//xla/python/ifrt",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_layout_test",
+    srcs = ["pjrt_layout_test.cc"],
+    deps = [
+        ":pjrt_layout",
+        "//xla:shape_util",
+        "//xla/pjrt:pjrt_layout",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:mock",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_proto_library(
+    name = "pjrt_layout_serdes_proto",
+    srcs = ["pjrt_layout_serdes.proto"],
+    protodeps = ["//xla:xla_data_proto"],
+)
+
+cc_library(
+    name = "pjrt_layout_serdes",
+    srcs = ["pjrt_layout_serdes.cc"],
+    deps = [
+        ":pjrt_layout",
+        ":pjrt_layout_serdes_proto_cc",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/pjrt:pjrt_layout",
+        "//xla/python/ifrt:serdes",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "pjrt_layout_serdes_test",
+    srcs = ["pjrt_layout_serdes_test.cc"],
+    deps = [
+        ":pjrt_layout",
+        ":pjrt_layout_serdes",
+        "//xla:shape_util",
+        "//xla/pjrt:pjrt_layout",
+        "//xla/python/ifrt:serdes",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -356,7 +435,6 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

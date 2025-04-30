@@ -28,7 +28,7 @@ include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
-include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization.td"
+include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 //===----------------------------------------------------------------------===//
@@ -2034,7 +2034,7 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [Pure,
     // central_value = min_value / 2 + (max_value - 1) / 2 + 1
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
-    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+    return mlir::TFL::GetFixedOutputRange(is_signed, bit_width, result_type,
         /*scale=*/1.0 / (1<<(bit_width-1)), /*zero_point=*/0);
   }
   }];
@@ -2194,7 +2194,7 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     auto result_type = getY().getType();
     // zero_point = 0
     // scale = 1. / (max_value + 1)
-    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+    return mlir::TFL::GetFixedOutputRange(is_signed, bit_width, result_type,
         /*scale=*/1.0 / (1<<(bit_width)),
         /*zero_point=*/-(1<<(bit_width-1)));
   }
@@ -2275,7 +2275,7 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
     auto result_type = getOutput().getType();
     // zero_point = max_value
     // scale = -log_softmax_output_min / (max_value + 1)
-    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+    return mlir::TFL::GetFixedOutputRange(is_signed, bit_width, result_type,
         /*scale=*/16.0 / 256, /*zero_point=*/127);
   }
   }];
@@ -3373,7 +3373,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
     auto result_type = getOutput().getType();
     // zero_point = 0
     // scale = 1. / (max_value + 1)
-    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+    return mlir::TFL::GetFixedOutputRange(is_signed, bit_width, result_type,
         /*scale=*/1.0 / (bit_width == 8 ? (1<<(bit_width)) : (1<<(bit_width-1))),
         /*zero_point=*/bit_width == 8 ? -(1<<(bit_width-1)): 0);
   }
@@ -3537,7 +3537,7 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     // central_value = min_value / 2 + (max_value - 1) / 2 + 1
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
-    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+    return mlir::TFL::GetFixedOutputRange(is_signed, bit_width, result_type,
         /*scale=*/1.0 / (1<<(bit_width-1)), /*zero_point=*/0);
   }
   }];

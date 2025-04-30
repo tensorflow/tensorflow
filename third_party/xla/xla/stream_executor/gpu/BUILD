@@ -35,6 +35,10 @@ load(
     "tsl_gpu_library",
 )
 load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
+load(
     "//xla/tsl/platform:build_config_root.bzl",
     "if_static",
 )
@@ -134,12 +138,6 @@ xla_cc_test(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
     ],
-)
-
-gpu_only_cc_library(
-    name = "gpu_diagnostics_header",
-    hdrs = ["gpu_diagnostics.h"],
-    deps = ["@com_google_absl//absl/status:statusor"],
 )
 
 cc_library(
@@ -254,15 +252,6 @@ tsl_gpu_library(
         "@local_tsl//tsl/platform:logging",
     ],
     alwayslink = True,
-)
-
-gpu_only_cc_library(
-    name = "gpu_stream_header",
-    hdrs = ["gpu_stream.h"],
-    deps = [
-        ":gpu_types_header",
-        "//xla/stream_executor:stream",
-    ],
 )
 
 gpu_only_cc_library(
@@ -541,6 +530,15 @@ cc_library(
     ]) + if_static([
         "@local_tsl//tsl/platform:tensor_float_32_utils",
     ]),
+)
+
+tf_proto_library(
+    name = "gpu_blas_lt_proto",
+    srcs = ["gpu_blas_lt.proto"],
+    protodeps = [
+        "//xla:xla_data_proto",
+        "//xla/stream_executor:blas_proto",
+    ],
 )
 
 gpu_kernel_library(
@@ -882,6 +880,15 @@ cc_library(
 cc_library(
     name = "all_reduce_kernel",
     hdrs = ["all_reduce_kernel.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+cc_library(
+    name = "topk_kernel",
+    hdrs = ["topk_kernel.h"],
     deps = [
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",

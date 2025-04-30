@@ -1413,6 +1413,17 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
       }
     }
 
+    if (auto xla_options =
+            llvm::dyn_cast<xla::ifrt::XlaCompileOptions>(options.get())) {
+      // TODO(emilyaf): Devices should be plumbed through or serialized to
+      // support MPMD parallelism, which allows executables with empty device
+      // assignments. In the meantime, devices are obtained from the device
+      // assignment in compile_options.
+      TF_ASSIGN_OR_RETURN(xla_options->devices,
+                          xla::ifrt::GetDeviceListFromXlaCompileOptions(
+                              client_.get(), xla_options->compile_options));
+    }
+
     TF_ASSIGN_OR_RETURN(auto executable,
                         client_->GetDefaultCompiler()->Compile(
                             std::move(program), std::move(options)));

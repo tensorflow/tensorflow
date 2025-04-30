@@ -82,7 +82,8 @@ void RegisterSerDes(const void* type_id, std::unique_ptr<SerDes> serdes) {
 }
 
 absl::StatusOr<Serialized> Serialize(
-    Serializable& serializable, std::unique_ptr<SerializeOptions> options) {
+    const Serializable& serializable,
+    std::unique_ptr<SerializeOptions> options) {
   SerDes* serdes;
   {
     Registry* const r = registry();

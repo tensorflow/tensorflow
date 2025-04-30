@@ -346,7 +346,8 @@ class PjRtCApiClient : public PjRtClient {
       PjRtMemorySpace* memory_space, const Layout* device_layout) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtMemorySpace* memory_space) override {
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+      const Layout* device_layout) override {
     return Unimplemented(
         "PJRT C API does not support BufferFromHostLiteral. Please report an "
         "issue at https://github.com/google/jax/issues if you need this "

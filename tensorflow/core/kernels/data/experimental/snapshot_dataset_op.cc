@@ -939,8 +939,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                    << dump_status;
     }
 
-    std::string graph_hash =
-        strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
+    std::string graph_hash = absl::StrCat(absl::Hex(hash, absl::kZeroPad16));
     LOG(INFO) << "Graph def serialized to hash: " << graph_hash;
 
     *output = new Dataset(ctx, input, path, graph_hash, reader_path_prefix_,
@@ -1667,8 +1666,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               hash_dir_(hash_dir),
               run_id_(run_id) {
           if (run_id_.empty()) {
-            run_id_ = strings::StrCat(
-                strings::Hex(random::New64(), strings::kZeroPad4));
+            run_id_ = absl::StrCat(absl::Hex(random::New64(), absl::kZeroPad4));
           }
           run_dir_ =
               io::JoinPath(dataset()->writer_path_prefix_, hash_dir_, run_id_);

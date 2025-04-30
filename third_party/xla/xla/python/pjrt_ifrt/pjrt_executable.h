@@ -115,13 +115,13 @@ class PjRtExecutable final
     return pjrt_executable_->GetOutputShardings();
   }
 
-  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetParameterLayouts() const override {
     DCHECK(this);
     return pjrt_executable_->GetParameterLayouts();
   }
 
-  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetOutputLayouts() const override {
     DCHECK(this);
     return pjrt_executable_->GetOutputLayouts();
@@ -184,7 +184,8 @@ class PjRtLoadedExecutable final
   static absl::StatusOr<std::unique_ptr<LoadedExecutable>> Create(
       PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+      DeviceListRef executable_devices);
 
   // Creates PjRtExecutable from an MHLO or StableHLO MLIR module. We expect
   // that xla::PjRtLoadedExecutable has fixed output dtypes/shapes/shardings. If
@@ -194,7 +195,8 @@ class PjRtLoadedExecutable final
   static absl::StatusOr<std::unique_ptr<LoadedExecutable>> Create(
       PjRtCompatibleClient* client, mlir::ModuleOp module,
       xla::CompileOptions compile_options,
-      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+      DeviceListRef executable_devices);
 
   // PjRtCompatibleLoadedExecutable implementation.
 
@@ -240,13 +242,13 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->GetOutputShardings();
   }
 
-  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetParameterLayouts() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetParameterLayouts();
   }
 
-  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetOutputLayouts() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetOutputLayouts();
@@ -317,7 +319,8 @@ class PjRtLoadedExecutable final
       absl::Span<const xla::DimensionVector> result_dimensions,
       const std::optional<xla::HloSharding>& result_hlo_sharding,
       const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
-      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+      DeviceListRef executable_devices);
 
   PjRtLoadedExecutable(
       PjRtCompatibleClient* client,

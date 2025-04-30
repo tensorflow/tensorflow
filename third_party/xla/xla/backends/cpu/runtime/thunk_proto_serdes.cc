@@ -244,7 +244,7 @@ DeserializeSliceShapeFromProto(
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice slice,
       DeserializeSliceFromProto(proto.slice(), buffer_allocations));
-  Shape shape(proto.shape());
+  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   return std::make_pair(slice, shape);
 }
 
@@ -1494,9 +1494,10 @@ static absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunkFromProto(
                                 buffer_allocations));
 
   std::optional<int64_t> trip_count = std::nullopt;
-  if (proto.while_thunk().has_trip_count()) {
+  if (proto.while_thunk().trip_count().contains_value()) {
     trip_count = proto.while_thunk().trip_count().value();
   }
+
   return WhileThunk::Create(std::move(info), cond_buffer,
                             std::move(*cond_sequence),
                             std::move(*body_sequence), trip_count);

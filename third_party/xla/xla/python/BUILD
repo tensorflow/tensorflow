@@ -45,7 +45,12 @@ pytype_strict_library(
     srcs = ["xla_client.py"],
     visibility = ["//visibility:public"],
     deps = if_google([
-        "//third_party/py/jax/jaxlib/xla:xla_client",
+        ":_ops",
+        ":_profiler",
+        ":_xla_builder",
+        "//third_party/py/jax/jaxlib:xla_client",
+        "@ml_dtypes_py//ml_dtypes",
+        "//third_party/py/numpy",
     ]),
 )
 
@@ -53,7 +58,7 @@ pytype_strict_library(
     name = "xla_extension",
     srcs = ["xla_extension.py"],
     visibility = ["//visibility:public"],
-    deps = if_google(["//third_party/py/jax/jaxlib/xla:xla_extension"]),
+    deps = if_google(["//third_party/py/jax/jaxlib:_jax"]),
 )
 
 tsl_pybind_extension(
@@ -216,21 +221,40 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "ops",
-    srcs = ["ops.cc"],
-    hdrs = ["ops.h"],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
+nanobind_pywrap_extension(
+    name = "_xla_builder",
+    srcs = ["xla_builder.cc"],
+    pytype_deps = [
+        "//third_party/py/jax/jaxlib:_jax",
     ],
-    features = ["-use_header_modules"],
+    pytype_srcs = ["_xla_builder.pyi"],
+    deps = [
+        ":nb_helpers",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/pjrt:status_casters",
+        "//xla/service:name_uniquer",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+        "@nanobind",
+    ],
+)
+
+nanobind_pywrap_extension(
+    name = "_ops",
+    srcs = ["ops.cc"],
+    pytype_deps = [
+        ":_xla_builder",
+        "//third_party/py/jax/jaxlib:_jax",
+    ],
+    pytype_srcs = ["_ops.pyi"],
     deps = [
         ":nb_absl_span",
         ":nb_helpers",
         ":types",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/types:span",
         "@nanobind",
         "//xla:literal",
@@ -249,15 +273,6 @@ cc_library(
         "//xla/hlo/builder/lib:svd",
         "//xla/pjrt:status_casters",
         "//xla/service:hlo_proto_cc",
-    ],
-)
-
-nanobind_pywrap_extension(
-    name = "_ops",
-    srcs = ["_ops.cc"],
-    deps = [
-        ":ops",
-        "@nanobind",
     ],
 )
 
@@ -311,17 +326,10 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "profiler",
+nanobind_pywrap_extension(
+    name = "_profiler",
     srcs = ["profiler.cc"],
-    hdrs = ["profiler.h"],
-    # TODO(b/172353882): figure out why compatible_with is needed to avoid some internal errors.
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
+    pytype_srcs = ["_profiler.pyi"],
     deps = [
         ":aggregate_profile",
         ":profiler_utils",
@@ -347,16 +355,6 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-    ],
-)
-
-nanobind_pywrap_extension(
-    name = "_profiler",
-    srcs = ["_profiler.cc"],
-    pytype_srcs = ["_profiler.pyi"],
-    deps = [
-        ":profiler",
-        "@nanobind",
     ],
 )
 

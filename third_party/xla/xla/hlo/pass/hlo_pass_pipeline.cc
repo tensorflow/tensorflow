@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -29,13 +30,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/dump.h"
-#include "xla/service/hlo_graph_dumper.h"
-#include "xla/service/hlo_proto_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
@@ -142,6 +141,33 @@ std::string UniqueId(const HloModuleGroup& group) {
                          out->append(std::to_string(mod->unique_id()));
                        });
 }
+
+template <typename HloT>
+static void VerifyPassChangedReport(const HloT* hlo, bool pass_changed,
+                                    const DebugOptions& debug_options,
+                                    absl::string_view pass_name,
+                                    absl::string_view pipeline_name,
+                                    size_t hash_before) {
+  size_t hash_after = absl::HashOf(hlo);
+  // Fail if pass changed HLO but has reported that it didn't.
+  if (!pass_changed && hash_after != hash_before &&
+      debug_options.xla_unsupported_crash_on_hlo_pass_silent_hlo_change()) {
+    LOG(FATAL) << absl::StrFormat(
+        "Pass '%s' in pipeline '%s' reported that it did not change the "
+        "HLO but the hash of HLO was changed from %d to %d. HLO text "
+        "after:\n%s",
+        pass_name, pipeline_name, hash_before, hash_after, hlo->ToString());
+  }
+  // Fail if pass did not change HLO but has reported that it did.
+  if (pass_changed && hash_after == hash_before &&
+      debug_options.xla_unsupported_crash_on_hlo_pass_noop_change()) {
+    LOG(FATAL) << absl::StrFormat(
+        "Pass '%s' in pipeline '%s' reported that it changed the HLO but "
+        "the hash of HLO was not updated. HLO text after:\n%s",
+        pass_name, pipeline_name, hlo->ToString());
+  }
+}
+
 }  // namespace
 
 template <typename HloT>
@@ -176,7 +202,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
   bool verify_pass_changed_report =
       debug_options.xla_unsupported_crash_on_hlo_pass_silent_hlo_change() ||
       debug_options.xla_unsupported_crash_on_hlo_pass_noop_change();
-  for (int i = 0; i < passes.size(); i++) {
+  for (int i = 0, sz = passes.size(); i < sz; i++) {
     HloPassInterface* pass = passes[i];
     std::string pass_name = std::string(pass->name());
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat("HLO pass: ", pass_name));
@@ -202,25 +228,8 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
     }
     TF_ASSIGN_OR_RETURN(bool pass_changed, status_or_changed);
     if (verify_pass_changed_report) {
-      size_t hash_after = absl::HashOf(*hlo);
-      // Fail if pass changed HLO but has reported that it didn't.
-      if (!pass_changed && hash_after != hash_before &&
-          debug_options.xla_unsupported_crash_on_hlo_pass_silent_hlo_change()) {
-        LOG(FATAL) << absl::StrFormat(
-            "Pass '%s' in pipeline '%s' reported that it did not change the "
-            "HLO but the hash of HLO was changed from %d to %d. HLO text "
-            "after:\n%s",
-            pass_name, pipeline_name, hash_before.value(), hash_after,
-            hlo->ToString());
-      }
-      // Fail if pass did not change HLO but has reported that it did.
-      if (pass_changed && hash_after == hash_before &&
-          debug_options.xla_unsupported_crash_on_hlo_pass_noop_change()) {
-        LOG(FATAL) << absl::StrFormat(
-            "Pass '%s' in pipeline '%s' reported that it changed the HLO but "
-            "the hash of HLO was not updated. HLO text after:\n%s",
-            pass_name, pipeline_name, hlo->ToString());
-      }
+      VerifyPassChangedReport(hlo, pass_changed, debug_options, pass_name,
+                              pipeline_name, hash_before.value());
     }
     if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
       MaybeDumpHloAndSaveFilenames(*hlo,

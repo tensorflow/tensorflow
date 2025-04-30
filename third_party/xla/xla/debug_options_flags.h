@@ -38,6 +38,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
 void AppendDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                              DebugOptions* debug_options = nullptr);
 
+// Parses the debug option flags from XLA_FLAGS environment variable.
+void ParseDebugOptionFlagsFromEnv();
+
 // Fetches a DebugOptions proto message from flags provided to the program.
 // Flags must be registered with the flags parser using AppendDebugOptionsFlags
 // first.

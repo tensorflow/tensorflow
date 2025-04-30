@@ -110,7 +110,8 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
     std::vector<Shape> output_argument_layouts;
     output_argument_layouts.reserve(proto.argument_layouts_size());
     for (const auto& argument_layout : proto.argument_layouts()) {
-      output_argument_layouts.emplace_back(Shape(argument_layout));
+      TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(argument_layout));
+      output_argument_layouts.emplace_back(std::move(shape));
     }
     output.argument_layouts = std::move(output_argument_layouts);
   }

@@ -20,18 +20,20 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Support/TypeID.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
 
 //===----------------------------------------------------------------------===//
 // The post-quantize Passes.
@@ -81,7 +83,7 @@ struct RemoveVolatileOps
     auto input_op = op.getArg().getDefiningOp();
     if (auto q = llvm::dyn_cast_or_null<mlir::quant::ir::QuantizeCastOp>(
       input_op)) {
-      if (!q->getAttr(kVolatileOpAttrName)) return failure();
+      if (!q->getAttr(tf_quant::kVolatileOpAttrName)) return failure();
 
       if (remove_volatile_ops_type == kPreserveInputsAndOutputs) {
         // Don't remove leading and trailing QDQ for PTQ workflow, so the io
@@ -137,8 +139,9 @@ void TFPostQuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
-  patterns.add<FoldTrivalRequantizeOp<mlir::quant::ir::QuantizeCastOp>,
-               RemoveVolatileOps<kPreserveNone>, RemoveRedundantScast>(ctx);
+  patterns
+      .add<tf_quant::FoldTrivalRequantizeOp<mlir::quant::ir::QuantizeCastOp>,
+           RemoveVolatileOps<kPreserveNone>, RemoveRedundantScast>(ctx);
   populateWithGenerated(patterns);
   if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     signalPassFailure();

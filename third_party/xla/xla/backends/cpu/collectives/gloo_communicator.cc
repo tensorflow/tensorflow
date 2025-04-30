@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -238,9 +239,9 @@ tsl::AsyncValueRef<GlooCommunicator::Event> GlooCommunicator::CollectivePermute(
 }
 
 tsl::AsyncValueRef<GlooCommunicator::Event> GlooCommunicator::AllToAll(
-    absl::Span<const se::DeviceMemoryBase> send_buffers,
-    absl::Span<const se::DeviceMemoryBase> recv_buffers, PrimitiveType dtype,
-    size_t count, const Executor& executor) {
+    absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
+    absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+    PrimitiveType dtype, size_t count, const Executor& executor) {
   // We can't use Gloo's all-to-all implementation directly because it assumes
   // that the inputs and outputs are contiguous. No big deal; it's just built
   // on top of send/recv and we can do the same as it.

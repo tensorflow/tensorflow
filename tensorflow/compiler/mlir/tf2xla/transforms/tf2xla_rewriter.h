@@ -38,8 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace mlir {
-namespace mhlo {
-
+namespace hlo {
 class Tf2XlaRewriterTestPeer;
 
 class Tf2XlaRewriter {
@@ -122,7 +121,7 @@ class Tf2XlaRewriter {
   xla::XlaBuilder xla_builder_;
 };
 
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_TF2XLA_REWRITER_H_

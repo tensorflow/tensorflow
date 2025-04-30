@@ -21,11 +21,11 @@ include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/IR/CommonTypeConstraints.td"
-include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization.td"
+include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
 // Quantize attribute $0 by using quantization parameter from %1.
-def QuantizeByQuantizedType : NativeCodeCall<"quant::Quantize($0, $1.getValue())">;
+def QuantizeByQuantizedType : NativeCodeCall<"TFL::Quantize($0, $1.getValue())">;
 def F32ElementsAttr : ElementsAttrBase<
   CPred<"llvm::cast<ElementsAttr>($_self).getShapedType().getElementType().isF32()">, "float constant tensor">;
 

@@ -3955,7 +3955,7 @@ std::optional<Value> convertConv3DCommon(
     (void)rewriter.notifyMatchFailure(op, "currently only supports NDHWC");
     return std::nullopt;
   }
-  RankedTensorType filter_type = filter.getType().cast<RankedTensorType>();
+  RankedTensorType filter_type = mlir::cast<RankedTensorType>(filter.getType());
   // Note that the kernel shape of tfl.conv_3d isn't [O, D, H, W, I] but
   // [D, H, W, I, O] which is the same as in TF.
   // Transpose filter shape from [D, H, W, I, O] to [O, D, H, W, C]
@@ -5002,7 +5002,7 @@ std::optional<Value> convertBroadcastToOp(PatternRewriter& rewriter,
 // Lowers cast operator to a sequence of TOSA ops.
 std::optional<Value> convertCastOp(PatternRewriter& rewriter, Operation* op,
                                    Value input, RankedTensorType output_type) {
-  auto input_type = input.getType().cast<ShapedType>();
+  auto input_type = mlir::cast<ShapedType>(input.getType());
   auto input_element_type = input_type.getElementType();
   Value cast_input = input;
 

@@ -219,6 +219,8 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
     TF_RETURN_IF_ERROR(async_pair.status());
     async_pair->start->set_metadata(instruction->metadata());
     async_pair->start->CopyBackendConfigFrom(instruction);
+    async_pair->done->set_metadata(instruction->metadata());
+    async_pair->done->CopyBackendConfigFrom(instruction);
     if (should_update_schedule) {
       replaced_pairs[instruction] = *async_pair;
     }

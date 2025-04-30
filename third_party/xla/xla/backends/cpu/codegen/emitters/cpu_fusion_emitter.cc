@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -64,6 +65,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_types.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -78,6 +80,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -141,19 +144,19 @@ absl::Status SetKernelFunctionAttributes(const HloFusionInstruction& fusion,
 
   mlir::MLIRContext* context = func->getContext();
 
-  // This is a hack until https://github.com/llvm/llvm-project/pull/135811 is
-  // merged, the value "2" corresponds to the default enum value.
-  mlir::ArrayAttr uwtable_attr = builder.getStrArrayAttr({"uwtable", "2"});
   int32_t vector_width =
       hlo_module->config().debug_options().xla_cpu_prefer_vector_width();
   mlir::ArrayAttr prefer_vector_width_attr = builder.getStrArrayAttr(
       {"prefer-vector-width", absl::StrCat(vector_width)});
   func->setAttr("passthrough",
-                builder.getArrayAttr({uwtable_attr, prefer_vector_width_attr}));
+                builder.getArrayAttr({prefer_vector_width_attr}));
   func->setAttr(
       "frame_pointer",
       mlir::LLVM::FramePointerKindAttr::get(
           context, mlir::LLVM::framePointerKind::FramePointerKind::All));
+  func->setAttr("uwtable_kind",
+                mlir::LLVM::UWTableKindAttr::get(
+                    context, mlir::LLVM::uwtable::UWTableKind::Async));
 
   return absl::OkStatus();
 }
@@ -203,8 +206,14 @@ absl::StatusOr<mlir::func::FuncOp> EmitFusionKernelApi(
     const std::string& entry_function_name,
     const BufferAssignment& buffer_assignment) {
   auto* context = fusion_module.getContext();
+
+  if (fusion_module.getName().value().empty()) {
+    return Internal("Fusion module name shouldn't be empty.");
+  }
+
+  absl::string_view module_name(fusion_module.getName().value());
   mlir::OpBuilder builder(context);
-  auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
+  auto loc = mlir::NameLoc::get(builder.getStringAttr(module_name));
   TF_ASSIGN_OR_RETURN(
       std::vector<KernelApiIrBuilder::KernelParameter> arguments,
       KernelApiIrBuilder::GetKernelArgumentsParameters(&fusion,
@@ -265,7 +274,7 @@ absl::StatusOr<mlir::func::FuncOp> EmitFusionKernelApi(
   auto error_type = cpu::ErrorType::get(context);
   auto call_frame_type = CallFrameType::get(context);
   auto call_frame_func = builder.create<FuncOp>(
-      loc, fusion.name(),
+      loc, module_name,
       builder.getFunctionType(/*arg_types=*/{call_frame_type},
                               /*result_types=*/{error_type}));
 
@@ -358,5 +367,27 @@ void SetDataLayoutAttribute(mlir::ModuleOp module,
 }
 
 int64_t CeilDiv(int64_t a, int64_t b) { return (a + b - 1) / b; }
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateNamedMlirModuleOp(
+    const HloFusionInstruction& fusion, mlir::Builder& builder) {
+  TF_ASSIGN_OR_RETURN(std::string fusion_name, GetFusionName(fusion));
+  auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion_name));
+  return llvm_ir::CreateMlirModuleOp(loc, fusion_name);
+}
+
+absl::StatusOr<std::string> GetFusionName(const HloFusionInstruction& fusion) {
+  std::string fusion_name(fusion.name());
+  if (fusion.parent()
+          ->parent()
+          ->config()
+          .debug_options()
+          .xla_cpu_generate_unique_c_style_kernel_entry_points()) {
+    TF_ASSIGN_OR_RETURN(fusion_name, ConvertToCName(absl::StrCat(
+                                         fusion.parent()->parent()->name(), "_",
+                                         fusion.name())));
+  }
+  return fusion_name;
+}
+
 }  // namespace cpu
 }  // namespace xla

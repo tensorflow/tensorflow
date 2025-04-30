@@ -36,6 +36,7 @@ cc_library(
         "//xla/backends/cpu:alignment",
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/backends/cpu/codegen:kernel_api_ir_builder",
+        "//xla/backends/cpu/codegen:symbol_name_util",
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",

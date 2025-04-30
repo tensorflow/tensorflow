@@ -393,18 +393,6 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
   }
 };
 
-class GemmFusionAutotunerTestWithMorePreciseReduction
-    : public GemmFusionAutotunerTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        GemmFusionAutotunerTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(
-        true);
-    return debug_options;
-  }
-};
-
 // TODO: b/404470821 - Remove once this is enabled by default.
 class DynamicSearchSpaceAutotunerTest : public GemmFusionAutotunerTest {
  public:
@@ -571,31 +559,6 @@ ENTRY e {
 }
 
 TEST_F(GemmFusionAutotunerTest, SelectsSplitK) {
-  // Shapes with K >> M, N have to force split-K configurations.
-  const std::string kHloText = R"(
-HloModule t
-
-ENTRY e {
-  p0 = s8[7,8192] parameter(0)
-  p0c = f16[7,8192] convert(p0)
-  p1 = f16[8192,18] parameter(1)
-  ROOT dot.0 = f16[7,18] dot(p0c, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: reduce
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: kCustom
-; CHECK-NEXT: {{kLoop|kInput}}
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1, /*arel=*/0.5}));
-}
-
-TEST_F(GemmFusionAutotunerTestWithMorePreciseReduction, SelectsSplitK) {
   // Shapes with K >> M, N have to force split-K configurations.
   constexpr absl::string_view kHloText = R"(
 HloModule t

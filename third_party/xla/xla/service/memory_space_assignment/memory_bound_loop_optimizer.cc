@@ -944,7 +944,7 @@ void MemoryBoundLoopOptimizer::PostProcess() {
       // using the defining position on the first HLO value.
       value.allocations.push_back(std::make_unique<PinnedAllocation>(
           value.hlo_values.front()->defining_position(), MemorySpace::kDefault,
-          std::nullopt, 0, loop_size_, /*is_scoped_allocation=*/false));
+          std::nullopt, 0, loop_size_));
       for (const HloUse& use : unallocated_uses) {
         value.allocations.back()->AddUse(use);
       }
@@ -987,8 +987,7 @@ bool MemoryBoundLoopOptimizer::AllocateTemporary(LoopValue& value) {
           << heap_.MemoryUsageToAsciiArt();
   value.allocations.push_back(std::make_unique<PinnedAllocation>(
       value.loop_positions[0].second, MemorySpace::kAlternate, std::nullopt,
-      definition_idx, max_use_idx,
-      /*is_scoped_allocation=*/false));
+      definition_idx, max_use_idx));
   AddAllLoopPositionsAndUses(value, /*allocate_next_iteration_uses=*/true);
   return true;
 }
@@ -1010,8 +1009,7 @@ bool MemoryBoundLoopOptimizer::AllocatePinned(LoopValue& value) {
           << heap_.MemoryUsageToAsciiArt();
   value.allocations.push_back(std::make_unique<PinnedAllocation>(
       *value.header_position, MemorySpace::kAlternate, std::nullopt, 0,
-      loop_size_,
-      /*is_scoped_allocation=*/false));
+      loop_size_));
   AddAllLoopPositionsAndUses(value, /*allocate_next_iteration_uses=*/false);
   return true;
 }
@@ -1502,7 +1500,7 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
   CHECK(value->header_position);
   value->allocations.push_back(std::make_unique<PinnedAllocation>(
       *value->header_position, MemorySpace::kDefault, std::nullopt, 0,
-      loop_size_, /*is_scoped_allocation=*/false));
+      loop_size_));
   int64_t begin_idx_in_loop = copy_start_loop_idx.value();
   int64_t end_idx_in_loop = last_use_idx_sentinel;
   // The chunk should always be present as we reproducing the same allocation

@@ -81,10 +81,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
@@ -195,7 +195,7 @@ DenseElementsAttr GetSqueezedShape(Value value_tensor) {
 // TFL_TransposeOp when the tensor has some dimensions with value==1
 // Example- "tfl.transpose"(tensor<56x8x56x1x1x1x7xf32>, [4, 5, 1, 2, 0, 6, 3])
 // Permutation before squeese is [4, 5, 1, 2, 0, 6, 3] becomes [1, 2, 0, 3]
-// after squeeze is perfomed to retain the relative ordering of the non-1 dims.
+// after squeeze is performed to retain the relative ordering of the non-1 dims.
 DenseElementsAttr GetSqueezedPermutation(Value input_value,
                                          Value input_permutation) {
   auto input_shape =
@@ -479,7 +479,7 @@ bool EqualsZero(Value value) {
 
 // Replaces the bias operand with a "none" type value if the bias value is
 // constant zero.
-// `ConcreteOpType` must be an concrete MLIR op class that has an optional
+// `ConcreteOpType` must be a concrete MLIR op class that has an optional
 // bias operand named 'bias'.
 template <typename ConcreteOpType>
 struct RemoveOptionalZeroBias : public OpRewritePattern<ConcreteOpType> {

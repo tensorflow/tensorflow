@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/hlo.pb.h"
@@ -89,7 +90,13 @@ class CustomCallThunk final : public Thunk {
   OpBuffers op_buffers_;
   CustomCallApiVersion api_version_;
   std::string backend_config_;
+
+  // Reference call frame pre-initialized at construction time.
   std::optional<ffi::CallFrame> call_frame_;
+
+  // A pool of call frames used at run time. Newly created call frames are
+  // copied from the reference call frame and updated with buffer addresses.
+  ObjectPool<ffi::CallFrame> call_frames_;
 
   // Execution state bound to the FFI handler. Optional.
   std::unique_ptr<ffi::ExecutionState> execution_state_;

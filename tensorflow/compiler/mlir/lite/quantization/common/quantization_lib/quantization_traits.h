@@ -59,7 +59,7 @@ struct QuantizationSpecTraitBase : public TraitBase<ConcreteType, TraitType> {
 //
 //   class SoftmaxOp
 //       : public Op<SoftmaxOp,
-//           OpTrait::quant::FixedResultUniformScale<
+//           OpTrait::TFL::FixedResultUniformScale<
 //               8, -128, 390625, -8, 0, 255, false>::Impl> {
 //
 // TODO(fengliuai): create a better way to express floating point scale in the
@@ -95,7 +95,7 @@ class FixedResultUniformScale {
 // as a trait like this:
 //
 //   class Conv2DOp
-//       : public Op<Conv2DOp, OpTrait::quant::AccumulatorScale<2, 0, 1>::Impl>
+//       : public Op<Conv2DOp, OpTrait::TFL::AccumulatorScale<2, 0, 1>::Impl>
 //
 // TODO(fengliuai): supports a configurable accumulator bit width.
 template <int Bias, int... Operands>
@@ -121,7 +121,7 @@ class AccumulatorUniformScale {
 // If the quantization dimension is -1, per-axis quantization isn't supported.
 //
 //   class Conv2DOp
-//       : public Op<Conv2DOp, OpTrait::quant::AffineOpCoefficient<0>::Impl>
+//       : public Op<Conv2DOp, OpTrait::TFL::AffineOpCoefficient<0>::Impl>
 //
 template <int QuantDim, int OperandIndex = 1>
 class AffineOpCoefficient {
@@ -139,7 +139,7 @@ class AffineOpCoefficient {
 // This class provides the API for ops that can be quantized.
 // This is as a trait like this:
 //
-//   class LessOp : public Op<LessOp, OpTrait::quant::QuantizableResult> {
+//   class LessOp : public Op<LessOp, OpTrait::TFL::QuantizableResult> {
 //
 template <typename ConcreteType>
 class QuantizableResult

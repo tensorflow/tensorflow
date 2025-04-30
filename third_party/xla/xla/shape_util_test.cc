@@ -1222,7 +1222,7 @@ TEST(ShapeUtilTest, B_250640044) {
              is_dynamic_dimension: false
            })pb",
       &proto));
-  Shape shape(proto);
+  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
@@ -1256,7 +1256,7 @@ TEST(ShapeUtilTest, B_251055887) {
           physical_shape { element_type: -562 }
         })pb",
       &proto));
-  Shape shape(proto);
+  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
@@ -1267,14 +1267,14 @@ TEST(ShapeUtilTest, B_385192799) {
   {
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
         R"pb(element_type: 2000)pb", &proto));
-    Shape shape(proto);
+    TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
     EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
   }
 
   {
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
         R"pb(element_type: -1)pb", &proto));
-    Shape shape(proto);
+    TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
     EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
   }
 }

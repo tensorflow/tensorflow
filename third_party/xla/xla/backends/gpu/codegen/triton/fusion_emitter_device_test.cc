@@ -78,6 +78,20 @@ class TritonEmitterTest : public GpuCodegenTest {
   }
 };
 
+class TmaParameterizedTritonEmitterTest
+    : public TritonEmitterTest,
+      public ::testing::WithParamInterface<bool> {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = TritonEmitterTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_triton_tma(GetParam());
+    return debug_options;
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(TmaParameterizedTritonEmitterTestSuite,
+                         TmaParameterizedTritonEmitterTest, ::testing::Bool());
+
 // TODO(bchetioui): turn this into a general binary elementwise test.
 TEST_F(TritonEmitterTest, MinimumIsEmittedCorrectly) {
   constexpr absl::string_view kHloText = R"(
@@ -487,12 +501,10 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           "triton_softmax_computation", R"(
 CHECK:        func.func @triton_fn(%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}})
-CHECK-DAG:        %[[C0:.*]] = arith.constant 0 : index
-CHECK-DAG:        %[[C1:.*]] = arith.constant 1 : index
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
-CHECK-NEXT:       triton_xla.extract %[[P0]][%[[PID_INDEX]], %[[C0]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>}
+CHECK-NEXT:       triton_xla.extract %[[P0]][%[[PID_INDEX]], 0] [1, 128] [1, 1] {layout = array<i64: 1, 0>}
 CHECK:            tt.reduce
 CHECK-NEXT:       ^bb0(%[[ARG2:[^:]*]]: f32, %[[ARG3:[^:]*]]: f32):
 CHECK-NEXT:           %[[ADD:.*]] = arith.addf %[[ARG2]], %[[ARG3]] : f32
@@ -500,7 +512,7 @@ CHECK-NEXT:           tt.reduce.return %[[ADD]] : f32
 CHECK-NEXT:       }) : (tensor<1x128xf32>) -> tensor<1xf32>
 CHECK:            arith.mulf
 CHECK-SAME:       tensor<1x128xf32>
-CHECK:            triton_xla.insert {{.*}} into %[[P1]][%[[PID_INDEX]], %[[C0]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>}
+CHECK:            triton_xla.insert {{.*}} into %[[P1]][%[[PID_INDEX]], 0] [1, 128] [1, 1]  {layout = array<i64: 1, 0>}
 CHECK:            return
 CHECK:        }
 )"));
@@ -547,20 +559,18 @@ CHECK:         func.func @triton_fn(
 CHECK-SAME:                      %[[P0:[A-Za-z0-9_]*]]: tensor<125x127xf32>
 CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: tensor<127xf32>
 CHECK-SAME:                      %[[P2:[A-Za-z0-9_]*]]: tensor<125x127xf32>
-CHECK-DAG:        %[[C0:.*]] = arith.constant 0 : index
-CHECK-DAG:        %[[C1:.*]] = arith.constant 1 : index
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
-CHECK-DAG:        triton_xla.extract %[[P0]][%[[PID_INDEX]], %[[C0]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>} : tensor<125x127xf32> to tensor<1x128xf32>
-CHECK-DAG:        triton_xla.extract %[[P1]][%[[C0]]][%[[C1]]] {layout = array<i64:0>} : tensor<127xf32> to tensor<128xf32>
+CHECK-DAG:        triton_xla.extract %[[P0]][%[[PID_INDEX]], 0] [1, 128] [1, 1] {layout = array<i64: 1, 0>} : tensor<125x127xf32> to tensor<1x128xf32>
+CHECK-DAG:        triton_xla.extract %[[P1]][0] [128] [1] {layout = array<i64: 0>} : tensor<127xf32> to tensor<128xf32>
 CHECK:            tt.reduce
 CHECK-NEXT:       ^bb0(%[[ARG3:[^:]*]]: f32, %[[ARG4:[^:]*]]: f32):
 CHECK-NEXT:           %[[ADD:.*]] = arith.addf %[[ARG3]], %[[ARG4]] : f32
 CHECK-NEXT:           tt.reduce.return %[[ADD]] : f32
 CHECK-NEXT:       }) : (tensor<1x128xf32>) -> tensor<1xf32>
 CHECK:            arith.mulf
-CHECK-DAG:        triton_xla.insert {{.*}} into %[[P2]][%[[PID_INDEX]], %[[C0]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>} : tensor<1x128xf32> into tensor<125x127xf32>
+CHECK-DAG:        triton_xla.insert {{.*}} into %[[P2]][%[[PID_INDEX]], 0] [1, 128] [1, 1] {layout = array<i64: 1, 0>} : tensor<1x128xf32> into tensor<125x127xf32>
 )"));
 }
 
@@ -609,24 +619,21 @@ ENTRY main {
 CHECK:        #[[MAP:.*]] = #xla.indexing_map<"(d0) -> (d0 floordiv 125), domain: d0 in [0, 1249]">
 CHECK:        #[[MAP1:.*]] = #xla.indexing_map<"(d0) -> (d0 mod 125), domain: d0 in [0, 1249]">
 CHECK:        func.func @triton_fn(%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}}, %[[P2:.*]]: {{.*}}, %[[P3:.*]]: {{.*}})
-CHECK-DAG:        %[[C0:.*]] = arith.constant 0 : index
-CHECK-DAG:        %[[C1:.*]] = arith.constant 1 : index
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
 CHECK-DAG:        %[[ROW_INDEX:.*]] = xla.apply_indexing #[[MAP]](%[[PID_INDEX]]
 CHECK-DAG:        %[[COL_INDEX:.*]] = xla.apply_indexing #[[MAP1]](%[[PID_INDEX]]
-CHECK:            triton_xla.extract %[[P0]][%[[ROW_INDEX]], %[[COL_INDEX]], %[[C0]]][%[[C1]], %[[C1]], %[[C1]]] {layout = array<i64:2, 1, 0>} : tensor<10x125x127xf32> to tensor<1x1x128xf32>
-CHECK:            triton_xla.extract %[[P1]][%[[C0]]][%[[C1]]] {layout = array<i64:0>} : tensor<127xf32> to tensor<128xf32>
-CHECK:            triton_xla.extract %[[P2]][%[[ROW_INDEX]], %[[COL_INDEX]]][%[[C1]], %[[C1]]] {layout = array<i64:1, 0>} : tensor<10x125xf32> to tensor<1x1xf32>
+CHECK:            triton_xla.extract %[[P0]][%[[ROW_INDEX]], %[[COL_INDEX]], 0] [1, 1, 128] [1, 1, 1] {layout = array<i64: 2, 1, 0>} : tensor<10x125x127xf32> to tensor<1x1x128xf32>
+CHECK:            triton_xla.extract %[[P1]][0] [128] [1] {layout = array<i64: 0>} : tensor<127xf32> to tensor<128xf32>
+CHECK:            triton_xla.extract %[[P2]][%[[ROW_INDEX]], %[[COL_INDEX]]] [1, 1] [1, 1] {layout = array<i64: 1, 0>} : tensor<10x125xf32> to tensor<1x1xf32>
 CHECK:            tt.reduce
 CHECK-NEXT:       ^bb0(%[[ARG4:[^:]*]]: f32, %[[ARG5:[^:]*]]: f32):
 CHECK-NEXT:           %[[MAX:.*]] = arith.maximumf %[[ARG4]], %[[ARG5]] : f32
 CHECK-NEXT:           tt.reduce.return %[[MAX]] : f32
 CHECK-NEXT:       }) : (tensor<1x1x128xf32>) -> tensor<1x1xf32>
-CHECK:            triton_xla.insert {{.*}} into %[[P3]][%[[ROW_INDEX]], %[[COL_INDEX]], %[[C0]]][%[[C1]], %[[C1]], %[[C1]]] {layout = array<i64:2, 1, 0>} : tensor<1x1x128xf32> into tensor<10x125x127xf32>
+CHECK:            triton_xla.insert {{.*}} into %[[P3]][%[[ROW_INDEX]], %[[COL_INDEX]], 0] [1, 1, 128] [1, 1, 1] {layout = array<i64: 2, 1, 0>} : tensor<1x1x128xf32> into tensor<10x125x127xf32>
 )"));
-
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
@@ -674,9 +681,16 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
-TEST_F(TritonEmitterTest, NestedReducerFusionGetsCodegenedCorrectly) {
+// TODO(b/413300983): Un-parameterize this test and add a precise regression
+// test for the TMA-related failure separately.
+TEST_P(TmaParameterizedTritonEmitterTest,
+       NestedReducerFusionGetsCodegenedCorrectly) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
+  }
+  bool tma_enabled = GetParam();
+  if (tma_enabled) {
+    GTEST_SKIP() << "TODO(b/413300983): Skipping TMA due to: Wrong results.";
   }
 
   constexpr absl::string_view kHloText = R"(
@@ -1094,7 +1108,15 @@ ENTRY entry_computation {
                                                            /*arel=*/1e-6}));
 }
 
-TEST_F(TritonEmitterTest, TestSliceWithTileThatNeedsMasking) {
+// Parameterized to make sure that slices are also handled correctly when TMA is
+// enabled.
+TEST_P(TmaParameterizedTritonEmitterTest, TestSliceWithTileThatNeedsMasking) {
+  bool tma_enabled = GetParam();
+  if (tma_enabled) {
+    GTEST_SKIP()
+        << "TODO(b/413301521): Skipping TMA due to: contiguous dimension "
+           "size too small.";
+  }
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1123,15 +1145,15 @@ TEST_F(TritonEmitterTest, TestSliceWithTileElementsNotAllContiguous) {
 HloModule m
 
 fused_computation {
-  param_0.1 = f32[16,16,32] parameter(0)
-  slice = f32[4,4,8] slice(param_0.1), slice={[2:10:2], [2:6], [3:11]}
-  slice.1 = f32[4,4,8] slice(param_0.1), slice={[4:8], [8:16:2], [13:21]}
-  ROOT add.3 = f32[4,4,8] add(slice, slice.1)
+  param_0 = f32[16,16,32] parameter(0)
+  slice = f32[4,4,8] slice(param_0), slice={[2:10:2], [2:6], [3:11]}
+  slice.1 = f32[4,4,8] slice(param_0), slice={[4:8], [8:16:2], [13:21]}
+  ROOT add = f32[4,4,8] add(slice, slice.1)
 }
 
 ENTRY entry_computation {
-  param_0.2 = f32[16,16,32] parameter(0)
-  ROOT fusion = f32[4,4,8] fusion(param_0.2), kind=kCustom,
+  param_0 = f32[16,16,32] parameter(0)
+  ROOT fusion = f32[4,4,8] fusion(param_0), kind=kCustom,
     calls=fused_computation,
     backend_config={
       "fusion_backend_config":{
@@ -1142,8 +1164,35 @@ ENTRY entry_computation {
         "num_ctas":"1",
         "num_stages":"1"}}}
 })";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-6,
-                                                           /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+TEST_P(TmaParameterizedTritonEmitterTest,
+       TestSlice2DWithTileElementsNotAllContiguous) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+fused_computation {
+  param_0 = f32[16,32] parameter(0)
+  slice = f32[4,16] slice(param_0), slice={[2:6], [3:19]}
+  slice.1 = f32[4,16] slice(param_0), slice={[4:8], [13:29]}
+  ROOT add = f32[4,16] add(slice, slice.1)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[16,32] parameter(0)
+  ROOT fusion = f32[4,16] fusion(param_0), kind=kCustom,
+    calls=fused_computation,
+    backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["2","8"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, TestSliceWithTileElementsNotAllContiguousUnaligned) {
@@ -1168,6 +1217,36 @@ ENTRY entry_computation {
           "num_stages":"1"}}}
 })";
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{0, 0}));
+}
+
+TEST_P(TmaParameterizedTritonEmitterTest,
+       TestSlice2DWithTileElementsNotAllContiguousUnaligned) {
+  bool tma_enabled = GetParam();
+  if (tma_enabled) {
+    GTEST_SKIP() << "TODO(b/413351837): Skipping TMA due to: "
+                    "CUDA_ERROR_ILLEGAL_INSTRUCTION";
+  }
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+fused_computation {
+  p = f32[7,80] parameter(0)
+  ROOT slice = f32[2,14] slice(p), slice={[2:6:3], [35:75:3]}
+}
+
+ENTRY entry_computation {
+  p = f32[7,80] parameter(0)
+  ROOT fusion = f32[2,14] fusion(p),
+    kind=kCustom, calls=fused_computation, backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton",
+        "block_level_fusion_config": {
+          "output_tiles":[{"sizes":["2","8"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, ReshapeIntoBroadcastIsLoweredCorrectly) {
@@ -1257,16 +1336,25 @@ CHECK:     triton_xla.insert
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
-TEST_F(TritonEmitterTest, BitcastNonNormalizedInputLayoutIsLoweredCorrectly) {
+// Parameterized the test to also make sure that non-canonical layouts are
+// handled correctly when TMA is enabled.
+TEST_P(TmaParameterizedTritonEmitterTest,
+       BitcastNonNormalizedInputLayoutIsLoweredCorrectly) {
+  bool tma_enabled = GetParam();
+  if (tma_enabled) {
+    GTEST_SKIP() << "TODO(b/413351367): Skipping TMA due to: Potentially "
+                    "incorrect handling of non-normalized layouts. "
+                    "Investigate, fix, and enable.";
+  }
   constexpr absl::string_view kHloText = R"(
 triton_computation {
-  p = s8[42,5]{0,1} parameter(0)
-  ROOT bitcast = s8[5,6,7] bitcast(p)
+  p = s8[42,16]{0,1} parameter(0)
+  ROOT bitcast = s8[16,6,7] bitcast(p)
 }
 
 ENTRY entry_computation {
-  p = s8[42,5]{0,1} parameter(0)
-  ROOT fusion = s8[5,6,7] fusion(p), kind=kCustom, calls=triton_computation,
+  p = s8[42,16]{0,1} parameter(0)
+  ROOT fusion = s8[16,6,7] fusion(p), kind=kCustom, calls=triton_computation,
     backend_config={
       "fusion_backend_config":{
       "kind":"__triton",
@@ -1897,8 +1985,13 @@ CHECK:     triton_xla.insert
 }
 
 // Reproducer from b/384110192.
-TEST_F(TritonEmitterTest,
+TEST_P(TmaParameterizedTritonEmitterTest,
        FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly) {
+  bool tma_enabled = GetParam();
+  if (tma_enabled) {
+    GTEST_SKIP() << "TODO(b/413300983): Skipping TMA due to: Wrong results.";
+  }
+
   // The point here is to check the output of the Triton fusion. The `slice` op
   // at the end is inserted to allow the comparison of output to run in a
   // reasonable amount of time, and has been proven to still correctly capture
@@ -2084,7 +2177,9 @@ CHECK: tt.dot {{.*}} -> tensor<16x16xf32>
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-TEST_F(TritonEmitterTest, DotWithNestedFusionsIsEmittedCorrectly) {
+// Parameterized as a sanity check to make sure dots work with TMA.
+TEST_P(TmaParameterizedTritonEmitterTest,
+       DotWithNestedFusionsIsEmittedCorrectly) {
   const std::string kHloText = R"(
 flhs {
   flhs.p0 = f32[32,256] parameter(0)

@@ -53,7 +53,6 @@ class TritonTest : public GpuCodegenTest {
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     debug_options
         .set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(true);
-    debug_options.set_xla_gpu_crash_on_verification_failures(true);
     return debug_options;
   }
 

@@ -359,6 +359,14 @@ cc_library(
     ] + if_google(["@com_google_protobuf//:wrappers_cc_proto"]),
 )
 
+tf_proto_library(
+    name = "blas_proto",
+    srcs = ["blas.proto"],
+    protodeps = [
+        "//xla:xla_data_proto",
+    ],
+)
+
 cc_library(
     name = "fft",
     hdrs = ["fft.h"],
@@ -498,6 +506,7 @@ cc_library(
     srcs = ["kernel_spec.cc"],
     hdrs = ["kernel_spec.h"],
     deps = [
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

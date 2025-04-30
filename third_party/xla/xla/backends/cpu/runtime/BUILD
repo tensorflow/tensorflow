@@ -135,32 +135,6 @@ cc_library(
 )
 
 cc_library(
-    name = "object_pool",
-    hdrs = ["object_pool.h"],
-    deps = [
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "object_pool_test",
-    srcs = ["object_pool_test.cc"],
-    shuffle_tests = False,
-    deps = [
-        ":object_pool",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-cc_library(
     name = "parallel_loop_runner",
     srcs = ["parallel_loop_runner.cc"],
     hdrs = ["parallel_loop_runner.h"],
@@ -712,6 +686,7 @@ cc_library(
         "//xla/ffi:ffi_api",
         "//xla/ffi/api:c_api",
         "//xla/runtime:buffer_use",
+        "//xla/runtime:object_pool",
         "//xla/service:buffer_assignment",
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_status_internal",
@@ -996,10 +971,33 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "rng_state_lib",
+    srcs = ["rng_state_lib.cc"],
+    hdrs = ["rng_state_lib.h"],
+    deps = [
+        "@com_google_absl//absl/base:config",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "rng_state_lib_test",
+    srcs = ["rng_state_lib_test.cc"],
+    deps = [
+        ":rng_state_lib",
+        "@com_google_absl//absl/numeric:int128",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "rng_state_thunk",
     srcs = ["rng_state_thunk.cc"],
     hdrs = ["rng_state_thunk.h"],
     deps = [
+        ":rng_state_lib",
         ":thunk",
         "//xla:util",
         "//xla/runtime:buffer_use",

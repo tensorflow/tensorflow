@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_IOPDDL_H_
 
 #include <cstdint>
-#include <string>
 
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/iopddl.h"
@@ -35,8 +34,6 @@ AutoShardingSolverRequest ConvertToSolverRequest(
     const iopddl::Problem& problem);
 
 void RandomizeCosts(iopddl::Problem& problem);
-
-std::string ConvertToJsonString(const iopddl::Problem& problem);
 
 }  // namespace spmd
 }  // namespace xla

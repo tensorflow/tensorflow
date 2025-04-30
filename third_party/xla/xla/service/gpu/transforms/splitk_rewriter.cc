@@ -248,15 +248,8 @@ absl::StatusOr<HloInstruction*> ReduceDimension(HloInstruction* instr,
 
 absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
                                                      size_t split_k) {
-  const bool disable_reduced_precision_reduction =
-      src_dot->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_triton_gemm_disable_reduced_precision_reduction();
   PrimitiveType output_type = src_dot->shape().element_type();
-  PrimitiveType accumulator_type = disable_reduced_precision_reduction
-                                       ? GetGemmAccumulatorType(src_dot)
-                                       : output_type;
+  PrimitiveType accumulator_type = GetGemmAccumulatorType(src_dot);
 
   // "split_k" is the number on chunks the K dimension is split into.
   const int64_t lhs_k_idx =

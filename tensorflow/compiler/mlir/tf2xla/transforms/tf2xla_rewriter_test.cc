@@ -49,7 +49,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 
 using ::mlir::LogicalResult;
 using ::mlir::ModuleOp;
@@ -123,7 +123,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
 
   Status CreateMlirModule(std::string module_string = kMlirModuleStr) {
     TF_ASSIGN_OR_RETURN(
-        module_, test::GetMlirModuleFromString(module_string, &context_));
+        module_, hlo::test::GetMlirModuleFromString(module_string, &context_));
 
     context_.loadAllAvailableDialects();
     return absl::OkStatus();
@@ -362,5 +362,5 @@ TEST_F(Tf2XlaRewriterTest, ErrorsWithInvalidNumberOfParametersToArgs) {
   EXPECT_FALSE(status_or_tuple_op.ok());
 }
 
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir

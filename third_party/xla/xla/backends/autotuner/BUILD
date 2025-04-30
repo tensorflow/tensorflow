@@ -14,8 +14,8 @@ package_group(
 )
 
 cc_library(
-    name = "backend",
-    hdrs = ["backend.h"],
+    name = "codegen_backend",
+    hdrs = ["codegen_backend.h"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",

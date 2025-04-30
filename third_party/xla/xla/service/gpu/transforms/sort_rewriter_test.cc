@@ -33,6 +33,8 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/platform_util.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
@@ -51,11 +53,13 @@ class SortRewriterTest
   void SetUp() override {
     HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>::SetUp();
     SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
+    TF_ASSERT_OK_AND_ASSIGN(test_platform_, PlatformUtil::GetPlatform("gpu"));
   }
 
   bool RunModuleAndPass(HloModule* module) {
     auto cloned = module->Clone();
-    bool changed = SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo())
+    bool changed = SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo(),
+                                GetTestPlatform()->Name())
                        .Run(module)
                        .value();
     if (changed) {
@@ -72,6 +76,13 @@ class SortRewriterTest
     auto config = instruction->backend_config<xla::SortOptions>();
     EXPECT_EQ(config->descending(), descending);
   }
+
+  const stream_executor::Platform* GetTestPlatform() const {
+    return test_platform_;
+  }
+
+ private:
+  stream_executor::Platform* test_platform_ = nullptr;
 };
 
 // Basic sort: ascending.
@@ -393,7 +404,7 @@ ENTRY %main {
   ROOT %sort = f32[$0,100000] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  auto pass = SortRewriter(TestGpuDeviceInfo::RTXH100SXMDeviceInfo());
+  auto pass = SortRewriter(TestGpuDeviceInfo::RTXH100SXMDeviceInfo(), "CUDA");
 
   // Batch 1
   std::string hlo = absl::Substitute(kHloTmpl, "1");
@@ -485,9 +496,13 @@ ENTRY %main {
   constexpr char kExpectedPattern[] = R"(
     // CHECK: %[[CC:.*]] = (u16[1000]{0}, u8[1]{0}) custom-call({{.*}}), custom_call_target="__cub$DeviceRadixSort", metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}, backend_config={"descending":true}
   )";
-  RunAndFilecheckHloRewrite(
-      kHlo, SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo()),
-      kExpectedPattern);
+  for (const auto& [device_description, platform_name] :
+       {std::tuple{TestGpuDeviceInfo::RTXA6000DeviceInfo(), "CUDA"},
+        std::tuple{TestGpuDeviceInfo::RTXH100SXMDeviceInfo(), "CUDA"}}) {
+    RunAndFilecheckHloRewrite(kHlo,
+                              SortRewriter(device_description, platform_name),
+                              kExpectedPattern);
+  }
 }
 
 TEST_P(SortRewriterTest, SortNumpyOrder) {

@@ -20,14 +20,11 @@
 #include <cstdint>
 #include <memory>
 #include <ostream>
-#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
-#include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -38,13 +35,11 @@ enum DiffCode : uint8_t {
   kUnmatched,
 };
 
-enum class ComputationMappingDirection : std::uint8_t {
-  kLeftToRight,
-  kRightToLeft
-};
+enum class DiffSide : std::uint8_t { kLeft, kRight };
 
 struct ComputationSummary {
-  ComputationMappingDirection direction;
+  DiffSide side;
+
   // Computation in the other graph that has most instructions matched.
   // Can be nullptr if no instructions are matched.
   const HloComputation* main_matched_computation = nullptr;
@@ -98,14 +93,13 @@ struct DiffSummary {
       computation_summary;
 };
 
-// Constructs the diff summary from the node mappings and diff result.
-// `left_graph` and `right_graph` are the original graphs.
-// `mappings` are the node mappings between the two graphs..
+// Constructs the diff summary from the diff result.
+// `left_module` and `right_module` are the original HLO modules.
 // `diff_result` contains the edit script(insert/delete/change/move) created
 // from the node mappings.
 std::unique_ptr<const DiffSummary> ConstructDiffSummary(
-    const HloGumgraph& left_graph, const HloGumgraph& right_graph,
-    const HloGumgraphMappings& mappings, const DiffResult& diff_result);
+    const HloModule& left_module, const HloModule& right_module,
+    const DiffResult& diff_result);
 
 // Logs the diff summary.
 void LogDiffSummary(const DiffSummary& diff_summary);

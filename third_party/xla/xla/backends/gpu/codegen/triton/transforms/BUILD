@@ -40,7 +40,6 @@ cc_library(
         ":passes_inc_gen",
         "//xla:shape_util",
         "//xla/backends/gpu/codegen/triton:emitter_helpers",
-        "//xla/backends/gpu/codegen/triton:tma_utils",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/codegen/emitters/ir:xla",

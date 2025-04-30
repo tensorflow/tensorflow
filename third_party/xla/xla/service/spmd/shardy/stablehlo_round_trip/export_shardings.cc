@@ -184,9 +184,7 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
   funcOp.front().walk([&](Operation* op) {
     if (ArrayRef<TensorShardingAttr> shardings = mlir::sdy::getShardings(op);
         !shardings.empty()) {
-      op->setAttr(
-          kXlaShardingAttr,
-          convertToHloShardingAttr(op, shardings, getMeshAttr, getStringAttr));
+      setHloShardingAttr(op, shardings, getMeshAttr);
       op->removeAttr(kShardingAttr);
     } else if (addMissingShardingToControlFlow &&
                mlir::isa<stablehlo::WhileOp, stablehlo::CaseOp,
@@ -271,6 +269,33 @@ class ExportStablehloShardingsPass
  private:
   bool addMissingShardingToControlFlow;
 };
+
+HloSharding getHloShardingForOp(
+    Operation* op, ArrayRef<TensorShardingAttr> shardings,
+    std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
+    ArrayRef<StringAttr> manualAxes) {
+  // TODO(bartchr): pass through a symbol table to `getMesh(...)` below.
+  bool isNoResultMaximal = op->getNumResults() == 0 && shardings.size() == 1 &&
+                           shardings.front().getMesh(op).isMaximal();
+  CHECK(shardings.size() == op->getNumResults() || isNoResultMaximal);
+  if (op->getNumResults() == 1 || isNoResultMaximal) {
+    return convertToHloSharding(shardings.front(), getMeshAttr, manualAxes);
+  }
+
+  SmallVector<HloSharding> newShardings;
+  llvm::transform(shardings, std::back_inserter(newShardings),
+                  [&](TensorShardingAttr sdySharding) {
+                    return convertToHloSharding(sdySharding, getMeshAttr,
+                                                manualAxes);
+                  });
+
+  std::vector<xla::Shape> shapes;
+  llvm::transform(op->getResultTypes(), std::back_inserter(shapes),
+                  [&](mlir::Type type) { return xla::TypeToShape(type); });
+
+  return HloSharding::Tuple(xla::ShapeUtil::MakeTupleShape(shapes),
+                            newShardings);
+}
 
 }  // namespace
 
@@ -362,33 +387,13 @@ HloSharding convertToHloSharding(
       types);
 }
 
-StringAttr convertToHloShardingAttr(
-    Operation* op, ArrayRef<TensorShardingAttr> shardings,
-    std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
-    std::function<StringAttr(const HloSharding&)> getStringAttr,
-    ArrayRef<StringAttr> manualAxes) {
-  // TODO(bartchr): pass through a symbol table to `getMesh(...)` below.
-  bool isNoResultMaximal = op->getNumResults() == 0 && shardings.size() == 1 &&
-                           shardings.front().getMesh(op).isMaximal();
-  CHECK(shardings.size() == op->getNumResults() || isNoResultMaximal);
-  if (op->getNumResults() == 1 || isNoResultMaximal) {
-    return getStringAttr(
-        convertToHloSharding(shardings.front(), getMeshAttr, manualAxes));
-  }
-
-  SmallVector<HloSharding> newShardings;
-  llvm::transform(shardings, std::back_inserter(newShardings),
-                  [&](TensorShardingAttr sdySharding) {
-                    return convertToHloSharding(sdySharding, getMeshAttr,
-                                                manualAxes);
-                  });
-
-  std::vector<xla::Shape> shapes;
-  llvm::transform(op->getResultTypes(), std::back_inserter(shapes),
-                  [&](mlir::Type type) { return xla::TypeToShape(type); });
-
-  return getStringAttr(
-      HloSharding::Tuple(xla::ShapeUtil::MakeTupleShape(shapes), newShardings));
+void setHloShardingAttr(Operation* op, ArrayRef<TensorShardingAttr> shardings,
+                        std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
+                        ArrayRef<StringAttr> manualAxes) {
+  HloSharding hloSharding =
+      getHloShardingForOp(op, shardings, getMeshAttr, manualAxes);
+  op->setAttr(kXlaShardingAttr,
+              StringAttr::get(op->getContext(), hloSharding.ToString()));
 }
 
 std::unique_ptr<Pass> createExportStablehloShardingsPass(

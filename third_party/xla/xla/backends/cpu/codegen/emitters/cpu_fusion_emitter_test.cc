@@ -107,7 +107,7 @@ static constexpr absl::string_view kScatterHlo = R"(
 
 TEST_F(CpuFusionEmitterTest, ScatterMlir) {
   constexpr absl::string_view kExpected = R"(
-    CHECK:       module attributes {{{.*}}xla.extra_backend_options = #xla<extra_backend_options["xla_cpu_disable_loop_unrolling"]>{{.*}}}
+    CHECK:       module @wrapped_scatter attributes {{{.*}}xla.extra_backend_options = #xla<extra_backend_options["xla_cpu_disable_loop_unrolling"]>{{.*}}}
     CHECK:       @wrapped_scatter_entry(
     CHECK-SAME:    xla.entry
     CHECK:           %[[XLA_LOOP:.+]] = xla.loop

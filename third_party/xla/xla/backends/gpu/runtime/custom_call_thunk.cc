@@ -16,16 +16,20 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
@@ -33,6 +37,7 @@ limitations under the License.
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
@@ -49,6 +54,63 @@ namespace gpu {
 using xla::ffi::CallFrame;
 using xla::ffi::CallFrameBuilder;
 using xla::ffi::CallOptions;
+
+// Builds a call frame prototype for typed-FFI custom calls with dummy device
+// memory addresses. This is called once when creating the CustomCall thunk,
+// then the thunk will need to update the addresses at runtime.
+static absl::StatusOr<ffi::CallFrame> BuildCallFramePrototype(
+    absl::Span<const std::optional<CustomCallThunk::Slice>> operands,
+    absl::Span<const std::optional<CustomCallThunk::Slice>> results,
+    CustomCallThunk::AttributesMap attributes) {
+  CallFrameBuilder builder(
+      /*num_args=*/operands.size(),
+      /*num_rets=*/results.size());
+
+  // Add prototype input buffers with actual data types and shapes. Device
+  // memory addresses will be updated at runtime.
+  for (int i = 0; i < operands.size(); ++i) {
+    auto& operand = operands[i];
+
+    if (!operand.has_value()) {
+      builder.AddTokenArg();
+      continue;
+    }
+
+    auto elements = absl::c_accumulate(operand->shape.dimensions(), 1ULL,
+                                       std::multiplies<int64_t>());
+    auto dtype_bytes = primitive_util::ByteWidth(operand->shape.element_type());
+    se::DeviceMemoryBase placeholder_arg(nullptr, elements * dtype_bytes);
+    builder.AddBufferArg(placeholder_arg, operand->shape.element_type(),
+                         operand->shape.dimensions());
+  }
+
+  // Add prototype output buffers with actual data types and shapes. Device
+  // memory addresses will be updated at runtime.
+  for (int i = 0; i < results.size(); ++i) {
+    auto& result = results[i];
+
+    if (!result.has_value()) {
+      builder.AddTokenRet();
+      continue;
+    }
+
+    auto elements = absl::c_accumulate(result->shape.dimensions(), 1ULL,
+                                       std::multiplies<int64_t>());
+    auto dtype_bytes = primitive_util::ByteWidth(result->shape.element_type());
+    se::DeviceMemoryBase placeholder_ret(nullptr, elements * dtype_bytes);
+    builder.AddBufferRet(placeholder_ret, result->shape.element_type(),
+                         result->shape.dimensions());
+  }
+
+  // Add attributes if any.
+  if (!attributes.empty()) {
+    ffi::CallFrameBuilder::AttributesBuilder attrs;
+    attrs.Append(std::move(attributes));
+    builder.AddAttributes(attrs.Build());
+  }
+
+  return builder.Build();
+}
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     ThunkInfo thunk_info, std::string target_name, CustomCallTarget call_target,
@@ -84,9 +146,13 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
                             XLA_FFI_ExecutionStage_INSTANTIATE));
   }
 
+  TF_ASSIGN_OR_RETURN(
+      CallFrame call_frame,
+      BuildCallFramePrototype(operands, results, std::move(attributes)));
+
   return absl::WrapUnique(new CustomCallThunk(
       thunk_info, std::move(target_name), bundle, std::move(operands),
-      std::move(results), std::move(attributes), std::move(execution_state),
+      std::move(results), std::move(call_frame), std::move(execution_state),
       called_computation));
 }
 
@@ -105,7 +171,7 @@ CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, std::string target_name,
 CustomCallThunk::CustomCallThunk(
     ThunkInfo thunk_info, std::string target_name,
     XLA_FFI_Handler_Bundle bundle, std::vector<std::optional<Slice>> operands,
-    std::vector<std::optional<Slice>> results, AttributesMap attributes,
+    std::vector<std::optional<Slice>> results, CallFrame call_frame,
     std::unique_ptr<ffi::ExecutionState> execution_state,
     const HloComputation* called_computation)
     : Thunk(Thunk::kCustomCall, thunk_info),
@@ -113,7 +179,8 @@ CustomCallThunk::CustomCallThunk(
       operands_(std::move(operands)),
       results_(std::move(results)),
       bundle_(bundle),
-      attributes_(std::move(attributes)),
+      call_frame_(std::move(call_frame)),
+      call_frames_([this] { return call_frame_->Copy(); }),
       execution_state_(std::move(execution_state)),
       called_computation_(called_computation) {}
 
@@ -128,8 +195,9 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
         continue;
       }
 
-      if (!slice->slice.allocation())
+      if (!slice->slice.allocation()) {
         return Internal("custom call input missing buffer allocation");
+      }
 
       buffers.push_back(
           params.buffer_allocations->GetDeviceAddress(slice->slice).opaque());
@@ -162,50 +230,37 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
     return absl::InternalError("buffer allocations and stream are required");
   }
 
-  // TODO(ezhulenev): This is not the most optimal approach, as we'll be doing
-  // a lot of extra allocation on every call. We have to keep attributes
-  // separate from arguments, as they do not change after thunk is constructed.
-  CallFrameBuilder builder(operands_.size(), results_.size());
-  auto device_address =
-      [buffer_allocations](
-          BufferAllocation::Slice slice) -> se::DeviceMemoryBase {
+  auto device_memory = [&](BufferAllocation::Slice slice) {
     return buffer_allocations ? buffer_allocations->GetDeviceAddress(slice)
                               : se::DeviceMemoryBase{};
   };
 
+  // Collect arguments buffers.
+  absl::InlinedVector<se::DeviceMemoryBase, 8> arguments;
+  arguments.reserve(operands_.size());
   for (auto& operand : operands_) {
     if (!operand.has_value()) {
-      builder.AddTokenArg();
-      continue;
+      arguments.push_back(se::DeviceMemoryBase{});
+    } else {
+      arguments.push_back(device_memory(operand->slice));
     }
-
-    if (!operand->slice.allocation())
-      return Internal("custom call argument missing buffer allocation");
-
-    builder.AddBufferArg(device_address(operand->slice),
-                         operand->shape.element_type(),
-                         operand->shape.dimensions());
   }
 
+  // Collect results buffers.
+  absl::InlinedVector<se::DeviceMemoryBase, 4> results;
+  results.reserve(results_.size());
   for (auto& result : results_) {
     if (!result.has_value()) {
-      builder.AddTokenRet();
-      continue;
+      results.push_back(se::DeviceMemoryBase{});
+    } else {
+      results.push_back(device_memory(result->slice));
     }
-
-    if (!result->slice.allocation())
-      return Internal("custom call result missing buffer allocation");
-
-    builder.AddBufferRet(device_address(result->slice),
-                         result->shape.element_type(),
-                         result->shape.dimensions());
   }
 
-  CallFrameBuilder::AttributesBuilder attrs;
-  attrs.Append(attributes_);
-
-  builder.AddAttributes(attrs.Build());
-  CallFrame call_frame = builder.Build();
+  // Borrow the FFI call frame from the object pool and update with the actual
+  // device memory addresses.
+  TF_ASSIGN_OR_RETURN(auto call_frame, call_frames_->GetOrCreate());
+  TF_RETURN_IF_ERROR(call_frame->UpdateWithBuffers(arguments, results));
 
   int32_t device_ordinal = -1;
   se::DeviceMemoryAllocator* allocator = nullptr;
@@ -220,7 +275,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
                          called_computation_,
                          execution_context,
                          execution_state_.get()};
-  return Call(handler, call_frame, options, stage);
+  return Call(handler, *call_frame, options, stage);
 }
 
 absl::Status CustomCallThunk::Prepare(

@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
-load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+load("//tensorflow/compiler/mlir/tosa:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,7 +22,7 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/mlir:tf-opt",
+        "//tensorflow/compiler/mlir/tosa:tf-tosa-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
     ],

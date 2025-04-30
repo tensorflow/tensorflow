@@ -16,17 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_NEST_GEMM_FUSION_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_NEST_GEMM_FUSION_H_
 
-#include <cstdint>
-
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
@@ -65,16 +63,16 @@ class NestGemmFusion : public HloModulePass {
 
 namespace detail {
 
-// Finds tile sizes for the root of the analysis that satisfy the
-// requirements of the dot. That is, the tile sizes need to satisfy the
-// constraints of the analysis and map to the given config of the dot.
+// Returns block level parameters based on tile sizes for the root of the
+// analysis that satisfy the requirements of the `dot`. That is, the tile sizes
+// need to satisfy the constraints of the analysis and map to the given `config`
+// of the dot.
 //
 // We expose this function because using `GpuDotFusionCostModel` is only
-// possible with `EstimateRunTimeForDotOpWithBlockParameters` method. To compute
-// `BlockLevelParameters` we need to calculate output tile sizes. This function
-// can be removed once `GpuDotFusionCostModel::EstimateRunTimeForDotOp` is
-// implemented.
-absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
+// possible with `EstimateRunTimeForDotOpWithBlockParameters` method. This
+// function can be removed once `GpuDotFusionCostModel::EstimateRunTimeForDotOp`
+// is implemented.
+absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     HloDotInstruction* dot, const TritonGemmConfig& config,
     mlir::MLIRContext* ctx);
 

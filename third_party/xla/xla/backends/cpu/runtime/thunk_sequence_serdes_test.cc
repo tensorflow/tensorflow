@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -176,6 +177,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
                         CreateRngGetAndUpdateStateThunk());
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateTopKThunk());
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateWhileThunk());
+    TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateWhileThunk(1));
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateXnnDotThunk());
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(),
                         CreateXnnConvolutionThunk());
@@ -569,7 +571,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     );
   }
 
-  absl::StatusOr<std::unique_ptr<Thunk>> CreateWhileThunk() {
+  absl::StatusOr<std::unique_ptr<Thunk>> CreateWhileThunk(
+      std::optional<int64_t> trip_count = std::nullopt) {
     ThunkSequence cond_sequence;
     TF_ASSIGN_OR_RETURN(cond_sequence.emplace_back(), CreateAllGatherThunk());
     ThunkSequence body_sequence;
@@ -585,7 +588,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
             buffer_allocations_[buffer_allocations_.size() - 1]),
         /*cond_sequence=*/std::move(cond_sequence),
         /*body_sequence=*/std::move(body_sequence),
-        /*trip_count=*/1);
+        /*trip_count=*/trip_count);
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateXnnDotThunk() {

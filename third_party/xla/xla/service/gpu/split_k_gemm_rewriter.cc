@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
 #include "xla/literal_util.h"
@@ -50,10 +49,9 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -127,13 +125,6 @@ absl::StatusOr<HloInstruction*> MakeSparseMetaOperand(
   Shape new_shape = ShapeUtil::MakeShapeWithDescendingLayout(
       shape.element_type(), dimensions);
   return MakeBitcastHlo(meta, new_shape);
-}
-
-PrimitiveType GetAccumulatorType(bool disable_reduced_precision_reduction,
-                                 HloDotInstruction* dot,
-                                 HloInstruction* instr) {
-  return disable_reduced_precision_reduction ? GetGemmAccumulatorType(dot)
-                                             : instr->shape().element_type();
 }
 
 }  // namespace
@@ -243,9 +234,8 @@ absl::StatusOr<HloInstruction*> MakeSplitKOperand(
 // Apply split K configuration from the tiling config to the fused dot()
 // computation: bitcast the operands, change the output shape and the dot
 // dimensions.
-absl::Status MakeDotComputationSplitKBatch(
-    HloComputation* computation, const TritonGemmConfig& config,
-    bool disable_reduced_precision_reduction) {
+absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
+                                           const TritonGemmConfig& config) {
   HloDotInstruction* dot = Cast<HloDotInstruction>(
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot));
   TF_ASSIGN_OR_RETURN(const auto analysis,
@@ -304,6 +294,7 @@ absl::Status MakeDotComputationSplitKBatch(
 
   // Process the collected HLOs from computation root to dot.
   bool did_pad = false;
+  PrimitiveType accumulator_dtype = GetGemmAccumulatorType(dot);
   while (!to_process.empty()) {
     HloInstruction* current = to_process.top();
     to_process.pop();
@@ -330,8 +321,6 @@ absl::Status MakeDotComputationSplitKBatch(
                             MakeSparseMetaOperand(*dot, config));
       }
       // Keep the precision of the accumulator type for the dot output.
-      PrimitiveType accumulator_dtype =
-          GetAccumulatorType(disable_reduced_precision_reduction, dot, current);
       expanded = MakeDotHlo(lhs, rhs, new_dim_numbers, dot->precision_config(),
                             accumulator_dtype, sparsity, sparse_meta)
                      .value();
@@ -347,8 +336,6 @@ absl::Status MakeDotComputationSplitKBatch(
       dot->SetupDerivedInstruction(expanded);
     } else {
       // Propagate the precision of the accumulator to the GEMM fusion root.
-      PrimitiveType accumulator_dtype =
-          GetAccumulatorType(disable_reduced_precision_reduction, dot, current);
       expanded = computation->AddInstruction(
           current->CloneWithNewShape(ShapeUtil::PrependMajorDimension(
               config.split_k, ShapeUtil::ChangeElementType(
@@ -377,8 +364,6 @@ absl::Status MakeDotComputationSplitKBatch(
       if (!to_process_set.contains(operand)) {
         // Broadcast the operand to the Split-K dimension and convert to the
         // accumulator dtype.
-        auto accumulator_dtype = GetAccumulatorType(
-            disable_reduced_precision_reduction, dot, operand);
         HloInstruction* convert = MakeConvertToHlo(operand, accumulator_dtype);
         std::vector<int64_t> broadcast_dimensions(
             operand->shape().dimensions().size());
@@ -414,17 +399,11 @@ absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
     return Unimplemented("Tuple output is not supported with split-K yet.");
   }
 
-  const bool disable_reduced_precision_reduction =
-      dot_fusion->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_triton_gemm_disable_reduced_precision_reduction();
   const PrimitiveType output_type = dot_fusion->shape().element_type();
   const Layout output_layout = dot_fusion->shape().layout();
 
   TF_RETURN_IF_ERROR(MakeDotComputationSplitKBatch(
-      dot_fusion->fused_instructions_computation(), config,
-      disable_reduced_precision_reduction));
+      dot_fusion->fused_instructions_computation(), config));
   const HloInstruction* root = dot_fusion->fused_expression_root();
 
   *dot_fusion->mutable_shape() = root->shape();
@@ -440,17 +419,15 @@ absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
   // The output of the reduce has to have the layout of the original dot.
   *reduce->mutable_shape()->mutable_layout() = output_layout;
 
-  HloInstruction* split_k_root = disable_reduced_precision_reduction
-                                     ? MakeConvertToHlo(reduce, output_type)
-                                     : reduce;
+  HloInstruction* convert = MakeConvertToHlo(reduce, output_type);
 
   if (dot_fusion->IsRoot()) {
-    dot_fusion->parent()->set_root_instruction(split_k_root,
+    dot_fusion->parent()->set_root_instruction(convert,
                                                /*accept_different_shape=*/true);
   } else {
-    // Replace all users expect for split_k_root created above to avoid cycles.
+    // Replace all users expect for convert created above to avoid cycles.
     TF_RETURN_IF_ERROR(dot_fusion->ReplaceAllUsesWithDifferentShape(
-        initial_dot_fusion_users, split_k_root));
+        initial_dot_fusion_users, convert));
   }
 
   return absl::OkStatus();

@@ -80,7 +80,7 @@ class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable,
+      const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     if (options != nullptr) {
       auto* serialize_options =

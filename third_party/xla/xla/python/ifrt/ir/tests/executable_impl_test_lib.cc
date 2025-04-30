@@ -744,11 +744,11 @@ module {
     }
     exec_build_options.set_device_assignment(device_assignment);
   }
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<LoadedExecutable> child_exec,
-      client_->GetDefaultCompiler()->Compile(
-          std::make_unique<HloProgram>(*mhlo_module),
-          std::make_unique<XlaCompileOptions>(std::move(xla_options))));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<LoadedExecutable> child_exec,
+                          client_->GetDefaultCompiler()->Compile(
+                              std::make_unique<HloProgram>(*mhlo_module),
+                              std::make_unique<XlaCompileOptions>(
+                                  std::move(xla_options), devices)));
 
   std::string source = R"(
 !array = !ifrt.array<tensor<2x2xi32>,

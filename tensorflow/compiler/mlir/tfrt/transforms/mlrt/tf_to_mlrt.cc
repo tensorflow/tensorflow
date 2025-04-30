@@ -1059,8 +1059,6 @@ class TfToMlrtConversionPass
 
     type_converter_.addTargetMaterialization(future_to_tensor_materialization);
     type_converter_.addSourceMaterialization(future_to_tensor_materialization);
-    type_converter_.addArgumentMaterialization(
-        future_to_tensor_materialization);
 
     if (use_tpu_host_allocator_for_inputs_.hasValue()) {
       options_.use_tpu_host_allocator_for_inputs =

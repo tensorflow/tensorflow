@@ -113,8 +113,8 @@ std::optional<Value> convertTFConv2DCommon(
       stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
-      int64_t stride_h = strides_attr[1].cast<IntegerAttr>().getInt();
-      int64_t stride_w = strides_attr[2].cast<IntegerAttr>().getInt();
+      int64_t stride_h = mlir::cast<IntegerAttr>(strides_attr[1]).getInt();
+      int64_t stride_w = mlir::cast<IntegerAttr>(strides_attr[2]).getInt();
       stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
@@ -123,8 +123,8 @@ std::optional<Value> convertTFConv2DCommon(
       dilation = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
-      int64_t dilation_h = dilations_attr[1].cast<IntegerAttr>().getInt();
-      int64_t dilation_w = dilations_attr[2].cast<IntegerAttr>().getInt();
+      int64_t dilation_h = mlir::cast<IntegerAttr>(dilations_attr[1]).getInt();
+      int64_t dilation_w = mlir::cast<IntegerAttr>(dilations_attr[2]).getInt();
       dilation = rewriter.getDenseI64ArrayAttr({dilation_h, dilation_w});
     }
   }
@@ -172,9 +172,9 @@ std::optional<Value> convertTFConv3DCommon(
     // Defaults to [1, 1, 1].
     strides = rewriter.getDenseI64ArrayAttr({1, 1, 1});
   } else {
-    int64_t stride_d = strides_attr[1].cast<IntegerAttr>().getInt();
-    int64_t stride_h = strides_attr[2].cast<IntegerAttr>().getInt();
-    int64_t stride_w = strides_attr[3].cast<IntegerAttr>().getInt();
+    int64_t stride_d = mlir::cast<IntegerAttr>(strides_attr[1]).getInt();
+    int64_t stride_h = mlir::cast<IntegerAttr>(strides_attr[2]).getInt();
+    int64_t stride_w = mlir::cast<IntegerAttr>(strides_attr[3]).getInt();
     strides = rewriter.getDenseI64ArrayAttr({stride_d, stride_h, stride_w});
   }
 
@@ -183,17 +183,18 @@ std::optional<Value> convertTFConv3DCommon(
     // Defaults to [1, 1, 1].
     dilations = rewriter.getDenseI64ArrayAttr({1, 1, 1});
   } else {
-    int64_t dilation_d = dilations_attr[1].cast<IntegerAttr>().getInt();
-    int64_t dilation_h = dilations_attr[2].cast<IntegerAttr>().getInt();
-    int64_t dilation_w = dilations_attr[3].cast<IntegerAttr>().getInt();
+    int64_t dilation_d = mlir::cast<IntegerAttr>(dilations_attr[1]).getInt();
+    int64_t dilation_h = mlir::cast<IntegerAttr>(dilations_attr[2]).getInt();
+    int64_t dilation_w = mlir::cast<IntegerAttr>(dilations_attr[3]).getInt();
     dilations =
         rewriter.getDenseI64ArrayAttr({dilation_d, dilation_h, dilation_w});
   }
 
-  RankedTensorType input_type = input.getType().cast<RankedTensorType>();
+  RankedTensorType input_type = mlir::cast<RankedTensorType>(input.getType());
   DenseI64ArrayAttr pads;
   {
-    RankedTensorType filter_type = filter.getType().cast<RankedTensorType>();
+    RankedTensorType filter_type =
+        mlir::cast<RankedTensorType>(filter.getType());
 
     tensorflow::TensorFormat data_format_tf;
     if (!FormatFromString(data_format_ref, &data_format_tf)) {
@@ -1407,10 +1408,10 @@ Value reshapeScalarTo1D(PatternRewriter& rewriter, Location loc, Value value) {
     }
 
     DenseElementsAttr const_attr;
-    if (attr.getElementType().isa<mlir::IntegerType>()) {
+    if (mlir::isa<mlir::IntegerType>(attr.getElementType())) {
       const_attr = DenseElementsAttr::get(storage_type,
                                           {attr.getValues<mlir::APInt>()[0]});
-    } else if (attr.getElementType().isa<mlir::FloatType>()) {
+    } else if (mlir::isa<mlir::FloatType>(attr.getElementType())) {
       const_attr = DenseElementsAttr::get(storage_type,
                                           {attr.getValues<mlir::APFloat>()[0]});
     } else {

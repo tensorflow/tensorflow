@@ -125,13 +125,13 @@ class Tf2XlaRewritePattern : public ConversionPattern {
     auto abstractOp = op->getRegisteredInfo();
     if (!abstractOp) return failure();
 
-    if (!(IsOpAllowedTf2xlaFallback(abstractOp->getTypeID()) ||
+    if (!(hlo::IsOpAllowedTf2xlaFallback(abstractOp->getTypeID()) ||
           (prefer_tf2xla_ &&
-           IsOpAllowedTf2xlaPreferred(abstractOp->getTypeID())))) {
+           hlo::IsOpAllowedTf2xlaPreferred(abstractOp->getTypeID())))) {
       return failure();
     }
 
-    return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_);
+    return hlo::Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_);
   }
 
  private:

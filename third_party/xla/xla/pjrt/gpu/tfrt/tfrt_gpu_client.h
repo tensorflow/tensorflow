@@ -187,6 +187,8 @@ class TfrtGpuDevice final : public PjRtDevice {
     return nullptr;
   }
 
+  absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
+
   tsl::Allocator* allocator() { return allocator_.get(); }
 
   // Returns a fresh, PRNG-generated random seed for an XLA computation.
@@ -250,6 +252,7 @@ class TfrtGpuClient final : public PjRtClient {
                 std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
                 bool should_stage_host_to_device_transfers,
                 std::unique_ptr<tsl::Allocator> host_memory_allocator,
+                std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
                 std::shared_ptr<const GpuTopology> gpu_topology);
 
   ~TfrtGpuClient() override;
@@ -361,8 +364,10 @@ class TfrtGpuClient final : public PjRtClient {
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtMemorySpace* memory_space, const Layout* device_layout) override;
 
+  using PjRtClient::BufferFromHostLiteral;
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtMemorySpace* memory_space) override;
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+      const Layout* device_layout) override;
 
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
@@ -447,9 +452,7 @@ class TfrtGpuClient final : public PjRtClient {
   std::unique_ptr<tsl::thread::ThreadPool> blocking_thread_pool_;
   std::unique_ptr<tsl::thread::ThreadPool> non_blocking_thread_pool_;
 
-  // TODO(caojx): Make gpu run options configurable.
-  std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_ =
-      std::make_unique<gpu::GpuExecutableRunOptions>();
+  const std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 
   // A cache for transpose plans. We use transposes to convert
   // (possibly strided) buffers provided to BufferFromHostBuffer into dense

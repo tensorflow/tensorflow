@@ -152,7 +152,7 @@ MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer) {
 absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, Shape shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers,
-    std::shared_ptr<const PjRtLayout> layout) {
+    std::shared_ptr<const xla::PjRtLayout> layout) {
   TF_RETURN_IF_ERROR(
       ValidateArrayCreationInput(client, sharding, pjrt_buffers));
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
@@ -163,7 +163,7 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, DynamicShape dynamic_shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers,
-    std::shared_ptr<const PjRtLayout> layout) {
+    std::shared_ptr<const xla::PjRtLayout> layout) {
   TF_RETURN_IF_ERROR(
       ValidateArrayCreationInput(client, sharding, pjrt_buffers));
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(dynamic_shape),
@@ -279,7 +279,7 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
                      std::shared_ptr<const Sharding> sharding,
                      PjRtBuffers pjrt_buffers,
-                     std::shared_ptr<const PjRtLayout> layout)
+                     std::shared_ptr<const xla::PjRtLayout> layout)
     : client_(client),
       dtype_(dtype),
       shape_(std::move(shape)),
@@ -291,7 +291,7 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
                      DynamicShape dynamic_shape,
                      std::shared_ptr<const Sharding> sharding,
                      PjRtBuffers pjrt_buffers,
-                     std::shared_ptr<const PjRtLayout> layout)
+                     std::shared_ptr<const xla::PjRtLayout> layout)
     : client_(client),
       dtype_(dtype),
       shape_(std::move(dynamic_shape)),
@@ -564,7 +564,7 @@ bool PjRtArray::IsDeleted() const {
 
 std::string PjRtArray::DebugString() const {
   DCHECK(this);
-  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout_ptr = layout();
+  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout_ptr = layout();
   std::string layout_str =
       layout_ptr.ok() ? (*layout_ptr)->ToString() : "<unknown>";
 
@@ -575,10 +575,12 @@ std::string PjRtArray::DebugString() const {
       sharding_->DebugString(), layout_str);
 }
 
-absl::StatusOr<std::shared_ptr<const PjRtLayout>> PjRtArray::layout() const {
+absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> PjRtArray::layout()
+    const {
 #ifndef NDEBUG
   for (int i = 1; i < pjrt_buffers_.size(); ++i) {
-    std::shared_ptr<const PjRtLayout> layout_i = pjrt_buffers_[i]->layout();
+    std::shared_ptr<const xla::PjRtLayout> layout_i =
+        pjrt_buffers_[i]->layout();
     DCHECK(*layout_ == *layout_i)
         << "PjRtArray has mismatched layouts across shards! "
         << "shard 0: " << layout_->ToString() << ", shard " << i << ": "

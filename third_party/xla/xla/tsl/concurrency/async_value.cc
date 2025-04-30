@@ -165,7 +165,7 @@ void BlockUntilReady(AsyncValue* async_value) {
 }
 
 void RunWhenReady(absl::Span<AsyncValue* const> values,
-                  absl::AnyInvocable<void()> callee) {
+                  absl::AnyInvocable<void() &&> callee) {
   // Perform a quick scan of the arguments.  If they are all available,
   // then we can run the callee synchronously.
   absl::InlinedVector<AsyncValue*, 4> unavailable_values;
@@ -174,18 +174,18 @@ void RunWhenReady(absl::Span<AsyncValue* const> values,
   }
 
   // If we can synchronously call 'callee', then do it and we're done.
-  if (unavailable_values.empty()) return callee();
+  if (unavailable_values.empty()) return std::move(callee)();
 
   // If there is exactly one unavailable value, then we can just AndThen it.
   if (unavailable_values.size() == 1) {
     unavailable_values[0]->AndThen(
-        [callee = std::move(callee)]() mutable { callee(); });
+        [callee = std::move(callee)]() mutable { std::move(callee)(); });
     return;
   }
 
   struct CounterAndCallee {
     std::atomic<size_t> counter;
-    absl::AnyInvocable<void()> callee;
+    absl::AnyInvocable<void() &&> callee;
   };
 
   // Otherwise, we have multiple unavailable values.  Put a counter on the heap
@@ -199,14 +199,14 @@ void RunWhenReady(absl::Span<AsyncValue* const> values,
       if (data->counter.fetch_sub(1) != 1) return;
 
       // If we are the last one, then run the callee and free the data.
-      data->callee();
+      std::move(data->callee)();
       delete data;
     });
   }
 }
 
 void RunWhenReady(absl::Span<RCReference<AsyncValue> const> values,
-                  absl::AnyInvocable<void()> callee) {
+                  absl::AnyInvocable<void() &&> callee) {
   absl::InlinedVector<AsyncValue*, 8> pointers;
   pointers.reserve(values.size());
   for (const auto& ref : values) {

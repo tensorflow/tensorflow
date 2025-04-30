@@ -6791,7 +6791,7 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
   LogicalResult matchAndRewrite(
       SrcOpT op, typename SrcOpT::Adaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    DstOpT mhlo_op;
+    DstOpT stablehlo_op;
     Location loc = op.getLoc();
 
     // To handle quant type conversions, use the converted operands' element
@@ -6809,9 +6809,9 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
     if constexpr (std::is_same<DstOpT, stablehlo::CaseOp>::value) {
       // Explicitly handle the Case op because it has variadic regions and takes
       // the number of regions as an input along with the operands.
-      mhlo_op = rewriter.create<DstOpT>(loc, op.getResultTypes(),
-                                        adaptor.getBranchIndex(),
-                                        op.getBranches().size());
+      stablehlo_op = rewriter.create<DstOpT>(loc, op.getResultTypes(),
+                                             adaptor.getBranchIndex(),
+                                             op.getBranches().size());
     } else if constexpr (std::is_same<DstOpT, stablehlo::WhileOp>::value) {
       llvm::SmallVector<Type, 4> while_result_types;
       while_result_types.reserve(num_results);
@@ -6820,16 +6820,16 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
         while_result_types.push_back(ty);
       }
 
-      mhlo_op = rewriter.create<DstOpT>(loc, TypeRange(while_result_types),
-                                        adaptor.getOperands());
+      stablehlo_op = rewriter.create<DstOpT>(loc, TypeRange(while_result_types),
+                                             adaptor.getOperands());
     } else {
-      mhlo_op = rewriter.create<DstOpT>(loc, op.getResultTypes(),
-                                        adaptor.getOperands());
+      stablehlo_op = rewriter.create<DstOpT>(loc, op.getResultTypes(),
+                                             adaptor.getOperands());
     }
 
     int64_t num_regions = op.getNumRegions();
     for (int64_t idx = 0; idx < num_regions; ++idx) {
-      Region &region = mhlo_op.getBodyRegion(idx);
+      Region &region = stablehlo_op.getBodyRegion(idx);
       rewriter.inlineRegionBefore(op.getBodyRegion(idx), region, region.end());
 
       // Update region's entry blocks argument types to handle quantized element
@@ -6848,7 +6848,7 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
     }
 
     // Replace all uses of `op` results with the newly created op.
-    rewriter.replaceOp(op, mhlo_op);
+    rewriter.replaceOp(op, stablehlo_op);
     return success();
   }
 };
@@ -6963,13 +6963,5 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
 }
 // LINT.ThenChange(:MlirAlwaysOps)
 
-}  // end namespace hlo
-
-namespace mhlo {
-// Passthrough to avoid updating downstream users namespacing
-void PopulateLegalizeTfPatterns(MLIRContext *context,
-                                RewritePatternSet *patterns) {
-  hlo::PopulateLegalizeTfPatterns(context, patterns);
-}
-}  // namespace mhlo
+}  // namespace hlo
 }  // end namespace mlir

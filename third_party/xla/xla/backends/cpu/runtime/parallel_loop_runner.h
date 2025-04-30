@@ -97,14 +97,10 @@ class ParallelLoopRunner {
     size_t count;
   };
 
-  // clang-format off
-  template <typename Dim> struct TaskIndex;
-  template <> struct TaskIndex<RangeDim> { using Index = RangeIndex; };
-  template <> struct TaskIndex<TileDim>  { using Index = TileIndex; };
-  // clang-format on
-
+  // Mapping from parallel loop dimension to the parallel task index. Defined
+  // as template specializations below.
   template <typename Dim>
-  using task_index_t = typename TaskIndex<Dim>::Index;
+  struct TaskIndex;
 
   static size_t DimSize(RangeDim dim) { return dim.range; }
 
@@ -118,8 +114,8 @@ class ParallelLoopRunner {
 
   // Delinearizes linear `task_index` into the parallel task coordinates.
   template <typename... Dims>
-  static std::tuple<task_index_t<Dims>...> Delinearize(size_t task_index,
-                                                       Dims... dims);
+  static std::tuple<typename TaskIndex<Dims>::Index...> Delinearize(
+      size_t task_index, Dims... dims);
 
   // Adjusts tile dimensions to fit the product of all dimensions into the
   // desired number of tasks. Used in `ParallelizeDynamic` versions of the
@@ -286,6 +282,20 @@ class ParallelLoopRunner {
   std::atomic<const Eigen::ThreadPoolDevice*> device_;
 };
 
+// An explicit specialization shall be declared in the namespace of which the
+// template is a member, or, for member templates, in the namespace of which the
+// enclosing class or enclosing class template is a member.
+
+template <>
+struct ParallelLoopRunner::TaskIndex<ParallelLoopRunner::RangeDim> {
+  using Index = RangeIndex;
+};
+
+template <>
+struct ParallelLoopRunner::TaskIndex<ParallelLoopRunner::TileDim> {
+  using Index = TileIndex;
+};
+
 //===----------------------------------------------------------------------===//
 // Parallel dimensions and task coordinates APIs.
 //===----------------------------------------------------------------------===//
@@ -323,8 +333,8 @@ size_t ParallelLoopRunner::NumTasks(Dims... dims) {
 }
 
 template <typename... Dims>
-auto ParallelLoopRunner::Delinearize(size_t task_index, Dims... dims)
-    -> std::tuple<typename TaskIndex<Dims>::Index...> {
+std::tuple<typename ParallelLoopRunner::TaskIndex<Dims>::Index...>
+ParallelLoopRunner::Delinearize(size_t task_index, Dims... dims) {
   // Convert linear task index into the multidimensional parallel task index.
   auto strides = internal::TaskStrides(dims...);
   auto coord = internal::TaskCoordinate(task_index, strides);

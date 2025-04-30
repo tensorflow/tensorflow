@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 
-#include <cstdlib>
-#include <set>
-
 #if !defined(PLATFORM_WINDOWS)
 #include <dirent.h>
 #endif
@@ -36,21 +33,23 @@ limitations under the License.
 
 #include <sys/stat.h>
 
+#include <cstdlib>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-#include "xla/stream_executor/gpu/gpu_diagnostics.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/host_info.h"
-#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -127,12 +126,6 @@ void PrintLdLibraryPathIntoVlog() {
     }
   }
 }
-
-}  // namespace cuda
-}  // namespace stream_executor
-
-namespace stream_executor {
-namespace gpu {
 
 #if !defined(PLATFORM_WINDOWS)
 static const char *kDriverVersionPath = "/proc/driver/nvidia/version";
@@ -330,5 +323,5 @@ absl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   return status;
 }
 
-}  // namespace gpu
+}  // namespace cuda
 }  // namespace stream_executor

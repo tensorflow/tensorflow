@@ -208,7 +208,8 @@ absl::StatusOr<std::string> PjRtExecutable::Serialize() const {
 absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+    DeviceListRef executable_devices) {
   // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
   // shape.
   VLOG(3) << "PjRtLoadedExecutable::Create";
@@ -225,7 +226,8 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
   return CreateInternal(client, std::move(pjrt_loaded_executable),
                         result_element_types, result_dimensions,
                         /*result_hlo_sharding=*/std::nullopt,
-                        result_memory_kinds, loaded_host_callbacks);
+                        result_memory_kinds, loaded_host_callbacks,
+                        std::move(executable_devices));
 }
 
 static absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
@@ -247,7 +249,8 @@ static absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
 absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     PjRtCompatibleClient* client, mlir::ModuleOp module,
     xla::CompileOptions compile_options,
-    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+    DeviceListRef executable_devices) {
   VLOG(3) << "PjRtLoadedExecutable::Create";
   if (VLOG_IS_ON(3)) {
     module.dump();
@@ -280,8 +283,8 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     return CreateInternal(client, std::move(pjrt_loaded_executable),
                           result_element_types, result_dimensions,
                           /*result_hlo_sharding=*/std::nullopt,
-                          result_memory_kinds,
-                          std::move(loaded_host_callbacks));
+                          result_memory_kinds, std::move(loaded_host_callbacks),
+                          std::move(executable_devices));
   } else {
     VLOG(3) << "Using full shape";
     // TODO(yueshengys): Consider getting element types and dimensions directly
@@ -310,8 +313,8 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     return CreateInternal(client, std::move(pjrt_loaded_executable),
                           shape_partial_info.element_types,
                           shape_partial_info.dimensions, result_hlo_sharding,
-                          result_memory_kinds,
-                          std::move(loaded_host_callbacks));
+                          result_memory_kinds, std::move(loaded_host_callbacks),
+                          std::move(executable_devices));
   }
 }
 
@@ -323,23 +326,40 @@ PjRtLoadedExecutable::CreateInternal(
     absl::Span<const xla::DimensionVector> result_dimensions,
     const std::optional<xla::HloSharding>& result_hlo_sharding,
     const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
-    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
-  BasicDeviceList::Devices ds;
-  ds.reserve(pjrt_loaded_executable->addressable_devices().size());
-  for (xla::PjRtDevice* device :
-       pjrt_loaded_executable->addressable_devices()) {
-    TF_ASSIGN_OR_RETURN(Device * ifrt_device, client->LookupPjRtDevice(device));
-    ds.push_back(ifrt_device);
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+    DeviceListRef executable_devices) {
+  // For jit(pmap(...)), the device assignment (passed as `executable_devices`)
+  // may contain a single device while the PjRt executable has multiple
+  // addressable devices. We check for this condition and replace
+  // `executable_devices` with the executable's addressable devices if
+  // necessary.
+  if (pjrt_loaded_executable->num_replicas() > 1 &&
+      executable_devices->devices().size() == 1) {
+    if (pjrt_loaded_executable->addressable_devices().size() > 1) {
+      BasicDeviceList::Devices ds;
+      ds.reserve(pjrt_loaded_executable->addressable_devices().size());
+      for (xla::PjRtDevice* device :
+           pjrt_loaded_executable->addressable_devices()) {
+        TF_ASSIGN_OR_RETURN(Device * ifrt_device,
+                            client->LookupPjRtDevice(device));
+        ds.push_back(ifrt_device);
+      }
+      executable_devices = BasicDeviceList::Create(std::move(ds));
+    } else if (pjrt_loaded_executable->addressable_devices().size() == 1) {
+      TF_ASSIGN_OR_RETURN(
+          Device * ifrt_device,
+          client->LookupPjRtDevice(
+              pjrt_loaded_executable->addressable_devices().front()));
+      if (ifrt_device != executable_devices->devices().front()) {
+        return FailedPrecondition(
+            "Addressable device does not match sharding device");
+      }
+    }
   }
-  DeviceListRef devices = BasicDeviceList::Create(std::move(ds));
-  // Devices used for constructing output shardings. A fake one will be used for
-  // a portable executable.
-  std::optional<DeviceListRef> sharding_devices;
-  if (devices->devices().empty()) {
-    sharding_devices =
-        BasicDeviceList::Create({client->addressable_devices().front()});
-  } else {
-    sharding_devices = devices;
+  if (executable_devices->devices().size() <
+      pjrt_loaded_executable->addressable_devices().size()) {
+    return FailedPrecondition(
+        "Sharding devices must be at least as many as addressable devices");
   }
   std::vector<DType> output_dtypes;
   std::vector<Shape> output_shapes;
@@ -365,7 +385,7 @@ PjRtLoadedExecutable::CreateInternal(
               xla::ShapeUtil::MakeShape(element_type, dimensions)));
     }
     output_shardings.push_back(ifrt::ConcreteEvenSharding::Create(
-        *sharding_devices, memory_kind,
+        executable_devices, memory_kind,
         /*shape=*/ifrt::Shape(dimensions),
         /*shard_shape=*/ifrt::Shape(tile_shape_dimensions)));
     return absl::OkStatus();
@@ -374,7 +394,7 @@ PjRtLoadedExecutable::CreateInternal(
     output_dtypes.push_back(DType(DType::kToken));
     output_shapes.push_back(Shape({}));
     output_shardings.push_back(
-        ifrt::ConcreteEvenSharding::Create(*sharding_devices, memory_kind,
+        ifrt::ConcreteEvenSharding::Create(executable_devices, memory_kind,
                                            /*shape=*/ifrt::Shape({}),
                                            /*shard_shape=*/ifrt::Shape({})));
   };
@@ -463,7 +483,7 @@ PjRtLoadedExecutable::CreateInternal(
   }
 
   return std::unique_ptr<LoadedExecutable>(new PjRtLoadedExecutable(
-      client, std::move(pjrt_loaded_executable), std::move(devices),
+      client, std::move(pjrt_loaded_executable), std::move(executable_devices),
       std::move(addressable_devices), std::move(loaded_host_callbacks),
       std::move(host_send_and_recv_callbacks), std::move(output_dtypes),
       std::move(output_shapes), std::move(output_shardings)));
@@ -519,7 +539,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     if (devices_->devices().empty()) {
       return InvalidArgument("No devices provided for portable executable");
     }
-    num_computations = devices_->size();
+    num_computations = addressable_devices_.size();
   }
 
   argument_handles.resize(num_computations);

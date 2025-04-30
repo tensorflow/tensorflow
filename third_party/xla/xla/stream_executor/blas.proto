@@ -1,0 +1,35 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla;
+
+enum BlasTranspose {
+  BLAS_NO_TRANSPOSE = 0;
+  BLAS_TRANSPOSE = 1;
+  BLAS_CONJUGATE_TRANSPOSE = 2;
+}
+
+enum BlasComputationType {
+  BLAS_COMPUTATION_TYPE_UNSET = 0;
+  BLAS_COMPUTATION_TYPE_F16 = 1;          // 16-bit floating-point
+  BLAS_COMPUTATION_TYPE_F32 = 2;          // 32-bit floating-point
+  BLAS_COMPUTATION_TYPE_F64 = 3;          // 64-bit floating-point
+  BLAS_COMPUTATION_TYPE_I32 = 4;          // 32-bit integer
+  BLAS_COMPUTATION_TYPE_F16_AS_F32 = 5;   // Allow downcast to F16 precision.
+  BLAS_COMPUTATION_TYPE_BF16_AS_F32 = 6;  // Allow downcast to BF16 precision.
+  BLAS_COMPUTATION_TYPE_TF32_AS_F32 = 7;  // Allow downcast to TF32 precision.
+}

@@ -1,0 +1,52 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla;
+
+import "xla/stream_executor/blas.proto";
+import "xla/xla_data.proto";
+
+message GemmConfig {
+  message MatrixLayout {
+    enum Order {
+      ORDER_UNKNOWN = 0;
+      ORDER_ROW_MAJOR = 1;
+      ORDER_COLUMN_MAJOR = 2;
+    }
+    Order order = 1;
+    int64 num_rows = 2;
+    int64 num_cols = 3;
+    int64 batch_size = 4;
+    int64 leading_dim_stride = 5;
+    int64 batch_stride = 6;
+    xla.BlasTranspose transpose = 7;
+  }
+
+  MatrixLayout lhs_layout = 1;
+  MatrixLayout rhs_layout = 2;
+  MatrixLayout c_layout = 3;
+  MatrixLayout output_layout = 4;
+  double alpha_real = 5;
+  double alpha_imag = 6;
+  double beta = 7;
+  int64 compute_precision = 8;
+  xla.PrecisionConfig.Algorithm precision_algorithm = 9;
+  optional int64 algorithm = 10;
+  bool grad_x = 11;
+  bool grad_y = 12;
+  xla.BlasComputationType compute_type = 13;
+}

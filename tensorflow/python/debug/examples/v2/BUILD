@@ -40,6 +40,7 @@ sh_test(
         "no_windows",
         "noasan",  # TODO(b/143150907)
         "nomsan",  # TODO(b/143150907)
+        "requires-mem:16g",
         "v2only",
     ],
 )

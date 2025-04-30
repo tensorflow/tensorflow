@@ -20,8 +20,6 @@ package_group(
     ] + if_google([
         "//learning/brain/tfrt/cpp_tests/...",
         "//learning/serving/servables/tfrt/...",
-        "//learning/pathways/serving/runtime/...",
-        "//learning/pathways/serving/tests/...",
         "//learning/brain/tfrt/ifrt/...",
         "//learning/brain/tfrt/tfrt_session/...",
         # Allow visibility from the mlir language server.

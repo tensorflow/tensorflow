@@ -52,12 +52,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -256,6 +257,10 @@ class MultiKernelLoaderSpec {
                                            absl::string_view entrypoint,
                                            absl::string_view kernel_name,
                                            absl::Span<std::string> options);
+
+  void set_kernel_args_packing(KernelArgsPacking kernel_args_packing) {
+    kernel_args_packing_ = std::move(kernel_args_packing);
+  }
 
   const KernelArgsPacking &kernel_args_packing() const {
     return kernel_args_packing_;

@@ -1,5 +1,5 @@
 diff --git a/python/versions.bzl b/python/versions.bzl
-index 91e59f9b..d32195f4 100644
+index 91e59f9b..e7f2a747 100644
 --- a/python/versions.bzl
 +++ b/python/versions.bzl
 @@ -21,7 +21,7 @@ LINUX_NAME = "linux"
@@ -11,7 +11,7 @@ index 91e59f9b..d32195f4 100644
  
  # When updating the versions and releases, run the following command to get
  # the hashes:
-@@ -575,25 +575,42 @@ TOOL_VERSIONS = {
+@@ -575,23 +575,55 @@ TOOL_VERSIONS = {
          },
          "strip_prefix": "python",
      },
@@ -67,21 +67,34 @@ index 91e59f9b..d32195f4 100644
 +            "x86_64-apple-darwin-freethreaded": "python/install",
 +            "x86_64-pc-windows-msvc-freethreaded": "python/install",
 +            "x86_64-unknown-linux-gnu-freethreaded": "python/install",
++        },
++    },
++    # Note: This is python 3.14.0a6, but it is labeled as '3.14.0' due to limitation within rules_python
++    # that prevents the correct handling of pre-release version identifiers like '3.14.0a'.
++    "3.14.0": {
++        "url": "20250409/cpython-{python_version}+20250409-{platform}-{build}.tar.gz",
++        "sha256": {
++            "aarch64-apple-darwin": "fd34267a9923a09c03ae7e3626b5681b58bccecaaf3c1cfec6d770c8b110a8be",
++            "aarch64-unknown-linux-gnu": "03fd176e1e14f21a50c970b883500226919a566ca5b1d27dec06a2dd68102d3e",
++            "ppc64le-unknown-linux-gnu": "f8ef33c10ea532307325b4cfbf4b31cf372c141c8aff6e8fe3894a959e1e4f03",
++            "s390x-unknown-linux-gnu": "bb6451996db2c148d9ce112d2c967b59162180447ac089f75de71a45210b9864",
++            "x86_64-apple-darwin": "15b366906fda248928434e44fa3d2a9b7928944165512537d778a5e98b12ec96",
++            "x86_64-pc-windows-msvc": "72f40ada379c9c480fb429105017b44266c1dc6679b73cc0c5159d5dc1f0b8a6",
++            "x86_64-unknown-linux-gnu": "d47becae984d63578bf04abfb8f0a545a5682c2b7b64ff32b90c3662bec2b06d",
          },
--        "strip_prefix": "python",
+         "strip_prefix": "python",
      },
- }
- 
-@@ -604,7 +621,7 @@ MINOR_MAPPING = {
+@@ -604,7 +636,8 @@ MINOR_MAPPING = {
      "3.10": "3.10.15",
      "3.11": "3.11.10",
      "3.12": "3.12.8",
 -    "3.13": "3.13.0",
 +    "3.13": "3.13.2",
++    "3.14": "3.14.0",
  }
  
  def _generate_platforms():
-@@ -793,9 +810,6 @@ def get_release_info(platform, python_version, base_url = DEFAULT_RELEASE_BASE_U
+@@ -793,9 +826,6 @@ def get_release_info(platform, python_version, base_url = DEFAULT_RELEASE_BASE_U
          else:
              build = "install_only"
  

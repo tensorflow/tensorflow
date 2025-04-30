@@ -55,10 +55,10 @@ ENTRY entry {
   HeapSimulator::Chunk p1_negate_chunk =
       HeapSimulator::Chunk::FromOffsetSize(0, 24);
 
-  PinnedAllocation p1_negate_pinned(
-      HloPosition{p1_negate, {}}, MemorySpace::kDefault, p1_negate_chunk,
-      /*start_time=*/0,
-      /*end_time=*/5, /*is_scoped_allocation=*/false);
+  PinnedAllocation p1_negate_pinned(HloPosition{p1_negate, {}},
+                                    MemorySpace::kDefault, p1_negate_chunk,
+                                    /*start_time=*/0,
+                                    /*end_time=*/5);
   CopyAllocation copy_allocation(p1_negate_pinned, MemorySpace::kAlternate,
                                  std::nullopt,
                                  /*copy_start_schedule_after_time=*/2,
@@ -110,10 +110,10 @@ ENTRY entry {
   HeapSimulator::Chunk p1_negate_chunk =
       HeapSimulator::Chunk::FromOffsetSize(0, 24);
 
-  PinnedAllocation p1_negate_pinned(
-      HloPosition{p1_negate, {}}, MemorySpace::kAlternate, p1_negate_chunk,
-      /*start_time=*/0,
-      /*end_time=*/5, /*is_scoped_allocation=*/false);
+  PinnedAllocation p1_negate_pinned(HloPosition{p1_negate, {}},
+                                    MemorySpace::kAlternate, p1_negate_chunk,
+                                    /*start_time=*/0,
+                                    /*end_time=*/5);
   CopyAllocation copy_allocation(p1_negate_pinned, MemorySpace::kDefault,
                                  std::nullopt,
                                  /*copy_start_schedule_after_time=*/2,
@@ -168,10 +168,10 @@ ENTRY entry {
   HeapSimulator::Chunk p1_negate_chunk =
       HeapSimulator::Chunk::FromOffsetSize(0, 24);
 
-  PinnedAllocation p1_negate_pinned(
-      HloPosition{p1_negate, {}}, MemorySpace::kAlternate, p1_negate_chunk,
-      /*start_time=*/0,
-      /*end_time=*/5, /*is_scoped_allocation=*/false);
+  PinnedAllocation p1_negate_pinned(HloPosition{p1_negate, {}},
+                                    MemorySpace::kAlternate, p1_negate_chunk,
+                                    /*start_time=*/0,
+                                    /*end_time=*/5);
   CopyAllocation copy_allocation(p1_negate_pinned, MemorySpace::kAlternate,
                                  std::nullopt,
                                  /*copy_start_schedule_after_time=*/2,

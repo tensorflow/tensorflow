@@ -10,7 +10,19 @@ load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 # Placeholder: load py_proto_library
-load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "if_google", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "VERSION",
+    "cc_header_only_library",
+    "if_google",
+    "if_nccl",
+    "if_oss",
+    "if_windows",
+    "if_xla_available",
+    "tf_enable_mlir_bridge",
+    "tf_python_pybind_static_deps",
+    "tsl_async_value_deps",
+)
 load(
     "//tensorflow:tensorflow.default.bzl",
     "get_compatible_with_portable",
@@ -1502,7 +1514,13 @@ cc_library(
     name = "_cuda_deps_filter",
     srcs = [],
     deps = if_pywrap(
-        if_true = if_cuda_is_configured(["@local_xla//xla/tsl/cuda:cupti"]),
+        if_true = (
+            if_cuda_is_configured([
+                "@local_xla//xla/tsl/cuda:cupti",
+            ]) + if_nccl([
+                "@local_config_nccl//:nccl",
+            ])
+        ),
     ),
 )
 

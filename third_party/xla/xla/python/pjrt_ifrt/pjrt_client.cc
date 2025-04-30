@@ -1137,9 +1137,9 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
   }
   // TODO(yashkatariya): Remove the following logic once layout is plumbed
   // through.
-  std::shared_ptr<const PjRtLayout> layout;
+  std::shared_ptr<const xla::PjRtLayout> layout;
   if (dtype.kind() == DType::kToken) {
-    layout = std::make_shared<PjRtLayout>(xla::Layout());
+    layout = std::make_shared<xla::PjRtLayout>(xla::Layout());
   } else if (buffers.empty()) {
     TF_ASSIGN_OR_RETURN(auto shard_shape, sharding->GetShardShape(shape));
     TF_ASSIGN_OR_RETURN(layout,
@@ -1221,18 +1221,18 @@ absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
                                                           topology));
 }
 
-absl::StatusOr<std::shared_ptr<const PjRtLayout>> PjRtClient::GetDefaultLayout(
-    DType dtype, absl::Span<const int64_t> dims, Device* device,
-    MemoryKind memory_kind) const {
+absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
+PjRtClient::GetDefaultLayout(DType dtype, absl::Span<const int64_t> dims,
+                             Device* device, MemoryKind memory_kind) const {
   static MemoryKind kUnpinnedHostMemoryKind(UnpinnedHostMemorySpace::kKind);
   if (memory_kind == kUnpinnedHostMemoryKind) {
-    return std::make_shared<PjRtLayout>(
+    return std::make_shared<xla::PjRtLayout>(
         LayoutUtil::MakeDescendingLayout(dims.size()));
   }
   TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
   TF_ASSIGN_OR_RETURN(xla::Layout layout,
                       pjrt_client_->GetDefaultLayout(element_type, dims));
-  return std::make_shared<PjRtLayout>(std::move(layout));
+  return std::make_shared<xla::PjRtLayout>(std::move(layout));
 }
 
 absl::Status PjRtClient::TransferToInfeed(PjRtDevice* device,

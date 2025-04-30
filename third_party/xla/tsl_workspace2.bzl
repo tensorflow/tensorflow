@@ -165,33 +165,23 @@ def _tf_repositories():
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
         patch_file = [
-            "//third_party/mkl_dnn:onednn_acl_threadcap.patch",
-            "//third_party/mkl_dnn:onednn_acl_reorder.patch",
-            "//third_party/mkl_dnn:onednn_acl_thread_local_scheduler.patch",
-            "//third_party/mkl_dnn:onednn_acl_fp32_bf16_reorder.patch",
-            "//third_party/mkl_dnn:onednn_acl_bf16_capability_detection_for_ubuntu20.04.patch",
-            "//third_party/mkl_dnn:onednn_acl_indirect_conv.patch",
-            "//third_party/mkl_dnn:onednn_acl_allow_blocked_weight_format_for_matmul_primitive.patch",
-            "//third_party/mkl_dnn:onednn_acl_fix_segfault_during_postop_execute.patch",
-            "//third_party/mkl_dnn:onednn_acl_add_bf16_platform_support_check.patch",
-            "//third_party/mkl_dnn:onednn_acl_add_sbgemm_matmul_primitive_definition.patch",
+            "//third_party/mkl_dnn:onednn_acl_threadpool_default_max.patch",
         ],
-        sha256 = "2f76b407ef8893cca71340f88cd800019a1f14f8ac1bbdbb89a84be1370b52e3",
-        strip_prefix = "oneDNN-3.2.1",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.1.tar.gz"),
+        sha256 = "5792cbc07764c6e25c459ff68efb5cfcd7f4a0ba66dca6a4a2c681cd7a644596",
+        strip_prefix = "oneDNN-3.7",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.7.zip"),
     )
 
     tf_http_archive(
         name = "compute_library",
         patch_file = [
             "//third_party/compute_library:compute_library.patch",
-            "//third_party/compute_library:acl_thread_local_scheduler.patch",
             "//third_party/compute_library:exclude_omp_scheduler.patch",
             "//third_party/compute_library:include_string.patch",
         ],
-        sha256 = "c4ca329a78da380163b2d86e91ba728349b6f0ee97d66e260a694ef37f0b0d93",
-        strip_prefix = "ComputeLibrary-23.05.1",
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v23.05.1.tar.gz"),
+        sha256 = "8273f68cd0bb17e9231a11a6618d245eb6d623884ae681c00e7a4eabca2dad42",
+        strip_prefix = "ComputeLibrary-24.12",
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/refs/tags/v24.12.tar.gz"),
     )
 
     tf_http_archive(
