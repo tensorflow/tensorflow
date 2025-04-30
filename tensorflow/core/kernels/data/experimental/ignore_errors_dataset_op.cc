@@ -120,7 +120,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
             return absl::OkStatus();
           }
           s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-          while (!s.ok() && !errors::IsCancelled(s)) {
+          while (!s.ok() && !absl::IsCancelled(s)) {
             if (dataset()->log_warning_) {
               LOG(WARNING) << "Error raised with error message " << s.message();
             }

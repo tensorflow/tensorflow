@@ -303,7 +303,7 @@ class CSVDatasetOp : public DatasetOpKernel {
               *end_of_sequence = false;
               return s;
             }
-            if (!errors::IsOutOfRange(s)) {
+            if (!absl::IsOutOfRange(s)) {
               // Not at the end of file, return OK or non-EOF errors to caller.
               *end_of_sequence = false;
               return s;
@@ -368,7 +368,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           // Restores the most recently held buffer
           absl::Status s = input_stream_->SkipNBytes(
               num_buffer_reads_ * dataset()->options_.input_buffer_size);
-          if (!s.ok() && !errors::IsOutOfRange(s)) {
+          if (!s.ok() && !absl::IsOutOfRange(s)) {
             // We might get out of range error here if the size of the file
             // is not an exact multiple of the buffer size, and the last buffer
             // read is < buffer_size. This is valid and we do not surface the
@@ -377,7 +377,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           }
 
           absl::Status s2 = FillBuffer(&buffer_);
-          if (!s2.ok() && !errors::IsOutOfRange(s2)) {
+          if (!s2.ok() && !absl::IsOutOfRange(s2)) {
             return s2;
           }
           pos_ = size_t(pos);
@@ -448,7 +448,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           // with the end of the buffer. We can fill the buffer without abandon.
           absl::Status s = FillBuffer(&buffer_);
 
-          if (errors::IsOutOfRange(s)) {
+          if (absl::IsOutOfRange(s)) {
             // Reached EOF, and last field is empty
             *end_of_record = true;
             if (include) {
@@ -515,7 +515,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           if (pos_ >= buffer_.size()) {
             absl::Status s =
                 SaveAndFillBuffer(&earlier_pieces, &start, include);
-            if (errors::IsOutOfRange(s)) {
+            if (absl::IsOutOfRange(s)) {
               return errors::InvalidArgument(
                   "Reached end of file without closing quoted field in "
                   "record");
@@ -532,7 +532,7 @@ class CSVDatasetOp : public DatasetOpKernel {
             if (pos_ >= buffer_.size()) {
               absl::Status s =
                   SaveAndFillBuffer(&earlier_pieces, &start, include);
-              if (errors::IsOutOfRange(s)) {
+              if (absl::IsOutOfRange(s)) {
                 // This was the last field. We are done
                 *end_of_record = true;
                 parse_result.Update(
@@ -653,7 +653,7 @@ class CSVDatasetOp : public DatasetOpKernel {
             absl::Status s =
                 SaveAndFillBuffer(&earlier_pieces, &start, include);
             // Handle errors
-            if (errors::IsOutOfRange(s)) {
+            if (absl::IsOutOfRange(s)) {
               // Whatever we have is the last field of the last record
               *end_of_record = true;
               parse_result.Update(UnquotedFieldToOutput(
@@ -702,7 +702,7 @@ class CSVDatasetOp : public DatasetOpKernel {
         absl::Status s = input_stream_->ReadNBytes(
             dataset()->options_.input_buffer_size, result);
 
-        if (errors::IsOutOfRange(s) && !result->empty()) {
+        if (absl::IsOutOfRange(s) && !result->empty()) {
           // Ignore OutOfRange error when ReadNBytes read < N bytes.
           return absl::OkStatus();
         }
