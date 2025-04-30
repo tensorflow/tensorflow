@@ -102,18 +102,17 @@ TEST(PjRtLayoutTest, ToPjRtLayout) {
   {
     auto client = std::make_shared<MockClient>();
     auto device = std::make_unique<MockDevice>();
+    Shape shape({3, 2});
     ON_CALL(*device, client).WillByDefault(Return(client.get()));
     EXPECT_CALL(*client, GetDefaultLayout)
-        .With(std::tuple<DType, absl::Span<const int64_t>, Device*, MemoryKind>(
-            DType(DType::kS32), Shape({3, 2}).dims(), device.get(),
-            MemoryKind()))
+        .With(std::make_tuple(DType(DType::kS32), shape.dims(),
+                              static_cast<Device*>(device.get()), MemoryKind()))
         .WillOnce(Return(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>(
             std::make_shared<xla::PjRtLayout>(
                 xla::LayoutUtil::MakeDescendingLayout(2)))));
     TF_ASSERT_OK_AND_ASSIGN(
-        auto layout,
-        ToPjRtLayout(DType(DType::kS32), Shape({3, 2}), device.get(),
-                     MemoryKind(), /*layout=*/nullptr));
+        auto layout, ToPjRtLayout(DType(DType::kS32), shape, device.get(),
+                                  MemoryKind(), /*layout=*/nullptr));
     EXPECT_EQ(layout->xla_layout(), xla::LayoutUtil::MakeDescendingLayout(2));
   }
   {

@@ -120,6 +120,8 @@ TEST(LayoutTest, EquivalentLayouts) {
         return BasicDeviceList::Create(devices);
       });
 
+  Shape shape({3, 2});
+
   auto memory0 = std::make_unique<MockMemory>();
   auto memory1 = std::make_unique<MockMemory>();
   auto memory2 = std::make_unique<MockMemory>();
@@ -139,7 +141,7 @@ TEST(LayoutTest, EquivalentLayouts) {
   ON_CALL(*device2, DefaultMemory()).WillByDefault(Return(memory2.get()));
 
   ON_CALL(*client, GetDefaultLayout)
-      .With(std::make_tuple(DType(DType::kS32), Shape({3, 2}).dims(),
+      .With(std::make_tuple(DType(DType::kS32), shape.dims(),
                             static_cast<Device*>(device0.get()), memory_kind0))
       .WillByDefault(
           [](DType dtype, absl::Span<const int64_t> dims, Device* device,
@@ -149,7 +151,7 @@ TEST(LayoutTest, EquivalentLayouts) {
                 xla::LayoutUtil::MakeDescendingLayout(2));
           });
   ON_CALL(*client, GetDefaultLayout)
-      .With(std::make_tuple(DType(DType::kS32), Shape({3, 2}).dims(),
+      .With(std::make_tuple(DType(DType::kS32), shape.dims(),
                             static_cast<Device*>(device1.get()), memory_kind0))
       .WillByDefault(
           [](DType dtype, absl::Span<const int64_t> dims, Device* device,
@@ -160,8 +162,8 @@ TEST(LayoutTest, EquivalentLayouts) {
           });
 
   ON_CALL(*client, GetDefaultLayout)
-      .With(std::tuple(DType(DType::kS32), Shape({3, 2}).dims(),
-                       static_cast<Device*>(device2.get()), memory_kind0))
+      .With(std::make_tuple(DType(DType::kS32), shape.dims(),
+                            static_cast<Device*>(device2.get()), memory_kind0))
       .WillByDefault(
           [](DType dtype, absl::Span<const int64_t> dims, Device* device,
              MemoryKind memory_kind)
@@ -176,16 +178,16 @@ TEST(LayoutTest, EquivalentLayouts) {
     LayoutRef layout1 = nullptr;
     EXPECT_THAT(
         EquivalentLayouts(
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0,
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout1),
         IsOkAndHolds(false));
     EXPECT_THAT(
         EquivalentLayouts(
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout1,
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0),
         IsOkAndHolds(false));
   }
@@ -196,9 +198,9 @@ TEST(LayoutTest, EquivalentLayouts) {
     TF_ASSERT_OK_AND_ASSIGN(LayoutRef layout1, CompactLayout::Create({1, 0}));
     EXPECT_THAT(
         EquivalentLayouts(
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0,
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout1),
         IsOkAndHolds(true));
   }
@@ -208,9 +210,9 @@ TEST(LayoutTest, EquivalentLayouts) {
     TF_ASSERT_OK_AND_ASSIGN(LayoutRef layout1, CompactLayout::Create({0, 1}));
     EXPECT_THAT(
         EquivalentLayouts(
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0,
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout1),
         IsOkAndHolds(false));
   }
@@ -221,16 +223,16 @@ TEST(LayoutTest, EquivalentLayouts) {
     LayoutRef layout1 = nullptr;
     EXPECT_THAT(
         EquivalentLayouts(
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0,
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout1),
         IsOkAndHolds(true));
     EXPECT_THAT(
         EquivalentLayouts(
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0,
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device1.get(), MemoryKind()), layout1),
         IsOkAndHolds(true));
   }
@@ -241,9 +243,9 @@ TEST(LayoutTest, EquivalentLayouts) {
     LayoutRef layout1 = nullptr;
     EXPECT_THAT(
         EquivalentLayouts(
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device0.get(), MemoryKind()), layout0,
-            DType(DType::kS32), Shape({3, 2}),
+            DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device2.get(), MemoryKind()), layout1),
         IsOkAndHolds(false));
   }
