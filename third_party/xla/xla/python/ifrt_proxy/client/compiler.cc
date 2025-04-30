@@ -54,7 +54,7 @@ Compiler::Compiler(xla::ifrt::Client* client,
                    std::shared_ptr<RpcHelper> rpc_helper)
     : client_(client), rpc_helper_(std::move(rpc_helper)) {}
 
-absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::Compile(
+absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
     std::unique_ptr<Program> program,
     std::unique_ptr<xla::ifrt::CompileOptions> options) {
   auto request = std::make_unique<CompileRequest>();

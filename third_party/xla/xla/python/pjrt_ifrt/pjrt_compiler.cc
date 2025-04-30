@@ -85,7 +85,7 @@ absl::Status TranslateDeviceIds(PjRtClient* client,
   return absl::OkStatus();
 }
 
-absl::StatusOr<LoadedExecutableRef> PjRtCompiler::Compile(
+absl::StatusOr<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
     std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
   const auto* xla_program = llvm::dyn_cast<HloProgram>(program.get());

@@ -17,7 +17,9 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_COMPILER_H_
 
 #include <memory>
+#include <utility>
 
+#include "absl/base/macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -54,12 +56,19 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
  public:
   // Compiles `mlir_module` and returns a `LoadedExecutable`.
   // TODO(hyeontaek): Move executable loading to `Client`.
-  virtual absl::StatusOr<LoadedExecutableRef> Compile(
+  ABSL_DEPRECATE_AND_INLINE()
+  absl::StatusOr<LoadedExecutableRef> Compile(
       std::unique_ptr<Program> program,
-      std::unique_ptr<CompileOptions> options) = 0;
+      std::unique_ptr<CompileOptions> options) {
+    return CompileAndLoad(std::move(program), std::move(options));
+  }
 
   virtual absl::StatusOr<ExecutableRef> Compile(
       std::unique_ptr<Program> program, const Topology& topology,
+      std::unique_ptr<CompileOptions> options) = 0;
+
+  virtual absl::StatusOr<LoadedExecutableRef> CompileAndLoad(
+      std::unique_ptr<Program> program,
       std::unique_ptr<CompileOptions> options) = 0;
 
   // Deserializes a serialized executable as produced by

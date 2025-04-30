@@ -21,6 +21,7 @@
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/executable.h"
@@ -34,9 +35,11 @@ namespace proxy {
 
 class Compiler final : public llvm::RTTIExtends<Compiler, xla::ifrt::Compiler> {
  public:
+  using xla::ifrt::Compiler::Compile;
+
   Compiler(xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper);
 
-  absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compile(
+  absl::StatusOr<xla::ifrt::LoadedExecutableRef> CompileAndLoad(
       std::unique_ptr<xla::ifrt::Program> program,
       std::unique_ptr<xla::ifrt::CompileOptions> options) override;
 
