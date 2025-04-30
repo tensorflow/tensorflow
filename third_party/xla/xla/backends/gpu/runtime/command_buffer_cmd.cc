@@ -1401,44 +1401,46 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
 
   VLOG(5) << "CustomCallCmd: target_name=" << target_name_;
 
-  absl::InlinedVector<se::DeviceMemoryBase, 4> arguments;
-  arguments.reserve(operands_.size());
-
   for (int i = 0; i < operands_.size(); ++i) {
     const std::optional<Slice>& slice = operands_[i];
+    // TODO(ezhulenev): Add a token argument type to XLA:FFI.
     if (!slice.has_value()) {
-      arguments.push_back(se::DeviceMemoryBase{});
-      continue;
+      return Internal("FFI handlers do not support tokens (yet)!");
     }
+
+    if (!slice->slice.allocation())
+      return Internal("custom call input missing buffer allocation");
 
     se::DeviceMemoryBase buffer =
         execute_params.buffer_allocations->GetDeviceAddress(slice->slice);
     VLOG(5) << "  Operand " << i << ": " << slice->slice << " ("
             << buffer.opaque() << ")";
-    arguments.push_back(buffer);
+    builder.AddBufferArg(buffer, slice->shape.element_type(),
+                         slice->shape.dimensions());
   }
-
-  absl::InlinedVector<se::DeviceMemoryBase, 4> results;
-  results.reserve(results_.size());
 
   for (int i = 0; i < results_.size(); ++i) {
     const std::optional<Slice>& slice = results_[i];
+    // TODO(ezhulenev): Add a token argument type to XLA:FFI.
     if (!slice.has_value()) {
-      results.push_back(se::DeviceMemoryBase{});
-      continue;
+      return Internal("FFI handlers do not support tokens (yet)!");
     }
+
+    if (!slice->slice.allocation())
+      return Internal("custom call input missing buffer allocation");
 
     se::DeviceMemoryBase buffer =
         execute_params.buffer_allocations->GetDeviceAddress(slice->slice);
     VLOG(5) << "  Result " << i << ": " << slice->slice << " ("
             << buffer.opaque() << ")";
-    results.push_back(buffer);
+    builder.AddBufferRet(buffer, slice->shape.element_type(),
+                         slice->shape.dimensions());
   }
 
-  // Borrow the FFI call frame from the object pool and update with the actual
-  // device memory addresses.
-  TF_ASSIGN_OR_RETURN(auto call_frame, call_frames_->GetOrCreate());
-  TF_RETURN_IF_ERROR(call_frame->UpdateWithBuffers(arguments, results));
+  ffi::CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Append(attributes_);
+  builder.AddAttributes(attrs.Build());
+  ffi::CallFrame call_frame = builder.Build();
 
   RunId run_id = execute_params.collective_params->run_id;
 
@@ -1454,7 +1456,7 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
                     execute_params.buffer_allocations->memory_allocator()},
                 /*called_computation=*/nullptr,  // TODO(b/342285364)
                 execute_params.ffi_execution_context};
-            return ffi::Call(handler_, *call_frame, options);
+            return ffi::Call(handler_, call_frame, options);
           }));
 
   return Handle(

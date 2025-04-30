@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -90,9 +89,7 @@ class CustomCallThunk : public Thunk {
   const std::string& target_name() const { return target_name_; }
   CustomCallTarget call_target() const { return call_target_; }
   std::optional<XLA_FFI_Handler_Bundle> bundle() const { return bundle_; }
-  std::optional<ffi::CallFrame> call_frame() const {
-    return call_frame_ ? std::make_optional(call_frame_->Copy()) : std::nullopt;
-  }
+  const AttributesMap& attributes() const { return attributes_; }
 
   const std::vector<std::optional<Slice>>& operands() const {
     return operands_;
@@ -112,7 +109,7 @@ class CustomCallThunk : public Thunk {
                   XLA_FFI_Handler_Bundle bundle,
                   std::vector<std::optional<Slice>> operands,
                   std::vector<std::optional<Slice>> results,
-                  ffi::CallFrame call_frame,
+                  AttributesMap attributes,
                   std::unique_ptr<ffi::ExecutionState> execution_state,
                   const HloComputation* called_computation);
 
@@ -138,13 +135,7 @@ class CustomCallThunk : public Thunk {
   // functions with XLA runtime. It's under construction, and still misses
   // a lot of features. Long term it will replace legacy custom calls.
   std::optional<XLA_FFI_Handler_Bundle> bundle_;
-
-  // Reference call frame pre-initialized at construction time.
-  std::optional<ffi::CallFrame> call_frame_;
-
-  // A pool of call frames used at run time. Newly created call frames are
-  // copied from the reference call frame and updated with buffer addresses.
-  std::optional<ObjectPool<ffi::CallFrame>> call_frames_;
+  AttributesMap attributes_;
 
   // Execution state bound to the FFI handler. Optional.
   std::unique_ptr<ffi::ExecutionState> execution_state_;
