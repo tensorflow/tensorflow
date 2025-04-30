@@ -32,6 +32,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -59,7 +60,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
@@ -287,7 +287,9 @@ class CudnnAccess {
   CudnnHandle GetHandle(StreamExecutor* executor, Stream* stream) {
     auto lock = std::make_unique<absl::MutexLock>(&mutex_);
     mutex_.AssertHeld();
-    CUstream cu_stream = stream ? AsGpuStreamValue(stream) : cudaStreamLegacy;
+    CUstream cu_stream = stream ? absl::bit_cast<CUstream>(
+                                      stream->platform_specific_handle().stream)
+                                : cudaStreamLegacy;
     if (!current_stream_ || cu_stream != *current_stream_) {
       current_stream_ = cu_stream;
       const auto status = cudnnSetStream(handle_, cu_stream);
@@ -305,7 +307,8 @@ class CudnnAccess {
   }
 
   void NotifyStreamDestroyed(Stream* stream) {
-    CUstream cu_stream = AsGpuStreamValue(stream);
+    CUstream cu_stream =
+        absl::bit_cast<CUstream>(stream->platform_specific_handle().stream);
     absl::MutexLock lock(&mutex_);
     if (current_stream_ && cu_stream == *current_stream_) {
       current_stream_.reset();
