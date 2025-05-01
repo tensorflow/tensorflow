@@ -18,12 +18,16 @@ limitations under the License.
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 
+#include "absl/base/optimization.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace xla {
 
@@ -38,8 +42,24 @@ class ObjectPool {
     // Keep `object` as optional to allow using object pool for objects that
     // cannot be default-constructed.
     std::optional<T> object;
-    std::atomic<Entry*> next;
+    Entry* next = nullptr;
   };
+
+  // We use pointer tagging for the logical deletion of entries from the linked
+  // list to avoid data races on the `entry->next` pointer and to avoid ABA
+  // problem. A thread that tries to pop an entry from the pool first tags the
+  // entry pointer to get an exclusive access to the entry, concurrent pop
+  // operations will wait in the spin loop.
+  static constexpr uintptr_t kMask = 0x1;
+
+  static bool IsMarked(Entry* entry) {
+    return (tsl::safe_reinterpret_cast<uintptr_t>(entry) & kMask) == kMask;
+  }
+
+  static Entry* Mark(Entry* entry) {
+    return tsl::safe_reinterpret_cast<Entry*>(
+        tsl::safe_reinterpret_cast<uintptr_t>(entry) | kMask);
+  }
 
  public:
   explicit ObjectPool(absl::AnyInvocable<absl::StatusOr<T>(Args...)> builder);
@@ -96,7 +116,6 @@ auto ObjectPool<T, Args...>::CreateEntry(Args... args)
     -> absl::StatusOr<std::unique_ptr<Entry>> {
   auto entry = std::make_unique<Entry>();
   TF_ASSIGN_OR_RETURN(entry->object, builder_(std::forward<Args>(args)...));
-  entry->next = nullptr;
   num_created_.fetch_add(1);
   return entry;
 }
@@ -104,18 +123,36 @@ auto ObjectPool<T, Args...>::CreateEntry(Args... args)
 template <typename T, typename... Args>
 auto ObjectPool<T, Args...>::PopEntry() -> std::unique_ptr<Entry> {
   Entry* head = head_.load();
-  while (head && !head_.compare_exchange_weak(head, head->next)) {
+
+  // Try to mark the entry at head for deletion with a CAS operation.
+  while (head &&
+         (IsMarked(head) || !head_.compare_exchange_weak(head, Mark(head)))) {
+    if (ABSL_PREDICT_FALSE(IsMarked(head))) {
+      head = head_.load();
+    }
   }
+
+  // Object pool is empty.
+  if (ABSL_PREDICT_FALSE(head == nullptr)) {
+    return nullptr;
+  }
+
+  // Update head pointer to the next entry.
+  head_.store(head->next);
+
   return std::unique_ptr<Entry>(head);
 }
 
 template <typename T, typename... Args>
 void ObjectPool<T, Args...>::PushEntry(std::unique_ptr<Entry> entry) {
-  Entry* head = head_.load();
   Entry* new_head = entry.release();
-  do {
-    new_head->next = head;
-  } while (!head_.compare_exchange_weak(head, new_head));
+  new_head->next = head_.load();
+  while (IsMarked(new_head->next) ||
+         !head_.compare_exchange_weak(new_head->next, new_head)) {
+    if (ABSL_PREDICT_FALSE(IsMarked(new_head->next))) {
+      new_head->next = head_.load();
+    }
+  }
 }
 
 template <typename T, typename... Args>
@@ -125,7 +162,7 @@ ObjectPool<T, Args...>::BorrowedObject::BorrowedObject(
 
 template <typename T, typename... Args>
 ObjectPool<T, Args...>::BorrowedObject::~BorrowedObject() {
-  if (parent_ && entry_) {
+  if (ABSL_PREDICT_TRUE(parent_ && entry_)) {
     parent_->PushEntry(std::move(entry_));
   }
 }
@@ -133,7 +170,7 @@ ObjectPool<T, Args...>::BorrowedObject::~BorrowedObject() {
 template <typename T, typename... Args>
 auto ObjectPool<T, Args...>::GetOrCreate(Args... args)
     -> absl::StatusOr<BorrowedObject> {
-  if (std::unique_ptr<Entry> entry = PopEntry()) {
+  if (std::unique_ptr<Entry> entry = PopEntry(); ABSL_PREDICT_TRUE(entry)) {
     return BorrowedObject(this, std::move(entry));
   }
   TF_ASSIGN_OR_RETURN(auto entry, CreateEntry(std::forward<Args>(args)...));
