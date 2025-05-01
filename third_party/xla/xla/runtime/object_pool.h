@@ -86,10 +86,13 @@ class ObjectPool {
 
   absl::StatusOr<BorrowedObject> GetOrCreate(Args... args);
 
-  size_t num_created() const { return num_created_.load(); }
+  size_t num_created() const {
+    return num_created_.load(std::memory_order_relaxed);
+  }
 
  private:
   absl::StatusOr<std::unique_ptr<Entry>> CreateEntry(Args... args);
+
   std::unique_ptr<Entry> PopEntry();
   void PushEntry(std::unique_ptr<Entry> entry);
 
@@ -105,8 +108,8 @@ ObjectPool<T, Args...>::ObjectPool(
 
 template <typename T, typename... Args>
 ObjectPool<T, Args...>::~ObjectPool() {
-  while (Entry* entry = head_.load()) {
-    head_.store(entry->next);
+  while (Entry* entry = head_.load(std::memory_order_acquire)) {
+    head_.store(entry->next, std::memory_order_relaxed);
     delete entry;
   }
 }
@@ -116,19 +119,21 @@ auto ObjectPool<T, Args...>::CreateEntry(Args... args)
     -> absl::StatusOr<std::unique_ptr<Entry>> {
   auto entry = std::make_unique<Entry>();
   TF_ASSIGN_OR_RETURN(entry->object, builder_(std::forward<Args>(args)...));
-  num_created_.fetch_add(1);
+  num_created_.fetch_add(1, std::memory_order_relaxed);
   return entry;
 }
 
 template <typename T, typename... Args>
 auto ObjectPool<T, Args...>::PopEntry() -> std::unique_ptr<Entry> {
-  Entry* head = head_.load();
+  Entry* head = head_.load(std::memory_order_relaxed);
 
   // Try to mark the entry at head for deletion with a CAS operation.
   while (head &&
-         (IsMarked(head) || !head_.compare_exchange_weak(head, Mark(head)))) {
+         (IsMarked(head) || !head_.compare_exchange_weak(
+                                head, Mark(head), std::memory_order_acquire,
+                                std::memory_order_relaxed))) {
     if (ABSL_PREDICT_FALSE(IsMarked(head))) {
-      head = head_.load();
+      head = head_.load(std::memory_order_relaxed);
     }
   }
 
@@ -138,7 +143,7 @@ auto ObjectPool<T, Args...>::PopEntry() -> std::unique_ptr<Entry> {
   }
 
   // Update head pointer to the next entry.
-  head_.store(head->next);
+  head_.store(head->next, std::memory_order_relaxed);
 
   return std::unique_ptr<Entry>(head);
 }
@@ -146,11 +151,13 @@ auto ObjectPool<T, Args...>::PopEntry() -> std::unique_ptr<Entry> {
 template <typename T, typename... Args>
 void ObjectPool<T, Args...>::PushEntry(std::unique_ptr<Entry> entry) {
   Entry* new_head = entry.release();
-  new_head->next = head_.load();
+  new_head->next = head_.load(std::memory_order_relaxed);
   while (IsMarked(new_head->next) ||
-         !head_.compare_exchange_weak(new_head->next, new_head)) {
+         !head_.compare_exchange_weak(new_head->next, new_head,
+                                      std::memory_order_release,
+                                      std::memory_order_relaxed)) {
     if (ABSL_PREDICT_FALSE(IsMarked(new_head->next))) {
-      new_head->next = head_.load();
+      new_head->next = head_.load(std::memory_order_relaxed);
     }
   }
 }

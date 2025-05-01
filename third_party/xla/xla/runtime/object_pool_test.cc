@@ -106,7 +106,7 @@ TEST(ObjectPoolTest, GetOrCreateUnderContention) {
   // Check that the sum of counters matches the number of executed operations.
   int64_t sum = 0;
   absl::c_for_each(objs, [&](Obj* obj) { sum += obj->counter; });
-  EXPECT_EQ(sum, num_tasks * 100);
+  EXPECT_EQ(sum, num_tasks * num_iters);
 }
 
 //===----------------------------------------------------------------------===//
