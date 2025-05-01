@@ -558,8 +558,8 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
     OP_REQUIRES(
         context,
         tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-        errors::InvalidArgument("out_backprop must be 1-dimensional and 4 "
-                                "elements"));
+        errors::InvalidArgument("orig_input_shape must be 1D with 4 elements. Got shape: ",
+                                tensor_in_shape.shape().DebugString()));
     // For avgpooling, out_backprop should have 4 dimensions.
     OP_REQUIRES(context, out_backprop.dims() == 4,
                 errors::InvalidArgument("out_backprop must be 4-dimensional"));
