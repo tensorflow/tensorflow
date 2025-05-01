@@ -36,14 +36,16 @@ limitations under the License.
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.pb.h"
-#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
 
 // TODO(hyeontaek): Unify sharding types with jax::Sharding.
 
+class Sharding;
 struct DeserializeShardingOptions;
+
+using ShardingRef = absl_nonnull std::shared_ptr<const Sharding>;
 
 // Semantics for operations that take or return single-device shards of arrays
 // or shardings.
@@ -122,11 +124,9 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // disassembly is unsupported.
   // TODO(hyeontaek): Replace this API with the version that takes
   // `SingleDeviceShardSemantics`.
-  virtual absl::StatusOr<std::vector<
-      std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>
+  virtual absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
   Disassemble(const Shape& shape) const = 0;
-  virtual absl::StatusOr<std::vector<
-      std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>
+  virtual absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>
   Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const = 0;
@@ -134,11 +134,9 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // Variant of `Disassemble` that takes a dynamic shape.
   // TODO(hyeontaek): Replace this API with the version that takes
   // `SingleDeviceShardSemantics`.
-  virtual absl::StatusOr<std::vector<
-      std::pair<DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>
+  virtual absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
   Disassemble(const DynamicShape& dynamic_shape) const = 0;
-  virtual absl::StatusOr<std::vector<
-      std::pair<DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>
+  virtual absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>
   Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const = 0;
@@ -166,7 +164,7 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // Deserializes `ShardingProto` into `Sharding`.
   // Note that `Sharding` serialization uses `SerDes` to handle an open set of
   // `Sharding` subclasses. See `serdes.h`.
-  static absl::StatusOr<std::unique_ptr<Sharding>> FromProto(
+  static absl::StatusOr<ShardingRef> FromProto(
       Client* client, const ShardingProto& sharding_proto);
 
   // Serializes `Sharding` into `ShardingProto`.
@@ -182,6 +180,10 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
     sink.Append(sharding.DebugString());
   }
 
+  // TODO(hyeontaek): Remove this template definition. In theory,
+  // `std::shared_ptr<>` is responsible for defining it. Consider introducing a
+  // `std::shared_ptr<>` version of `RCReferenceWrapper` to own this template
+  // definition.
   template <class Sink>
   friend void AbslStringify(Sink& sink,
                             std::shared_ptr<const Sharding>& sharding) {
@@ -234,21 +236,15 @@ class SingleDeviceSharding final
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
-  absl::StatusOr<std::vector<
-      std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(const Shape& shape) const override;
-  absl::StatusOr<std::vector<
-      std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
+      const Shape& shape) const override;
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<std::vector<
-      std::pair<DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(const DynamicShape& dynamic_shape) const override;
-  absl::StatusOr<std::vector<
-      std::pair<DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(
+  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
+      const DynamicShape& dynamic_shape) const override;
+  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
@@ -289,21 +285,15 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
-  absl::StatusOr<std::vector<
-      std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(const Shape& shape) const override;
-  absl::StatusOr<std::vector<
-      std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
+      const Shape& shape) const override;
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<std::vector<
-      std::pair<DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(const DynamicShape& dynamic_shape) const override;
-  absl::StatusOr<std::vector<
-      std::pair<DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(
+  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
+      const DynamicShape& dynamic_shape) const override;
+  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
@@ -390,21 +380,15 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
-  absl::StatusOr<std::vector<
-      std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(const Shape& shape) const override;
-  absl::StatusOr<std::vector<
-      std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
+      const Shape& shape) const override;
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<std::vector<
-      std::pair<DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(const DynamicShape& dynamic_shape) const override;
-  absl::StatusOr<std::vector<
-      std::pair<DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(
+  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
+      const DynamicShape& dynamic_shape) const override;
+  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
@@ -468,21 +452,15 @@ class ConcreteEvenSharding
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
-  absl::StatusOr<std::vector<
-      std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(const Shape& shape) const override;
-  absl::StatusOr<std::vector<
-      std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
+      const Shape& shape) const override;
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<std::vector<
-      std::pair<DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(const DynamicShape& dynamic_shape) const override;
-  absl::StatusOr<std::vector<
-      std::pair<DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(
+  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
+      const DynamicShape& dynamic_shape) const override;
+  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
@@ -526,21 +504,15 @@ class ShardingParamSharding
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
-  absl::StatusOr<std::vector<
-      std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(const Shape& shape) const override;
-  absl::StatusOr<std::vector<
-      std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
+      const Shape& shape) const override;
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<std::vector<
-      std::pair<DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(const DynamicShape& dynamic_shape) const override;
-  absl::StatusOr<std::vector<
-      std::pair<DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>
-  Disassemble(
+  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
+      const DynamicShape& dynamic_shape) const override;
+  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 

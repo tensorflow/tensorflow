@@ -331,7 +331,7 @@ class PjRtLoadedExecutable final
       std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
           host_send_recv_callbacks,
       std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
-      std::vector<std::shared_ptr<const Sharding>> output_shardings);
+      std::vector<ShardingRef> output_shardings);
 
   PjRtCompatibleClient* client_;
   std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable_;
@@ -349,7 +349,7 @@ class PjRtLoadedExecutable final
   // time.
   std::vector<DType> output_dtypes_;
   std::vector<Shape> output_shapes_;
-  std::vector<std::shared_ptr<const Sharding>> output_shardings_;
+  std::vector<ShardingRef> output_shardings_;
 };
 
 }  // namespace ifrt

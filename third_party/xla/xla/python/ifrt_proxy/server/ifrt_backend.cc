@@ -94,7 +94,7 @@ using IfrtArrayRef = tsl::RCReference<xla::ifrt::Array>;
 absl::StatusOr<IfrtArrayRef> MakeStringArrayFromHostBuffer(
     Client* client, std::shared_ptr<const std::string> host_buffer, DType dtype,
     Shape shape, std::optional<absl::Span<const int64_t>> byte_strides,
-    std::shared_ptr<const Sharding> sharding) {
+    ShardingRef sharding) {
   TF_ASSIGN_OR_RETURN(std::vector<absl::Cord> string_host_buffer,
                       DeserializeStringHostBufferFromString(*host_buffer));
   const void* data = string_host_buffer.data();

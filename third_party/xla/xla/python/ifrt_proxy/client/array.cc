@@ -203,8 +203,8 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
 Array::MakeArrayFromHostBuffer(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     const void* data, DType dtype, Shape shape,
-    std::optional<absl::Span<const int64_t>> byte_strides,
-    std::shared_ptr<const Sharding> sharding, HostBufferSemantics semantics,
+    std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
+    HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer) {
   TF_ASSIGN_OR_RETURN(
       const uint64_t host_buffer_handle,
@@ -525,7 +525,7 @@ bool Array::IsDeleted() const {
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
 Array::AssembleArrayFromSingleDeviceArrays(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-    DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
+    DType dtype, Shape shape, ShardingRef sharding,
     absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {

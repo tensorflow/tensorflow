@@ -70,8 +70,7 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromHostBuffer(
       const void* data, xla::ifrt::DType dtype, xla::ifrt::Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      absl_nonnull std::shared_ptr<const xla::ifrt::Sharding> sharding,
-      HostBufferSemantics semantics,
+      xla::ifrt::ShardingRef sharding, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer,
       tsl::RCReference<xla::ifrt::UserContext> user_context) override;
   absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
@@ -85,7 +84,7 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
                   tsl::RCReference<UserContext> user_context) override;
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
   AssembleArrayFromSingleDeviceArrays(
-      DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
+      DType dtype, Shape shape, ShardingRef sharding,
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) override;

@@ -31,13 +31,13 @@ limitations under the License.
 #include "xla/python/ifrt/layout.pb.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 
 namespace xla {
 namespace ifrt {
 
 class Client;
 class Device;
-class Sharding;
 class Layout;
 
 // Reference to a layout.
@@ -93,11 +93,9 @@ class Layout : public llvm::RTTIExtends<Layout, Serializable> {
  private:
   // `operator==` is expected to be used only by `EquivalentLayouts()`.
   friend absl::StatusOr<bool> EquivalentLayouts(
-      DType dtype1, const Shape& shape1,
-      const std::shared_ptr<const Sharding>& sharding1,
+      DType dtype1, const Shape& shape1, const ShardingRef& sharding1,
       const LayoutRef& layout1, DType dtype2, const Shape& shape2,
-      const std::shared_ptr<const Sharding>& sharding2,
-      const LayoutRef& layout2);
+      const ShardingRef& sharding2, const LayoutRef& layout2);
   virtual bool operator==(const Layout& other) const = 0;
 
   // Returns a string representation of the layout.
@@ -146,11 +144,12 @@ class CompactLayout final : public llvm::RTTIExtends<CompactLayout, Layout> {
 //
 // TODO(hyeontaek): Consider taking `ArraySpec` once `ArraySpec::layout` becomes
 // a `LayoutRef`.
-absl::StatusOr<bool> EquivalentLayouts(
-    DType dtype1, const Shape& shape1,
-    const std::shared_ptr<const Sharding>& sharding1, const LayoutRef& layout1,
-    DType dtype2, const Shape& shape2,
-    const std::shared_ptr<const Sharding>& sharding2, const LayoutRef& layout2);
+absl::StatusOr<bool> EquivalentLayouts(DType dtype1, const Shape& shape1,
+                                       const ShardingRef& sharding1,
+                                       const LayoutRef& layout1, DType dtype2,
+                                       const Shape& shape2,
+                                       const ShardingRef& sharding2,
+                                       const LayoutRef& layout2);
 
 }  // namespace ifrt
 }  // namespace xla

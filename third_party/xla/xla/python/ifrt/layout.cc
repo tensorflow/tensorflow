@@ -124,12 +124,12 @@ std::string CompactLayout::ToString() const {
                       absl::StrJoin(major_to_minor_, ","), "])");
 }
 
-absl::StatusOr<bool> EquivalentLayouts(
-    DType dtype1, const Shape& shape1,
-    const std::shared_ptr<const Sharding>& sharding1, const LayoutRef& layout1,
-    DType dtype2, const Shape& shape2,
-    const std::shared_ptr<const Sharding>& sharding2,
-    const LayoutRef& layout2) {
+absl::StatusOr<bool> EquivalentLayouts(DType dtype1, const Shape& shape1,
+                                       const ShardingRef& sharding1,
+                                       const LayoutRef& layout1, DType dtype2,
+                                       const Shape& shape2,
+                                       const ShardingRef& sharding2,
+                                       const LayoutRef& layout2) {
   if (layout1 == nullptr && layout2 == nullptr) {
     // TODO(hyeontaek): Track a default layout domain in `Device` to check if
     // two default layouts will be the same. For now, we resolve them to

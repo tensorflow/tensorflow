@@ -71,8 +71,7 @@ absl::StatusOr<tsl::RCReference<Array>> CreateTestArray(
     BasicStringArray::OnDoneWithBuffer on_done_with_buffer) {
   Shape shape({1});
   Device* device = client->addressable_devices().at(0);
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device, MemoryKind());
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
   return BasicStringArray::Create(client, shape, sharding, std::move(buffers),
                                   std::move(on_done_with_buffer));
@@ -110,8 +109,7 @@ CreateNonReadyTestArray(
   auto buffers_promise = Future<BasicStringArray::Buffers>::CreatePromise();
   auto buffers_future = Future<BasicStringArray::Buffers>(buffers_promise);
   Shape shape({1});
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device, MemoryKind());
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
   TF_ASSIGN_OR_RETURN(auto array,
                       BasicStringArray::Create(client, shape, sharding,
@@ -277,8 +275,7 @@ TEST(MakeArrayFromHostBufferTest, SuccessCase) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Shape shape({1});
   Device* device = client->addressable_devices().at(0);
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device, MemoryKind());
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
   auto strings = std::make_shared<std::vector<absl::Cord>>();
   strings->push_back(absl::Cord("abc"));
@@ -297,7 +294,7 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Shape shape({1});
   Device* device = client->addressable_devices().at(0);
-  std::shared_ptr<const Sharding> single_device_sharding =
+  ShardingRef single_device_sharding =
       SingleDeviceSharding::Create(device, MemoryKind());
   auto strings = std::make_shared<std::vector<absl::Cord>>();
   strings->push_back(absl::Cord("abc"));
@@ -318,7 +315,7 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
 
   // MakeArrayFromHostBuffer should check and fail if the sharding is not a
   // SingleDeviceSharding.
-  std::shared_ptr<const Sharding> opaque_sharding =
+  ShardingRef opaque_sharding =
       OpaqueSharding::Create(client->MakeDeviceList({device}), MemoryKind());
   EXPECT_THAT(client->MakeArrayFromHostBuffer(
                   data, DType(DType::kString), shape,
@@ -348,8 +345,7 @@ absl::StatusOr<tsl::RCReference<Array>> MakeSingleDeviceStringTestArray(
     absl::Span<const std::string> contents, Client* client,
     Device* const device) {
   Shape shape(absl::MakeConstSpan({static_cast<int64_t>(contents.size())}));
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device, MemoryKind());
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
   auto strings = std::make_shared<std::vector<absl::Cord>>();
   for (const auto& content : contents) {
@@ -373,8 +369,7 @@ absl::StatusOr<tsl::RCReference<Array>> MakeSingleDeviceFloatTestArray(
   Shape shape({2, 3});
   auto data = std::make_unique<std::vector<float>>(6);
   std::iota(data->begin(), data->end(), 0);
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device, MemoryKind());
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
   return client->MakeArrayFromHostBuffer(
       data->data(), dtype, shape,
@@ -398,7 +393,7 @@ absl::StatusOr<tsl::RCReference<Array>> MakeShardedStringTestArray(
         "Test client has too few devices. Need 2, got:", devices.size()));
   }
 
-  std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
+  ShardingRef sharding = ConcreteEvenSharding::Create(
       client->MakeDeviceList({devices[0], devices[1]}), MemoryKind(),
       Shape({2, 1}), Shape({1}), is_fully_replicated);
 
@@ -439,7 +434,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest, FailsWithNonStringArrays) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 2);
-  std::shared_ptr<const Sharding> opaque_sharding = OpaqueSharding::Create(
+  ShardingRef opaque_sharding = OpaqueSharding::Create(
       client->MakeDeviceList({devices[0], devices[1]}), MemoryKind());
 
   std::vector<tsl::RCReference<Array>> arrays(2);
@@ -460,7 +455,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 2);
-  std::shared_ptr<const Sharding> opaque_sharding = OpaqueSharding::Create(
+  ShardingRef opaque_sharding = OpaqueSharding::Create(
       client->MakeDeviceList({devices[0], devices[1]}), MemoryKind());
 
   std::vector<tsl::RCReference<Array>> arrays(2);
@@ -483,7 +478,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 2);
-  std::shared_ptr<const Sharding> opaque_sharding = OpaqueSharding::Create(
+  ShardingRef opaque_sharding = OpaqueSharding::Create(
       client->MakeDeviceList({devices[0], devices[1]}), MemoryKind());
 
   // Make two non-ready single device sharded arrays.
@@ -533,7 +528,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 2);
-  std::shared_ptr<const Sharding> opaque_sharding = OpaqueSharding::Create(
+  ShardingRef opaque_sharding = OpaqueSharding::Create(
       client->MakeDeviceList({devices[0], devices[1]}), MemoryKind());
 
   // Make two non-ready single device sharded arrays.
