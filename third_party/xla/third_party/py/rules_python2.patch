@@ -1,5 +1,5 @@
 diff --git a/python/versions.bzl b/python/versions.bzl
-index 91e59f9b..e7f2a747 100644
+index 91e59f9b..e74c9736 100644
 --- a/python/versions.bzl
 +++ b/python/versions.bzl
 @@ -21,7 +21,7 @@ LINUX_NAME = "linux"
@@ -72,7 +72,7 @@ index 91e59f9b..e7f2a747 100644
 +    # Note: This is python 3.14.0a6, but it is labeled as '3.14.0' due to limitation within rules_python
 +    # that prevents the correct handling of pre-release version identifiers like '3.14.0a'.
 +    "3.14.0": {
-+        "url": "20250409/cpython-{python_version}+20250409-{platform}-{build}.tar.gz",
++        "url": "20250409/cpython-{python_version}a6+20250409-{platform}-{build}.tar.gz",
 +        "sha256": {
 +            "aarch64-apple-darwin": "fd34267a9923a09c03ae7e3626b5681b58bccecaaf3c1cfec6d770c8b110a8be",
 +            "aarch64-unknown-linux-gnu": "03fd176e1e14f21a50c970b883500226919a566ca5b1d27dec06a2dd68102d3e",
