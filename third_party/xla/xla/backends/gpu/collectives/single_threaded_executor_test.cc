@@ -13,60 +13,66 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/collectives/worker_thread.h"
+#include "xla/backends/gpu/collectives/single_threaded_executor.h"
 
 #include <cstdint>
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/notification.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace {
 
-TEST(WorkerThread, ConcurrentCallsToRunGetExecutedSerially) {
+TEST(SingleThreadedExecutor, ConcurrentCallsToRunGetExecutedSerially) {
   // Issue 100 concurrent calls to Run. The functions, though submitted
   // concurrently, should execute serially.
   tsl::Env* env = tsl::Env::Default();
   const std::string name = "ConcurrentCallsToRunGetExecutedSerially";
-  xla::gpu::WorkerThread t(*env, name);
+  xla::gpu::SingleThreadedExecutor executor(*env);
 
   const int num_threads = 100;
   int x = 0;
   {
     tsl::thread::ThreadPool pool(env, name, num_threads);
+    absl::BlockingCounter done(num_threads);
     for (int i = 0; i < num_threads; ++i) {
-      pool.Schedule([&t, &x]() {
-        TF_ASSERT_OK(t.Run([&x]() -> absl::Status {
+      pool.Schedule([&]() {
+        executor.Execute([&]() {
           x++;
-          return absl::OkStatus();
-        }));
+          done.DecrementCount();
+        });
       });
     }
+    done.Wait();
   }
   EXPECT_EQ(x, num_threads);
 }
 
-TEST(WorkerThread, FunctionsRunOnOneThread) {
+TEST(SingleThreadedExecutor, FunctionsRunOnOneThread) {
   tsl::Env* env = tsl::Env::Default();
-  xla::gpu::WorkerThread t(*env, "FunctionsRunOnOneThread");
+  xla::gpu::SingleThreadedExecutor executor(*env);
 
   // Get the thread id of the worker thread.
   int64_t thread_id = 0;
-  TF_ASSERT_OK(t.Run([&env, &thread_id]() -> absl::Status {
+  absl::Notification done;
+  executor.Execute([&]() {
     thread_id = env->GetCurrentThreadId();
-    return absl::OkStatus();
-  }));
+    done.Notify();
+  });
+  done.WaitForNotification();
 
   // Confirm that every function runs on the same thread.
+  absl::BlockingCounter all_done(10);
   for (int i = 0; i < 10; ++i) {
-    TF_ASSERT_OK(t.Run([&env, &thread_id]() -> absl::Status {
+    executor.Execute([&]() {
       EXPECT_EQ(thread_id, env->GetCurrentThreadId());
-      return absl::OkStatus();
-    }));
+      all_done.DecrementCount();
+    });
   }
+  all_done.Wait();
 }
 
 }  // namespace
