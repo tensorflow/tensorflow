@@ -510,6 +510,40 @@ func.func @fuseMulIntoFollowingFullyConnected(%arg0: tensor<4x2xf32>) -> tensor<
 // CHECK-NEXT: return %[[fc]] : tensor<4x2xf32>
 }
 
+// CHECK-LABEL: @DontFuseRhsNonConstMulIntoFollowingFullyConnected
+func.func @DontFuseRhsNonConstMulIntoFollowingFullyConnected(%arg0: tensor<4x2xf32>, %arg1: tensor<2xf32>) -> tensor<4x2xf32> {
+  %mul = "tfl.mul"(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<4x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  %filter = arith.constant dense<1.750000e+00> : tensor<2x2xf32>
+  %bias = arith.constant dense<2.000000e+00> : tensor<2xf32>
+  %fc = "tfl.fully_connected"(%mul, %filter, %bias) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  func.return %fc : tensor<4x2xf32>
+
+// CHECK-DAG: %[[MUL:.*]] = tfl.mul(%arg0, %arg1)
+// CHECK-DAG: %[[FILTER:.*]] = arith.constant dense<1.750000e+00> : tensor<2x2xf32>
+// CHECK-DAG: %[[BIAS:.*]] = arith.constant dense<2.000000e+00> : tensor<2xf32>
+// CHECK-NEXT: %[[FC:.*]] = "tfl.fully_connected"(%[[MUL]], %[[FILTER]], %[[BIAS]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+// CHECK-NEXT: return %[[FC]] : tensor<4x2xf32>
+}
+
+// CHECK-LABEL: @DontFuseMulIntoFollowingWeightOnlyQuantizedFullyConnected
+func.func @DontFuseMulIntoFollowingWeightOnlyQuantizedFullyConnected(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
+  %mul_cst = arith.constant dense<[1.500000e+00, 1.600000e+00]> : tensor<2xf32>
+  %mul = "tfl.mul"(%arg0, %mul_cst) <{fused_activation_function = "NONE"}> : (tensor<4x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  %filter_quant = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+00,1.100000e+00}>>, value = dense<9> : tensor<2x2xi8>}> : () -> tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+00,1.100000e+00}>>
+  %filter_dq = "tfl.dequantize"(%filter_quant) : (tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+00,1.100000e+00}>>) -> tensor<2x2xf32>
+  %bias = arith.constant dense<2.000000e+00> : tensor<2xf32>
+  %weight_only_fc = "tfl.fully_connected"(%mul, %filter_dq, %bias) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  func.return %weight_only_fc : tensor<4x2xf32>
+
+// CHECK-DAG: %[[MUL_CST:.*]] = arith.constant dense<[1.500000e+00, 1.600000e+00]> : tensor<2xf32>
+// CHECK-DAG: %[[MUL:.*]] = tfl.mul(%arg0, %[[MUL_CST]])
+// CHECK-DAG: %[[FILTER_QUANT:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+00,1.100000e+00}>>, value = dense<9> : tensor<2x2xi8>}> : () -> tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+00,1.100000e+00}>>
+// CHECK-DAG: %[[FILTER_DQ:.*]] = "tfl.dequantize"(%[[FILTER_QUANT]]) : (tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+00,1.100000e+00}>>) -> tensor<2x2xf32>
+// CHECK-DAG: %[[BIAS:.*]] = arith.constant dense<2.000000e+00> : tensor<2xf32>
+// CHECK-NEXT: %[[WEIGHT_ONLY_FC:.*]] = "tfl.fully_connected"(%[[MUL]], %[[FILTER_DQ]], %[[BIAS]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+// CHECK-NEXT: return %[[WEIGHT_ONLY_FC]] : tensor<4x2xf32>
+}
+
 // CHECK-LABEL: @fuseMulIntoFullyConnectedBroadcast
 func.func @fuseMulIntoFullyConnectedBroadcast(%arg0: tensor<1x3xf32>) -> tensor<1x2xf32> {
   %cst0 = arith.constant dense<[[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]> : tensor<2x3xf32>

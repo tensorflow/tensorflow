@@ -1365,7 +1365,7 @@ struct FuseAddAndFullyConnected
 // FC(Mul(lhs, rhs), filter, bias)
 // .. with ..
 // FC(lhs, Mul(filter, rhs), bias)
-// .. if rhs, filter, and bias are all constants.
+// .. if rhs and filter are all constants.
 // The generated Mul will be constant folded to a single matrix.
 struct FuseMulAndFullyConnected
     : public OpRewritePattern<TFL::FullyConnectedOp> {
@@ -1391,6 +1391,28 @@ struct FuseMulAndFullyConnected
 
     // We rely on constant folding, implemented only for F32. Check types.
     if (!IsF32Value(mul_op.getRhs()) || !IsF32Value(fc_op.getFilter())) {
+      return failure();
+    }
+
+    // Checks the constant requirements.
+    if (!matchPattern(mul_op.getRhs(), m_Constant())) {
+      return failure();
+    }
+
+    if (!matchPattern(fc_op.getFilter(), m_Constant())) {
+      // We must not apply this optimization if RHS is not a constant.
+      //
+      // In particular, this optimization must not break the weight-only
+      // quantized FullyConnected sequence:
+      //
+      // %filter_quant = "tfl.pseudo_qconst"() <{...}>
+      //     : () -> tensor<... x !quant.uniform<...>>
+      // %filter_dequant = "tfl.dequantize"(%filter_quant)
+      //     : (tensor<... x !quant.uniform<...>>) -> tensor<... x f32>
+      // %fc = "tfl.fully_connected"(%input, %filter_dequant, ...)
+      //     : (tensor<... x f32>, tensor<... x f32>, ...)
+      //     -> tensor<... x f32>
+      //
       return failure();
     }
 
