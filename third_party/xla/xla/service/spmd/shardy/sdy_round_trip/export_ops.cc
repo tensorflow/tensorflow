@@ -124,7 +124,7 @@ class ShardingGroupPattern : public OpConversionPattern<ShardingGroupOp> {
     customCallOp.setCallTargetName(kShardingGroupCustomCallTargetName);
     setFrontendAttribute(customCallOp, kShardingGroupIdAttr,
                          op.getGroupIdAttr());
-    customCallOp.setHasSideEffectAttr(rewriter.getBoolAttr(true));
+    customCallOp.setHasSideEffect(true);
     return success();
   }
 };
@@ -142,6 +142,7 @@ class PropagationBarrierPattern
         op, op->getResultTypes(), adaptor.getInput());
 
     customCallOp.setCallTargetName(kPropagationBarrierCustomCallTargetName);
+    customCallOp.setHasSideEffect(true);
     setFrontendAttribute(customCallOp, kAllowedDirectionAttr,
                          op.getAllowedDirectionAttr());
     return success();
