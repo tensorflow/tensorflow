@@ -128,8 +128,8 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& shape_proto) {
   return shape;
 }
 
-void Shape::SetProto(ShapeProto& proto) const {
-  proto.Clear();
+ShapeProto Shape::ToProto() const {
+  ShapeProto proto;
   proto.set_element_type(element_type_);
 
   if (const auto* const state = if_array_state()) {
@@ -146,14 +146,9 @@ void Shape::SetProto(ShapeProto& proto) const {
   } else if (const auto* const state = if_tuple_state()) {
     proto.mutable_tuple_shapes()->Reserve(state->tuple_shapes.size());
     for (const Shape& shape : state->tuple_shapes) {
-      shape.SetProto(*proto.add_tuple_shapes());
+      *proto.add_tuple_shapes() = shape.ToProto();
     }
   }
-}
-
-ShapeProto Shape::ToProto() const {
-  ShapeProto proto;
-  SetProto(proto);
   return proto;
 }
 
