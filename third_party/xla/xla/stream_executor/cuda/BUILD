@@ -1335,6 +1335,7 @@ cc_library(
     # copybara:uncomment_begin
     # data = [
     # "@local_config_cuda//cuda:runtime_fatbinary",
+    # "@local_config_cuda//cuda:runtime_nvdisasm",
     # "@local_config_cuda//cuda:runtime_nvlink",
     # "@local_config_cuda//cuda:runtime_ptxas",
     # ],
@@ -1342,11 +1343,16 @@ cc_library(
     # copybara:comment_begin
     data = if_cuda_tools([
         "@cuda_nvcc//:fatbinary",
+        "@cuda_nvdisasm//:nvdisasm",
         "@cuda_nvcc//:nvlink",
         "@cuda_nvcc//:ptxas",
     ]),
     # copybara:comment_end
     local_defines = if_windows(["PLATFORM_WINDOWS"]),
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = [
         ":cubin_or_ptx_image",
         ":ptx_compiler_helpers",
@@ -1403,11 +1409,18 @@ stage_in_bin_subdirectory(
     data = [":dummy_cuda_binary"],
 )
 
+stage_in_bin_subdirectory(
+    name = "nvdisasm",
+    testonly = True,
+    data = [":dummy_cuda_binary"],
+)
+
 xla_cc_test(
     name = "subprocess_compilation_test",
     srcs = ["subprocess_compilation_test.cc"],
     data = [
         ":fatbinary",
+        ":nvdisasm",
         ":nvlink",
         ":ptxas",
     ],
@@ -1764,6 +1777,10 @@ cc_library(
     name = "compilation_provider_options",
     srcs = ["compilation_provider_options.cc"],
     hdrs = ["compilation_provider_options.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = [
         "//xla:xla_proto_cc",
         "@com_google_absl//absl/strings:str_format",
