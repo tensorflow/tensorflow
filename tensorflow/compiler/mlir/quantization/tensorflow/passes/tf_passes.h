@@ -75,6 +75,14 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateTFPrepareLiftingPass(
 // ops from the final quantized graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass();
 
+// Creates an instance of the PreprocessOp pass, which will perform op
+// preprocessing to allow multi-axis quantization, prior to quantization.
+std::unique_ptr<OperationPass<ModuleOp>> CreateTFPreprocessOpPass(
+    tensorflow::quantization::OpSet op_set,
+    tensorflow::quantization::QuantizationMethod::PresetMethod
+        quantization_method,
+    bool enable_per_channel_quantization);
+
 }  // namespace quant
 }  // namespace mlir
 
