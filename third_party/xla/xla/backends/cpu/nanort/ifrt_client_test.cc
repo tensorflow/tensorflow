@@ -133,7 +133,7 @@ static ifrt::DType DTypeFromPrimitiveType(PrimitiveType type) {
 
 static absl::StatusOr<tsl::RCReference<ifrt::Array>> MakeArrayFromLiteral(
     NanoIfrtClient* client, const Literal& literal,
-    std::shared_ptr<const ifrt::Sharding> sharding) {
+    ifrt::ShardingRef sharding) {
   return client->MakeArrayFromHostBuffer(
       literal.untyped_data(),
       DTypeFromPrimitiveType(literal.shape().element_type()),
@@ -157,7 +157,7 @@ static void BM_IfRtAddScalars(benchmark::State& state) {
   auto executable = Compile(client.get(), program);
 
   ifrt::Device* device = client->addressable_devices().at(0);
-  std::shared_ptr<const ifrt::Sharding> sharding =
+  ifrt::ShardingRef sharding =
       ifrt::SingleDeviceSharding::Create(device, ifrt::MemoryKind());
 
   ifrt::ExecuteOptions execute_options;
@@ -211,7 +211,7 @@ static void BM_IfRtAddManyScalars(benchmark::State& state) {
   auto executable = Compile(client.get(), program);
 
   ifrt::Device* device = client->addressable_devices().at(0);
-  std::shared_ptr<const ifrt::Sharding> sharding =
+  ifrt::ShardingRef sharding =
       ifrt::SingleDeviceSharding::Create(device, ifrt::MemoryKind());
 
   ifrt::ExecuteOptions execute_options;

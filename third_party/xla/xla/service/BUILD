@@ -1976,6 +1976,18 @@ cc_library(
 )
 
 cc_library(
+    name = "user_guided_fusion_verifier",
+    hdrs = ["user_guided_fusion_verifier.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "hlo_creation_utils",
     srcs = ["hlo_creation_utils.cc"],
     hdrs = [

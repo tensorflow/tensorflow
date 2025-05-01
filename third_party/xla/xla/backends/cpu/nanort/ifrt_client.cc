@@ -157,7 +157,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   using DataPtr = std::shared_ptr<void>;
 
   NanoArray(NanoIfrtClient* client, ifrt::DType dtype, ifrt::Shape shape,
-            DataPtr data, std::shared_ptr<const ifrt::Sharding> sharding)
+            DataPtr data, ifrt::ShardingRef sharding)
       : NanoValue<NanoArray, ifrt::Array>(client),
         dtype_(std::move(dtype)),
         shape_(std::move(shape)),
@@ -167,7 +167,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   // Allocates a new array of the given type and shape.
   static absl::StatusOr<tsl::RCReference<NanoArray>> Allocate(
       NanoIfrtClient* client, ifrt::DType dtype, ifrt::Shape shape,
-      std::shared_ptr<const ifrt::Sharding> sharding) {
+      ifrt::ShardingRef sharding) {
     TF_RET_CHECK(dtype.byte_size().has_value());
     TF_ASSIGN_OR_RETURN(
         DataPtr data_ptr,
@@ -182,7 +182,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   // and dense.
   static absl::StatusOr<tsl::RCReference<NanoArray>> FromBuffer(
       NanoIfrtClient* client, void* data, ifrt::DType dtype, ifrt::Shape shape,
-      std::shared_ptr<const ifrt::Sharding> sharding,
+      ifrt::ShardingRef sharding,
       std::optional<absl::Span<const int64_t>> byte_strides, bool make_copy,
       std::function<void()> on_done_with_host_buffer) {
     auto size = dtype.byte_size().value_or(0) * shape.num_elements();
@@ -384,10 +384,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
 
   const ifrt::Sharding& sharding() const override { return *sharding_; }
 
-  absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> shared_ptr_sharding()
-      const override {
-    return sharding_;
-  }
+  ifrt::ShardingRef shared_ptr_sharding() const override { return sharding_; }
 
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override {
     TF_RETURN_IF_ERROR(ValidateNotDeleted());
@@ -515,7 +512,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   ifrt::DType dtype_;
   ifrt::Shape shape_;
   DataPtr data_;
-  std::shared_ptr<const ifrt::Sharding> sharding_;
+  ifrt::ShardingRef sharding_;
 };
 
 ABSL_ATTRIBUTE_UNUSED char NanoArray::ID = 'A';  // NOLINT
@@ -527,8 +524,7 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
   // Creates an array from the given shards. Note that if we can assemble the
   // array using the given sharding, this method will return a NanoArray.
   static absl::StatusOr<tsl::RCReference<ifrt::Array>> FromShards(
-      NanoIfrtClient* client, ifrt::Shape shape,
-      std::shared_ptr<const ifrt::Sharding> sharding,
+      NanoIfrtClient* client, ifrt::Shape shape, ifrt::ShardingRef sharding,
       std::vector<tsl::RCReference<NanoArray>> shards) {
     if (shards.empty()) {
       return InvalidArgument("Can't create a sharded array with no shards.");
@@ -558,7 +554,7 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
   // common case where a checkpoint is loaded with an unknown sharding, but
   // then we find the real sharding when the program is run.
   absl::StatusOr<tsl::RCReference<NanoArray>> AssembleForExecution(
-      std::shared_ptr<const ifrt::Sharding> sharding) {
+      ifrt::ShardingRef sharding) {
     TF_RETURN_IF_ERROR(ValidateNotDeleted());
     absl::call_once(assemble_once_, [this, sharding]() {
       assemble_result_ = Assemble(sharding);
@@ -600,10 +596,7 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
 
   const ifrt::Sharding& sharding() const override { return *sharding_; }
 
-  absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> shared_ptr_sharding()
-      const override {
-    return sharding_;
-  }
+  ifrt::ShardingRef shared_ptr_sharding() const override { return sharding_; }
 
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override {
     return std::make_shared<PjRtLayout>(xla::Layout(shape().dims()));
@@ -633,7 +626,7 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
 
  private:
   ShardedNanoArray(NanoIfrtClient* client, ifrt::DType dtype, ifrt::Shape shape,
-                   std::shared_ptr<const ifrt::Sharding> sharding,
+                   ifrt::ShardingRef sharding,
                    std::vector<tsl::RCReference<NanoArray>> shards)
       : NanoValue<ShardedNanoArray, ifrt::Array>(client),
         dtype_(std::move(dtype)),
@@ -642,7 +635,7 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
         shards_(std::move(shards)) {}
 
   absl::StatusOr<tsl::RCReference<NanoArray>> Assemble(
-      std::shared_ptr<const ifrt::Sharding> sharding) {
+      ifrt::ShardingRef sharding) {
     TF_ASSIGN_OR_RETURN(auto index_domains, sharding->IndexDomains(shape()));
     if (index_domains.size() != shards_.size()) {
       return absl::FailedPreconditionError(
@@ -694,7 +687,7 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
 
   ifrt::DType dtype_;
   ifrt::Shape shape_;
-  std::shared_ptr<const ifrt::Sharding> sharding_;
+  ifrt::ShardingRef sharding_;
   std::vector<tsl::RCReference<NanoArray>> shards_;
 
   absl::once_flag assemble_once_;
@@ -1249,8 +1242,7 @@ absl::StatusOr<tsl::RCReference<ifrt::Array>>
 NanoIfrtClient::MakeArrayFromHostBuffer(
     const void* data, ifrt::DType dtype, ifrt::Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides,
-    absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> sharding,
-    HostBufferSemantics semantics,
+    ifrt::ShardingRef sharding, HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer,
     tsl::RCReference<xla::ifrt::UserContext> user_context) {
   // Currently the `user_context` parameter is ignored.
@@ -1291,8 +1283,7 @@ NanoIfrtClient::MakeErrorArrays(
 
 absl::StatusOr<tsl::RCReference<ifrt::Array>>
 NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
-    ifrt::DType dtype, ifrt::Shape shape,
-    absl::Nonnull<std::shared_ptr<const ifrt::Sharding>> sharding,
+    ifrt::DType dtype, ifrt::Shape shape, ifrt::ShardingRef sharding,
     absl::Span<tsl::RCReference<ifrt::Array>> arrays,
     ifrt::ArrayCopySemantics array_copy_semantics,
     ifrt::SingleDeviceShardSemantics single_device_shard_semantics) {
