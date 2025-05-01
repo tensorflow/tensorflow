@@ -1,76 +1,12 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/include/clang/AST/OperationKinds.def b/clang/include/clang/AST/OperationKinds.def
---- a/clang/include/clang/AST/OperationKinds.def
-+++ b/clang/include/clang/AST/OperationKinds.def
-@@ -119,7 +119,8 @@
- CAST_OPERATION(FunctionToPointerDecay)
- 
- /// CK_NullToPointer - Null pointer constant to pointer, ObjC
--/// pointer, or block pointer.
-+/// pointer, or block pointer. The result of this conversion can
-+/// still be a null pointer constant if it has type std::nullptr_t.
- ///   (void*) 0
- ///   void (^block)() = 0;
- CAST_OPERATION(NullToPointer)
-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenTypes.cpp b/clang/lib/CodeGen/CodeGenTypes.cpp
---- a/clang/lib/CodeGen/CodeGenTypes.cpp
-+++ b/clang/lib/CodeGen/CodeGenTypes.cpp
-@@ -850,12 +850,14 @@
+diff -ruN --strip-trailing-cr a/lldb/unittests/Core/MangledTest.cpp b/lldb/unittests/Core/MangledTest.cpp
+--- a/lldb/unittests/Core/MangledTest.cpp
++++ b/lldb/unittests/Core/MangledTest.cpp
+@@ -605,6 +605,7 @@
+   EXPECT_EQ(get_part(OB.NameInfo.BasenameRange), basename);
+   EXPECT_EQ(get_part(OB.NameInfo.ScopeRange), scope);
+   EXPECT_EQ(get_part(OB.NameInfo.QualifiersRange), qualifiers);
++  std::free(OB.getBuffer());
  }
  
- bool CodeGenTypes::isPointerZeroInitializable(QualType T) {
--  assert((T->isAnyPointerType() || T->isBlockPointerType()) && "Invalid type");
-+  assert((T->isAnyPointerType() || T->isBlockPointerType() ||
-+          T->isNullPtrType()) &&
-+         "Invalid type");
-   return isZeroInitializable(T);
- }
- 
- bool CodeGenTypes::isZeroInitializable(QualType T) {
--  if (T->getAs<PointerType>())
-+  if (T->getAs<PointerType>() || T->isNullPtrType())
-     return Context.getTargetNullPointerValue(T) == 0;
- 
-   if (const auto *AT = Context.getAsArrayType(T)) {
-diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/nullptr.cpp b/clang/test/CodeGenCXX/nullptr.cpp
---- a/clang/test/CodeGenCXX/nullptr.cpp
-+++ b/clang/test/CodeGenCXX/nullptr.cpp
-@@ -70,3 +70,10 @@
-   void f(nullptr_t);
-   void g() { f(null); }
- }
-+
-+// CHECK-LABEL: define {{.*}}pr137276
-+// CHECK: {{^}}  store i64 0, ptr %arr, align 8{{$}}
-+void pr137276(nullptr_t np, int i) {
-+  long arr[] = { long(np), i, 0 };
-+  (void)arr;
-+}
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/SampleProfileMatcher.cpp b/llvm/lib/Transforms/IPO/SampleProfileMatcher.cpp
---- a/llvm/lib/Transforms/IPO/SampleProfileMatcher.cpp
-+++ b/llvm/lib/Transforms/IPO/SampleProfileMatcher.cpp
-@@ -737,14 +737,16 @@
-     auto FunctionName = FName.str();
-     if (Demangler.partialDemangle(FunctionName.c_str()))
-       return std::string();
--    constexpr size_t MaxBaseNameSize = 65536;
--    std::vector<char> BaseNameBuf(MaxBaseNameSize, 0);
--    size_t BaseNameSize = MaxBaseNameSize;
--    char *BaseNamePtr =
--        Demangler.getFunctionBaseName(BaseNameBuf.data(), &BaseNameSize);
--    return (BaseNamePtr && BaseNameSize)
--               ? std::string(BaseNamePtr, BaseNameSize)
--               : std::string();
-+    size_t BaseNameSize = 0;
-+    // The demangler API follows the __cxa_demangle one, and thus needs a
-+    // pointer that originates from malloc (or nullptr) and the caller is
-+    // responsible for free()-ing the buffer.
-+    char *BaseNamePtr = Demangler.getFunctionBaseName(nullptr, &BaseNameSize);
-+    std::string Result = (BaseNamePtr && BaseNameSize)
-+                             ? std::string(BaseNamePtr, BaseNameSize)
-+                             : std::string();
-+    free(BaseNamePtr);
-+    return Result;
-   };
-   auto IRBaseName = GetBaseName(IRFunc.getName());
-   auto ProfBaseName = GetBaseName(ProfFunc.stringRef());
+ INSTANTIATE_TEST_SUITE_P(DemanglingPartsTests, DemanglingPartsTestFixture,

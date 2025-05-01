@@ -345,7 +345,7 @@ ml::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
   auto llvm_element_type = converter.convertType(element_type);
   auto gep =
       b.create<ml::GEPOp>(ptr, llvm_element_type, tensor_ptr, linear_index);
-  gep.setInbounds(true);
+  gep.setNoWrapFlags(mlir::LLVM::GEPNoWrapFlags::inbounds);
   return gep;
 }
 
@@ -1168,7 +1168,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
           rewriter.create<ml::ConstantOp>(loc, addr_int_ty, -1));
       addr = rewriter.create<ml::GEPOp>(loc, addr.getType(),
                                         rewriter.getI8Type(), addr, index,
-                                        /*inbounds=*/true);
+                                        mlir::LLVM::GEPNoWrapFlags::inbounds);
 
       // Calculate the bit shift (assume little-endianness).
       Value offset = rewriter.create<ml::TruncOp>(loc, atomic_ty, addr_offset);
