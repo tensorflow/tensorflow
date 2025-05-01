@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -71,6 +72,24 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 
 namespace xla::cpu {
+
+void ForEachThunkProto(const ThunkSequenceProto& proto,
+                       std::function<void(const ThunkProto&)> callback) {
+  for (const ThunkProto& thunk_proto : proto.thunks()) {
+    if (thunk_proto.has_call_thunk()) {
+      ForEachThunkProto(thunk_proto.call_thunk().called_sequence(), callback);
+    } else if (thunk_proto.has_conditional_thunk()) {
+      for (const ThunkSequenceProto& branch_sequence :
+           thunk_proto.conditional_thunk().branch_sequences()) {
+        ForEachThunkProto(branch_sequence, callback);
+      }
+    } else if (thunk_proto.has_while_thunk()) {
+      ForEachThunkProto(thunk_proto.while_thunk().body_sequence(), callback);
+      ForEachThunkProto(thunk_proto.while_thunk().cond_sequence(), callback);
+    }
+    callback(thunk_proto);
+  }
+}
 
 static absl::StatusOr<CollectiveThunk::CollectiveKind>
 ProtoCollectiveThunkToCollectiveThunkKind(const CollectiveThunkProto& proto) {
