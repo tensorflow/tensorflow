@@ -363,7 +363,9 @@ py_test(
         "cpu",
         "manual",
     ],
-    deps = if_wheel_dependency(tf_wheel_dep()),
+    deps = if_wheel_dependency(tf_wheel_dep()) + [
+        "@pypi_absl_py//:pkg",
+    ],
 )
 
 py_test(
@@ -381,7 +383,9 @@ py_test(
         "gpu",
         "manual",
     ],
-    deps = if_wheel_dependency(tf_wheel_dep()),
+    deps = if_wheel_dependency(tf_wheel_dep()) + [
+        "@pypi_absl_py//:pkg",
+    ],
 )
 
 py_test(
