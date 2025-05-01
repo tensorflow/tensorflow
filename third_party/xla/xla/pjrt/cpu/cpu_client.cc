@@ -604,13 +604,8 @@ TfrtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
         addressable_devices.push_back(device);
       }
     }
-    if (addressable_devices.empty()) {
-      return InvalidArgument(
-          "Device assignment (%s) does not have any local devices.",
-          device_assignment->ToString());
-    }
 
-    if (build_options.device_ordinal() < 0) {
+    if (!addressable_devices.empty() && build_options.device_ordinal() < 0) {
       build_options.set_device_ordinal(
           addressable_devices.front()->local_hardware_id().value());
     }
@@ -895,13 +890,7 @@ TfrtCpuClient::CompileInternal(
         addressable_devices.push_back(device);
       }
     }
-    if (addressable_devices.empty()) {
-      return InvalidArgument(
-          "Device assignment (%s) does not have any local devices.",
-          device_assignment->ToString());
-    }
-
-    if (build_options.device_ordinal() < 0) {
+    if (!addressable_devices.empty() && build_options.device_ordinal() < 0) {
       build_options.set_device_ordinal(
           addressable_devices.front()->local_hardware_id().value());
     }
