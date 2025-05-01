@@ -2348,6 +2348,14 @@ TfrtGpuBuffer::AcquireExternalReference() {
     return InvalidArgument("Buffer has been deleted or donated.");
   }
 
+  // If the external reference event is concrete, it means we previously dropped
+  // the last external reference but want to create one again without having
+  // deleted the buffer. So we need a new external_references_dropped_event_.
+  if (external_references_dropped_event_.IsConcrete()) {
+    external_references_dropped_event_ =
+        tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  }
+
   ++external_reference_counter_;
 
   tsl::BlockUntilReady(tracked_device_buffer_->definition_event());
