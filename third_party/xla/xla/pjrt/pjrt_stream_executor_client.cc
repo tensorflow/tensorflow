@@ -3466,6 +3466,12 @@ PjRtStreamExecutorClient::CompileAndLoad(mlir::ModuleOp module,
   return Load(std::move(executable), LoadOptions());
 }
 
+namespace {
+
+constexpr absl::string_view kPjRtClientName = "PjRtStreamExecutorClient";
+
+}  // namespace
+
 absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
     const PjRtLoadedExecutable& executable) const {
   const PjRtStreamExecutorLoadedExecutable* se_executable =
@@ -3497,6 +3503,7 @@ absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
   *proto.mutable_serialized_executable() = std::move(serialized);
   TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                       se_executable->compile_options_.ToProto());
+  *proto.mutable_pjrt_client_name() = kPjRtClientName;
   return proto.SerializeAsString();
 }
 
@@ -3549,6 +3556,13 @@ PjRtStreamExecutorClient::DeserializeToLocalExecutable(
   }
   if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
     return Internal("Proto deserialization failed");
+  }
+  if (!proto.pjrt_client_name().empty() &&
+      proto.pjrt_client_name() != kPjRtClientName) {
+    return Internal(
+        "Serialized executable is from an incompatible PjRt client type. "
+        "PjRt client type expected by the serialized executable: %s",
+        proto.pjrt_client_name());
   }
 
   CompileOptions compile_options;

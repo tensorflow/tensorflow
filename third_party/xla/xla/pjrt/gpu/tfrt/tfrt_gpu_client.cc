@@ -133,6 +133,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
+constexpr absl::string_view kPjRtClientName = "TfrtGpuClient";
+
 absl::StatusOr<Shape> GetDestinationDeviceShape(const Shape& host_shape,
                                                 TfrtGpuDevice* device,
                                                 TfrtGpuClient* client,
@@ -1395,6 +1397,7 @@ absl::StatusOr<std::string> TfrtGpuExecutable::SerializeExecutable() const {
   *proto.mutable_serialized_executable() = std::move(serialized);
   TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                       compile_options_.ToProto());
+  *proto.mutable_pjrt_client_name() = kPjRtClientName;
   return proto.SerializeAsString();
 }
 
@@ -1447,6 +1450,13 @@ TfrtGpuClient::DeserializeToLocalExecutable(
   }
   if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
     return Internal("Proto deserialization failed");
+  }
+  if (!proto.pjrt_client_name().empty() &&
+      proto.pjrt_client_name() != kPjRtClientName) {
+    return Internal(
+        "Serialized executable is from an incompatible PjRt client type. "
+        "PjRt client type expected by the serialized executable: %s",
+        proto.pjrt_client_name());
   }
 
   CompileOptions compile_options;

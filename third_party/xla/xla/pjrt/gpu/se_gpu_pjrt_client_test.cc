@@ -1918,6 +1918,41 @@ TEST(StreamExecutorGpuClientTest, MlirAutoParameterLayoutIsSet) {
   EXPECT_EQ(first_param_layout, Layout({1, 2, 0}));
 }
 
+TEST(StreamExecutorGpuClientTest, ValidatesClientName) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  static constexpr char const* kAddProgram =
+      R"(
+HloModule Add.6, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+
+ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
+  %a.1 = f32[] parameter(0)
+  %b.2 = f32[] parameter(1)
+  %add.3 = f32[] add(f32[] %a.1, f32[] %b.2)
+  %add.4 = f32[] add(f32[] %add.3, f32[] %add.3)
+  ROOT %tuple.5 = (f32[], f32[]) tuple(f32[] %add.3, f32[] %add.4)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kAddProgram, *client));
+  auto gpu_exe = static_cast<PjRtStreamExecutorLoadedExecutable*>(
+      std::move(executable).get());
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
+                          gpu_exe->SerializeExecutable());
+
+  ExecutableAndOptionsProto proto;
+  proto.ParseFromString(serialized);
+  EXPECT_EQ(proto.pjrt_client_name(), "PjRtStreamExecutorClient");
+  proto.set_pjrt_client_name("SomeGpuClient");
+  serialized = proto.SerializeAsString();
+
+  EXPECT_THAT(client->DeserializeExecutable(serialized, std::nullopt),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("PjRt client type expected by the serialized "
+                                 "executable: SomeGpuClient")));
+}
+
 TEST(StreamExecutorGpuClientTest, MlirParameterLayoutIsSetInHlo) {
   constexpr char kMlirWithParameterLayout[] =
       R"(
