@@ -438,6 +438,13 @@ class PjRtStreamExecutorClient : public PjRtClient {
   absl::Status UpdateCompileOptionsInternal(CompileOptions* options,
                                             ExecutableExtras* returned_extras);
 
+  absl::StatusOr<std::vector<std::unique_ptr<LocalExecutable>>>
+  CompileInternalHelper(
+      const XlaComputation& computation,
+      const std::vector<const Shape*>& argument_layout_pointers,
+      LayoutCanonicalizationCallback layout_canonicalization_callback,
+      CompileOptions options);
+
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
       const XlaComputation& computation,
       const std::vector<const Shape*>& argument_layout_pointers,

@@ -3329,16 +3329,18 @@ absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<PjRtExecutable>>
-PjRtStreamExecutorClient::CompileInternal(
+absl::StatusOr<std::vector<std::unique_ptr<LocalExecutable>>>
+PjRtStreamExecutorClient::CompileInternalHelper(
     const XlaComputation& computation,
     const std::vector<const Shape*>& argument_layout_pointers,
     LayoutCanonicalizationCallback layout_canonicalization_callback,
     CompileOptions options) {
-  tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::CompileInternal");
-  VLOG(1) << "PjRtStreamExecutorClient::CompileInternal";
+  tsl::profiler::TraceMe traceme(
+      "PjRtStreamExecutorClient::CompileInternalHelper");
+  VLOG(1) << "PjRtStreamExecutorClient::CompileInternalHelper";
   if (key_value_store().has_value() &&
       !options.executable_build_options.key_value_store()) {
+    LOG(FATAL) << "[clin] no sharded autotuning expected";
     options.executable_build_options.set_key_value_store(*key_value_store());
   }
   auto input_options = options;
@@ -3350,16 +3352,31 @@ PjRtStreamExecutorClient::CompileInternal(
   // a copy of the options so that the executable's options remain without
   // the callback - the callback would break the executable's serializability.
   if (layout_canonicalization_callback) {
+    LOG(FATAL) << "[clin] no layout_canonicalization_callback expected";
     options.executable_build_options.set_layout_canonicalization_callback(
         layout_canonicalization_callback);
   }
 
+  LOG(INFO) << "[clin] compilation options for XLA compilation = "
+            << options.ToProto();
+  return client()->Compile(computation, argument_layout_pointers,
+                           options.executable_build_options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+PjRtStreamExecutorClient::CompileInternal(
+    const XlaComputation& computation,
+    const std::vector<const Shape*>& argument_layout_pointers,
+    LayoutCanonicalizationCallback layout_canonicalization_callback,
+    CompileOptions options) {
+  tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::CompileInternal");
+  VLOG(1) << "PjRtStreamExecutorClient::CompileInternal";
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
-      client()->Compile(computation, argument_layout_pointers,
-                        options.executable_build_options));
+      CompileInternalHelper(computation, argument_layout_pointers,
+                            layout_canonicalization_callback, options));
 
-  return BuildPjRtExecutable(std::move(local_executables), input_options);
+  return BuildPjRtExecutable(std::move(local_executables), options);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
@@ -3453,9 +3470,33 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::CompileAndLoad(const XlaComputation& computation,
                                          CompileOptions options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                      Compile(computation, options));
-  return Load(std::move(executable), LoadOptions());
+  std::vector<const Shape*> argument_layout_pointers;
+  const ExecutableBuildOptions& build_options =
+      options.executable_build_options;
+  const bool allow_auto_layout =
+      build_options.has_debug_options() &&
+      build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
+  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+      computation,
+      [local_client = client(),
+       allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
+        if (allow_auto_layout && !shape.has_layout()) {
+          return shape;
+        }
+        return local_client->backend()
+            .transfer_manager()
+            ->ChooseCompactLayoutForShape(shape);
+      },
+      options.argument_layouts, &options.executable_build_options,
+      &argument_layout_pointers));
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+      PjRtStreamExecutorClient::CompileInternalHelper(
+          computation, argument_layout_pointers,
+          /*layout_canonicalization_callback=*/nullptr, options));
+
+  return LoadInternal(std::move(local_executables), options);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -3621,9 +3662,20 @@ PjRtStreamExecutorClient::LoadInternal(
       ex_options.debug_options().xla_gpu_dump_hlo_unoptimized_snapshots();
   HloModuleProto hlo_module_proto;
   if (xla_gpu_dump_hlo_unoptimized_snapshots) {
+    LOG(FATAL) << "[clin] Not expected 2";
     hlo_module_proto = local_executables[0]->executable()->module().ToProto();
   }
 
+  LOG(INFO) << "[clin] compilation options for loaded executable = "
+            << input_options.ToProto();
+  LOG(INFO) << "[clin] compile_options.parameter_is_tupled_arguments = "
+            << compile_options.parameter_is_tupled_arguments;
+  LOG(INFO) << "[clin] device_assignment = " << device_assignment->ToString();
+  for (const auto& logical_id : addressable_device_logical_ids) {
+    LOG(INFO) << "[clin] logical_id - replica = " << logical_id.replica
+              << ", partition = " << logical_id.partition;
+  }
+  LOG(INFO) << "[clin] #addresable_devices = " << addressable_devices.size();
   auto executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
       std::move(local_executables),
       compile_options.parameter_is_tupled_arguments,
