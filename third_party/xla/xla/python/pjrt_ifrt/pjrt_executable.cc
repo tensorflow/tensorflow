@@ -363,7 +363,7 @@ PjRtLoadedExecutable::CreateInternal(
   }
   std::vector<DType> output_dtypes;
   std::vector<Shape> output_shapes;
-  std::vector<std::shared_ptr<const Sharding>> output_shardings;
+  std::vector<ShardingRef> output_shardings;
 
   auto append_arg = [&](const xla::PrimitiveType& element_type,
                         const xla::DimensionVector& dimensions,
@@ -497,7 +497,7 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
     std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
         host_send_recv_callbacks,
     std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
-    std::vector<std::shared_ptr<const Sharding>> output_shardings)
+    std::vector<ShardingRef> output_shardings)
     : client_(client),
       pjrt_loaded_executable_(std::move(pjrt_loaded_executable)),
       devices_(std::move(devices)),
@@ -686,8 +686,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   outputs.reserve(num_outputs);
   // Single-device Shardings for portable execution. Outputs with the same
   // memory_kind shares the same Sharding object.
-  absl::flat_hash_map<MemoryKind, std::shared_ptr<const Sharding>>
-      single_device_shardings;
+  absl::flat_hash_map<MemoryKind, ShardingRef> single_device_shardings;
 
   // TODO(emilyaf): Simplify the handling of layouts here when they're plumbed
   // through from JAX.
@@ -746,7 +745,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
       buffers.push_back(
           std::shared_ptr<PjRtBuffer>(pjrt_outputs[j][i].release()));
     }
-    std::shared_ptr<const Sharding> sharding;
+    std::optional<ShardingRef> sharding;
     if (portable_execution) {
       if (auto it = single_device_shardings.find(first_memory_kind);
           it == single_device_shardings.end()) {
@@ -763,7 +762,7 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
       sharding = output_shardings_[i];
     }
     outputs.push_back(*PjRtArray::Create(
-        client_, output_dtypes_[i], output_shapes_[i], std::move(sharding),
+        client_, output_dtypes_[i], output_shapes_[i], *std::move(sharding),
         std::move(buffers), std::move(layouts[i])));
   }
 

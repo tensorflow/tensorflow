@@ -63,7 +63,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
                           std::shared_ptr<RpcHelper> rpc_helper,
                           const void* data, DType dtype, Shape shape,
                           std::optional<absl::Span<const int64_t>> byte_strides,
-                          std::shared_ptr<const Sharding> sharding,
+                          ShardingRef sharding,
                           xla::ifrt::Client::HostBufferSemantics semantics,
                           std::function<void()> on_done_with_host_buffer);
 
@@ -90,7 +90,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   static absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
   AssembleArrayFromSingleDeviceArrays(
       xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-      DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
+      DType dtype, Shape shape, ShardingRef sharding,
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics);
@@ -108,8 +108,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   static void Destruct(RpcHelper* rpc_helper, ArrayHandle handle);
 
   Array(xla::ifrt::Client* const client, std::shared_ptr<RpcHelper> rpc_helper,
-        DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
-        ArrayHandle handle)
+        DType dtype, Shape shape, ShardingRef sharding, ArrayHandle handle)
       : client_(client),
         rpc_helper_(std::move(rpc_helper)),
         dtype_(dtype),
@@ -154,9 +153,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   DType dtype() const override { return dtype_; }
   const Shape& shape() const override { return shape_; }
   const Sharding& sharding() const override { return *sharding_; }
-  std::shared_ptr<const Sharding> shared_ptr_sharding() const override {
-    return sharding_;
-  }
+  ShardingRef shared_ptr_sharding() const override { return sharding_; }
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override {
     return absl::UnimplementedError(
         "Array::layout() not implemented for IFRT proxy");
@@ -194,7 +191,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   const std::shared_ptr<RpcHelper> rpc_helper_;
   const DType dtype_;
   const Shape shape_;
-  const std::shared_ptr<const Sharding> sharding_;
+  const ShardingRef sharding_;
 
   const ArrayHandle handle_
       ABSL_DEPRECATED("Use GetHandle() function instead.");

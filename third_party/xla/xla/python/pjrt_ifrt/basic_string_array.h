@@ -69,7 +69,7 @@ class BasicStringArray final
   // The number and order of buffers must match the number and order of devices
   // in `sharding`.
   static absl::StatusOr<tsl::RCReference<BasicStringArray>> Create(
-      Client* client, Shape shape, std::shared_ptr<const Sharding> sharding,
+      Client* client, Shape shape, ShardingRef sharding,
       Future<Buffers> buffers, OnDoneWithBuffer on_done_with_buffer);
 
   ~BasicStringArray() override;
@@ -99,7 +99,7 @@ class BasicStringArray final
     return *sharding_;
   }
 
-  std::shared_ptr<const Sharding> shared_ptr_sharding() const override {
+  ShardingRef shared_ptr_sharding() const override {
     DCHECK(this);
     return sharding_;
   }
@@ -143,8 +143,7 @@ class BasicStringArray final
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
 
-  BasicStringArray(Client* client, Shape shape,
-                   std::shared_ptr<const Sharding> sharding,
+  BasicStringArray(Client* client, Shape shape, ShardingRef sharding,
                    Future<Buffers> buffers, Future<> ready_future,
                    OnDoneWithBuffer on_done_with_buffer);
 
@@ -153,7 +152,7 @@ class BasicStringArray final
 
   Client* client_;
   Shape shape_;
-  std::shared_ptr<const Sharding> sharding_;
+  ShardingRef sharding_;
   Future<Buffers> buffers_;
   Future<> ready_future_;
 

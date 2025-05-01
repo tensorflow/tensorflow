@@ -24,7 +24,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -80,8 +79,7 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(DType, dtype, (), (const, final));
   MOCK_METHOD(const Shape&, shape, (), (const, final));
   MOCK_METHOD(const Sharding&, sharding, (), (const, final));
-  MOCK_METHOD(absl_nonnull std::shared_ptr<const Sharding>, shared_ptr_sharding,
-              (), (const, final));
+  MOCK_METHOD(ShardingRef, shared_ptr_sharding, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>, layout,
               (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
@@ -119,8 +117,7 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>, MakeArrayFromHostBuffer,
               (const void* data, DType dtype, Shape shape,
                std::optional<absl::Span<const int64_t>> byte_strides,
-               absl_nonnull std::shared_ptr<const Sharding> sharding,
-               HostBufferSemantics semantics,
+               ShardingRef sharding, HostBufferSemantics semantics,
                std::function<void()> on_done_with_host_buffer,
                tsl::RCReference<UserContext> user_context),
               (final));
@@ -138,8 +135,7 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>,
               AssembleArrayFromSingleDeviceArrays,
-              (DType dtype, Shape shape,
-               absl_nonnull std::shared_ptr<const Sharding> sharding,
+              (DType dtype, Shape shape, ShardingRef sharding,
                absl::Span<tsl::RCReference<Array>> arrays,
                ArrayCopySemantics array_copy_semantics,
                SingleDeviceShardSemantics single_device_shard_semantics),
@@ -367,24 +363,18 @@ class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
       : llvm::RTTIExtends<MockSharding, Sharding>(devices, memory_kind,
                                                   is_fully_replicated) {}
 
+  MOCK_METHOD((absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>),
+              Disassemble, (const Shape& shape), (const, final));
+  MOCK_METHOD((absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>>),
+              Disassemble,
+              (const Shape& shape,
+               SingleDeviceShardSemantics single_device_shard_semantics),
+              (const, final));
   MOCK_METHOD(
-      (absl::StatusOr<std::vector<
-           std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>),
-      Disassemble, (const Shape& shape), (const, final));
-  MOCK_METHOD(
-      (absl::StatusOr<std::vector<
-           std::pair<Shape, absl_nonnull std::shared_ptr<const Sharding>>>>),
-      Disassemble,
-      (const Shape& shape,
-       SingleDeviceShardSemantics single_device_shard_semantics),
-      (const, final));
-  MOCK_METHOD(
-      (absl::StatusOr<std::vector<std::pair<
-           DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>),
+      (absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>),
       Disassemble, (const DynamicShape& dynamic_shape), (const final));
   MOCK_METHOD(
-      (absl::StatusOr<std::vector<std::pair<
-           DynamicShape, absl_nonnull std::shared_ptr<const Sharding>>>>),
+      (absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>>),
       Disassemble,
       (const DynamicShape& dynamic_shape,
        SingleDeviceShardSemantics single_device_shard_semantics),

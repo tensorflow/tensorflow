@@ -39,16 +39,15 @@ class Client;
 struct ArraySpec {
   DType dtype;
   Shape shape;
-  absl_nonnull std::shared_ptr<const Sharding> sharding;
+  ShardingRef sharding;
   absl_nullable std::shared_ptr<const xla::PjRtLayout> layout;
 
   bool operator==(const ArraySpec& other) const {
     auto are_pointees_equal = [](auto* lhs, auto* rhs) {
       if (lhs == nullptr || rhs == nullptr) {
         return lhs == nullptr && rhs == nullptr;
-      } else {
-        return lhs == rhs || *lhs == *rhs;
       }
+      return lhs == rhs || *lhs == *rhs;
     };
     return dtype == other.dtype && shape == other.shape &&
            are_pointees_equal(sharding.get(), other.sharding.get()) &&

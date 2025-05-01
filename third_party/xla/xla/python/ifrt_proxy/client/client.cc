@@ -225,8 +225,7 @@ absl::StatusOr<xla::ifrt::Device*> Client::LookupDevice(
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
 Client::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
-    std::optional<absl::Span<const int64_t>> byte_strides,
-    std::shared_ptr<const Sharding> sharding,
+    std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
     xla::ifrt::Client::HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer,
     tsl::RCReference<xla::ifrt::UserContext> user_context) {
@@ -255,7 +254,7 @@ Client::MakeErrorArrays(const absl::Status& error,
 
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
 Client::AssembleArrayFromSingleDeviceArrays(
-    DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
+    DType dtype, Shape shape, ShardingRef sharding,
     absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
