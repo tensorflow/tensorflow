@@ -15,8 +15,11 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/xla_data.pb.h"
 
 #ifndef XLA_SERVICE_COLLECTIVE_DECOMPOSER_UTILS_H_
 #define XLA_SERVICE_COLLECTIVE_DECOMPOSER_UTILS_H_
