@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/shape.h"
 
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/strings/str_cat.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout.h"
 #include "xla/shape_util.h"
@@ -305,10 +308,11 @@ TEST_F(ShapeTest, SupportsAbslHash) {
        nested_tuple_, dynamic_matrix_}));
 }
 
-void BM_ShapeCopy(::testing::benchmark::State& state) {
-  // Create different shapes based on benchmark parameters:
+static const int kDistinctShapes = 4;
+
+static Shape MakeShapeHelper(int id) {
   Shape shape;
-  switch (state.range(0)) {
+  switch (id % kDistinctShapes) {
     case 0: {
       // Shape()
       break;
@@ -325,7 +329,17 @@ void BM_ShapeCopy(::testing::benchmark::State& state) {
       *shape.mutable_layout() = Layout({2, 1, 0}, {}, {Tile({2, 128})});
       break;
     }
+    default: {
+      // f32[1,2,2]{2,1,0}
+      shape = Shape(F32, {1024, 1024, 128}, {});
+    }
   }
+  return shape;
+}
+
+void BM_ShapeProtoCopy(::testing::benchmark::State& state) {
+  // Create different shapes based on benchmark parameters:
+  Shape shape = MakeShapeHelper(state.range(0));
   state.SetLabel(shape.ToString(true));
 
   for (auto s : state) {
@@ -334,7 +348,40 @@ void BM_ShapeCopy(::testing::benchmark::State& state) {
     CHECK(ShapeUtil::Equal(shape, *copy));
   }
 }
-BENCHMARK(BM_ShapeCopy)->Arg(0)->Arg(1)->Arg(2);
+BENCHMARK(BM_ShapeProtoCopy)->Arg(0)->Arg(1)->Arg(2);
+
+void BM_ShapeCopy(::testing::benchmark::State& state) {
+  // Create different shapes based on benchmark parameters:
+  const int n_shapes = state.range(0);
+  std::vector<Shape> shapes(n_shapes);
+  bool share = (state.range(1) != 0);
+  for (int i = 0; i < n_shapes; i++) {
+    if (share && (i >= kDistinctShapes)) {
+      shapes[i] = shapes[i % kDistinctShapes];
+    } else {
+      shapes[i] = MakeShapeHelper(i);
+    }
+  }
+  state.SetLabel(absl::StrCat("Working set: ", n_shapes, " shapes",
+                              share ? " shared" : ""));
+
+  int64_t iter = 0;
+  Shape copy;
+  for (auto s : state) {
+    copy = shapes[iter];
+    iter++;
+    if (iter == n_shapes) {
+      iter = 0;
+    }
+  }
+}
+BENCHMARK(BM_ShapeCopy)
+    ->ArgPair(1, 0)
+    ->ArgPair(1, 1)
+    ->ArgPair(1000, 0)
+    ->ArgPair(1000, 1)
+    ->ArgPair(100000, 0)
+    ->ArgPair(100000, 1);
 
 }  // namespace
 }  // namespace xla
