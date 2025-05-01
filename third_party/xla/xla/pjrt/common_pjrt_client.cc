@@ -15,11 +15,23 @@ limitations under the License.
 
 #include "xla/pjrt/common_pjrt_client.h"
 
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
+#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
 
 namespace xla {
 
@@ -27,6 +39,61 @@ tsl::AsyncValueRef<bool> CommonPjRtClient::CreateAllocationEventForTransfers(
     PjRtMemorySpace* memory_space,
     const std::optional<std::string>& debug_info) {
   return tsl::AsyncValueRef<bool>();
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+CommonPjRtClient::BufferFromHostLiteral(const LiteralSlice& literal,
+                                        PjRtMemorySpace* memory_space,
+                                        const Layout* device_layout) {
+  const Shape& shape = literal.shape();
+
+  if (shape.IsTuple()) {
+    return InvalidArgument(
+        "Tuples are not supported in CommonPjRtClient::BufferFromHostLiteral");
+  }
+  tsl::profiler::TraceMeProducer producer(
+      "CommonPjRtClient::BufferFromHostLiteral",
+      tsl::profiler::ContextType::kPjRt);
+  Shape device_shape = shape;
+  if (!device_layout) {
+    TF_ASSIGN_OR_RETURN(
+        *device_shape.mutable_layout(),
+        (*GetTopologyDescription())
+            ->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+  } else {
+    *device_shape.mutable_layout() = *device_layout;
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto promise_and_event,
+      CreateLinkedEventPromise(memory_space, "BufferFromHostLiteral"));
+  TF_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
+                      GetOnDeviceBytesCount(memory_space, device_shape));
+  TF_ASSIGN_OR_RETURN(auto raw_buffer,
+                      AllocateRawBuffer(memory_space, on_device_bytes_count,
+                                        /*allocate_after=*/{}));
+  TF_ASSIGN_OR_RETURN(auto output_buffer,
+                      DefineBuffer(device_shape, raw_buffer,
+                                   {std::move(promise_and_event.second)}));
+
+  async_work_runner()->Schedule(
+      [this, shape, literal, raw_buffer = std::move(raw_buffer),
+       definition_event = std::move(promise_and_event.first),
+       device_layout = device_shape.layout(),
+       context_id = producer.GetContextId()]() mutable {
+        tsl::profiler::TraceMeConsumer consumer(
+            "BufferFromHostLiteral H2D Dispatch",
+            tsl::profiler::ContextType::kPjRt, context_id);
+        auto status_or_h2d_transfer_event =
+            LinearizeInto(literal, device_layout, std::move(raw_buffer));
+        CHECK_OK(status_or_h2d_transfer_event);
+        auto h2d_transfer_event = *std::move(status_or_h2d_transfer_event);
+        if (event_tracking_enabled()) {
+          h2d_transfer_event->AppendDescriptionToEvent(
+              " TransferToDevice ", {definition_event.get()});
+        }
+        definition_event->Set(std::move(h2d_transfer_event));
+      });
+  return output_buffer;
 }
 
 }  // namespace xla

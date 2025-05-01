@@ -85,6 +85,10 @@ class CommonPjRtClient : public PjRtClient {
   virtual tsl::AsyncValueRef<bool> CreateAllocationEventForTransfers(
       PjRtMemorySpace* memory_space,
       const std::optional<std::string>& debug_info);
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+      const Layout* device_layout) override;
 };
 
 }  // namespace xla
