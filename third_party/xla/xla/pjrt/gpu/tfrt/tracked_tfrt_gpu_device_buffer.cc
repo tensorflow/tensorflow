@@ -137,9 +137,19 @@ void TrackedTfrtGpuDeviceBuffer::ReleaseDeviceMemory() {
 
 void TrackedTfrtGpuDeviceBuffer::SetUnOwned() {
   if (buffer_.IsAvailable()) {
+    if (buffer_.IsError()) {
+      VLOG(3) << "Setting buffer to unowned: buffer has error state.";
+      return;
+    }
     buffer_->SetUnOwned();
   } else {
-    buffer_.AndThen([buffer = buffer_]() { buffer->SetUnOwned(); });
+    buffer_.AndThen([buffer = buffer_]() {
+      if (buffer.IsError()) {
+        VLOG(3) << "Setting buffer to unowned: buffer has error state.";
+        return;
+      }
+      buffer->SetUnOwned();
+    });
   }
 }
 
