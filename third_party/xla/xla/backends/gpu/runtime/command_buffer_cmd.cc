@@ -1281,9 +1281,18 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnCmd::Record(
       const bool supports_explicit,
       graph_->get()->SupportsExplicitCommandBufferConstruction());
   if (supports_explicit) {
-    return command_buffer->CreateDnnGraphCommand(
-        *graph_->get(), *execute_params.stream,
-        absl::Span<se::DeviceMemoryBase>(operands), {});
+    return Handle(
+        std::move(record_action),
+        [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+          return command_buffer->CreateDnnGraphCommand(
+              *graph_->get(), *execute_params.stream,
+              absl::Span<se::DeviceMemoryBase>(operands), dependencies);
+        },
+        [&](const se::CommandBuffer::Command* command) {
+          return command_buffer->UpdateDnnGraphCommand(
+              command, *graph_->get(), *execute_params.stream,
+              absl::Span<se::DeviceMemoryBase>(operands));
+        });
   }
   return RecordTracedCommand(
       execute_params, record_params, std::move(record_action), command_buffer,
