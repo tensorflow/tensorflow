@@ -259,8 +259,7 @@ class ShapeRefiner {
 
   // Stores a map from a node to its InferenceContext.
   absl::flat_hash_map<const Node*,
-                      std::unique_ptr<shape_inference::InferenceContext>,
-                      hash<const Node*>>
+                      std::unique_ptr<shape_inference::InferenceContext>>
       node_to_context_;
 
   // Holds a cache from tensor id (node id:node output) to the tensor that
