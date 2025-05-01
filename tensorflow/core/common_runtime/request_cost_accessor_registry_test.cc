@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 
-#include "absl/time/time.h"
+#include <memory>
+
 #include "tensorflow/core/common_runtime/request_cost_accessor.h"
 #include "tensorflow/core/platform/test.h"
 

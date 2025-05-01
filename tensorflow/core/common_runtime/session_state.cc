@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/session_state.h"
+
+#include <cstdint>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/graph/tensor_id.h"
 
 namespace tensorflow {
