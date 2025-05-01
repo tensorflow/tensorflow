@@ -953,7 +953,8 @@ TEST_F(WhileCopyInsertionTest, DependentTupleElements) {
   InsertCopies(module_.get());
 
   EXPECT_EQ(CountCopies(*body), 1);
-  EXPECT_EQ(CountControlEdges(*body), 0);
+  // Control edges exist for elided copies.
+  EXPECT_EQ(CountControlEdges(*body), 1);
 
   EXPECT_THAT(
       body->root_instruction(),
@@ -3527,7 +3528,8 @@ TEST_F(CopyInsertionTest, AddControlDependencyForInputOutputAlias) {
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   EXPECT_EQ(CountCopies(*module), 1);
-  EXPECT_EQ(CountControlEdges(*module), 2);
+  // Include control edges from elided copies.
+  EXPECT_EQ(CountControlEdges(*module), 3);
 
   HloInstruction* add_instr = FindInstruction(module.get(), HloOpcode::kAdd);
   HloInstruction* mul_instr =
