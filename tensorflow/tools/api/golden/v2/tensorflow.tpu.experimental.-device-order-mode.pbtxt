@@ -49,6 +49,9 @@ tf_class {
     name: "from_bytes"
   }
   member_method {
+    name: "is_integer"
+  }
+  member_method {
     name: "to_bytes"
   }
 }
