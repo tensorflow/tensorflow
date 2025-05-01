@@ -72,6 +72,8 @@ const (
 	Float8e5m2fnuz    DataType = C.TF_FLOAT8_E5M2FNUZ
 	Int4              DataType = C.TF_INT4
 	Uint4             DataType = C.TF_UINT4
+	Int2              DataType = C.TF_INT2
+	Uint2             DataType = C.TF_UINT2
 )
 
 // Tensor holds a multi-dimensional array of elements of a single data type.
@@ -561,7 +563,7 @@ func isTensorSerializable(dataType DataType) error {
 	// serialization and deserialization of Tensors.  Till then capitalize
 	// on knowledge of the implementation for numeric types.
 	switch dataType {
-	case Float, Double, Int32, Uint8, Int16, Int8, Complex, Int64, Bool, Quint8, Qint32, Bfloat16, Qint16, Quint16, Uint16, Complex128, Half, Float8e5m2, Float8e4m3fn, Float8e4m3fnuz, Float8e4m3b11fnuz, Float8e5m2fnuz, Int4, Uint4:
+	case Float, Double, Int32, Uint8, Int16, Int8, Complex, Int64, Bool, Quint8, Qint32, Bfloat16, Qint16, Quint16, Uint16, Complex128, Half, Float8e5m2, Float8e4m3fn, Float8e4m3fnuz, Float8e4m3b11fnuz, Float8e5m2fnuz, Int4, Uint4, Int2, Uint2:
 		return nil
 	default:
 		return fmt.Errorf("serialization of tensors with the DataType %d is not yet supported, see https://github.com/tensorflow/tensorflow/issues/6003", dataType)

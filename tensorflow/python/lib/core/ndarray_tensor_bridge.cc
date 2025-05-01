@@ -213,6 +213,12 @@ absl::Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
     case TF_UINT4:
       *out_pyarray_type = custom_dtypes.uint4;
       break;
+    case TF_INT2:
+      *out_pyarray_type = custom_dtypes.int2;
+      break;
+    case TF_UINT2:
+      *out_pyarray_type = custom_dtypes.uint2;
+      break;
     default:
       return errors::Internal("Tensorflow type ", tf_datatype,
                               " not convertible to numpy dtype.");
