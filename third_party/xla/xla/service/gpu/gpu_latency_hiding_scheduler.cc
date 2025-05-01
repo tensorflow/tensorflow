@@ -139,18 +139,18 @@ bool IsAsyncPair(const HloInstruction& from, const HloInstruction& target) {
 }
 
 // Count the maximum overlapping count in subgroups of group and other
-size_t CountOverlappingRanks(const std::vector<ReplicaGroup>& group,
-                             const std::vector<ReplicaGroup>& other) {
+size_t CountOverlappingRanks(const std::vector<std::vector<int64_t>>& group,
+                             const std::vector<std::vector<int64_t>>& other) {
   size_t overlapping_count = 0;
-  for (const auto& curr_replica_group : group) {
-    absl::flat_hash_set<int> curr_replica_ids;
-    for (const auto curr_replica_id : curr_replica_group.replica_ids()) {
+  for (const std::vector<int64_t>& curr_replica_group : group) {
+    absl::flat_hash_set<int64_t> curr_replica_ids;
+    for (const int64_t curr_replica_id : curr_replica_group) {
       curr_replica_ids.insert(curr_replica_id);
     }
 
-    for (const auto& replica_group : other) {
+    for (const std::vector<int64_t>& replica_group : other) {
       size_t subgroup_count = 0;
-      for (const auto replica_id : replica_group.replica_ids()) {
+      for (const int64_t replica_id : replica_group) {
         if (curr_replica_ids.contains(replica_id)) ++subgroup_count;
       }
       overlapping_count = std::max(overlapping_count, subgroup_count);
@@ -237,12 +237,22 @@ bool GpuScheduleCrossesOverlapLimit(
 
       // If candidate can be overlapped with in-flight collectives
       bool can_overlap = true;
-      for (const auto occupier :
+      for (const auto async_occupier :
            sched_state.resource_occupiers_in_flight.at(resource_type)) {
-        if (sched_state.async_tracker->IsSupportedAsyncStart(*occupier)) {
+        if (sched_state.async_tracker->IsSupportedAsyncStart(*async_occupier)) {
+          const HloInstruction* occupier =
+              async_occupier->opcode() == HloOpcode::kAsyncStart
+                  ? async_occupier->async_wrapped_instruction()
+                  : async_occupier;
+
           // Number of overlapping ranks between this occupier and candidate
+          auto curr_start_replica_group =
+              GetAsyncReplicaGroups(curr_start_inst);
+          CHECK_OK(curr_start_replica_group);
+          auto occupier_replica_group = GetAsyncReplicaGroups(occupier);
+          CHECK_OK(occupier_replica_group);
           size_t overlapping_count = CountOverlappingRanks(
-              curr_start_inst->replica_groups(), occupier->replica_groups());
+              *curr_start_replica_group, *occupier_replica_group);
           if (overlapping_count > 1) {
             can_overlap = false;
             VLOG(3) << "Collectives have " << overlapping_count
@@ -426,7 +436,15 @@ int64_t GpuAsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
   }
 
   if (resource_type ==
-      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamCollectivesP2P)) {
+          ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamCollectivesP2P) ||
+      resource_type ==
+          ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamSend0) ||
+      resource_type ==
+          ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamSend1) ||
+      resource_type ==
+          ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamRecv0) ||
+      resource_type ==
+          ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamRecv1)) {
     return kNumAsyncCollectivesP2P;
   }
 
