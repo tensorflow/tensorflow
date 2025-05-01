@@ -152,6 +152,42 @@ ShapeProto Shape::ToProto() const {
   return proto;
 }
 
+const Shape::ArrayState& Shape::array_state() const {
+  const auto* const state = if_array_state();
+  CHECK(state) << "Expected an array shape. Got " << ToString()
+               << "\nThis is a programmer error. Please read "
+                  "the Shape object's array properties (e.g. dimensions) "
+                  "only when it's an array shape.";
+  return *state;
+}
+
+Shape::ArrayState& Shape::array_state() {
+  auto* const state = if_array_state();
+  CHECK(state) << "Expected an array shape. Got " << ToString()
+               << "\nThis is a programmer error. Please mutate "
+                  "the Shape object's array properties (e.g. dimensions) "
+                  "only when it's an array shape.";
+  return *state;
+}
+
+const Shape::TupleState& Shape::tuple_state() const {
+  const auto* const state = if_tuple_state();
+  CHECK(state) << "Expected a tuple shape. Got " << ToString()
+               << "\nThis is a programmer error. Please read "
+                  "the Shape object's tuple properties (e.g. tuple_shapes) "
+                  "only when it's a tuple shape.";
+  return *state;
+}
+
+Shape::TupleState& Shape::tuple_state() {
+  auto* const state = if_tuple_state();
+  CHECK(state) << "Expected a tuple shape. Got " << ToString()
+               << "\nThis is a programmer error. Please mutate "
+                  "the Shape object's tuple properties (e.g. tuple_shapes) "
+                  "only when it's a tuple shape.";
+  return *state;
+}
+
 void Shape::Print(Printer* printer, bool print_layout) const {
   if (print_layout) {
     ShapeUtil::PrintHumanStringWithLayout(printer, *this);

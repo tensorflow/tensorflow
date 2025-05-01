@@ -604,26 +604,10 @@ class Shape {
     CHECK(state) << "Expected an opaque shape. Got " << ToString();
     return *state;
   }
-  const ArrayState& array_state() const {
-    const auto* const state = if_array_state();
-    CHECK(state) << "Expected an array shape. Got " << ToString();
-    return *state;
-  }
-  ArrayState& array_state() {
-    auto* const state = if_array_state();
-    CHECK(state) << "Expected an array shape. Got " << ToString();
-    return *state;
-  }
-  const TupleState& tuple_state() const {
-    const auto* const state = if_tuple_state();
-    CHECK(state) << "Expected a tuple shape. Got " << ToString();
-    return *state;
-  }
-  TupleState& tuple_state() {
-    auto* const state = if_tuple_state();
-    CHECK(state) << "Expected a tuple shape. Got " << ToString();
-    return *state;
-  }
+  const ArrayState& array_state() const;
+  ArrayState& array_state();
+  const TupleState& tuple_state() const;
+  TupleState& tuple_state();
 
   // CHECK-fails if this shape's state is not empty.
   void CheckStateIsEmpty() const;
