@@ -2124,6 +2124,10 @@ TEST(StreamExecutorGpuClientTest, AutoLayoutIsSupported) {
 
 // Same test as SendRecvChunked, but check non-zero GPU device time measurement.
 TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementSingleGPU) {
+  if (tsl::kIsOpenSource) {
+    GTEST_SKIP()
+        << "DeviceTimeMeasurement implementation isn't available in OSS.";
+  }
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
 
@@ -2185,6 +2189,10 @@ TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementSingleGPU) {
 // Same test as MockNcclClientWithGpuTopologyExecuteTest, but check non-zero
 // GPU device time measurement.
 TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementMultiGPU) {
+  if (tsl::kIsOpenSource) {
+    GTEST_SKIP()
+        << "DeviceTimeMeasurement implementation isn't available in OSS.";
+  }
   GpuClientOptions client_options;
   client_options.enable_mock_nccl = true;
   client_options.num_nodes = 4;
