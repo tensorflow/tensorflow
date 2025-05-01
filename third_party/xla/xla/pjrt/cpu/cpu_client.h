@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_CPU_CPU_CLIENT_H_
 #define XLA_PJRT_CPU_CPU_CLIENT_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -493,6 +494,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   bool cheap_computation_;
 
   std::string fingerprint_;
+
+  std::atomic<int64_t> run_id_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(

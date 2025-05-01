@@ -219,6 +219,8 @@ struct ExecuteOptions {
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
   // multi-host programs are launched in different orders on different hosts,
   // the launch IDs may be used by the runtime to detect the mismatch.
+  // If the field is set to zero, it is ignored by the CPU client which uses
+  // it's own increasing atomic counter for the run_id.
   int32_t launch_id = 0;
   // If non-null, an opaque context passed to an execution that may be used to
   // supply additional arguments to a derived class of PjRtExecutable. It is
