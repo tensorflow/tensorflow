@@ -400,9 +400,6 @@ class Shape {
   // Resets this to the default state (an invalid shape).
   void Clear();
 
-  std::string SerializeAsString() const {
-    return ToProto().SerializeAsString();
-  }
   std::string ShortDebugString() const { return ToProto().ShortDebugString(); }
   std::string DebugString() const { return ToProto().DebugString(); }
 

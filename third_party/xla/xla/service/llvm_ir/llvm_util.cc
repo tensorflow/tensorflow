@@ -298,7 +298,7 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context) {
 
 absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
     const Shape& shape, int32_t* shape_size, llvm::IRBuilderBase* b) {
-  std::string encoded_shape = shape.SerializeAsString();
+  const std::string encoded_shape = shape.ToProto().SerializeAsString();
   if (encoded_shape.size() > std::numeric_limits<int32_t>::max()) {
     return Internal("Encoded shape size exceeded int32_t size limit.");
   }
