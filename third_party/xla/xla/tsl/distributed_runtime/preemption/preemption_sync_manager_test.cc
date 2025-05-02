@@ -249,6 +249,23 @@ TEST_F(PreemptionSyncManagerTest, ShutdownTasksWithoutPreemption) {
   EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 }
 
+// Explicitly shut down without preemption.
+TEST_F(PreemptionSyncManagerTest, ShutdownWithoutPreemption) {
+  preempt_sync_mgr_->Shutdown();
+}
+
+// Explicitly shut down without initialization.
+TEST_F(PreemptionSyncManagerTest, ShutdownWithoutInitialization) {
+  std::unique_ptr<PreemptionSyncManager> m = CreatePreemptionSyncManager();
+  m->Shutdown();
+}
+
+// Explicitly shut down with preemption.
+TEST_F(PreemptionSyncManagerTest, ShutdownWithPreemption) {
+  SendPreemptionNotice(absl::Now());
+  preempt_sync_mgr_->Shutdown();
+}
+
 /* Two task tests */
 TEST_F(PreemptionSyncManagerTest, PreemptSlowTask) {
   int step_counter0 = 0;
