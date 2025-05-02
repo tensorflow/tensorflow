@@ -405,20 +405,21 @@ xla_test(
     name = "cupti_collector_test",
     size = "small",
     srcs = ["cupti_collector_test.cc"],
-    backends = ["cpu"],
+    backends = ["gpu"],
     copts = tf_profiler_copts() + tsl_copts(),
     tags = [
+        "cuda-only",
         "no_mac",
-    ] + if_google(["config-cuda-only"]),
-    deps = if_cuda([
+    ],
+    deps = [
         ":cupti_collector",
         ":cupti_tracer",
         ":cupti_utils",
-    ]) + [
         "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
