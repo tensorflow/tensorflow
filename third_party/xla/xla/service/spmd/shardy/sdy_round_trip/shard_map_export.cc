@@ -94,11 +94,17 @@ class SdyRoundTripShardMapExportPass
             loc, manualCompBodyArgTypes, operands);
         globalToLocalShape.setCallTargetName(kGlobalToLocalShapeCallTargetName);
         globalToLocalShape.setHasSideEffect(true);
+        setFrontendAttribute(globalToLocalShape, kInShardings,
+                             manualComputation.getInShardings());
+        setFrontendAttribute(globalToLocalShape, kManualAxes,
+                             manualComputation.getManualAxesAttr());
         operands = globalToLocalShape->getResults();
       }
 
       auto callOp =
           rewriter.create<CallOp>(loc, localResultTypes, funcName, operands);
+      // TODO(b/409855903): old code path. Remove after 3 weeks of cl/745735176
+      // being submitted.
       setFrontendAttribute(callOp, kInShardings,
                            manualComputation.getInShardings());
       setFrontendAttribute(callOp, kOutShardings,
@@ -112,6 +118,10 @@ class SdyRoundTripShardMapExportPass
             loc, manualComputation.getResultTypes(), callOp->getResults());
         localToGlobalShape.setHasSideEffect(true);
         localToGlobalShape.setCallTargetName(kLocalToGlobalShapeCallTargetName);
+        setFrontendAttribute(localToGlobalShape, kOutShardings,
+                             manualComputation.getOutShardings());
+        setFrontendAttribute(localToGlobalShape, kManualAxes,
+                             manualComputation.getManualAxesAttr());
         results = localToGlobalShape->getResults();
       }
       sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
