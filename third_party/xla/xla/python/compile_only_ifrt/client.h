@@ -209,8 +209,7 @@ class CompileOnlyIfRtClient final
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromHostBuffer(
       const void* data, xla::ifrt::DType dtype, xla::ifrt::Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      absl::Nonnull<std::shared_ptr<const xla::ifrt::Sharding>> sharding,
-      HostBufferSemantics semantics,
+      xla::ifrt::ShardingRef sharding, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer,
       tsl::RCReference<xla::ifrt::UserContext> user_context) override {
     return Unimplemented(
@@ -236,8 +235,7 @@ class CompileOnlyIfRtClient final
 
   absl::StatusOr<tsl::RCReference<ifrt::Array>>
   AssembleArrayFromSingleDeviceArrays(
-      ifrt::DType dtype, ifrt::Shape shape,
-      std::shared_ptr<const ifrt::Sharding> sharding,
+      ifrt::DType dtype, ifrt::Shape shape, ifrt::ShardingRef sharding,
       absl::Span<tsl::RCReference<ifrt::Array>> arrays,
       ifrt::ArrayCopySemantics array_copy_semantics,
       ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override {
