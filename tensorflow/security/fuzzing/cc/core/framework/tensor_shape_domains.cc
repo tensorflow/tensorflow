@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "fuzztest/fuzztest.h"
+#include "absl/status/statusor.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
