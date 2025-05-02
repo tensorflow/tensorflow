@@ -595,13 +595,10 @@ Service::ExecuteGraphParallel(
     // shapes of the arguments, so, it is sufficient to use the arguments of
     // replica 0.
     TF_ASSIGN_OR_RETURN(
-        ProgramShape program_shape,
-        ProgramShape::FromProto(
-            computation.computation.proto().host_program_shape()));
-    TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
-        CreateModuleConfig(program_shape, replicated_arguments.front(),
-                           computation.execution_options));
+        CreateModuleConfig(
+            ProgramShape{computation.computation.proto().host_program_shape()},
+            replicated_arguments.front(), computation.execution_options));
     VLOG(3)
         << "ExecuteGraphParallel created HloModuleConfig computation layout: "
         << module_config->entry_computation_layout().ToString();
@@ -826,11 +823,9 @@ absl::StatusOr<ExecutionHandle> Service::Compile(
   }
 
   TF_ASSIGN_OR_RETURN(
-      ProgramShape program_shape,
-      ProgramShape::FromProto(computation.proto().host_program_shape()));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
-                      CreateModuleConfig(program_shape, argument_shape_ptrs,
-                                         &execution_options));
+      std::unique_ptr<HloModuleConfig> module_config,
+      CreateModuleConfig(ProgramShape{computation.proto().host_program_shape()},
+                         argument_shape_ptrs, &execution_options));
   VLOG(3) << "Compile created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
 
@@ -1064,9 +1059,7 @@ absl::StatusOr<Literal> Service::ComputeConstantGraph(
         "constant computation may not depend on any parameters.");
   }
 
-  TF_ASSIGN_OR_RETURN(
-      ProgramShape program_shape,
-      ProgramShape::FromProto(computation.proto().host_program_shape()));
+  ProgramShape program_shape(computation.proto().host_program_shape());
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
 
   if (output_layout) {

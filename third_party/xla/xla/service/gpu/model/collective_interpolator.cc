@@ -107,15 +107,11 @@ std::unique_ptr<HloModule> AllReduceModule(
     const HloInstructionProfile& profile) {
   HloModuleConfig config;
   auto module = std::make_unique<HloModule>("m", config);
-  auto shape = Shape::FromProto(profile.instruction().shape());
-  if (!shape.ok()) {
-    VLOG(1) << "Cannot parse shape: " << profile.DebugString();
-    return nullptr;
-  }
+  Shape shape(profile.instruction().shape());
 
   HloComputation::Builder wrapped_computation("wrapped_computation");
   HloComputation::Builder entry_builder("entry");
-  Shape s(shape->element_type(), {}, {});
+  Shape s(shape.element_type(), {}, {});
   HloInstruction* a = wrapped_computation.AddInstruction(
       HloInstruction::CreateParameter(0, s, "p0.1"));
   HloInstruction* b = wrapped_computation.AddInstruction(
@@ -134,9 +130,9 @@ std::unique_ptr<HloModule> AllReduceModule(
   HloComputation* subcomp =
       module->AddEmbeddedComputation(wrapped_computation.Build());
   HloInstruction* p0 = entry_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, *shape, "p0"));
+      HloInstruction::CreateParameter(0, shape, "p0"));
   entry_builder.AddInstruction(HloInstruction::CreateAllReduce(
-      *shape, {p0}, subcomp, collective_device_list,
+      shape, {p0}, subcomp, collective_device_list,
       profile.instruction().constrain_layout(),
       profile.instruction().channel_id(),
       profile.instruction().use_global_device_ids()));
@@ -148,15 +144,11 @@ std::unique_ptr<HloModule> ReduceScatterModule(
     const HloInstructionProfile& profile) {
   HloModuleConfig config;
   auto module = std::make_unique<HloModule>("m", config);
-  auto shape = Shape::FromProto(profile.instruction().shape());
-  if (!shape.ok()) {
-    VLOG(1) << "Cannot parse shape: " << profile.DebugString();
-    return nullptr;
-  }
+  Shape shape(profile.instruction().shape());
 
   HloComputation::Builder wrapped_computation("wrapped_computation");
   HloComputation::Builder entry_builder("entry");
-  Shape s(shape->element_type(), {}, {});
+  Shape s(shape.element_type(), {}, {});
   HloInstruction* a = wrapped_computation.AddInstruction(
       HloInstruction::CreateParameter(0, s, "p0.1"));
   HloInstruction* b = wrapped_computation.AddInstruction(
@@ -174,12 +166,12 @@ std::unique_ptr<HloModule> ReduceScatterModule(
 
   HloComputation* subcomp =
       module->AddEmbeddedComputation(wrapped_computation.Build());
-  if (shape->dimensions().size() != 1) {
+  if (shape.dimensions().size() != 1) {
     VLOG(1) << "Unsupported number of dimensions: " << profile.DebugString();
     return nullptr;
   }
-  std::vector<int64_t> new_dims(shape->dimensions().begin(),
-                                shape->dimensions().end());
+  std::vector<int64_t> new_dims(shape.dimensions().begin(),
+                                shape.dimensions().end());
   auto num_participating_devices =
       GetNumParticipatingDevices(collective_device_list);
   if (!num_participating_devices.ok()) {
@@ -188,11 +180,11 @@ std::unique_ptr<HloModule> ReduceScatterModule(
     return nullptr;
   }
   new_dims[0] = new_dims.front() * *num_participating_devices;
-  Shape p_shape = ShapeUtil::MakeShape(shape->element_type(), new_dims);
+  Shape p_shape = ShapeUtil::MakeShape(shape.element_type(), new_dims);
   HloInstruction* p0 = entry_builder.AddInstruction(
       HloInstruction::CreateParameter(0, p_shape, "p0"));
   entry_builder.AddInstruction(HloInstruction::CreateReduceScatter(
-      *shape, {p0}, subcomp, collective_device_list,
+      shape, {p0}, subcomp, collective_device_list,
       profile.instruction().constrain_layout(),
       profile.instruction().channel_id(),
       profile.instruction().use_global_device_ids(),
@@ -205,11 +197,7 @@ std::unique_ptr<HloModule> AllGatherModule(
     const HloInstructionProfile& profile) {
   HloModuleConfig config;
   auto module = std::make_unique<HloModule>("m", config);
-  auto shape = Shape::FromProto(profile.instruction().shape());
-  if (!shape.ok()) {
-    VLOG(1) << "Cannot parse shape: " << profile.DebugString();
-    return nullptr;
-  }
+  Shape shape(profile.instruction().shape());
 
   HloComputation::Builder entry_builder("entry");
 
@@ -218,7 +206,7 @@ std::unique_ptr<HloModule> AllGatherModule(
                                           .collective_device_list()
                                           .iota_replica_group_list()));
 
-  if (shape->dimensions().size() != 1) {
+  if (shape.dimensions().size() != 1) {
     VLOG(1) << "Unsupported number of dimensions: " << profile.DebugString();
     return nullptr;
   }
@@ -229,14 +217,14 @@ std::unique_ptr<HloModule> AllGatherModule(
             << profile.DebugString();
     return nullptr;
   }
-  std::vector<int64_t> new_dims(shape->dimensions().begin(),
-                                shape->dimensions().end());
+  std::vector<int64_t> new_dims(shape.dimensions().begin(),
+                                shape.dimensions().end());
   new_dims[0] = new_dims.front() / *num_participating_devices;
-  Shape p_shape = ShapeUtil::MakeShape(shape->element_type(), new_dims);
+  Shape p_shape = ShapeUtil::MakeShape(shape.element_type(), new_dims);
   HloInstruction* p0 = entry_builder.AddInstruction(
       HloInstruction::CreateParameter(0, p_shape, "p0"));
   entry_builder.AddInstruction(HloInstruction::CreateAllGather(
-      *shape, {p0}, /*all_gather_dimension=*/0, collective_device_list,
+      shape, {p0}, /*all_gather_dimension=*/0, collective_device_list,
       profile.instruction().constrain_layout(),
       profile.instruction().channel_id(),
       profile.instruction().use_global_device_ids()));
