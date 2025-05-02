@@ -152,6 +152,28 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "cpu_ffi_test",
+    srcs = ["cpu_ffi_test.cc"],
+    deps = [
+        "//xla:debug_options_flags",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla/ffi",
+        "//xla/ffi:execution_context",
+        "//xla/ffi:ffi_api",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/pjrt/interpreter:interpreter_client",
+        "//xla/service:hlo_runner_pjrt",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:pjrt_cpu_client_registry",
+        "//xla/tests:test_macros_cpu",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
+    ],
+)
+
+xla_cc_test(
     name = "cpu_intrinsic_test",
     srcs = ["cpu_intrinsic_test.cc"],
     deps = [
