@@ -43,18 +43,16 @@ extern const char kPossibleAutoJitAlternative[];
 // implicit cast operator to absl::Status, which converts the
 // logged string to a absl::Status object and returns it, after logging the
 // error.  At least one call to operator<< is required; a compile time
-// error will be generated if none are given. Errors will only be
-// logged by default for certain status codes, as defined in
-// IsLoggedByDefault. This class will give ERROR errors if you don't
-// retrieve a absl::Status exactly once before destruction.
+// error will be generated if none are given. This class will give ERROR errors
+// if you don't retrieve a absl::Status exactly once before destruction.
 //
 // The class converts into an intermediate wrapper object
 // MakeErrorStreamWithOutput to check that the error stream gets at least one
 // item of input.
 class MakeErrorStream {
  private:
-  // Wrapper around MakeErrorStream that only allows for output. This
-  // is created as output of the first operator<< call on
+  // Wrapper around MakeErrorStream that only allows for output and changing log
+  // severity. This is created as output of the first operator<< call on
   // MakeErrorStream. The bare MakeErrorStream does not have a
   // absl::Status operator. The net effect of that is that you
   // have to call operator<< at least once on a bare MakeErrorStreamor else
@@ -74,6 +72,12 @@ class MakeErrorStream {
     template <typename T>
     MakeErrorStreamWithOutput& operator<<(const T& value) {
       *wrapped_error_stream_ << value;
+      return *this;
+    }
+
+    // Sets the log severity of this message. Default is ERROR.
+    MakeErrorStreamWithOutput& with_log_severity(absl::LogSeverity severity) {
+      wrapped_error_stream_->with_log_severity(severity);
       return *this;
     }
 
@@ -113,7 +117,7 @@ class MakeErrorStream {
     return impl_->make_error_stream_with_output_wrapper_;
   }
 
-  // When this message is logged (see with_logging()), include the stack trace.
+  // When this message is logged, include the stack trace.
   // Returns a MakeErrorStream as we want to require at least one call to
   // operator<< on the result.
   MakeErrorStream& with_log_stack_trace() {
@@ -126,6 +130,12 @@ class MakeErrorStream {
   // operator<< on the result.
   MakeErrorStream& without_logging() {
     impl_->should_log_ = false;
+    return *this;
+  }
+
+  // Sets the log severity of this message. Default is ERROR.
+  MakeErrorStream& with_log_severity(absl::LogSeverity severity) {
+    impl_->log_severity_ = severity;
     return *this;
   }
 
