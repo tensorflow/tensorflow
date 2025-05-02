@@ -52,18 +52,25 @@ extern const char kPossibleAutoJitAlternative[];
 // MakeErrorStreamWithOutput to check that the error stream gets at least one
 // item of input.
 class MakeErrorStream {
- public:
+ private:
   // Wrapper around MakeErrorStream that only allows for output. This
   // is created as output of the first operator<< call on
   // MakeErrorStream. The bare MakeErrorStream does not have a
   // absl::Status operator. The net effect of that is that you
-  // have to call operator<< at least once or else you'll get a
-  // compile time error.
+  // have to call operator<< at least once on a bare MakeErrorStreamor else
+  // you'll get a compile time error.
+  //
+  // The important difference between this and MakeErrorStream is that
+  // this doesn't require you to call operator<< at least once while
+  // MakeErrorStream does. To remember this, you can think of "WithOutput"
+  // as this already has an output and thus additional outputs are optional.
   class MakeErrorStreamWithOutput {
    public:
     explicit MakeErrorStreamWithOutput(MakeErrorStream* error_stream)
         : wrapped_error_stream_(error_stream) {}
 
+    // Returns a MakeErrorStreamWithOutput as we don't require more calls to
+    // operator<< on the result.
     template <typename T>
     MakeErrorStreamWithOutput& operator<<(const T& value) {
       *wrapped_error_stream_ << value;
@@ -88,6 +95,7 @@ class MakeErrorStream {
         delete;
   };
 
+ public:
   // When starting from an existing error status, this determines whether we'll
   // append or prepend to that status's error message.
   enum PriorMessageHandling { kAppendToPriorMessage, kPrependToPriorMessage };
@@ -96,6 +104,8 @@ class MakeErrorStream {
   template <typename ERROR_CODE_TYPE>
   MakeErrorStream(const char* file, int line, ERROR_CODE_TYPE code);
 
+  // Returns a MakeErrorStreamWithOutput as we don't require more calls to
+  // operator<< on the result.
   template <typename T>
   MakeErrorStreamWithOutput& operator<<(const T& value) {
     CheckNotDone();
@@ -104,18 +114,25 @@ class MakeErrorStream {
   }
 
   // When this message is logged (see with_logging()), include the stack trace.
+  // Returns a MakeErrorStream as we want to require at least one call to
+  // operator<< on the result.
   MakeErrorStream& with_log_stack_trace() {
     impl_->should_log_stack_trace_ = true;
     return *this;
   }
 
   // Disables logging this message.
+  // Returns a MakeErrorStream as we want to require at least one call to
+  // operator<< on the result.
   MakeErrorStream& without_logging() {
     impl_->should_log_ = false;
     return *this;
   }
 
   // Adds RET_CHECK failure text to error message.
+  // Returns a MakeErrorStreamWithOutput as we don't require more calls to
+  // operator<< on the result (the caller already provided the condition text as
+  // the error message).
   MakeErrorStreamWithOutput& add_ret_check_failure(const char* condition);
 
  private:
@@ -199,6 +216,9 @@ class StatusAdaptorForMacros {
 }  // namespace status_macros
 }  // namespace xla
 
+// Returns a Status error if the condition is false. The condition text is
+// included in the error message. The caller can optionally stream more error
+// messages after the macro.
 #define TF_RET_CHECK(condition)                                      \
   while (ABSL_PREDICT_FALSE(!(condition)))                           \
   return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,     \
@@ -206,6 +226,8 @@ class StatusAdaptorForMacros {
       .with_log_stack_trace()                                        \
       .add_ret_check_failure(#condition)
 
+// Returns a Status error. The caller must stream at least one error message
+// after the macro.
 #define XLA_RET_CHECK_FAIL()                                         \
   return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,     \
                                              ::tsl::error::INTERNAL) \
