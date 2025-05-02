@@ -17,17 +17,15 @@ limitations under the License.
 #define XLA_PJRT_CPU_TRACKED_CPU_DEVICE_BUFFER_H_
 
 #include <cstddef>
-#include <cstdint>
 #include <cstdlib>
-#include <memory>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/cpu/cpu_event.h"
-#include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
@@ -38,49 +36,41 @@ class CpuDeviceMemory {
  public:
   virtual ~CpuDeviceMemory() = default;
 
-  CpuDeviceMemory(const CpuDeviceMemory& other) = delete;
-  CpuDeviceMemory(CpuDeviceMemory&& other) = delete;
+  CpuDeviceMemory(const CpuDeviceMemory&) = delete;
   CpuDeviceMemory& operator=(const CpuDeviceMemory&) = delete;
-  CpuDeviceMemory& operator=(CpuDeviceMemory&&) = delete;
 
   void* untyped_data() const { return base_; }
   size_t size_bytes() const { return size_bytes_; }
 
-  // Allocates owning memory wrapped in an available `AsyncValueRef`.
-  static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> AllocateAvailable(
-      size_t size_bytes);
+  // Creates an unavailable AsyncValueRef placeholder for a delayed
+  // memory allocation (see `AllocateInto` below).
+  static tsl::AsyncValueRef<CpuDeviceMemory> CreateDelayedMemory();
 
-  // Creates an available asyncref to a CpuDeviceMemory that wraps foreign
+  // Creates an available AsyncValueRef to a CpuDeviceMemory that wraps foreign
   // memory. Will call on_delete_callback on the last-ref.
   static tsl::AsyncValueRef<CpuDeviceMemory> CreateForeignMemory(
       void* base, size_t size,
       absl::AnyInvocable<void() &&> on_delete_callback);
 
-  // Creates an available asyncref to a CpuDeviceMemory that wraps an unowned
-  // constant. No action will be taken on decref.
-  static tsl::AsyncValueRef<CpuDeviceMemory> CreateUnownedConstant(void* base,
-                                                                   size_t size);
+  // Creates an available AsyncValueRef to a CpuDeviceMemory that wraps a
+  // constant memory with infinite lifetime. No action will be taken on decref.
+  static tsl::AsyncValueRef<CpuDeviceMemory> CreateConstantMemory(void* base,
+                                                                  size_t size);
+
+  // Allocates owning memory wrapped in an available `AsyncValueRef`.
+  static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> Allocate(
+      size_t size_bytes);
+
+  // Allocates owning memory into the previously created delayed memory
+  // placeholder (see `CreateDelayedMemory` above).
+  static absl::Status AllocateInto(
+      size_t size_bytes, tsl::AsyncValuePtr<CpuDeviceMemory> delayed_memory);
 
  protected:
-  explicit CpuDeviceMemory(void* base, size_t size)
-      : base_(base), size_bytes_(size) {}
+  CpuDeviceMemory(void* base, size_t size) : base_(base), size_bytes_(size) {}
 
   void* base_;
   size_t size_bytes_;
-};
-
-// CpuDeviceMemory that has been allocated explicitly by PjRt.
-class CpuDeviceMemoryOwned : public CpuDeviceMemory {
- public:
-  ~CpuDeviceMemoryOwned() final;
-
-  // Allocates raw owning memory. The typical usage is for delayed allocation.
-  static absl::Status AllocateInto(
-      size_t size_bytes, tsl::AsyncValueRef<CpuDeviceMemoryOwned>& out);
-
- protected:
-  friend class tsl::internal::ConcreteAsyncValue<xla::CpuDeviceMemoryOwned>;
-  using CpuDeviceMemory::CpuDeviceMemory;
 };
 
 // A class that represents a CPU device buffer: it can be a single memory region

@@ -453,16 +453,15 @@ AbstractTfrtCpuBuffer::CopyToDeviceHelper(AsyncWorkRunner* async_work_runner) {
   }
   MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
 
-  auto dst_buffer = tsl::MakeUnconstructedAsyncValueRef<CpuDeviceMemoryOwned>();
+  auto dst_buffer = CpuDeviceMemory::CreateDelayedMemory();
   auto dst_definition_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
 
   // Wait for src buffer definition events to finish before d2d dispatch.
   // Errors are propagated asynchronously in dst buffer's definition events.
   const auto& src_definition_event = src_device_buffer->definition_event();
 
-  auto copy_task = [src_buffer = src_device_buffer->buffer(),
-                    dst_buffer_copy = dst_buffer, dst_definition_event,
-                    src_definition_event,
+  auto copy_task = [src_buffer = src_device_buffer->buffer(), dst_buffer,
+                    dst_definition_event, src_definition_event,
                     ready_on_exit = std::move(ready_on_exit)]() mutable {
     tsl::profiler::TraceMe traceme("D2D Dispatch");
     if (auto* error = src_definition_event.GetErrorIfPresent()) {
@@ -474,13 +473,13 @@ AbstractTfrtCpuBuffer::CopyToDeviceHelper(AsyncWorkRunner* async_work_runner) {
     }
 
     CHECK(src_buffer.IsConcrete());
-    auto status = CpuDeviceMemoryOwned::AllocateInto(src_buffer->size_bytes(),
-                                                     dst_buffer_copy);
+    auto status = CpuDeviceMemory::AllocateInto(src_buffer->size_bytes(),
+                                                dst_buffer.AsPtr());
     if (!status.ok()) {
       dst_definition_event.SetError(status);
       return;
     }
-    std::memcpy(dst_buffer_copy->untyped_data(), src_buffer->untyped_data(),
+    std::memcpy(dst_buffer->untyped_data(), src_buffer->untyped_data(),
                 src_buffer->size_bytes());
     dst_definition_event.SetStateConcrete();
   };
@@ -596,7 +595,7 @@ AbstractTfrtCpuBuffer::AllocateTrackedDeviceBuffer(
   }
   size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSIGN_OR_RETURN(tsl::AsyncValueRef<CpuDeviceMemory> device_buffer,
-                      CpuDeviceMemory::AllocateAvailable(byte_size));
+                      CpuDeviceMemory::Allocate(byte_size));
   return std::make_unique<TrackedCpuDeviceBuffer>(
       /*owns_buffers=*/true, std::move(device_buffer),
       std::move(definition_events));
@@ -669,7 +668,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
     size_t dst_byte_size =
         is_packed ? CeilOfRatio<size_t>(byte_size, 8 / bit_width) : byte_size;
     TF_ASSIGN_OR_RETURN(tsl::AsyncValueRef<CpuDeviceMemory> device_buffer,
-                        CpuDeviceMemory::AllocateAvailable(dst_byte_size));
+                        CpuDeviceMemory::Allocate(dst_byte_size));
     auto dst_data_ptr = device_buffer->untyped_data();
     buffers.push_back(device_buffer);
     if (!has_default_layout || is_packed) {

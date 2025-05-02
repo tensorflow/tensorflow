@@ -550,9 +550,8 @@ class AsyncValuePtr {
     AndThen([waiter = std::forward<Waiter>(waiter), ptr = *this]() mutable {
       if (ABSL_PREDICT_FALSE(ptr.IsError())) {
         return waiter(ptr.GetError());
-      } else {
-        return waiter(&ptr.get());
       }
+      return waiter(&ptr.get());
     });
   }
 
@@ -565,9 +564,8 @@ class AsyncValuePtr {
             [waiter = std::forward<Waiter>(waiter), ref = CopyRef()]() mutable {
               if (ABSL_PREDICT_FALSE(ref.IsError())) {
                 return waiter(ref.GetError());
-              } else {
-                return waiter(&ref.get());
               }
+              return waiter(&ref.get());
             });
   }
 
@@ -593,9 +591,8 @@ class AsyncValuePtr {
     AndThen([waiter = std::forward<Waiter>(waiter), ptr = *this]() mutable {
       if (ABSL_PREDICT_FALSE(ptr.IsError())) {
         return waiter(ptr.GetError());
-      } else {
-        return waiter(absl::OkStatus());
       }
+      return waiter(absl::OkStatus());
     });
   }
 
@@ -608,9 +605,8 @@ class AsyncValuePtr {
             [waiter = std::forward<Waiter>(waiter), ref = CopyRef()]() mutable {
               if (ABSL_PREDICT_FALSE(ref.IsError())) {
                 return waiter(ref.GetError());
-              } else {
-                return waiter(absl::OkStatus());
               }
+              return waiter(absl::OkStatus());
             });
   }
 
@@ -853,11 +849,14 @@ class CountDownAsyncValueRef {
       : state_(std::make_shared<State>(std::move(ref), cnt)) {
     DCHECK(state_->ref.IsConstructed()) << "AsyncValue must be constructed";
     DCHECK(state_->ref.IsUnavailable()) << "AsyncValue must be unavailable";
-    DCHECK_GT(cnt, 0) << "Count must be positive";
+    DCHECK_GE(cnt, 0) << "Count must be positive";
+    if (ABSL_PREDICT_FALSE(cnt == 0)) {
+      state_->ref.SetStateConcrete();
+    }
   }
 
   template <typename... Args>
-  explicit CountDownAsyncValueRef(Args&&... args, int64_t cnt)
+  explicit CountDownAsyncValueRef(int64_t cnt, Args&&... args)
       : CountDownAsyncValueRef(
             MakeConstructedAsyncValueRef<T>(std::forward<Args>(args)...), cnt) {
   }
@@ -905,11 +904,10 @@ class CountDownAsyncValueRef {
           return state_->status;
         };
         state_->ref.SetError(take_error());
-        return true;
       } else {
         state_->ref.SetStateConcrete();
-        return true;
       }
+      return true;
     }
 
     return false;
@@ -920,7 +918,9 @@ class CountDownAsyncValueRef {
     return CountDown(1, status);
   }
 
-  AsyncValueRef<T> AsRef() const { return state_->ref; }
+  AsyncValueRef<T> AsRef() && { return std::move(state_->ref); }
+  AsyncValueRef<T> AsRef() const& { return state_->ref; }
+
   AsyncValuePtr<T> AsPtr() const { return state_->ref.AsPtr(); }
 
   // Returns true if count down was called with an error.

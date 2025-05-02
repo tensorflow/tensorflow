@@ -15,23 +15,17 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 
-#include <atomic>
 #include <cstddef>
-#include <cstdint>
 #include <utility>
 
-#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/pjrt/cpu/cpu_event.h"
-#include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/mem.h"
 
@@ -43,51 +37,42 @@ namespace {
 // propagated through the returned async value.
 tsl::AsyncValueRef<CpuEvent> AfterAll(
     absl::Span<const tsl::AsyncValueRef<CpuEvent>> events) {
-  if (events.empty()) return tsl::MakeAvailableAsyncValueRef<CpuEvent>();
+  if (events.empty()) {
+    return tsl::MakeAvailableAsyncValueRef<CpuEvent>();
+  }
+  if (events.size() == 1) {
+    return events.front();
+  }
 
-  struct State {
-    State(int count, tsl::AsyncValueRef<CpuEvent> after_all)
-        : count(count), after_all(std::move(after_all)) {}
-    std::atomic<int> count;
-    tsl::AsyncValueRef<CpuEvent> after_all;
-
-    absl::Mutex mutex;
-    absl::Status error;
-  };
-
-  auto after_all = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
-  auto* state = new State(events.size(), after_all);
-
+  tsl::CountDownAsyncValueRef<CpuEvent> after_all(events.size());
   for (auto& event : events) {
-    event.AndThen([state, event = event.AsPtr()]() {
-      if (event.IsError()) {
-        absl::MutexLock lock(&state->mutex);
-        state->error = event.GetError();
-      }
-
-      if (state->count.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-        if (!state->error.ok()) {
-          state->after_all.SetError(state->error);
-        } else {
-          state->after_all.SetStateConcrete();
-        }
-        delete state;
-      }
+    event.AndThen([after_all](absl::Status status) mutable {
+      after_all.CountDown(std::move(status));
     });
   }
 
-  return after_all;
+  return std::move(after_all).AsRef();
 }
-
 }  // namespace
 
-class CpuDeviceMemoryForeign : public CpuDeviceMemory {
+class CpuDeviceMemoryOwned final : public CpuDeviceMemory {
+ public:
+  CpuDeviceMemoryOwned(void* base, size_t size) : CpuDeviceMemory(base, size) {}
+
+  ~CpuDeviceMemoryOwned() final {
+    CHECK_NE(untyped_data(), nullptr);
+    tsl::port::AlignedSizedFree(untyped_data(), cpu::MinAlign(), size_bytes());
+  }
+};
+
+class CpuDeviceMemoryForeign final : public CpuDeviceMemory {
  public:
   CpuDeviceMemoryForeign(void* base, size_t size,
                          absl::AnyInvocable<void() &&> on_delete_callback)
       : CpuDeviceMemory(base, size),
         on_delete_callback_(std::move(on_delete_callback)) {}
-  ~CpuDeviceMemoryForeign() override {
+
+  ~CpuDeviceMemoryForeign() final {
     if (on_delete_callback_) {
       std::move(on_delete_callback_)();
     }
@@ -97,32 +82,30 @@ class CpuDeviceMemoryForeign : public CpuDeviceMemory {
   absl::AnyInvocable<void() &&> on_delete_callback_;
 };
 
+class CpuDeviceMemoryConstant final : public CpuDeviceMemory {
+ public:
+  CpuDeviceMemoryConstant(void* base, size_t size)
+      : CpuDeviceMemory(base, size) {}
+};
+
+tsl::AsyncValueRef<CpuDeviceMemory> CpuDeviceMemory::CreateDelayedMemory() {
+  return tsl::MakeUnconstructedAsyncValueRef<CpuDeviceMemoryOwned>();
+}
+
 tsl::AsyncValueRef<CpuDeviceMemory> CpuDeviceMemory::CreateForeignMemory(
     void* base, size_t size, absl::AnyInvocable<void() &&> on_delete_callback) {
   return tsl::MakeAvailableAsyncValueRef<CpuDeviceMemoryForeign>(
       base, size, std::move(on_delete_callback));
 }
 
-class CpuDeviceMemoryConstant : public CpuDeviceMemory {
- public:
-  CpuDeviceMemoryConstant(void* base, size_t size)
-      : CpuDeviceMemory(base, size) {}
-  using CpuDeviceMemory::CpuDeviceMemory;
-};
-
-tsl::AsyncValueRef<CpuDeviceMemory> CpuDeviceMemory::CreateUnownedConstant(
+tsl::AsyncValueRef<CpuDeviceMemory> CpuDeviceMemory::CreateConstantMemory(
     void* base, size_t size) {
   return tsl::MakeAvailableAsyncValueRef<CpuDeviceMemoryConstant>(base, size);
 }
 
-CpuDeviceMemoryOwned::~CpuDeviceMemoryOwned() {
-  CHECK_NE(untyped_data(), nullptr);
-  tsl::port::AlignedSizedFree(untyped_data(), cpu::MinAlign(), size_bytes());
-}
-
 // Allocates owning memory wrapped in an available `AsyncValueRef`.
-absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>>
-CpuDeviceMemory::AllocateAvailable(size_t size_bytes) {
+absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> CpuDeviceMemory::Allocate(
+    size_t size_bytes) {
   if (void* data = tsl::port::AlignedMalloc(size_bytes, cpu::MinAlign())) {
     return tsl::MakeAvailableAsyncValueRef<CpuDeviceMemoryOwned>(data,
                                                                  size_bytes);
@@ -130,11 +113,14 @@ CpuDeviceMemory::AllocateAvailable(size_t size_bytes) {
   return ResourceExhausted("Out of memory allocating %d bytes.", size_bytes);
 }
 
-// Allocates raw owning memory. The typical usage is for delayed allocation.
-absl::Status CpuDeviceMemoryOwned::AllocateInto(
-    size_t size_bytes, tsl::AsyncValueRef<CpuDeviceMemoryOwned>& out) {
+absl::Status CpuDeviceMemory::AllocateInto(
+    size_t size_bytes, tsl::AsyncValuePtr<CpuDeviceMemory> delayed_memory) {
+  auto owned_memory = delayed_memory.DynCast<CpuDeviceMemoryOwned>();
+  if (!owned_memory) {
+    return Internal("Delayed memory is not a CpuDeviceMemoryOwned");
+  }
   if (void* data = tsl::port::AlignedMalloc(size_bytes, cpu::MinAlign())) {
-    out.emplace(data, size_bytes);
+    owned_memory.emplace(data, size_bytes);
     return absl::OkStatus();
   }
   return ResourceExhausted("Out of memory allocating %d bytes.", size_bytes);
@@ -174,9 +160,7 @@ TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
   DCHECK(definition_event_);
 }
 
-TrackedCpuDeviceBuffer::~TrackedCpuDeviceBuffer() {
-  ReleaseDeviceMemory();
-}
+TrackedCpuDeviceBuffer::~TrackedCpuDeviceBuffer() { ReleaseDeviceMemory(); }
 
 size_t TrackedCpuDeviceBuffer::BufferSize() { return buffer_size_; }
 

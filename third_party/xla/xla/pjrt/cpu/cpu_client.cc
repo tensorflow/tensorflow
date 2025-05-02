@@ -1010,8 +1010,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(
   }
   // Create a dummy buffer because the rest of the code expects a buffer
   // regardless of whether the definition event is an error.
-  TF_ASSIGN_OR_RETURN(auto buffer, CpuDeviceMemory::AllocateAvailable(
-                                       ShapeUtil::ByteSizeOf(shape)));
+  TF_ASSIGN_OR_RETURN(auto buffer,
+                      CpuDeviceMemory::Allocate(ShapeUtil::ByteSizeOf(shape)));
   return std::make_unique<TfrtCpuBuffer>(
       shape,
       std::make_unique<TrackedCpuDeviceBuffer>(
@@ -1267,13 +1267,13 @@ struct BufferInfo {
 
 struct BufferAlloc {
   // All data members should have the same size.
-  absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemoryOwned>, 4> buffers;
+  absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers;
   absl::InlinedVector<size_t, 4> allocation_sizes;
 
   void Allocate() {
     for (int i = 0; i < buffers.size(); ++i) {
-      auto status =
-          CpuDeviceMemoryOwned::AllocateInto(allocation_sizes[i], buffers[i]);
+      auto status = CpuDeviceMemory::AllocateInto(allocation_sizes[i],
+                                                  buffers[i].AsPtr());
       if (!status.ok()) {
         buffers[i].SetError(status);
         return;
@@ -1287,13 +1287,13 @@ struct BufferAlloc {
 struct BufferAllocAndCopy {
   // All data members should have the same size.
   absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> src_buffers;
-  absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemoryOwned>, 4> dst_buffers;
+  absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> dst_buffers;
   absl::InlinedVector<size_t, 4> allocation_sizes;
 
   void AllocateAndCopy() {
     for (int i = 0; i < src_buffers.size(); ++i) {
-      auto status = CpuDeviceMemoryOwned::AllocateInto(allocation_sizes[i],
-                                                       dst_buffers[i]);
+      auto status = CpuDeviceMemory::AllocateInto(allocation_sizes[i],
+                                                  dst_buffers[i].AsPtr());
       if (!status.ok()) {
         dst_buffers[i].SetError(status);
         return;
@@ -1355,7 +1355,7 @@ static absl::StatusOr<BufferInfo> MemoryForAllocation(
     // lifetime will not extend past the lifetime of the donated input buffer.
     if ((!can_donate || (arg && !arg->owns_buffers())) &&
         !allocation.is_readonly()) {
-      auto copy = tsl::MakeUnconstructedAsyncValueRef<CpuDeviceMemoryOwned>();
+      auto copy = CpuDeviceMemory::CreateDelayedMemory();
 
       buffer_alloc_and_copy.src_buffers.push_back(out.CopyRef());
       buffer_alloc_and_copy.dst_buffers.push_back(copy);
@@ -1376,21 +1376,21 @@ static absl::StatusOr<BufferInfo> MemoryForAllocation(
              allocation.index() < constants.size()) {
     se::DeviceMemoryBase constant =
         constants[allocation.index()].AsDeviceMemoryBase();
-    buffer_info.buffer = CpuDeviceMemory::CreateUnownedConstant(
+    buffer_info.buffer = CpuDeviceMemory::CreateConstantMemory(
         constant.opaque(), constant.size());
     buffer_info.owns_buffer = false;
     buffer_info.buffer_size = constant.size();
     return buffer_info;
 
   } else if (allocation.is_constant() || allocation.is_thread_local()) {
-    buffer_info.buffer = CpuDeviceMemory::CreateUnownedConstant(nullptr, 0);
+    buffer_info.buffer = CpuDeviceMemory::CreateConstantMemory(nullptr, 0);
     buffer_info.owns_buffer = true;
     buffer_info.buffer_size = 0;
     return buffer_info;
   }
 
   // Output and temporary buffer.
-  auto out = tsl::MakeUnconstructedAsyncValueRef<CpuDeviceMemoryOwned>();
+  auto out = CpuDeviceMemory::CreateDelayedMemory();
 
   buffer_alloc.buffers.push_back(out);
   buffer_alloc.allocation_sizes.push_back(allocation.size());
@@ -1578,23 +1578,22 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
   // Tuplize the inputs if compiler expects a single tuple argument but runtime
   // gets many inputs that are not yet tupled.
-  tsl::AsyncValueRef<CpuDeviceMemoryOwned> tuple_index_table;
+  tsl::AsyncValueRef<CpuDeviceMemory> tuple_index_table;
   if (parameter_is_tupled_arguments_ && !options.arguments_are_tupled) {
     absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> leaf_buffers;
     leaf_buffers.reserve(tracked_buffers.size());
     for (const auto& tracked_buffer : tracked_buffers) {
       leaf_buffers.push_back(tracked_buffer.second->buffer());
     }
-    tuple_index_table =
-        tsl::MakeUnconstructedAsyncValueRef<CpuDeviceMemoryOwned>();
+    tuple_index_table = CpuDeviceMemory::CreateDelayedMemory();
     tsl::RunWhenReady(
         absl::MakeConstSpan(leaf_buffers),
         [buffers = leaf_buffers,
          tuple_index_table = tuple_index_table]() mutable {
           size_t index_table_byte_size = buffers.size() * sizeof(void*);
           // We assume tuple table allocations will not fail.
-          CHECK_OK(CpuDeviceMemoryOwned::AllocateInto(index_table_byte_size,
-                                                      tuple_index_table));
+          CHECK_OK(CpuDeviceMemory::AllocateInto(index_table_byte_size,
+                                                 tuple_index_table.AsPtr()));
           uintptr_t* index_table =
               reinterpret_cast<uintptr_t*>(tuple_index_table->untyped_data());
           for (int i = 0; i < buffers.size(); ++i) {

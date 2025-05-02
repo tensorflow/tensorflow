@@ -33,13 +33,12 @@ namespace {
 
 using ::tsl::BlockUntilReady;
 using ::tsl::MakeConstructedAsyncValueRef;
-using ::tsl::MakeUnconstructedAsyncValueRef;
 using ::tsl::thread::ThreadPool;
 
 TEST(TrackedCpuDeviceBufferTest, Basic) {
   std::string expected = "tracked_cpu_device_buffer_test";
   TF_ASSERT_OK_AND_ASSIGN(auto buffer,
-                          CpuDeviceMemory::AllocateAvailable(expected.size()));
+                          CpuDeviceMemory::Allocate(expected.size()));
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
 
@@ -64,7 +63,7 @@ TEST(TrackedCpuDeviceBufferTest, Basic) {
 }
 
 TEST(TrackedCpuDeviceBufferTest, BasicError) {
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer, CpuDeviceMemory::AllocateAvailable(64));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer, CpuDeviceMemory::Allocate(64));
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
 
@@ -89,11 +88,10 @@ TEST(TrackedCpuDeviceBufferTest, BasicError) {
 TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
   std::string expected = "tracked_cpu_device_buffer_test";
 
-  auto buffer = MakeUnconstructedAsyncValueRef<CpuDeviceMemoryOwned>();
+  auto buffer = CpuDeviceMemory::CreateDelayedMemory();
   auto malloc_event = MakeConstructedAsyncValueRef<CpuEvent>();
-  malloc_event.AndThen([buffer_copy = buffer.CopyRef(),
-                        buffer_size = expected.size()]() mutable {
-    CHECK_OK(CpuDeviceMemoryOwned::AllocateInto(buffer_size, buffer_copy));
+  malloc_event.AndThen([buffer, buffer_size = expected.size()]() mutable {
+    CHECK_OK(CpuDeviceMemory::AllocateInto(buffer_size, buffer.AsPtr()));
   });
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
