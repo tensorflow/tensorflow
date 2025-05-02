@@ -15,7 +15,6 @@
 #include "xla/hlo/tools/hlo_diff/render/hlo_gumgraph_renderer_util.h"
 
 #include <memory>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
