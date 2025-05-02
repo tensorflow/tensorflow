@@ -863,7 +863,7 @@ class RaggedTensor(
     If `values` is a `RaggedTensor`, then converts `values` and `partition`
     to have compatible row-partitioning dtypes.  In particular, if any of the
     row partitioning tensors are `int64`, then all of the other row
-    partitioning tensors wil be cast to `int64` (if auto_cast_partition_dtype()
+    partitioning tensors will be cast to `int64` (if auto_cast_partition_dtype()
     is true) or an error will be raised (if auto_cast_partition_dtype() is
     false).
 
@@ -1737,7 +1737,7 @@ class RaggedTensor(
         # If the padding isn't a scalar, then require that all values in the
         # padding match each item in the tensor.  After this block of code,
         # `has_default.shape = tensor.shape[:2]`.  (Unfortunately, we can't just
-        # use reduce_all for both cases, becaue when you pass an empty `axis`
+        # use reduce_all for both cases, because when you pass an empty `axis`
         # list to reduce_all, it reduces all axes; but we want it to reduce no
         # axes -- i.e., to be a no-op.)
         tensor_rank = array_ops.rank(tensor)
@@ -1929,7 +1929,7 @@ class RaggedTensor(
       with ops.control_dependencies(
           _assert_sparse_indices_are_ragged_right(st_input.indices)):
         # Treat sparse row indices as segment ids to generate a splits tensor
-        # thta we can pair with the sparse tensor values.  (Ignore sparse column
+        # that we can pair with the sparse tensor values.  (Ignore sparse column
         # indices.)
         segment_ids = math_ops.cast(st_input.indices[:, 0], row_splits_dtype)
         num_segments = math_ops.cast(st_input.dense_shape[0], row_splits_dtype)
@@ -2726,12 +2726,12 @@ def _convert_to_ragged_tensor_values(value):
   * Otherwise convert it to Tensor or RaggedTensor.
 
   Args:
-    value: An object of `Tensor`, `RaggedTensor` or registerred RaggedTensor
+    value: An object of `Tensor`, `RaggedTensor` or registered RaggedTensor
       value types, or an object whose type has a registered `Tensor` conversion
       function.
 
   Returns:
-    An object of `Tensor`, `RaggedTensor` or registerred RaggedTensor
+    An object of `Tensor`, `RaggedTensor` or registered RaggedTensor
     value types
   """
   if _is_supported_ragged_values_type(value):

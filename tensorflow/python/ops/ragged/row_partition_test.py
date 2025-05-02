@@ -402,7 +402,7 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           'row_lengths': [[1, 2], [1, 0]]
       },
       {
-          'descr': 'negatve row_lengths',
+          'descr': 'negative row_lengths',
           'factory': RowPartition.from_row_lengths,
           'row_lengths': [3, -1, 2]
       },

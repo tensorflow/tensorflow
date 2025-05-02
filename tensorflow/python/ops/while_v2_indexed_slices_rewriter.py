@@ -82,7 +82,7 @@ def rewrite_grad_indexed_slices(grads, body_grad_graph, loop_vars,
 
 
 def _get_tensor_index_in_iterable(iterable, t):
-  """Returns index of first occurence of `t`, raises ValueError if not found."""
+  """Returns index of first occurrence of `t`, raises ValueError if not found."""
   for i, elem in enumerate(iterable):
     if t is elem:
       return i
