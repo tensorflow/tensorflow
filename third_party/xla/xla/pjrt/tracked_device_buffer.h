@@ -25,10 +25,16 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/service/executable.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
@@ -37,7 +43,8 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -122,31 +129,20 @@ class BufferSequencingEvent {
   // can only proceed until the event is ready.
   void ExecuteFutureTasks();
 
-  bool IsDefined() {
-    absl::MutexLock lock(&mu_);
-    return IsDefinedNoLock();
-  }
-
-  bool IsDefinedNoLock() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool IsDefined() { return defined_status_.IsConcrete(); }
 
   void SetDefinedStatus(absl::Status status) {
-    {
-      absl::MutexLock lock(&mu_);
-      defined_status_.emplace(status);
-    }
-
+    defined_status_.emplace(status);
     this->ExecuteFutureTasks();
   }
 
   absl::Status GetDefinedStatus() {
-    absl::MutexLock lock(&mu_);
     CHECK(defined_status_.IsConcrete());
-    return defined_status_.get();
+    return *defined_status_;
   }
 
   bool IsPredeterminedError() {
-    absl::MutexLock lock(&mu_);
-    return defined_status_.IsConcrete() && !defined_status_.get().ok();
+    return defined_status_.IsConcrete() && !defined_status_->ok();
   }
 
   // Returns true if either:
@@ -155,11 +151,6 @@ class BufferSequencingEvent {
   // 2. The event is known to have occurred by the tail of 'stream'.
   // If SetSequencingEvent and SetDefinedStatus has not yet been called,
   // blocks the calling thread until either of those 2 happens.
-  // This is checking the above 2 conditions with a single lock. This is needed
-  // in case a buffer is set as an error buffer in a different thread after
-  // IsPredeterminedError() check and before DefinedOn() check, in which case
-  // DefinedOn() would indefinitely wait since the event is never recorded when
-  // the buffer is predetermined error.
   bool IsPredeterminedErrorOrDefinedOn(se::Stream* stream);
 
  private:
@@ -193,7 +184,7 @@ class BufferSequencingEvent {
 
   // Indicates if the buffer is in an error status. And error status is used to
   // propagate the error to the buffer consumers.
-  tsl::AsyncValueRef<absl::Status> defined_status_ ABSL_GUARDED_BY(mu_);
+  tsl::AsyncValueRef<absl::Status> defined_status_;
 };
 
 // TODO(parkers): Implement PjRtRawBuffer API.
