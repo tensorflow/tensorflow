@@ -39,7 +39,7 @@ limitations under the License.
 // The post-quantize Passes.
 //
 namespace mlir {
-namespace quant {
+namespace tf_quant {
 namespace {
 
 // Applies all the clean up steps after quantization.
@@ -157,5 +157,5 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateTFPostQuantizePass() {
 
 static PassRegistration<TFPostQuantizePass> pass;
 
-}  // namespace quant
+}  // namespace tf_quant
 }  // namespace mlir

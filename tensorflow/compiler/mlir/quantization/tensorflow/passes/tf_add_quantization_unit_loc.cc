@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
 namespace mlir {
-namespace quant {
+namespace tf_quant {
 namespace {
 
 using QuantizationUnit =
@@ -154,8 +154,8 @@ class AddQuantizationUnitLoc : public RewritePattern {
  private:
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
-    if (!IsOpWithQuantizableTrait(op) ||
-        FindQuantizationUnitFromLoc(op->getLoc()).has_value()) {
+    if (!quant::IsOpWithQuantizableTrait(op) ||
+        quant::FindQuantizationUnitFromLoc(op->getLoc()).has_value()) {
       return failure();
     }
 
@@ -168,7 +168,8 @@ class AddQuantizationUnitLoc : public RewritePattern {
           op->getParentOfType<func::FuncOp>().getSymNameAttr().str();
       quantization_unit->set_func_name(func_name);
     }
-    QuantizationUnitLoc unit_loc(getContext(), quantization_unit.value());
+    quant::QuantizationUnitLoc unit_loc(getContext(),
+                                        quantization_unit.value());
     op->setLoc(unit_loc);
 
     return success();
@@ -198,5 +199,5 @@ CreateTFAddQuantizationUnitLocPass() {
 
 static PassRegistration<TFAddQuantizationUnitLocPass> pass;
 
-}  // namespace quant
+}  // namespace tf_quant
 }  // namespace mlir

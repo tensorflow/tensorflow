@@ -50,7 +50,7 @@ limitations under the License.
 // The preprocess-op Pass.
 //
 namespace mlir {
-namespace quant {
+namespace tf_quant {
 
 namespace {
 
@@ -65,7 +65,7 @@ using ::tensorflow::quantization::OpSet;
 class TFPreprocessOpPass
     : public PassWrapper<TFPreprocessOpPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TF::TensorFlowDialect, QuantDialect,
+    registry.insert<TF::TensorFlowDialect, quant::QuantDialect,
                     mlir::quant::ir::TFQuantDialect>();
   }
 
@@ -147,7 +147,7 @@ class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
   LogicalResult addReshapeOpToDepthwiseWeight(TF::PartitionedCallOp op,
                                               PatternRewriter& rewriter,
                                               StringRef function_name) const {
-    std::unique_ptr<OpQuantSpec> spec = GetTFOpQuantSpec(op);
+    std::unique_ptr<quant::OpQuantSpec> spec = quant::GetTFOpQuantSpec(op);
     const absl::flat_hash_set<int> operands = spec->quantizable_operands;
 
     if (operands.size() != 1) return failure();
@@ -206,7 +206,7 @@ class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
                                 PatternRewriter& rewriter) const override {
     const auto f_attr = mlir::dyn_cast<FlatSymbolRefAttr>(op.getFAttr());
     // Non-quantizable op
-    if (!op->hasAttr(kQuantTraitAttrName)) return failure();
+    if (!op->hasAttr(quant::kQuantTraitAttrName)) return failure();
     StringRef function_name = f_attr.getValue();
     // TODO(b/228928859): Improve the getter function to match attributes rather
     // than function name.
@@ -271,5 +271,5 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTFPreprocessOpPass(
 
 static PassRegistration<TFPreprocessOpPass> pass;
 
-}  // namespace quant
+}  // namespace tf_quant
 }  // namespace mlir

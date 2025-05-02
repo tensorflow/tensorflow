@@ -276,7 +276,7 @@ void TFPrepareQuantizeDRQPass::removeAllStatsOp(func::FuncOp func) {
   });
 }
 
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/prepare_quantize.inc"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_prepare_quantize.inc"
 
 void TFPrepareQuantizeDRQPass::runOnOperation() {
   MLIRContext* ctx = &getContext();

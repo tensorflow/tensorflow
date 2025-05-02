@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 namespace mlir {
-namespace quant {
+namespace tf_quant {
 namespace {
 
 class TFConvertFakeQuantToQdqPass
@@ -86,5 +86,5 @@ CreateTFConvertFakeQuantToQdqPass() {
   return std::make_unique<TFConvertFakeQuantToQdqPass>();
 }
 
-}  // namespace quant
+}  // namespace tf_quant
 }  // namespace mlir

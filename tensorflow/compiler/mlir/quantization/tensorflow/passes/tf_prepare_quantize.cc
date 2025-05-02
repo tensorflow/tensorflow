@@ -366,7 +366,7 @@ using PrepareQuantStats =
     ConvertStatsToQDQs<mlir::quant::ir::QuantizeCastOp,
                               mlir::quant::ir::DequantizeCastOp>;
 
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/prepare_quantize.inc"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_prepare_quantize.inc"
 
 void TFPrepareQuantizePass::runOnOperation() {
   func::FuncOp func = getOperation();

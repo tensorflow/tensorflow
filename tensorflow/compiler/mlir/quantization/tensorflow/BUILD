@@ -89,7 +89,9 @@ cc_library(
 td_library(
     name = "tf_quant_td_files",
     srcs = [
+        "passes/tf_lift_quantizable_spots_as_functions.td",
         "passes/tf_post_quantize.td",
+        "passes/tf_prepare_lifting.td",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -154,12 +156,30 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "tf_prepare_lifting_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = {"passes/tf_prepare_lifting.inc": ["-gen-rewriters"]},
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/tf_prepare_lifting.td",
+    deps = [":tf_quant_td_files"],
+)
+
+gentbl_cc_library(
     name = "lift_quantizable_spots_as_functions_inc_gen",
     compatible_with = get_compatible_with_portable(),
     tbl_outs = {"passes/lift_quantizable_spots_as_functions.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/lift_quantizable_spots_as_functions.td",
     deps = [":quant_td_files"],
+)
+
+gentbl_cc_library(
+    name = "tf_lift_quantizable_spots_as_functions_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = {"passes/tf_lift_quantizable_spots_as_functions.inc": ["-gen-rewriters"]},
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/tf_lift_quantizable_spots_as_functions.td",
+    deps = [":tf_quant_td_files"],
 )
 
 gentbl_cc_library(
@@ -178,6 +198,15 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes/prepare_quantize.td",
     deps = [":quant_td_files"],
+)
+
+gentbl_cc_library(
+    name = "tf_prepare_quantize_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = {"passes/tf_prepare_quantize.inc": ["-gen-rewriters"]},
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/tf_prepare_quantize.td",
+    deps = [":tf_quant_td_files"],
 )
 
 gentbl_cc_library(
@@ -436,16 +465,16 @@ cc_library(
 cc_library(
     name = "tf_passes",
     srcs = [
-        "passes/lift_quantizable_spots_as_functions.inc",
-        "passes/prepare_lifting.inc",
-        "passes/prepare_quantize.inc",
         "passes/tf_add_quantization_unit_loc.cc",
         "passes/tf_convert_fake_quant_to_qdq.cc",
         "passes/tf_lift_quantizable_spots_as_functions.cc",
+        "passes/tf_lift_quantizable_spots_as_functions.inc",
         "passes/tf_post_quantize.cc",
         "passes/tf_post_quantize.inc",
         "passes/tf_prepare_lifting.cc",
+        "passes/tf_prepare_lifting.inc",
         "passes/tf_prepare_quantize.cc",
+        "passes/tf_prepare_quantize.inc",
         "passes/tf_prepare_quantize_drq.cc",
         "passes/tf_preprocess_op.cc",
         "passes/tf_quantize.cc",
@@ -455,13 +484,13 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":lift_quantizable_spots_as_functions_inc_gen",
-        ":prepare_lifting_inc_gen",
-        ":prepare_quantize_inc_gen",
         ":preprocess_op_gen",
         ":quantization_options_proto_cc",
         ":remove_identity_op_pattern",
+        ":tf_lift_quantizable_spots_as_functions_inc_gen",
         ":tf_post_quantize_inc_gen",
+        ":tf_prepare_lifting_inc_gen",
+        ":tf_prepare_quantize_inc_gen",
         "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
         "//tensorflow/compiler/mlir/quantization/common:tf_attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",

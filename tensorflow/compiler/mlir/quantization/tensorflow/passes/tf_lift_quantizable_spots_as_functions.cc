@@ -52,11 +52,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
-namespace quant {
+namespace tf_quant {
 namespace {
 
 using QuantizationUnit =
     ::tensorflow::quantization::UnitWiseQuantizationSpec::QuantizationUnit;
+using quant::AppendToVector;
+using quant::FunctionCallOpType;
+using quant::IsEinsumSupportedByXlaDotV2;
+using quant::IsInLiftedFunc;
 using ::tensorflow::quantization::OpSet;
 using ::tensorflow::quantization::QuantizationComponentSpec;
 using ::tensorflow::quantization::QuantizationMethod;
@@ -390,7 +394,7 @@ class CheckQuantizableOps
 
 static PassRegistration<TFLiftQuantizableSpotsAsFunctionsPass> pass;
 
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/lift_quantizable_spots_as_functions.inc"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_lift_quantizable_spots_as_functions.inc"
 
 void TFLiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
@@ -402,7 +406,7 @@ void TFLiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 
   // Iterate over the sorted list of functions to keep the order deterministic.
-  for (func::FuncOp func : GetSortedFunctions(module)) {
+  for (func::FuncOp func : quant::GetSortedFunctions(module)) {
     if (failed(applyPatternsGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-lift-quantizable-spots-as-functions failed.";
       signalPassFailure();
@@ -418,5 +422,5 @@ CreateTFLiftQuantizableSpotsAsFunctionsPass(
   return std::make_unique<TFLiftQuantizableSpotsAsFunctionsPass>(quant_options);
 }
 
-}  // namespace quant
+}  // namespace tf_quant
 }  // namespace mlir

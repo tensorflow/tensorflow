@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 
 namespace mlir {
-namespace quant {
+namespace tf_quant {
 namespace {
 
 using ::tensorflow::quantization::OpSet;
@@ -152,7 +152,7 @@ Value ReshapeTo1DTensor(OpBuilder& builder, Location loc, Value value) {
     value = builder.create<TF::ReshapeOp>(
         loc, value, tf_quant::Create1DConstValue(builder, loc, new_shape));
   }
-  return ConstantFoldOpIfPossible(value.getDefiningOp()).front();
+  return quant::ConstantFoldOpIfPossible(value.getDefiningOp()).front();
 }
 
 // Matches convolution op with "NHWC" data format or matmul op with false adj_y.
@@ -214,7 +214,7 @@ Value MakeOneDimValueBroadcastable(OpBuilder& builder, Location loc,
 
   auto reshape_op = builder.create<TF::ReshapeOp>(
       loc, value, tf_quant::Create1DConstValue(builder, loc, new_shape));
-  return ConstantFoldOpIfPossible(reshape_op).front();
+  return quant::ConstantFoldOpIfPossible(reshape_op).front();
 }
 
 // Checks if a value can be symmetrically quantized.
@@ -227,7 +227,8 @@ bool CanBeSymmetricallyQuantized(Value weight) {
   if (auto uniform_type = llvm::dyn_cast_or_null<UniformQuantizedType>(qtype)) {
     return uniform_type.getZeroPoint() == 0;
   } else if (auto per_axis_type =
-                 llvm::dyn_cast_or_null<UniformQuantizedPerAxisType>(qtype)) {
+                 llvm::dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(
+                     qtype)) {
     return absl::c_all_of(per_axis_type.getZeroPoints(),
                           [](int64_t x) { return x == 0; });
   }
@@ -295,18 +296,18 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
       int32_t quantized_dim = new_value_type.getRank() - 1;
       auto new_zero_points =
           SmallVector<int64_t>(new_scales.size(), uniform_type.getZeroPoint());
-      new_qtype = UniformQuantizedPerAxisType::get(
+      new_qtype = quant::UniformQuantizedPerAxisType::get(
           uniform_type.getFlags(), uniform_type.getStorageType(),
           uniform_type.getExpressedType(), new_scales, new_zero_points,
           quantized_dim, uniform_type.getStorageTypeMin(),
           uniform_type.getStorageTypeMax());
     }
   } else if (auto per_axis_type =
-                 llvm::dyn_cast_or_null<UniformQuantizedPerAxisType>(
+                 llvm::dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(
                      element_type)) {
     auto new_scales =
         MultiplyTwoArrays(multiplier_array, per_axis_type.getScales());
-    new_qtype = UniformQuantizedPerAxisType::get(
+    new_qtype = quant::UniformQuantizedPerAxisType::get(
         per_axis_type.getFlags(), per_axis_type.getStorageType(),
         per_axis_type.getExpressedType(), new_scales,
         per_axis_type.getZeroPoints(), per_axis_type.getQuantizedDimension(),
@@ -320,7 +321,7 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
   return dequantize.getResult();
 }
 
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/prepare_lifting.inc"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_prepare_lifting.inc"
 
 void TFPrepareLiftingPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
@@ -330,7 +331,8 @@ void TFPrepareLiftingPass::runOnOperation() {
   // with a constant operand to a preceding affine operation.
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
-  patterns.add<RemoveIdentity, ConstantFoldQuantizableOperands>(ctx);
+  patterns.add<quant::RemoveIdentity, quant::ConstantFoldQuantizableOperands>(
+      ctx);
   if (op_set_ != OpSet::XLA) {
     // Convert Einsum into BatchMatMul for non-XLA opsets.
     // For the uniform opset, it is requested to maintain the BatchMatmul logic.
@@ -354,5 +356,5 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateTFPrepareLiftingPass(
 
 static PassRegistration<TFPrepareLiftingPass> pass;
 
-}  // namespace quant
+}  // namespace tf_quant
 }  // namespace mlir
