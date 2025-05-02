@@ -3261,6 +3261,9 @@ absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
   const bool use_xla_gpu_shard_autotuning =
       build_options.has_debug_options() &&
       build_options.debug_options().xla_gpu_shard_autotuning();
+  if (use_xla_gpu_shard_autotuning) {
+    LOG(WARNING) << "[clin] no sharded autotuning expected";
+  }
   if (!use_xla_gpu_shard_autotuning && returned_extras == nullptr) {
     return absl::OkStatus();
   }
@@ -3453,9 +3456,84 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::CompileAndLoad(const XlaComputation& computation,
                                          CompileOptions options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                      Compile(computation, options));
-  return Load(std::move(executable), LoadOptions());
+  std::vector<const Shape*> argument_layout_pointers;
+  const ExecutableBuildOptions& build_options =
+      options.executable_build_options;
+  const bool allow_auto_layout =
+      build_options.has_debug_options() &&
+      build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
+  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+      computation,
+      [local_client = client(),
+       allow_auto_layout](Shape shape) -> absl::StatusOr<Shape> {
+        if (allow_auto_layout && !shape.has_layout()) {
+          return shape;
+        }
+        return local_client->backend()
+            .transfer_manager()
+            ->ChooseCompactLayoutForShape(shape);
+      },
+      options.argument_layouts, &options.executable_build_options,
+      &argument_layout_pointers));
+
+  if (key_value_store().has_value() &&
+      !options.executable_build_options.key_value_store()) {
+    options.executable_build_options.set_key_value_store(*key_value_store());
+  }
+  auto input_options = options;
+
+  TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
+
+  TF_ASSIGN_OR_RETURN(ExecutableExtras extras,
+                      UpdateCompileOptionsAndGetExecutableExtras(&options));
+  std::shared_ptr<DeviceAssignment>& device_assignment =
+      extras.device_assignment;
+  std::vector<PjRtStreamExecutorLoadedExecutable::LogicalDeviceIds>&
+      addressable_device_logical_ids = extras.addressable_device_logical_ids;
+  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
+
+  // It is important to set the canonicalization callback after creating
+  // a copy of the options so that the executable's options remain without
+  // the callback - the callback would break the executable's serializability.
+  // if (layout_canonicalization_callback) {
+  //  options.executable_build_options.set_layout_canonicalization_callback(
+  //  layout_canonicalization_callback);
+  // }
+
+  // LOG(INFO) << "[clin] compilation options for XLA compilation = "
+  //           << options.ToProto();
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+      client()->Compile(computation, argument_layout_pointers,
+                        options.executable_build_options));
+
+  // LOG(INFO) << "[clin] compilation options for loaded executable = "
+  //           << input_options.ToProto();
+  // LOG(INFO) << "[clin] compile_options.parameter_is_tupled_arguments = "
+  //           << options.parameter_is_tupled_arguments;
+  // LOG(INFO) << "[clin] device_assignment = " <<
+  // device_assignment->ToString(); for (const auto& logical_id :
+  // addressable_device_logical_ids) {
+  //   LOG(INFO) << "[clin] logical_id - replica = " << logical_id.replica
+  //             << ", partition = " << logical_id.partition;
+  // }
+  // LOG(INFO) << "[clin] #addresable_devices = " << addressable_devices.size();
+  auto executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
+      std::move(local_executables), options.parameter_is_tupled_arguments,
+      std::move(device_assignment), std::move(input_options),
+      std::move(addressable_device_logical_ids), std::move(addressable_devices),
+      this);
+
+  TF_RETURN_IF_ERROR(
+      executable->SetUpDonation(options.parameter_is_tupled_arguments));
+  const auto& ex_options = options.executable_build_options;
+  if (ex_options.has_debug_options() &&
+      ex_options.debug_options().xla_gpu_dump_hlo_unoptimized_snapshots()) {
+    LOG(WARNING) << "[clin] Not expected 2";
+    executable->SetInputHloSnapshotBits(
+        computation.proto(), options.executable_build_options.debug_options());
+  }
+  return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
