@@ -37,7 +37,7 @@ template <class T = void>
 class PjRtFuture;
 
 namespace internal {
-template <class T, bool unique>
+template <class T, bool is_move_only>
 class PjRtFutureBase;
 }
 
@@ -67,7 +67,7 @@ class ScopedAsyncTrackingEvent {
   virtual ~ScopedAsyncTrackingEvent() = default;
 
  private:
-  template <class T, bool unique>
+  template <class T, bool is_move_only>
   friend class internal::PjRtFutureBase;
 
   // Indicates that the ScopedAsyncTrackingEvent won't complete until dependency
@@ -108,11 +108,11 @@ struct IsStatusOr<absl::StatusOr<T>> : public std::true_type {};
 // PjRtFuture<T> (by default we always disable copy constructor when `T` is not
 // copyable), which makes PjRtFuture<T> an `std::unique_ptr`-like container for
 // move-only types.
-template <bool unique>
+template <bool is_move_only>
 class PjRtFutureMoveControl;
 
 template <>
-class PjRtFutureMoveControl</*unique=*/true> {
+class PjRtFutureMoveControl</*is_move_only=*/true> {
  protected:
   PjRtFutureMoveControl() = default;
 
@@ -124,7 +124,7 @@ class PjRtFutureMoveControl</*unique=*/true> {
 };
 
 template <>
-class PjRtFutureMoveControl</*unique=*/false> {
+class PjRtFutureMoveControl</*is_move_only=*/false> {
  protected:
   PjRtFutureMoveControl() = default;
 
@@ -136,11 +136,11 @@ class PjRtFutureMoveControl</*unique=*/false> {
 };
 
 // A base class for a stateful future PjRtFuture<T> and a stateless future
-// PjRtFuture<>. If `unique` is true, PjRtFuture derived from this class acts
-// as a move-only type and the value can be passed to the caller only using move
-// assignment (applied to Await and OnReady APIs).
-template <typename T, bool unique = !std::is_copy_constructible_v<T>>
-class PjRtFutureBase : public PjRtFutureMoveControl<unique> {
+// PjRtFuture<>. If `is_move_only` is true, PjRtFuture derived from this class
+// acts as a move-only type and the value can be passed to the caller only using
+// move assignment (applied to Await and OnReady APIs).
+template <typename T, bool is_move_only = !std::is_copy_constructible_v<T>>
+class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
  protected:
   // A protected constructor that hides AsyncValueRef implementation detail
   // from the end users of PjRtFuture and Promise. Must not be made public!
@@ -201,7 +201,7 @@ class PjRtFutureBase : public PjRtFutureMoveControl<unique> {
   }
 
  protected:
-  static constexpr bool is_unique() { return unique; }
+  static constexpr bool IsMoveOnly() { return is_move_only; }
 
   // PjRtFuture<T>::Promise provides a facility to store a value or an error
   // that is later acquired asynchronously via a PjRtFuture<T> constructed from
@@ -248,8 +248,8 @@ class PjRtFutureBase : public PjRtFutureMoveControl<unique> {
     // In debug builds we track the number of futures created from a promise to
     // detect when a promise for a move-only type can be accidentally shared by
     // multiple futures. We wrap the counter into shared pointer because promise
-    // for a unique future is still copyable, but only one future can be created
-    // from all the copies.
+    // for a move-only future is still copyable, but only one future can be
+    // created from all the copies.
     std::shared_ptr<std::atomic<int64_t>> num_futures_ =
         std::make_shared<std::atomic<int64_t>>(0);
 #endif
@@ -302,14 +302,14 @@ class PjRtFutureBase : public PjRtFutureMoveControl<unique> {
 
   // Blocks the calling thread until the future is ready, then returns the
   // final value.
-  std::conditional_t<unique, T, const T&> Await() && {
+  std::conditional_t<is_move_only, T, const T&> Await() && {
     BlockUntilReady(
         static_cast<void (*)(tsl::AsyncValue*)>(tsl::BlockUntilReady));
 
-    if constexpr (unique) {
+    if constexpr (is_move_only) {
       return std::move(*promise_);
     } else {
-      // We can't move from the promise to the caller because for non-unique
+      // We can't move from the promise to the caller because for copyable
       // futures we can have multiple copies of the PjRtFuture sharing the
       // same underlying promise object.
       return *promise_;
@@ -323,8 +323,9 @@ class PjRtFutureBase : public PjRtFutureMoveControl<unique> {
   // The client should avoid any potentially re-entrant API calls within the
   // callback, for example by using the callback to enqueue work on a
   // client-owned threadpool.
-  template <typename F, std::enable_if_t<std::is_invocable_v<F, const T&> &&
-                                         !unique>* = nullptr>
+  template <typename F,
+            std::enable_if_t<!is_move_only &&
+                             std::is_invocable_v<F, const T&>>* = nullptr>
   void OnReady(F&& f) const& {
     CHECK(IsValid());
     promise_.AndThen(
@@ -341,21 +342,21 @@ class PjRtFutureBase : public PjRtFutureMoveControl<unique> {
   // The client should avoid any potentially re-entrant API calls within the
   // callback, for example by using the callback to enqueue work on a
   // client-owned threadpool.
-  template <
-      typename F,
-      std::enable_if_t<unique ? std::is_invocable_v<F, T>
-                              : std::is_invocable_v<F, const T&>>* = nullptr>
+  template <typename F,
+            std::enable_if_t<is_move_only ? std::is_invocable_v<F, T>
+                                          : std::is_invocable_v<F, const T&>>* =
+                nullptr>
   void OnReady(F&& f) && {
     CHECK(IsValid());
     promise_.AndThen(
         [promise = promise_.AsPtr(), f = std::forward<F>(f)]() mutable {
           DCHECK(promise.IsConcrete());
-          if constexpr (unique) {
+          if constexpr (is_move_only) {
             f(std::move(*promise));
           } else {
-            // We can't move from the promise to the caller because for
-            // non-unique futures we can have multiple copies of the PjRtFuture
-            // sharing the same underlying promise object.
+            // We can't move from the promise to the caller because for copyable
+            // futures we can have multiple copies of the PjRtFuture sharing the
+            // same underlying promise object.
             f(*promise);
           }
         });
@@ -384,11 +385,11 @@ class PjRtFutureBase : public PjRtFutureMoveControl<unique> {
 //
 // First, in contrast to AsyncValueRef which has a smart-pointer semantics,
 // future has more of a value semantics, i.e. future of a move-only type also
-// is a move-only type. You can think of a move-only (unique) future as a box to
-// pass a value of type T between asynchronous producer/consumer: you can open
-// the box once to put the value into it and you can open the box only once to
-// take the value out of it. For copyable types PjRtFuture<T> is a copyable
-// type, although all copies share the same underlying value.
+// is a move-only type. You can think of a move-only future as a box to pass a
+// value of type T between asynchronous producer/consumer: you can open the box
+// once to put the value into it and you can open the box only once to take the
+// value out of it. For copyable types PjRtFuture<T> is a copyable type,
+// although all copies share the same underlying value.
 //
 // Second, we want to retain portability in case a future implementation moves
 // away from AsyncValueRef ---- we don't want clients to call arbitrary
@@ -445,9 +446,9 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
       : Base(promise.release(), std::move(on_block_start),
              std::move(on_block_end)) {
 #ifndef NDEBUG
-    if constexpr (Base::is_unique()) {
+    if constexpr (Base::IsMoveOnly()) {
       DCHECK_EQ(promise.AddFuture(), 0)
-          << "Unique PjRtFuture cannot share a promise object";
+          << "Move-only PjRtFuture cannot share a promise object";
     }
 #endif
   }
