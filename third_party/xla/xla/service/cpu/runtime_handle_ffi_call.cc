@@ -61,6 +61,10 @@ void BuildArgBuffers(absl::Span<const int32_t> types, int64_t* encoded_dims,
   int64_t dim_pos = 0;
   for (int64_t i = 0; i < types.size(); ++i) {
     auto dtype = static_cast<xla::PrimitiveType>(types[i]);
+    if (dtype == xla::PrimitiveType::TOKEN) {
+      builder.AddTokenArg();
+      continue;
+    }
     auto dims = DecodeDims(encoded_dims + dim_pos);
     auto elem_count = absl::c_accumulate(dims, 1, std::multiplies<int64_t>());
     auto data_width = xla::primitive_util::ByteWidth(dtype) * elem_count;
@@ -80,6 +84,10 @@ void BuildRetBuffers(absl::Span<const int32_t> types, int64_t* encoded_dims,
   int64_t dim_pos = 0;
   for (int64_t i = 0; i < types.size(); ++i) {
     auto dtype = static_cast<xla::PrimitiveType>(types[i]);
+    if (dtype == xla::PrimitiveType::TOKEN) {
+      builder.AddTokenRet();
+      continue;
+    }
     auto dims = DecodeDims(encoded_dims + dim_pos);
     auto elem_count = absl::c_accumulate(dims, 1, std::multiplies<int64_t>());
     auto data_width = xla::primitive_util::ByteWidth(dtype) * elem_count;
@@ -128,6 +136,23 @@ static absl::Status BuildAndCallFfi(
     }
   }
 
+  std::unique_ptr<ffi::ExecutionState> execution_state =
+      std::make_unique<ffi::ExecutionState>();
+
+  // Initialize handler execution state
+  if (registration->bundle.instantiate) {
+    ffi::CallFrameBuilder builder(0, 0);
+    ffi::CallFrameBuilder::AttributesBuilder attrs;
+    attrs.Append(attributes);
+    ffi::CallFrameBuilder::AttributesMap attrs_map = attrs.Build();
+    builder.AddAttributes(attrs_map);
+    ffi::CallFrame call_frame = builder.Build();
+    ffi::CallOptions options;
+    options.execution_state = execution_state.get();
+    TF_RETURN_IF_ERROR(Call(registration->bundle.instantiate, call_frame,
+                            options, XLA_FFI_ExecutionStage_INSTANTIATE));
+  }
+
   ffi::CallFrameBuilder builder(inputs.size(), outputs.size());
 
   // Forward the constructed attributes to the call frame
@@ -141,9 +166,12 @@ static absl::Status BuildAndCallFfi(
 
   // Forward executable run options to the FFI handlers via the call options.
   ffi::CallOptions call_options = {
-      run_options->run_id(), run_options->device_ordinal(),
+      run_options->run_id(),
+      run_options->device_ordinal(),
       ffi::CallOptions::CpuOptions{run_options->intra_op_thread_pool()},
-      /*called_computation=*/nullptr, run_options->ffi_execution_context()};
+      /*called_computation=*/nullptr,
+      run_options->ffi_execution_context(),
+      execution_state.get()};
 
   ffi::CallFrame call_frame = builder.Build();
   return ffi::Call(registration->bundle.execute, call_frame, call_options);
