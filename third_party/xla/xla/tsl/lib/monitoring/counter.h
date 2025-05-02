@@ -18,6 +18,9 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include <cstdint>
+#include <utility>
+#include "absl/status/status.h"
 #include "tsl/platform/platform.h"
 // clang-format on
 
@@ -107,7 +110,7 @@ namespace monitoring {
 class CounterCell {
  public:
   explicit CounterCell(int64_t value) : value_(value) {}
-  ~CounterCell() {}
+  CounterCell() = default;
 
   // Atomically increments the value by step.
   // REQUIRES: Step be non-negative.
@@ -201,7 +204,7 @@ class Counter {
 //  Implementation details follow. API readers may skip.
 ////
 
-inline void CounterCell::IncrementBy(const int64_t step) {
+inline void CounterCell::IncrementBy(int64_t step) {
   DCHECK_LE(0, step) << "Must not decrement cumulative metrics.";
   value_ += step;
 }
