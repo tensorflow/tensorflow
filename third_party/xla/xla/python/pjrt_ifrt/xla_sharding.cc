@@ -129,9 +129,16 @@ HloSharding::HloSharding(DeviceListRef devices, MemoryKind memory_kind,
                          xla::HloSharding xla_hlo_sharding)
     : llvm::RTTIExtends<HloSharding, XlaCompatibleSharding>(
           std::move(devices), memory_kind,
-          (xla_hlo_sharding.IsReplicated() ||
-           (xla_hlo_sharding.IsTiled() && xla_hlo_sharding.NumTiles() == 1))),
-      xla_hlo_sharding_(std::move(xla_hlo_sharding)) {}
+          // Computed in the constructor because it needs to access `devices` or
+          // `devices_`; this access would be unsafe unless `device` is not
+          // moved.
+          /*is_fully_replicated=*/false),
+      xla_hlo_sharding_(std::move(xla_hlo_sharding)) {
+  is_fully_replicated_ =
+      xla_hlo_sharding_.IsReplicated() ||
+      ((xla_hlo_sharding_.IsTiled() || xla_hlo_sharding_.IsTileMaximal()) &&
+       devices_->size() == 1);
+}
 
 absl::StatusOr<Shape> HloSharding::GetShardShape(const Shape& shape) const {
   if (xla_hlo_sharding_.IsTileMaximal() || xla_hlo_sharding_.IsManual() ||
