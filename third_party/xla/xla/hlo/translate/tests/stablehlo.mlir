@@ -580,3 +580,236 @@ func.func @main(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   return %0 : tensor<4xi32>
 }
 // CHECK-DIRECT: stablehlo.xor
+
+// -----
+
+func.func @main() {
+  // CHECK: token[]
+  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
+  func.return
+}
+// CHECK-DIRECT: stablehlo.create_token
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[], s32[])->(f32[], s32[])}
+
+// CHECK:       ENTRY %[[$main_4:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = s32[] parameter(1)
+// CHECK-NEXT:  ROOT %[[tuple_3:[^ ]+]] = (f32[], s32[]) tuple(%[[Arg_0_1]], %[[Arg_1_2]]),
+func.func @main(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tuple<tensor<f32>, tensor<i32>> {
+  %0 = stablehlo.tuple %arg0, %arg1 : tuple<tensor<f32>, tensor<i32>>
+  return %0 : tuple<tensor<f32>, tensor<i32>>
+  }
+// CHECK-DIRECT: stablehlo.tuple
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[], token[])->token[]}
+
+// CHECK:       ENTRY %[[$main_5:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = token[] parameter(1)
+// CHECK-NEXT:  %[[send_3:[^ ]+]] = (f32[], u32[], token[]) send(%[[Arg_0_1]], %[[Arg_1_2]]), is_host_transfer=true, metadata
+// CHECK-NEXT:  ROOT %[[send_done_4:[^ ]+]] = token[] send-done(%[[send_3]]), is_host_transfer=true, metadata=
+
+func.func @main(%arg0: tensor<f32>, %arg1: !stablehlo.token) -> !stablehlo.token {
+  %0 = "stablehlo.send"(%arg0, %arg1) {
+  channel_handle = #stablehlo.channel_handle<handle = 0, type = 2>,
+  is_host_transfer = true
+  } : (tensor<f32>, !stablehlo.token) -> !stablehlo.token
+  func.return %0 : !stablehlo.token
+}
+// CHECK-DIRECT: stablehlo.send
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(token[])->(f32[], token[])}
+
+// CHECK:       ENTRY %[[$main_7:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = token[] parameter(0)
+// CHECK-NEXT:  %[[recv_2:[^ ]+]] = (f32[], u32[], token[]) recv(%[[Arg_0_1]]), is_host_transfer=true,
+// CHECK-NEXT:  %[[recv_done_3:[^ ]+]] = (f32[], token[]) recv-done(%[[recv_2]]), is_host_transfer=true,
+// CHECK-NEXT:  %[[get_tuple_element_4:[^ ]+]] = f32[] get-tuple-element(%[[recv_done_3]]), index=0,
+// CHECK-NEXT:  %[[get_tuple_element_5:[^ ]+]] = token[] get-tuple-element(%[[recv_done_3]]), index=1,
+// CHECK-NEXT:  ROOT %[[tuple_6:[^ ]+]] = (f32[], token[]) tuple(%[[get_tuple_element_4]], %[[get_tuple_element_5]])
+
+func.func @main(%arg0: !stablehlo.token) -> (tensor<f32>, !stablehlo.token) {
+  %0:2 = "stablehlo.recv"(%arg0) {
+  channel_handle = #stablehlo.channel_handle<handle = 0, type = 3>,
+  is_host_transfer = true
+  } : (!stablehlo.token) -> (tensor<f32>, !stablehlo.token)
+  func.return %0#0, %0#1 : tensor<f32>, !stablehlo.token
+}
+// CHECK-DIRECT: stablehlo.recv
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(token[])->((s32[3,3]{1,0}, pred[]), token[])}
+
+// CHECK:       ENTRY %[[$main_9:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = token[] parameter(0)
+// CHECK-NEXT:  %[[infeed_2:[^ ]+]] = ((s32[3,3], pred[]), token[]) infeed(%[[Arg_0_1]]), infeed_config="foobar",
+// CHECK-NEXT:  %[[get_tuple_element_3:[^ ]+]] = (s32[3,3], pred[]) get-tuple-element(%[[infeed_2]]), index=0, metadata=
+// CHECK-NEXT:  %[[get_tuple_element_4:[^ ]+]] = s32[3,3] get-tuple-element(%[[get_tuple_element_3]]), index=0, metadata=
+// CHECK-NEXT:  %[[get_tuple_element_5:[^ ]+]] = pred[] get-tuple-element(%[[get_tuple_element_3]]), index=1, metadata=
+// CHECK-NEXT:  %[[tuple_7:[^ ]+]] = (s32[3,3], pred[]) tuple(%[[get_tuple_element_4]], %[[get_tuple_element_5]]), metadata=
+// CHECK-NEXT:  %[[get_tuple_element_6:[^ ]+]] = token[] get-tuple-element(%[[infeed_2]]), index=1, metadata=
+// CHECK-NEXT:  ROOT %[[tuple_8:[^ ]+]] = ((s32[3,3], pred[]), token[]) tuple(%[[tuple_7]], %[[get_tuple_element_6]]), metadata=
+
+func.func @main(%arg0: !stablehlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !stablehlo.token> {
+  %0:3 = "stablehlo.infeed"(%arg0) <{infeed_config = "foobar", layout = [[0, 1], [0]]}> : (!stablehlo.token) -> (tensor<3x3xi32>, tensor<i1>, !stablehlo.token)
+  %1 = stablehlo.tuple %0#0, %0#1 : tuple<tensor<3x3xi32>, tensor<i1>>
+  %2 = stablehlo.tuple %1, %0#2 : tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !stablehlo.token>
+  return %2 : tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !stablehlo.token>
+}
+// CHECK-DIRECT: stablehlo.infeed
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(token[])->s32[3,3]{1,0}}
+
+// CHECK:       ENTRY %[[$main_6:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = token[] parameter(0)
+// CHECK-NEXT:  %[[infeed_2:[^ ]+]] = ((s32[3,3]), token[]) infeed(%[[Arg_0_1]]), infeed_config="foobar", metadata=
+// CHECK-NEXT:  %[[get_tuple_element_3:[^ ]+]] = (s32[3,3]) get-tuple-element(%[[infeed_2]]), index=0, metadata=
+// CHECK-NEXT:  ROOT %[[get_tuple_element_4:[^ ]+]] = s32[3,3] get-tuple-element(%[[get_tuple_element_3]]), index=0, metadata=
+// CHECK-NEXT:  %[[get_tuple_element_5:[^ ]+]] = token[] get-tuple-element(%[[infeed_2]]), index=1, metadata=
+
+func.func @main(%arg0: !stablehlo.token) -> tensor<3x3xi32> {
+  %0:2 = "stablehlo.infeed"(%arg0) <{infeed_config = "foobar", layout = [[0, 1]]}> : (!stablehlo.token) -> (tensor<3x3xi32>, !stablehlo.token)
+  return %0#0 : tensor<3x3xi32>
+}
+// CHECK-DIRECT: stablehlo.infeed
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(token[])->token[]}
+
+// CHECK:       ENTRY %[[$main_4:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = token[] parameter(0)
+// CHECK-NEXT:  %[[infeed_2:[^ ]+]] = ((), token[]) infeed(%[[Arg_0_1]]), infeed_config="foobar", metadata=
+// CHECK-NEXT:  ROOT %[[get_tuple_element_3:[^ ]+]] = token[] get-tuple-element(%[[infeed_2]]), index=1, metadata=
+
+func.func @main(%arg0: !stablehlo.token) -> !stablehlo.token {
+  %0 = "stablehlo.infeed"(%arg0) <{infeed_config = "foobar", layout = []}> : (!stablehlo.token) -> !stablehlo.token
+  return %0 : !stablehlo.token
+}
+// CHECK-DIRECT: stablehlo.infeed
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[], token[])->token[]}
+
+// CHECK:       ENTRY %[[$main_5:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:  %[[tuple_3:[^ ]+]] = (f32[]) tuple(%[[Arg_0_1]]), metadata=
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = token[] parameter(1)
+// CHECK-NEXT:  ROOT %[[outfeed_4:[^ ]+]] = token[] outfeed(%[[tuple_3]], %[[Arg_1_2]]), outfeed_shape=(f32[]), metadata=
+
+func.func @main(%arg0: tensor<f32>, %arg1: !stablehlo.token) -> !stablehlo.token {
+  %0 = "stablehlo.outfeed"(%arg0, %arg1) {
+  outfeed_config = ""
+  } : (tensor<f32>, !stablehlo.token) -> !stablehlo.token
+  func.return %0 : !stablehlo.token
+}
+// CHECK-DIRECT: stablehlo.outfeed
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(s32[3]{0}, token[])->token[]}
+
+// CHECK:       ENTRY %[[$main_5:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = s32[3] parameter(0)
+// CHECK-NEXT:  %[[tuple_3:[^ ]+]] = (s32[3]) tuple(%[[Arg_0_1]]), metadata=
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = token[] parameter(1)
+// CHECK-NEXT:  ROOT %[[outfeed_4:[^ ]+]] = token[] outfeed(%[[tuple_3]], %[[Arg_1_2]]), outfeed_shape=(s32[3]{0}), outfeed_config="foobar", metadata=
+
+func.func @main(%arg0: tensor<3xi32>, %arg1: !stablehlo.token) -> !stablehlo.token {
+  %0 = "stablehlo.outfeed"(%arg0, %arg1) <{outfeed_config = "foobar"}> : (tensor<3xi32>, !stablehlo.token) -> !stablehlo.token
+  return %0 : !stablehlo.token
+}
+// CHECK-DIRECT: stablehlo.outfeed
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(s32[3,2]{1,0}, token[])->token[]}
+
+// CHECK:       ENTRY %[[$main_7:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = s32[3,2] parameter(0)
+// CHECK-NEXT:  %[[custom_call_3:[^ ]+]] = s32[3,2] custom-call(%[[Arg_0_1]]), custom_call_target="Sharding", sharding={devices=[1,2]0,1}, metadata=
+// CHECK-NEXT:  %[[custom_call_4:[^ ]+]] = s32[6,2] custom-call(%[[custom_call_3]]), custom_call_target="SPMDShardToFullShape", sharding={devices=[1,2]0,1}, metadata=
+// CHECK-NEXT:  %[[tuple_5:[^ ]+]] = (s32[6,2]) tuple(%[[custom_call_4]]), metadata=
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = token[] parameter(1)
+// CHECK-NEXT:  ROOT %[[outfeed_6:[^ ]+]] = token[] outfeed(%[[tuple_5]], %[[Arg_1_2]]), outfeed_shape=(s32[6,2]{1,0}), outfeed_config="foobar",
+// CHECK-SAME{{LITERAL}} : sharding={{devices=[2,1]0,1}, {maximal device=0}},
+func.func @main(%arg0: tensor<3x2xi32>, %arg1: !stablehlo.token) -> !stablehlo.token {
+  %0 = stablehlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"} : (tensor<3x2xi32>) -> tensor<3x2xi32>
+  %1 = stablehlo.custom_call @SPMDShardToFullShape(%0) {backend_config = "", mhlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"} : (tensor<3x2xi32>) -> tensor<6x2xi32>
+  %2 = "stablehlo.outfeed"(%1, %arg1) <{outfeed_config = "foobar"}> {mhlo.sharding = "\08\02*\0A\08\03\1A\02\02\01\22\02\00\01*\08\08\01\1A\01\01\22\01\00"} : (tensor<6x2xi32>, !stablehlo.token) -> !stablehlo.token
+  return %2 : !stablehlo.token
+}
+// CHECK-DIRECT: stablehlo.outfeed
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(s32[3]{0}, s32[3]{0}, token[])->token[]}
+
+// CHECK:       ENTRY %[[$main_6:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = s32[3] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = s32[3] parameter(1)
+// CHECK-NEXT:  %[[tuple_4:[^ ]+]] = (s32[3], s32[3]) tuple(%[[Arg_0_1]], %[[Arg_1_2]]), metadata=
+// CHECK-NEXT:  %[[Arg_2_3:[^ ]+]] = token[] parameter(2)
+// CHECK-NEXT:  ROOT %[[outfeed_5:[^ ]+]] = token[] outfeed(%[[tuple_4]], %[[Arg_2_3]]), outfeed_shape=(s32[3]{0}, s32[3]{0}), outfeed_config="foobar", metadata=
+
+func.func @main(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>, %arg2: !stablehlo.token) -> !stablehlo.token {
+  %0 = "stablehlo.outfeed"(%arg0, %arg1, %arg2) <{outfeed_config = "foobar"}> : (tensor<3xi32>, tensor<3xi32>, !stablehlo.token) -> !stablehlo.token
+  return %0 : !stablehlo.token
+}
+// CHECK-DIRECT: stablehlo.outfeed
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(token[])->token[]}
+
+// CHECK:       ENTRY %[[$main_4:[^ ]+]]
+// CHECK-NEXT:  %[[tuple_2:[^ ]+]] = () tuple(), metadata=
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = token[] parameter(0)
+// CHECK-NEXT:  ROOT %[[outfeed_3:[^ ]+]] = token[] outfeed(%[[tuple_2]], %[[Arg_0_1]]), outfeed_shape=(), outfeed_config="foobar", metadata=
+
+func.func @main(%arg0: !stablehlo.token) -> !stablehlo.token {
+  %0 = "stablehlo.outfeed"(%arg0) <{outfeed_config = "foobar"}> : (!stablehlo.token) -> !stablehlo.token
+  return %0 : !stablehlo.token
+}
+// CHECK-DIRECT: stablehlo.outfeed
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={((f32[], f32[], f32[], f32[], f32[]))->f32[]}
+
+// CHECK:       ENTRY %[[$main_3:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = (f32[], f32[], f32[], f32[], f32[]) parameter(0)
+// CHECK-NEXT:  ROOT %[[get_tuple_element_2:[^ ]+]] = f32[] get-tuple-element(%[[Arg_0_1]]), index=4, metadata=
+
+func.func @main(%arg0: tuple<tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>>) -> tensor<f32> {
+  %0 = "stablehlo.get_tuple_element"(%arg0) {
+  index = 4 : i32
+  } : (tuple<tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+// CHECK-DIRECT: stablehlo.get_tuple_element
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[])->f32[]}
+
+// CHECK:       ENTRY %[[$main_3:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:  ROOT %[[opt_barrier_2:[^ ]+]] = f32[] opt-barrier(%[[Arg_0_1]]), metadata=
+
+func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+  %0 = "stablehlo.optimization_barrier"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+// CHECK-DIRECT: stablehlo.optimization_barrier
