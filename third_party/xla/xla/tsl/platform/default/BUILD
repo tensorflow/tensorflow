@@ -308,6 +308,7 @@ cc_library(
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
+        "context.h",
         "integral_types.h",
     ] + if_not_windows(["env_time.cc"]),
 )

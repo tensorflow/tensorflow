@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/concurrent_vector.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
+#include "tsl/platform/context.h"
 
 namespace tsl {
 namespace internal {
@@ -487,8 +488,13 @@ class AsyncValue {
     static_assert(std::is_invocable_v<Waiter>, "Waiter must be invocable");
 
     struct Node final : public WaiterListNode {
-      explicit Node(Waiter waiter) : waiter(std::move(waiter)) {}
-      void operator()() final { std::move(waiter)(); }
+      explicit Node(Waiter waiter)
+          : context(ContextKind::kThread), waiter(std::move(waiter)) {}
+      void operator()() final {
+        WithContext wc(context);
+        std::move(waiter)();
+      }
+      Context context;
       Waiter waiter;
     };
 

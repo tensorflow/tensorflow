@@ -661,6 +661,7 @@ cc_library(
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
+        "context.h",
         "env_time.h",
         "macros.h",
         "platform.h",
