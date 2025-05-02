@@ -2100,7 +2100,6 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
     // This must go after `executables_` is initialized.
     VLOG(3) << "PjRtStreamExecutorLoadedExecutable device_assignment:\n"
             << device_assignment_->ToString();
-    CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
 
     if ((device_assignment_->replica_count() > 1 ||
          device_assignment_->computation_count() > 1) &&
@@ -3309,18 +3308,13 @@ absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
         addressable_devices.push_back(device);
       }
     }
-    if (addressable_devices.empty()) {
-      return InvalidArgument(
-          "Device assignment (%s) does not have any local devices.",
-          device_assignment->ToString());
+    if (!addressable_devices.empty()) {
+      if (original_device_ordinal < 0) {
+        build_options.set_device_ordinal(
+            addressable_devices.front()->local_hardware_id().value());
+      }
+      build_options.set_process_index(*this_process_index);
     }
-
-    if (original_device_ordinal < 0) {
-      build_options.set_device_ordinal(
-          addressable_devices.front()->local_hardware_id().value());
-    }
-
-    build_options.set_process_index(*this_process_index);
     build_options.set_process_count(all_process_indices.size());
   }
   if (returned_extras != nullptr) {

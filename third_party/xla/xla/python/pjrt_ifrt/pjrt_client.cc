@@ -796,6 +796,22 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
     }
   }
 
+  // For non-addressable devices, pjrt_device is null, so the default memory is
+  // set to that of an addressable device.
+  auto default_memory = client->addressable_devices_.front()->DefaultMemory();
+  for (auto& device : client->owned_devices_) {
+    if (!device->pjrt_device()) {
+      if (default_memory.ok()) {
+        auto ifrt_memory = std::make_unique<PjRtMemory>(
+            client.get(), (*default_memory)->Kind(), device.get());
+        device->default_memory_ = ifrt_memory.get();
+        client->owned_memories_.push_back(std::move(ifrt_memory));
+      } else {
+        device->default_memory_ = default_memory.status();
+      }
+    }
+  }
+
   LogDeviceSummary(client.get());
   return client;
 }
@@ -1133,8 +1149,7 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
         break;
     }
   }
-  // TODO(yashkatariya): Remove the following logic once layout is plumbed
-  // through.
+  // TODO(emilyaf): Remove the following logic once layout is plumbed through.
   std::shared_ptr<const xla::PjRtLayout> layout;
   if (dtype.kind() == DType::kToken) {
     layout = std::make_shared<xla::PjRtLayout>(xla::Layout());

@@ -678,7 +678,8 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
         "Unexpected number of computations in outputs: %d vs. %d",
         pjrt_outputs.size(), num_computations);
   }
-  const int num_outputs = pjrt_outputs.front().size();
+  const int num_outputs = pjrt_outputs.empty() ? output_dtypes_.size()
+                                               : pjrt_outputs.front().size();
   if (num_outputs != output_dtypes_.size()) {
     return FailedPrecondition("Unexpected number of outputs: %d vs. %d",
                               num_outputs, output_dtypes_.size());
@@ -724,22 +725,21 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   for (int i = 0; i < num_outputs; ++i) {
     PjRtArray::PjRtBuffers buffers;
     buffers.reserve(num_computations);
-    const MemoryKind first_memory_kind =
-        MakeMemoryKindFromPjRtBuffer(pjrt_outputs[0][i].get());
-    const MemoryKind canonical_first_memory_kind =
-        CanonicalizeMemoryKindWithPjRtDevice(first_memory_kind,
-                                             pjrt_outputs[0][i]->device());
+    const MemoryKind dst_memory_kind = output_shardings_[i]->memory_kind();
+    const MemoryKind canonical_dst_memory_kind = CanonicalizeMemoryKind(
+        dst_memory_kind, output_shardings_[i]->devices()->devices().front());
+
     for (int j = 0; j < num_computations; ++j) {
       if (j > 0) {
         if (auto memory_kind =
                 MakeMemoryKindFromPjRtBuffer(pjrt_outputs[j][i].get());
-            canonical_first_memory_kind !=
+            canonical_dst_memory_kind !=
             CanonicalizeMemoryKindWithPjRtDevice(
                 memory_kind, pjrt_outputs[j][i]->device())) {
           return FailedPrecondition(
-              "Memory kind mismatch between PjRtBuffers. Got one buffer with "
-              "memory kind '%v' and another with memory_kind '%v'",
-              first_memory_kind, memory_kind);
+              "Memory kind mismatch. Got sharding with memory kind '%v' and "
+              "buffer with memory_kind '%v'",
+              dst_memory_kind, memory_kind);
         }
       }
       buffers.push_back(
@@ -747,14 +747,13 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
     }
     std::optional<ShardingRef> sharding;
     if (portable_execution) {
-      if (auto it = single_device_shardings.find(first_memory_kind);
+      if (auto it = single_device_shardings.find(dst_memory_kind);
           it == single_device_shardings.end()) {
-        sharding =
-            single_device_shardings
-                .insert({first_memory_kind,
-                         SingleDeviceSharding::Create(portable_execution_device,
-                                                      first_memory_kind)})
-                .first->second;
+        sharding = single_device_shardings
+                       .insert({dst_memory_kind, SingleDeviceSharding::Create(
+                                                     portable_execution_device,
+                                                     dst_memory_kind)})
+                       .first->second;
       } else {
         sharding = it->second;
       }
