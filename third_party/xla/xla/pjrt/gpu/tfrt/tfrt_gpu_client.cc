@@ -2672,6 +2672,12 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
   tsl::profiler::TraceMe traceme("TfrtGpuBuffer::CopyToMemorySpace");
   PjRtDevice* dst_device = dst_memory_space->devices()[0];
 
+  // TODO(sizhi): Support copy data to the pinned host memory space.
+  if (dst_memory_space->kind() == PinnedHostMemorySpace::kKind) {
+    return Unimplemented(
+        "Copy data to pinned host memory space is not implemented.");
+  }
+
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
     TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
