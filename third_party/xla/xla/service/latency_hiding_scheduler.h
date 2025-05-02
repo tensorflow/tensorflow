@@ -791,6 +791,14 @@ class BufferInfoTracker {
     const HloBuffer* value = nullptr;
     const HloInstruction* first_definition = nullptr;
     int64_t buffer_size = 0;
+
+    // Precomputed value of
+    //     value->values()[0]->shape().has_layout() &&
+    //     (value->values()[0]->shape().layout().memory_space() !=
+    //      kDefaultMemorySpace)
+    // This expression is invoked repeatedly and is responsible for many cache
+    // misses.
+    bool non_default_memory_space_layout = false;
   };
   BufferInfoTracker(const HloModule* module,
                     const HloAliasAnalysis* alias_analysis,
@@ -798,9 +806,16 @@ class BufferInfoTracker {
   static ValueInfo CreateBufferInfo(
       const HloBuffer* value, const HloInstruction* first_definition,
       const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes) {
+    const auto& shape = value->values()[0]->shape();
+    const bool non_default_memory_space_layout =
+        (shape.has_layout() &&
+         (shape.layout().memory_space() != Layout::kDefaultMemorySpace));
     return ValueInfo{
-        /*value=*/value, /*first_definition=*/first_definition,
-        /*buffer_size=*/shape_size_bytes(value->values()[0]->shape())};
+        /*value=*/value,
+        /*first_definition=*/first_definition,
+        /*buffer_size=*/shape_size_bytes(shape),
+        /*non_default_memory_space_layout=*/non_default_memory_space_layout,
+    };
   }
   const ValueInfo& GetBufferInfo(HloBuffer::Id id) const {
     return buffer_infos_[id];

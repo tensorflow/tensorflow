@@ -100,7 +100,10 @@ void PrintTupleShapes(Printer* printer, absl::Span<const Shape> tuple_shapes) {
   PrintShape<kPrintLayout>(printer, tuple_shapes[0]);
   for (int64_t i = 1; i < tuple_shapes.size(); ++i) {
     if (i % kAnnotationPrintInterval == 0) {
-      printer->Append(absl::StrFormat(", /*index=%lld*/", i));
+      // Faster than printer->Append(absl::StrFormat(", /*index=%lld*/", i));
+      printer->Append(", /*index=");
+      printer->Append(i);
+      printer->Append("*/");
     } else {
       printer->Append(", ");
     }

@@ -243,6 +243,15 @@ void HloInstruction::set_called_computation(int index,
   }
 }
 
+const PtrVec<HloComputation*>& HloInstruction::called_computations() const {
+  if (has_rare()) {
+    return rare()->called_computations;
+  }
+
+  static PtrVec<HloComputation*>* empty = new PtrVec<HloComputation*>;
+  return *empty;
+}
+
 void HloInstruction::ReplaceCalledComputations(
     absl::FunctionRef<HloComputation*(HloComputation*)> map_function) {
   for (int64_t i = 0; i < called_computations().size(); ++i) {

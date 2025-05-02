@@ -1459,7 +1459,7 @@ int64_t HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
 
 int64_t HloCostAnalysis::operand_bytes_accessed(const HloInstruction& hlo,
                                                 int64_t operand_num,
-                                                ShapeIndex index) const {
+                                                const ShapeIndex& index) const {
   return GetPropertyForHlo(hlo, GetOperandBytesAccessedKey(operand_num, index),
                            hlo_properties_);
 }

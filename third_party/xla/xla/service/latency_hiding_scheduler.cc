@@ -108,9 +108,7 @@ bool InstructionFirstDefinesBuffer(
   if (buffer_value_info.first_definition == instruction) {
     return true;
   }
-  if (buffer_value_info.value->values()[0]->shape().has_layout() &&
-      buffer_value_info.value->values()[0]->shape().layout().memory_space() !=
-          kDefaultMemorySpace) {
+  if (buffer_value_info.non_default_memory_space_layout) {
     return false;
   }
   // Similar to logic above, also check if the instruction is a call to a
@@ -764,8 +762,7 @@ void MemoryPressureTracker::Initialize(
   if (!initial_live_buffers.empty()) {
     for (HloBuffer::Id id : initial_live_buffers) {
       auto& buffer = buffer_tracker_.GetBufferInfo(id);
-      if (buffer.value->values()[0]->shape().has_layout() &&
-          buffer.value->values()[0]->shape().layout().memory_space() != 0) {
+      if (buffer.non_default_memory_space_layout) {
         continue;
       }
       live_buffers_[buffer.value->id()] = 1;
@@ -792,13 +789,11 @@ void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
     pressure_state_.memory_peak = live_memory_usage_ + computations_peak;
   }
   for (auto* op : instruction->operands()) {
-    auto& output_values = output_buffers_[op];
-    for (auto& info : output_values) {
+    const auto& output_values = output_buffers_[op];
+    for (const auto& info : output_values) {
       if (ShouldSkipBufferAllocations(instruction, info.second,
                                       info.first.first_definition) ||
-          (info.first.value->values()[0]->shape().has_layout() &&
-           info.first.value->values()[0]->shape().layout().memory_space() !=
-               kDefaultMemorySpace)) {
+          info.first.non_default_memory_space_layout) {
         continue;
       }
       if (live_buffers_[info.first.value->id()] == 0) {
@@ -814,9 +809,7 @@ void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
   CHECK(it != defined_buffers_.end());
   if (!ShouldSkipBufferReleases(instruction)) {
     for (auto& b : it->second) {
-      if (b.value->values()[0]->shape().has_layout() &&
-          b.value->values()[0]->shape().layout().memory_space() !=
-              kDefaultMemorySpace) {
+      if (b.non_default_memory_space_layout) {
         continue;
       }
       if (live_buffers_[b.value->id()] != 0) {
@@ -856,9 +849,7 @@ std::pair<int64_t, int64_t> MemoryPressureTracker::MemoryPressureDifference(
     for (auto& b : it->second) {
       if (ShouldSkipBufferAllocations(instruction, b.second,
                                       b.first.first_definition) ||
-          (b.first.value->values()[0]->shape().has_layout() &&
-           b.first.value->values()[0]->shape().layout().memory_space() !=
-               kDefaultMemorySpace)) {
+          b.first.non_default_memory_space_layout) {
         continue;
       }
       if (!live_buffers_[b.first.value->id()]) {
@@ -872,9 +863,7 @@ std::pair<int64_t, int64_t> MemoryPressureTracker::MemoryPressureDifference(
   // Decrease memory pressure if some buffers are released.
   if (!ShouldSkipBufferReleases(instruction)) {
     for (auto& b : it->second) {
-      if (b.value->values()[0]->shape().has_layout() &&
-          b.value->values()[0]->shape().layout().memory_space() !=
-              kDefaultMemorySpace) {
+      if (b.non_default_memory_space_layout) {
         continue;
       }
       if (live_buffers_[b.value->id()]) {

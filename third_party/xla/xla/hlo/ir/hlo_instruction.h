@@ -1722,9 +1722,8 @@ class HloInstruction {
   }
 
   // Returns the computations this instruction directly calls (if any).
-  const PtrVec<HloComputation*>& called_computations() const {
-    return rare()->called_computations;
-  }
+  const PtrVec<HloComputation*>& called_computations() const;
+
   bool has_called_computations() const {
     return has_rare() && !called_computations().empty();
   }
