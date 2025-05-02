@@ -189,4 +189,22 @@ CollectiveDeviceList CollectiveDeviceList::FromProto(
   return FromProto(proto.collective_device_list());
 }
 
+bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
+                        absl::Span<const ReplicaGroup> second) {
+  if (first.size() != second.size()) {
+    return false;
+  }
+  for (int64_t i = 0; i < first.size(); ++i) {
+    if (first[i].replica_ids_size() != second[i].replica_ids_size()) {
+      return false;
+    }
+    for (int j = 0; j < first[i].replica_ids_size(); ++j) {
+      if (first[i].replica_ids(j) != second[i].replica_ids(j)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace xla
