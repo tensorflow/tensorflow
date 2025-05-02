@@ -1295,16 +1295,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "that falling back to the driver can have drawbacks like using more "
       "memory and/or other bugs during compilation, so we recommend setting "
       "this flag to false."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_unsafe_pipelined_loop_annotator",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_unsafe_pipelined_loop_annotator),
-      debug_options->xla_gpu_unsafe_pipelined_loop_annotator(),
-      "If this option is true, then the while loop with rotate right "
-      "pattern will be considered a pipelined while loop and the "
-      "operations within the pipeline bubbles may be considered no-ops. "
-      "Specifically, collective-permute may become a no-op for the iterations "
-      "within pipeline bubble. This is an unsafe flag."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_unsafe_pipelined_loop_annotator",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_unsafe_pipelined_loop_annotator),
+                debug_options->xla_gpu_unsafe_pipelined_loop_annotator(),
+                "[Deprecated, do not use]"));
   flag_list->push_back(tsl::Flag(
       "xla_multiheap_size_constraint_per_heap",
       int32_setter_for(

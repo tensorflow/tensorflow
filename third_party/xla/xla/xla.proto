@@ -773,6 +773,8 @@ message DebugOptions {
   // Recognises rotate-right patterns (slice, slice, concat) within a while
   // loop and labels the while loop as a pipelined while loop. This is an
   // unsafe flag.
+  // DEPRECATED: Use xla_gpu_experimental_pipeline_parallelism_opt_level
+  // instead.
   bool xla_gpu_unsafe_pipelined_loop_annotator = 309;
 
   // If true, XLA will annotate instructions in the dumps with emitter code
