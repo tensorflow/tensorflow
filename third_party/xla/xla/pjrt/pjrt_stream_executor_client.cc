@@ -3213,7 +3213,6 @@ PjRtStreamExecutorClient::UpdateCompileOptionsAndGetExecutableExtras(
 absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
     CompileOptions* options, ExecutableExtras* returned_extras) {
   ExecutableBuildOptions& build_options = options->executable_build_options;
-  const int original_device_ordinal = build_options.device_ordinal();
   if (!build_options.compile_thread_pool()) {
     build_options.set_compile_thread_pool(thread_pool());
   }
@@ -3249,21 +3248,6 @@ absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
   };
 
   build_options.set_layout_canonicalization_callback(layout_callback);
-
-  if (build_options.device_ordinal() < 0) {
-    build_options.set_device_ordinal(0);
-  }
-
-  // We need the information of device assignment for
-  //   1) XLA GPU shard autotuning, as the process count and the current process
-  //   index are needed;
-  //   2) getting executable extras, as the addressable devices are needed.
-  const bool use_xla_gpu_shard_autotuning =
-      build_options.has_debug_options() &&
-      build_options.debug_options().xla_gpu_shard_autotuning();
-  if (!use_xla_gpu_shard_autotuning && returned_extras == nullptr) {
-    return absl::OkStatus();
-  }
 
   ExecutableExtras extras;
   std::shared_ptr<DeviceAssignment>& device_assignment =
@@ -3310,18 +3294,22 @@ absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
       }
     }
     if (addressable_devices.empty()) {
-      return InvalidArgument(
-          "Device assignment (%s) does not have any local devices.",
-          device_assignment->ToString());
+      if (returned_extras != nullptr) {
+        return InvalidArgument(
+            "Device assignment (%s) does not have any local devices.",
+            device_assignment->ToString());
+      }
+      if (build_options.device_ordinal() < 0) {
+        build_options.set_device_ordinal(0);
+      }
+    } else {
+      if (build_options.device_ordinal() < 0) {
+        build_options.set_device_ordinal(
+            addressable_devices.front()->local_hardware_id().value());
+      }
+      build_options.set_process_index(*this_process_index);
+      build_options.set_process_count(all_process_indices.size());
     }
-
-    if (original_device_ordinal < 0) {
-      build_options.set_device_ordinal(
-          addressable_devices.front()->local_hardware_id().value());
-    }
-
-    build_options.set_process_index(*this_process_index);
-    build_options.set_process_count(all_process_indices.size());
   }
   if (returned_extras != nullptr) {
     *returned_extras = std::move(extras);
