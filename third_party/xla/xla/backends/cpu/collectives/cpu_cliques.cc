@@ -20,7 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -49,6 +51,14 @@ struct ThreadSafeClique {
 
   absl::Mutex mu;
   CpuClique clique ABSL_GUARDED_BY(mu);
+
+  // Used to construct every communicator once.
+  absl::flat_hash_map<RankId, std::unique_ptr<absl::once_flag>> create_comm_once
+      ABSL_GUARDED_BY(mu);
+
+  // The status of constructing a communicator with a particular rank.
+  absl::flat_hash_map<RankId, absl::Status> create_comm_status
+      ABSL_GUARDED_BY(mu);
 };
 
 // Container for initialized and ready to use CPU cliques. In contrast to GPU
@@ -82,6 +92,28 @@ static void EraseProcessCpuCliques(CpuCollectives* collectives) {
 
 //===----------------------------------------------------------------------===//
 
+absl::StatusOr<std::unique_ptr<Communicator>> CreateCommunicator(
+    CpuCollectives* collectives, const CpuCliqueKey& clique_key, RankId rank) {
+  VLOG(3) << "Create a new communicator for clique key "
+          << clique_key.ToString() << " and rank " << rank;
+
+  CpuCollectives::DeviceRank device_rank(/*device=*/nullptr, rank);
+  CpuCollectives::Config config;
+  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Communicator>> communicators,
+                      collectives->CreateCommunicators(clique_key, std::nullopt,
+                                                       {device_rank}, config));
+
+  if (communicators.size() != 1) {
+    // We expect to create communicators lazily, one at a time.
+    return Internal(
+        "Expected to create a single communicator for a clique key %s and "
+        "rank %d, but got %d",
+        clique_key.ToString(), rank.value(), communicators.size());
+  }
+
+  return std::move(communicators.front());
+};
+
 // TODO(b/380457503): Consider switching to a lockable CPU clique model similar
 // to GPU cliques, and creating all communicators upfront.
 absl::StatusOr<Communicator*> AcquireCommunicator(
@@ -109,43 +141,34 @@ absl::StatusOr<Communicator*> AcquireCommunicator(
     return it->second;
   }();
 
-  // Check if we already have a communicator for this rank.
-  std::optional<Communicator*> comm = [&]() -> std::optional<Communicator*> {
+  // Create the communicator, once.
+  absl::once_flag* create_comm_once = nullptr;
+  {
     absl::MutexLock lock(&thread_safe_clique.mu);
-    return thread_safe_clique.clique.comm(rank);
-  }();
-
-  if (comm.has_value()) return *comm;
-
-  VLOG(3) << "Create a new communicator for clique key "
-          << clique_key.ToString() << " and rank " << rank;
-
-  // Create a new communicator and add it to the clique.
-  CpuCollectives::DeviceRank device_rank(/*device=*/nullptr, rank);
-  CpuCollectives::Config config;
-
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Communicator>> communicators,
-                      collectives->CreateCommunicators(clique_key, std::nullopt,
-                                                       {device_rank}, config));
-
-  // We expect to create communicators lazily on at a time.
-  if (communicators.size() != 1) {
-    return Internal(
-        "Expected to create a single communicator for a clique key %s and rank "
-        "%d, but got %d",
-        clique_key.ToString(), rank.value(), communicators.size());
+    std::unique_ptr<absl::once_flag>& x =
+        thread_safe_clique.create_comm_once[rank];
+    if (!x) {
+      x = std::make_unique<absl::once_flag>();
+    }
+    create_comm_once = x.get();
   }
+  absl::call_once(*create_comm_once, [&]() {
+    absl::StatusOr<std::unique_ptr<Communicator>> comm =
+        CreateCommunicator(collectives, clique_key, rank);
+
+    absl::MutexLock lock(&thread_safe_clique.mu);
+    if (!comm.ok()) {
+      thread_safe_clique.create_comm_status[rank] = comm.status();
+      return;
+    }
+    absl::Status s = thread_safe_clique.clique.AddComm(rank, *std::move(comm));
+    if (!s.ok()) {
+      thread_safe_clique.create_comm_status[rank] = s;
+    }
+  });
 
   absl::MutexLock lock(&thread_safe_clique.mu);
-
-  // Check if we lost a race to create a communicator to another thread.
-  if (auto comm = thread_safe_clique.clique.comm(rank)) {
-    return *comm;
-  }
-
-  TF_RETURN_IF_ERROR(thread_safe_clique.clique.AddComm(
-      rank, std::move(communicators.front())));
-
+  TF_RETURN_IF_ERROR(thread_safe_clique.create_comm_status[rank]);
   return *thread_safe_clique.clique.comm(rank);
 }
 
