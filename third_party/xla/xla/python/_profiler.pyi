@@ -14,7 +14,7 @@
 # ==============================================================================
 
 from types import TracebackType
-from typing import Any
+from typing import Any, Union
 
 _Status = Any
 
@@ -42,6 +42,9 @@ class ProfileOptions:
   duration_ms: int
   repository_path: str
   raise_error_on_start_failure: bool
+  # Advanced configuration options for the profiler.
+  # These options might be platform-specific or unstable.
+  advanced_configuration: dict[str, Union[bool, int, str]]
 
 def aggregate_profiled_instructions(
     profiles: list[bytes], percentile: int

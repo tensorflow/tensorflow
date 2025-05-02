@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -242,6 +243,30 @@ NB_MODULE(_profiler, m) {
           "raise_error_on_start_failure",
           &tensorflow::ProfileOptions::raise_error_on_start_failure,
           &tensorflow::ProfileOptions::set_raise_error_on_start_failure)
+      .def_prop_rw(
+          "advanced_configuration",
+          &tensorflow::ProfileOptions::advanced_configuration,
+          [](tensorflow::ProfileOptions* options, const nb::dict& dict) {
+            if (options->mutable_advanced_configuration() == nullptr) {
+              throw xla::XlaRuntimeError("advanced_configuration is null");
+            }
+            options->mutable_advanced_configuration()->clear();
+            for (const auto& item : dict) {
+              std::string key = nb::cast<std::string>(item.first);
+              nb::handle value = item.second;
+              tensorflow::ProfileOptions::AdvancedConfigValue config_value;
+              if (nb::isinstance<nb::bool_>(value)) {
+                config_value.set_bool_value(nb::cast<bool>(value));
+              } else if (nb::isinstance<nb::int_>(value)) {
+                config_value.set_int64_value(nb::cast<int64_t>(value));
+              } else {
+                config_value.set_string_value(
+                    nb::cast<std::string>(nb::str(value)));
+              }
+              options->mutable_advanced_configuration()->insert(
+                  {key, config_value});
+            }
+          })
       .def_prop_rw(
           "repository_path", &tensorflow::ProfileOptions::repository_path,
           [](tensorflow::ProfileOptions* options, const std::string& path) {
