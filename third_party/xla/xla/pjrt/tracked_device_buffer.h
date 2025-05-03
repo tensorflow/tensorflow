@@ -120,20 +120,15 @@ class BufferSequencingEvent {
   }
 
   // Executes the `task` if the event is ready; otherwise adds the `task`
-  // callback to `on_ready_tasks_callback_` that can not be executed until the
-  // the event is ready.
+  // callback to `defined_status_` async value, to be executed when it becomes
+  // available.
   void ExecuteOrAddToFutureTasks(const std::string& task_name,
                                  std::function<void()> task);
-
-  // Executes all the callbacks in `on_ready_tasks_callback_`. Those callbacks
-  // can only proceed until the event is ready.
-  void ExecuteFutureTasks();
 
   bool IsDefined() { return defined_status_.IsConcrete(); }
 
   void SetDefinedStatus(absl::Status status) {
     defined_status_.emplace(status);
-    this->ExecuteFutureTasks();
   }
 
   absl::Status GetDefinedStatus() {
@@ -173,12 +168,6 @@ class BufferSequencingEvent {
   // A list of all streams for which the buffer's content is known to be defined
   // at the tail of the queue, i.e., for any newly enqueued command.
   absl::InlinedVector<se::Stream*, 2> streams_defined_on_ ABSL_GUARDED_BY(mu_);
-
-  // A map of the task name and callback to execute when the
-  // TrackedDeviceBuffer's `definition_events_` are all recorded and ready to be
-  // consumed by other tasks.
-  absl::flat_hash_map<std::string, std::function<void()>>
-      on_ready_tasks_callback_ ABSL_GUARDED_BY(mu_);
 
   tsl::thread::ThreadPool* thread_pool_;
 
