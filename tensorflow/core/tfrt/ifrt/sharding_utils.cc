@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <utility>
