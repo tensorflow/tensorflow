@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_barrier_proxy.h"
 
 #include <atomic>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,7 +24,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
