@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/cost_util.h"
 
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 #include "tensorflow/core/platform/str_util.h"
 
