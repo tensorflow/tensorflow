@@ -4022,7 +4022,8 @@ absl::Status HloEvaluator::HandleSelectAndScatter(
   return absl::OkStatus();
 }
 
-absl::Status HloEvaluator::HandleSlice(const HloInstruction* slice) {
+absl::Status HloEvaluator::HandleSlice(const HloInstruction* hlo) {
+  const HloSliceInstruction* slice = Cast<HloSliceInstruction>(hlo);
   auto operand = slice->operand(0);
   const Shape& shape = slice->shape();
   TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
