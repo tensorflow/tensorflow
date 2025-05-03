@@ -49,8 +49,6 @@ class HloRunnerPjRt : public HloRunnerInterface {
       DeviceShapeRepresentationFn device_shape_representation_fn,
       DeviceShapeSizeFn device_shape_size_fn);
 
-  ~HloRunnerPjRt() override;
-
   // Transfers data between the host and device, using the given parameter
   // layouts.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
