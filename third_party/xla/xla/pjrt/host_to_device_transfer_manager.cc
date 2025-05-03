@@ -131,16 +131,15 @@ class CommonAsyncHostToDeviceTransferManager
         allocation_events.push_back({});
       }
 
-      Shape& device_shape = device_shapes.emplace_back(
-          ShapeUtil::MakeShape(shape_spec.element_type, shape_spec.dims));
-      if (device_layouts.has_value() && (*device_layouts)[i].has_value()) {
-        *device_shape.mutable_layout() = *(*device_layouts)[i];
-      } else {
-        TF_ASSIGN_OR_RETURN(
-            *device_shape.mutable_layout(),
-            (*client->GetTopologyDescription())
-                ->GetDefaultLayout(shape_spec.element_type, shape_spec.dims));
-      }
+      TF_ASSIGN_OR_RETURN(
+          Shape device_shape,
+          client->MakeDefaultShapeForMemorySpace(
+              memory_space,
+              xla::ShapeUtil::MakeShape(shape_spec.element_type,
+                                        shape_spec.dims),
+              device_layouts.has_value() && (*device_layouts)[i].has_value()
+                  ? &(*(*device_layouts)[i])
+                  : nullptr));
       TF_ASSIGN_OR_RETURN(
           int64_t on_device_bytes_count,
           client->GetOnDeviceBytesCount(memory_space, device_shape));
@@ -151,6 +150,7 @@ class CommonAsyncHostToDeviceTransferManager
       TF_ASSIGN_OR_RETURN(auto buffer,
                           client->DefineBuffer(device_shape, raw_buffer,
                                                {std::move(definition_event)}));
+      device_shapes.push_back(std::move(device_shape));
       buffers.push_back(std::move(buffer));
       undispatched_buffer_refs.push_back(raw_buffer);
       buffer_sizes.push_back(on_device_bytes_count);

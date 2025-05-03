@@ -89,6 +89,13 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) override;
+
+  // Applies memory-space normalization logic on top of
+  // GetTopologyDescription()->GetDefaultLayout() to select the default
+  // device layout (if not provided).
+  virtual absl::StatusOr<xla::Shape> MakeDefaultShapeForMemorySpace(
+      PjRtMemorySpace* memory_space, xla::Shape shape,
+      const xla::Layout* layout) const;
 };
 
 }  // namespace xla
