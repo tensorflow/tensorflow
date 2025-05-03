@@ -7,7 +7,7 @@ load(
     "if_rocm_is_configured",
 )
 load("//xla:package_groups.bzl", "xla_test_friend_package_group")
-load("//xla:xla.default.bzl", "tests_build_defs_bzl_deps", "xla_cc_binary", "xla_cc_test")
+load("//xla:xla.default.bzl", "tests_build_defs_bzl_deps", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
@@ -300,34 +300,6 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
     ],
-)
-
-xla_cc_binary(
-    name = "local_client_aot_test_helper",
-    srcs = ["local_client_aot_test_helper.cc"],
-    deps = [
-        "//xla:types",
-        "//xla:util",
-        "//xla/client:client_library",
-        "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/builder:xla_computation",
-        "//xla/service:cpu_plugin",
-        "//xla/service/cpu:cpu_aot_compilation_result",
-        "//xla/service/cpu:cpu_compiler",
-        "//xla/service/llvm_ir:llvm_util",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TargetParser",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
-    ],
-)
-
-genrule(
-    name = "local_client_aot_test_computation",
-    outs = ["local_client_aot_test_computation.o"],
-    cmd = "$(location :local_client_aot_test_helper) $(TARGET_CPU) > $(OUTS)",
-    local = 1,
-    tools = [":local_client_aot_test_helper"],
 )
 
 cc_library(
@@ -3232,25 +3204,6 @@ xla_test(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
-    ],
-)
-
-xla_cc_test(
-    name = "local_client_aot_test",
-    srcs = [
-        "local_client_aot_test.cc",
-        ":local_client_aot_test_computation.o",
-    ],
-    tags = [
-        "not_run:arm",  # b/341355246
-        "test_xla_cpu_no_thunks",
-    ],
-    deps = [
-        "//xla:executable_run_options",
-        "@com_google_absl//absl/base:dynamic_annotations",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 

@@ -2903,6 +2903,15 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
 
   switch (typed_custom_call->api_version()) {
     case CustomCallApiVersion::API_VERSION_ORIGINAL:
+#ifdef PLATFORM_GOOGLE
+      LOG(FATAL)
+#else
+      LOG(ERROR)
+#endif
+          << "Custom call API version `API_VERSION_ORIGINAL` is not supported "
+             "by XLA:CPU. Prefer https://docs.jax.dev/en/latest/ffi.html. It "
+             "will be fully removed in November 2025.";
+
       EmitCallToFunc(custom_call->custom_call_target(),
                      {output_address, operands_alloca}, b()->getVoidTy());
       break;

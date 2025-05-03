@@ -1163,6 +1163,15 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
   // xla/g3doc/custom_call.md.
   switch (instr->api_version()) {
     case CustomCallApiVersion::API_VERSION_ORIGINAL:
+#ifdef PLATFORM_GOOGLE
+      LOG(FATAL)
+#else
+      LOG(ERROR)
+#endif
+          << "Custom call API version `API_VERSION_ORIGINAL` is not supported "
+             "by XLA:GPU. Prefer https://docs.jax.dev/en/latest/ffi.html. It "
+             "will be fully removed in November 2025.";
+
       custom_call_target = [call_target](stream_executor::Stream* stream,
                                          void** buffers, const char* opaque,
                                          size_t opaque_len,
