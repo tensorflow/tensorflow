@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_device.h"
 #include "xla/pjrt/cpu/cpu_event.h"
@@ -75,7 +76,7 @@ limitations under the License.
 
 namespace xla {
 
-class TfrtCpuClient final : public PjRtClient {
+class TfrtCpuClient final : public CommonPjRtClient {
  public:
   TfrtCpuClient(
       int process_index, std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
@@ -151,10 +152,6 @@ class TfrtCpuClient final : public PjRtClient {
       const Shape& shape, PjRtMemorySpace* device) override;
 
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtMemorySpace* memory_space) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
       absl::Span<const PjRtClient::ShapeSpec> shape_specs,
       std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
@@ -188,7 +185,7 @@ class TfrtCpuClient final : public PjRtClient {
     return pjrt_client_thread_pool_.get();
   }
 
-  AsyncWorkRunner* async_work_runner() const {
+  AsyncWorkRunner* async_work_runner() const override {
     return async_work_runner_.get();
   }
 
@@ -218,6 +215,28 @@ class TfrtCpuClient final : public PjRtClient {
       const override {
     return &topology_;
   }
+
+  absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>> AllocateRawBuffer(
+      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      tsl::AsyncValueRef<bool> allocate_after) override;
+
+  absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
+                           tsl::RCReference<PjRtDeviceEvent>>>
+  CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
+                           absl::string_view debug_info) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> DefineBuffer(
+      const Shape& on_device_shape,
+      tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+      absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
+          definition_device_events) override;
+
+  absl::StatusOr<int64_t> GetOnDeviceBytesCount(
+      PjRtMemorySpace* memory_space, const xla::Shape& shape) const override;
+
+  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> LinearizeInto(
+      const LiteralSlice& literal, const xla::Layout& layout,
+      tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) override;
 
  private:
   friend class TfrtCpuExecutable;
