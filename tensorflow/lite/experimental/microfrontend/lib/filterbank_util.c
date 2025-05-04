@@ -16,7 +16,9 @@ limitations under the License.
 
 #include <assert.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define kFilterbankIndexAlignment 4
 #define kFilterbankChannelBlockSize 4
