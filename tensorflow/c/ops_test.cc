@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/c/ops.h"
 
-#include "absl/strings/str_cat.h"
+#include <cstdint>
+#include <initializer_list>
+#include <string>
+
+#include "absl/log/check.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/fake_input.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
