@@ -17,10 +17,15 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <iterator>
+#include <cstddef>
+#include <cstdint>
 #include <utility>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
