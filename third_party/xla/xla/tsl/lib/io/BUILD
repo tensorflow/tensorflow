@@ -601,3 +601,28 @@ tsl_cc_test(
         "@local_tsl//tsl/platform:strcat",
     ],
 )
+
+cc_library(
+    name = "tsl_to_protobuf_input_stream_adapter",
+    hdrs = ["tsl_to_protobuf_input_stream_adapter.h"],
+    deps = [
+        ":inputstream_interface",
+        "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:tstring",
+    ],
+)
+
+cc_library(
+    name = "mock_input_stream_interface",
+    testonly = True,
+    hdrs = ["mock_input_stream_interface.h"],
+    deps = [
+        ":inputstream_interface",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_for_library",
+        "@local_tsl//tsl/platform:tstring",
+    ],
+)
