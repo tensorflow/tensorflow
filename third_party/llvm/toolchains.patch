@@ -3,7 +3,7 @@ diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llv
 index 38970d9929b9..2690c97aa3e0 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -34,6 +34,36 @@ exports_files([
+@@ -36,6 +34,36 @@ exports_files([
      "utils/lldbDataFormatters.py",
  ])
  
