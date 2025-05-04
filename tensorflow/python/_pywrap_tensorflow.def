@@ -1252,3 +1252,5 @@ EXPORTS
   ?FailedPreconditionError@lts_20230802@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?PermissionDeniedError@lts_20230802@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?IsFailedPrecondition@lts_20230802@absl@@YA_NAEBVStatus@12@@Z
+  ?kSeed@MixingHashState@hash_internal@lts_20230802@absl@@0QEBXEB
+  ?CombineLargeContiguousImpl64@MixingHashState@hash_internal@lts_20230802@absl@@CA_K_KPEBE0@Z
