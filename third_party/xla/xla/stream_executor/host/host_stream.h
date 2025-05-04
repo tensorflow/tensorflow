@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <queue>
 
 #include "absl/base/thread_annotations.h"
