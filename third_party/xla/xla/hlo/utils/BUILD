@@ -79,6 +79,7 @@ cc_library(
     srcs = ["hlo_matchers.cc"],
     hdrs = ["hlo_matchers.h"],
     deps = [
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
