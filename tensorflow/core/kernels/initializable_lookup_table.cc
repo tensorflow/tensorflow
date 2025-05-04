@@ -92,7 +92,7 @@ absl::Status InitializableLookupTable::Initialize(
     TF_RETURN_IF_ERROR(DoInsert(iter.keys(), iter.values()));
     iter.Next();
   }
-  if (!errors::IsOutOfRange(iter.status())) {
+  if (!absl::IsOutOfRange(iter.status())) {
     return iter.status();
   }
 

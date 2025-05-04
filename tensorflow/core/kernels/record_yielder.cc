@@ -220,7 +220,7 @@ void RecordYielder::ShardLoop(Shard* shard) {
           shard->status = errors::Aborted("stopped");
           break;
         }
-      } else if (errors::IsOutOfRange(s)) {
+      } else if (absl::IsOutOfRange(s)) {
         break;
       } else {
         shard->status = s;
