@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <memory>
 
+#include "pngconf.h"  // from @png
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace gif {
