@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/transforms/all_gather_dynamic_slice_simplifier.h"
+#include "xla/service/gpu/transforms/collectives/all_gather_dynamic_slice_simplifier.h"
 
 #include <optional>
 
