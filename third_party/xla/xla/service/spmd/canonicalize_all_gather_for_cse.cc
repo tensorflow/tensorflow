@@ -76,7 +76,7 @@ absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
         major_elements /= real_data->shape().dimensions(new_ag_dim++);
       }
     }
-    if (new_ag_dim == real_data->shape().dimensions_size()) {
+    if (new_ag_dim == real_data->shape().dimensions().size()) {
       continue;
     }
 

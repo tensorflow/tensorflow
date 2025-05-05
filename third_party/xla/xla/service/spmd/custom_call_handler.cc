@@ -304,7 +304,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
       HloInstruction* halo = input.hlo();
       if (halo_size != shard_size) {
         halo_shape.set_dimensions(dim, halo_size);
-        std::vector<int64_t> slice_starts(hlo->shape().dimensions_size(), 0);
+        std::vector<int64_t> slice_starts(hlo->shape().dimensions().size(), 0);
         slice_starts[dim] = offset_in_shard;
         std::vector<int64_t> slice_limits(
             input.hlo()->shape().dimensions().begin(),
@@ -312,7 +312,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
         slice_limits[dim] = offset_in_shard + halo_size;
         halo = b_.AddInstruction(HloInstruction::CreateSlice(
             halo_shape, halo, slice_starts, slice_limits,
-            std::vector<int64_t>(halo_shape.dimensions_size(), 1)));
+            std::vector<int64_t>(halo_shape.dimensions().size(), 1)));
       }
       if (shard_distance != 0) {
         std::vector<std::pair<int64_t, int64_t>> pairs;
