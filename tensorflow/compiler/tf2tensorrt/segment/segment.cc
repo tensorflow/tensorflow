@@ -24,22 +24,6 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/util/env_var.h"
-
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
