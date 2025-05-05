@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "json/json.h"
 #include "xla/tools/benchmarks/proto/benchmark_config.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -37,6 +38,8 @@ namespace benchmarks {
 namespace {
 
 using testing::HasSubstr;
+using testing::IsEmpty;
+using testing::SizeIs;
 using tsl::testing::IsOkAndHolds;
 using tsl::testing::StatusIs;
 
@@ -64,50 +67,89 @@ std::string CreateTempRegistryFile(
   return filepath;
 }
 
+// Matcher for checking a JSON value against a string.
+MATCHER_P(JsonStringEq, expected_str, "") {
+  return arg.isString() && arg.asString() == expected_str;
+}
+// Matcher for checking a JSON value against a bool.
+MATCHER_P(JsonBoolEq, expected_bool, "") {
+  return arg.isBool() && arg.asBool() == expected_bool;
+}
+// Matcher for checking a JSON array size.
+MATCHER_P(JsonArraySizeIs, expected_size, "") {
+  return arg.isArray() && arg.size() == expected_size;
+}
+// Matcher for checking if a JSON array contains a specific string.
+MATCHER_P(JsonArrayContains, expected_str, "") {
+  if (!arg.isArray()) {
+    return false;
+  }
+  for (const auto& item : arg) {
+    if (item.isString() && item.asString() == expected_str) {
+      return true;
+    }
+  }
+  return false;
+}
+// Matcher for checking if a JSON value is equal to another JSON value.
+MATCHER_P(JsonEq, value, "") { return arg == value; }
+// Matcher for checking if a JSON value is a JSON array.
+MATCHER(IsJsonArray, "") { return arg.isArray(); }
+// Matcher for checking if a JSON value is a JSON object.
+MATCHER(IsJsonObject, "") { return arg.isObject(); }
+
 // Test fixture for managing temporary files and environment variables.
 class GenerateBenchmarkMatricesTest : public testing::Test {
  protected:
-  // Creates the specific registry file content provided.
-  std::string CreateSpecificRegistryContent() {
-    // Directly use the provided registry content
+  std::string CreateTestRegistryContent() {
     return R"(
-        configs: [
+      benchmarks: [
         {
-        name: "gemma3_1b_flax_call"
-        description: "Benchmarks Gemma3 1b in Flax using B200 GPUs."
-        owner: "juliagmt-google@"
-        hlo_gcs_bucket_path: "https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo"
-        model_source_info: ["Gemma3 1B"]
-        hardware_targets: [{
-          hardware_category: GPU_B200
-          topology: { num_hosts: 1, num_devices_per_host: 1 }
-          target_metrics: [WALL_TIME, GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME, PEAK_GPU_MEMORY]
-        }]
-        run_frequencies: [POSTSUBMIT]
-        update_frequency_policy: QUARTERLY
-        runtime_flags: ["--num_repeat=5"]
-        github_labels: ["blocking_presubmit_test"] # Github label for presubmit triggering
+          config_id: "gemma_gpu_b200_1h1d" # Added config_id back based on latest proto
+          name: "gemma_stablehlo_gpu"
+          owner: "owner1@"
+          input_artifact: {
+             input_format: STABLEHLO_MLIR
+             artifact_gcs_bucket_path: "gs://bucket/gemma.mlir"
+          }
+          model_source_info: "Gemma StableHLO"
+          hardware_targets: [
+            { hardware_category: GPU_B200, topology: {num_hosts:1, num_devices_per_host:1}, target_metrics: [GPU_DEVICE_TIME, PEAK_GPU_MEMORY] },
+            { hardware_category: GPU_L4,   topology: {num_hosts:1, num_devices_per_host:1}, target_metrics: [GPU_DEVICE_TIME] }
+          ]
+          run_frequencies: [POSTSUBMIT, SCHEDULED]
+          update_frequency_policy: QUARTERLY
+          runtime_flags: "--num_repeat=5"
         },
         {
-        name: "gemma2_2b_keras_jax"
-        description: "Gemma2 2B in Keras on x86 CPU."
-        owner: "company-A@"
-        hlo_path: "benchmarks/hlo/gemma2_2b_keras_jax.hlo"
-        model_source_info: ["Gemma2 2B"]
-        hardware_targets: [
-          {
-            hardware_category: CPU_X86
-            topology: { num_hosts: 1, num_devices_per_host: 1 }
-            target_metrics: [CPU_TIME, PEAK_CPU_MEMORY]
+          config_id: "fusion_cpu_x86_1h1d"
+          name: "fusion_hlo_cpu"
+          owner: "owner2@"
+          input_artifact: {
+            input_format: HLO_TEXT
+            artifact_path: "hlo/fusion.hlo"
           }
-          ]
-        run_frequencies: [PRESUBMIT, POSTSUBMIT]
-        update_frequency_policy: QUARTERLY
-        runtime_flags: ["--num_repeat=5"]
-        github_labels: ["blocking_presubmit_test"] # Github label for presubmit triggering
+          model_source_info: "Fusion HLO"
+          hardware_targets: [ { hardware_category: CPU_X86, topology: {num_hosts:1, num_devices_per_host:1}, target_metrics: [CPU_TIME] } ]
+          run_frequencies: [PRESUBMIT]
+          update_frequency_policy: MONTHLY
+          xla_compilation_flags: "--flag1=true"
+        },
+        { # Skipped due to mapping
+          config_id: "unmap_gpu_l4_8h8d"
+          name: "unmappable" owner:"t" model_source_info:"m"
+           input_artifact: { input_format:HLO_TEXT artifact_path:"f.hlo" }
+          hardware_targets: [{hardware_category:GPU_L4, topology:{num_hosts:8, num_devices_per_host:8}}] run_frequencies:[MANUAL] update_frequency_policy:WEEKLY
+        },
+        { # Now valid as missing source check moved to GetArtifactInfo
+          config_id: "no_source_test" # Will fail during matrix generation
+          name: "no_source" owner:"t" model_source_info:"m"
+           # Missing input_artifact field entirely - will fail loading
+           # OR: input_artifact: { input_format:HLO_TEXT } # Missing path/gcs_path - will fail GetArtifactInfo
+           hardware_targets: [{hardware_category:CPU_X86, topology:{num_hosts:1, num_devices_per_host:1}}] run_frequencies:[MANUAL] update_frequency_policy:WEEKLY
         }
-        ]
-        )";
+      ]
+      )";
   }
 
   // Helper to set environment variable temporarily.
@@ -121,6 +163,8 @@ class GenerateBenchmarkMatricesTest : public testing::Test {
     for (const auto& var_name : env_vars_to_clear_) {
       unsetenv(var_name.c_str());
     }
+    // Could also clean up temp files if needed, but gUnit usually handles
+    // TmpDir
   }
 
  private:
@@ -129,144 +173,271 @@ class GenerateBenchmarkMatricesTest : public testing::Test {
 
 // --- ParseRegistry Tests ---
 
-TEST_F(GenerateBenchmarkMatricesTest, ParseRegistrySpecificContentSuccess) {
-  std::string content = CreateSpecificRegistryContent();
-  std::string filepath = CreateTempRegistryFile(content, "specific_registry");
+TEST_F(GenerateBenchmarkMatricesTest, LoadBenchmarkSuiteSuccess) {
+  std::string filepath = CreateTempRegistryFile(CreateTestRegistryContent());
   ASSERT_FALSE(filepath.empty());
+  TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
+                          LoadBenchmarkSuiteFromFile(filepath));
+  ASSERT_THAT(suite.benchmarks(), SizeIs(4));
 
-  TF_ASSERT_OK_AND_ASSIGN(xla::BenchmarkSuite suite, ParseRegistry(filepath));
-  // Verify basic structure parsed correctly.
-  EXPECT_EQ(suite.configs_size(), 2);
-  EXPECT_EQ(suite.configs(0).name(), "gemma3_1b_flax_call");
-  ASSERT_EQ(suite.configs(0).hardware_targets_size(), 1);
-  EXPECT_EQ(suite.configs(0).hardware_targets(0).hardware_category(),
-            HardwareCategory::GPU_B200);
-  ASSERT_EQ(suite.configs(0).hardware_targets(0).target_metrics_size(), 4);
-  EXPECT_EQ(suite.configs(0).hardware_targets(0).target_metrics(0),
-            TargetMetric::WALL_TIME);
-  EXPECT_EQ(suite.configs(0).hardware_targets(0).target_metrics(1),
-            TargetMetric::GPU_DEVICE_TIME);
-  EXPECT_EQ(suite.configs(0).hardware_targets(0).target_metrics(3),
-            TargetMetric::PEAK_GPU_MEMORY);
-  EXPECT_EQ(suite.configs(0).run_frequencies_size(), 1);
-  EXPECT_EQ(suite.configs(0).run_frequencies(0), RunFrequency::POSTSUBMIT);
-  EXPECT_EQ(suite.configs(0).hlo_gcs_bucket_path(),
-            "https://storage.googleapis.com/xla-benchmarking-temp/"
-            "gemma3_1b_flax_call.hlo");
+  // Check parsing of InputArtifact
+  EXPECT_TRUE(suite.benchmarks(0).has_input_artifact());
+  EXPECT_EQ(suite.benchmarks(0).input_artifact().input_format(),
+            InputFormat::STABLEHLO_MLIR);
+  EXPECT_TRUE(suite.benchmarks(0).input_artifact().artifact_path().empty());
+  EXPECT_EQ(suite.benchmarks(0).input_artifact().artifact_gcs_bucket_path(),
+            "gs://bucket/gemma.mlir");
+
+  EXPECT_TRUE(suite.benchmarks(1).has_input_artifact());
+  EXPECT_EQ(suite.benchmarks(1).input_artifact().input_format(),
+            InputFormat::HLO_TEXT);
+  EXPECT_EQ(suite.benchmarks(1).input_artifact().artifact_path(),
+            "hlo/fusion.hlo");
   EXPECT_TRUE(
-      suite.configs(0).hlo_path().empty());  // Check it wasn't misparsed
+      suite.benchmarks(1).input_artifact().artifact_gcs_bucket_path().empty());
 
-  EXPECT_EQ(suite.configs(1).name(), "gemma2_2b_keras_jax");
-  ASSERT_EQ(suite.configs(1).hardware_targets_size(), 1);
-  EXPECT_EQ(suite.configs(1).hardware_targets(0).hardware_category(),
-            HardwareCategory::CPU_X86);
-  ASSERT_EQ(suite.configs(1).hardware_targets(0).target_metrics_size(), 2);
-  EXPECT_EQ(suite.configs(1).hardware_targets(0).target_metrics(0),
-            TargetMetric::CPU_TIME);
-  EXPECT_EQ(suite.configs(1).hardware_targets(0).target_metrics(1),
-            TargetMetric::PEAK_CPU_MEMORY);
-  EXPECT_EQ(suite.configs(1).run_frequencies_size(), 2);
-  EXPECT_EQ(suite.configs(1).run_frequencies(0), RunFrequency::PRESUBMIT);
-  EXPECT_EQ(suite.configs(1).run_frequencies(1), RunFrequency::POSTSUBMIT);
-  EXPECT_EQ(suite.configs(1).hlo_path(),
-            "benchmarks/hlo/gemma2_2b_keras_jax.hlo");
-  EXPECT_TRUE(suite.configs(1).hlo_gcs_bucket_path().empty());
+  // Check config_id presence
+  EXPECT_EQ(suite.benchmarks(0).config_id(), "gemma_gpu_b200_1h1d");
+  EXPECT_EQ(suite.benchmarks(1).config_id(), "fusion_cpu_x86_1h1d");
 }
 
-// Other ParseRegistry tests (FileNotFound, InvalidFormat) remain valid.
-
-TEST_F(GenerateBenchmarkMatricesTest, ParseRegistryFileNotFound) {
-  std::string non_existent_path = "/path/does/not/exist/registry.textproto";
-  EXPECT_THAT(ParseRegistry(non_existent_path),
-              StatusIs(absl::StatusCode::kNotFound,
-                       HasSubstr("Registry file not found at")));
-}
-
-TEST_F(GenerateBenchmarkMatricesTest, ParseRegistryInvalidFormat) {
-  std::string content =
-      "configs: [ { name: \"Incomplete";  // Invalid proto text.
+TEST_F(GenerateBenchmarkMatricesTest,
+       LoadBenchmarkSuiteMissingInputArtifactField) {
+  // Modify content to remove the input_artifact field from one entry
+  std::string content = R"(
+         benchmarks: [ {
+             config_id: "test1" name: "test_no_artifact_field" owner:"t"
+             model_source_info:"m"
+             hardware_targets: [{hardware_category:CPU_X86, topology:{num_hosts:1, num_devices_per_host:1}}]
+             run_frequencies:[MANUAL] update_frequency_policy:WEEKLY
+         } ] )";
   std::string filepath = CreateTempRegistryFile(content);
   ASSERT_FALSE(filepath.empty());
-
-  EXPECT_THAT(ParseRegistry(filepath),
-              StatusIs(absl::StatusCode::kInternal,  // Or kInvalidArgument
-                       HasSubstr("Error parsing TextProto registry file")));
+  // Check that LoadBenchmarkSuiteFromFile now returns an error due to missing
+  // field check
+  TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
+                          LoadBenchmarkSuiteFromFile(filepath));
 }
 
-TEST_F(GenerateBenchmarkMatricesTest, GenerateMatrixReturnsUnimplemented) {
-  BenchmarkSuite suite;
-  EXPECT_THAT(GenerateMatrix(suite),
-              StatusIs(absl::StatusCode::kUnimplemented));
+TEST_F(GenerateBenchmarkMatricesTest, LoadBenchmarkSuiteMissingArtifactSource) {
+  std::string content = R"(
+         benchmarks: [ {
+             config_id: "test1" name: "test_no_source" owner:"t"
+             input_artifact: { input_format:HLO_TEXT } # Missing path/gcs_path
+             model_source_info:"m"
+             hardware_targets: [{hardware_category:CPU_X86, topology:{num_hosts:1, num_devices_per_host:1}}]
+             run_frequencies:[MANUAL] update_frequency_policy:WEEKLY
+         } ] )";
+  std::string filepath = CreateTempRegistryFile(content);
+  ASSERT_FALSE(filepath.empty());
+  // Check that LoadBenchmarkSuiteFromFile now returns an error due to missing
+  // source check
+  TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
+                          LoadBenchmarkSuiteFromFile(filepath));
 }
 
-TEST_F(GenerateBenchmarkMatricesTest, ResolveRegistryPathReturnsAbsolutePath) {
-  // Create a temporary file for testing
-  std::string tmp_file =
-      tsl::io::JoinPath(tsl::testing::TmpDir(), "test_file.txt");
+// --- BuildGitHubActionsMatrix Tests ---
+
+TEST_F(GenerateBenchmarkMatricesTest, BuildMatrixSuccessWithInputArtifact) {
+  std::string filepath = CreateTempRegistryFile(CreateTestRegistryContent());
+  ASSERT_FALSE(filepath.empty());
+  TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
+                          LoadBenchmarkSuiteFromFile(filepath));
+  TF_ASSERT_OK_AND_ASSIGN(Json::Value matrix, BuildGitHubActionsMatrix(suite));
+
+  ASSERT_THAT(matrix, IsJsonObject());
+  const Json::Value& include_array = matrix["include"];
+  ASSERT_THAT(include_array, IsJsonArray());
+
+  // Expected: gemma*B200*POST, gemma*B200*SCHED, gemma*L4*POST, gemma*L4*SCHED,
+  // fusion*CPU*PRE = 5 The "no_source" benchmark config will fail
+  // GetArtifactInfo and be skipped.
+  EXPECT_THAT(include_array, SizeIs(5));
+
+  // Find and check gemma entry
+  bool found_gemma_entry = false;
+  for (const auto& entry : include_array) {
+    if (entry["benchmark_name"] == "gemma_stablehlo_gpu" &&
+        entry["hardware_category"] == "GPU_B200") {
+      found_gemma_entry = true;
+      EXPECT_THAT(
+          entry["config_id"],
+          JsonEq("gemma_gpu_b200_1h1d"));  // Check config_id is included
+      EXPECT_THAT(entry["input_format"], JsonEq("STABLEHLO_MLIR"));
+      EXPECT_THAT(entry["artifact_location"], JsonEq("gs://bucket/gemma.mlir"));
+      EXPECT_THAT(entry["is_gcs_artifact"], JsonEq(true));
+      break;
+    }
+  }
+  EXPECT_TRUE(found_gemma_entry);
+
+  // Find and check fusion entry
+  bool found_fusion_entry = false;
+  for (const auto& entry : include_array) {
+    if (entry["benchmark_name"] == "fusion_hlo_cpu") {
+      found_fusion_entry = true;
+      EXPECT_THAT(entry["config_id"], JsonEq("fusion_cpu_x86_1h1d"));
+      EXPECT_THAT(entry["input_format"], JsonEq("HLO_TEXT"));
+      EXPECT_THAT(entry["artifact_location"], JsonEq("hlo/fusion.hlo"));
+      EXPECT_THAT(entry["is_gcs_artifact"], JsonEq(false));
+      break;
+    }
+  }
+  EXPECT_TRUE(found_fusion_entry);
+}
+
+TEST_F(GenerateBenchmarkMatricesTest, BuildMatrixSkipsConfigsWithInputErrors) {
+  std::string filepath = CreateTempRegistryFile(CreateTestRegistryContent());
+  ASSERT_FALSE(filepath.empty());
+  TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
+                          LoadBenchmarkSuiteFromFile(filepath));
+
+  // Reuse and modify the suite in memory to test skipping during generation
+  BenchmarkSuite modified_suite;
+  for (const auto& bm : suite.benchmarks()) {
+    if (bm.name() == "no_source") {
+      BenchmarkConfig* bad_config = modified_suite.add_benchmarks();
+      *bad_config = bm;
+      // Make it fail GetArtifactInfo by clearing the source within the artifact
+      // msg
+      bad_config->mutable_input_artifact()->clear_artifact_source();
+    } else if (bm.name() !=
+               "unmappable") {  // Keep valid ones except unmappable
+      *modified_suite.add_benchmarks() = bm;
+    }
+  }
+  // Add back unmappable to ensure it's skipped by mapping logic
+  for (const auto& bm : suite.benchmarks()) {
+    if (bm.name() == "unmappable") {
+      *modified_suite.add_benchmarks() = bm;
+    }
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(Json::Value matrix,
+                          BuildGitHubActionsMatrix(modified_suite));
+  ASSERT_TRUE(matrix.isMember("include"));
+  // Expected: gemma*B200*POST, gemma*B200*SCHED, gemma*L4*POST, gemma*L4*SCHED,
+  // fusion*CPU*PRE = 5 unmappable is skipped by mapping. no_source is skipped
+  // by GetArtifactInfo.
+  EXPECT_THAT(matrix["include"], SizeIs(5));
+
+  // Check that the skipped benchmarks are NOT present
+  for (const auto& entry : matrix["include"]) {
+    EXPECT_NE(entry["benchmark_name"].asString(), "unmappable");
+    EXPECT_NE(entry["benchmark_name"].asString(), "no_source");
+  }
+}
+
+TEST_F(GenerateBenchmarkMatricesTest, BuildMatrixEmptySuite) {
+  BenchmarkSuite suite;  // Empty suite
+  TF_ASSERT_OK_AND_ASSIGN(Json::Value matrix, BuildGitHubActionsMatrix(suite));
+  ASSERT_TRUE(matrix.isObject());
+  ASSERT_TRUE(matrix.isMember("include"));
+  EXPECT_THAT(matrix["include"], IsEmpty());
+}
+
+TEST_F(GenerateBenchmarkMatricesTest, BuildMatrixSkipsConfigsWithErrors) {
+  // Use the content that includes unmappable and missing HLO configs
+  std::string content = CreateTestRegistryContent();
+  std::string filepath =
+      CreateTempRegistryFile(content, "build_matrix_skip_test");
+  ASSERT_FALSE(filepath.empty());
+  TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
+                          LoadBenchmarkSuiteFromFile(filepath));
+
+  TF_ASSERT_OK_AND_ASSIGN(Json::Value matrix, BuildGitHubActionsMatrix(suite));
+  ASSERT_TRUE(matrix.isObject() && matrix.isMember("include"));
+  EXPECT_EQ(matrix["include"].size(), 5)
+      << "Should skip unmappable and missing HLO entries";
+
+  // Check that the skipped benchmarks are NOT present
+  for (const auto& entry : matrix["include"]) {
+    EXPECT_NE(entry["benchmark_name"].asString(), "unmappable_target");
+    EXPECT_NE(entry["benchmark_name"].asString(), "missing_hlo_source");
+  }
+}
+
+// --- FindRegistryFile Tests ---
+
+TEST_F(GenerateBenchmarkMatricesTest, FindRegistryPathReturnsAbsolutePath) {
+  std::string temp_dir = tsl::testing::TmpDir();
+  std::string tmp_file = tsl::io::JoinPath(temp_dir, "find_abs_test.txt");
+  // Ensure the file exists
   std::ofstream file(tmp_file);
   ASSERT_TRUE(file.is_open());
+  file << "test";
   file.close();
+  ASSERT_TRUE(file) << "Failed to write to temp file: " << tmp_file;
+  ASSERT_TRUE(tsl::Env::Default()->FileExists(tmp_file).ok());
 
-  EXPECT_THAT(ResolveRegistryPath(tmp_file), IsOkAndHolds(tmp_file));
+  char* resolved_tmp_cstr = realpath(tmp_file.c_str(), nullptr);
+  ASSERT_NE(resolved_tmp_cstr, nullptr) << "realpath failed for " << tmp_file;
+  std::string expected_absolute_path(resolved_tmp_cstr);
+  free(resolved_tmp_cstr);
+
+  EXPECT_THAT(FindRegistryFile(tmp_file), IsOkAndHolds(expected_absolute_path));
 }
 
 TEST_F(GenerateBenchmarkMatricesTest,
-       ResolveRegistryPathAbsolutePathDoesNotExist) {
-  std::string tmp_file =
-      tsl::io::JoinPath(tsl::testing::TmpDir(), "non_existent_file.txt");
+       FindRegistryPathAbsolutePathDoesNotExist) {
+  std::string non_existent_absolute_path =
+      "/absolute/path/that/does/not/exist.txt";
   EXPECT_THAT(
-      ResolveRegistryPath(tmp_file),
-      StatusIs(absl::StatusCode::kFailedPrecondition,
-               HasSubstr("Absolute registry path specified but not found")));
-}
-
-TEST_F(GenerateBenchmarkMatricesTest, RelativePathExistsInWorkspace) {
-  // Temporarily set BUILD_WORKSPACE_DIRECTORY if not already set
-  char* original_workspace_dir = std::getenv("BUILD_WORKSPACE_DIRECTORY");
-  if (original_workspace_dir == nullptr) {
-    setenv("BUILD_WORKSPACE_DIRECTORY", tsl::testing::TmpDir().c_str(), 1);
-  }
-
-  // Create a temporary file in the expected relative path
-  const char* build_workspace_dir_cstr =
-      std::getenv("BUILD_WORKSPACE_DIRECTORY");
-  ASSERT_NE(build_workspace_dir_cstr, nullptr);
-
-  std::string relative_path = "test_relative_file.txt";
-  std::string tmp_file =
-      tsl::io::JoinPath(build_workspace_dir_cstr, relative_path);
-  std::ofstream file(tmp_file);
-  ASSERT_TRUE(file.is_open());
-  file.close();
-
-  EXPECT_THAT(ResolveRegistryPath(relative_path), IsOkAndHolds(tmp_file));
-
-  // Restore the original value
-  if (original_workspace_dir == nullptr) {
-    unsetenv("BUILD_WORKSPACE_DIRECTORY");
-  }
-}
-
-TEST_F(GenerateBenchmarkMatricesTest, RelativePathDoesNotExist) {
-  std::string relative_path = "non_existent_relative_file.txt";
-  EXPECT_THAT(
-      ResolveRegistryPath(relative_path),
-      StatusIs(
-          absl::StatusCode::kFailedPrecondition,
-          HasSubstr("not found. Tried absolute and relative to workspace")));
+      FindRegistryFile(non_existent_absolute_path),
+      StatusIs(absl::StatusCode::kFailedPrecondition,  // Expect NotFound
+               HasSubstr("Registry path specified but not found")));
 }
 
 TEST_F(GenerateBenchmarkMatricesTest,
-       ResolveRegistryPathBuildWorkspaceDirEmptyReturnsError) {
+       FindRegistryRelativePathExistsInWorkspace) {
+  std::string temp_dir = tsl::testing::TmpDir();
+  // Set BUILD_WORKSPACE_DIRECTORY to temp_dir
+  SetEnvVar("BUILD_WORKSPACE_DIRECTORY", temp_dir);
+
+  // Create a file within that "workspace"
+  std::string relative_path = "relative_in_workspace.textproto";
+  std::string full_path = tsl::io::JoinPath(temp_dir, relative_path);
+  std::ofstream file(full_path);
+  ASSERT_TRUE(file.is_open());
+  file << "test";
+  file.close();
+  ASSERT_TRUE(file);
+  ASSERT_TRUE(tsl::Env::Default()->FileExists(full_path).ok());
+
+  // Resolve expected absolute path
+  char* resolved_full_cstr = realpath(full_path.c_str(), nullptr);
+  ASSERT_NE(resolved_full_cstr, nullptr);
+  std::string expected_absolute_path(resolved_full_cstr);
+  free(resolved_full_cstr);
+}
+
+TEST_F(GenerateBenchmarkMatricesTest, FindRegistryRelativePathDoesNotExist) {
+  std::string non_existent_relative = "i_dont_exist_anywhere.txt";
+  // Ensure BUILD_WORKSPACE_DIRECTORY isn't set to avoid confusion
+  unsetenv("BUILD_WORKSPACE_DIRECTORY");
+
+  EXPECT_THAT(FindRegistryFile(non_existent_relative),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("Registry path specified but not found: "
+                                 "i_dont_exist_anywhere.txt")));
+}
+
+TEST_F(GenerateBenchmarkMatricesTest, FindRegistryBuildWorkspaceDirEmpty) {
   // Set BUILD_WORKSPACE_DIRECTORY to an empty string.
   SetEnvVar("BUILD_WORKSPACE_DIRECTORY", "");
-  constexpr absl::string_view kRelativePath = "test_relative_file.txt";
+  constexpr absl::string_view kRelativePath = "some_file.txt";
 
+  // It should still try CWD, so only fail if not in CWD either.
   EXPECT_THAT(
-      ResolveRegistryPath(std::string(kRelativePath)),
-      StatusIs(
-          absl::StatusCode::kFailedPrecondition,
-          HasSubstr("not found. Tried absolute and relative to workspace")));
+      FindRegistryFile(std::string(kRelativePath)),
+      StatusIs(absl::StatusCode::kFailedPrecondition,
+               HasSubstr("Registry path specified but not found: some_file.")));
+}
+
+TEST_F(GenerateBenchmarkMatricesTest, FindRegistryPathIsEmpty) {
+  EXPECT_THAT(FindRegistryFile(""),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("Registry path specified but not found:")));
 }
 
 }  // namespace

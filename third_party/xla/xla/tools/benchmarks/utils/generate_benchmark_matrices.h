@@ -30,20 +30,20 @@ using BenchmarkSuite = xla::BenchmarkSuite;
 
 // Parses a TextProto registry file into a BenchmarkSuite proto.
 // Returns an error if parsing fails (file not found, parse error).
-absl::StatusOr<BenchmarkSuite> ParseRegistry(const std::string& registry_path);
+absl::StatusOr<BenchmarkSuite> LoadBenchmarkSuiteFromFile(
+    const std::string& registry_path);
 
 // Generates the benchmark matrix JSON object.
 // Returns an empty JSON value object if the suite is empty or errors occur
 // during generation (though errors are primarily handled by printing
 // warnings).
-absl::StatusOr<Json::Value> GenerateMatrix(const BenchmarkSuite& suite);
+absl::StatusOr<Json::Value> BuildGitHubActionsMatrix(
+    const BenchmarkSuite& suite);
 
-// Resolves the registry path, checking absolute, workspace, and relative
-// paths.
-// Returns the resolved absolute path if found, otherwise an error.
-// Prints errors to std::cerr if resolution fails.
-absl::StatusOr<std::string> ResolveRegistryPath(
-    const std::string& registry_path);
+// Attempts to find the absolute path to the registry file.
+// Checks the provided path directly, then relative to BUILD_WORKSPACE_DIRECTORY
+// (if set), and finally relative to the current working directory.
+absl::StatusOr<std::string> FindRegistryFile(const std::string& registry_path);
 
 }  // namespace benchmarks
 }  // namespace tools

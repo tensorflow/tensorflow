@@ -20,7 +20,9 @@ cc_library(
     hdrs = ["generate_benchmark_matrices.h"],
     deps = [
         "//xla/tools/benchmarks/proto:benchmark_config_proto_cc",
-        "//xla/tsl/platform:file_system_helper",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -42,8 +44,10 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@jsoncpp_git//:jsoncpp",
         "@local_tsl//tsl/platform:path",
     ],
 )

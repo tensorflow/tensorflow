@@ -15,7 +15,7 @@
 
 # Default registry for XLA benchmarks.
 
-configs: [
+benchmarks: [
   {
     name: "gemma3_1b_flax_call"
     description: "Benchmarks Gemma3 1b in Flax using B200 GPUs."
