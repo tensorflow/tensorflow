@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_TRANSFORMS_ALL_GATHER_OPTIMIZER_H_
-#define XLA_SERVICE_GPU_TRANSFORMS_ALL_GATHER_OPTIMIZER_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_ALL_GATHER_OPTIMIZER_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_ALL_GATHER_OPTIMIZER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -46,4 +46,4 @@ class AllGatherOptimizer : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_TRANSFORMS_ALL_GATHER_OPTIMIZER_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_ALL_GATHER_OPTIMIZER_H_
