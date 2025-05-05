@@ -246,7 +246,7 @@ class TfrtCpuClient final : public CommonPjRtClient {
       const std::vector<const Shape*>& argument_layout_pointers,
       LayoutCanonicalizationCallback layout_canonicalization_callback,
       CompileOptions options,
-      absl::Nullable<const AotCompilationOptions*> aot_options = nullptr);
+      const AotCompilationOptions* absl_nullable aot_options = nullptr);
 
   int process_index_;
   // Includes all devices, including non-addressable devices.

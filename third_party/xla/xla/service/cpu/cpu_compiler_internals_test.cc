@@ -40,7 +40,7 @@ namespace {
 
 using CpuCompilerInternalsTest = HloTestBase;
 
-std::optional<int64_t> GetMetadataInt(absl::Nullable<llvm::Metadata*> value) {
+std::optional<int64_t> GetMetadataInt(llvm::Metadata* absl_nullable value) {
   if (value == nullptr) {
     return std::nullopt;
   }
@@ -56,7 +56,7 @@ std::optional<int64_t> GetMetadataInt(absl::Nullable<llvm::Metadata*> value) {
 }
 
 std::optional<std::string> GetMetadataString(
-    absl::Nullable<llvm::Metadata*> value) {
+    llvm::Metadata* absl_nullable value) {
   if (value == nullptr) {
     return std::nullopt;
   }

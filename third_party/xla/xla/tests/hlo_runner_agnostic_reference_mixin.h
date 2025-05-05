@@ -69,7 +69,7 @@ class HloRunnerAgnosticReferenceMixin : public T {
  protected:
   template <typename... BaseArgs>
   explicit HloRunnerAgnosticReferenceMixin(
-      absl::Nonnull<std::unique_ptr<HloRunnerInterface>> reference_runner,
+      absl_nonnull std::unique_ptr<HloRunnerInterface> reference_runner,
       BaseArgs&&... base_args)
       : T(std::forward<BaseArgs>(base_args)...),
         reference_runner_(std::move(reference_runner)) {}

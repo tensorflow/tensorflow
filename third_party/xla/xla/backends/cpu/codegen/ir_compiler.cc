@@ -106,8 +106,8 @@ static std::unique_ptr<HloModuleConfig> ParseXlaBackendExtraOptions(
 // of the proto should be ignored since they're just the default values.
 // We could instead return an unordered_map<str, str>, but we already have
 // helpers that expect a DebugOptions, so this ends up being simpler.
-static absl::Nullable<std::unique_ptr<HloModuleConfig>>
-GetXlaBackendExtraOptions(const llvm::Module& llvm_module) {
+static absl_nullable std::unique_ptr<HloModuleConfig> GetXlaBackendExtraOptions(
+    const llvm::Module& llvm_module) {
   llvm::Metadata* md = llvm_module.getModuleFlag("xla_backend_extra_options");
   if (md == nullptr) return nullptr;
   auto* md_string = llvm::dyn_cast<llvm::MDString>(md);

@@ -108,16 +108,16 @@ class OpaqueExecutable {
   // !!! STOP !!!
 
  protected:
-  explicit OpaqueExecutable(absl::Nonnull<const HloRunnerInterface*> creator)
+  explicit OpaqueExecutable(const HloRunnerInterface* absl_nonnull creator)
       : creator_(ABSL_DIE_IF_NULL(creator)) {}
   // Cannot be moved or copied.
   OpaqueExecutable(const OpaqueExecutable&) = default;
   OpaqueExecutable& operator=(const OpaqueExecutable&) = default;
 
   template <typename T>
-  static absl::StatusOr<absl::Nonnull<T*>> TryUnwrap(
+  static absl::StatusOr<T* absl_nonnull> TryUnwrap(
       const HloRunnerInterface& runner,
-      absl::Nonnull<OpaqueExecutable*> const wrapped) {
+      OpaqueExecutable* absl_nonnull const wrapped) {
     static_assert(
         std::is_base_of_v<OpaqueExecutable, T>,
         "TryUnwrap must be used with a subclass of OpaqueExecutable.");
@@ -134,9 +134,9 @@ class OpaqueExecutable {
   }
 
   template <typename T>
-  static absl::StatusOr<absl::Nonnull<const T*>> TryUnwrap(
+  static absl::StatusOr<const T* absl_nonnull> TryUnwrap(
       const HloRunnerInterface& runner,
-      absl::Nonnull<const OpaqueExecutable*> const wrapped) {
+      const OpaqueExecutable* absl_nonnull const wrapped) {
     static_assert(
         std::is_base_of_v<OpaqueExecutable, T>,
         "TryUnwrap must be used with a subclass of OpaqueExecutable.");
@@ -341,15 +341,15 @@ class HloRunnerInterface {
   // OpaqueExecutable. Returns an error if the OpaqueExecutable cannot be
   // unwrapped, or if the OpaqueExecutable does not contain at least one
   // HloModule.
-  virtual absl::StatusOr<absl::Nonnull<const HloModule*>> HloModuleFromWrapped(
+  virtual absl::StatusOr<const HloModule* absl_nonnull> HloModuleFromWrapped(
       const OpaqueExecutable* wrapped) const = 0;
 
   // Returns true if the two given OpaqueExecutables originate from the same
   // runner and are equivalent according to some notion specific to that runner.
   // Executables that were created by different runners can never be equivalent.
   virtual bool ExecutablesAreEquivalent(
-      absl::Nonnull<const OpaqueExecutable*> lhs,
-      absl::Nonnull<const OpaqueExecutable*> rhs) const = 0;
+      const OpaqueExecutable* absl_nonnull lhs,
+      const OpaqueExecutable* absl_nonnull rhs) const = 0;
 };
 
 }  // namespace xla
