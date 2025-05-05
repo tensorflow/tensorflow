@@ -69,25 +69,12 @@ class HloRunnerPjRt : public HloRunnerInterface {
                                   bool run_hlo_passes,
                                   ExecutionProfile* profile) override;
 
-  // As Execute(), but accepts and returns device buffers instead of host
-  // buffers.
+  // Like Execute(), but accepts and returns pjrt buffers instead of literals.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   ExecuteWithDeviceBuffers(
-      PjRtLoadedExecutable* executable, const ExecuteOptions& execute_options,
-      const std::vector<std::unique_ptr<PjRtBuffer>>& arguments);
-
-  struct ExecuteWithDeviceBuffersResult {
-    std::vector<std::unique_ptr<PjRtBuffer>> buffers;
-    bool untuple_result = false;
-  };
-  absl::StatusOr<ExecuteWithDeviceBuffersResult> ExecuteWithDeviceBuffers(
       OpaqueExecutable* executable,
       const std::vector<std::unique_ptr<PjRtBuffer>>& arguments,
       const ExecuteOptions* execute_options = nullptr);
-
-  // Creates an executable object for an HloModule.
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CreateExecutable(
-      HloModule* module, CompileOptions compile_options);
 
   // Creates an executable object given an HLO module. If run_hlo_passes is
   // true, the HLO passes will be run as part of compilation.
