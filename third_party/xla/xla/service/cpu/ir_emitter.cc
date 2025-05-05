@@ -2847,7 +2847,7 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
       // Emit nested tuples as flat buffer pointers
       TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
           operand->shape(), [&](const Shape& shape, const ShapeIndex& index) {
-            if (!shape.IsArray()) {
+            if (!shape.IsArray() && !shape.IsToken()) {
               return absl::OkStatus();
             }
             TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
@@ -2940,7 +2940,7 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
       TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
           custom_call->shape(),
           [&](const Shape& shape, const ShapeIndex& index) {
-            if (!shape.IsArray()) {
+            if (!shape.IsArray() && !shape.IsToken()) {
               return absl::OkStatus();
             }
             TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
