@@ -18,6 +18,9 @@ limitations under the License.
 #include <assert.h>
 #include <stddef.h>
 
+#include <cstdint>
+
+#include "absl/log/check.h"
 #include "xla/tsl/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stringpiece.h"
