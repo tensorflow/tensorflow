@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/python/lib/core/numpy.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -198,7 +199,7 @@ absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type) {
   const CustomDtypes& custom_dtypes = GetCustomDtypes();
   auto to_nb_dtype = [](int typenum) -> nb_dtype {
     return nb::steal<nb_dtype>(
-        reinterpret_cast<PyObject*>(PyArray_DescrFromType(typenum)));
+        tsl::safe_reinterpret_cast<PyObject*>(PyArray_DescrFromType(typenum)));
   };
   switch (type) {
     case PRED:
@@ -286,7 +287,7 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
   const CustomDtypes& custom_dtypes = GetCustomDtypes();
   auto to_nb_dtype = [](int typenum) -> nb_dtype {
     return nb::steal<nb_dtype>(
-        reinterpret_cast<PyObject*>(PyArray_DescrFromType(typenum)));
+        tsl::safe_reinterpret_cast<PyObject*>(PyArray_DescrFromType(typenum)));
   };
   switch (dtype.kind()) {
     case ifrt::DType::kPred:
@@ -391,7 +392,7 @@ absl::StatusOr<nb_dtype> IfrtDtypeToDtypeWithTokenCanonicalization(
   if (dtype.kind() == ifrt::DType::kToken) {
     // Treat token as bool.
     return nb::steal<nb_dtype>(
-        reinterpret_cast<PyObject*>(PyArray_DescrFromType(NPY_BOOL)));
+        tsl::safe_reinterpret_cast<PyObject*>(PyArray_DescrFromType(NPY_BOOL)));
   }
 
   return IfrtDtypeToNbDtype(dtype);

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "xla/tsl/python/lib/core/numpy.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 #if NPY_ABI_VERSION < 0x02000000
 #define PyDataType_ELSIZE(descr) ((descr)->elsize)
@@ -52,19 +53,19 @@ class nb_dtype : public nanobind::object {
   static nb_dtype from_args(const nanobind::object& args);
 
   int char_() const {
-    auto* descr = reinterpret_cast<PyArray_Descr*>(ptr());
+    auto* descr = tsl::safe_reinterpret_cast<PyArray_Descr*>(ptr());
     return descr->type;
   }
 
   int itemsize() const {
-    auto* descr = reinterpret_cast<PyArray_Descr*>(ptr());
+    auto* descr = tsl::safe_reinterpret_cast<PyArray_Descr*>(ptr());
     return PyDataType_ELSIZE(descr);
   }
 
   /// Single-character code for dtype's kind.
   /// For example, floating point types are 'f' and integral types are 'i'.
   char kind() const {
-    auto* descr = reinterpret_cast<PyArray_Descr*>(ptr());
+    auto* descr = tsl::safe_reinterpret_cast<PyArray_Descr*>(ptr());
     return descr->kind;
   }
 };

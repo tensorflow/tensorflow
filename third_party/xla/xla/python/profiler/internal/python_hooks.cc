@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/path.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -282,7 +283,8 @@ void PythonHooks::ProfileSlow(const py::object& frame, const std::string& event,
     }
   }
 
-  ProfileFast(reinterpret_cast<PyFrameObject*>(frame.ptr()), what, arg.ptr());
+  ProfileFast(tsl::safe_reinterpret_cast<PyFrameObject*>(frame.ptr()), what,
+              arg.ptr());
 }
 
 void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
@@ -325,7 +327,7 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
     case PyTrace_C_CALL: {
       if (PyCFunction_Check(arg)) {
         // Python stack does not have a filename/line_no for native calls.
-        auto* func = reinterpret_cast<PyCFunctionObject*>(arg);
+        auto* func = tsl::safe_reinterpret_cast<PyCFunctionObject*>(arg);
         entries_[thread_id].active.emplace(now, 0, func);
       }
       break;
@@ -341,7 +343,7 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
         } else if (options_.include_incomplete_events) {
           // Only the end of the events is recorded, use profiler start as
           // start timestamp of the new event.
-          auto* func = reinterpret_cast<PyCFunctionObject*>(arg);
+          auto* func = tsl::safe_reinterpret_cast<PyCFunctionObject*>(arg);
           entries_[thread_id].completed.emplace_back(start_timestamp_ns_, now,
                                                      func);
         }
