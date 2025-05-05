@@ -20,7 +20,8 @@
 
 ### Major Features and Improvements
 
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+*  `tf.lite`
+    * Added TFLite builtin op support for `tf.nn.softsign` op for output data type `tf.float32` on CPU
 
 ### Bug Fixes and Other Changes
 
