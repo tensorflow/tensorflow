@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_TRANSFORMS_ALL_REDUCE_BLUECONNECT_H_
-#define XLA_SERVICE_GPU_TRANSFORMS_ALL_REDUCE_BLUECONNECT_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_BLUECONNECT_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_BLUECONNECT_H_
 
 #include <cstddef>
 
@@ -53,4 +53,4 @@ class AllReduceBlueConnect : public HloModulePass {
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_TRANSFORMS_ALL_REDUCE_BLUECONNECT_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_BLUECONNECT_H_
