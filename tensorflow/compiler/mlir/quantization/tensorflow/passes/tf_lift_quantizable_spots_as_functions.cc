@@ -42,8 +42,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "re2/re2.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_lift_as_function_call.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/temp_tf_op_quant_spec.h"
@@ -57,10 +57,6 @@ namespace {
 
 using QuantizationUnit =
     ::tensorflow::quantization::UnitWiseQuantizationSpec::QuantizationUnit;
-using quant::AppendToVector;
-using quant::FunctionCallOpType;
-using quant::IsEinsumSupportedByXlaDotV2;
-using quant::IsInLiftedFunc;
 using ::tensorflow::quantization::OpSet;
 using ::tensorflow::quantization::QuantizationComponentSpec;
 using ::tensorflow::quantization::QuantizationMethod;
@@ -406,7 +402,7 @@ void TFLiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 
   // Iterate over the sorted list of functions to keep the order deterministic.
-  for (func::FuncOp func : quant::GetSortedFunctions(module)) {
+  for (func::FuncOp func : GetSortedFunctions(module)) {
     if (failed(applyPatternsGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-lift-quantizable-spots-as-functions failed.";
       signalPassFailure();

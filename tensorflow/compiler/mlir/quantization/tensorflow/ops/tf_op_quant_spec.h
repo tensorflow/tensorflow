@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
 namespace mlir {
@@ -50,10 +50,10 @@ GetWeightComponentSpec(
 
 // Returns the spec for the given operation that can be used for both of
 // dynamic and static range quantization.
-std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op);
+std::unique_ptr<tf_quant::OpQuantSpec> GetTFOpQuantSpec(Operation* op);
 
 // Returns quantization scale specs (fixed output, same scale) for a TF op.
-std::unique_ptr<OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op);
+std::unique_ptr<tf_quant::OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op);
 
 }  // namespace quant
 }  // namespace mlir
