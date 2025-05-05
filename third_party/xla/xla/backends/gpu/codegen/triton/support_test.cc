@@ -2745,6 +2745,32 @@ TEST_P(OutfeedTest, Outfeed) {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc);
 }
 
+using MapTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
+
+TEST_P(MapTest, Map) {
+  auto [data_type, opcode, cc] = GetParam();
+
+  // Note: the test is only relevant for datatypes supported by kAdd op.
+  const std::string kHloTestTemplate = R"(
+map_computation {
+  p = $0[] parameter(0)
+  ROOT add = $0[] add(p, p)
+}
+
+ENTRY triton_computation {
+  parameter = $0[10, 20] parameter(0)
+  ROOT map_op = $0[10, 20] map(parameter), dimensions={0, 1}, to_apply=map_computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{4, 8}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(MapSuite, MapTest,
+                         AllTestCombinationsForOpcodes({HloOpcode::kMap}),
+                         TritonSupportTestTypeAndOpcodeAndDeviceToString);
+
 INSTANTIATE_TEST_SUITE_P(
     OutfeedSuite, OutfeedTest,
     ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
@@ -2760,7 +2786,6 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kDynamicUpdateSlice,
     HloOpcode::kGather,
     HloOpcode::kGetTupleElement,
-    HloOpcode::kMap,
     HloOpcode::kPad,
     HloOpcode::kRaggedDot,
     HloOpcode::kRecv,
@@ -2817,6 +2842,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kDot);
   ret.emplace(HloOpcode::kFft);
   ret.emplace(HloOpcode::kGetDimensionSize);
+  ret.emplace(HloOpcode::kMap);
   ret.emplace(HloOpcode::kReverse);
   ret.emplace(HloOpcode::kRngBitGenerator);
   ret.emplace(HloOpcode::kRngGetAndUpdateState);
