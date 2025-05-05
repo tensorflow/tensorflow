@@ -151,7 +151,7 @@ class CpuUtils {
 
   // Return chrono::duration per each clock
   static std::chrono::duration<double> ConvertClockCycleToTime(
-      const int64_t clock_cycle);
+      int64_t clock_cycle);
 
  private:
   class DefaultCpuUtilsHelper : public ICpuUtilsHelper {
