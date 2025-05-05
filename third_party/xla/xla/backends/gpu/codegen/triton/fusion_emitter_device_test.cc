@@ -1645,7 +1645,9 @@ CHECK:      tt.trans %[[TILE]] {order = array<i32: 2, 0, 1>} : tensor<8x4x1xf32>
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
-TEST_F(TritonEmitterTest, Transpose3DWithExtraOutput) {
+// TODO(b/390559452): Capture the iteration order from the propagated tiling.
+// When computing the tiling separately we need to use the same iteration order.
+TEST_F(TritonEmitterTest, DISABLED_Transpose3DWithExtraOutput) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
 

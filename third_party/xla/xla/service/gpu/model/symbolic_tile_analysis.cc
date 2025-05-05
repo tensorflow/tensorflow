@@ -688,147 +688,123 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
 }
 
 namespace {
-void CollectUsedDimIds(AffineExpr expr, std::vector<bool>& dim_var_used) {
-  switch (expr.getKind()) {
-    case AffineExprKind::DimId: {
-      const uint32_t dim_id =
-          mlir::cast<mlir::AffineDimExpr>(expr).getPosition();
-      dim_var_used[dim_id] = true;
-      break;
-    }
-    case AffineExprKind::Add:
-    case AffineExprKind::Mul:
-    case AffineExprKind::FloorDiv:
-    case AffineExprKind::Mod: {
-      auto bin_op = mlir::cast<mlir::AffineBinaryOpExpr>(expr);
-      CollectUsedDimIds(bin_op.getLHS(), dim_var_used);
-      CollectUsedDimIds(bin_op.getRHS(), dim_var_used);
-      break;
-    }
-    case AffineExprKind::CeilDiv: {
-      std::string expr_str;
-      llvm::raw_string_ostream string_stream(expr_str);
-      expr.print(string_stream);
-      CHECK(false)
-          << "We do not expect CeilDiv in our indexing expressions, got "
-          << expr_str;
-      break;
-    }
-    case AffineExprKind::Constant:
-    case AffineExprKind::SymbolId:
-      break;
-  }
-}
-
-bool AllDimIdsAreUsedOrHaveDomainSize1(const IndexingMap& tile_offsets) {
-  std::vector<bool> dim_var_used(tile_offsets.GetDimVarsCount(), false);
-  for (int64_t i = 0; i < dim_var_used.size(); ++i) {
-    if (tile_offsets.GetDimensionBound(i).IsPoint()) {
-      dim_var_used[i] = true;
-    }
-  }
-  auto offset_expressions = tile_offsets.GetAffineMap().getResults();
-  for (auto offset_expr : offset_expressions) {
-    CollectUsedDimIds(offset_expr, dim_var_used);
-  }
-  return absl::c_all_of(dim_var_used, [](bool value) { return value; });
-}
-
-int64_t GetNumberOfBlocks(TiledHloInstruction* tiled_hlo_instr) {
-  auto dimensions = tiled_hlo_instr->hlo()->shape().dimensions();
-  int64_t num_blocks = 1;
+llvm::SmallVector<int64_t> GetNumberOfTilesPerDimension(
+    const TiledHloInstruction& tiled_hlo_instr) {
+  llvm::SmallVector<int64_t> result;
+  absl::Span<const int64_t> dimensions =
+      tiled_hlo_instr.hlo()->shape().dimensions();
+  result.reserve(dimensions.size());
   for (auto [dim_size, tile_size] :
-       llvm::zip(dimensions, tiled_hlo_instr->tile_sizes())) {
-    num_blocks *= CeilOfRatio(dim_size, tile_size);
+       llvm::zip(dimensions, tiled_hlo_instr.tile_sizes())) {
+    result.push_back(CeilOfRatio(dim_size, tile_size));
   }
-  return num_blocks;
+  return result;
 }
 
-// Returns true when we can determine that the tiling attached to
-// `tiled_hlo_instr` covers the whole shape of the corresponding hlo instruction
-// uniquely. For a tiling to cover a whole shape uniquely, we need to prove that
-// every output index is covered by the tiling function (*surjectivity*), and
-// that tiles do not overlap (*injectivity*).
-bool TilingCoversWholeShapeUniquely(TiledHloInstruction* tiled_hlo_instr) {
-  // Check whether we can use `tiled_hlo_instr`.
-  Shape output_shape = tiled_hlo_instr->hlo()->shape();
-  auto maybe_tile_offset_indexing = tiled_hlo_instr->tile_offsets_indexing();
-  if (!maybe_tile_offset_indexing.ok()) {
-    return false;
-  }
-  auto tile_offset_indexing = maybe_tile_offset_indexing.value();
-  // We first check *injectivity*. `tile_offsets_indexing` is derived from a map
-  // from the "real root"'s output to the output of the given instruction, and
-  // gives us the tile offsets of each tile. By construction, we know that the
-  // mapping can be decomposed into offset + stride * index, so it is a linear
-  // expression. Therefore it should hold that also the composed indexing map
-  // `tile_offset_indexing` (where we have inserted 0, tile_size, tile_size * 2,
-  // ... instead of 0, 1, 2, ...) can be decomposed to an expression
-  // offset + stride * tile_size * index. This implies that for each dimension
-  // `tile_offset_indexing` has an expression for the tile offsets that ensures
-  // there is a gap of tile_size between different tile offsets. Therefore
-  // injectivity can be checked by verifying that for each combination of input
-  // variables, a distinct result is produced. We can check this by ensuring
-  // that each input variable is used at least once in the result expression of
-  // `tile_offsets_indexing`.
+IndexingMap LinearizeTileOffsets(
+    const IndexingMap& tile_offsets_indexing,
+    absl::Span<const int64_t> num_output_tiles_per_dim,
+    mlir::MLIRContext* mlir_context) {
+  int64_t num_tiles = Product(num_output_tiles_per_dim);
+  mlir::AffineExpr program_id = mlir::getAffineDimExpr(0, mlir_context);
+  auto tile_exprs =
+      DelinearizeIndex(num_output_tiles_per_dim, program_id, mlir_context);
+  auto program_id_to_output_dims = IndexingMap::FromTensorSizes(
+      mlir::AffineMap::get(
+          /*dimCount=*/1, /*symbolCount=*/0, tile_exprs, mlir_context),
+      /*dim_upper_bounds=*/{num_tiles}, /*symbol_upper_bounds=*/{});
+  auto linearized_tile_offsets_indexing =
+      ComposeIndexingMaps(program_id_to_output_dims, tile_offsets_indexing);
+  linearized_tile_offsets_indexing.Simplify();
+  linearized_tile_offsets_indexing.RescaleSymbols();
+  linearized_tile_offsets_indexing.RemoveUnusedSymbols();
+  return linearized_tile_offsets_indexing;
+}
 
-  // This is a slightly handwavy claim, but holds because expressions of the
-  // form `d0 floordiv c` never initially appear in a symbolic tile without an
-  // associated `d0 mod c`, and operations of the form `d0 * d1` never appear.
-  // This should leave us with a guarantee that any combination involving
-  // several independent variables won't ever produce duplicate indices. (And
-  // trivially, if a parameter `d0` doesn't appear in the output expressions, it
-  // means that there are at least `range(d0)` identical outputs for the
-  // function. In that case, injectivity only holds if `range(d0) = 1`.
-  // TODO(b/390559452): This logic may not work out for ops like ReduceWindow or
-  // Convolutions, where we might have overlapping tiles "by design"
-  // (recognizable with symbol `s_i` with `range(s_i) > 1`). For now, just
-  // disallow any symbols.
-  if (tile_offset_indexing.GetSymbolCount() > 0) {
+// Returns whether the tiling from `output` can be used by the emitter for
+// producing a fusion output without causing issues in case a buffer is shared
+// between a fusion operand and a fusion output. Buffer sharing is (as of May
+// 2025) allowed if there is a path from the fusion operand to the fusion output
+// with only elementwise or bitcast ops. To avoid race conditions where we
+// overwrite an input value that is still required to compute another output
+// value, we need to make sure that we use an input tile only in the iteration
+// in which we overwrite it. Just using the propagated tile offsets of `output`
+// does not ensure this, as a tile size may not divide the dimension size evenly
+// and padding will be used. We might have different padding for different
+// output shapes. For example consider the following triton fusion
+// fused_computation {
+//   param_0 = f32[36] parameter(0)
+//   abs = f32[36] abs(param_0)
+//   reshape = f32[3,12] reshape(abs)
+//   ROOT tuple = (f32[3,12], f32[36]) tuple(reshape, abs)
+// }
+// with tiling parameters {1, 16} and {16}, respectively. With the f32[36]
+// shape, we would only pad the last tile, while for the shape f32[3,12] we
+// would pad all tiles. By ensuring the equality of the propagated tile offsets
+// indexing map with a tile offsets indexing map computed directly for this root
+// using the propagated tile size parameter, we ensure that there will be no
+// difference regarding which of the output tiles is padded. In our example
+// above, the propagated tile offsets on the `abs` instruction would be [0, 12,
+// 24], while the directly computed tile offsets would be [0, 16, 32].
+// The equality of the tile offsets maps implies that we would be able to CSE
+// all producer instructions of `output` with the TiledHloInstructions computed
+// by using `output` as a tiling root using the propagated tile sizes as tiling
+// parameters. As a side effect, this check will also make sure that by using
+// the tiling from `output` we will produce the full output.
+// `reference_output_tiling_iteration_space` is the number of tiles per output
+// dimension of the root from which the tiling was propagated. We need to ensure
+// that the iteration spaces for tiles match for all outputs. This is a
+// restriction we may lift later in case the buffer sharing logic is adapted.
+// This method assumes that `output` has tile_offset_indexing computed, and
+// returns a FailedPrecondition error if not.
+absl::StatusOr<bool> IsSafeForBufferSharing(
+    const TiledHloInstruction& output,
+    absl::Span<const int64_t> reference_output_tiling_iteration_space,
+    mlir::MLIRContext* mlir_context) {
+  // For expanding reshapes, we can have the case that the number of
+  // blocks are different. This is not supported by the triton emitter.
+  llvm::SmallVector<int64_t> num_tiles_per_dim =
+      GetNumberOfTilesPerDimension(output);
+  if (Product(num_tiles_per_dim) !=
+      Product(reference_output_tiling_iteration_space)) {
     return false;
   }
-  if (!AllDimIdsAreUsedOrHaveDomainSize1(tile_offset_indexing)) {
-    return false;
+  // Compute the tile offset indexing directly for `output`. We use default
+  // iteration order and tile stride of 1, which means we can take the identity
+  // map.
+  auto identity_indexing_map =
+      CreateIdentityMap(output.hlo()->shape(), mlir_context);
+  TF_ASSIGN_OR_RETURN(auto tiling_info, ComputeOutputTilingInfo(
+                                            identity_indexing_map,
+                                            output.tile_sizes(), mlir_context));
+
+  // Check whether the tile_offsets_indexing expression is the same as one
+  // computed directly for this root. We need to linearize both indexing
+  // maps to be able to compare them.
+  absl::StatusOr<IndexingMap> maybe_tile_offset_indexing =
+      output.tile_offsets_indexing();
+  if (!maybe_tile_offset_indexing.ok()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Expected ", output.ToString(),
+                     " to have a tile_offsets_indexing value"));
   }
-  auto range_evaluator = tile_offset_indexing.GetRangeEvaluator();
-  for (int64_t i = 0; i < output_shape.dimensions().size(); ++i) {
-    // For now, all strides need to be 0 or 1. With stride 0, we also need to
-    // check whether the tile covers the whole dimension.
-    // TODO(b/390559452): If we allow strides with absolute value > 1, we
-    // need to make sure that the tile offset expression has an additive
-    // component with domain [0, stride - 1]. Also we don't handle negative
-    // strides yet.
-    if (tiled_hlo_instr->tile_stride(i) < 0 ||
-        tiled_hlo_instr->tile_stride(i) > 1) {
-      return false;
-    }
-    // Below we check *surjectivity*, which amounts to checking that
-    // `tile_offsets_indexing` yields contiguous tiles of contiguous
-    // elements (`stride = 1`), and that the first tile and last tile
-    // respectively map to the start and end of the array.
-    // Given that we restrict the stride to 0 or 1, it is enough to check the
-    // range of the tile offsets whether the largest tile offset plus the tile
-    // cover the dimension size, and the smallest tile offset is 0.
-    auto interval = range_evaluator.ComputeExpressionRange(
-        tile_offset_indexing.GetAffineMap().getResult(i));
-    if (interval.lower != 0) {
-      return false;
-    }
-    // We can allow that the last tile extends into out of bounds, we add
-    // proper masking during codegen to make sure that we don't
-    // read/write out of bounds.
-    if ((interval.upper + tiled_hlo_instr->tile_size(i) <
-         output_shape.dimensions(i))) {
-      return false;
-    }
-  }
-  return true;
+  IndexingMap linearized_propagated_tile_offsets_indexing =
+      LinearizeTileOffsets(maybe_tile_offset_indexing.value(),
+                           reference_output_tiling_iteration_space,
+                           mlir_context);
+  IndexingMap linearized_local_tile_offsets_indexing = LinearizeTileOffsets(
+      tiling_info.output_tile_offset_indexing, num_tiles_per_dim, mlir_context);
+  return linearized_propagated_tile_offsets_indexing ==
+         linearized_local_tile_offsets_indexing;
 }
 
 absl::StatusOr<std::vector<const TiledHloInstruction*>> InitializeTiledRoots(
     absl::Span<const HloInstruction* const> roots,
     const std::vector<std::unique_ptr<TiledHloInstruction>>&
-        tiled_hlo_instructions) {
+        tiled_hlo_instructions,
+    absl::Span<const int64_t> num_output_tiles_per_dim,
+    mlir::MLIRContext* mlir_context) {
+  // TODO(b/390559452): Investigate whether it is faster to use linear lookup.
   absl::flat_hash_map<const HloInstruction*, int64_t> roots_to_output_index;
   roots_to_output_index.reserve(roots.size());
   int64_t output_index = 0;
@@ -841,23 +817,33 @@ absl::StatusOr<std::vector<const TiledHloInstruction*>> InitializeTiledRoots(
   // outputs can reference "internal" tiled hlo instructions and may appear
   // multiple times in `instructions_`.
   std::vector<const TiledHloInstruction*> tiled_roots(roots.size(), nullptr);
-  // Handle the real root as special case.
+  // Handle the real root as special case. Then we don't need to do any extra
+  // work in case we are not dealing with a multi-output fusion.
   auto real_root = tiled_hlo_instructions.back().get();
   tiled_roots[roots_to_output_index[real_root->hlo()]] = real_root;
-  int64_t num_blocks = GetNumberOfBlocks(real_root);
+
   for (const auto& tiled_hlo_instr : llvm::drop_end(tiled_hlo_instructions)) {
     auto it = roots_to_output_index.find(tiled_hlo_instr->hlo());
-    if (it != roots_to_output_index.end() &&
-        // For expanding reshapes, we can have the case that the number of
-        // blocks are different. This is not supported by the triton emitter.
-        num_blocks == GetNumberOfBlocks(tiled_hlo_instr.get()) &&
-        TilingCoversWholeShapeUniquely(tiled_hlo_instr.get())) {
-      // We may overwrite a previous value, but in case there are multiple
-      // tiled hlo instructions for the root, we arbitrarily prefer the last one
-      // in def-before-use order.
-      tiled_roots[it->second] = tiled_hlo_instr.get();
+    if (it == roots_to_output_index.end()) {
+      continue;
     }
+    // We potentially allow sharing an input buffer with an output buffer.
+    // Therefore we need to make sure that we use an input tile only in the
+    // iteration in which we overwrite it.
+    TF_ASSIGN_OR_RETURN(
+        bool valid,
+        IsSafeForBufferSharing(*tiled_hlo_instr,
+                               /*reference_output_tiling_iteration_space=*/
+                               num_output_tiles_per_dim, mlir_context));
+    if (!valid) {
+      continue;
+    }
+    // We may overwrite a previous value, but in case there are multiple
+    // tiled hlo instructions for the root, we arbitrarily prefer the last one
+    // in def-before-use order.
+    tiled_roots[it->second] = tiled_hlo_instr.get();
   }
+
   // We expect that we found at least one tiled hlo instruction for each root.
   // If not, return an error.
   for (auto [tiled_root, root] : llvm::zip(tiled_roots, roots)) {
@@ -1087,7 +1073,9 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
   auto tiled_hlo_instructions = tiled_hlo_instructions_set.ExtractData();
   TF_ASSIGN_OR_RETURN(
       auto tiled_roots,
-      InitializeTiledRoots(root_indexing_.roots, tiled_hlo_instructions));
+      InitializeTiledRoots(root_indexing_.roots, tiled_hlo_instructions,
+                           output_tiling_info.num_output_tiles_per_dim,
+                           context_));
   return TiledHloComputation::FromSortedTiledHloInstructions(
       std::move(tiled_hlo_instructions), tiled_roots,
       output_tiling_info.num_output_tiles_per_dim);
