@@ -17,8 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_BCAST_H_
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/macros.h"
