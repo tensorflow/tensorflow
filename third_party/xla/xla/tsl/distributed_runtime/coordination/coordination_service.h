@@ -576,9 +576,14 @@ class CoordinationService {
   CoordinatedTaskSet AliveTasks(const CoordinatedTaskSet& tasks) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
+  // Refreshes or cleans up the barrier for a task that reconnected.
+  void RefreshAliveTasksBarrierForReconnectedTask(
+      const tensorflow::CoordinatedTask& reconnected_task)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+
   // Refreshes the AlivenessStates of all pending GetAliveTasks call,
   // potentially finishing some of the pending calls. The AlivenessStates should
-  // be refreshed, for example, after a task has failed.
+  // be refreshed, for example, after a task has failed or reconnected.
   void RefreshAliveness() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   static tensorflow::CoordinatedTaskStateInfo CreateTaskStateInfo(
