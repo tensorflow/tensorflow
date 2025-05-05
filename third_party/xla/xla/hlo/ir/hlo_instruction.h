@@ -2520,19 +2520,25 @@ class HloInstruction {
 
   static const Rare* const kEmptyRare;
 
-  bool has_rare() const { return rare_ != nullptr; }
+  bool has_rare() const { return has_rare_; }
 
   // Return the allocated rare state, or the pointer to the static empty rare
   // state
   const Rare* rare() const {
+    if (!has_rare_) {
+      return kEmptyRare;
+    }
     Rare* r = rare_.get();
-    return (r == nullptr) ? kEmptyRare : r;
+    DCHECK(r != nullptr);
+    return r;
   }
 
   // Lazily allocate the Rare struct
   Rare* mutable_rare() {
     if (rare_ == nullptr) {
+      DCHECK(!has_rare_);
       rare_ = std::make_unique<Rare>();
+      has_rare_ = true;
     }
     return rare_.get();
   }
@@ -2598,12 +2604,11 @@ class HloInstruction {
   // True if this instruction is the root of a computation.
   bool is_root_ : 1;
 
+  // True if rare_ is non-null.  Separate bit here for better cache behavior
+  bool has_rare_ : 1;
+
   // Instruction operands.
   InstructionVector operands_;
-
-  // If needed, points off to allocated struct holding out-of-line info
-  // for things that are rarely filled
-  std::unique_ptr<Rare> rare_;
 
   // The users of this instruction. Users are HLOs where this instruction is an
   // operand.
@@ -2631,6 +2636,10 @@ class HloInstruction {
   // Original value this instruction corresponds to in the unoptimized HLO
   // graph.
   std::shared_ptr<OriginalValue> original_value_ = nullptr;
+
+  // If needed, points off to allocated struct holding out-of-line info
+  // for things that are rarely filled
+  std::unique_ptr<Rare> rare_;
 
   // Metadata for debugging.  Allocate it on heap, so that it does not increase
   // the memory footprint of HloInstruction.

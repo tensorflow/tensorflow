@@ -4448,6 +4448,7 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
       cleaned_up_(false),
       marked_as_dead_(false),
       is_root_(false),
+      has_rare_(false),
       shape_(shape),
       name_(HloOpcodeString(opcode)) {
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));

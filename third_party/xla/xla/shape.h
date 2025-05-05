@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stdbool.h>
 
+#include <atomic>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -56,6 +57,8 @@ namespace xla {
 //
 // These categories are mutually exclusive, i.e. a shape can only be one of
 // them.
+//
+// Shape representation may be shared internally with other Shapes.
 class Shape {
  public:
   // Returns true if the given dimension size is valid.
@@ -248,7 +251,10 @@ class Shape {
   void DeleteDimensions(absl::Span<const int64_t> dims_to_delete);
 
   // Returns the primitive type of the shape.
-  PrimitiveType element_type() const { return element_type_; }
+  PrimitiveType element_type() const {
+    Rep* r = rep_do_not_use_directly_;
+    return (r == nullptr ? PRIMITIVE_TYPE_INVALID : r->element_type);
+  }
 
   // Sets the primitive type of the shape. If the new type and the old type
   // are in different categories (e.g. array vs. tuple), the state is reset
@@ -338,6 +344,14 @@ class Shape {
   // Precondition: this is a tuple shape and `index` is a valid tuple component
   // index.
   const Shape& tuple_shapes(int index) const;
+
+  // Returns a pointer to the shape of the i-th tuple component.
+  // Precondition: this is a tuple shape and `index` is a valid tuple component
+  // index.
+  //
+  // Note: since Shape internal representation may be shared with other Shapes,
+  // do not make a copy of *this while making changes through the returned
+  // pointer. (Those edits may end up affecting the copy of *this.)
   Shape* mutable_tuple_shapes(int index) {
     return &tuple_state().tuple_shapes[index];
   }
@@ -346,6 +360,10 @@ class Shape {
   // Precondition: this is a tuple shape.
   // Postcondition: the returned pointer is not null, and the pointee is owned
   // by this shape.
+  //
+  // Note: since Shape internal representation may be shared with other Shapes,
+  // do not make a copy of *this while making changes through the returned
+  // pointer. (Those edits may end up affecting the copy of *this.)
   Shape* add_tuple_shapes();
 
   // Clears all tuple components (i.e. makes this shape a 0-tuple).
@@ -355,6 +373,13 @@ class Shape {
   // Returns a vector of all tuple component shapes.
   // Precondition: this is a tuple shape.
   const std::vector<Shape>& tuple_shapes() const;
+
+  // Returns a vector of all tuple component shapes.
+  // Precondition: this is a tuple shape.
+  //
+  // Note: since Shape internal representation may be shared with other Shapes,
+  // do not make a copy of *this while making changes through the returned
+  // pointer. (Those edits may end up affecting the copy of *this.)
   std::vector<Shape>* mutable_tuple_shapes() {
     return &tuple_state().tuple_shapes;
   }
@@ -381,6 +406,10 @@ class Shape {
   // Precondition: this is an array shape.
   // Postcondition: the returned pointer is not null, and the pointee is owned
   // by this shape.
+  //
+  // Note: since Shape internal representation may be shared with other Shapes,
+  // do not make a copy of *this while making changes through the returned
+  // pointer. (Those edits may end up affecting the copy of *this.)
   Layout* mutable_layout() {
     auto& state = array_state();
     if (state.layout == std::nullopt) {
@@ -501,6 +530,8 @@ class Shape {
     bool ignore_buffer_ = false;
   };
 
+  uint64_t FingerprintWithLayout() const;
+
   // Test that all fields of the shape are the same, equivalent to Equal().
   bool operator==(const Shape& other) const { return Equal()(*this, other); }
   bool operator!=(const Shape& other) const { return !(*this == other); }
@@ -514,7 +545,7 @@ class Shape {
       return H::combine(std::move(h), state->tuple_shapes.size());
     }
     if (const auto* const state = s.if_array_state()) {
-      h = H::combine(std::move(h), s.element_type_, state->dimensions,
+      h = H::combine(std::move(h), s.element_type(), state->dimensions,
                      state->dynamic_dimensions);
       if (kIsLayoutSensitive) {
         h = H::combine(std::move(h), state->layout);
@@ -522,21 +553,24 @@ class Shape {
       return h;
     }
     if (const auto* const state = s.if_buffer_state()) {
-      return H::combine(std::move(h), s.element_type_, state->buffer_shape);
+      return H::combine(std::move(h), s.element_type(), state->buffer_shape);
     }
-    return H::combine(std::move(h), s.element_type_);
+    return H::combine(std::move(h), s.element_type());
   }
 
   template <typename H>
   friend H AbslHashValue(H h, const Shape& s) {
-    return Shape::Hash(std::move(h), s);
+    return H::combine(std::move(h), s.FingerprintWithLayout());
   }
+
+  // For internal use by Literal implementation.
+  void RemoveSharingForLiteral();
 
  private:
   friend absl::Status ValidateNonLayoutProperties(const Shape& shape);
 
   // Define one state struct for each shape category. Depending on the element
-  // type, the state_ variant will be set to exactly one of these structs.
+  // type, the state variant will be set to exactly one of these structs.
   // This design has several benefits:
   //   - It prevents (by construction) bugs where the shape's state has
   //     non-empty fields that don't match the shape's element type.
@@ -576,6 +610,78 @@ class Shape {
   using State = std::variant<InvalidState, TokenState, OpaqueState, ArrayState,
                              TupleState, BufferState>;
 
+  // Copy-on-write state.
+  struct Rep {
+    std::atomic<int32_t> ref{1};
+
+    // The element type of this shape (tuple, array, etc).
+    PrimitiveType element_type = PRIMITIVE_TYPE_INVALID;
+
+    // Lazily computed fingerprint for this shape. Includes layout info.
+    // Zero means may be invalid (or we happened upon the 1-in-2^64 case where
+    // the printer output hashes to zero).
+    std::atomic<uint64_t> cached_fingerprint_with_layout = 0;
+
+    // The state of this shape.
+    // Invariant: element_type_ always matches the type held in this variant.
+    State state;
+  };
+
+  static void Ref(Rep* r) {
+    // r will be null for empty Shape rep which is not ref-counted.
+    if (r == nullptr) {
+      return;
+    }
+    const int32_t old_ref = r->ref.fetch_add(1, std::memory_order_relaxed);
+    DCHECK_GT(old_ref, 0);
+  }
+
+  static void Unref(Rep* r) {
+    // r will be null for empty Shape rep which is not ref-counted.
+    if (r == nullptr) {
+      return;
+    }
+
+    const int32_t old_ref = r->ref.fetch_sub(1, std::memory_order_seq_cst);
+    DCHECK_GT(old_ref, 0);
+    if (old_ref == 1) {
+      // Zero after decrement
+      delete r;
+    }
+  }
+
+  static const State& empty_state();
+
+  const State& state() const {
+    Rep* r = rep_do_not_use_directly_;
+    if (r == nullptr) {
+      return empty_state();
+    }
+    return r->state;
+  }
+
+  State* mutable_state() {
+    Rep* r = rep_do_not_use_directly_;
+    if (r == nullptr) {
+      rep_do_not_use_directly_ = new Rep;
+    } else {
+      const int32_t ref = r->ref.load(std::memory_order_acquire);
+      DCHECK_GT(ref, 0);
+      if (ref != 1) {
+        // Remove sharing
+        Rep* copy = new Rep;
+        copy->element_type = r->element_type;
+        copy->state = r->state;
+        rep_do_not_use_directly_ = copy;
+        Unref(r);
+      } else {
+        // Invalidate cached fingerprint since caller may mutate state.
+        r->cached_fingerprint_with_layout.store(0, std::memory_order_relaxed);
+      }
+    }
+    return &rep_do_not_use_directly_->state;
+  }
+
   // CHECKs that the dimension size is valid.
   void CheckDimensionSize(int dim_index, int64_t size, bool is_dynamic);
 
@@ -585,7 +691,7 @@ class Shape {
   // Shape from an unvalidated proto.
   void UnsafeAddDimension(int64_t value, bool is_dynamic);
 
-  // Convenience accessors for the state_ variant. Each if_*_state() accessor
+  // Convenience accessors for the state variant. Each if_*_state() accessor
   // returns a pointer to the corresponding state struct, or nullptr if the
   // shape is not of the corresponding category. The version without the `if_`
   // prefix is similar, but will CHECK-fail if the shape is not of the
@@ -598,26 +704,32 @@ class Shape {
   // error if the shape is not of the corresponding category.
 
   const InvalidState* if_invalid_state() const {
-    return std::get_if<InvalidState>(&state_);
+    return std::get_if<InvalidState>(&state());
   }
   const TokenState* if_token_state() const {
-    return std::get_if<TokenState>(&state_);
+    return std::get_if<TokenState>(&state());
   }
   const OpaqueState* if_opaque_state() const {
-    return std::get_if<OpaqueState>(&state_);
+    return std::get_if<OpaqueState>(&state());
   }
   const ArrayState* if_array_state() const {
-    return std::get_if<ArrayState>(&state_);
+    return std::get_if<ArrayState>(&state());
   }
-  ArrayState* if_array_state() { return std::get_if<ArrayState>(&state_); }
+  ArrayState* if_array_state() {
+    return std::get_if<ArrayState>(mutable_state());
+  }
   const TupleState* if_tuple_state() const {
-    return std::get_if<TupleState>(&state_);
+    return std::get_if<TupleState>(&state());
   }
-  TupleState* if_tuple_state() { return std::get_if<TupleState>(&state_); }
+  TupleState* if_tuple_state() {
+    return std::get_if<TupleState>(mutable_state());
+  }
   const BufferState* if_buffer_state() const {
-    return std::get_if<BufferState>(&state_);
+    return std::get_if<BufferState>(&state());
   }
-  BufferState* if_buffer_state() { return std::get_if<BufferState>(&state_); }
+  BufferState* if_buffer_state() {
+    return std::get_if<BufferState>(mutable_state());
+  }
 
   const InvalidState& invalid_state() const {
     const auto* const state = if_invalid_state();
@@ -644,12 +756,7 @@ class Shape {
   // CHECK-fails if this shape's state is not empty.
   void CheckStateIsEmpty() const;
 
-  // The element type of this shape (tuple, array, etc).
-  PrimitiveType element_type_ = PRIMITIVE_TYPE_INVALID;
-
-  // The state of this shape.
-  // Invariant: element_type_ always matches the type held in this variant.
-  State state_;
+  Rep* rep_do_not_use_directly_ = nullptr;
 };
 
 // Shape of the parameters and output of an XLA computation. This is analogous
