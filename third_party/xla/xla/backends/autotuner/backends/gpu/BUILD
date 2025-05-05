@@ -1,4 +1,4 @@
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tests:build_defs.bzl", "xla_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,5 +17,69 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "triton",
+    srcs = ["triton.cc"],
+    hdrs = ["triton.h"],
+    deps = [
+        ":gpu_codegen_backend",
+        "//xla:autotuning_proto_cc",
+        "//xla:util",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms/simplifiers:float_normalization",
+        "//xla/service:compiler",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service/gpu:gpu_float_support",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu:split_k_gemm_rewriter",
+        "//xla/service/gpu/transforms:fusion_wrapper",
+        "//xla/service/gpu/transforms:nest_gemm_fusion",
+        "//xla/service/gpu/transforms:priority_fusion",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tools:hlo_decomposer_lib",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_test(
+    name = "triton_test",
+    srcs = ["triton_test.cc"],
+    backends = [
+        "gpu_a100",
+        "gpu_h100",
+        "gpu_b200",
+    ],
+    tags = [
+        "cuda-only",
+        "no_mac",
+    ],
+    deps = [
+        ":triton",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu:nvptx_compiler_impl",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )

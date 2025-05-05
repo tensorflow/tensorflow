@@ -45,7 +45,7 @@ class CodegenBackend {
 
   // Returns a default config for the given HLO instruction.
   virtual absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
-      HloInstruction* instr) {
+      const HloInstruction& instr) {
     return absl::UnimplementedError("Not implemented.");
   };
 
