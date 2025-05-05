@@ -45,6 +45,7 @@ pytype_strict_library(
     srcs = ["xla_client.py"],
     visibility = ["//visibility:public"],
     deps = if_google([
+        ":_hlo_pass",
         ":_ops",
         ":_profiler",
         ":_xla_builder",
@@ -219,6 +220,23 @@ cc_library(
     ],
     # Always register 'DebugCallbackCustomCallPartitioner' custom partitioning handler.
     alwayslink = 1,
+)
+
+nanobind_pywrap_extension(
+    name = "_hlo_pass",
+    srcs = ["hlo_pass.cc"],
+    pytype_srcs = ["_hlo_pass.pyi"],
+    visibility = [":friends"],
+    deps = [
+        "//xla/hlo/ir:hlo_module_group",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
+        "//xla/pjrt:status_casters",
+        "//xla/service:call_inliner",
+        "@nanobind",
+    ],
 )
 
 nanobind_pywrap_extension(
