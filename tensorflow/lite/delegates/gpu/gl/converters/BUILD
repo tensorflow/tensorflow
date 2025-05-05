@@ -35,7 +35,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
         "//tensorflow/lite/delegates/gpu/gl:gl_program",
         "//tensorflow/lite/delegates/gpu/gl:gl_shader",
-        "//tensorflow/lite/delegates/gpu/gl:variable",
+        "//third_party/GL:GLES3_headers",
     ],
 )
 
@@ -60,7 +60,6 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:egl_environment",
         "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
-        "//tensorflow/lite/delegates/gpu/gl:portable",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -80,7 +79,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
         "//tensorflow/lite/delegates/gpu/gl:gl_program",
         "//tensorflow/lite/delegates/gpu/gl:gl_shader",
-        "//tensorflow/lite/delegates/gpu/gl:variable",
+        "//third_party/GL:GLES3_headers",
     ],
 )
 
@@ -105,7 +104,6 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:egl_environment",
         "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
-        "//tensorflow/lite/delegates/gpu/gl:portable",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
