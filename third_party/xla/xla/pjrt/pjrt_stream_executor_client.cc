@@ -2100,7 +2100,6 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
     // This must go after `executables_` is initialized.
     VLOG(3) << "PjRtStreamExecutorLoadedExecutable device_assignment:\n"
             << device_assignment_->ToString();
-    CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
 
     if ((device_assignment_->replica_count() > 1 ||
          device_assignment_->computation_count() > 1) &&
@@ -3294,11 +3293,6 @@ absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
       }
     }
     if (addressable_devices.empty()) {
-      if (returned_extras != nullptr) {
-        return InvalidArgument(
-            "Device assignment (%s) does not have any local devices.",
-            device_assignment->ToString());
-      }
       if (build_options.device_ordinal() < 0) {
         build_options.set_device_ordinal(0);
       }

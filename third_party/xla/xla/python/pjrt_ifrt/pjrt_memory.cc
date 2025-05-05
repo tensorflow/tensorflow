@@ -38,15 +38,33 @@ PjRtMemory::PjRtMemory(PjRtClient* client, xla::PjRtMemorySpace* pjrt_memory)
   }
 }
 
-MemoryId PjRtMemory::Id() const { return MemoryId(pjrt_memory_->id()); }
+PjRtMemory::PjRtMemory(PjRtClient* client, const MemoryKind& kind,
+                       Device* device)
+    : client_(client), kind_(kind) {
+  pjrt_memory_ = nullptr;
+  devices_.push_back(device);
+}
+
+MemoryId PjRtMemory::Id() const {
+  if (pjrt_memory_ == nullptr) {
+    return MemoryId(-1);
+  }
+  return MemoryId(pjrt_memory_->id());
+}
 
 const MemoryKind& PjRtMemory::Kind() const { return kind_; }
 
 absl::string_view PjRtMemory::ToString() const {
+  if (pjrt_memory_ == nullptr) {
+    return "UNADDRESSABLE_MEMORY_SPACE";
+  }
   return pjrt_memory_->ToString();
 }
 
 absl::string_view PjRtMemory::DebugString() const {
+  if (pjrt_memory_ == nullptr) {
+    return "Unaddressable PjRtMemory";
+  }
   return pjrt_memory_->DebugString();
 }
 
