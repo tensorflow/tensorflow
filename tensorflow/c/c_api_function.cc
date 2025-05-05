@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstddef>
+#include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
+#include <vector>
 
-#include "absl/strings/match.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/core/framework/attr_value_util.h"
