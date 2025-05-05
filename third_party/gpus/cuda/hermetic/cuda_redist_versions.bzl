@@ -15,9 +15,11 @@
 """Hermetic CUDA redistribution versions."""
 
 CUDA_REDIST_PATH_PREFIX = "https://developer.download.nvidia.com/compute/cuda/redist/"
+NVSHMEM_REDIST_PATH_PREFIX = "https://developer.download.nvidia.com/compute/nvshmem/redist/"
 CUDNN_REDIST_PATH_PREFIX = "https://developer.download.nvidia.com/compute/cudnn/redist/"
 MIRRORED_TAR_CUDA_REDIST_PATH_PREFIX = "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/"
 MIRRORED_TAR_CUDNN_REDIST_PATH_PREFIX = "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/"
+MIRRORED_TAR_NVSHMEM_REDIST_PATH_PREFIX = "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/nvshmem/redist/"
 
 CUDA_REDIST_JSON_DICT = {
     "11.8": [
@@ -263,6 +265,20 @@ MIRRORED_TARS_CUDNN_REDIST_JSON_DICT = {
     ],
 }
 
+NVSHMEM_REDIST_JSON_DICT = {
+    "3.1.7": [
+        "https://developer.download.nvidia.com/compute/nvshmem/redist/redistrib_3.1.7.json",
+        "4c734ff9f85b0fe9dcb1f390cae5756aed49946243d6de374f3037cf5ac37b97",
+    ],
+    "3.2.5": [
+        "https://developer.download.nvidia.com/compute/nvshmem/redist/redistrib_3.2.5.json",
+        "6945425d3bfd24de23c045996f93ec720c010379bfd6f0860ac5f2716659442d",
+    ],
+}
+
+MIRRORED_TARS_NVSHMEM_REDIST_JSON_DICT = {
+}
+
 CUDA_12_NCCL_WHEEL_DICT = {
     "x86_64-unknown-linux-gnu": {
         "version": "2.25.1",
@@ -455,6 +471,15 @@ REDIST_VERSIONS_TO_BUILD_TEMPLATES = {
             "13": "//third_party/gpus/cuda/hermetic:cuda_nvtx.BUILD.tpl",
             "12": "//third_party/gpus/cuda/hermetic:cuda_nvtx.BUILD.tpl",
             "11": "//third_party/gpus/cuda/hermetic:cuda_nvtx.BUILD.tpl",
+        },
+    },
+}
+
+NVSHMEM_REDIST_VERSIONS_TO_BUILD_TEMPLATES = {
+    "libnvshmem": {
+        "repo_name": "nvidia_nvshmem",
+        "version_to_template": {
+            "3": "//third_party/nvshmem/hermetic:nvidia_nvshmem.BUILD.tpl",
         },
     },
 }

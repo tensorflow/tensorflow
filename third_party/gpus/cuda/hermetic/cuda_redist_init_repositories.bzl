@@ -85,6 +85,8 @@ def _get_lib_name_and_version(path):
 def _get_main_lib_name(repository_ctx):
     if repository_ctx.name == "cuda_driver":
         return "libcuda"
+    if repository_ctx.name == "nvidia_nvshmem":
+        return "libnvshmem_host"
     else:
         return "lib{}".format(
             repository_ctx.name.split("_")[1],
@@ -279,15 +281,16 @@ def _use_local_cudnn_path(repository_ctx, local_cudnn_path):
     """ Creates symlinks and initializes hermetic CUDNN repository."""
     use_local_path(repository_ctx, local_cudnn_path, ["include", "lib"])
 
-def _download_redistribution(
+def download_redistribution(
         repository_ctx,
         arch_key,
         path_prefix,
-        mirrored_tar_path_prefix):
+        mirrored_tar_path_prefix,
+        use_tar_file_env_var_name = "USE_CUDA_TAR_ARCHIVE_FILES"):
     (url, sha256) = repository_ctx.attr.url_dict[arch_key]
     use_cuda_tars = get_env_var(
         repository_ctx,
-        "USE_CUDA_TAR_ARCHIVE_FILES",
+        use_tar_file_env_var_name,
     )
 
     # If url is not relative, then appending prefix is not needed.
@@ -316,8 +319,9 @@ def _download_redistribution(
     )
     repository_ctx.delete(file_name)
 
-def _get_platform_architecture(repository_ctx):
-    target_arch = get_env_var(repository_ctx, "CUDA_REDIST_TARGET_PLATFORM")
+def get_platform_architecture(repository_ctx):
+    target_arch = (get_env_var(repository_ctx, "CUDA_REDIST_TARGET_PLATFORM") or
+                   get_env_var(repository_ctx, "NVSHMEM_REDIST_TARGET_PLATFORM"))
 
     # We use NVCC compiler as the host compiler.
     if target_arch and repository_ctx.name != "cuda_nvcc":
@@ -362,7 +366,7 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
         return
 
     # Download archive only when GPU config is used.
-    arch_key = OS_ARCH_DICT[_get_platform_architecture(repository_ctx)]
+    arch_key = OS_ARCH_DICT[get_platform_architecture(repository_ctx)]
     if arch_key not in repository_ctx.attr.url_dict.keys():
         fail(
             ("The supported platforms are {supported_platforms}." +
@@ -373,7 +377,7 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
                 dist_name = repository_ctx.name,
             ),
         )
-    _download_redistribution(
+    download_redistribution(
         repository_ctx,
         arch_key,
         repository_ctx.attr.cuda_redist_path_prefix,
@@ -444,7 +448,7 @@ def _use_downloaded_cudnn_redistribution(repository_ctx):
         return
 
     # Download archive only when GPU config is used.
-    arch_key = OS_ARCH_DICT[_get_platform_architecture(repository_ctx)]
+    arch_key = OS_ARCH_DICT[get_platform_architecture(repository_ctx)]
     if arch_key not in repository_ctx.attr.url_dict.keys():
         arch_key = "cuda{version}_{arch}".format(
             version = cuda_version.split(".")[0],
@@ -461,7 +465,7 @@ def _use_downloaded_cudnn_redistribution(repository_ctx):
             ),
         )
 
-    _download_redistribution(
+    download_redistribution(
         repository_ctx,
         arch_key,
         repository_ctx.attr.cudnn_redist_path_prefix,
@@ -509,7 +513,7 @@ cudnn_repo = repository_rule(
     ],
 )
 
-def _get_redistribution_urls(dist_info):
+def get_redistribution_urls(dist_info):
     url_dict = {}
     for arch in _REDIST_ARCH_DICT.keys():
         arch_key = arch
@@ -532,7 +536,7 @@ def _get_redistribution_urls(dist_info):
             continue
 
         for cuda_version, data in dist_info[arch_key].items():
-            # CUDNN JSON might contain paths for each CUDA version.
+            # CUDNN and NVSHMEM JSON might contain paths for each CUDA version.
             path_key = "relative_path"
             if path_key not in data.keys():
                 path_key = "full_path"
@@ -567,7 +571,7 @@ def cudnn_redist_init_repository(
     # buildifier: disable=function-docstring-args
     """Initializes CUDNN repository."""
     if "cudnn" in cudnn_redistributions.keys():
-        url_dict = _get_redistribution_urls(cudnn_redistributions["cudnn"])
+        url_dict = get_redistribution_urls(cudnn_redistributions["cudnn"])
     else:
         url_dict = {}
     repo_data = redist_versions_to_build_templates["cudnn"]
@@ -594,7 +598,7 @@ def cuda_redist_init_repositories(
         if redist_name in ["cudnn", "cuda_nccl"]:
             continue
         if redist_name in cuda_redistributions.keys():
-            url_dict = _get_redistribution_urls(cuda_redistributions[redist_name])
+            url_dict = get_redistribution_urls(cuda_redistributions[redist_name])
         else:
             url_dict = {}
         repo_data = redist_versions_to_build_templates[redist_name]

@@ -88,6 +88,9 @@ third_party/nccl/hermetic/cuda_nccl.BUILD.tpl:
 third_party/nccl/hermetic/nccl_configure.bzl:
 third_party/nccl/nccl_configure.bzl:
 third_party/nccl/system.BUILD.tpl:
+third_party/nvshmem/hermetic/nvidia_nvshmem.BUILD.tpl:
+third_party/nvshmem/hermetic/nvshmem_json_init_repository.bzl:
+third_party/nvshmem/hermetic/nvshmem_redist_init_repository.bzl:
 third_party/nvshmem/nvshmem.BUILD:
 third_party/nvshmem/workspace.bzl:
 third_party/nvtx/LICENSE:
