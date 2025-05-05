@@ -99,6 +99,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":nb_numpy",
+        ":safe_static_init",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -322,6 +323,14 @@ cc_library(
         "@stablehlo//:base",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "safe_static_init",
+    hdrs = ["safe_static_init.h"],
+    deps = [
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
