@@ -76,14 +76,14 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
   for (int64_t dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
   }
-  for (DimLevelType dim_level_type : dim_level_types) {
-    layout.add_dim_level_type(dim_level_type);
+  for (int i = 0; i < dim_level_types.size(); ++i) {
+    layout.set_dim_level_type(i, dim_level_types[i]);
   }
-  for (bool unique : dim_unique) {
-    layout.add_dim_unique(unique);
+  for (int i = 0; i < dim_unique.size(); ++i) {
+    layout.set_dim_unique(i, dim_unique[i]);
   }
-  for (bool ordered : dim_ordered) {
-    layout.add_dim_ordered(ordered);
+  for (int i = 0; i < dim_ordered.size(); ++i) {
+    layout.set_dim_ordered(i, dim_ordered[i]);
   }
   for (const Tile& tile : tiles) {
     for (int64_t dim : tile.dimensions()) {

@@ -440,12 +440,15 @@ TEST_F(LayoutUtilTest, ValidateLayout_InvalidArrayLayout) {
 TEST_F(LayoutUtilTest, ValidateLayout_InvalidDimLevelTypes) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
-  shape.mutable_layout()->add_dim_level_type(DIM_DENSE);
-  shape.mutable_layout()->add_dim_level_type(DIM_DENSE);
-  shape.mutable_layout()->add_dim_level_type(DIM_DENSE);
+  shape.mutable_layout()->set_dim_level_type(0, DIM_DENSE);
+  shape.mutable_layout()->set_dim_level_type(1, DIM_DENSE);
+  shape.mutable_layout()->set_dim_level_type(2, DIM_DENSE);
   auto status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
-  EXPECT_FALSE(status.ok());
+  EXPECT_FALSE(status.ok()) << " where layout.minor_to_major_size() = "
+                            << shape.layout().minor_to_major_size()
+                            << " and layout.dim_level_types_size() = "
+                            << shape.layout().dim_level_types_size();
   EXPECT_THAT(status.message(),
               HasSubstr("layout dim_level_types field "
                         "contains 3 elements, but shape has 2 dimensions"));
@@ -493,12 +496,16 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("layout has a physical_shape, but is not a sparse array")));
   shape.mutable_layout()->mutable_physical_shape()->clear_layout();
-  shape.mutable_layout()->clear_dim_level_types();
+  // Make the layout dense.
+  shape.mutable_layout()->set_dim_level_type(0, DIM_DENSE);
+  shape.mutable_layout()->set_dim_level_type(1, DIM_DENSE);
   EXPECT_THAT(
       LayoutUtil::ValidateLayoutInShape(shape),
       StatusIs(
           tsl::error::INVALID_ARGUMENT,
-          HasSubstr("layout has a physical_shape, but is not a sparse array")));
+          HasSubstr("layout has a physical_shape, but is not a sparse array")))
+      << " where the layout is " << shape.layout().ToString() << ", which is "
+      << (LayoutUtil::IsDense(shape.layout()) ? "dense" : "sparse");
   *shape.mutable_layout() =
       LayoutUtil::MakeLayout({1, 0}, {DIM_DENSE, DIM_DENSE}, {true, false});
   EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
