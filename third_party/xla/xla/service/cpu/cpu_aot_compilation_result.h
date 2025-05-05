@@ -205,9 +205,8 @@ class CpuAotCompilationResultThunks : public CpuAotCompilationResult {
         std::unique_ptr<HloModule> module,
         HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
 
-    return std::unique_ptr<CpuAotCompilationResultThunks>(
-        new CpuAotCompilationResultThunks(proto, std::move(module),
-                                          std::move(function_library)));
+    return std::make_unique<CpuAotCompilationResultThunks>(
+        proto, std::move(module), std::move(function_library));
   }
 
  private:
