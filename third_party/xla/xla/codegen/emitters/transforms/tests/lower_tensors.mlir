@@ -252,7 +252,7 @@ func.func @atomic_rmw_f32(%in: tensor<8xf32>, %i: index) -> (tensor<8xf32>) {
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]]
 // CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
-// CHECK: %[[RES:.*]] = llvm.bitcast %{{.*}} : f32 to i32
+// CHECK: %[[RES:.*]] = arith.bitcast %{{.*}} : f32 to i32
 // CHECK-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %[[RES]]
 
 // -----
@@ -277,8 +277,38 @@ func.func @atomic_rmw_f16(%in: tensor<8xf16>, %i: index)
 // CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
 // CHECK-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
-// CHECK-NEXT: llvm.bitcast %[[VAR_TRUNC]] : i16 to f16
-// CHECK: %[[RES:.*]] = llvm.bitcast %{{.*}} : f16 to i16
+// CHECK-NEXT: arith.bitcast %[[VAR_TRUNC]] : i16 to f16
+// CHECK: %[[RES:.*]] = arith.bitcast %{{.*}} : f16 to i16
+// CHECK-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
+// CHECK-NEXT: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
+// CHECK-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
+// CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
+// CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+
+// -----
+
+func.func @atomic_rmw_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
+    -> (tensor<8xf8E4M3>) {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf8E4M3> {
+    ^bb0(%current : f8E4M3):
+      %c1 = arith.constant 1.0 : f8E4M3
+      %add = arith.addf %current, %c1 : f8E4M3
+      xla.yield %add : f8E4M3
+  }
+  return %ret : tensor<8xf8E4M3>
+}
+// CHECK-LABEL: @atomic_rmw_f8E4M3
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
+// CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
+// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
+// CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
+// CHECK-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
+// CHECK-NEXT: arith.bitcast %[[VAR_TRUNC]] : i8 to f8E4M3
+// CHECK: %[[RES:.*]] = arith.bitcast %{{.*}} : f8E4M3 to i8
 // CHECK-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
 // CHECK-DAG: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
 // CHECK-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
@@ -360,9 +390,31 @@ func.func @atomic_rmw_overwrite(%in: tensor<8xf16>, %i: index)
 // CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
 // CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
 // CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
-// CHECK: %[[RES:.*]] = llvm.bitcast %{{.*}} : f16 to i16
-// CHECK-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
-// CHECK-DAG: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
+// CHECK-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
+// CHECK-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
+// CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
+// CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+
+// -----
+
+func.func @atomic_rmw_overwrite_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
+    -> (tensor<8xf8E4M3>) {
+  %c1 = arith.constant 1.0 : f8E4M3
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf8E4M3> {
+    ^bb0(%current : f8E4M3):
+      xla.yield %c1 : f8E4M3
+  }
+  return %ret : tensor<8xf8E4M3>
+}
+// CHECK-LABEL: @atomic_rmw_overwrite_f8E4M3
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
+// CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
+// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
+// CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
 // CHECK-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
 // CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
 // CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
@@ -623,6 +675,35 @@ func.func @direct_atomic_rmw_fadd_f16(%in: tensor<8xf16>,
 
 // -----
 
+func.func @no_direct_atomic_rmw_fadd_f8E4M3(%in: tensor<8xf8E4M3>,
+    %i: index) -> (tensor<8xf8E4M3>) {
+  %c2 = arith.constant 2.0 : f8E4M3
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf8E4M3> {
+    ^bb0(%current : f8E4M3):
+      %min = arith.addf %current, %c2 : f8E4M3
+      xla.yield %c2 : f8E4M3
+  }
+  return %ret : tensor<8xf8E4M3>
+}
+// CHECK-PASCAL-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-PASCAL-NOT: llvm.atomicrmw fadd
+
+// CHECK-VOLTA-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-VOLTA-NOT: llvm.atomicrmw fadd
+
+// CHECK-AMPERE-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-AMPERE-NOT: llvm.atomicrmw fadd
+
+// CHECK-GFX908-MI100-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-GFX908-MI100-NOT: llvm.atomicrmw fadd
+// CHECK-GFX908-MI100: return
+
+// CHECK-GFX90A-MI200-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-GFX90A-MI200-NOT: llvm.atomicrmw fadd
+// CHECK-GFX90A-MI200: return
+
+// -----
+
 func.func @direct_atomic_rmw_fadd_bf16(%in: tensor<8xbf16>,
     %i: index) -> (tensor<8xbf16>) {
   %c2 = arith.constant 2.0 : bf16
@@ -706,7 +787,7 @@ func.func @direct_atomic_rmw_maximumf(%in: tensor<8xf32>,
 // CHECK-PASCAL:   %[[MODIFIER_OR_NAN:.*]] = llvm.select %[[MODIFIER_IS_NAN]], %[[NAN]], %[[MODIFIER]] : i1, f32
 // CHECK-PASCAL:   %[[VAL_13:.*]] = llvm.fcmp "ult" %[[CURRENT]], %[[MODIFIER_OR_NAN]] : f32
 // CHECK-PASCAL:   scf.if %[[VAL_13]] {
-// CHECK-PASCAL:     %[[INT_MODIFIER_OR_NAN:.*]] = llvm.bitcast %[[MODIFIER_OR_NAN]] : f32 to i32
+// CHECK-PASCAL:     %[[INT_MODIFIER_OR_NAN:.*]] = arith.bitcast %[[MODIFIER_OR_NAN]] : f32 to i32
 // CHECK-PASCAL:     %[[IS_POSITIVE:.*]] = llvm.icmp "sge" %[[INT_MODIFIER_OR_NAN]], %[[C0]] : i32
 // CHECK-PASCAL:     scf.if %[[IS_POSITIVE]] {
 // CHECK-PASCAL:       llvm.atomicrmw max %[[ADDR]], %[[INT_MODIFIER_OR_NAN]] monotonic
