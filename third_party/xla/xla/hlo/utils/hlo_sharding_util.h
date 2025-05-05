@@ -53,7 +53,6 @@ struct FormattingStep {
   std::optional<Shape> reverse_input_shape;
   HloOpcode formatting_opcode;
   HloInstruction* padding_value;
-  std::optional<absl::Span<const int64_t>> xpose_permutation;
 };
 
 struct GatherScatterDims {
