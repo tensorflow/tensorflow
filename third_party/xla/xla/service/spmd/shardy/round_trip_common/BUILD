@@ -40,6 +40,10 @@ cc_library(
     srcs = ["export_named_computations.cc"],
     hdrs = ["export_named_computations.h"],
     deps = [
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
+        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
