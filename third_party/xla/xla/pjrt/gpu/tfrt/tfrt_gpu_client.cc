@@ -942,8 +942,7 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
       local_device_id_(options.local_device_id),
       local_hardware_id_(options.local_hardware_id),
       executor_(options.executor),
-      stream_pool_(options.executor, options.stream_capacity),
-      compute_stream_pool_(options.executor, options.max_inflight_computations),
+      stream_pool_(options.executor, options.max_inflight_computations),
       allocator_(std::move(options.allocator)),
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
@@ -2068,7 +2067,7 @@ GetTfrtGpuDevices(LocalClient* xla_client,
     options.executor = executor;
     options.allocator = std::move(allocator);
     options.stream_capacity = 4;
-    options.max_inflight_computations = 32;
+    options.max_inflight_computations = 1;
     const se::Platform* platform = executor->GetPlatform();
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::se::DeviceDescription> desc,
@@ -2196,7 +2195,7 @@ absl::StatusOr<Shape> TfrtGpuBuffer::logical_on_device_shape() {
       client_->xla_client()->backend().transfer_manager();
 
   TF_ASSIGN_OR_RETURN(BoundedStreamPool::Handle stream,
-                      device_->stream_pool_.Borrow());
+                      device_->stream_pool().Borrow());
   TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
       stream.get(), &shaped_buffer, &ret_shape));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
@@ -2744,7 +2743,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
         dst_buffer.emplace(std::move(allocated_dst_buffer.value()));
 
         absl::StatusOr<BoundedStreamPool::Handle> stream =
-            dst_device->stream_pool_.Borrow();
+            dst_device->stream_pool().Borrow();
         if (!stream.ok()) {
           dst_definition_event.SetError(stream.status());
           return;
@@ -2981,13 +2980,13 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   // SPMD sharding produces a single executable for multiple partitions.
   int executable_idx = executables_.size() > 1 ? partition : 0;
 
-  // `execute_event` indicates whether gpu computation is complete and whether
-  // there was an error.
-  auto execute_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-
-  // `dispatch_event` indicates whether gpu computation is dispatched to the
+  // `scheduled_event` indicates whether gpu computation is dispatched to the
   // stream and whether there was an error.
-  auto dispatch_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  auto scheduled_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+
+  // `complete_event` indicates whether gpu computation is complete and whether
+  // there was an error.
+  auto complete_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
 
   absl::InlinedVector<TfrtGpuBuffer::DonationTransaction, 4>
       donation_transactions;
@@ -2998,8 +2997,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   buffer_is_donated.reserve(argument_handles.size());
   // To avoid clobbering inputs, we must ensure that
   //   `extra_deps` = inputs' definition events + donated inputs' usage events.
-  // This also ensures that the returned `execute_event` dominates all inputs'
-  // events, and thus output buffer only need to contain `execute_event` as
+  // This also ensures that the returned `complete_event` dominates all inputs'
+  // events, and thus output buffer only need to contain `complete_event` as
   // the single definition event.
   std::vector<tsl::RCReference<tsl::AsyncValue>> prepare_input_deps;
   std::vector<tsl::RCReference<tsl::AsyncValue>> input_deps;
@@ -3014,6 +3013,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   for (int i = 0; i < argument_handles.size(); ++i) {
     PjRtBuffer* handle = argument_handles[i];
     auto* tfrt_buffer = tsl::down_cast<TfrtGpuBuffer*>(handle);
+
+    VLOG(2) << "argument_handles[" << i << "]: shape = "
+            << tfrt_buffer->logical_on_device_shape()->DebugString();
+
     if (tfrt_buffer->device() != device) {
       return InvalidArgument(
           "Buffer passed to Execute() as argument %d to replica %d is on "
@@ -3029,6 +3032,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         [&]() -> absl::StatusOr<TrackedTfrtGpuDeviceBuffer*> {
       TrackedTfrtGpuDeviceBuffer* tracked_buffer = nullptr;
       if (must_donate) {
+        VLOG(2) << "Buffer for argument_handles[" << i << "] is donated";
+
         ++donate_it;
         TF_RETURN_IF_ERROR(TestBufferDonationClashes(
             handle, donation_clashes, must_donate, i, replica, partition));
@@ -3044,7 +3049,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         donation_transactions.push_back(std::move(donation_transaction));
         buffer_is_donated.push_back(true);
       } else {
-        tracked_buffer = tfrt_buffer->AcquireUsage(execute_event);
+        tracked_buffer = tfrt_buffer->AcquireUsage(complete_event);
         if (!tracked_buffer) {
           return InvalidArgument(
               "Invalid buffer passed: buffer has been deleted or donated.");
@@ -3053,12 +3058,16 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       }
       return tracked_buffer;
     }();
+
     if (!tracked_buffer_or.ok()) {
       // If something failed when preparing the input, we still need to add it
       // to the input deps so that it can poison the output buffers.
       auto error_av = tsl::MakeErrorAsyncValueRef(tracked_buffer_or.status());
       prepare_input_deps.push_back(error_av);
       input_deps.push_back(error_av);
+
+      LOG(ERROR) << "Failed to get tracked buffer: "
+                 << tracked_buffer_or.status();
     } else {
       TrackedTfrtGpuDeviceBuffer* tracked_buffer = tracked_buffer_or.value();
       tracked_buffers.push_back(tracked_buffer);
@@ -3084,7 +3093,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
             << last_collective_launch_event.GetAsyncValue()
             << "; IsAvailable: " << last_collective_launch_event.IsAvailable();
     input_deps.push_back(std::move(last_collective_launch_event));
-    device->SetLastCollectiveLaunchEvent(dispatch_event);
+    device->SetLastCollectiveLaunchEvent(scheduled_event);
   }
 
   std::vector<tsl::AsyncValueRef<MaybeOwningGpuMemory>> output_buffers;
@@ -3104,7 +3113,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       // event.
       auto leaf_tracked_device_buffer =
           std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-              output_buffers.back().CopyRef(), execute_event.CopyRef());
+              output_buffers.back().CopyRef(), scheduled_event.CopyRef());
       VLOG(4) << "created leaf_tracked_device_buffer: "
               << leaf_tracked_device_buffer.get();
 
@@ -3128,7 +3137,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     // Program execution writes to output buffers so it's a definition event.
     auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
         output_buffers.back().CopyRef(),
-        /*definition_event=*/execute_event.CopyRef());
+        /*definition_event=*/scheduled_event.CopyRef());
     VLOG(4) << "created tracked_device_buffer: " << tracked_device_buffer.get();
 
     const Shape& shape = result_shape;
@@ -3174,9 +3183,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
 
   auto execute_fn =
       [replica, partition, device, launch_id(options.launch_id), run_id(run_id),
-       output_buffers(output_buffers), execute_event(execute_event.CopyRef()),
-       dispatch_event(dispatch_event.CopyRef()), untuple_result(untuple_result),
-       result_is_tuple(result_is_tuple),
+       output_buffers(output_buffers), complete_event(complete_event.CopyRef()),
+       scheduled_event(scheduled_event.CopyRef()),
+       untuple_result(untuple_result), result_is_tuple(result_is_tuple),
        compute_reservation(std::move(compute_reservation)),
        donation_transactions(std::move(donation_transactions)),
        parameter_shapes(on_device_executable_parameter_shapes_[executable_idx]),
@@ -3203,8 +3212,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           for (auto& output_buffer : output_buffers) {
             output_buffer.SetError(status);
           }
-          execute_event.SetError(status);
-          dispatch_event.SetError(status);
+          complete_event.SetError(status);
+          scheduled_event.SetError(status);
         };
 
         for (const auto& av : inputs_avs) {
@@ -3215,7 +3224,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         }
 
         absl::StatusOr<BoundedStreamPool::Handle> stream_or =
-            device->compute_stream_pool().Borrow();
+            device->stream_pool().Borrow();
         if (!stream_or.ok()) {
           set_error(stream_or.status());
           return;
@@ -3286,10 +3295,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           return;
         }
 
-        // Set the dispatch event to concrete to indicate that the dispatch has
-        // completed, so that the next execute_fn can start.
-        dispatch_event.SetStateConcrete();
-
         ExecutionOutput& execution_output = result_buffer_or_status.value();
         ScopedShapedBuffer output = execution_output.ConsumeResult();
         if (untuple_result && result_is_tuple) {
@@ -3309,12 +3314,19 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           *elem = se::DeviceMemoryBase();
         }
 
-        absl::Status status = stream->BlockHostUntilDone();
-        if (!status.ok()) {
-          execute_event.SetError(status);
-          return;
-        }
-        execute_event.SetStateConcrete();
+        // Set the scheduled event to concrete to indicate that the scheduling
+        // has completed, so that the next execute_fn can start.
+        scheduled_event.SetStateConcrete();
+
+        auto status = stream->DoHostCallback(
+            [complete_event(complete_event.CopyRef()), run_id(run_id),
+             executable_name(executable_name)]() mutable {
+              VLOG(1) << "Device execution done for " << executable_name
+                      << ", run_id: " << run_id.ToInt();
+              complete_event.SetStateConcrete();
+            });
+
+        VLOG(1) << "execute_fn done with status " << status;
       };
 
   auto prepare_inputs =
@@ -3322,8 +3334,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        device, tracked_buffers(std::move(tracked_buffers)),
        buffer_is_donated(std::move(buffer_is_donated)),
        prepare_inputs_avs(CopyAsyncValues(prepare_input_deps)),
-       execute_event(execute_event.CopyRef()),
-       dispatch_event(dispatch_event.CopyRef()),
+       complete_event(complete_event.CopyRef()),
+       scheduled_event(scheduled_event.CopyRef()),
        output_buffers(std::move(output_buffers)),
        execute_fn(std::move(execute_fn)), input_deps(std::move(input_deps)),
        parameter_shapes(on_device_executable_parameter_shapes_[executable_idx]),
@@ -3335,10 +3347,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
             "prepare_inputs", tsl::profiler::ContextType::kPjRt,
             run_id.ToInt());
 
-
         auto set_error = [&](absl::Status status) {
-          execute_event.SetError(status);
-          dispatch_event.SetError(status);
+          complete_event.SetError(status);
+          scheduled_event.SetError(status);
           for (auto& output_buffer : output_buffers) {
             output_buffer.SetError(status);
           }
@@ -3415,8 +3426,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   if (fill_future) {
     auto promise = PjRtFuture<>::CreatePromise();
     future = PjRtFuture<>(promise);
-    execute_event.AndThen([promise = std::move(promise),
-                           event = execute_event.CopyRef()]() mutable {
+    complete_event.AndThen([promise = std::move(promise),
+                            event = complete_event.CopyRef()]() mutable {
       absl::Status s;
       if (auto* error = event.GetErrorIfPresent()) {
         s = *error;

@@ -196,8 +196,6 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   BoundedStreamPool& stream_pool() { return stream_pool_; }
 
-  BoundedStreamPool& compute_stream_pool() { return compute_stream_pool_; }
-
   se::StreamExecutor* executor() { return executor_; }
 
   tsl::AsyncValueRef<GpuEvent> GetLastCollectiveLaunchEvent();
@@ -215,9 +213,6 @@ class TfrtGpuDevice final : public PjRtDevice {
   const PjRtLocalHardwareId local_hardware_id_;
   se::StreamExecutor* executor_;
   BoundedStreamPool stream_pool_;
-  //  Have a dedicated compute stream pool to avoid blocking the stream pool
-  //  for H2D transfers.
-  BoundedStreamPool compute_stream_pool_;
   std::unique_ptr<tsl::Allocator> allocator_;
   std::unique_ptr<se::DeviceMemoryAllocator> se_allocator_;
   absl::InlinedVector<PjRtMemorySpace*, 1> memory_spaces_;
