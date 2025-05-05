@@ -988,13 +988,26 @@ void TfrtGpuDevice::SetClient(PjRtClient* client) {
   description_.SetToString(absl::StrCat(device_name, "(id=", id(), ")"));
 }
 
+absl::StatusOr<TransferManager*> TfrtGpuDevice::GetTransferManager() {
+  // Downcast Base class to TfrtGpuClient.
+  TfrtGpuClient* client = tensorflow::down_cast<TfrtGpuClient*>(client_);
+  if (client == nullptr) {
+    return absl::InternalError("Client is null");
+  }
+  return client->xla_client()->backend().transfer_manager();
+}
+
 absl::Status TfrtGpuDevice::TransferToInfeed(const LiteralSlice& literal) {
-  return Unimplemented("TransferToInfeed");
+  TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager, GetTransferManager());
+
+  return transfer_manager->TransferLiteralToInfeed(executor_, literal);
 }
 
 absl::Status TfrtGpuDevice::TransferFromOutfeed(
     MutableBorrowingLiteral literal) {
-  return Unimplemented("TransferFromOutfeed");
+  TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager, GetTransferManager());
+
+  return transfer_manager->TransferLiteralFromOutfeed(executor_, literal);
 }
 
 int TfrtGpuDevice::GetNewPrngSeed() {

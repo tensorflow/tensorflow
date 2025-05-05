@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
@@ -206,6 +207,8 @@ class TfrtGpuDevice final : public PjRtDevice {
   friend class TfrtGpuClient;
   friend class TfrtGpuExecutable;
   friend class TfrtGpuBuffer;
+
+  absl::StatusOr<TransferManager*> GetTransferManager();
 
   int id_;
   PjRtClient* client_ = nullptr;
