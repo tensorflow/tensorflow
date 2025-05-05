@@ -118,6 +118,37 @@ bool IsGeneratorNode(const Node* node) {
          !IsRefType(node->output_type(0));
 }
 
+bool HasRequestedOrAssignedDevice(const Node* node) {
+  if (!node) {
+    return false;
+  }
+
+  if (node->has_assigned_device_name()) {
+    return true;
+  }
+
+  return !node->requested_device().empty();
+}
+
+// Returns True if this op only has a single Identity output. If so,
+// assign this node the same device.
+bool HasIdentitySingleOutput(const Node* node) {
+  if (!node) {
+    return false;
+  }
+
+  if (HasRequestedOrAssignedDevice(node)) {
+    return false;
+  }
+
+  if (node->out_edges().size() != 1) {
+    return false;
+  }
+
+  const Node* output = *node->out_nodes().begin();
+  return output->IsIdentity() && HasRequestedOrAssignedDevice(output);
+}
+
 // If a node is an Identity op with input and output on the same device,
 // assign this Identity the same device. If the node already has a requested
 // or assigned device, don't touch it.
@@ -130,11 +161,7 @@ bool MatchIdentityOperation(const Node* node) {
     return false;
   }
 
-  if (node->has_assigned_device_name()) {
-    return false;
-  }
-
-  if (!node->requested_device().empty()) {
+  if (HasRequestedOrAssignedDevice(node)) {
     return false;
   }
 
@@ -152,6 +179,10 @@ bool MatchIdentityOperation(const Node* node) {
   const Node* output = *node->out_nodes().begin();
 
   return input->requested_device() == output->requested_device();
+}
+
+bool ShouldPlaceOpWithOutput(const Node* node) {
+  return IsGeneratorNode(node) || HasIdentitySingleOutput(node);
 }
 
 void LogDeviceAssignment(const Node* node, bool log_device_placement) {
@@ -258,13 +289,13 @@ absl::Status Placer::Run(const GraphOptimizationPassOptions& options) {
       continue;
     }
 
-    // Heuristic A: prefer to place "generators" with their only
-    // consumers.
+    // Heuristic A: prefer to place "generators" or nodes with single output
+    // with their only consumers.
     //
     // If this is a node with no inputs and one output, we save
     // this for a second pass, so that the consumer's placement
     // is chosen.
-    if (IsGeneratorNode(node)) {
+    if (ShouldPlaceOpWithOutput(node)) {
       second_pass.push_back(node);
       continue;
     }
@@ -330,8 +361,9 @@ absl::Status Placer::Run(const GraphOptimizationPassOptions& options) {
 
     int assigned_device = -1;
 
-    // Heuristic A application.
-    if (IsGeneratorNode(node) && !node->out_edges().empty()) {
+    // Heuristic A: prefer to place "generators" or nodes with a single output
+    // identity op with their only consumers.
+    if (ShouldPlaceOpWithOutput(node) && !node->out_edges().empty()) {
       const Node* output = (*node->out_edges().begin())->dst();
       int output_device_name = output->assigned_device_name_index();
 
