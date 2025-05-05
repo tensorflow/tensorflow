@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/map_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/constant_value.h"
@@ -778,13 +777,12 @@ class WhileLoopAnalysis {
   explicit WhileLoopAnalysis(
       HloInstruction* while_instr, int64_t max_pipelining_per_loop,
       bool pipeline_use_tree, bool process_different_sized_options,
-      TuplePointsToAnalysis* tuple_points_to_analysis, CallGraph* call_graph,
+      TuplePointsToAnalysis* tuple_points_to_analysis,
       std::optional<ConstantValue> known_start = std::nullopt)
       : while_(while_instr),
         loop_start_(known_start),
         max_pipelining_per_loop_(max_pipelining_per_loop),
         tuple_points_to_analysis_(tuple_points_to_analysis),
-        call_graph_(call_graph),
         pipeline_use_tree_(pipeline_use_tree),
         process_different_sized_options_(process_different_sized_options) {}
   std::optional<ConstantValue> GetLoopIterationCount() const;
@@ -883,9 +881,6 @@ class WhileLoopAnalysis {
   // Precomputed TuplePointsToAnalysis for the HLO module containing `while_`.
   // May be null, in which case the analysis will be performed from scratch.
   TuplePointsToAnalysis* tuple_points_to_analysis_;
-  // Precomputed CallGraph analysis for the HLO module containing `while_`.
-  // May be null, in which case the analysis will be performed from scratch.
-  CallGraph* call_graph_;
 
   bool pipeline_use_tree_;
   bool process_different_sized_options_;
@@ -925,8 +920,8 @@ bool WhileLoopAnalysis::ComputeLoopStatistics() {
   if (loop_iteration_count_) {
     return true;
   }
-  std::optional<ParsedWhileLoop> parsed_loop = PatternMatchParseWhileLoop(
-      while_, {tuple_points_to_analysis_, call_graph_});
+  std::optional<ParsedWhileLoop> parsed_loop =
+      PatternMatchParseWhileLoop(while_, {tuple_points_to_analysis_});
   if (!parsed_loop || !parsed_loop->static_while_loop) {
     return false;
   }
@@ -1916,7 +1911,6 @@ absl::Status TransformLoopForward(
       new_while_loop, loop_analysis.GetMaxPipeliningPerLoop(),
       pipeline_use_tree, process_different_sized_ops,
       /*tuple_points_to_analysis=*/nullptr,
-      /*call_graph=*/nullptr,
       loop_analysis.GetLoopStart()->add(*loop_analysis.GetLoopIncrement()));
   new_loop_analysis.ComputeLoopStatistics();
   new_loop_analysis.CollectCollectivesToMove(
@@ -3093,7 +3087,6 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis,
       TuplePointsToAnalysis::Run(module));
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
 
   std::vector<std::pair<HloInstruction*, std::unique_ptr<WhileLoopAnalysis>>>
       loop_analyses;
@@ -3112,7 +3105,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
       auto loop_analysis = std::make_unique<WhileLoopAnalysis>(
           instruction, config_.max_pipelining_per_loop,
           config_.pipeline_use_tree, config_.process_different_sized_ops,
-          tuple_points_to_analysis.get(), call_graph.get());
+          tuple_points_to_analysis.get());
       loop_analysis->ComputeLoopStatistics();
       if (loop_analysis->GetLoopIterationCount() &&
           loop_analysis->GetLoopIterationCount()->GetUnsignedValue() > 1) {

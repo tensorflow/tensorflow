@@ -398,7 +398,6 @@ cc_library(
     srcs = ["collective_pipeliner.cc"],
     hdrs = ["collective_pipeliner.h"],
     deps = [
-        ":call_graph",
         ":collective_ops_utils",
         ":collective_pipeliner_utils",
         ":constant_value",
