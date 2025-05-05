@@ -681,18 +681,10 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
-// TODO(b/413300983): Un-parameterize this test and add a precise regression
-// test for the TMA-related failure separately.
-TEST_P(TmaParameterizedTritonEmitterTest,
-       NestedReducerFusionGetsCodegenedCorrectly) {
+TEST_F(TritonEmitterTest, NestedReducerFusionGetsCodegenedCorrectly) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
-  bool tma_enabled = GetParam();
-  if (tma_enabled) {
-    GTEST_SKIP() << "TODO(b/413300983): Skipping TMA due to: Wrong results.";
-  }
-
   constexpr absl::string_view kHloText = R"(
 HloModule softmax
 
@@ -1986,14 +1978,56 @@ CHECK:     triton_xla.insert
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
-// Reproducer from b/384110192.
-TEST_P(TmaParameterizedTritonEmitterTest,
-       FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly) {
+TEST_P(TmaParameterizedTritonEmitterTest, BroadcastWorksCorrectly) {
   bool tma_enabled = GetParam();
   if (tma_enabled) {
-    GTEST_SKIP() << "TODO(b/413300983): Skipping TMA due to: Wrong results.";
+    GTEST_SKIP() << "TODO(b/415758695): Skipping TMA due to incorrect handling "
+                    "of swizzle. Re-enable once fixed.";
   }
+  constexpr absl::string_view kTritonHloText = R"(
+computation {
+  p0 = s32[256]{0} parameter(0)
+  ROOT broadcast = s32[2,256]{1,0} broadcast(p0), dimensions={1}
+}
 
+ENTRY entry_computation {
+  p0 = s32[256]{0} parameter(0)
+  ROOT fusion = s32[2,256]{1,0} fusion(p0), kind=kCustom,
+    calls=computation,
+    backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["2","256"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+})";
+
+  constexpr absl::string_view kEmittersHloText = R"(
+computation {
+  p0 = s32[256]{0} parameter(0)
+  ROOT broadcast = s32[2,256]{1,0} broadcast(p0), dimensions={1}
+}
+
+ENTRY entry_computation {
+  p0 = s32[256]{0} parameter(0)
+  ROOT fusion = s32[2,256]{1,0} fusion(p0), kind=kCustom, calls=computation
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_module,
+                          ParseAndReturnVerifiedModule(kTritonHloText));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> emitters_module,
+                          ParseAndReturnVerifiedModule(kEmittersHloText));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(emitters_module),
+                                      std::move(triton_module), kExactMatch,
+                                      /*run_hlo_passes=*/false));
+}
+
+// Reproducer from b/384110192.
+TEST_F(TritonEmitterTest,
+       FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly) {
   // The point here is to check the output of the Triton fusion. The `slice` op
   // at the end is inserted to allow the comparison of output to run in a
   // reasonable amount of time, and has been proven to still correctly capture
@@ -2044,8 +2078,8 @@ ENTRY entry_computation {
                                          ->shape();
 
   ASSERT_GT(Product(triton_fusion_shape.dimensions()), 1l << 32);
-  EXPECT_TRUE(RunAndCompareTwoModules(std::move(triton_module),
-                                      std::move(emitters_module), kExactMatch,
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(emitters_module),
+                                      std::move(triton_module), kExactMatch,
                                       /*run_hlo_passes=*/false));
 }
 
@@ -2639,7 +2673,7 @@ ENTRY entry {
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-TEST_F(TritonEmitterTest, DotFromBroadcastIsEmittedCorrectly) {
+TEST_P(TmaParameterizedTritonEmitterTest, DotFromBroadcastIsEmittedCorrectly) {
   // TODO(b/393299275): add a deviceless test to run the whole pipeline as
   // other passes might change the module but we are starting from a fixed
   // state.
@@ -2651,25 +2685,25 @@ flhs (parameter_0: f32[264]) -> f32[264,128] {
   ROOT flhs.1 = f32[264,128]{1,0} broadcast(parameter_0), dimensions={0}
 }
 
-frhs (parameter_0.1: f32[128,8]) -> f32[128,8] {
-  ROOT parameter_0.1 = f32[128,8]{1,0} parameter(0)
+frhs (parameter_0.1: f32[128,32]) -> f32[128,32] {
+  ROOT parameter_0.1 = f32[128,32]{1,0} parameter(0)
 }
 
-triton_dot (p0: f32[264], p1: f32[128,8]) -> f32[264,8] {
+triton_dot (p0: f32[264], p1: f32[128,32]) -> f32[264,32] {
   p0 = f32[264]{0} parameter(0)
   lhs = f32[264,128]{1,0} fusion(p0), kind=kCustom, calls=flhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["32","16"]}]}}}
-  p1 = f32[128,8]{1,0} parameter(1)
-  rhs = f32[128,8]{1,0} fusion(p1), kind=kCustom, calls=frhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["16","16"]}]}}}
-  ROOT result = f32[264,8]{1,0} dot(lhs, rhs),
+  p1 = f32[128,32]{1,0} parameter(1)
+  rhs = f32[128,32]{1,0} fusion(p1), kind=kCustom, calls=frhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["16","16"]}]}}}
+  ROOT result = f32[264,32]{1,0} dot(lhs, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
     algorithm=dot_f32_f32_f32
 }
 
-ENTRY e (p0.1: f32[11,1,24,1], p1.1: f32[128,8]) -> f32[264,8] {
+ENTRY e (p0.1: f32[11,1,24,1], p1.1: f32[128,32]) -> f32[264,32] {
   p0.1 = f32[11,1,24,1]{3,2,1,0} parameter(0)
   bitcast = f32[264]{0} bitcast(p0.1)
-  p1.1 = f32[128,8]{1,0} parameter(1)
-  ROOT result.1 = f32[264,8]{1,0} fusion(bitcast, p1.1), kind=kCustom,
+  p1.1 = f32[128,32]{1,0} parameter(1)
+  ROOT result.1 = f32[264,32]{1,0} fusion(bitcast, p1.1), kind=kCustom,
     calls=triton_dot, backend_config={
       "fusion_backend_config":{
         "kind":"__triton_nested_gemm_fusion",
