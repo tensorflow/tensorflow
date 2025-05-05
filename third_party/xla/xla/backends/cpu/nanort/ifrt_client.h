@@ -81,7 +81,7 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
 
   // Returns a single device sharding. Generally callers should prefer to use
   // this when possible for optimal performance.
-  std::shared_ptr<ifrt::Sharding> default_sharding() const;
+  ifrt::ShardingRef default_sharding() const;
 
   // Returns the underlying NanoRtClient.
   NanoRtClient* nano_client() { return &client_; }
@@ -192,10 +192,6 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   std::unique_ptr<ifrt::Compiler> compiler_;
   std::unique_ptr<ifrt::Memory> memory_;
   std::vector<std::unique_ptr<ifrt::Device>> owned_devices_;
-
-  // The default sharding for this client. When this sharding is used it
-  // typically means that we can use an array's contents directly.
-  std::shared_ptr<ifrt::Sharding> default_sharding_;
 
   // Some of the ifrt::Client methods return a span of devices, so we need to
   // keep storage for them here.

@@ -960,8 +960,8 @@ class NanoExecutable final
   NanoExecutable(NanoIfrtClient* client, XlaComputation program,
                  ProgramShape program_shape,
                  std::unique_ptr<NanoRtExecutable> executable,
-                 std::vector<std::shared_ptr<ifrt::Sharding>> input_shardings,
-                 std::vector<std::shared_ptr<ifrt::Sharding>> output_shardings)
+                 std::vector<ifrt::ShardingRef> input_shardings,
+                 std::vector<ifrt::ShardingRef> output_shardings)
       : client_(client),
         program_(std::move(program)),
         program_shape_(std::move(program_shape)),
@@ -971,10 +971,9 @@ class NanoExecutable final
 
   // Converts an OpSharding proto (from an HLO Instruction) to an ifrt
   // sharding.
-  static absl::StatusOr<std::vector<std::shared_ptr<ifrt::Sharding>>>
-  IfrtShardingsFromProto(NanoIfrtClient* client,
-                         absl::Span<const OpSharding> shardings) {
-    std::vector<std::shared_ptr<ifrt::Sharding>> result;
+  static absl::StatusOr<std::vector<ifrt::ShardingRef>> IfrtShardingsFromProto(
+      NanoIfrtClient* client, absl::Span<const OpSharding> shardings) {
+    std::vector<ifrt::ShardingRef> result;
     result.reserve(shardings.size());
     for (const auto& sharding : shardings) {
       if (sharding.type() == OpSharding::REPLICATED ||
@@ -1109,8 +1108,8 @@ class NanoExecutable final
   XlaComputation program_;
   ProgramShape program_shape_;
   std::unique_ptr<NanoRtExecutable> executable_;
-  std::vector<std::shared_ptr<ifrt::Sharding>> input_shardings_;
-  std::vector<std::shared_ptr<ifrt::Sharding>> output_shardings_;
+  std::vector<ifrt::ShardingRef> input_shardings_;
+  std::vector<ifrt::ShardingRef> output_shardings_;
 };
 
 ABSL_ATTRIBUTE_UNUSED char NanoExecutable::ID = 'E';  // NOLINT
@@ -1233,7 +1232,7 @@ std::shared_ptr<NanoIfrtClient> NanoIfrtClient::CreateWithDevices(
   return std::shared_ptr<NanoIfrtClient>(new NanoIfrtClient(num_devices));
 }
 
-std::shared_ptr<ifrt::Sharding> NanoIfrtClient::default_sharding() const {
+ifrt::ShardingRef NanoIfrtClient::default_sharding() const {
   return ifrt::SingleDeviceSharding::Create(devices_.front(),
                                             ifrt::MemoryKind{});
 }
@@ -1459,8 +1458,6 @@ NanoIfrtClient::NanoIfrtClient(int32_t num_devices)
         std::make_unique<NanoDevice>(this, ifrt::DeviceId(i), memory_.get()));
     devices_.push_back(owned_devices_.back().get());
   }
-  default_sharding_ =
-      ifrt::SingleDeviceSharding::Create(devices_.front(), memory_->Kind());
 }
 
 char NanoIfrtClient::ID = 'N';  // NOLINT
