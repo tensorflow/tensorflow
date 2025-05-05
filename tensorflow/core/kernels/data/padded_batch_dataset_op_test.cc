@@ -11,7 +11,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/padded_batch_dataset_op.h"
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace data {
