@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/errors.h"  // IWYU pragma: keep, used in macro.
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace status_macros {
