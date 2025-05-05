@@ -1165,7 +1165,7 @@ TEST(StreamExecutorGpuClientTest, GetDeviceFabricInfo) {
                   &executor->GetDeviceDescription())) == 9) {
             auto fabric_info = GetDeviceFabricInfo(executor->device_ordinal());
             if (fabric_info.ok()) {
-              ADD_FAILURE();
+              CHECK_EQ(*fabric_info, "00000000-0000-0000-0000-000000000000/0");
             }
           }
         }
