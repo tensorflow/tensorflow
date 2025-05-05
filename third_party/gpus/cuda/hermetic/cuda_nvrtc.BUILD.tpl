@@ -9,17 +9,18 @@ cc_import(
     name = "nvrtc_main",
     shared_library = "lib/libnvrtc.so.%{libnvrtc_version}",
 )
-
+%{multiline_comment}
+%{multiline_comment_nvrtc_builtins}
 cc_import(
     name = "nvrtc_builtins",
     shared_library = "lib/libnvrtc-builtins.so.%{libnvrtc-builtins_version}",
 )
-%{multiline_comment}
+%{multiline_comment_nvrtc_builtins}
 cc_library(
     name = "nvrtc",
     %{comment}deps = [
         %{comment}":nvrtc_main",
-        %{comment}":nvrtc_builtins",
+        %{comment_nvrtc_builtins}":nvrtc_builtins",
     %{comment}],
     %{comment}linkopts = cuda_rpath_flags("nvidia/cuda_nvrtc/lib"),
     visibility = ["//visibility:public"],
