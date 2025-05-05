@@ -206,7 +206,7 @@ class MatchStringToHashBucket : public RemapperPatternBase {
     // Not allowing control flow on op
     if (helper_.HasControlOperandsOrResultUsers(op)) return failure();
 
-    if (op->getOperands().size() < 1) return failure();
+    if (op->getOperands().empty()) return failure();
 
     TFOp stringtohash_wrapper(op);
 
@@ -234,10 +234,10 @@ class MatchStringToHashBucket : public RemapperPatternBase {
     if (width_attr.getInt() != -1) return failure();
     auto fill_attr = as_string_op->getAttrOfType<StringAttr>("fill");
     if (!fill_attr) return failure();
-    if (fill_attr.getValue() != "") return failure();
+    if (!fill_attr.getValue().empty()) return failure();
 
     // An input to the AsString must exist to determine the device.
-    if (as_string_op->getOperands().size() < 1) return failure();
+    if (as_string_op->getOperands().empty()) return failure();
 
     // AsString op's input
     Value input_value = as_string_op->getOperand(0);
