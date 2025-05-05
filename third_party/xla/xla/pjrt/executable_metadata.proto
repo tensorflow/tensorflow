@@ -12,7 +12,6 @@ message CompiledMemoryStatsProto {
   int64 output_size_in_bytes = 3;
   int64 alias_size_in_bytes = 4;
   int64 temp_size_in_bytes = 5;
-  xla.HloProto hlo_proto = 6;
 
   // Host memory usage stats.
   int64 host_generated_code_size_in_bytes = 7;
@@ -20,4 +19,8 @@ message CompiledMemoryStatsProto {
   int64 host_output_size_in_bytes = 9;
   int64 host_alias_size_in_bytes = 10;
   int64 host_temp_size_in_bytes = 11;
+
+  xla.BufferAssignmentProto buffer_assignment = 12;
+
+  reserved 6;
 }
