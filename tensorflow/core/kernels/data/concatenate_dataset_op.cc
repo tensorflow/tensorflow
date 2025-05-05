@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"

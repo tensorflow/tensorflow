@@ -11,10 +11,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/common_runtime/type_inference.h"
 #include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/public/session_options.h"
 
