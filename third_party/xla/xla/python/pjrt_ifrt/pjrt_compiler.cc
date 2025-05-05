@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -142,15 +143,33 @@ PjRtCompiler::DeserializeLoadedExecutable(
       client_->pjrt_client()->LoadSerializedExecutable(
           serialized, std::move(xla_deserialize_options->compile_options),
           xla::LoadOptions()));
-  // TODO(emilyaf): Remove the else branch once devices are plumbed through from
-  // Australis and are always present in the DeserializeExecutableOptions.
+  // TODO(emilyaf): Remove the else branch once devices are plumbed through
+  // deserialization and are always present in DeserializeExecutableOptions.
   DeviceListRef device_list;
   if (xla_deserialize_options->devices.has_value()) {
     device_list = std::move(xla_deserialize_options->devices.value());
   } else {
-    TF_ASSIGN_OR_RETURN(
-        device_list, GetDeviceListFromDeviceAssignment(
-                         client_, pjrt_loaded_executable->device_assignment()));
+    auto executable_options = pjrt_loaded_executable->GetCompileOptions();
+    DeviceAssignment device_assignment;
+    if (executable_options.ok()) {
+      device_assignment = std::move(
+          executable_options->executable_build_options.device_assignment());
+    } else {
+      auto default_da = client_->GetDefaultDeviceAssignment(
+          pjrt_loaded_executable->num_replicas(),
+          pjrt_loaded_executable->num_partitions());
+      if (default_da.ok()) {
+        device_assignment = std::move(default_da.value());
+        if (xla_deserialize_options->compile_options.has_value()) {
+          CHECK(xla_deserialize_options->compile_options->multi_slice_config ==
+                nullptr);
+        }
+      } else {
+        device_assignment = pjrt_loaded_executable->device_assignment();
+      }
+    }
+    TF_ASSIGN_OR_RETURN(device_list, GetDeviceListFromDeviceAssignment(
+                                         client_, device_assignment));
   }
   return PjRtLoadedExecutable::Create(
       client_,
