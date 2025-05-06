@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -131,7 +130,7 @@ void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry) {
   mlir::func::registerAllExtensions(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<mlir::tensor::TensorDialect, mlir::arith::ArithDialect,
-                  mlir::shape::ShapeDialect, mlir::ub::UBDialect>();
+                  mlir::shape::ShapeDialect>();
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
