@@ -47,7 +47,6 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/loader.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
