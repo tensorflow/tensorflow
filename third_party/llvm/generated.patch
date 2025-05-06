@@ -1,57 +1,15 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/include/clang/AST/Type.h b/clang/include/clang/AST/Type.h
---- a/clang/include/clang/AST/Type.h
-+++ b/clang/include/clang/AST/Type.h
-@@ -3602,6 +3602,9 @@
-   }
- 
-   NestedNameSpecifier *getQualifier() const { return Qualifier; }
-+  /// Note: this can trigger extra deserialization when external AST sources are
-+  /// used. Prefer `getCXXRecordDecl()` unless you really need the most recent
-+  /// decl.
-   CXXRecordDecl *getMostRecentCXXRecordDecl() const;
- 
-   bool isSugared() const;
-@@ -3610,7 +3613,10 @@
-   }
- 
-   void Profile(llvm::FoldingSetNodeID &ID) {
--    Profile(ID, getPointeeType(), getQualifier(), getMostRecentCXXRecordDecl());
-+    // FIXME: `getMostRecentCXXRecordDecl()` should be possible to use here,
-+    // however when external AST sources are used it causes nondeterminism
-+    // issues (see https://github.com/llvm/llvm-project/pull/137910).
-+    Profile(ID, getPointeeType(), getQualifier(), getCXXRecordDecl());
-   }
- 
-   static void Profile(llvm::FoldingSetNodeID &ID, QualType Pointee,
-@@ -3620,6 +3626,9 @@
-   static bool classof(const Type *T) {
-     return T->getTypeClass() == MemberPointer;
-   }
-+
-+private:
-+  CXXRecordDecl *getCXXRecordDecl() const;
- };
- 
- /// Capture whether this is a normal array (e.g. int X[4])
-diff -ruN --strip-trailing-cr a/clang/lib/AST/Type.cpp b/clang/lib/AST/Type.cpp
---- a/clang/lib/AST/Type.cpp
-+++ b/clang/lib/AST/Type.cpp
-@@ -5305,10 +5305,14 @@
-     ID.AddPointer(Cls->getCanonicalDecl());
- }
- 
-+CXXRecordDecl *MemberPointerType::getCXXRecordDecl() const {
-+  return dyn_cast<MemberPointerType>(getCanonicalTypeInternal())
-+      ->getQualifier()
-+      ->getAsRecordDecl();
-+}
-+
- CXXRecordDecl *MemberPointerType::getMostRecentCXXRecordDecl() const {
--  auto *RD = dyn_cast<MemberPointerType>(getCanonicalTypeInternal())
--                 ->getQualifier()
--                 ->getAsRecordDecl();
-+  auto *RD = getCXXRecordDecl();
-   if (!RD)
-     return nullptr;
-   return RD->getMostRecentNonInjectedDecl();
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -2342,6 +2342,10 @@
+             "lib/Target/Sparc/SparcGenSubtargetInfo.inc": ["-gen-subtarget"],
+             "lib/Target/Sparc/SparcGenDisassemblerTables.inc": ["-gen-disassembler"],
+             "lib/Target/Sparc/SparcGenSearchableTables.inc": ["-gen-searchable-tables"],
++            "lib/Target/Sparc/SparcGenSDNodeInfo.inc": [
++                "-gen-sd-node-info",
++                "-sdnode-namespace=SPISD",
++            ],
+         },
+     },
+     {
