@@ -257,7 +257,9 @@ void UnfreezeMutableGlobalTensorsPass::runOnOperation() {
       arg.replaceAllUsesWith(var_handle_op->getResults()[0]);
     }
 
-    func.eraseArguments(args_to_erase);
+    if (failed(func.eraseArguments(args_to_erase))) {
+      return signalPassFailure();
+    }
   }
 
   // Erase the mutable GlobalTensorOps that are replaced by VarHandleOps.

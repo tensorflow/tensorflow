@@ -1,12 +1,57 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/lldb/unittests/Core/MangledTest.cpp b/lldb/unittests/Core/MangledTest.cpp
---- a/lldb/unittests/Core/MangledTest.cpp
-+++ b/lldb/unittests/Core/MangledTest.cpp
-@@ -605,6 +605,7 @@
-   EXPECT_EQ(get_part(OB.NameInfo.BasenameRange), basename);
-   EXPECT_EQ(get_part(OB.NameInfo.ScopeRange), scope);
-   EXPECT_EQ(get_part(OB.NameInfo.QualifiersRange), qualifiers);
-+  std::free(OB.getBuffer());
+diff -ruN --strip-trailing-cr a/clang/include/clang/AST/Type.h b/clang/include/clang/AST/Type.h
+--- a/clang/include/clang/AST/Type.h
++++ b/clang/include/clang/AST/Type.h
+@@ -3602,6 +3602,9 @@
+   }
+ 
+   NestedNameSpecifier *getQualifier() const { return Qualifier; }
++  /// Note: this can trigger extra deserialization when external AST sources are
++  /// used. Prefer `getCXXRecordDecl()` unless you really need the most recent
++  /// decl.
+   CXXRecordDecl *getMostRecentCXXRecordDecl() const;
+ 
+   bool isSugared() const;
+@@ -3610,7 +3613,10 @@
+   }
+ 
+   void Profile(llvm::FoldingSetNodeID &ID) {
+-    Profile(ID, getPointeeType(), getQualifier(), getMostRecentCXXRecordDecl());
++    // FIXME: `getMostRecentCXXRecordDecl()` should be possible to use here,
++    // however when external AST sources are used it causes nondeterminism
++    // issues (see https://github.com/llvm/llvm-project/pull/137910).
++    Profile(ID, getPointeeType(), getQualifier(), getCXXRecordDecl());
+   }
+ 
+   static void Profile(llvm::FoldingSetNodeID &ID, QualType Pointee,
+@@ -3620,6 +3626,9 @@
+   static bool classof(const Type *T) {
+     return T->getTypeClass() == MemberPointer;
+   }
++
++private:
++  CXXRecordDecl *getCXXRecordDecl() const;
+ };
+ 
+ /// Capture whether this is a normal array (e.g. int X[4])
+diff -ruN --strip-trailing-cr a/clang/lib/AST/Type.cpp b/clang/lib/AST/Type.cpp
+--- a/clang/lib/AST/Type.cpp
++++ b/clang/lib/AST/Type.cpp
+@@ -5305,10 +5305,14 @@
+     ID.AddPointer(Cls->getCanonicalDecl());
  }
  
- INSTANTIATE_TEST_SUITE_P(DemanglingPartsTests, DemanglingPartsTestFixture,
++CXXRecordDecl *MemberPointerType::getCXXRecordDecl() const {
++  return dyn_cast<MemberPointerType>(getCanonicalTypeInternal())
++      ->getQualifier()
++      ->getAsRecordDecl();
++}
++
+ CXXRecordDecl *MemberPointerType::getMostRecentCXXRecordDecl() const {
+-  auto *RD = dyn_cast<MemberPointerType>(getCanonicalTypeInternal())
+-                 ->getQualifier()
+-                 ->getAsRecordDecl();
++  auto *RD = getCXXRecordDecl();
+   if (!RD)
+     return nullptr;
+   return RD->getMostRecentNonInjectedDecl();
