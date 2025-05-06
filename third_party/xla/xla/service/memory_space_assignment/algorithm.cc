@@ -1447,8 +1447,9 @@ bool IsTrivialInstruction(const HloInstruction* instruction) {
 }
 
 bool IsSliceLikeInstruction(const HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kSlice ||
-         instruction->opcode() == HloOpcode::kDynamicSlice;
+  return instruction->opcode() == HloOpcode::kSlice;
+  // TODO(b/415757985): Re-enable kDynamicSlice once we take account the other
+  // operands.
 }
 
 }  // namespace
