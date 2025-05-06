@@ -297,7 +297,7 @@ config_setting(
     name = "linux_ppc64le",
     constraint_values =
         [
-            "@platforms//cpu:ppc64le",
+            "@platforms//cpu:ppc",
             "@platforms//os:linux",
         ],
     visibility = ["//visibility:public"],
