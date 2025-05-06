@@ -55,7 +55,9 @@ TEST(TfrtGpuBufferTest, CreateBuffer) {
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      MaybeOwningGpuMemory::AllocateShared(device->allocator(), size_in_bytes));
+      MaybeOwningGpuMemory::AllocateShared(device->allocator(),
+                                           device->local_device_id().value(),
+                                           size_in_bytes));
   auto buffer_async_value_ref =
       tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
           std::move(device_buffer));
@@ -84,7 +86,9 @@ TEST(TfrtGpuBufferTest, AcquireExternalReference) {
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      MaybeOwningGpuMemory::AllocateShared(device->allocator(), size_in_bytes));
+      MaybeOwningGpuMemory::AllocateShared(device->allocator(),
+                                           device->local_device_id().value(),
+                                           size_in_bytes));
   auto buffer_async_value_ref =
       tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
           std::move(device_buffer));
@@ -128,7 +132,9 @@ TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipNoWait) {
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      MaybeOwningGpuMemory::AllocateShared(device->allocator(), size_in_bytes));
+      MaybeOwningGpuMemory::AllocateShared(device->allocator(),
+                                           device->local_device_id().value(),
+                                           size_in_bytes));
   void* device_memory_opaque = device_buffer.buffer().opaque();
   auto buffer_async_value_ref =
       tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
@@ -174,7 +180,9 @@ TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipWait) {
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      MaybeOwningGpuMemory::AllocateShared(device->allocator(), size_in_bytes));
+      MaybeOwningGpuMemory::AllocateShared(device->allocator(),
+                                           device->local_device_id().value(),
+                                           size_in_bytes));
   void* device_memory_opaque = device_buffer.buffer().opaque();
   auto buffer_async_value_ref =
       tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
@@ -241,7 +249,9 @@ TEST(TfrtGpuBufferTest, Delete) {
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      MaybeOwningGpuMemory::AllocateShared(device->allocator(), size_in_bytes));
+      MaybeOwningGpuMemory::AllocateShared(device->allocator(),
+                                           device->local_device_id().value(),
+                                           size_in_bytes));
   auto buffer_async_value_ref =
       tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
           std::move(device_buffer));
