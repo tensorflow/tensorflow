@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
+#include "third_party/llvm/llvm-project/llvm/include/llvm/Support/LogicalResult.h"
 #include "transforms/passes.h"
 
 namespace mlir {
@@ -60,8 +61,10 @@ void UnbufferizePass::runOnOperation() {
     Value newValue = mapping.lookupOrNull(arg);
     if (newValue == nullptr) {
       auto attrs = funcOp.getArgAttrDict(arg.getArgNumber());
-      funcOp.insertArgument(funcOp.getNumArguments(), op.getType(), attrs,
-                            arg.getLoc());
+      if (llvm::failed(funcOp.insertArgument(
+              funcOp.getNumArguments(), op.getType(), attrs, arg.getLoc()))) {
+        return signalPassFailure();
+      }
       newValue = funcOp.getArguments().back();
       mapping.map(arg, newValue);
     }
@@ -79,10 +82,14 @@ void UnbufferizePass::runOnOperation() {
     rewriter.eraseOp(op);
   });
   argsToErase.resize(funcOp.getNumArguments());
-  funcOp.eraseArguments(argsToErase);
+  if (llvm::failed(funcOp.eraseArguments(argsToErase))) {
+    return signalPassFailure();
+  }
   auto resultIndices = llvm::to_vector(llvm::seq<unsigned>(0, results.size()));
-  funcOp.insertResults(resultIndices, TypeRange(ValueRange(results)),
-                       resultAttrs);
+  if (llvm::failed(funcOp.insertResults(
+          resultIndices, TypeRange(ValueRange(results)), resultAttrs))) {
+    return signalPassFailure();
+  }
   Operation *terminator = funcOp.getBody().back().getTerminator();
   rewriter.setInsertionPoint(terminator);
   rewriter.replaceOpWithNewOp<func::ReturnOp>(terminator, results);
