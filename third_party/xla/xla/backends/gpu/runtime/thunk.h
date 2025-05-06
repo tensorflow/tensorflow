@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_THUNK_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -34,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
@@ -490,6 +490,16 @@ class Thunk {
       return Internal("Collectives API is not provided");
     }
     return params.collective_params->collectives;
+  }
+
+  // Serializes the thunk into the given ThunkProto. `thunk_proto` is an
+  // out-parameter to make the API compatible with Protobuf Arena allocation.
+  virtual absl::Status ToProto(ThunkProto* thunk_proto) const {
+    thunk_proto->mutable_thunk_info()->set_execution_stream_id(
+        execution_stream_id_.value());
+    thunk_proto->mutable_thunk_info()->set_profile_annotation(
+        profile_annotation_);
+    return absl::OkStatus();
   }
 
  private:

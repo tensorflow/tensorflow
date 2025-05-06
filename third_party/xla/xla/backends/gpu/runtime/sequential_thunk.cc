@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/tsl/platform/errors.h"
@@ -38,7 +41,9 @@ SequentialThunk::SequentialThunk(ThunkInfo thunk_info, ThunkSequence thunks)
 
 std::string SequentialThunk::ToString(int indent) const {
   const std::string indent_str(indent * 2, ' ');
-  if (thunks_.empty()) return indent_str + "No thunks.";
+  if (thunks_.empty()) {
+    return indent_str + "No thunks.";
+  }
 
   auto thunk_with_longest_kind = absl::c_max_element(
       thunks_,
@@ -107,5 +112,19 @@ void SequentialThunk::ForAllThunks(
   }
 }
 
+absl::Status SequentialThunk::ToProto(ThunkProto* thunk_proto) const {
+  TF_RETURN_IF_ERROR(Thunk::ToProto(thunk_proto));
+
+  // This sets the oneof-type to the sequential thunk, even if the thunk list is
+  // empty.
+  thunk_proto->mutable_sequential_thunk();
+
+  for (const auto& thunk : thunks_) {
+    TF_RETURN_IF_ERROR(
+        thunk->ToProto(thunk_proto->mutable_sequential_thunk()->add_thunks()));
+  }
+
+  return absl::OkStatus();
+}
 }  // namespace gpu
 }  // namespace xla

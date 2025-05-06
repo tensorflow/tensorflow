@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -44,6 +45,8 @@ class SequentialThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
+
+  absl::Status ToProto(ThunkProto* thunk_proto) const override;
 
  private:
   // The list of sub-thunks.
