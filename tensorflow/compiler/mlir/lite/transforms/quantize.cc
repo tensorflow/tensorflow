@@ -15,7 +15,7 @@ limitations under the License.
 
 // This transformation pass applies quantization on TFLite dialect.
 
-#include <cstddef>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -94,9 +94,11 @@ static LogicalResult HasDQParent(Value value, Value& dq_input) {
   return failure();
 }
 
+// The assumption here is that the op has at least one DQ operand since the
+// pattern's root is that.
 static OpQuantizationType GetOpQuantizationType(Operation* op) {
-  // The assumption here is that the op has at least one DQ operand since the
-  // pattern's root is that.
+  const absl::flat_hash_set<std::string> kDrqOpsWithNoDrqInput = {
+      "tfl.embedding_lookup"};
 
   // Indicates if an input which is not an FQ is seen.
   bool non_fq_float_input_seen = false;
@@ -110,6 +112,10 @@ static OpQuantizationType GetOpQuantizationType(Operation* op) {
     if (HasDQParent(operand, dq_input).succeeded()) {
       // Operands with QDQ can not specify the quantization type.
       continue;
+    }
+
+    if (kDrqOpsWithNoDrqInput.contains(op->getName().getStringRef().str())) {
+      return OpQuantizationType::kDRQ;
     }
 
     auto element_type = getElementTypeOrSelf(operand.getType());
