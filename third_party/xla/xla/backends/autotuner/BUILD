@@ -19,6 +19,7 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

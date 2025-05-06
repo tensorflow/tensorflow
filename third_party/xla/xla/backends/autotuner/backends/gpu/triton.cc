@@ -63,7 +63,8 @@ constexpr std::array<int, 5> kNumCtas = {1, 2, 4, 8, 16};
 using TritonBackendConfig = AutotuneResult::TritonGemmKey;
 
 std::vector<std::unique_ptr<BackendConfig>> TritonBackend::GetSupportedConfigs(
-    const HloInstruction& instr) {
+    const HloInstruction& instr,
+    stream_executor::StreamExecutor* stream_executor) {
   if (!IsSupported(instr)) {
     VLOG(1) << "TritonBackend does not support " << instr.opcode();
     return {};

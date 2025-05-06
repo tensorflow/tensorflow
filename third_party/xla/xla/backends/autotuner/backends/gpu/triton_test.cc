@@ -87,7 +87,7 @@ TEST_F(TritonBackendTest, GetSupportedConfigs) {
 
   std::vector<std::unique_ptr<BackendConfig>> configs =
       backend_.GetSupportedConfigs(
-          *(module->entry_computation()->root_instruction()));
+          *(module->entry_computation()->root_instruction()), nullptr);
   EXPECT_GT(configs.size(), 0);
 }
 
@@ -99,7 +99,7 @@ TEST_F(TritonBackendTest, GetSupportedConfigsForUnsupportedInstruction) {
                                           ->called_computations()[0]
                                           ->root_instruction();
   std::vector<std::unique_ptr<BackendConfig>> configs =
-      backend_.GetSupportedConfigs(*unsupported_instr);
+      backend_.GetSupportedConfigs(*unsupported_instr, nullptr);
   EXPECT_THAT(configs, ::testing::IsEmpty());
 }
 
