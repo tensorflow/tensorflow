@@ -96,6 +96,7 @@ int GetNumGpus(const HloInstruction& instr) {
   // (more granularly) model bytes accessed (input + output) for collectives.
   absl::Duration result = absl::Seconds(1.0f * analysis.bytes_accessed(instr) /
                                         gpu_device_info.memory_bandwidth());
+  GpuPerformanceModelOwning gpu_performance_model{gpu_device_info};
   switch (instr.opcode()) {
     case HloOpcode::kAllGather:
     case HloOpcode::kAllGatherStart: {
@@ -105,26 +106,26 @@ int GetNumGpus(const HloInstruction& instr) {
     }
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart: {
-      result += GpuPerformanceModel::EstimateRunTimeForInstruction(
-                    &instr, gpu_device_info, &analysis, /*config=*/{})
-                    .compute_time;
+      result +=
+          gpu_performance_model.EstimateRunTimeForInstruction(&instr, &analysis)
+              .compute_time;
       result += sol_model.RingLatency(
           msg_size, num_nodes, SolGPUCostModel::CollectiveType::kAllReduce);
       break;
     }
     case HloOpcode::kReduceScatter: {
-      result += GpuPerformanceModel::EstimateRunTimeForInstruction(
-                    &instr, gpu_device_info, &analysis, {})
-                    .compute_time;
+      result +=
+          gpu_performance_model.EstimateRunTimeForInstruction(&instr, &analysis)
+              .compute_time;
       result += sol_model.RingLatency(
           msg_size, num_nodes, SolGPUCostModel::CollectiveType::kReduceScatter);
       break;
     }
     case HloOpcode::kAsyncStart: {
       if (instr.async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-        result += GpuPerformanceModel::EstimateRunTimeForInstruction(
-                      instr.async_wrapped_instruction(), gpu_device_info,
-                      &analysis, {})
+        result += gpu_performance_model
+                      .EstimateRunTimeForInstruction(
+                          instr.async_wrapped_instruction(), &analysis)
                       .compute_time;
         result += sol_model.RingLatency(
             msg_size, num_nodes,
@@ -177,9 +178,8 @@ LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
   }
 
   absl::Duration total_estimated_time =
-      GpuPerformanceModel::EstimateRunTimeForInstruction(
-          instr, gpu_info_, &*cost_analysis_,
-          GpuPerformanceModelOptions::Default())
+      gpu_performance_model_
+          .EstimateRunTimeForInstruction(instr, &*cost_analysis_)
           .exec_time;
   LatencyEstimator::TimeCost cost_in_us =
       absl::ToDoubleMicroseconds(total_estimated_time);
@@ -196,6 +196,7 @@ SolLatencyEstimator::SolLatencyEstimator(
     HloComputation* computation)
     : config_(config),
       gpu_info_(gpu_info),
+      gpu_performance_model_(gpu_info),
       latency_estimator_(std::move(latency_estimator)),
       shape_size_function_(shape_size_function),
       sol_flags_(SolGPUCostModel::GetConfig(computation->parent())) {
