@@ -20,9 +20,9 @@ import "xla/stream_executor/gpu/gpu_blas_lt.proto";
 
 message GemmThunk {
   xla.GemmConfig gemm_config = 1;
-  xla.buffer_assignment.BufferAllocationSlice lhs_buffer = 2;
-  xla.buffer_assignment.BufferAllocationSlice rhs_buffer = 3;
-  xla.buffer_assignment.BufferAllocationSlice output_buffer = 4;
-  optional xla.buffer_assignment.BufferAllocationSlice workspace = 5;
+  xla.buffer_assignment.BufferAllocationSliceProto lhs_buffer = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto rhs_buffer = 3;
+  xla.buffer_assignment.BufferAllocationSliceProto output_buffer = 4;
+  optional xla.buffer_assignment.BufferAllocationSliceProto workspace = 5;
   bool deterministic = 6;
 }

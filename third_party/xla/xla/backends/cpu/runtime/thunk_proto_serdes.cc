@@ -230,9 +230,9 @@ static absl::StatusOr<CollectiveThunk::OpParams> OpParamsFromProto(
   return op_params;
 }
 
-static absl::StatusOr<BufferAllocationSliceProto> SerializeSliceIntoProto(
-    const BufferAllocation::Slice& slice) {
-  BufferAllocationSliceProto proto;
+static absl::StatusOr<xla::buffer_assignment::BufferAllocationSliceProto>
+SerializeSliceIntoProto(const BufferAllocation::Slice& slice) {
+  xla::buffer_assignment::BufferAllocationSliceProto proto;
   proto.set_offset(slice.offset());
   proto.set_size(slice.size());
   proto.set_buffer_allocation_index(
@@ -241,7 +241,7 @@ static absl::StatusOr<BufferAllocationSliceProto> SerializeSliceIntoProto(
 }
 
 static absl::StatusOr<BufferAllocation::Slice> DeserializeSliceFromProto(
-    const BufferAllocationSliceProto& proto,
+    const xla::buffer_assignment::BufferAllocationSliceProto& proto,
     const std::vector<BufferAllocation>& buffer_allocations) {
   const BufferAllocation& allocation =
       buffer_allocations[proto.buffer_allocation_index()];
@@ -1343,14 +1343,14 @@ static absl::StatusOr<std::unique_ptr<Thunk>> KernelThunkFromProto(
   std::vector<BufferAllocation::Slice> arguments_buffers;
   std::vector<BufferAllocation::Slice> results_buffers;
 
-  for (const BufferAllocationSliceProto& buffer_proto :
+  for (const xla::buffer_assignment::BufferAllocationSliceProto& buffer_proto :
        proto.kernel_thunk().arguments_buffers()) {
     TF_ASSIGN_OR_RETURN(auto buffer, DeserializeSliceFromProto(
                                          buffer_proto, buffer_allocations));
     arguments_buffers.push_back(std::move(buffer));
   }
 
-  for (const BufferAllocationSliceProto& buffer_proto :
+  for (const xla::buffer_assignment::BufferAllocationSliceProto& buffer_proto :
        proto.kernel_thunk().results_buffers()) {
     TF_ASSIGN_OR_RETURN(auto buffer, DeserializeSliceFromProto(
                                          buffer_proto, buffer_allocations));

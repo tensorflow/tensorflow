@@ -38,7 +38,7 @@ namespace tfcompile {
 namespace {
 
 std::string GetBufferAllocationString(
-    const xla::cpu::BufferAllocationSliceProto& slice) {
+    const xla::buffer_assignment::BufferAllocationSliceProto& slice) {
   return absl::StrCat("reinterpret_cast<std::byte*>(buffer_table()[",
                       slice.buffer_allocation_index(), "]) + ", slice.offset());
 }
@@ -595,8 +595,8 @@ ThunkProtoExecutionDeserializer::GetConditionalThunkRunImpl(
      })";
 
   auto get_branch_index =
-      [](const xla::cpu::BufferAllocationSliceProto& branch_index_buffer)
-      -> absl::StatusOr<std::string> {
+      [](const xla::buffer_assignment::BufferAllocationSliceProto&
+             branch_index_buffer) -> absl::StatusOr<std::string> {
     if (branch_index_buffer.size() == sizeof(bool)) {
       return absl::StrCat("*reinterpret_cast<bool*>(",
                           GetBufferAllocationString(branch_index_buffer),

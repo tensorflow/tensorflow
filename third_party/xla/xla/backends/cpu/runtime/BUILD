@@ -175,6 +175,7 @@ tf_proto_library(
     create_grpc_library = True,
     make_default_target_header_only = True,
     protodeps = [
+        "//xla/service:buffer_assignment_proto",
         "//xla:xla_data_proto",
         "//xla/service:hlo_proto",
     ] + if_google(["@com_google_protobuf//:any"]),

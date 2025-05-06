@@ -104,8 +104,8 @@ message BufferIsolationConfig {
   repeated int32 isolation_colors = 5;
 }
 
-message BufferAllocationSlice {
-  int64 allocation_index = 1;
-  int64 offset = 2;
-  int64 size = 3;
+message BufferAllocationSliceProto {
+  int64 offset = 1;
+  int64 size = 2;
+  int64 buffer_allocation_index = 3;
 }
