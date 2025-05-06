@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -372,9 +373,14 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     se::StreamExecutorMemoryAllocator allocator(executor);
     BufferAllocations allocations({mem0, mem1}, 0, &allocator);
 
-    // No-op trace callback to count how many times it was called.
+    se::DeviceMemory<int32_t> mem = executor->AllocateArray<int32_t>(16, 0);
+
+    // Count how many times trace callback was called. We also need to record
+    // something on the given stream because we can't leave traced command
+    // buffer empty.
     int64_t num_calls = 0;
-    auto trace = [&](se::Stream*) {
+    auto trace = [&](se::Stream* stream) -> absl::Status {
+      TF_RETURN_IF_ERROR(stream->Memset32(&mem, 42, 16));
       num_calls++;
       return absl::OkStatus();
     };
