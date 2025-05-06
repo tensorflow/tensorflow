@@ -40,9 +40,9 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/temp_tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -147,7 +147,7 @@ class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
   LogicalResult addReshapeOpToDepthwiseWeight(TF::PartitionedCallOp op,
                                               PatternRewriter& rewriter,
                                               StringRef function_name) const {
-    std::unique_ptr<quant::OpQuantSpec> spec = quant::GetTFOpQuantSpec(op);
+    std::unique_ptr<OpQuantSpec> spec = GetTFOpQuantSpec(op);
     const absl::flat_hash_set<int> operands = spec->quantizable_operands;
 
     if (operands.size() != 1) return failure();
@@ -206,7 +206,7 @@ class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
                                 PatternRewriter& rewriter) const override {
     const auto f_attr = mlir::dyn_cast<FlatSymbolRefAttr>(op.getFAttr());
     // Non-quantizable op
-    if (!op->hasAttr(quant::kQuantTraitAttrName)) return failure();
+    if (!op->hasAttr(kQuantTraitAttrName)) return failure();
     StringRef function_name = f_attr.getValue();
     // TODO(b/228928859): Improve the getter function to match attributes rather
     // than function name.

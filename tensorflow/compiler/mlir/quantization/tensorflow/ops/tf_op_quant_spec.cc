@@ -89,39 +89,33 @@ std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
     if (function_name.contains("depthwise_conv2d")) {
       spec->coeff_op_quant_dim[1] = 3;
       if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("conv2d")) {
       spec->coeff_op_quant_dim[1] = 3;
       if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("matmul")) {
       spec->coeff_op_quant_dim[1] = -1;
       if (function_name.contains("with_bias") ||
           function_name.contains("and_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("einsum")) {
       spec->coeff_op_quant_dim[1] = -1;
       if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("conv3d")) {
       spec->coeff_op_quant_dim[1] = 4;
       if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("batch_matmul")) {
       spec->coeff_op_quant_dim[1] = -1;
       if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("gather")) {
       // Note that gather has axis attribute that specifies channel axis.

@@ -1,4 +1,4 @@
-// RUN: tf-quant-opt %s -split-input-file -tf-quant-quantize-weights | FileCheck %s
+// RUN: tf-quant-opt %s -split-input-file -quant-quantize-weights | FileCheck %s
 
 module {
   func.func @not_quantize_const() -> (tensor<2x1024xf32>) {

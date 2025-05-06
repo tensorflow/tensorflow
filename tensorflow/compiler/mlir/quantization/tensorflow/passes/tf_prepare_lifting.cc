@@ -46,7 +46,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/tf_constant_fold.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -152,7 +152,7 @@ Value ReshapeTo1DTensor(OpBuilder& builder, Location loc, Value value) {
     value = builder.create<TF::ReshapeOp>(
         loc, value, tf_quant::Create1DConstValue(builder, loc, new_shape));
   }
-  return quant::ConstantFoldOpIfPossible(value.getDefiningOp()).front();
+  return ConstantFoldOpIfPossible(value.getDefiningOp()).front();
 }
 
 // Matches convolution op with "NHWC" data format or matmul op with false adj_y.
@@ -214,7 +214,7 @@ Value MakeOneDimValueBroadcastable(OpBuilder& builder, Location loc,
 
   auto reshape_op = builder.create<TF::ReshapeOp>(
       loc, value, tf_quant::Create1DConstValue(builder, loc, new_shape));
-  return quant::ConstantFoldOpIfPossible(reshape_op).front();
+  return ConstantFoldOpIfPossible(reshape_op).front();
 }
 
 // Checks if a value can be symmetrically quantized.
@@ -331,8 +331,7 @@ void TFPrepareLiftingPass::runOnOperation() {
   // with a constant operand to a preceding affine operation.
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
-  patterns.add<quant::RemoveIdentity, quant::ConstantFoldQuantizableOperands>(
-      ctx);
+  patterns.add<quant::RemoveIdentity, ConstantFoldQuantizableOperands>(ctx);
   if (op_set_ != OpSet::XLA) {
     // Convert Einsum into BatchMatMul for non-XLA opsets.
     // For the uniform opset, it is requested to maintain the BatchMatmul logic.
