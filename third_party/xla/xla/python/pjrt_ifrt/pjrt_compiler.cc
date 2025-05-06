@@ -85,7 +85,7 @@ absl::Status TranslateDeviceIds(PjRtClient* client,
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
+absl::StatusOr<LoadedExecutableRef> PjRtCompiler::Compile(
     std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
   const auto* xla_program = llvm::dyn_cast<HloProgram>(program.get());
@@ -103,7 +103,7 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
       std::move(xla_compile_options->devices));
 }
 
-absl::StatusOr<std::unique_ptr<Executable>> PjRtCompiler::Compile(
+absl::StatusOr<ExecutableRef> PjRtCompiler::Compile(
     std::unique_ptr<Program> program, const Topology& topology,
     std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
@@ -126,8 +126,7 @@ absl::StatusOr<std::unique_ptr<Executable>> PjRtCompiler::Compile(
   return PjRtExecutable::Create(std::move(executable));
 }
 
-absl::StatusOr<std::unique_ptr<LoadedExecutable>>
-PjRtCompiler::DeserializeLoadedExecutable(
+absl::StatusOr<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
     absl::string_view serialized,
     std::unique_ptr<DeserializeExecutableOptions> options) {
   DCHECK(this);

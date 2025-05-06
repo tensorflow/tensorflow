@@ -349,7 +349,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
   }
 
   absl::StatusOr<CompileResponse> CompileTestLoadedExecutable(
-      absl::StatusOr<std::unique_ptr<LoadedExecutable>> loaded_executable) {
+      absl::StatusOr<LoadedExecutableRef> loaded_executable) {
     auto request = NewIfrtRequest(NewOpId());
     CompileRequest* compile_request = request->mutable_compile_request();
     TestProgram program;

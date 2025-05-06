@@ -103,6 +103,8 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   static char ID;  // NOLINT
 };
 
+using ExecutableRef = std::unique_ptr<Executable>;
+
 struct ExecuteOptions {
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
@@ -267,6 +269,8 @@ class LoadedExecutable
 
   static char ID;  // NOLINT
 };
+
+using LoadedExecutableRef = std::unique_ptr<LoadedExecutable>;
 
 }  // namespace ifrt
 }  // namespace xla

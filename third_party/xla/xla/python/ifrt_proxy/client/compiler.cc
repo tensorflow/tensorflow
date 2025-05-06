@@ -54,7 +54,7 @@ Compiler::Compiler(xla::ifrt::Client* client,
                    std::shared_ptr<RpcHelper> rpc_helper)
     : client_(client), rpc_helper_(std::move(rpc_helper)) {}
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
+absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::Compile(
     std::unique_ptr<Program> program,
     std::unique_ptr<xla::ifrt::CompileOptions> options) {
   auto request = std::make_unique<CompileRequest>();
@@ -144,14 +144,14 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
       std::move(loaded_host_callback_handles));
 }
 
-absl::StatusOr<std::unique_ptr<Executable>> Compiler::Compile(
+absl::StatusOr<xla::ifrt::ExecutableRef> Compiler::Compile(
     std::unique_ptr<Program> program, const Topology& topology,
     std::unique_ptr<CompileOptions> options) {
   return absl::UnimplementedError(
       "IFRT service compiler does not support `Compile` with a topology");
 }
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>>
+absl::StatusOr<xla::ifrt::LoadedExecutableRef>
 Compiler::DeserializeLoadedExecutable(
     absl::string_view serialized,
     std::unique_ptr<xla::ifrt::DeserializeExecutableOptions> options) {

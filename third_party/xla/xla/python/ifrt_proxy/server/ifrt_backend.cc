@@ -299,8 +299,7 @@ std::vector<uint64_t> IfrtBackend::ArrayStore::Reservation::Fill(
 }
 
 struct IfrtBackend::LoadedExecutableWithInfo {
-  explicit LoadedExecutableWithInfo(
-      std::unique_ptr<xla::ifrt::LoadedExecutable> executable_p)
+  explicit LoadedExecutableWithInfo(xla::ifrt::LoadedExecutableRef executable_p)
       : executable(std::move(executable_p)) {}
 
   absl::Mutex mu;
@@ -309,7 +308,7 @@ struct IfrtBackend::LoadedExecutableWithInfo {
   // do not result in a different specification.
   std::optional<std::vector<xla::ifrt::ArraySpec>> output_spec
       ABSL_GUARDED_BY(mu);
-  const std::unique_ptr<xla::ifrt::LoadedExecutable> executable;
+  const xla::ifrt::LoadedExecutableRef executable;
 
   absl::flat_hash_set<int> donatable_indices ABSL_GUARDED_BY(mu);
 };

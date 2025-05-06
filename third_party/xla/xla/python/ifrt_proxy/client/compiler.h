@@ -36,16 +36,15 @@ class Compiler final : public llvm::RTTIExtends<Compiler, xla::ifrt::Compiler> {
  public:
   Compiler(xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper);
 
-  absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compile(
+  absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compile(
       std::unique_ptr<xla::ifrt::Program> program,
       std::unique_ptr<xla::ifrt::CompileOptions> options) override;
 
-  absl::StatusOr<std::unique_ptr<Executable>> Compile(
+  absl::StatusOr<xla::ifrt::ExecutableRef> Compile(
       std::unique_ptr<Program> program, const Topology& topology,
       std::unique_ptr<CompileOptions> options) override;
 
-  absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>>
-  DeserializeLoadedExecutable(
+  absl::StatusOr<xla::ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<xla::ifrt::DeserializeExecutableOptions> options)
       override;

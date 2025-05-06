@@ -54,11 +54,11 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
  public:
   // Compiles `mlir_module` and returns a `LoadedExecutable`.
   // TODO(hyeontaek): Move executable loading to `Client`.
-  virtual absl::StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
+  virtual absl::StatusOr<LoadedExecutableRef> Compile(
       std::unique_ptr<Program> program,
       std::unique_ptr<CompileOptions> options) = 0;
 
-  virtual absl::StatusOr<std::unique_ptr<Executable>> Compile(
+  virtual absl::StatusOr<ExecutableRef> Compile(
       std::unique_ptr<Program> program, const Topology& topology,
       std::unique_ptr<CompileOptions> options) = 0;
 
@@ -68,8 +68,7 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
   // TODO(hyeontaek): Move executable loading to `Client`. Then, the user can
   // use standard IFRT deserialization instead of this custom deserialization
   // function.
-  virtual absl::StatusOr<std::unique_ptr<LoadedExecutable>>
-  DeserializeLoadedExecutable(
+  virtual absl::StatusOr<LoadedExecutableRef> DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) = 0;
 

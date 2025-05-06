@@ -68,7 +68,7 @@ static const char* const module_add_one =
 
 // Compiles an MLIR module on specified devices. If devices is empty, compiles
 // it as a portable executable.
-absl::StatusOr<std::unique_ptr<LoadedExecutable>> CompileOnDevices(
+absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
     Client* client, Compiler* compiler, absl::string_view mlir_module_str,
     absl::Span<Device* const> devices, bool replicated) {
   mlir::MLIRContext context;
