@@ -470,6 +470,7 @@ namespace {
 
 bool IsTextProtoPath(absl::string_view file_path) {
   return absl::EndsWith(file_path, ".txt") ||
+         absl::EndsWith(file_path, ".txtpb") ||
          absl::EndsWith(file_path, ".textproto") ||
          absl::EndsWith(file_path, ".prototxt") ||
          absl::EndsWith(file_path, ".pbtxt");

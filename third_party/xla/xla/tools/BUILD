@@ -1030,7 +1030,7 @@ xla_test(
     ],
     data = [
         ":data/add.hlo",
-        "//xla/service:xla_aot_compile_test_gpu_target_config.prototxt",
+        "//xla/service:xla_aot_compile_test_gpu_target_config.txtpb",
         "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
     ],
     deps = [
