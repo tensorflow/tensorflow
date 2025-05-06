@@ -216,7 +216,7 @@ LogicalResult ApplyStablehloToVhloPatterns(ModuleOp module,
 
   StablehloToOdmlTypeConverter converter;
   RewritePatternSet patterns(context);
-  stablehlo::populateStablehloToVhloPatterns(&patterns, &converter, context);
+  stablehlo::populateStablehloToVhloPatterns(context, &patterns, &converter);
 
   if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
     return module->emitError("Failed partial conversion to VHLO");
@@ -246,7 +246,7 @@ LogicalResult ApplyVhloToStablehloPatterns(ModuleOp module) {
 
   VhloToStablehloTypeConverter converter;
   RewritePatternSet patterns(context);
-  stablehlo::populateVhloToStablehloPatterns(&patterns, &converter, context);
+  stablehlo::populateVhloToStablehloPatterns(context, &patterns, &converter);
 
   if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
     return module->emitError("Failed partial conversion to StableHLO");
