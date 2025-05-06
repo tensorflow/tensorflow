@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/maybe_owning.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
@@ -128,7 +129,6 @@ class TfrtGpuDevice final : public PjRtDevice {
     PjRtLocalDeviceId local_device_id;
     PjRtLocalHardwareId local_hardware_id;
     se::StreamExecutor* executor;
-    std::unique_ptr<tsl::Allocator> allocator;
     int stream_capacity;
     int max_inflight_computations;
     std::string platform_version;
@@ -190,7 +190,7 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
 
-  tsl::Allocator* allocator() { return allocator_.get(); }
+  se::DeviceMemoryAllocator* allocator() const;
 
   // Returns a fresh, PRNG-generated random seed for an XLA computation.
   int GetNewPrngSeed();
@@ -216,8 +216,6 @@ class TfrtGpuDevice final : public PjRtDevice {
   const PjRtLocalHardwareId local_hardware_id_;
   se::StreamExecutor* executor_;
   BoundedStreamPool stream_pool_;
-  std::unique_ptr<tsl::Allocator> allocator_;
-  std::unique_ptr<se::DeviceMemoryAllocator> se_allocator_;
   absl::InlinedVector<PjRtMemorySpace*, 1> memory_spaces_;
   absl::flat_hash_map<int, PjRtMemorySpace*> memory_spaces_by_kind_id_;
 
@@ -249,6 +247,7 @@ class TfrtGpuClient final : public PjRtClient {
   TfrtGpuClient(int process_index, xla::LocalClient* xla_client,
                 std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
                 bool should_stage_host_to_device_transfers,
+                MaybeOwning<se::DeviceMemoryAllocator> allocator,
                 std::unique_ptr<tsl::Allocator> host_memory_allocator,
                 std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
                 std::shared_ptr<const GpuTopology> gpu_topology);
@@ -278,6 +277,8 @@ class TfrtGpuClient final : public PjRtClient {
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
   xla::LocalClient* xla_client() const { return xla_client_; }
+
+  se::DeviceMemoryAllocator* allocator() { return allocator_.get_mutable(); }
 
   bool should_stage_host_to_device_transfers() const {
     return should_stage_host_to_device_transfers_;
@@ -428,6 +429,11 @@ class TfrtGpuClient final : public PjRtClient {
   xla::LocalClient* xla_client_;
 
   bool should_stage_host_to_device_transfers_;
+
+  // Device memory allocator. If owned, the allocator must outlive the devices,
+  // because it is the device destructor that waits for any outstanding work to
+  // complete.
+  MaybeOwning<se::DeviceMemoryAllocator> allocator_;
   // Allocator to be used for staging memory transfers to devices.
   std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
 

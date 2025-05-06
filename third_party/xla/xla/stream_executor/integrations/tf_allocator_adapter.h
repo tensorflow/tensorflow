@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -28,17 +27,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -91,14 +86,17 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
     Stream *stream;
     int64_t memory_space;
     std::optional<int> device_ordinal = std::nullopt;
+    const Platform *platform = nullptr;
 
     AllocatorInfo(std::unique_ptr<tsl::Allocator> allocator, Stream *stream,
                   int64_t memory_space,
-                  std::optional<int> device_ordinal = std::nullopt)
+                  std::optional<int> device_ordinal = std::nullopt,
+                  const Platform *platform = nullptr)
         : allocator(std::move(allocator)),
           stream(stream),
           memory_space(memory_space),
-          device_ordinal(device_ordinal) {}
+          device_ordinal(device_ordinal),
+          platform(platform) {}
   };
 
   MultiDeviceAdapter(const Platform *platform,
@@ -108,16 +106,23 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
     for (AllocatorInfo &info : tf_allocators) {
       auto &per_device_allocators =
           memory_space_to_per_device_allocators_[info.memory_space];
-      int device_ordinal = info.device_ordinal.has_value()
-                               ? *info.device_ordinal
-                               : info.stream->parent()->device_ordinal();
+      int device_ordinal =
+          info.device_ordinal.has_value()
+              ? *info.device_ordinal
+              : CHECK_NOTNULL(info.stream)->parent()->device_ordinal();
       if (per_device_allocators.size() <= device_ordinal) {
         per_device_allocators.resize(device_ordinal + 1);
       }
       CHECK(!per_device_allocators[device_ordinal]);
-      per_device_allocators[device_ordinal] =
-          std::make_unique<TfAllocatorAdapter>(info.allocator.get(),
-                                               info.stream);
+      if (info.stream != nullptr) {
+        per_device_allocators[device_ordinal] =
+            std::make_unique<TfAllocatorAdapter>(info.allocator.get(),
+                                                 info.stream);
+      } else {
+        per_device_allocators[device_ordinal] =
+            std::make_unique<TfAllocatorAdapter>(info.allocator.get(),
+                                                 info.platform);
+      }
       tf_allocators_.push_back(std::move(info.allocator));
     }
   }

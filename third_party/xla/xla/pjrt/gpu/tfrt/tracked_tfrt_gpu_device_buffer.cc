@@ -28,8 +28,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/stacktrace.h"
 
@@ -51,18 +53,16 @@ ShapedBuffer MaybeOwningGpuMemory::AsShapedBuffer(
 void MaybeOwningGpuMemory::SetUnOwned() {
   CHECK(owns_data())
       << "SetUnOwned can only be called on an owning MaybeOwningGpuMemory.";
-  allocator_ = nullptr;
+  owning_buffer_.Release();
 }
 
 absl::StatusOr<MaybeOwningGpuMemory> MaybeOwningGpuMemory::AllocateShared(
-    tsl::Allocator* allocator, size_t size) {
-  if (size == 0) return MaybeOwningGpuMemory(se::DeviceMemoryBase());
-  void* data =
-      allocator->AllocateRaw(tsl::Allocator::kAllocatorAlignment, size);
-  if (!data) {
-    return ResourceExhausted("Out of memory allocating %d bytes.", size);
+    se::DeviceMemoryAllocator* allocator, int device_ordinal, size_t size) {
+  if (size == 0) {
+    return MaybeOwningGpuMemory(se::DeviceMemoryBase());
   }
-  return MaybeOwningGpuMemory(allocator, se::DeviceMemoryBase(data, size));
+  TF_ASSIGN_OR_RETURN(auto memory, allocator->Allocate(device_ordinal, size));
+  return MaybeOwningGpuMemory(std::move(memory));
 }
 
 TrackedTfrtGpuDeviceBuffer::TrackedTfrtGpuDeviceBuffer(
