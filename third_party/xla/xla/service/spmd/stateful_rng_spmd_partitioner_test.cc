@@ -44,8 +44,6 @@ namespace xla {
 namespace spmd {
 namespace {
 
-namespace op = xla::testing::opcode_matchers;
-
 int64_t CountInstructions(const HloComputation &computation, HloOpcode opcode) {
   int64_t count = 0;
   for (const auto &instruction : computation.instructions()) {
@@ -102,7 +100,6 @@ class StatefulRngSpmdPartitionerTest : public HloHardwareIndependentTestBase {
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(1000000);
     debug_options.set_xla_gpu_multi_streamed_windowed_einsum(false);
-    debug_options.set_xla_gpu_unsafe_pipelined_loop_annotator(false);
     return debug_options;
   }
 };
@@ -208,65 +205,6 @@ TEST_F(StatefulRngSpmdPartitionerTest, VerifyThresholdSetCorrectly) {
   EXPECT_EQ(rng_spmd_partitioner.options().threshold_for_windowed_einsum_mib,
             threshold);
   EXPECT_EQ(rng_spmd_partitioner.options().unroll_windowed_einsum, true);
-}
-
-TEST_F(StatefulRngSpmdPartitionerTest,
-       MergedSliceThenConcatRotateRightWhileOp) {
-  absl::string_view hlo_string = R"(
-HloModule test
-
-%Body {
-  %param = (f32[12], s32[]) parameter(0)
-  %i = s32[] get-tuple-element(%param), index=1
-  %one = s32[] constant(1)
-  %i_plus_one = s32[] add(s32[] %i, s32[] %one)
-  %param0 = f32[12] get-tuple-element(%param), index=0, sharding={devices=[4]<=[4]}
-  %slice0 = f32[2] slice(%param0), slice={[10:12]}, sharding={devices=[4]<=[4]}
-  %slice1 = f32[10] slice(%param0), slice={[0:10]}, sharding={devices=[4]<=[4]}
-  %concat = f32[12] concatenate(%slice0, %slice1), dimensions={0}, sharding={devices=[4]<=[4]}
-  ROOT %tuple = (f32[12], s32[]) tuple(%concat, %i_plus_one)
-}
-
-%Cond {
-  %param.1 = (f32[12], s32[]) parameter(0)
-  %i.1 = s32[] get-tuple-element(%param.1), index=1
-  %trip_count = s32[] constant(11)
-  ROOT %done = pred[] compare(%i.1, %trip_count), direction=LT
-}
-
-ENTRY %test {
-  %i_start = f32[12] parameter(0)
-  %p_start = s32[] constant(0)
-  %initial_tuple = (f32[12], s32[]) tuple(%i_start, %p_start)
-  ROOT %while = (f32[12], s32[]) while(%initial_tuple), condition=%Cond, body=%Body
-}
-)";
-
-  DebugOptions debug_options = GetDefaultDebugOptions();
-  debug_options.set_xla_gpu_unsafe_pipelined_loop_annotator(true);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options));
-  const HloInstruction *whileOp =
-      module->entry_computation()->GetInstructionWithName("while.1");
-  const HloInstruction *root =
-      whileOp->while_body()->GetInstructionWithName("concatenate");
-  auto rotate =
-      op::Concatenate(op::CollectivePermute(op::Slice()), op::Slice());
-  EXPECT_THAT(root, AllOf(rotate, op::Shape("f32[3]")));
-  EXPECT_TRUE(
-      whileOp->frontend_attributes().map().contains("is_pipelined_while_loop"));
-
-  // Checking that the IR is valid when unsafe_pipeline_attr = false
-  debug_options.set_xla_gpu_unsafe_pipelined_loop_annotator(false);
-  TF_ASSERT_OK_AND_ASSIGN(
-      module,
-      PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options));
-  whileOp = module->entry_computation()->GetInstructionWithName("while.1");
-  root = whileOp->while_body()->GetInstructionWithName("concatenate");
-  rotate = op::Concatenate(op::CollectivePermute(op::Slice()), op::Slice());
-  EXPECT_THAT(root, AllOf(rotate, op::Shape("f32[3]")));
 }
 
 TEST_F(StatefulRngSpmdPartitionerTest,
