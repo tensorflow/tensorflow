@@ -5647,7 +5647,6 @@ absl::Status SpmdPartitioner::PreprocessHlos(
 
         if (std::optional<int64_t> amount = FindRotateRightPattern(hlo)) {
           HloInstruction* lhs = SkipCopyOperands(hlo->mutable_operand(0));
-          TF_RETURN_IF_ERROR(HandleRotateRightWhilePreprocessing(computation));
           HloInstruction* to_rotate = lhs->mutable_operand(0);
           HloInstruction* rotate = computation->AddInstruction(
               CreateCustomCallSPMDInternal_RotateRight(to_rotate, dim,

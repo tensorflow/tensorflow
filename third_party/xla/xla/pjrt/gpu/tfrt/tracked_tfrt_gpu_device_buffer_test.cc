@@ -17,9 +17,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
@@ -29,6 +27,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
@@ -41,15 +41,14 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/mem.h"
 
 namespace xla {
 namespace {
@@ -57,13 +56,26 @@ namespace {
 using ::tsl::BlockUntilReady;
 using ::tsl::MakeConstructedAsyncValueRef;
 
-class TestAllocator : public tsl::Allocator {
+void* kOpaque = reinterpret_cast<void*>(1234567890);
+
+class TestAllocator : public se::DeviceMemoryAllocator {
  public:
-  std::string Name() override { return "test_allocator"; }
-  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    return tsl::port::AlignedMalloc(num_bytes, alignment);
+  TestAllocator() : DeviceMemoryAllocator(nullptr) {}
+
+  using se::DeviceMemoryAllocator::Allocate;
+  absl::StatusOr<stream_executor::OwningDeviceMemory> Allocate(
+      int device_ordinal, uint64_t size, bool retry_on_failure,
+      int64_t memory_space) override {
+    const se::DeviceMemoryBase base(kOpaque, size);
+    return stream_executor::OwningDeviceMemory(base, 0, this);
   }
-  void DeallocateRaw(void* ptr) override { return tsl::port::AlignedFree(ptr); }
+  absl::Status Deallocate(int device_ordinal,
+                          se::DeviceMemoryBase mem) override {
+    return absl::OkStatus();
+  }
+  absl::StatusOr<se::Stream*> GetStream(int device_ordinal) override {
+    LOG(FATAL) << "Unimplemented for TestAllocator.";
+  }
 };
 
 class TestDevice : public PjRtDevice {
@@ -106,22 +118,22 @@ class TestDevice : public PjRtDevice {
 
 TEST(MaybeOwningGpuMemoryTest, MoveConstructorSetOriginalToNull) {
   TestAllocator allocator;
-  size_t size = sizeof(int);
-  void* data = allocator.AllocateRaw(tsl::Allocator::kAllocatorAlignment, size);
-  se::DeviceMemoryBase device_memory(data, size);
-  MaybeOwningGpuMemory memory(&allocator, device_memory);
+  TF_ASSERT_OK_AND_ASSIGN(auto owning_memory, allocator.Allocate(0, 100));
+  MaybeOwningGpuMemory memory(std::move(owning_memory));
+  EXPECT_EQ(memory.buffer().opaque(), kOpaque);
+
   MaybeOwningGpuMemory another_memory = std::move(memory);
   EXPECT_TRUE(another_memory.owns_data());
-  EXPECT_EQ(another_memory.buffer(), device_memory);
+  EXPECT_EQ(another_memory.buffer().opaque(), kOpaque);
 }
 
 TEST(MaybeOwningGpuMemoryTest, OwningToNonOwning) {
   TestAllocator allocator;
-  MaybeOwningGpuMemory memory(&allocator, se::DeviceMemoryBase());
+  TF_ASSERT_OK_AND_ASSIGN(auto owning_memory, allocator.Allocate(0, 100));
+  MaybeOwningGpuMemory memory(std::move(owning_memory));
   EXPECT_TRUE(memory.owns_data());
   memory.SetUnOwned();
   EXPECT_FALSE(memory.owns_data());
-  EXPECT_EQ(memory.allocator(), nullptr);
 }
 
 TEST(MaybeOwningGpuMemoryTest, AsShapeBuffer) {
@@ -131,8 +143,8 @@ TEST(MaybeOwningGpuMemoryTest, AsShapeBuffer) {
   TestAllocator allocator;
   int64_t byte_size =
       client->backend().transfer_manager()->GetByteSizeRequirement(shape);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto memory, MaybeOwningGpuMemory::AllocateShared(&allocator, byte_size));
+  TF_ASSERT_OK_AND_ASSIGN(auto memory, MaybeOwningGpuMemory::AllocateShared(
+                                           &allocator, 0, byte_size));
   ShapedBuffer result_shaped_buffer = memory.AsShapedBuffer(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
       &device);
@@ -140,12 +152,13 @@ TEST(MaybeOwningGpuMemoryTest, AsShapeBuffer) {
 }
 
 TEST(TrackedTfrtGpuDeviceBufferTest, TrackedDeviceBufferUsageEndToEnd) {
-  std::string expected = "tracked_tfrt_gpu_device_buffer_test";
   auto usage_event = MakeConstructedAsyncValueRef<GpuEvent>();
 
   TestAllocator allocator;
-  auto test_buffer = MakeConstructedAsyncValueRef<MaybeOwningGpuMemory>(
-      &allocator, se::DeviceMemoryBase(expected.data(), expected.size()));
+  TF_ASSERT_OK_AND_ASSIGN(auto owning_memory, allocator.Allocate(0, 100));
+  MaybeOwningGpuMemory memory(std::move(owning_memory));
+  auto test_buffer =
+      MakeConstructedAsyncValueRef<MaybeOwningGpuMemory>(std::move(memory));
 
   auto definition_event = MakeConstructedAsyncValueRef<GpuEvent>();
 
@@ -161,19 +174,16 @@ TEST(TrackedTfrtGpuDeviceBufferTest, TrackedDeviceBufferUsageEndToEnd) {
     tracked_buffer.AddUsageEvents(absl::MakeSpan(&usage_event, 1));
     // Mimic transfer event in a thread pool.
     thread_pool.Schedule([&]() {
-      std::memcpy(test_buffer->buffer().opaque(), expected.data(),
-                  expected.size());
+      absl::SleepFor(absl::Milliseconds(50));
       definition_event.SetStateConcrete();
       test_buffer.SetStateConcrete();
     });
     BlockUntilReady(tracked_buffer.definition_event().GetAsyncValue());
-    EXPECT_EQ(tracked_buffer.buffer()->size(), expected.size());
+    EXPECT_EQ(tracked_buffer.buffer()->size(), 100);
     auto result = tracked_buffer.buffer();
     ASSERT_TRUE(result.IsAvailable());
     EXPECT_FALSE(result->owns_data());
-    EXPECT_EQ(std::memcmp(expected.data(), result->buffer().opaque(),
-                          expected.size()),
-              0);
+    EXPECT_EQ(result->buffer().opaque(), kOpaque);
   }
   BlockUntilReady(tracked_buffer.AfterAllUsageEvents());
   BlockUntilReady(tracked_buffer.LockUseAndTransferUsageEvents());

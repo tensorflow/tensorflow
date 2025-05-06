@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/maybe_owning.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
@@ -180,8 +181,10 @@ absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
       Shape on_device_shape,
       GetDestinationDeviceShape(on_host_shape, device, client, memory_space));
   size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
-  TF_ASSIGN_OR_RETURN(auto device_buffer, MaybeOwningGpuMemory::AllocateShared(
-                                              device->allocator(), byte_size));
+  TF_ASSIGN_OR_RETURN(
+      auto device_buffer,
+      MaybeOwningGpuMemory::AllocateShared(
+          client->allocator(), device->local_device_id().value(), byte_size));
   auto buffer_async_value_ref =
       tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
           std::move(device_buffer));
@@ -943,7 +946,6 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
       local_hardware_id_(options.local_hardware_id),
       executor_(options.executor),
       stream_pool_(options.executor, options.max_inflight_computations),
-      allocator_(std::move(options.allocator)),
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()),
@@ -970,9 +972,6 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
   description_.SetToString(absl::StrCat("GpuDevice(id=", id_, ")"));
 
   CHECK_OK(executor_->CreateStream().status()) << "Failed to create stream";
-
-  se_allocator_ = std::make_unique<se::TfAllocatorAdapter>(
-      allocator_.get(), executor_->GetPlatform());
 }
 
 void TfrtGpuDevice::SetClient(PjRtClient* client) {
@@ -1077,11 +1076,11 @@ absl::StatusOr<tsl::AllocatorStats> TfrtGpuDevice::GetAllocatorStats() const {
     return FailedPrecondition(
         "GetAllocatorStats() is allowed only for addressable devices");
   }
-  auto* allocator_adapter =
-      dynamic_cast<se::TfAllocatorAdapter*>(se_allocator_.get());
+
+  auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(allocator());
   if (!allocator_adapter) {
     return Unimplemented(
-        "GetAllocatorStats() is only implemented with TfAllocatorAdapter"
+        "GetAllocatorStats() is only implemented with MultiDeviceAdapter "
         "allocator");
   }
 
@@ -1091,6 +1090,10 @@ absl::StatusOr<tsl::AllocatorStats> TfrtGpuDevice::GetAllocatorStats() const {
   auto stats = allocator->GetStats();
   TF_RET_CHECK(stats.has_value());
   return stats.value();
+}
+
+se::DeviceMemoryAllocator* TfrtGpuDevice::allocator() const {
+  return tensorflow::down_cast<TfrtGpuClient*>(client())->allocator();
 }
 
 void TfrtGpuDevice::SetLastCollectiveLaunchEvent(
@@ -1113,6 +1116,7 @@ TfrtGpuClient::TfrtGpuClient(
     int process_index, xla::LocalClient* xla_client,
     std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
     bool should_stage_host_to_device_transfers,
+    MaybeOwning<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tsl::Allocator> host_memory_allocator,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
     std::shared_ptr<const GpuTopology> gpu_topology)
@@ -1120,6 +1124,7 @@ TfrtGpuClient::TfrtGpuClient(
       xla_client_(CHECK_NOTNULL(xla_client)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
+      allocator_(std::move(allocator)),
       host_memory_allocator_(std::make_unique<HostMemoryAllocator>(
           std::move(host_memory_allocator))),
       owned_devices_(std::move(devices)),
@@ -1848,8 +1853,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
                       gpu_buffer{gpu_buffer.CopyRef()}](
                          HostMemoryAllocator::OwnedPtr staging_buffer) {
     tsl::profiler::TraceMe traceme("H2D GPU copy");
-    auto gpu_buffer_or =
-        MaybeOwningGpuMemory::AllocateShared(device->allocator(), packed_size);
+    auto gpu_buffer_or = MaybeOwningGpuMemory::AllocateShared(
+        device->allocator(), device->local_hardware_id().value(), packed_size);
     if (gpu_buffer_or.ok()) {
       gpu_buffer.emplace(std::move(gpu_buffer_or.value()));
     } else {
@@ -2057,28 +2062,89 @@ bool TfrtGpuClient::IsDmaMapped(const void* data_start, int64_t transfer_size) {
   return data_end <= map_end;
 }
 
-static absl::StatusOr<std::vector<std::unique_ptr<TfrtGpuDevice>>>
-GetTfrtGpuDevices(LocalClient* xla_client,
-                  const GpuAllocatorConfig& allocator_config) {
-  std::vector<std::unique_ptr<TfrtGpuDevice>> devices;
-  int i = 0;
+namespace {
+
+absl::StatusOr<std::unique_ptr<tsl::Allocator>> CreateAllocatorForDevice(
+    se::StreamExecutor* executor, const GpuAllocatorConfig& allocator_config) {
+  switch (allocator_config.kind) {
+    case GpuAllocatorConfig::Kind::kCudaAsync:
+      return absl::UnimplementedError(
+          "CudaAsync allocator is not supported in TfrtGpuClient.");
+    case GpuAllocatorConfig::Kind::kDefault:
+    case GpuAllocatorConfig::Kind::kBFC:
+      LOG_FIRST_N(INFO, 1) << "Using BFC allocator.";
+      return CreateBFCAllocator(executor, allocator_config.memory_fraction,
+                                allocator_config.preallocate,
+                                allocator_config.gpu_system_memory_size);
+    case GpuAllocatorConfig::Kind::kPlatform:
+      LOG(FATAL) << "Platform allocator should be handled before calling this "
+                    "function.";
+  }
+}
+
+absl::StatusOr<MaybeOwning<se::DeviceMemoryAllocator>> CreateDeviceAllocator(
+    LocalClient* xla_client, const GpuAllocatorConfig& allocator_config) {
+  if (allocator_config.kind == GpuAllocatorConfig::Kind::kPlatform) {
+    LOG(INFO) << "Using platform allocator.";
+    if (allocator_config.collective_memory_size != 0) {
+      LOG(WARNING)
+          << "collective_memory_size is non-zero, but allocator kind is set "
+             "to \"platform\". Collective memory will not be allocated.";
+    }
+    return MaybeOwning<se::DeviceMemoryAllocator>(
+        xla_client->backend().memory_allocator());
+  }
+
+  std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
   for (se::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {
-    TF_ASSIGN_OR_RETURN(
-        auto allocator,
-        CreateBFCAllocator(executor, allocator_config.memory_fraction,
-                           allocator_config.preallocate,
-                           allocator_config.gpu_system_memory_size));
+    TF_ASSIGN_OR_RETURN(auto allocator,
+                        CreateAllocatorForDevice(executor, allocator_config));
+    allocators.emplace_back(
+        std::move(allocator),
+        /*stream=*/nullptr,
+        /*memory_space=*/static_cast<int>(se::MemoryType::kDevice),
+        /*device_ordinal=*/executor->device_ordinal(),
+        /*platform=*/executor->GetPlatform());
 
+    TF_ASSIGN_OR_RETURN(
+        auto collective_bfc_allocator,
+        CreateCollectiveBFCAllocator(
+            executor,
+            /*memory_fraction=*/1.0 - allocator_config.memory_fraction,
+            allocator_config.collective_memory_size));
+    allocators.emplace_back(std::move(collective_bfc_allocator),
+                            /*stream=*/nullptr,
+                            /*memory_space=*/1,
+                            /*device_ordinal=*/executor->device_ordinal(),
+                            /*platform=*/executor->GetPlatform());
+
+    TF_ASSIGN_OR_RETURN(auto host_allocator, GetGpuHostAllocator(executor));
+    allocators.emplace_back(
+        std::move(host_allocator),
+        /*stream=*/nullptr,
+        /*memory_space=*/static_cast<int>(se::MemoryType::kHost),
+        /*device_ordinal=*/executor->device_ordinal(),
+        /*platform=*/executor->GetPlatform());
+  }
+  return MaybeOwning<se::DeviceMemoryAllocator>(
+      std::make_unique<se::MultiDeviceAdapter>(xla_client->platform(),
+                                               std::move(allocators)));
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<TfrtGpuDevice>>> GetTfrtGpuDevices(
+    LocalClient* xla_client, const GpuAllocatorConfig& allocator_config) {
+  std::vector<std::unique_ptr<TfrtGpuDevice>> devices;
+  for (se::StreamExecutor* executor :
+       xla_client->backend().stream_executors()) {
     TfrtGpuDevice::Options options;
-    options.id = i;
+    options.id = executor->device_ordinal();
     // TODO: b/382117736 - Support multi-host
     options.process_index = 0;
     options.slice_index = 0;
-    options.local_device_id = PjRtLocalDeviceId(i);
-    options.local_hardware_id = PjRtLocalHardwareId(i);
+    options.local_device_id = executor->device_ordinal();
+    options.local_hardware_id = executor->device_ordinal();
     options.executor = executor;
-    options.allocator = std::move(allocator);
     options.stream_capacity = 4;
     options.max_inflight_computations = 1;
     const se::Platform* platform = executor->GetPlatform();
@@ -2092,10 +2158,11 @@ GetTfrtGpuDevices(LocalClient* xla_client,
 
     auto device = std::make_unique<TfrtGpuDevice>(std::move(options));
     devices.push_back(std::move(device));
-    ++i;
   }
   return std::move(devices);
 }
+
+}  // namespace
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
     const GpuClientOptions& options) {
@@ -2103,6 +2170,11 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
       LocalClient * xla_client,
       GetGpuXlaClient(options.platform_name, options.allowed_devices));
   EnablePeerAccess(xla_client->backend().stream_executors());
+
+  TF_ASSIGN_OR_RETURN(
+      auto allocator,
+      CreateDeviceAllocator(xla_client, options.allocator_config));
+
   std::unique_ptr<tsl::Allocator> host_memory_allocator;
   if (!xla_client->backend().stream_executors().empty()) {
     TF_ASSIGN_OR_RETURN(
@@ -2143,7 +2215,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
 
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtGpuClient>(
       /*process_index=*/0, xla_client, std::move(devices),
-      options.should_stage_host_to_device_transfers,
+      options.should_stage_host_to_device_transfers, std::move(allocator),
       std::move(host_memory_allocator), std::move(gpu_run_options),
       std::move(gpu_topology)));
 }
@@ -2746,8 +2818,10 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
         }
         MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
         absl::StatusOr<MaybeOwningGpuMemory> allocated_dst_buffer =
-            MaybeOwningGpuMemory::AllocateShared(dst_device->allocator(),
-                                                 src_buffer->buffer().size());
+            MaybeOwningGpuMemory::AllocateShared(
+                dst_device->allocator(),
+                dst_device->local_hardware_id().value(),
+                src_buffer->buffer().size());
         if (!allocated_dst_buffer.ok()) {
           dst_buffer.SetError(allocated_dst_buffer.status());
           dst_definition_event.SetError(allocated_dst_buffer.status());
@@ -3248,7 +3322,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         run_options.set_stream(stream.get());
         run_options.set_host_to_device_stream(stream.get());
         run_options.set_device_to_host_stream(stream.get());
-        run_options.set_allocator(device->se_allocator_.get());
+        run_options.set_allocator(client->allocator());
         run_options.set_device_assignment(device_assignment.get());
 
         if (launch_id != 0) {
@@ -3313,17 +3387,20 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         if (untuple_result && result_is_tuple) {
           for (int i = 0; i < output_buffers.size(); ++i) {
             ScopedShapedBuffer tuple_buffer = output.TakeSubTree({i});
-            auto* elem = tuple_buffer.buffers().mutable_element({});
+            stream_executor::DeviceMemoryBase* elem =
+                tuple_buffer.buffers().mutable_element({});
             VLOG(4) << "untuple: output_buffers[" << i
                     << "].emplace: " << elem->opaque();
-            output_buffers[i].emplace(device->allocator(), *elem);
+            output_buffers[i].emplace(stream_executor::OwningDeviceMemory(
+                *elem, device->local_device_id().value(), device->allocator()));
             *elem = se::DeviceMemoryBase();
           }
         } else {
           CHECK_EQ(output_buffers.size(), 1);
           auto* elem = output.buffers().mutable_element({});
           VLOG(4) << "output_buffers[0].emplace: " << elem->opaque();
-          output_buffers.front().emplace(device->allocator(), *elem);
+          output_buffers.front().emplace(stream_executor::OwningDeviceMemory(
+              *elem, device->local_device_id().value(), device->allocator()));
           *elem = se::DeviceMemoryBase();
         }
 
@@ -3396,7 +3473,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                   {i}, MaybeOwningDeviceMemory(se::OwningDeviceMemory(
                            tracked_buffers[i]->buffer()->buffer(),
                            device->local_hardware_id().value(),
-                           device->se_allocator_.get())));
+                           device->allocator())));
             } else {
               input.SetBuffer({i}, MaybeOwningDeviceMemory(
                                        tracked_buffers[i]->buffer()->buffer()));
@@ -3413,7 +3490,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                   {}, MaybeOwningDeviceMemory(se::OwningDeviceMemory(
                           tracked_buffers[i]->buffer()->buffer(),
                           device->local_hardware_id().value(),
-                          device->se_allocator_.get())));
+                          device->allocator())));
             } else {
               input.SetBuffer({}, MaybeOwningDeviceMemory(
                                       tracked_buffers[i]->buffer()->buffer()));
