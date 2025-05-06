@@ -5581,11 +5581,11 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
   ROOT %async-done.1 = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-start.1)
 }
   )";
-  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              tsl::testing::StatusIs(
-                  tsl::error::INVALID_ARGUMENT,
-                  HasSubstr("Computation async_wrapped is already referenced "
-                            "by another async op")));
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                             HasSubstr("Computation async_wrapped is called by "
+                                       "more than one async op")));
 }
 
 TEST_F(HloParserTest, AsyncUpdateWrongComputation) {

@@ -313,10 +313,8 @@ absl::Status CollectSliceInfo(
   }
   auto* arg_slice_instr =
       Cast<HloDynamicIndexInstruction>(slice_instrs[arg_idx]);
-  std::optional<HloInstruction*> async_caller = std::nullopt;
-  if (fusion_instr.parent()->IsAsyncComputation()) {
-    async_caller = fusion_instr.parent()->AsyncStart();
-  }
+  std::optional<HloInstruction*> async_caller =
+      fusion_instr.parent()->GetUniqueCaller(HloOpcode::kAsyncStart);
 
   std::vector<DynamicSliceThunk::Offset> arg_offsets;
   for (auto idx_op : arg_slice_instr->index_operands()) {
@@ -1253,8 +1251,11 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
     seq.emplace_back(std::move(collective_start_thunk));
     // If the fusion is async, we do not emit the done thunk at the end.
     if (fusion_instr.parent()->IsAsyncComputation()) {
+      auto async_start =
+          fusion_instr.parent()->GetUniqueCaller(HloOpcode::kAsyncStart);
+      CHECK(async_start) << "Async computations should have a unique caller.";
       ir_emitter_context.collectives_async_events().insert(
-          {fusion_instr.parent()->AsyncStart(), async_events});
+          {*async_start, async_events});
     } else {
       auto collective_done_thunk = std::make_unique<CollectiveDoneThunk>(
           /*kind=*/collective_done_thunk_kind,
