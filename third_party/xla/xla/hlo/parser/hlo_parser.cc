@@ -740,15 +740,28 @@ absl::Status HloParserImpl::Run(HloModule* module) {
           "Syntax error when trying to parse the text as a HloModule:\n%s",
           GetError());
     }
-    return absl::OkStatus();
+  } else {
+    // This means that the text is a single HLO instruction.
+    if (!ParseSingleInstruction(module)) {
+      return InvalidArgument(
+          "Syntax error when trying to parse the text as a single "
+          "HloInstruction:\n%s",
+          GetError());
+    }
   }
-  // This means that the text is a single HLO instruction.
-  if (!ParseSingleInstruction(module)) {
-    return InvalidArgument(
-        "Syntax error when trying to parse the text as a single "
-        "HloInstruction:\n%s",
-        GetError());
+
+  // There should be a 1:1 correspondence between async-start ops and
+  // async wrapped computations. Verify that each async computation has exactly
+  // one caller.
+  for (HloComputation* computation : module->computations()) {
+    if (computation->IsAsyncComputation() &&
+        !computation->GetUniqueCaller(HloOpcode::kAsyncStart)) {
+      return InvalidArgument(
+          "Computation %s is called by more than one async op.",
+          computation->name());
+    }
   }
+
   return absl::OkStatus();
 }
 
@@ -2066,16 +2079,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                         (*async_computation)->name()));
           return nullptr;
         }
-      }
-      // There should be a 1:1 correspondence between async-start ops and
-      // async wrapped computations. At this stage, the computation should
-      // not be referenced by any other async op.
-      if (opcode == HloOpcode::kAsyncStart &&
-          (*async_computation)->IsAsyncComputation()) {
-        TokenError(StrFormat(
-            "Computation %s is already referenced by another async op",
-            (*async_computation)->name()));
-        return nullptr;
       }
       if (opcode == HloOpcode::kAsyncStart) {
         // async_execution_thread only needs to be populated for async-start,

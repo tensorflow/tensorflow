@@ -80,8 +80,6 @@ void SetChannelIdForNewCollective(HloInstruction* new_instr,
     if (channel_id_comp_map.find(new_channel_id) == channel_id_comp_map.end()) {
       channel_id_comp_map[new_channel_id] =
           new_instr->async_wrapped_computation();
-    } else {
-      channel_id_comp_map[new_channel_id]->AddAsyncStart(new_instr);
     }
   } else if (hlo_query::IsCollectiveCommunicationOp(new_instr->opcode()) ||
              hlo_query::IsAsyncCollectiveStartOp(new_instr)) {

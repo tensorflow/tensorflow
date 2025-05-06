@@ -709,18 +709,15 @@ absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
     // Cloned instructions should call the same computations as original
     // instructions will be dead code eliminated.
     for (HloComputation* called_computation : inst->called_computations()) {
-      // Async computations can only be referenced by a single async chain at
-      // a time. Detach the current chain to let its copy bind to the
-      // computation.
-      if (called_computation->IsAsyncComputation()) {
-        called_computation->RemoveAsyncStart();
-      }
       ctx.MapComputation(called_computation, called_computation);
     }
-
     inst_mapping[inst] = builder.AddInstruction(
         inst->CloneWithNewOperands(inst->shape(), mapped_operands(inst), &ctx));
     inst_mapping[inst]->UniquifyId(module);
+
+    // Clear the called computations of the old instruction, because it is
+    // typically not legal for one computation to have more than one caller.
+    inst->ClearCalledComputations();
   }
 
   // Convert parameters to command buffer arguments.

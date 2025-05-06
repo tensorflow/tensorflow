@@ -219,8 +219,9 @@ void HloLiveRange::CalculateBufferStartEndMap() {
     auto async_context_it = computations_in_async_context_.find(computation);
     if (async_context_it != computations_in_async_context_.end()) {
       const HloComputation* async_context = async_context_it->second;
-      CHECK(async_context->IsAsyncComputation());
-      auto async_done = async_context->AsyncStart()->async_chain_done();
+      auto async_start = async_context->GetUniqueCaller(HloOpcode::kAsyncStart);
+      CHECK(async_start) << "Async computations should have a unique caller.";
+      auto async_done = (*async_start)->async_chain_done();
       auto async_done_it = instruction_schedule_.find(async_done);
       CHECK(async_done_it != instruction_schedule_.end());
       definition_end_time =

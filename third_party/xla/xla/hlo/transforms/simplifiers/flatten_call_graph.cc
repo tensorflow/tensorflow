@@ -71,10 +71,8 @@ void ReplaceCalledComputation(HloInstruction* instruction,
     }
     case HloOpcode::kAsyncStart: {
       CHECK(computation->IsAsyncComputation());
-      computation->RemoveAsyncStart();
       instruction->ReplaceCalledComputations(
           [&](HloComputation*) { return new_computation; });
-      new_computation->AddAsyncStart(instruction);
       break;
     }
     default:
