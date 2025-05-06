@@ -87,16 +87,6 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
     int64_t memory_space;
     std::optional<int> device_ordinal = std::nullopt;
     const Platform *platform = nullptr;
-
-    AllocatorInfo(std::unique_ptr<tsl::Allocator> allocator, Stream *stream,
-                  int64_t memory_space,
-                  std::optional<int> device_ordinal = std::nullopt,
-                  const Platform *platform = nullptr)
-        : allocator(std::move(allocator)),
-          stream(stream),
-          memory_space(memory_space),
-          device_ordinal(device_ordinal),
-          platform(platform) {}
   };
 
   MultiDeviceAdapter(const Platform *platform,
