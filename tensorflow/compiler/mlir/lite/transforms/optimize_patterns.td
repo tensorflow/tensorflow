@@ -2172,3 +2172,22 @@ def CastLessZero : Pat<
   (TFL_LessOp:$result (TFL_CastOp $input), (Arith_ConstantOp $zero)),
   (TFL_ZerosLikeOp $input),
   [(IsConstantValueOf<0> $zero), (HasSameType $input, $result)]>;
+
+//  x + (y - y) -> x
+// This pattern can emerge through some usages of gradient stop. Note, for all
+// activation functions fn(0) = 0, so it can be anything in the subtraction.
+def AddComputedZeroRHS : Pat<
+  (TFL_AddOp:$output
+    $input,
+    (TFL_SubOp $input2, $input2, $activation),
+    TFL_AF_None),
+  (replaceWithValue $input),
+  [(HasSameType $input, $output)]>;
+//  (y - y) + x -> x
+def AddComputedZeroLHS : Pat<
+  (TFL_AddOp:$output
+    (TFL_SubOp $input2, $input2, $activation),
+    $input,
+    TFL_AF_None),
+  (replaceWithValue $input),
+  [(HasSameType $input, $output)]>;

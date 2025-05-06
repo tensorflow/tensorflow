@@ -4779,3 +4779,24 @@ func.func @FullyConnectedSwapOperandsWhenLHSIsConstLHSRank3(%arg0: tensor<512x51
   // CHECK:  %0 = "tfl.fully_connected"(%cst, %arg0, %arg1)
 }
 
+// CHECK-LABEL: @AddComputedZero
+func.func @AddComputedZero(%arg0: tensor<512x512xf32>, %arg1: tensor<1x512xf32>) -> tensor<512x512xf32> {
+  %0 = "tfl.sub"(%arg1, %arg1) {fused_activation_function = "NONE"} : (tensor<1x512xf32>, tensor<1x512xf32>) -> tensor<1x512xf32>
+  // Add broadcasts, but the output shape is the same as input
+  %1 = "tfl.add"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<512x512xf32>, tensor<1x512xf32>) -> tensor<512x512xf32>
+  func.return %1 : tensor<512x512xf32>
+
+  // CHECK-NOT: tfl.sub
+  // CHECK-NOT: tfl.add
+}
+
+// CHECK-LABEL: @AddComputedZeroNegative
+func.func @AddComputedZeroNegative(%arg0: tensor<1x512xf32>, %arg1: tensor<512x512xf32>) -> tensor<512x512xf32> {
+  %0 = "tfl.sub"(%arg1, %arg1) {fused_activation_function = "NONE"} : (tensor<512x512xf32>, tensor<512x512xf32>) -> tensor<512x512xf32>
+  // Add broadcasts, the output shape is larger than the input
+  %1 = "tfl.add"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<1x512xf32>, tensor<512x512xf32>) -> tensor<512x512xf32>
+  func.return %1 : tensor<512x512xf32>
+
+  // CHECK: %0 = tfl.sub %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<512x512xf32>
+  // CHECK: %1 = tfl.add(%arg0, %0) <{fused_activation_function = "NONE"}> : (tensor<1x512xf32>, tensor<512x512xf32>) -> tensor<512x512xf32>
+}
