@@ -369,8 +369,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
-    const BufferAssignment* buffer_assignment,
-    mlir::interpreter::MlirCompilationTrace* trace) const {
+    const BufferAssignment* buffer_assignment) const {
   context.loadDialect<
       mlir::DLTIDialect, mlir::NVVM::NVVMDialect, mlir::ROCDL::ROCDLDialect,
       mlir::affine::AffineDialect, mlir::arith::ArithDialect,
