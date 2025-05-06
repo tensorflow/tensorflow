@@ -155,7 +155,7 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
               (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
     (TFL_TransposeConvOp $output_shape, $weights, $input,
       (binaryOp (Arith_ConstantOp $bias),
-         (Arith_ConstantOp $value), TFL_AF_None),
+         (Arith_ConstantOp (FlattenTo1D $value)), TFL_AF_None),
       $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (HasOneUse $output)]>;
@@ -166,7 +166,7 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
                 $stride_h, $stride_w, TFL_AF_None),
               (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
     (TFL_TransposeConvOp $output_shape, $weights, $input,
-      (TFL_MulOp  (Arith_ConstantOp $value),
+      (TFL_MulOp  (Arith_ConstantOp (FlattenTo1D $value)),
                   (GetBiasMultiplier $root, $value),
                   TFL_AF_None
       ),
