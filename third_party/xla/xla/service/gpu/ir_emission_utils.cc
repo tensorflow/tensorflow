@@ -818,44 +818,34 @@ bool IsDynamicMemcpyFusion(const HloInstruction* instr) {
 }
 
 std::optional<InductionVariableFunctionalDependency>
-ResolveFunctionalDependencyOnInductionVariable(
-    absl::Span<const HloInstruction* const> call_stack,
-    const HloInstruction* parameter) {
-  if (call_stack.empty()) {
-    return std::nullopt;
-  }
-
-  VLOG(5) << "Looking for defining while loop of " << parameter->name();
-
-  // Walk up the call stack, tracking the origin of `parameter`.
-  const HloInstruction* argument = parameter;
-  auto call_stack_it = call_stack.rbegin();
-  auto call_stack_end = call_stack.rend();
-  for (; call_stack_it != call_stack_end &&
-         argument->opcode() == HloOpcode::kParameter &&
-         ((*call_stack_it)->opcode() == HloOpcode::kFusion ||
-          (*call_stack_it)->opcode() == HloOpcode::kAsyncStart ||
-          (*call_stack_it)->opcode() == HloOpcode::kCall);
-       ++call_stack_it) {
-    argument = (*call_stack_it)->operand(argument->parameter_number());
-  }
-
-  if (call_stack_it == call_stack_end) {
-    return std::nullopt;
-  }
-
-  VLOG(5) << "Arrived at " << argument->name() << " in "
-          << (*call_stack_it)->name();
+ResolveFunctionalDependencyOnInductionVariable(const HloInstruction* instr) {
+  VLOG(5) << "Looking for defining while loop of " << instr->name();
 
   // Find a unique parameter and a gte in the transitive dependencies of
-  // `argument`.
+  // `instr`.
   const HloInstruction* unique_param = nullptr;
   const HloInstruction* unique_gte = nullptr;
-  absl::flat_hash_set<const HloInstruction*> seen{argument};
+  const HloInstruction* while_loop = nullptr;
+
+  // For each computation in the call stack, holds the parameters that are part
+  // of `instr`'s transitive dependencies.
+  absl::flat_hash_map<const HloComputation*, absl::InlinedVector<bool, 1>>
+      required_parameters;
+  auto get_required_parameters =
+      [&](const HloComputation* computation) -> absl::InlinedVector<bool, 1>& {
+    auto& result = required_parameters[computation];
+    if (result.empty()) {
+      result.resize(computation->num_parameters());
+    }
+    return result;
+  };
+
+  absl::flat_hash_set<const HloInstruction*> seen{instr};
   std::queue<const HloInstruction*> queue;
-  queue.push(argument);
+  queue.push(instr);
   while (!queue.empty()) {
     const auto* instruction = queue.front();
+    VLOG(5) << "Visiting " << instruction->name() << ".";
     queue.pop();
 
     if (instruction->opcode() == HloOpcode::kCustomCall ||
@@ -865,13 +855,40 @@ ResolveFunctionalDependencyOnInductionVariable(
     }
 
     if (instruction->opcode() == HloOpcode::kParameter) {
-      if (unique_param || !instruction->shape().IsTuple()) {
-        VLOG(5) << "Failed to match parameters.";
+      auto callers = instruction->parent()->caller_instructions();
+      if (callers.size() != 1) {
+        VLOG(5) << "Failed to determine unique caller.";
         return std::nullopt;
       }
-      unique_param = instruction;
+
+      const HloInstruction* caller = callers.front();
+      // If this is semantically a call, continue the traversal at the call
+      // site. Also register the argument as a required intermediate value.
+      if (caller->opcode() == HloOpcode::kFusion ||
+          caller->opcode() == HloOpcode::kAsyncStart ||
+          caller->opcode() == HloOpcode::kCall) {
+        int64_t index = instruction->parameter_number();
+        get_required_parameters(instruction->parent())[index] = true;
+        queue.push(caller->operand(index));
+      } else if (caller->opcode() == HloOpcode::kWhile) {
+        // We only support dependencies on the inner-most while loop's
+        // induction variable, so we don't need to continue the traversal here.
+        if (unique_param || !instruction->shape().IsTuple()) {
+          VLOG(5) << "Failed to match parameters.";
+          return std::nullopt;
+        }
+        while_loop = caller;
+        unique_param = instruction;
+      } else {
+        // Otherwise, we arrived at something we don't support.
+        VLOG(5) << "Arrived at unsupported parameter. Caller is "
+                << caller->opcode() << ".";
+        return std::nullopt;
+      }
     }
 
+    // This doesn't currently support internal GTEs on tuples that are not the
+    // while loop tuple.
     if (instruction->opcode() == HloOpcode::kGetTupleElement) {
       if (unique_gte) {
         VLOG(5) << "Found non-unique GTEs.";
@@ -887,7 +904,8 @@ ResolveFunctionalDependencyOnInductionVariable(
     }
   }
 
-  if (!unique_param || !unique_gte || unique_gte->operand(0) != unique_param) {
+  if (!while_loop || !unique_param || !unique_gte ||
+      unique_gte->operand(0) != unique_param) {
     VLOG(5) << "Did not find a parameter or GTE or they don't match.";
     return std::nullopt;
   }
@@ -895,28 +913,7 @@ ResolveFunctionalDependencyOnInductionVariable(
   VLOG(5) << "Parameter and GTE: " << unique_param->name() << ", "
           << unique_gte->name();
 
-  // Continue walking up through call instructions.
-  while (call_stack_it != call_stack_end &&
-         (*call_stack_it)->opcode() == HloOpcode::kCall &&
-         unique_param->opcode() == HloOpcode::kParameter) {
-    unique_param = (*call_stack_it)->operand(unique_param->parameter_number());
-    ++call_stack_it;
-  }
-
-  // Find the while loop for 'unique_param'.
-  auto while_instr_it = std::find_if(
-      call_stack_it, call_stack_end, [&](const HloInstruction* instr) {
-        return instr->opcode() == HloOpcode::kWhile &&
-               unique_param == instr->while_body()->parameter_instruction(0);
-      });
-
-  if (while_instr_it == call_stack_end) {
-    VLOG(5) << "Did not find a while loop.";
-    return std::nullopt;
-  }
-
-  auto config =
-      (*while_instr_it)->backend_config<xla::WhileLoopBackendConfig>();
+  auto config = while_loop->backend_config<xla::WhileLoopBackendConfig>();
   if (!config.ok() || !config->has_known_induction_variable() ||
       unique_gte->tuple_index() !=
           config->known_induction_variable().tuple_index()) {
@@ -925,10 +922,9 @@ ResolveFunctionalDependencyOnInductionVariable(
     return std::nullopt;
   }
 
-  VLOG(5) << "While loop for " << parameter->name() << ": "
-          << (*while_instr_it)->name();
-  return InductionVariableFunctionalDependency{argument, *while_instr_it,
-                                               unique_gte};
+  VLOG(5) << "While loop for " << instr->name() << ": " << while_loop->name();
+  return InductionVariableFunctionalDependency{std::move(required_parameters),
+                                               while_loop, unique_gte};
 }
 
 }  // namespace gpu

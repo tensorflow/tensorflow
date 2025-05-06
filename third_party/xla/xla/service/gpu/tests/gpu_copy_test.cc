@@ -81,10 +81,12 @@ constexpr char kSliceMemcpyModule[] = R"(
       c1 = s32[] constant(1)
       p2 = s32[] parameter(2)
 
+      p1p1 = s32[] add(p1, c1)
+
       // Test all supported kinds of offsets: derived from the while loop's
-      // induction variable (p1), constant (c1) and always clamped to 0, so
+      // induction variable (p1p1), constant (c1) and always clamped to 0, so
       // the value is irrelevant (p2).
-      ROOT slice = s32[1,1,8] dynamic-slice(p0, p1, c1, p2),
+      ROOT slice = s32[1,1,8] dynamic-slice(p0, p1p1, c1, p2),
           dynamic_slice_sizes={1,1,8}
     }
 

@@ -181,6 +181,10 @@ class DynamicMemcpyThunk : public Thunk {
       const HloInstruction* while_loop;
       const HloInstruction* induction_variable;
 
+      // See documentation for ResolveFunctionalDependencyOnInductionVariable.
+      absl::flat_hash_map<const HloComputation*, absl::InlinedVector<bool, 1>>
+          required_parameters;
+
       // All dependencies of `offset` must end in `induction_variable` or
       // constants only.
       const HloInstruction* offset;
