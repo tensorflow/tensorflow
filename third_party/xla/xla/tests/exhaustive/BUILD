@@ -73,6 +73,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_for_library",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",
@@ -97,6 +98,7 @@ cc_library(
     deps = [
         ":exhaustive_op_test_utils",
         "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_for_library",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
