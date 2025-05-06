@@ -14,5 +14,6 @@ those to this list.
 """
 
 temporary_patch_list = [
+    "//third_party/triton:temporary/launcher_tma_arg_mask.patch",
     # Add new patches just above this line
 ]
