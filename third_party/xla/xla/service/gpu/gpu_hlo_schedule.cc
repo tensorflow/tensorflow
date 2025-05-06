@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -603,9 +604,9 @@ absl::Status RunLatencyHidingSchedulerPasses(
 
 // Compute the device memory limit to be used by passes like scheduler and
 // HLO rematerialization.
-uint64_t GetSchedulerMemoryLimit(const HloModule& module,
-                                 const se::DeviceDescription& gpu_device_info,
-                                 int pointer_size) {
+absl::StatusOr<uint64_t> GetSchedulerMemoryLimit(
+    const HloModule& module, const se::DeviceDescription& gpu_device_info,
+    int pointer_size) {
   // There is a "base" value which is either specified in HloModuleConfig
   // (this value should take into account the fact that we need to leave some
   // memory free for allocations that happen outside of XLA's allocator) or
@@ -649,17 +650,15 @@ uint64_t GetSchedulerMemoryLimit(const HloModule& module,
         total_io_size -= get_device_shape_size(subshape);
       });
 
-  uint64_t limit = 0;
   if (total_io_size > base_limit) {
-    LOG(ERROR) << "The byte size of input/output arguments (" << total_io_size
-               << ") exceeds the base limit (" << base_limit
-               << "). This indicates an error in the calculation!";
-  } else {
-    limit = (base_limit - total_io_size) *
-            module.config().debug_options().xla_gpu_memory_limit_slop_factor() /
-            100;
+    return absl::InternalError(absl::StrFormat(
+        "The byte size of input/output arguments (%d) exceeds the base limit "
+        "(%d). This indicates an error in the calculation!",
+        total_io_size, base_limit));
   }
-  return limit;
+  return (base_limit - total_io_size) *
+         module.config().debug_options().xla_gpu_memory_limit_slop_factor() /
+         100;
 }
 
 bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint) {
@@ -751,8 +750,9 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   // Tag the module with its 128 bit fingerprint. The fingerprint should include
   // instruction name with ids.
   std::string fingerprint = TagWithFingerprint(module);
-  uint64_t memory_limit =
-      GetSchedulerMemoryLimit(*module, gpu_device_info, pointer_size);
+  TF_ASSIGN_OR_RETURN(
+      uint64_t memory_limit,
+      GetSchedulerMemoryLimit(*module, gpu_device_info, pointer_size));
 
   // Module already has a schedule, do nothing.
   if (module->has_schedule()) {
