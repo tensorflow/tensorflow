@@ -244,7 +244,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
  
    return success();
  }
-@@ -1094,7 +1094,7 @@
+@@ -1097,7 +1097,7 @@
    size_t firstFunctionalArgument =
        leadingTokenOperands + key.getGlobalConstants().size();
    argIndices.set(leadingTokenOperands, firstFunctionalArgument);
