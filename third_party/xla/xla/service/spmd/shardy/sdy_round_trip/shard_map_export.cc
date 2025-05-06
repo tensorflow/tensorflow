@@ -93,6 +93,9 @@ class SdyRoundTripShardMapExportPass
         globalToLocalShape = rewriter.create<stablehlo::CustomCallOp>(
             loc, manualCompBodyArgTypes, operands);
         globalToLocalShape.setCallTargetName(kGlobalToLocalShapeCallTargetName);
+        // We mark `xla.sdy.GlobalToLocalShape` as side-effecting to avoid
+        // CSE deduping it with another taking the same operands, as it would
+        // ignore the frontend attributes that could be different.
         globalToLocalShape.setHasSideEffect(true);
         setFrontendAttribute(globalToLocalShape, kInShardings,
                              manualComputation.getInShardings());
@@ -116,7 +119,9 @@ class SdyRoundTripShardMapExportPass
       if (!results.empty()) {
         auto localToGlobalShape = rewriter.create<stablehlo::CustomCallOp>(
             loc, manualComputation.getResultTypes(), callOp->getResults());
-        localToGlobalShape.setHasSideEffect(true);
+        // We don't mark `xla.sdy.LocalToGlobalShape` as side-effecting, so if
+        // any of its results has a dimension of size 0 (i.e. 0 num-elements),
+        // it will be replaced with a constant of the same shape.
         localToGlobalShape.setCallTargetName(kLocalToGlobalShapeCallTargetName);
         setFrontendAttribute(localToGlobalShape, kOutShardings,
                              manualComputation.getOutShardings());
