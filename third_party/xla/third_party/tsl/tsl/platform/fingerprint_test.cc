@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tsl/platform/fingerprint.h"
 
+#include <array>
 #include <unordered_set>
 
 #include "xla/tsl/platform/test.h"
@@ -67,6 +68,15 @@ TEST(FingerprintCat64, Idempotence) {
   // Go back to the first test data ('orig') and make sure it hasn't changed.
   EXPECT_EQ(orig,
             FingerprintCat64(Fingerprint64("Hello"), Fingerprint64("World")));
+}
+
+TEST(Fprint128ToBytes, WorksCorrectly) {
+  const Fprint128 fprint = {0xCAFEF00DDEADBEEF, 0xC0FFEE123456789A};
+  constexpr std::array<char, 16> kExpected = {
+      '\xca', '\xfe', '\xf0', '\x0d', '\xde', '\xad', '\xbe', '\xef',
+      '\xc0', '\xff', '\xee', '\x12', '\x34', '\x56', '\x78', '\x9a',
+  };
+  EXPECT_EQ(Fprint128ToBytes(fprint), kExpected);
 }
 
 }  // namespace
