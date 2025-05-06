@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/compiler.h"
+#include "xla/service/hlo_proto_util.h"
 
 namespace xla {
 class StreamExecutorExecutable : public PjRtExecutable {
@@ -89,27 +90,40 @@ class StreamExecutorExecutable : public PjRtExecutable {
   }
 
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
-    if (std::holds_alternative<
-            std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
-            executables_)) {
-      return absl::UnimplementedError(
-          "Retrieving CompiledMemoryStats is not supported.");
-    }
-    const auto& local_executables =
-        std::get<std::vector<std::unique_ptr<LocalExecutable>>>(executables_);
-    if (local_executables.size() != 1) {
-      return absl::UnimplementedError(
-          "Retrieving CompiledMemoryStats is not supported for multiple "
-          "executables.");
-    }
     CompiledMemoryStats memory_stats = CompiledMemoryStats();
-    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
-    const HloProto* proto = local_executables[0]->executable()->hlo_proto();
-    if (proto != nullptr) {
-      memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+    if (auto* aot_executables = std::get_if<
+            std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
+            &executables_)) {
+      if (aot_executables->size() != 1) {
+        return Unimplemented(
+            "Retrieving CompiledMemoryStats is not supported for multiple "
+            "executables.");
+      }
+      const auto& aot_executable = (*aot_executables)[0];
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffers,
+                          aot_executable->buffer_assignment());
+
+      const HloModule& module = *aot_executable->optimized_module();
+      HloProto proto = MakeHloProto(module);
+      memory_stats.serialized_hlo_proto = proto.SerializeAsString();
+      memory_stats.PopulateBufferStatsFromAllocations(buffers->Allocations());
+      return memory_stats;
+    } else {
+      const auto& local_executables =
+          std::get<std::vector<std::unique_ptr<LocalExecutable>>>(executables_);
+      if (local_executables.size() != 1) {
+        return absl::UnimplementedError(
+            "Retrieving CompiledMemoryStats is not supported for multiple "
+            "executables.");
+      }
+      const HloProto* proto = local_executables[0]->executable()->hlo_proto();
+      if (proto != nullptr) {
+        memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+      }
+      memory_stats.PopulateBufferStatsFromAllocations(
+          local_executables[0]->executable()->GetAllocations());
     }
-    memory_stats.PopulateBufferStatsFromAllocations(
-        local_executables[0]->executable()->GetAllocations());
+    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
     return memory_stats;
   }
 

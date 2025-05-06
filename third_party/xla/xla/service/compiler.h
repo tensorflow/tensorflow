@@ -77,6 +77,11 @@ class AotCompilationResult {
     return Unimplemented("LoadExecutable unimplemented.");
   }
 
+  virtual absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
+      const {
+    return Unimplemented("buffer_assignment unimplemented.");
+  }
+
   // Returns the optimized HLO module if one was computed and the implementation
   // supports it.
   virtual const HloModule* optimized_module() const = 0;

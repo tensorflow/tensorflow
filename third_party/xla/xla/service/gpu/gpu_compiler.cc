@@ -353,7 +353,7 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
   FromModule(const HloModule* hlo_module,
              const BufferAssignment* buffer_assignment,
              absl::string_view asm_text, absl::Span<const uint8_t> binary,
-             const BinaryMap& dnn_compiled_graphs) {
+             const BinaryMap& dnn_compiled_graphs, int pointer_size) {
     CompilationResultProto proto;
     *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig();
     *proto.mutable_buffer_assignment() = buffer_assignment->ToProto();
@@ -362,12 +362,12 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
     proto.mutable_dnn_compiled_graphs()->insert(dnn_compiled_graphs.cbegin(),
                                                 dnn_compiled_graphs.cend());
     return std::unique_ptr<GpuThunkAotCompilationResult>(
-        new GpuThunkAotCompilationResult(hlo_module->Clone(),
-                                         std::move(proto)));
+        new GpuThunkAotCompilationResult(hlo_module->Clone(), std::move(proto),
+                                         pointer_size));
   }
 
   static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
-  FromString(const std::string& serialized) {
+  FromString(const std::string& serialized, int pointer_size) {
     CompilationResultProto proto;
     if (!proto.ParseFromString(serialized)) {
       return Internal(
@@ -378,7 +378,8 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
         std::unique_ptr<HloModule> module,
         HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config()));
     return std::unique_ptr<GpuThunkAotCompilationResult>(
-        new GpuThunkAotCompilationResult(std::move(module), std::move(proto)));
+        new GpuThunkAotCompilationResult(std::move(module), std::move(proto),
+                                         pointer_size));
   }
 
   absl::StatusOr<std::string> SerializeAsString() const override {
@@ -394,16 +395,35 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
     return std::move(module_);
   }
 
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
+      const override;
+
  private:
   GpuThunkAotCompilationResult(std::unique_ptr<HloModule> module,
-                               CompilationResultProto proto)
-      : module_(std::move(module)), proto_(std::move(proto)) {}
+                               CompilationResultProto proto, int pointer_size)
+      : module_(std::move(module)),
+        proto_(std::move(proto)),
+        pointer_size_(pointer_size) {}
 
   std::unique_ptr<HloModule> module_;
   CompilationResultProto proto_;
+  int pointer_size_;
 };
 
 }  // end anonymous namespace
+
+absl::StatusOr<std::unique_ptr<BufferAssignment>>
+GpuThunkAotCompilationResult::buffer_assignment() const {
+  auto buffer_size_bytes_function =
+      [pointer_size = pointer_size_](const BufferValue& buffer) {
+        return gpu::ShapeSizeBytesFunction(pointer_size)(buffer.shape());
+      };
+
+  // Recreate BufferAssignment from proto.
+  return BufferAssignment::FromProto(proto_.buffer_assignment(), module_.get(),
+                                     buffer_size_bytes_function,
+                                     /*can_share_buffer=*/nullptr);
+}
 
 absl::StatusOr<std::unique_ptr<Executable>>
 GpuThunkAotCompilationResult::LoadExecutable(
@@ -2578,7 +2598,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         GpuThunkAotCompilationResult::FromModule(
             module.get(), res.compile_module_results.buffer_assignment.get(),
             res.backend_result.asm_text, res.backend_result.binary,
-            res.backend_result.dnn_compiled_graphs));
+            res.backend_result.dnn_compiled_graphs, pointer_size_));
   }
 
   return std::move(results);
@@ -2597,7 +2617,7 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
   return GpuThunkAotCompilationResult::FromModule(
       &gpu_executable->module(), gpu_executable->buffer_assignment(),
       gpu_executable->text(), gpu_executable->binary(),
-      gpu_executable->dnn_compiled_graphs());
+      gpu_executable->dnn_compiled_graphs(), pointer_size_);
 }
 
 absl::Status GpuCompiler::RunPreSchedulingPasses(
@@ -2810,13 +2830,8 @@ absl::Status GpuCompiler::SerializeAutotuneResultsToFile(
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>
 GpuCompiler::LoadAotCompilationResult(
     const std::string& serialized_aot_result) {
-  return LoadAotCompilationResultStatic(serialized_aot_result);
-}
-
-absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-GpuCompiler::LoadAotCompilationResultStatic(
-    const std::string& serialized_aot_result) {
-  return GpuThunkAotCompilationResult::FromString(serialized_aot_result);
+  return GpuThunkAotCompilationResult::FromString(serialized_aot_result,
+                                                  pointer_size_);
 }
 
 }  // namespace gpu

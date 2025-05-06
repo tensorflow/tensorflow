@@ -550,6 +550,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
         "//xla/service:executable",
+        "//xla/service:hlo_proto_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
