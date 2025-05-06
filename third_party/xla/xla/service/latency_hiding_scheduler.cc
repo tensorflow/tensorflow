@@ -740,7 +740,9 @@ void MemoryPressureTracker::Initialize(
   output_buffers_.clear();
   defined_buffers_.clear();
   live_buffers_set_.clear();
+  int32_t next_id = 0;
   for (auto* instruction : computation->instructions()) {
+    instruction_ids_[instruction] = next_id++;
     auto& output_values = this->output_buffers_[instruction];
     auto& defined_values = this->defined_buffers_[instruction];
     ShapeUtil::ForEachSubshape(
@@ -773,6 +775,54 @@ void MemoryPressureTracker::Initialize(
     absl::c_fill(live_buffers_, 0);
   }
   pressure_state_.live_ids_at_bottom = live_buffers_set_;
+
+  // Precompute allocated and released buffers per instruction.
+  alloc_release_spans_.resize(next_id);
+  for (auto* instruction : computation->instructions()) {
+    NodeAllocReleaseSpan s;
+    s.start = alloc_release_ids_.size();
+    s.num_alloc = ComputeBufferAllocations(instruction, &alloc_release_ids_);
+    s.num_release = ComputeBufferReleases(instruction, &alloc_release_ids_);
+    alloc_release_spans_[instruction_ids_[instruction]] = s;
+  }
+}
+
+int32_t MemoryPressureTracker::ComputeBufferAllocations(
+    const HloInstruction* instruction, std::vector<HloBuffer::Id>* dst) {
+  int32_t added = 0;
+  for (auto* op : instruction->operands()) {
+    auto it = output_buffers_.find(op);
+    CHECK(it != output_buffers_.end());
+    for (auto& b : it->second) {
+      if (ShouldSkipBufferAllocations(instruction, b.second,
+                                      b.first.first_definition) ||
+          b.first.non_default_memory_space_layout) {
+        continue;
+      }
+      dst->push_back(b.first.value->id());
+      added++;
+    }
+  }
+  return added;
+}
+
+int32_t MemoryPressureTracker::ComputeBufferReleases(
+    const HloInstruction* instruction, std::vector<HloBuffer::Id>* dst) {
+  int32_t added = 0;
+  if (!ShouldSkipBufferReleases(instruction)) {
+    auto it = defined_buffers_.find(instruction);
+    CHECK(it != defined_buffers_.end());
+    for (auto& b : it->second) {
+      if (b.non_default_memory_space_layout) {
+        continue;
+      }
+      if (InstructionFirstDefinesBuffer(instruction, b)) {
+        dst->push_back(b.value->id());
+        added++;
+      }
+    }
+  }
+  return added;
 }
 
 void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
@@ -788,36 +838,19 @@ void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
   if (pressure_state_.memory_peak < live_memory_usage_ + computations_peak) {
     pressure_state_.memory_peak = live_memory_usage_ + computations_peak;
   }
-  for (auto* op : instruction->operands()) {
-    const auto& output_values = output_buffers_[op];
-    for (const auto& info : output_values) {
-      if (ShouldSkipBufferAllocations(instruction, info.second,
-                                      info.first.first_definition) ||
-          info.first.non_default_memory_space_layout) {
-        continue;
-      }
-      if (live_buffers_[info.first.value->id()] == 0) {
-        live_buffers_[info.first.value->id()] = 1;
-        live_buffers_set_.insert(info.first.value->id());
-        live_memory_usage_ += info.first.buffer_size;
-      }
+  for (HloBuffer::Id id : allocated_buffer_ids(instruction)) {
+    if (live_buffers_[id] == 0) {
+      live_buffers_[id] = 1;
+      live_buffers_set_.insert(id);
+      live_memory_usage_ += buffer_tracker_.GetBufferInfo(id).buffer_size;
     }
   }
   pressure_state_.memory_peak =
       std::max(live_memory_usage_, pressure_state_.memory_peak);
-  auto it = defined_buffers_.find(instruction);
-  CHECK(it != defined_buffers_.end());
-  if (!ShouldSkipBufferReleases(instruction)) {
-    for (auto& b : it->second) {
-      if (b.non_default_memory_space_layout) {
-        continue;
-      }
-      if (live_buffers_[b.value->id()] != 0) {
-        if (InstructionFirstDefinesBuffer(instruction, b)) {
-          live_memory_usage_ -= b.buffer_size;
-          live_buffers_set_.erase(b.value->id());
-        }
-      }
+  for (HloBuffer::Id id : released_buffer_ids(instruction)) {
+    if (live_buffers_[id] != 0) {
+      live_memory_usage_ -= buffer_tracker_.GetBufferInfo(id).buffer_size;
+      live_buffers_set_.erase(id);
     }
   }
 }
@@ -842,35 +875,17 @@ std::pair<int64_t, int64_t> MemoryPressureTracker::MemoryPressureDifference(
           std::max(called_comp_peak, it->second.memory_peak);
     }
   }
-  // Allocate memory increase from the operand and record increase in peak.
-  for (auto* op : instruction->operands()) {
-    auto it = output_buffers_.find(op);
-    CHECK(it != output_buffers_.end());
-    for (auto& b : it->second) {
-      if (ShouldSkipBufferAllocations(instruction, b.second,
-                                      b.first.first_definition) ||
-          b.first.non_default_memory_space_layout) {
-        continue;
-      }
-      if (!live_buffers_[b.first.value->id()]) {
-        increase += b.first.buffer_size;
-      }
+  // Allocate memory increase from the operands and record increase in peak.
+  for (HloBuffer::Id id : allocated_buffer_ids(instruction)) {
+    if (!live_buffers_[id]) {
+      increase += buffer_tracker_.GetBufferInfo(id).buffer_size;
     }
   }
   peak = std::max(increase, peak);
-  auto it = defined_buffers_.find(instruction);
-  CHECK(it != defined_buffers_.end());
   // Decrease memory pressure if some buffers are released.
-  if (!ShouldSkipBufferReleases(instruction)) {
-    for (auto& b : it->second) {
-      if (b.non_default_memory_space_layout) {
-        continue;
-      }
-      if (live_buffers_[b.value->id()]) {
-        if (InstructionFirstDefinesBuffer(instruction, b)) {
-          increase -= b.buffer_size;
-        }
-      }
+  for (HloBuffer::Id id : released_buffer_ids(instruction)) {
+    if (live_buffers_[id]) {
+      increase -= buffer_tracker_.GetBufferInfo(id).buffer_size;
     }
   }
   return std::make_pair(increase, peak);
