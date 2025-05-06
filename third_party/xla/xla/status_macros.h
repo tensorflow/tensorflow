@@ -102,6 +102,17 @@ inline void PrintToStream(const T& v, std::ostream* os) {
   }
 }
 
+// Overrides for char types provide readable values for unprintable
+// characters.
+void PrintToStream(char v, std::ostream* os);
+void PrintToStream(signed char v, std::ostream* os);
+void PrintToStream(unsigned char v, std::ostream* os);
+
+// We need an explicit specialization for `std::nullptr_t`.
+inline void PrintToStream(std::nullptr_t v, std::ostream* os) {
+  *os << "nullptr";
+}
+
 }  // namespace internal
 
 // Stream object used to collect error messages in MAKE_ERROR macros
