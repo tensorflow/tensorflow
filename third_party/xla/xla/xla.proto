@@ -770,13 +770,6 @@ message DebugOptions {
   // memory, or have bugs.
   bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
 
-  // Recognises rotate-right patterns (slice, slice, concat) within a while
-  // loop and labels the while loop as a pipelined while loop. This is an
-  // unsafe flag.
-  // DEPRECATED: Use xla_gpu_experimental_pipeline_parallelism_opt_level
-  // instead.
-  bool xla_gpu_unsafe_pipelined_loop_annotator = 309;
-
   // If true, XLA will annotate instructions in the dumps with emitter code
   // location (source:line) annotations. This helps to identify the source of
   // the code that emits a particular instruction.
@@ -1247,8 +1240,9 @@ message DebugOptions {
   // xla_gpu_unsupported_force_triton_gemm
   // xla_allow_get_default_platform
   // xla_gpu_ensure_minor_dot_contraction_dims
+  // xla_gpu_unsafe_pipelined_loop_annotator
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332, 361, 270, 229, 271, 279, 218, 369, 371, 249;
+      325, 326, 332, 361, 270, 229, 271, 279, 218, 369, 371, 249, 309;
 }
 
 // Contains flags which affects the GPU compilation result.

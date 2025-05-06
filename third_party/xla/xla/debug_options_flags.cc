@@ -241,7 +241,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
-  opts.set_xla_gpu_unsafe_pipelined_loop_annotator(false);
 
   opts.set_xla_gpu_copy_insertion_use_region_analysis(false);
   opts.set_xla_gpu_collect_cost_model_stats(false);
@@ -1295,12 +1294,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "that falling back to the driver can have drawbacks like using more "
       "memory and/or other bugs during compilation, so we recommend setting "
       "this flag to false."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_unsafe_pipelined_loop_annotator",
-                bool_setter_for(
-                    &DebugOptions::set_xla_gpu_unsafe_pipelined_loop_annotator),
-                debug_options->xla_gpu_unsafe_pipelined_loop_annotator(),
-                "[Deprecated, do not use]"));
   flag_list->push_back(tsl::Flag(
       "xla_multiheap_size_constraint_per_heap",
       int32_setter_for(
