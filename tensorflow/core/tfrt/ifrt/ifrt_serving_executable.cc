@@ -512,18 +512,17 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   }
   auto hlo_program =
       std::make_unique<xla::ifrt::HloProgram>(mlir_hlo_module.get());
-  std::unique_ptr<xla::ifrt::LoadedExecutable> ifrt_executable;
   SharedCachedExecutableBundle executable_bundle =
       std::make_shared<CachedExecutableBundle>();
 
   TF_ASSIGN_OR_RETURN(
-      ifrt_executable,
+      xla::ifrt::LoadedExecutableRef ifrt_executable,
       persistent_compilation_cache_->LookupLoadedExecutableOrCreate(
           std::move(hlo_program), assigned_device_list_, xla_compile_options,
           loaded_host_callbacks, ifrt_client_.get(),
           [&](std::unique_ptr<xla::ifrt::Program> program,
               std::unique_ptr<xla::ifrt::CompileOptions> options)
-              -> absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> {
+              -> absl::StatusOr<xla::ifrt::LoadedExecutableRef> {
             return ifrt_client_->GetDefaultCompiler()->Compile(
                 std::move(program), std::move(options));
           }));

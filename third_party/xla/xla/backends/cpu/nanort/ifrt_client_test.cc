@@ -106,7 +106,7 @@ TEST(NanoIfrtClientTest, BigResult) {
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
 
-static absl::StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> Compile(
+static absl::StatusOr<ifrt::LoadedExecutableRef> Compile(
     NanoIfrtClient* client, absl::string_view program) {
   auto compiler = client->GetDefaultCompiler();
 

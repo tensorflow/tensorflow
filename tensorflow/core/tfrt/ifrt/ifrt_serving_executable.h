@@ -125,7 +125,7 @@ class IfrtServingExecutable {
   };
 
   struct CachedExecutableBundle {
-    std::unique_ptr<xla::ifrt::LoadedExecutable> ifrt_executable;
+    xla::ifrt::LoadedExecutableRef ifrt_executable;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
     std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;
 
