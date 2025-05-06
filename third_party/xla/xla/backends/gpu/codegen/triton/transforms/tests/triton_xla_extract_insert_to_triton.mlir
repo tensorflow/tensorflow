@@ -27,12 +27,10 @@ func.func @lower_extract_insert(%arg0: tensor<512x128xbf16>,
 // CHECK:       tt.return
 
 // CHECK-TMA-LABEL: tt.func @lower_extract_insert
-// CHECK-TMA-SAME:  %[[ARG_0:.*]]: !tt.ptr<i8, 0> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [512, 128], block_shape = [16, 64], element_byte_size = 2>},
-// CHECK-TMA-SAME:  %[[ARG_1:.*]]: !tt.ptr<i8, 0> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [256, 256], block_shape = [16, 64], element_byte_size = 2>}
-// CHECK-TMA:    %[[DESC_0:.*]] = tt.reinterpret_tensor_descriptor %[[ARG_0]]
-// CHECK-TMA:    %[[LOAD:.*]] = tt.descriptor_load %[[DESC_0]]
-// CHECK-TMA:    %[[DESC_1:.*]] = tt.reinterpret_tensor_descriptor %[[ARG_1]]
-// CHECK-TMA:    tt.descriptor_store %[[DESC_1]][{{.*}}], %[[LOAD]]
+// CHECK-TMA-SAME:  %[[ARG_0:.*]]: !tt.tensordesc<tensor<16x64xbf16>> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [512, 128], block_shape = [16, 64], element_byte_size = 2>},
+// CHECK-TMA-SAME:  %[[ARG_1:.*]]: !tt.tensordesc<tensor<16x64xbf16>> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [256, 256], block_shape = [16, 64], element_byte_size = 2>}
+// CHECK-TMA:    %[[LOAD:.*]] = tt.descriptor_load %[[ARG_0]]
+// CHECK-TMA:    tt.descriptor_store %[[ARG_1]][{{.*}}], %[[LOAD]]
 // CHECK-TMA:    tt.return
 
 // -----
