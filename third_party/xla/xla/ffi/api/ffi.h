@@ -1612,7 +1612,7 @@ struct CtxDecoding<DeviceOrdinal> {
       const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
       DiagnosticEngine& diagnostic) {
     XLA_FFI_DeviceOrdinal_Get_Args args;
-    args.struct_size = XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE;
+    args.struct_size = XLA_FFI_DeviceOrdinal_Get_Args_STRUCT_SIZE;
     args.extension_start = nullptr;
     args.ctx = ctx;
     args.device_ordinal = 0;
