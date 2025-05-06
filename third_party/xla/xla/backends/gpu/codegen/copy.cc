@@ -150,27 +150,6 @@ bool IsZeroOffset(const HloInstruction* slice, int dim) {
   return GetSliceSize(slice, dim) == slice->operand(0)->shape().dimensions(dim);
 }
 
-std::vector<const HloInstruction*> GetCallStack(
-    const HloInstruction& instruction) {
-  const HloInstruction* current = &instruction;
-  std::vector<const HloInstruction*> stack;
-  while (current) {
-    stack.push_back(current);
-
-    auto callers = current->parent()->caller_instructions();
-    if (callers.size() == 1) {
-      current = callers[0];
-    } else {
-      // Failed to determine a unique caller, so we stop here. The rest of the
-      // call stack (if there is one, we can also be in the entry computation)
-      // will be missing.
-      current = nullptr;
-    }
-  }
-  std::reverse(stack.begin(), stack.end());
-  return stack;
-}
-
 int GetFirstOffsetOperandIndex(const HloInstruction* slice) {
   // dynamic-slice takes the full array, then the offsets.
   // dynamic-update-slice takes the full array, then the update slice, then the
@@ -211,16 +190,6 @@ bool DynamicMemcpyFusion::IsCandidateFusion(
     }
   }
 
-  int rank = root->operand(0)->shape().dimensions().size();
-  for (int i = 0; i < rank; ++i) {
-    auto* operand = root->operand(i + first_offset_index);
-    if (!IsZeroOffset(root, i) && operand->opcode() != HloOpcode::kConstant &&
-        operand->opcode() != HloOpcode::kParameter) {
-      VLOG(5) << "Dimension " << i << " is not a constant or a parameter.";
-      return false;
-    }
-  }
-
   // This might be a dynamic memcpy fusion. We need to actually analyze the data
   // dependencies of the parameters to know for sure.
   return true;
@@ -243,7 +212,6 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
 
   int first_offset_index = GetFirstOffsetOperandIndex(slice);
   int rank = slice_input_shape.dimensions().size();
-  auto stack = GetCallStack(fusion);
 
   VLOG(5) << "Preconditions passed, trying to build a memcpy descriptor.";
   DynamicMemcpyThunk::MemcpyDescriptor descriptor;
@@ -279,7 +247,7 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
     }
 
     auto functional_dependency =
-        ResolveFunctionalDependencyOnInductionVariable(stack, operand);
+        ResolveFunctionalDependencyOnInductionVariable(operand);
     if (!functional_dependency) {
       VLOG(5) << "Offset for dimension " << i << " is not statically known.";
       return std::nullopt;
@@ -297,8 +265,10 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
 
     VLOG(5) << "Offset for dimension " << i << " is dynamic.";
     dynamic_offsets.emplace_back() = {
-        functional_dependency->loop, functional_dependency->induction_var,
-        functional_dependency->derived_value,
+        functional_dependency->loop,
+        functional_dependency->induction_var,
+        std::move(functional_dependency->required_parameters),
+        operand,
         /*dimension_size=*/slice_input_shape.dimensions(i),
         /*byte_stride=*/(*strides)[i]};
   }

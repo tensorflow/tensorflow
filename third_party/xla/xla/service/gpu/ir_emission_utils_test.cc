@@ -49,6 +49,7 @@ namespace xla {
 namespace gpu {
 
 using ::testing::ElementsAre;
+using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 
 class IrEmissionUtilsTest : public HloRunnerAgnosticTestBase {
@@ -1146,8 +1147,12 @@ ENTRY e {
 }
 
 constexpr absl::string_view kWhileLoopTestModule = R"(
-    identity {
-      ROOT p0 = s32[] parameter(0)
+    plus_one {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      c1 = s32[] constant(0)
+      sum = s32[] add(p0, c1)
+      ROOT tuple = (s32[], s32[]) tuple(sum, p1)
     }
     identity2 {
       ROOT p0 = s32[] parameter(0)
@@ -1161,7 +1166,11 @@ constexpr absl::string_view kWhileLoopTestModule = R"(
 
     call_body {
       p0 = s32[] parameter(0)
-      ROOT called_fusion = s32[] fusion(p0), kind=kLoop, calls=identity
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      sum = s32[] add(p0, p2)
+      called_fusion = (s32[], s32[]) fusion(p1, sum), kind=kLoop, calls=plus_one
+      ROOT gte = s32[] get-tuple-element(called_fusion), index=0
     }
 
     add_values {
@@ -1175,11 +1184,10 @@ constexpr absl::string_view kWhileLoopTestModule = R"(
       ivar = s32[] get-tuple-element(p0), index=0
       ivar_copy = s32[] copy(ivar)
 
-      // `derived` and `call` are functionally dependent on the induction variable.
-      derived = s32[] fusion(ivar_copy), kind=kLoop, calls=remainder
-      call = s32[] call(derived), to_apply=call_body
-
       side_effect = s32[] custom-call(), custom_call_target=""
+
+      derived = s32[] fusion(ivar_copy), kind=kLoop, calls=remainder
+      call = s32[] call(side_effect, derived, ivar), to_apply=call_body
 
       // `derived_with_invalid_dep` and `not_functionally_dependent` are not, because
       // they have a custom call in their transitive dependencies.
@@ -1220,22 +1228,22 @@ TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependency) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kWhileLoopTestModule));
 
-  auto* while_body = module->GetComputationWithName("while_body");
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+  HloComputation* plus_one = module->GetComputationWithName("plus_one");
+  HloComputation* call_body = module->GetComputationWithName("call_body");
 
   const HloInstruction* loop = module->entry_computation()->root_instruction();
-  const HloInstruction* call = while_body->GetInstructionWithName("call");
-  const HloInstruction* called_fusion =
-      module->GetComputationWithName("call_body")
-          ->GetInstructionWithName("called_fusion");
   auto result = ResolveFunctionalDependencyOnInductionVariable(
-      /*call_stack=*/{loop, call, called_fusion},
-      module->GetComputationWithName("identity")->root_instruction());
+      plus_one->GetInstructionWithName("sum"));
 
   ASSERT_TRUE(result.has_value());
-  EXPECT_EQ(result->derived_value,
-            while_body->GetInstructionWithName("derived"));
   EXPECT_EQ(result->loop, loop);
   EXPECT_EQ(result->induction_var, while_body->GetInstructionWithName("ivar"));
+
+  EXPECT_THAT(result->required_parameters, SizeIs(2));
+  EXPECT_THAT(result->required_parameters[plus_one], ElementsAre(true, false));
+  EXPECT_THAT(result->required_parameters[call_body],
+              ElementsAre(false, true, false));
 }
 
 TEST_F(IrEmissionUtilsTest,
@@ -1243,33 +1251,10 @@ TEST_F(IrEmissionUtilsTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kWhileLoopTestModule));
 
-  auto* while_body = module->GetComputationWithName("while_body");
-
   HloInstruction* loop = module->entry_computation()->root_instruction();
   loop->clear_backend_config();
-  const HloInstruction* call = while_body->GetInstructionWithName("call");
-  const HloInstruction* called_fusion =
-      module->GetComputationWithName("call_body")
-          ->GetInstructionWithName("called_fusion");
   auto result = ResolveFunctionalDependencyOnInductionVariable(
-      /*call_stack=*/{loop, call, called_fusion},
-      module->GetComputationWithName("identity")->root_instruction());
-
-  ASSERT_FALSE(result.has_value());
-}
-
-TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencyWhileLoopNotInCallStack) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kWhileLoopTestModule));
-
-  auto* while_body = module->GetComputationWithName("while_body");
-  const HloInstruction* call = while_body->GetInstructionWithName("call");
-  const HloInstruction* called_fusion =
-      module->GetComputationWithName("call_body")
-          ->GetInstructionWithName("called_fusion");
-  auto result = ResolveFunctionalDependencyOnInductionVariable(
-      /*call_stack=*/{call, called_fusion},
-      module->GetComputationWithName("identity")->root_instruction());
+      module->GetComputationWithName("plus_one")->root_instruction());
 
   ASSERT_FALSE(result.has_value());
 }
@@ -1281,13 +1266,10 @@ TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencySideEffect) {
                           ParseAndReturnVerifiedModule(kWhileLoopTestModule));
 
   auto* while_body = module->GetComputationWithName("while_body");
-
-  const HloInstruction* loop = module->entry_computation()->root_instruction();
   const HloInstruction* called_fusion =
       while_body->GetInstructionWithName("not_functionally_dependent");
   auto result = ResolveFunctionalDependencyOnInductionVariable(
-      /*call_stack=*/{loop, called_fusion},
-      module->GetComputationWithName("identity2")->root_instruction());
+      called_fusion->called_computations()[0]->root_instruction());
 
   ASSERT_FALSE(result.has_value());
 }
