@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/blas.pb.h"
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
@@ -63,6 +64,13 @@ enum class Transpose { kNoTranspose, kTranspose, kConjugateTranspose };
 
 // Returns a name for t.
 std::string TransposeString(Transpose t);
+
+// Converts blas::Transpose to the equivalent proto enum.
+xla::BlasTransposeProto ToProto(Transpose t);
+
+// Converts proto enum to the equivalent blas::Transpose.
+// Returns InvalidArgumentError if the proto value is invalid.
+absl::StatusOr<Transpose> FromProto(xla::BlasTransposeProto t);
 
 // Specifies whether the upper or lower triangular part of a
 // symmetric/Hermitian matrix is used.
@@ -115,6 +123,12 @@ enum class CallContext {
 std::string ComputationTypeString(ComputationType ty);
 
 std::ostream &operator<<(std::ostream &os, ComputationType ty);
+
+// Converts blas::ComputationType to the equivalent proto enum.
+xla::BlasComputationTypeProto ToProto(ComputationType ty);
+
+// Converts proto enum to the equivalent blas::ComputationType.
+std::optional<ComputationType> FromProto(xla::BlasComputationTypeProto ty);
 
 using dnn::DataType;
 using dnn::ToDataType;

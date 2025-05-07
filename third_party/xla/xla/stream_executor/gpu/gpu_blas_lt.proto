@@ -20,7 +20,7 @@ package xla;
 import "xla/stream_executor/blas.proto";
 import "xla/xla_data.proto";
 
-message GemmConfig {
+message GemmConfigProto {
   message MatrixLayout {
     enum Order {
       ORDER_UNKNOWN = 0;
@@ -33,7 +33,8 @@ message GemmConfig {
     int64 batch_size = 4;
     int64 leading_dim_stride = 5;
     int64 batch_stride = 6;
-    xla.BlasTranspose transpose = 7;
+    xla.BlasTransposeProto transpose = 7;
+    xla.PrimitiveType dtype = 8;
   }
 
   MatrixLayout lhs_layout = 1;
@@ -48,5 +49,5 @@ message GemmConfig {
   optional int64 algorithm = 10;
   bool grad_x = 11;
   bool grad_y = 12;
-  xla.BlasComputationType compute_type = 13;
+  xla.BlasComputationTypeProto compute_type = 13;
 }
