@@ -156,7 +156,7 @@ class CompileOnlyDevice
 class CompileOnlyIfrtCompiler final
     : public llvm::RTTIExtends<CompileOnlyIfrtCompiler, ifrt::Compiler> {
  public:
-  absl::StatusOr<ifrt::LoadedExecutableRef> Compile(
+  absl::StatusOr<ifrt::LoadedExecutableRef> CompileAndLoad(
       std::unique_ptr<ifrt::Program> program,
       std::unique_ptr<ifrt::CompileOptions> options) override {
     return Unimplemented("Compile not implemented.");

@@ -359,7 +359,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     TF_ASSIGN_OR_RETURN(*compile_request->mutable_compile_options(),
                         Serialize(compile_options, /*options=*/nullptr));
 
-    EXPECT_CALL(mock_compiler_, Compile(_, _))
+    EXPECT_CALL(mock_compiler_, CompileAndLoad(_, _))
         .WillOnce(Return(ByMove(std::move(loaded_executable))));
 
     TF_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
@@ -1653,7 +1653,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedHostCallbackExecute) {
     auto e = std::make_unique<MockLoadedExecutable>();
     executable = e.get();
 
-    EXPECT_CALL(mock_compiler_, Compile(_, _))
+    EXPECT_CALL(mock_compiler_, CompileAndLoad(_, _))
         .WillOnce(DoAll(
             Invoke(
                 [&](const std::unique_ptr<xla::ifrt::Program>& program,
