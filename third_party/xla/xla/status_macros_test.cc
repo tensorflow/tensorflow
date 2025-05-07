@@ -60,6 +60,24 @@ absl::Status XlaRetCheckFailLogWarning() {
       << "xla ret check fail message";
 }
 
+// A type that has `AbslStringify` but not `operator<<`.
+struct HasOnlyAbslStringify {
+  int i;
+
+  bool operator==(const HasOnlyAbslStringify& h) const { return i == h.i; }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const HasOnlyAbslStringify& h) {
+    absl::Format(&sink, "Stringify-%v", h.i);
+  }
+};
+
+absl::Status RetCheckPrintAbslStringify() {
+  HasOnlyAbslStringify h = {123};
+  TF_RET_CHECK(false) << h;
+  return absl::OkStatus();
+}
+
 TEST(StatusMacros, RetCheckFailing) {
   absl::Status status = RetCheckFail();
   EXPECT_EQ(status.code(), tsl::error::INTERNAL);
@@ -174,6 +192,13 @@ TEST(StatusMacros, XlaRetCheckFailLogWarning) {
   absl::Status status = XlaRetCheckFailLogWarning();
   EXPECT_EQ(status.code(), tsl::error::INTERNAL);
   EXPECT_THAT(status.message(), ::testing::HasSubstr(kExpectedLog));
+}
+
+TEST(StatusMacros, RetCheckPrintAbslStringify) {
+  absl::Status status = RetCheckPrintAbslStringify();
+  EXPECT_EQ(status.code(), tsl::error::INTERNAL);
+  EXPECT_THAT(status.message(),
+              ::testing::ContainsRegex("RET_CHECK.*Stringify-123"));
 }
 
 }  // namespace xla

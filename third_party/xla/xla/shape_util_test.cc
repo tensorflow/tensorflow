@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
