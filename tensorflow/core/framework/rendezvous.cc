@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/framework/rendezvous.h"
 
-#include <deque>
-#include <functional>
+#include <cstddef>
+#include <cstdint>
 #include <utility>
-#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/local_rendezvous.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
