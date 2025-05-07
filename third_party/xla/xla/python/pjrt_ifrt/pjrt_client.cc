@@ -797,15 +797,23 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
   // For non-addressable devices, pjrt_device is null, so the default memory is
   // set to that of an addressable device.
   auto default_memory = client->addressable_devices_.front()->DefaultMemory();
-  for (auto& device : client->owned_devices_) {
+  for (const auto& device : client->owned_devices_) {
     if (!device->pjrt_device()) {
-      if (default_memory.ok()) {
+      for (const Memory* memory :
+           client->addressable_devices_.front()->Memories()) {
         auto ifrt_memory = std::make_unique<PjRtMemory>(
-            client.get(), (*default_memory)->Kind(), device.get());
-        device->default_memory_ = ifrt_memory.get();
+            client.get(), memory->Kind(), device.get());
+        device->memories_.push_back(ifrt_memory.get());
+        if (absl::IsUnknown(device->default_memory_.status())) {
+          if (default_memory.ok()) {
+            if (memory == *default_memory) {
+              device->default_memory_ = ifrt_memory.get();
+            }
+          } else {
+            device->default_memory_ = default_memory.status();
+          }
+        }
         client->owned_memories_.push_back(std::move(ifrt_memory));
-      } else {
-        device->default_memory_ = default_memory.status();
       }
     }
   }
