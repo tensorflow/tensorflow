@@ -423,6 +423,51 @@ TEST_F(GpuAllReduceCombinerTest,
   EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_F(GpuAllReduceCombinerTest, FavorsPipelinedCollectivesOverSynchronous) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    add {
+      p0 = f16[] parameter(0)
+      p1 = f16[] parameter(1)
+      ROOT add = f16[] add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f16[1000000]{0} parameter(0)
+      p1 = f16[1000000]{0} parameter(1)
+      p2 = f16[1000000]{0} parameter(2)
+
+      ar0 = f16[1000000]{0} all-reduce(p0), replica_groups={}, to_apply=add,
+        frontend_attributes={sync_collective="true"},
+        backend_config={"collective_backend_config": {"is_pipelined": true}}
+      ar1 = f16[1000000]{0} all-reduce(p1), replica_groups={}, to_apply=add,
+        frontend_attributes={sync_collective="true"},
+        backend_config={"collective_backend_config": {"is_pipelined": true}}
+      ar2 = f16[1000000]{0} all-reduce(p2), replica_groups={}, to_apply=add,
+        backend_config={"collective_backend_config": {"is_pipelined": true}}
+      ROOT result = tuple(ar0, ar1, ar2)
+    }
+  )";
+  DeviceDescription device_info;
+  device_info.set_device_memory_size(10000000000);  // 10GB
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  GpuAllReduceCombiner combiner(
+      device_info, /*default_combine_threshold_in_bytes=*/
+      kDefaultAllReduceCombineThreshold,
+      /*combine_threshold_in_bytes=*/kDefaultAllReduceCombineThreshold,
+      /*combine_threshold_count=*/256, /*pointer_size=*/4);
+
+  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
+  Matcher<const HloInstruction*> combined_all_reduce =
+      op::AllReduce(op::Parameter(0), op::Parameter(1), op::Parameter(2));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::GetTupleElement(combined_all_reduce, 0),
+                        op::GetTupleElement(combined_all_reduce, 1),
+                        op::GetTupleElement(combined_all_reduce, 2)));
+}
+
 }  // namespace
 
 }  // namespace xla::gpu

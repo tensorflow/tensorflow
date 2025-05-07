@@ -389,5 +389,52 @@ TEST_F(GpuReduceScatterCombinerTest, CombinesSynchronousCollectivesMaximally) {
                         op::GetTupleElement(combined_reduce_scatter, 1)));
 }
 
+TEST_F(GpuReduceScatterCombinerTest,
+       FavorsPipelinedCollectivesOverSynchronous) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    add {
+      p0 = f16[] parameter(0)
+      p1 = f16[] parameter(1)
+      ROOT add = f16[] add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f16[20000000]{0} parameter(0)
+      p1 = f16[20000000]{0} parameter(1)
+      p2 = f16[20000000]{0} parameter(2)
+
+      rs0 = f16[10000000]{0} reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=add,
+        frontend_attributes={sync_collective="true"},
+        backend_config={"collective_backend_config": {"is_pipelined": true}}
+      rs1 = f16[10000000]{0} reduce-scatter(p1), replica_groups={{0,1}}, dimensions={0}, to_apply=add,
+        frontend_attributes={sync_collective="true"},
+        backend_config={"collective_backend_config": {"is_pipelined": true}}
+      rs2 = f16[10000000]{0} reduce-scatter(p2), replica_groups={{0,1}}, dimensions={0}, to_apply=add,
+        backend_config={"collective_backend_config": {"is_pipelined": true}}
+      ROOT result = tuple(rs0, rs1, rs2)
+    }
+  )";
+  DeviceDescription device_info;
+  device_info.set_device_memory_size(10000000000);  // 10GB
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  GpuReduceScatterCombiner combiner(
+      device_info, /*default_combine_threshold_in_bytes=*/
+      kDefaultReduceScatterCombineThreshold,
+      /*combine_threshold_in_bytes=*/kDefaultReduceScatterCombineThreshold,
+      /*combine_threshold_count=*/256,
+      /*combine_by_dim=*/false, /*pointer_size=*/4);
+
+  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
+  Matcher<const HloInstruction*> combined_reduce_scatter =
+      op::ReduceScatter(op::Parameter(0), op::Parameter(1), op::Parameter(2));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::GetTupleElement(combined_reduce_scatter, 0),
+                        op::GetTupleElement(combined_reduce_scatter, 1),
+                        op::GetTupleElement(combined_reduce_scatter, 2)));
+}
+
 }  // namespace
 }  // namespace xla::gpu

@@ -67,20 +67,13 @@ absl::StatusOr<bool> GpuReduceScatterCombiner::Run(
   }
 
   // Combiner threshold is not specified. We use heuristics.
-  // We sequentially combine synchronous collectives then pipelined collectives
-  // and finally the rest. Note that collectives can be both synchronous and
-  // pipelined. Hence, we combine them in two steps.
+  // We sequentially combine pipelined collectives then synchronous collectives
+  // and finally the rest.
+  // We currently don't support combining a collective that was previously
+  // combined (see b/415761650). We favor combining pipelined collectives over
+  // synchronous collectives.
 
   bool changed = false;
-
-  // Combine as much as possible for synchronous collectives.
-  if (ContainsCombinableSyncCollective(*module)) {
-    combine_threshold_in_bytes_ = MaxAvailableMemory(*module, device_info_);
-    TF_ASSIGN_OR_RETURN(
-        bool combined,
-        RunWithKeyCombiner(module, execution_threads, SynchronousCombinerKey));
-    changed |= combined;
-  }
 
   // If there are no pipelined instructions in the IR, the optimizations below
   // do not kick in anyway.
@@ -91,6 +84,15 @@ absl::StatusOr<bool> GpuReduceScatterCombiner::Run(
     TF_ASSIGN_OR_RETURN(
         bool combined,
         RunWithKeyCombiner(module, execution_threads, PipelinedCombinerKey));
+    changed |= combined;
+  }
+
+  // Combine as much as possible for synchronous collectives.
+  if (ContainsCombinableSyncCollective(*module)) {
+    combine_threshold_in_bytes_ = MaxAvailableMemory(*module, device_info_);
+    TF_ASSIGN_OR_RETURN(
+        bool combined,
+        RunWithKeyCombiner(module, execution_threads, SynchronousCombinerKey));
     changed |= combined;
   }
 
