@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/buffer_assignment.pb.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/copy_insertion.h"
@@ -3484,5 +3485,56 @@ ENTRY entry_computation {
   EXPECT_EQ(dus9_alloc_slice.allocation(), dus5_alloc_slice.allocation());
   EXPECT_EQ(dus9_alloc_slice, dus5_alloc_slice);
 }
+
+TEST(BufferAllocationSliceProtoTest, RoundTripProto) {
+  BufferAllocation original_alloc =
+      BufferAllocation(/*index=*/15, /*size=*/500, /*color=*/0);
+  BufferAllocation::Slice original_slice(&original_alloc, /*offset=*/50,
+                                         /*size=*/100);
+
+  // Convert to proto
+  TF_ASSERT_OK_AND_ASSIGN(xla::buffer_assignment::BufferAllocationSlice proto,
+                          original_slice.ToProto());
+
+  // Convert back from proto
+  std::vector<BufferAllocation> allocations_for_from_proto;
+  allocations_for_from_proto.push_back(original_alloc);
+  // Add a few other allocations to make the lookup non-trivial
+  allocations_for_from_proto.push_back(
+      BufferAllocation(/*index=*/1, /*size=*/50, /*color=*/0));
+  allocations_for_from_proto.push_back(
+      BufferAllocation(/*index=*/20, /*size=*/600, /*color=*/0));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      BufferAllocation::Slice round_tripped_slice,
+      BufferAllocation::Slice::FromProto(proto, allocations_for_from_proto));
+
+  ASSERT_NE(round_tripped_slice.allocation(), nullptr);
+  EXPECT_EQ(*round_tripped_slice.allocation(), *original_slice.allocation());
+  EXPECT_EQ(round_tripped_slice.offset(), original_slice.offset());
+  EXPECT_EQ(round_tripped_slice.size(), original_slice.size());
+}
+TEST(BufferAllocationSliceProtoTest, FromProtoErrorAllocationNotFound) {
+  xla::buffer_assignment::BufferAllocationSlice proto;
+  proto.set_allocation_index(9);
+  proto.set_offset(50);
+  proto.set_size(60);
+
+  std::vector<BufferAllocation> allocations;
+  allocations.push_back(
+      BufferAllocation(/*index=*/1, /*size=*/50, /*color=*/0));
+  allocations.push_back(
+      BufferAllocation(/*index=*/7, /*size=*/200, /*color=*/0));
+
+  absl::StatusOr<BufferAllocation::Slice> status_or_slice =
+      BufferAllocation::Slice::FromProto(proto, allocations);
+
+  ASSERT_FALSE(status_or_slice.ok());
+  EXPECT_EQ(status_or_slice.status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(status_or_slice.status().message(),
+              ::testing::HasSubstr("No allocation found for index 9"));
+}
+
 }  // namespace
 }  // namespace xla

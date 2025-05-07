@@ -216,6 +216,13 @@ class BufferAllocation {
 
     std::string ToString() const;
 
+    static absl::StatusOr<Slice> FromProto(
+        const xla::buffer_assignment::BufferAllocationSlice& proto,
+        const std::vector<BufferAllocation>& mlir_allocations);
+
+    absl::StatusOr<xla::buffer_assignment::BufferAllocationSlice> ToProto()
+        const;
+
    private:
     const BufferAllocation* allocation_ = nullptr;
     int64_t offset_ = 0;

@@ -243,6 +243,30 @@ BufferAllocation::Slice BufferAllocation::GetSlice(
   return Slice(this, os.offset, os.size);
 }
 
+absl::StatusOr<xla::buffer_assignment::BufferAllocationSlice>
+BufferAllocation::Slice::ToProto() const {
+  xla::buffer_assignment::BufferAllocationSlice proto;
+  if (allocation_ == nullptr) {
+    return absl::InvalidArgumentError("Allocation is null");
+  }
+  proto.set_allocation_index(allocation_->index());
+  proto.set_offset(offset_);
+  proto.set_size(size_);
+  return proto;
+}
+
+absl::StatusOr<BufferAllocation::Slice> BufferAllocation::Slice::FromProto(
+    const xla::buffer_assignment::BufferAllocationSlice& proto,
+    const std::vector<BufferAllocation>& mlir_allocations) {
+  for (const BufferAllocation& allocation : mlir_allocations) {
+    if (allocation.index() == proto.allocation_index()) {
+      return Slice(&allocation, proto.offset(), proto.size());
+    }
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("No allocation found for index ", proto.allocation_index()));
+}
+
 void BufferAllocation::AddAssignment(const HloValue& buffer, int64_t offset,
                                      int64_t size) {
   VLOG(4) << "Adding the following buffer to allocation #" << index()

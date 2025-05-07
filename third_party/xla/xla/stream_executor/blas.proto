@@ -17,13 +17,13 @@ syntax = "proto3";
 
 package xla;
 
-enum BlasTranspose {
+enum BlasTransposeProto {
   BLAS_NO_TRANSPOSE = 0;
   BLAS_TRANSPOSE = 1;
   BLAS_CONJUGATE_TRANSPOSE = 2;
 }
 
-enum BlasComputationType {
+enum BlasComputationTypeProto {
   BLAS_COMPUTATION_TYPE_UNSET = 0;
   BLAS_COMPUTATION_TYPE_F16 = 1;          // 16-bit floating-point
   BLAS_COMPUTATION_TYPE_F32 = 2;          // 32-bit floating-point
