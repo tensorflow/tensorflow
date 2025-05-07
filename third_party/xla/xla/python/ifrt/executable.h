@@ -251,15 +251,6 @@ class LoadedExecutable
       absl::Span<ArrayRef> args, const ExecuteOptions& options,
       std::optional<DeviceListRef> devices) = 0;
 
-  // Deletes the executable from the devices. The operation may be asynchronous.
-  // The returned future will have the result of the deletion on the devices.
-  // Implementations that do not track the completion of the deletion operation
-  // may make the future immediately ready with an OK status.
-  virtual Future<> Delete() = 0;
-  // Returns whether the executable has been enqueued for deletion from the
-  // devices.
-  virtual bool IsDeleted() const = 0;
-
   // The following APIs are taken from xla::PjRtLoadedExecutable for fast
   // prototyping.
   // TODO(hyeontaek): Move the following XLA-specific methods to

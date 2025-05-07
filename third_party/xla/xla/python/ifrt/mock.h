@@ -317,8 +317,6 @@ class MockLoadedExecutable
               (absl::Span<ArrayRef> args, const ExecuteOptions& options,
                std::optional<DeviceListRef> devices),
               (final));
-  MOCK_METHOD(Future<>, Delete, (), (final));
-  MOCK_METHOD(bool, IsDeleted, (), (const, final));
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
               (const, final));
 

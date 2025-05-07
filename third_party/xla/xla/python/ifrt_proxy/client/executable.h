@@ -101,9 +101,6 @@ class LoadedExecutable final
       absl::Span<xla::ifrt::ArrayRef> args, const ExecuteOptions& options,
       std::optional<xla::ifrt::DeviceListRef> devices) override;
 
-  Future<> Delete() override;
-  bool IsDeleted() const override;
-
   absl::Span<xla::ifrt::Device* const> addressable_devices() const override;
 
   static char ID;  // NOLINT

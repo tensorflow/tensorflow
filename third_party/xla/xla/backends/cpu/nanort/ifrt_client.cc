@@ -938,18 +938,6 @@ class NanoExecutable final
     return absl::UnimplementedError("GetCostAnalysis is not implemented.");
   }
 
-  ifrt::Future<> Delete() override {
-    client_ = nullptr;
-    program_ = {};
-    program_shape_ = {};
-    executable_.reset();
-    input_shardings_.clear();
-    output_shardings_.clear();
-    return Ready();
-  }
-
-  bool IsDeleted() const override { return executable_ == nullptr; }
-
   absl::Span<ifrt::Device* const> addressable_devices() const override {
     return client_->addressable_devices();
   }

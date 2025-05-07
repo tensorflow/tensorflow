@@ -292,12 +292,6 @@ class PjRtLoadedExecutable final
       absl::Span<ArrayRef> args, const ExecuteOptions& options,
       std::optional<DeviceListRef> devices) override;
 
-  Future<> Delete() override;
-  bool IsDeleted() const override {
-    DCHECK(this);
-    return pjrt_loaded_executable_->IsDeleted();
-  }
-
   absl::Span<Device* const> addressable_devices() const override {
     DCHECK(this);
     return addressable_devices_;

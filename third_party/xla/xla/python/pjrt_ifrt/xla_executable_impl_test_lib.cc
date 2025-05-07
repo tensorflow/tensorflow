@@ -282,33 +282,6 @@ TEST(LoadedExecutableImplTest, DoNotFillStatus) {
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
-TEST(LoadedExecutableImplTest, Delete) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  Compiler* compiler = client->GetDefaultCompiler();
-
-  std::vector<Device*> devices = {client->addressable_devices().at(0)};
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto loaded_executable,
-      CompileOnDevices(client.get(), compiler, module_add_one, devices,
-                       /*replicated=*/false));
-  TF_EXPECT_OK(loaded_executable->Delete().Await());
-}
-
-TEST(LoadedExecutableImplTest, IsDeleted) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  Compiler* compiler = client->GetDefaultCompiler();
-
-  std::vector<Device*> devices = {client->addressable_devices().at(0)};
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto loaded_executable,
-      CompileOnDevices(client.get(), compiler, module_add_one, devices,
-                       /*replicated=*/false));
-  EXPECT_FALSE(loaded_executable->IsDeleted());
-  auto future = loaded_executable->Delete();
-  EXPECT_TRUE(loaded_executable->IsDeleted());
-  TF_EXPECT_OK(future.Await());
-}
-
 }  // namespace
 }  // namespace ifrt
 }  // namespace xla

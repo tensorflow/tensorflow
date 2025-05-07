@@ -791,12 +791,5 @@ absl::StatusOr<std::string> PjRtLoadedExecutable::Serialize() const {
   return pjrt_loaded_executable_->SerializeExecutable();
 }
 
-Future<> PjRtLoadedExecutable::Delete() {
-  DCHECK(this);
-  pjrt_loaded_executable_->Delete();
-  // TODO(hyeontaek): Return a correct future.
-  return Future<>(absl::OkStatus());
-}
-
 }  // namespace ifrt
 }  // namespace xla

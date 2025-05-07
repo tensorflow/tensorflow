@@ -1713,14 +1713,13 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   return ifrt_resp;
 }
 
+// This handler will be deleted on 2025-06-06 since the underlying IFRT API is
+// deprecated. An error is returned until then to gracefully handle old clients.
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleLoadedExecutableDeleteRequest(
     std::unique_ptr<IfrtRequest> request) {
-  const auto& del = request->loaded_executable_delete_request();
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<LoadedExecutableWithInfo> executable_info,
-                      GetLoadedExecutable(del.loaded_executable_handle()));
-
-  Future<> future = executable_info->executable->Delete();
+  Future<> future(absl::UnimplementedError(
+      "LoadedExecutable::Delete is no longer supported"));
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
   auto* del_response = ifrt_resp->mutable_loaded_executable_delete_response();
@@ -1734,18 +1733,15 @@ IfrtBackend::HandleLoadedExecutableDeleteRequest(
   return ifrt_resp;
 }
 
+// This handler will be deleted on 2025-06-06 since the underlying IFRT API is
+// deprecated. false is returned until then to gracefully handle old clients.
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleLoadedExecutableIsDeletedRequest(
     std::unique_ptr<IfrtRequest> request) {
-  const auto& is_deleted = request->loaded_executable_is_deleted_request();
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<LoadedExecutableWithInfo> executable_info,
-      GetLoadedExecutable(is_deleted.loaded_executable_handle()));
-
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
   auto* is_deleted_response =
       ifrt_resp->mutable_loaded_executable_is_deleted_response();
-  is_deleted_response->set_is_deleted(executable_info->executable->IsDeleted());
+  is_deleted_response->set_is_deleted(false);
 
   return ifrt_resp;
 }

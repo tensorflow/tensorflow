@@ -70,8 +70,10 @@ message IfrtRequest {
     // ===== LoadedExecutable =====
     LoadedExecutableMetadataRequest loaded_executable_metadata_request = 14;
     LoadedExecutableExecuteRequest loaded_executable_execute_request = 15;
-    LoadedExecutableDeleteRequest loaded_executable_delete_request = 16;
-    LoadedExecutableIsDeletedRequest loaded_executable_is_deleted_request = 17;
+    LoadedExecutableDeleteRequest loaded_executable_delete_request = 16
+        [deprecated = true];
+    LoadedExecutableIsDeletedRequest loaded_executable_is_deleted_request = 17
+        [deprecated = true];
     LoadedExecutableDestructRequest loaded_executable_destruct_request = 18;
 
     // ===== LoadedHostCallback =====
