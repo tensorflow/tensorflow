@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -161,14 +162,11 @@ HloInstruction* ShuffleDataWithAllToAll(
     HloInstruction* hlo, int64_t num_partitions,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, SpmdBuilder* b) {
-  std::vector<std::vector<int64_t>> groups(1);
-  std::vector<int64_t> partition_subgroups(num_partitions);
-  std::iota(partition_subgroups.begin(), partition_subgroups.end(), 0);
-  groups[0] = partition_subgroups;
-  auto all_to_all = collective_ops_creator.create_cross_partition_all_to_all(
-      b, {hlo}, groups, (*next_channel_id)++,
-      hlo->shape().dimensions_size() - 1);
-  return all_to_all;
+  IotaReplicaGroupList groups(1, num_partitions);
+  return collective_ops_creator
+      .create_cross_partition_all_to_all_with_iota_device_list(
+          b, {hlo}, groups, (*next_channel_id)++,
+          hlo->shape().dimensions_size() - 1);
 }
 
 HloInstruction* GetCorrectionFactor(HloInstruction* hlo, int64_t num_partitions,

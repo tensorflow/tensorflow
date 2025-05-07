@@ -592,6 +592,20 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsForReplication(
     const HloSharding& sharding, absl::Span<const int64_t> replication_dims);
 
 // Generates partition groups (groups of devices that will communicate via a
+// collective) across provided target dims with provided group sizes in vector
+// of vector format (legacy format).
+std::vector<std::vector<int64_t>> GetPartitionGroupsAcrossTargetDims(
+    const HloSharding& sharding, std::vector<int64_t> target_dims,
+    std::vector<int64_t> group_sizes);
+
+// Generates partition groups (groups of devices that will communicate via a
+// collective) across provided target dims with provided group sizes in iota
+// format from sharding.
+std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
+    const HloSharding& sharding, std::vector<int64_t> target_dims,
+    std::vector<int64_t> group_sizes, int64_t num_partitions);
+
+// Generates partition groups (groups of devices that will communicate via a
 // collective) in iota format from sharding and provided replication_dims.
 // NOTE: If provided sharding does not utilize all the partitions, we skip
 // generating a compressed format. This is because this device ids

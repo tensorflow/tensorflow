@@ -1697,24 +1697,6 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
   const HloSharding temp_target =
       GetAllToAllSharding(sharding(), {source_dim}, {target_dim});
 
-  // The order of ids in the group must follow the temp_target sharding.
-  std::vector<std::vector<int64_t>> groups(
-      temp_target.tile_assignment().num_elements() / group_size);
-  temp_target.tile_assignment().Each(
-      [&](absl::Span<const int64_t> indices, int64_t device) {
-        int64_t group_id = 0;
-        for (int64_t dim = 0; dim < indices.size(); ++dim) {
-          if (dim == target_dim) {
-            group_id *= temp_target.tile_assignment().dim(dim) / group_size;
-            group_id += indices[dim] / group_size;
-          } else {
-            group_id *= temp_target.tile_assignment().dim(dim);
-            group_id += indices[dim];
-          }
-        }
-        groups[group_id].push_back(device);
-      });
-
   PaddingConfig pc;
   for (int64_t i = 0; i < hlo_->shape().dimensions_size(); ++i) {
     auto* pd = pc.add_dimensions();
@@ -1753,10 +1735,34 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
       padded_hlo));
   VLOG(5) << "Target ata shape: " << reshape->shape().ToString();
 
-  // After the reshape, it is guaranteed to have at least 3 dimensions.
-  auto all_to_all =
-      state_.collective_ops_creator.create_cross_partition_all_to_all(
-          state_.b, {reshape}, groups, (*state_.next_channel_id)++, target_dim);
+  HloInstruction* all_to_all = nullptr;
+  // Try to generate replica groups in compressed format.
+  std::optional<IotaReplicaGroupList> groups =
+      GetIotaPartitionGroupsAcrossTargetDims(
+          temp_target, {target_dim}, {group_size},
+          state_.partitioner->num_partitions());
+  if (state_.collective_ops_creator
+          .create_cross_partition_all_to_all_with_iota_device_list &&
+      groups.has_value()) {
+    // After the reshape, it is guaranteed to have at least 3 dimensions.
+    all_to_all = state_.collective_ops_creator
+                     .create_cross_partition_all_to_all_with_iota_device_list(
+                         state_.b, {reshape}, groups.value(),
+                         (*state_.next_channel_id)++, target_dim);
+  } else {
+    VLOG(5) << "Falling back to creating all-to-all with replica groups V1 "
+               "(list of vectors).";
+    // The order of ids in the group must follow the temp_target sharding.
+    std::vector<std::vector<int64_t>> groups =
+        GetPartitionGroupsAcrossTargetDims(temp_target, {target_dim},
+                                           {group_size});
+    // After the reshape, it is guaranteed to have at least 3 dimensions.
+    all_to_all =
+        state_.collective_ops_creator.create_cross_partition_all_to_all(
+            state_.b, {reshape}, groups, (*state_.next_channel_id)++,
+            target_dim);
+  }
+  CHECK_NE(all_to_all, nullptr);
 
   // Reorder the split dimension of the reshape to be located in front of the
   // input partition dimension, so the two dimensions can be combined.
@@ -1919,33 +1925,32 @@ PartitionedHlo PartitionedHlo::TryMultipleSourceTargetDims(
 
   // // Step 2. Apply the all-to-all
   // all-to-all on (8,16,8,16,8) with split_dimension = 0
-  int64_t total_group_size = std::accumulate(
-      group_sizes.begin(), group_sizes.end(), 1, std::multiplies<int64_t>());
   const HloSharding temp_target = GetAllToAllSharding(
       sharding(), eligible_source_dims, eligible_target_dims);
-  std::vector<std::vector<int64_t>> groups(
-      temp_target.tile_assignment().num_elements() / total_group_size);
-  temp_target.tile_assignment().Each(
-      [&](absl::Span<const int64_t> indices, int64_t device) {
-        int64_t group_id = 0;
-        for (int64_t dim = 0; dim < indices.size(); ++dim) {
-          auto it = absl::c_find(eligible_target_dims, dim);
-          if (it != eligible_target_dims.end()) {
-            int64_t group_size =
-                group_sizes[std::distance(eligible_target_dims.begin(), it)];
-            group_id *= temp_target.tile_assignment().dim(dim) / group_size;
-            group_id += indices[dim] / group_size;
-          } else {
-            group_id *= temp_target.tile_assignment().dim(dim);
-            group_id += indices[dim];
-          }
-        }
-        groups[group_id].push_back(device);
-      });
-  HloInstruction* all_to_all =
-      state_.collective_ops_creator.create_cross_partition_all_to_all(
-          state_.b, {reshape_1}, groups, (*state_.next_channel_id)++, 0);
 
+  HloInstruction* all_to_all = nullptr;
+  // Try to generate replica groups in compressed format.
+  std::optional<IotaReplicaGroupList> groups =
+      GetIotaPartitionGroupsAcrossTargetDims(
+          temp_target, eligible_target_dims, group_sizes,
+          state_.partitioner->num_partitions());
+  if (state_.collective_ops_creator
+          .create_cross_partition_all_to_all_with_iota_device_list &&
+      groups.has_value()) {
+    all_to_all =
+        state_.collective_ops_creator
+            .create_cross_partition_all_to_all_with_iota_device_list(
+                state_.b, {reshape_1}, *groups, (*state_.next_channel_id)++, 0);
+  } else {
+    VLOG(5) << "Falling back to creating all-to-all with replica groups V1 "
+               "(list of vectors).";
+    std::vector<std::vector<int64_t>> groups =
+        GetPartitionGroupsAcrossTargetDims(temp_target, eligible_target_dims,
+                                           group_sizes);
+    all_to_all =
+        state_.collective_ops_creator.create_cross_partition_all_to_all(
+            state_.b, {reshape_1}, groups, (*state_.next_channel_id)++, 0);
+  }
   // Step 3. Split sharding axes to multiple dimensions
   // 1. reshape_2 (8,16,8,16,8) -> (2,4,16,8,16,8)
   // 2. transpose_1 (2,4,16,8,16,8) -> (16,4,8,2,16,8) with permutation_1
@@ -5080,6 +5085,20 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
         }
         return b->AddInstruction(HloInstruction::CreateAllToAll(
             output_shape, operands, CollectiveDeviceList(groups),
+            /*constrain_layout=*/false, channel_id, split_dimension));
+      },
+      [num_replicas, num_partitions](
+          SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
+          const IotaReplicaGroupList& partition_group_list, int64_t channel_id,
+          std::optional<int64_t> split_dimension) {
+        std::vector<Shape> shapes(operands.size(), operands[0]->shape());
+        const Shape output_shape = (shapes.size() == 1)
+                                       ? shapes[0]
+                                       : ShapeUtil::MakeTupleShape(shapes);
+        return b->AddInstruction(HloInstruction::CreateAllToAll(
+            output_shape, operands,
+            ExpandPartitionGroupListAcrossReplicas(
+                partition_group_list, num_replicas, num_partitions),
             /*constrain_layout=*/false, channel_id, split_dimension));
       },
       [num_replicas, num_partitions](

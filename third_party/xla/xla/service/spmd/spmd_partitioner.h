@@ -225,6 +225,15 @@ struct SPMDCollectiveOpsCreator {
       int64_t channel_id, std::optional<int64_t> split_dimension)>
       create_cross_partition_all_to_all;
 
+  // Function used to create a cross-partition all-to-all HLO using device list
+  // in iota format. This function is optional: if it is a nullptr, use
+  // create_cross_partition_all_to_all.
+  std::function<HloInstruction*(
+      SpmdBuilder*, absl::Span<HloInstruction* const> operands,
+      const IotaReplicaGroupList& partition_group_list, int64_t channel_id,
+      std::optional<int64_t> split_dimension)>
+      create_cross_partition_all_to_all_with_iota_device_list;
+
   // Function used to create a cross-partition all-gather HLO. This is optional:
   // if it is nullptr, the partitioner will use all-reduce instead.
   std::function<HloInstruction*(
@@ -355,6 +364,9 @@ class SpmdPartitioner : public HloModulePass {
   // Update module's parameter and output sharding information, based on the
   // sharding information of the module's parameters and outptuts.
   static void RecordInputsOutputsSharding(HloModule* module);
+
+  int64_t num_partitions() const { return num_partitions_; }
+  int64_t num_replicas() const { return num_replicas_; }
 
  protected:
   // This is the internal implementation for AllGatherShards(), returns a pair

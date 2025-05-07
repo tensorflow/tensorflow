@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <memory>
@@ -2499,6 +2501,129 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsForReplication(
         partition_groups[group_id].push_back(partition);
       });
   return partition_groups;
+}
+
+std::vector<std::vector<int64_t>> GetPartitionGroupsAcrossTargetDims(
+    const HloSharding& sharding, std::vector<int64_t> target_dims,
+    std::vector<int64_t> group_sizes) {
+  CHECK(target_dims.size() == group_sizes.size());
+  int64_t total_group_size = std::accumulate(
+      group_sizes.begin(), group_sizes.end(), 1, std::multiplies<int64_t>());
+  std::vector<std::vector<int64_t>> groups(
+      sharding.tile_assignment().num_elements() / total_group_size);
+  sharding.tile_assignment().Each(
+      [&](absl::Span<const int64_t> indices, int64_t device) {
+        int64_t group_id = 0;
+        for (int64_t dim = 0; dim < indices.size(); ++dim) {
+          auto it = absl::c_find(target_dims, dim);
+          if (it != target_dims.end()) {
+            int64_t group_size =
+                group_sizes[std::distance(target_dims.begin(), it)];
+            group_id *= sharding.tile_assignment().dim(dim) / group_size;
+            group_id += indices[dim] / group_size;
+          } else {
+            group_id *= sharding.tile_assignment().dim(dim);
+            group_id += indices[dim];
+          }
+        }
+        groups[group_id].push_back(device);
+      });
+  return groups;
+}
+
+std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
+    const HloSharding& sharding, std::vector<int64_t> target_dims,
+    std::vector<int64_t> group_sizes, int64_t num_partitions) {
+  CHECK(target_dims.size() == group_sizes.size());
+  // If provided sharding is not HloShardingV2, we cannot generate partition
+  // groups in an iota format.
+  if (!sharding.tile_assignment().iota().has_value()) {
+    return std::nullopt;
+  }
+
+  // If the sharding does not utilize all the partitions, we skip generating
+  // compressed format.
+  if (sharding.tile_assignment().num_elements() != num_partitions) {
+    return std::nullopt;
+  }
+
+  // The goal of this function is to generate partition groups which span across
+  // target dims without using explicit indexing and instead using transposes
+  // and reshapes of the tile assignment. We do this by reshaping the tile
+  // assignment by expanding each target dim to [target_dim/group_size,
+  // group_size]. We then transpose the tile assignment, making the newly
+  // created target dims the most minor dims, preserving the order of the target
+  // dims. Consider the following example:
+  // Tile assignment: [8,8,16]<=[1024]
+  // Target dims: [0,1]
+  // Group sizes: [4,4]
+  //
+  // In this case we would generate 64 replica groups of size 16.
+  // These replica groups would span the target dims 0 and 1.
+  // We perform the following steps on the original tile assignment:
+  // 1. Expand target dims: [8,8,16]->[2,4,2,4,16]
+  // 2. Transpose to make target dims minor: [2,4,2,4,16]->[2,2,16,4,4] with
+  // (0,1,2,3,4) -> (0,2,4,1,3)
+  // 3. Reshape to get groups of size 16: [2,4,16,2,4]->[2,2,16,16]
+  int64_t total_group_size = std::accumulate(
+      group_sizes.begin(), group_sizes.end(), 1, std::multiplies<int64_t>());
+  int64_t num_replica_groups =
+      sharding.tile_assignment().num_elements() / total_group_size;
+
+  std::vector<int64_t> reshape_dimensions;
+  reshape_dimensions.reserve(sharding.tile_assignment().num_dimensions());
+  std::vector<int64_t> target_dim_locations;
+  for (int64_t dim = 0; dim < sharding.tile_assignment().num_dimensions();
+       ++dim) {
+    auto it = std::find(target_dims.begin(), target_dims.end(), dim);
+    if (it != target_dims.end()) {
+      int64_t current_val = sharding.tile_assignment().dim(dim);
+      int64_t group_size = group_sizes[std::distance(target_dims.begin(), it)];
+      reshape_dimensions.push_back(current_val / group_size);
+      reshape_dimensions.push_back(group_size);
+      target_dim_locations.push_back(reshape_dimensions.size() - 1);
+    } else {
+      reshape_dimensions.push_back(sharding.tile_assignment().dim(dim));
+    }
+  }
+
+  std::vector<int> transpose_dims(reshape_dimensions.size());
+  std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
+  for (int64_t loc : target_dim_locations) {
+    auto it = std::find(transpose_dims.begin(), transpose_dims.end(), loc);
+    if (it != transpose_dims.end()) {
+      transpose_dims.erase(it);
+      transpose_dims.push_back(loc);
+    }
+  }
+
+  // Step 1: Expand target dims.
+  auto reshaped_tile_assignment =
+      sharding.tile_assignment().Reshape(reshape_dimensions);
+
+  // If after the reshape we do not have an iota tile assignment
+  // (HloShardingV2), we cannot generate a compressed format.
+  if (!reshaped_tile_assignment.iota().has_value()) {
+    return std::nullopt;
+  }
+
+  // Step 2: Transpose the tile assignment to make the target dims minor.
+  auto tranposed_tile_assignment =
+      reshaped_tile_assignment.iota()->Transpose(transpose_dims);
+  // If after the transpose we do not have an iota tile assignment
+  // (HloShardingV2), we cannot generate a compressed format.
+  if (!tranposed_tile_assignment.has_value()) {
+    return std::nullopt;
+  }
+
+  // Step 3: Final reshape to get groups of size total_group_size. This is done
+  // implicitly by creating an IotaReplicaGroupList with num_replica_groups,
+  // total_group_size.
+  IotaReplicaGroupList groups(
+      num_replica_groups, total_group_size,
+      tranposed_tile_assignment.value().reshape_dims(),
+      tranposed_tile_assignment.value().transpose_perm());
+  return groups;
 }
 
 // Returns partition groups in an iota format.

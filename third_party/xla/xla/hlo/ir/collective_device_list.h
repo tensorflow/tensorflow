@@ -58,6 +58,13 @@ class IotaReplicaGroupList {
         num_replica_groups_(num_replica_groups),
         num_devices_per_group_(num_devices_per_group) {}
 
+  bool operator==(const IotaReplicaGroupList& other) const {
+    return num_replica_groups() == other.num_replica_groups() &&
+           num_devices_per_group() == other.num_devices_per_group() &&
+           reshape_dims() == other.reshape_dims() &&
+           transpose_perm() == other.transpose_perm();
+  }
+
   int64_t num_replica_groups() const;
   int64_t num_devices_per_group() const;
   absl::Span<const int64_t> reshape_dims() const {
