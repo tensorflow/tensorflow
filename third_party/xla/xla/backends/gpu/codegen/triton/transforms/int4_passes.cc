@@ -405,7 +405,7 @@ std::vector<Operation *> FindInt4ExtSIOp(const ModuleOp &module) {
 // The tensor is packed along the minor dimension. Minor dimension is the one
 // that has the stride 1. If there are two dimensions with the stride 1, then we
 // need to check which exact shape dim is equal to 1.
-// We relay on the fact that shape and strides are the const values.
+// We rely on the fact that shape and strides are the const values.
 int GetPackedDimIdx(MLIRContext *ctx, const std::vector<Operation *> &ops) {
   for (auto *op : ops) {
     auto make_tensor_ptr = dyn_cast<MakeTensorPtrOp>(op);
@@ -413,7 +413,7 @@ int GetPackedDimIdx(MLIRContext *ctx, const std::vector<Operation *> &ops) {
       continue;
     }
     auto shape = make_tensor_ptr.getShape();
-    if (shape.size() < 2) {
+    if (shape.size() != 2) {
       return 0;
     }
     auto strides = make_tensor_ptr.getStrides();

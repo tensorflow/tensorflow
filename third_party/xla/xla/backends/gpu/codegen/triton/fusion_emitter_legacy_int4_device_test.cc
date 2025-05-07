@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -25,11 +26,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/service/gpu/transforms/nest_gemm_fusion.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -54,70 +56,26 @@ class TritonTest : public GpuCodegenTest {
     return debug_options;
   }
 
-  ::testing::AssertionResult RunAndCompare(absl::string_view hlo_text,
-                                           ErrorSpec error_spec) {
-    auto module_or = GetOptimizedModule(hlo_text);
-    if (!module_or.ok()) {
-      return ::testing::AssertionFailure() << module_or.status().message();
-    }
-    return RunAndCompareNoHloPasses(std::move(*module_or), error_spec);
+  stream_executor::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
   }
 
-  ::testing::AssertionResult RunAndCompare(std::unique_ptr<HloModule> module,
-                                           ErrorSpec error_spec) {
-    auto module_or = GetOptimizedModule(std::move(module));
-    if (!module_or.ok()) {
-      return ::testing::AssertionFailure() << module_or.status().message();
-    }
-    return RunAndCompareNoHloPasses(std::move(*module_or), error_spec);
+  const stream_executor::GpuComputeCapability& GpuComputeComp() {
+    return device_desc().gpu_compute_capability();
   }
-
-  ::testing::AssertionResult RunAndCompareNoHloPasses(
-      absl::string_view hlo_text, ErrorSpec error_spec) {
-    auto module_or = ParseAndReturnVerifiedModule(hlo_text);
-    if (!module_or.ok()) {
-      return ::testing::AssertionFailure() << module_or.status().message();
+  stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
+    if (std::holds_alternative<stream_executor::RocmComputeCapability>(
+            GpuComputeComp())) {
+      return stream_executor::GpuComputeCapability{
+          device_desc().rocm_compute_capability()};
+    } else {
+      return stream_executor::GpuComputeCapability{
+          stream_executor::CudaComputeCapability{
+              stream_executor::CudaComputeCapability::kAmpere, 0}};
     }
-    return RunAndCompareNoHloPasses(std::move(*module_or), error_spec);
-  }
-
-  ::testing::AssertionResult RunAndCompareNoHloPasses(
-      std::unique_ptr<HloModule> module, ErrorSpec error_spec) {
-    if (auto status = MaybeAddTritonGemmConfig(module.get()); !status.ok()) {
-      return ::testing::AssertionFailure() << status.message();
-    }
-    auto nested_or = NestGemmFusion(device_desc().gpu_compute_capability())
-                         .Run(module.get());
-    if (!nested_or.ok()) {
-      return ::testing::AssertionFailure() << nested_or.status().message();
-    }
-    EXPECT_TRUE(nested_or.value());
-    return GpuCodegenTest::RunAndCompareNoHloPasses(std::move(module),
-                                                    error_spec);
-  }
-
-  absl::Status MaybeAddTritonGemmConfig(HloModule* module) {
-    auto* fusion = Cast<HloFusionInstruction>(
-        module->entry_computation()->root_instruction());
-    if (!fusion) {
-      return absl::InternalError("Entry root is not a fusion.");
-    }
-    TF_ASSIGN_OR_RETURN(auto gpu_config,
-                        fusion->backend_config<GpuBackendConfig>());
-    FusionBackendConfig* backend_config =
-        gpu_config.mutable_fusion_backend_config();
-    if (backend_config->has_triton_gemm_config()) {
-      return absl::OkStatus();
-    }
-    auto* triton_gemm_key = backend_config->mutable_triton_gemm_config();
-    triton_gemm_key->set_block_m(64);
-    triton_gemm_key->set_block_k(64);
-    triton_gemm_key->set_block_n(64);
-    triton_gemm_key->set_split_k(1);
-    triton_gemm_key->set_num_stages(1);
-    triton_gemm_key->set_num_warps(2);
-    triton_gemm_key->set_num_ctas(1);
-    return fusion->set_backend_config(gpu_config);
   }
 
  protected:
@@ -195,7 +153,7 @@ TEST_F(TritonTest, FuseChannelDequantizationFused) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseSubchannelDequantization) {
+TEST_F(TritonTest, FuseSubchannelDequantization) {
   // This test is a Subchannel Dequantization fusion.
   // We run the non-fused version with the goal to fail if an hlo rewrite broke
   // the dequantization logic. The case where we do:
@@ -234,7 +192,7 @@ TEST_F(TritonTest, DISABLED_FuseSubchannelDequantization) {
       std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseChannelDequantization) {
+TEST_F(TritonTest, FuseChannelDequantization) {
   // This test is a Channel Dequantization fusion.
   // We run the non-fused version with the goal to fail if an hlo rewrite broke
   // the dequantization logic. The case where we do:
@@ -269,7 +227,7 @@ TEST_F(TritonTest, DISABLED_FuseChannelDequantization) {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseSubchannelDequantizationFused) {
+TEST_F(TritonTest, FuseSubchannelDequantizationFused) {
   // This test is a Subchannel Dequantization fusion.
   // We run the fused version to avoid the hlo passes.
   // The case where we do:
@@ -326,8 +284,7 @@ TEST_F(TritonTest, DISABLED_FuseSubchannelDequantizationFused) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest,
-       DISABLED_FuseSubchannelDequantizationFusedWithSmallBlockKSize) {
+TEST_F(TritonTest, FuseSubchannelDequantizationFusedWithSmallBlockKSize) {
   // This test is a Subchannel Dequantization fusion.
   // We run the fused version to avoid the hlo passes.
   // The case where we do:
@@ -409,7 +366,7 @@ TEST_F(TritonTest, FuseBroadcastInPrologue) {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseBroadcastBitcastInPrologue) {
+TEST_F(TritonTest, FuseBroadcastBitcastInPrologue) {
   // This test is a Subchannel Dequantization fusion.
   constexpr absl::string_view kHloText = R"(
     HloModule FuseBroadcastBitcastInPrologue
@@ -436,7 +393,7 @@ TEST_F(TritonTest, DISABLED_FuseBroadcastBitcastInPrologue) {
                             ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseBroadcastBitcastMultiplyInPrologue) {
+TEST_F(TritonTest, FuseBroadcastBitcastMultiplyInPrologue) {
   // This test is a Subchannel Dequantization fusion.
   constexpr absl::string_view kHloText = R"(
     HloModule FuseBroadcastBitcastMultiplyInPrologue
@@ -476,7 +433,7 @@ TEST_F(TritonTest, DISABLED_FuseBroadcastBitcastMultiplyInPrologue) {
                             ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
-TEST_F(TritonTest, DISABLED_DotWithI4WeightsOnLhsWithBitcastTo3dTensor) {
+TEST_F(TritonTest, DotWithI4WeightsOnLhsWithBitcastTo3dTensor) {
   constexpr absl::string_view kHloText = R"(
     HloModule DotWithI4WeightsOnLhsWithBitcastTo3dTensor
 
@@ -507,9 +464,8 @@ TEST_F(TritonTest, DISABLED_DotWithI4WeightsOnLhsWithBitcastTo3dTensor) {
       kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
-TEST_F(
-    TritonTest,
-    DISABLED_DotWithI4WeightsOnLhsWithNonStandardLayoutAndMultplyInEpilogue) {
+TEST_F(TritonTest,
+       DotWithI4WeightsOnLhsWithNonStandardLayoutAndMultplyInEpilogue) {
   constexpr absl::string_view kHloText = R"(
     HloModule DotWithI4WeightsOnLhsWithNonStandardLayoutAndMultplyInEpilogue
 
@@ -640,7 +596,7 @@ TEST_F(TritonTest, FuseMultiplyInEpilogue) {
     )"));
 }
 
-TEST_F(TritonTest, DISABLED_NonstandardLayoutInt4) {
+TEST_F(TritonTest, NonstandardLayoutInt4) {
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayoutInt4
 
@@ -803,19 +759,17 @@ std::vector<I4TestParams> Int4TestCases() {
       {"int4_dot_128_16_x_256_128", "128,16", "256,128", 0, 1, "16,256"},
       {"int4_dot_16_128_x_256_128", "16,128", "256,128", 1, 1, "16,256"},
       {"int4_dot_16_128_x_128_256", "16,128", "128,256", 1, 0, "16,256"},
-      {"DISABLED_int4_dot_1_128_x_256_128", "1,128", "256,128", 1, 1, "1,256"},
-      {"DISABLED_int4_dot_128_1_x_256_128", "128,1", "256,128", 0, 1, "1,256"},
-      {"DISABLED_int4_dot_16_128_x_128_1", "16,128", "128,1", 1, 0, "16,1"},
-      {"DISABLED_int4_dot_16_128_x_1_128", "16,128", "1,128", 1, 1, "16,1"},
+      {"int4_dot_1_128_x_256_128", "1,128", "256,128", 1, 1, "1,256"},
+      {"int4_dot_128_1_x_256_128", "128,1", "256,128", 0, 1, "1,256"},
+      {"int4_dot_16_128_x_128_1", "16,128", "128,1", 1, 0, "16,1"},
+      {"int4_dot_16_128_x_1_128", "16,128", "1,128", 1, 1, "16,1"},
 
       {"dot_8_128_16_x_8_128_256", "8,128,16", "8,128,256", 1, 1, "8,16,256"},
       {"dot_8_128_16_x_8_256_128", "8,128,16", "8,256,128", 1, 2, "8,16,256"},
       {"dot_8_16_128_x_8_256_128", "8,16,128", "8,256,128", 2, 2, "8,16,256"},
       {"dot_8_16_128_x_8_128_256", "8,16,128", "8,128,256", 2, 1, "8,16,256"},
-      {"DISABLED_dot_8_1_128_x_8_256_128", "8,1,128", "8,256,128", 2, 2,
-       "8,1,256"},
-      {"DISABLED_dot_8_128_1_x_8_256_128", "8,128,1", "8,256,128", 1, 2,
-       "8,1,256"},
+      {"dot_8_1_128_x_8_256_128", "8,1,128", "8,256,128", 2, 2, "8,1,256"},
+      {"dot_8_128_1_x_8_256_128", "8,128,1", "8,256,128", 1, 2, "8,1,256"},
       {"dot_8_16_128_x_8_128_1", "8,16,128", "8,128,1", 2, 1, "8,16,1"},
       {"dot_8_16_128_x_8_1_128", "8,16,128", "8,1,128", 2, 2, "8,16,1"},
   };
@@ -858,7 +812,7 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_NegatePlusConvertHLO) {
+TEST_F(TritonTest, NegatePlusConvertHLO) {
   constexpr absl::string_view kHloText = R"(
     HloModule NegatePlusConvertHLO
 
@@ -872,7 +826,8 @@ TEST_F(TritonTest, DISABLED_NegatePlusConvertHLO) {
           rhs_batch_dims={0}, rhs_contracting_dims={1}
     }
   )";
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonTest, RejectTritonFusionForWithMinorBatchDim) {
@@ -896,7 +851,7 @@ TEST_F(TritonTest, RejectTritonFusionForWithMinorBatchDim) {
   EXPECT_TRUE(ok);
 }
 
-TEST_F(TritonTest, DISABLED_LHSWithMinorDimEqualTo1) {
+TEST_F(TritonTest, LHSWithMinorDimEqualTo1) {
   // We prove that triton can handle int4 dot with non contracting dim size
   // equal to 1.
   constexpr absl::string_view kHloText = R"(
@@ -923,7 +878,7 @@ TEST_F(TritonTest, DISABLED_LHSWithMinorDimEqualTo1) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_RHSWithMinorDimEqualTo1) {
+TEST_F(TritonTest, RHSWithMinorDimEqualTo1) {
   // We prove that triton can handle int4 dot with non contracting dim size
   // equal to 1.
   constexpr absl::string_view kHloText = R"(
@@ -951,7 +906,7 @@ TEST_F(TritonTest, DISABLED_RHSWithMinorDimEqualTo1) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_LHSNonMinorContractingDim) {
+TEST_F(TritonTest, LHSNonMinorContractingDim) {
   // We prove that triton can handle int4 dot with non minor
   // lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(
@@ -978,7 +933,7 @@ TEST_F(TritonTest, DISABLED_LHSNonMinorContractingDim) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_LHSNonMinorContractingDimWithBatchDim0) {
+TEST_F(TritonTest, LHSNonMinorContractingDimWithBatchDim0) {
   // We prove that triton can handle int4 dot with non minor
   // lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(
@@ -1005,7 +960,7 @@ TEST_F(TritonTest, DISABLED_LHSNonMinorContractingDimWithBatchDim0) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_LHSMinorContractingDim) {
+TEST_F(TritonTest, LHSMinorContractingDim) {
   // We prove that triton can handle int4 dot with minor lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(
     HloModule LHSMinorContractingDim
@@ -1030,7 +985,7 @@ TEST_F(TritonTest, DISABLED_LHSMinorContractingDim) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonTest, DISABLED_ConvertPlusNegate) {
+TEST_F(TritonTest, ConvertPlusNegate) {
   constexpr absl::string_view kHloText = R"(
     HloModule ConvertPlusNegate
 
@@ -1055,7 +1010,7 @@ TEST_F(TritonTest, DISABLED_ConvertPlusNegate) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonTest, DISABLED_LHSMinorContractingDimWithBatchDim0) {
+TEST_F(TritonTest, LHSMinorContractingDimWithBatchDim0) {
   // We prove that triton can handle int4 dot with minor lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(
     HloModule LHSMinorContractingDimWithBatchDim0
@@ -1081,7 +1036,7 @@ TEST_F(TritonTest, DISABLED_LHSMinorContractingDimWithBatchDim0) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonTest, DISABLED_RHSTestWithNotMinorContractingDim) {
+TEST_F(TritonTest, RHSTestWithNotMinorContractingDim) {
   constexpr absl::string_view kHloText = R"(
     HloModule RHSTestWithNotMinorContractingDim
 
@@ -1105,7 +1060,7 @@ TEST_F(TritonTest, DISABLED_RHSTestWithNotMinorContractingDim) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonTest, DISABLED_RHSTestWithMinorContractingDim) {
+TEST_F(TritonTest, RHSTestWithMinorContractingDim) {
   constexpr absl::string_view kHloText = R"(
     HloModule RHSTestWithMinorContractingDim
 
@@ -1129,7 +1084,7 @@ TEST_F(TritonTest, DISABLED_RHSTestWithMinorContractingDim) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonTest, DISABLED_RHSTestWithMinorContractingDimWithBatchDim) {
+TEST_F(TritonTest, RHSTestWithMinorContractingDimWithBatchDim) {
   constexpr absl::string_view kHloText = R"(
     HloModule RHSTestWithMinorContractingDimWithBatchDim
 
@@ -1154,7 +1109,7 @@ TEST_F(TritonTest, DISABLED_RHSTestWithMinorContractingDimWithBatchDim) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonTest, DISABLED_RHSTestWithNotMinorContractingDimWithBatchDim0) {
+TEST_F(TritonTest, RHSTestWithNotMinorContractingDimWithBatchDim0) {
   constexpr absl::string_view kHloText = R"(
     HloModule RHSTestWithNotMinorContractingDimWithBatchDim0
 
