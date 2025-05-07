@@ -322,7 +322,7 @@ void BM_ShapeCopy(::testing::benchmark::State& state) {
     case 2: {
       // f32[1,2,2]{2,1,0:T(2,128)}
       shape = Shape(F32, {1, 2, 2}, {false, false, false});
-      *shape.mutable_layout() = Layout({2, 1, 0}, {}, {}, {}, {Tile({2, 128})});
+      *shape.mutable_layout() = Layout({2, 1, 0}, {}, {}, {Tile({2, 128})});
       break;
     }
   }

@@ -352,14 +352,6 @@ void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
     CreateVector(dim_level_types, &c_layout->dim_level_types);
   }
   {
-    const int n = layout.dim_unique_size();
-    absl::InlinedVector<bool, xla::InlineRank()> dim_unique(n);
-    for (int i = 0; i < n; i++) {
-      dim_unique[i] = layout.dim_unique(i);
-    }
-    CreateVector(dim_unique, &c_layout->dim_unique);
-  }
-  {
     const int n = layout.dim_ordered_size();
     absl::InlinedVector<bool, xla::InlineRank()> dim_ordered(n);
     for (int i = 0; i < n; i++) {
@@ -387,10 +379,7 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
   for (int dim_level_type : dim_level_type_ints) {
     dim_level_types.push_back(static_cast<xla::DimLevelType>(dim_level_type));
   }
-  absl::Span<const int> dim_unique_ints = MakeSpan(c_layout->dim_unique);
-  absl::InlinedVector<bool, xla::InlineRank()> dim_unique(
-      dim_unique_ints.begin(), dim_unique_ints.end());
-  absl::Span<const int> dim_ordered_ints = MakeSpan(c_layout->dim_unique);
+  absl::Span<const int> dim_ordered_ints = MakeSpan(c_layout->dim_ordered);
   absl::InlinedVector<bool, xla::InlineRank()> dim_ordered(
       dim_ordered_ints.begin(), dim_ordered_ints.end());
   absl::InlinedVector<xla::Tile, 1> tiles;
@@ -402,7 +391,7 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
     tiles.push_back(FromC(&c_tiles[i]));
   }
   return xla::Layout(
-      minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
+      minor_to_major, dim_level_types, dim_ordered, tiles,
       c_layout->tail_padding_alignment_in_elements,
       static_cast<xla::PrimitiveType>(c_layout->index_primitive_type),
       static_cast<xla::PrimitiveType>(c_layout->pointer_primitive_type),

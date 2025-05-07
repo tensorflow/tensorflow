@@ -63,21 +63,6 @@ TEST(Layout, ToStringForDimensionAttributes) {
                 .ToString(),
             "{0:D(C~)}");
 
-  // Test the unique attribute.
-  EXPECT_EQ(Layout({0})
-                .add_dim_level_type(DIM_COMPRESSED)
-                .add_dim_unique(false)
-                .ToString(),
-            "{0:D(C+)}");
-
-  // Test the combination of ordered and unique attributes.
-  EXPECT_EQ(Layout({0})
-                .add_dim_level_type(DIM_COMPRESSED)
-                .add_dim_ordered(false)
-                .add_dim_unique(false)
-                .ToString(),
-            "{0:D(C+~)}");
-
   // Test multiple dimension attributes.
   EXPECT_EQ(Layout({1, 0})
                 .add_dim_level_type(DIM_DENSE)
@@ -87,15 +72,15 @@ TEST(Layout, ToStringForDimensionAttributes) {
 }
 
 TEST(Layout, ToStringForTiles) {
-  EXPECT_EQ(Layout({3, 2, 1, 0}, {}, {}, {}, {Tile({42, 123}), Tile({4, 5})})
-                .ToString(),
-            "{3,2,1,0:T(42,123)(4,5)}");
+  EXPECT_EQ(
+      Layout({3, 2, 1, 0}, {}, {}, {Tile({42, 123}), Tile({4, 5})}).ToString(),
+      "{3,2,1,0:T(42,123)(4,5)}");
 }
 
 TEST(Layout, ToStringForTileWithCombinedDimensions) {
   EXPECT_EQ(
       Layout(
-          {3, 2, 1, 0}, {}, {}, {},
+          {3, 2, 1, 0}, {}, {},
           {Tile({Tile::kCombineDimension, Tile::kCombineDimension, 42, 123})})
           .ToString(),
       "{3,2,1,0:T(*,*,42,123)}");
@@ -153,7 +138,7 @@ TEST(Layout, ToStringForDynamicShapeMetadataPrefixBytes) {
 }
 
 TEST(Layout, ToStringForMutipleProperties) {
-  EXPECT_EQ(Layout({3, 2, 1, 0}, {}, {}, {}, {Tile({42, 123}), Tile({4, 5})})
+  EXPECT_EQ(Layout({3, 2, 1, 0}, {}, {}, {Tile({42, 123}), Tile({4, 5})})
                 .set_tail_padding_alignment_in_elements(100)
                 .set_element_size_in_bits(42)
                 .ToString(),
@@ -181,12 +166,11 @@ TEST(Layout, Equality) {
   EXPECT_EQ(Layout(), Layout(empty_dims));
   EXPECT_EQ(Layout({0, 1, 2, 3}), Layout({0, 1, 2, 3}));
   EXPECT_NE(Layout({0, 1, 2, 3}), Layout({0, 1, 2}));
-  EXPECT_EQ(Layout({0, 1, 2}, {}, {}, {}, {Tile({42, 44})}),
-            Layout({0, 1, 2}, {}, {}, {}, {Tile({42, 44})}));
-  EXPECT_NE(Layout({0, 1, 2}, {}, {}, {}, {Tile({42, 44})}),
-            Layout({0, 1, 2}, {}, {}, {}, {Tile({42, 45})}));
-  EXPECT_NE(Layout({0, 1, 2}, {}, {}, {}, {Tile({42, 44})}),
-            Layout({0, 1, 2, 3}));
+  EXPECT_EQ(Layout({0, 1, 2}, {}, {}, {Tile({42, 44})}),
+            Layout({0, 1, 2}, {}, {}, {Tile({42, 44})}));
+  EXPECT_NE(Layout({0, 1, 2}, {}, {}, {Tile({42, 44})}),
+            Layout({0, 1, 2}, {}, {}, {Tile({42, 45})}));
+  EXPECT_NE(Layout({0, 1, 2}, {}, {}, {Tile({42, 44})}), Layout({0, 1, 2, 3}));
   EXPECT_EQ(Layout({0, 1, 2}).set_element_size_in_bits(33),
             Layout({0, 1, 2}).set_element_size_in_bits(33));
   EXPECT_NE(Layout({0, 1, 2}).set_element_size_in_bits(33),
@@ -195,19 +179,19 @@ TEST(Layout, Equality) {
             Layout({0, 1, 2}).set_memory_space(3));
   EXPECT_NE(Layout({0, 1, 2}).set_memory_space(1),
             Layout({0, 1, 2}).set_memory_space(3));
-  EXPECT_FALSE(Layout::Equal()(Layout({0, 1, 2}, {}, {}, {}, {Tile({42, 44})}),
+  EXPECT_FALSE(Layout::Equal()(Layout({0, 1, 2}, {}, {}, {Tile({42, 44})}),
                                Layout({0, 1, 2})));
   EXPECT_EQ(Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {2})),
             Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {2})));
   EXPECT_NE(Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {2})),
             Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {3})));
   EXPECT_TRUE(Layout::Equal().IgnoreTiles()(
-      Layout({0, 1, 2}, {}, {}, {}, {Tile({42, 44})}), Layout({0, 1, 2})));
-  EXPECT_FALSE(Layout::Equal()(
-      Layout({0, 1, 2}, {}, {}, {}, {}, 1, PRIMITIVE_TYPE_INVALID,
-             PRIMITIVE_TYPE_INVALID, 32),
-      Layout({0, 1, 2}, {}, {}, {}, {}, 1, PRIMITIVE_TYPE_INVALID,
-             PRIMITIVE_TYPE_INVALID, 1)));
+      Layout({0, 1, 2}, {}, {}, {Tile({42, 44})}), Layout({0, 1, 2})));
+  EXPECT_FALSE(
+      Layout::Equal()(Layout({0, 1, 2}, {}, {}, {}, 1, PRIMITIVE_TYPE_INVALID,
+                             PRIMITIVE_TYPE_INVALID, 32),
+                      Layout({0, 1, 2}, {}, {}, {}, 1, PRIMITIVE_TYPE_INVALID,
+                             PRIMITIVE_TYPE_INVALID, 1)));
   EXPECT_TRUE(Layout::Equal().IgnoreElementSize()(
       Layout({0, 1, 2}).set_element_size_in_bits(32),
       Layout({0, 1, 2}).set_element_size_in_bits(1)));
@@ -232,24 +216,15 @@ TEST(Layout, LayoutToFromProto) {
   expect_unchanged(Layout({1, 3, 2, 0}));
   expect_unchanged(Layout({0, 1}).set_element_size_in_bits(42));
   expect_unchanged(
-      Layout({3, 2, 1, 0}, {}, {}, {}, {Tile({42, 123}), Tile({4, 5})}));
-  expect_unchanged(Layout({1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}, {}, {}));
+      Layout({3, 2, 1, 0}, {}, {}, {Tile({42, 123}), Tile({4, 5})}));
+  expect_unchanged(Layout({1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}, {}));
   expect_unchanged(
-      Layout({1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}, {}, {}, 1,
+      Layout({1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}, {}, 1,
              PRIMITIVE_TYPE_INVALID, PRIMITIVE_TYPE_INVALID, 0, 0, {},
              std::make_unique<Shape>(ShapeUtil::MakeShape(S32, {10, 10}))));
-  expect_unchanged(Layout({0, 1}, {}, {}, {}, {Tile({123})})
+  expect_unchanged(Layout({0, 1}, {}, {}, {Tile({123})})
                        .add_split_configs(SplitConfig(0, {3}))
                        .add_split_configs(SplitConfig(1, {0, 4})));
-}
-
-TEST(Layout, DimensionIsUniqueByDefault) {
-  Layout layout({0, 1});
-  layout.add_dim_level_type(DIM_DENSE);
-  EXPECT_TRUE(layout.dim_unique(0));
-
-  layout.add_dim_level_type(DIM_COMPRESSED);
-  EXPECT_TRUE(layout.dim_unique(1));
 }
 
 TEST(Layout, DimensionIsOrderedByDefault) {
@@ -265,72 +240,52 @@ TEST(Layout, DeleteDimensionWorksForDeletingLastDimFromDenseLayout) {
   Layout layout({0, 1});
   layout.add_dim_level_type(DIM_DENSE);
   layout.add_dim_level_type(DIM_DENSE);
-  layout.add_dim_unique(false);
-  layout.add_dim_unique(true);
   ASSERT_TRUE(LayoutUtil::IsDense(layout));
   ASSERT_EQ(layout.minor_to_major().size(), 2);
-  ASSERT_EQ(layout.dim_unique_size(), 2);
 
   layout.DeleteDimension(1);
   EXPECT_THAT(layout.minor_to_major(), ElementsAre(0));
   ASSERT_EQ(layout.dim_level_types_size(), 1);
   EXPECT_EQ(layout.dim_level_type(0), DIM_DENSE);
-  ASSERT_EQ(layout.dim_unique_size(), 1);
-  EXPECT_FALSE(layout.dim_unique(0));
 }
 
 TEST(Layout, DeleteDimensionWorksForDeletingNonLastDimFromDenseLayout) {
   Layout layout({1, 0});
   layout.add_dim_level_type(DIM_DENSE);
   layout.add_dim_level_type(DIM_DENSE);
-  layout.add_dim_unique(false);
-  layout.add_dim_unique(true);
   ASSERT_TRUE(LayoutUtil::IsDense(layout));
   ASSERT_EQ(layout.minor_to_major().size(), 2);
-  ASSERT_EQ(layout.dim_unique_size(), 2);
 
   layout.DeleteDimension(0);
   EXPECT_THAT(layout.minor_to_major(), ElementsAre(0));
   ASSERT_EQ(layout.dim_level_types_size(), 1);
   EXPECT_EQ(layout.dim_level_type(0), DIM_DENSE);
-  ASSERT_EQ(layout.dim_unique_size(), 1);
-  EXPECT_TRUE(layout.dim_unique(0));
 }
 
 TEST(Layout, DeleteDimensionWorksForDeletingLastDimFromSparseLayout) {
   Layout layout({0, 1});
   layout.add_dim_level_type(DIM_COMPRESSED);
   layout.add_dim_level_type(DIM_DENSE);
-  layout.add_dim_unique(false);
-  layout.add_dim_unique(true);
   ASSERT_TRUE(LayoutUtil::IsSparse(layout));
   ASSERT_EQ(layout.minor_to_major().size(), 2);
-  ASSERT_EQ(layout.dim_unique_size(), 2);
 
   layout.DeleteDimension(1);
   EXPECT_THAT(layout.minor_to_major(), ElementsAre(0));
   ASSERT_EQ(layout.dim_level_types_size(), 1);
   EXPECT_EQ(layout.dim_level_type(0), DIM_COMPRESSED);
-  ASSERT_EQ(layout.dim_unique_size(), 1);
-  EXPECT_FALSE(layout.dim_unique(0));
 }
 
 TEST(Layout, DeleteDimensionWorksForDeletingNonLastDimFromSparseLayout) {
   Layout layout({1, 0});
   layout.add_dim_level_type(DIM_COMPRESSED);
   layout.add_dim_level_type(DIM_DENSE);
-  layout.add_dim_unique(false);
-  layout.add_dim_unique(true);
   ASSERT_TRUE(LayoutUtil::IsSparse(layout));
   ASSERT_EQ(layout.minor_to_major().size(), 2);
-  ASSERT_EQ(layout.dim_unique_size(), 2);
 
   layout.DeleteDimension(0);
   EXPECT_THAT(layout.minor_to_major(), ElementsAre(0));
   ASSERT_EQ(layout.dim_level_types_size(), 1);
   EXPECT_EQ(layout.dim_level_type(0), DIM_DENSE);
-  ASSERT_EQ(layout.dim_unique_size(), 1);
-  EXPECT_TRUE(layout.dim_unique(0));
 }
 
 }  // namespace

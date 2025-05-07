@@ -65,8 +65,8 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
 /* static */ Layout LayoutUtil::MakeLayout(
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
-    absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
-    absl::Span<const Tile> tiles, int64_t tail_padding_alignment_in_elements,
+    absl::Span<const bool> dim_ordered, absl::Span<const Tile> tiles,
+    int64_t tail_padding_alignment_in_elements,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
     int64_t element_size_in_bits, int64_t memory_space,
     absl::Span<const SplitConfig> split_configs,
@@ -78,9 +78,6 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
   }
   for (DimLevelType dim_level_type : dim_level_types) {
     layout.add_dim_level_type(dim_level_type);
-  }
-  for (bool unique : dim_unique) {
-    layout.add_dim_unique(unique);
   }
   for (bool ordered : dim_ordered) {
     layout.add_dim_ordered(ordered);
@@ -289,24 +286,6 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
     }
   }
 
-  if (layout.dim_unique_size() > 0) {
-    if (layout.dim_unique_size() != shape.dimensions().size()) {
-      std::vector<bool> dim_unique(layout.dim_unique_size());
-      for (int i = 0; i < dim_unique.size(); i++) {
-        dim_unique[i] = layout.dim_unique(i);
-      }
-      return InvalidArgument(
-          "layout dim_unique field contains %d elements, but shape has "
-          "%d dimensions: {%s}; shape: %s",
-          layout.dim_unique_size(), shape.dimensions().size(),
-          absl::StrJoin(dim_unique, ", ",
-                        [](std::string* out, bool dim_unique) {
-                          absl::StrAppend(out, BoolToString(dim_unique));
-                        }),
-          shape.ToString());
-    }
-  }
-
   if (layout.dim_ordered_size() > 0) {
     if (layout.dim_ordered_size() != shape.dimensions().size()) {
       std::vector<bool> dim_ordered(layout.dim_ordered_size());
@@ -395,13 +374,12 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
 
   for (int64_t dim = 0; dim < shape.dimensions().size(); ++dim) {
     DimLevelType dim_level_type = GetDimLevelType(layout, dim);
-    bool dim_unique = DimUnique(layout, dim);
-    bool dim_ordered = DimOrdered(layout, dim);
-    if (!ValidateDimLevel(dim_level_type, dim_unique, dim_ordered)) {
+    const bool dim_ordered = DimOrdered(layout, dim);
+    if (!ValidateDimLevel(dim_level_type, dim_ordered)) {
       return InvalidArgument(
-          "layout dimension %d has invalid level encoding %s%s%s: %s", dim,
-          DimLevelType_Name(dim_level_type), dim_unique ? "" : ", non-unique",
-          dim_ordered ? "" : ", non-ordered", shape.ToString());
+          "layout dimension %d has invalid level encoding %s%s: %s", dim,
+          DimLevelType_Name(dim_level_type), dim_ordered ? "" : ", non-ordered",
+          shape.ToString());
     }
   }
 
@@ -744,14 +722,6 @@ absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return layout.dim_level_type(dim);
 }
 
-/*static*/ bool LayoutUtil::DimUnique(const Layout& layout, int64_t dim) {
-  if (layout.dim_unique_size() == 0) {
-    return true;
-  }
-  CHECK_LT(dim, layout.dim_unique_size());
-  return layout.dim_unique(dim);
-}
-
 /*static*/ bool LayoutUtil::DimOrdered(const Layout& layout, int64_t dim) {
   if (layout.dim_ordered_size() == 0) {
     return true;
@@ -760,11 +730,11 @@ absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return layout.dim_ordered(dim);
 }
 
-bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type, bool dim_unique,
+bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type,
                                   bool dim_ordered) {
   switch (dim_level_type) {
     case DIM_DENSE:
-      return dim_unique && dim_ordered;
+      return dim_ordered;
     case DIM_COMPRESSED:
     case DIM_SINGLETON:
     case DIM_LOOSE_COMPRESSED:

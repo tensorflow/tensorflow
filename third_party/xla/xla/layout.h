@@ -185,7 +185,6 @@ class Layout {
   // level types, and tiles.
   explicit Layout(absl::Span<const int64_t> minor_to_major,
                   absl::Span<const DimLevelType> dim_level_types,
-                  absl::Span<const bool> dim_unique,
                   absl::Span<const bool> dim_ordered,
                   absl::Span<const Tile> tiles,
                   int64_t tail_padding_alignment_in_elements = 1,
@@ -220,17 +219,15 @@ class Layout {
   //               property is ommitted if it is the default):
   //     D(...): Comma-separated list of attributes for each dimension. Each
   //             attribute is a single character abbreviation of the dimension
-  //             level type, followed by a '+' if the dimension is not
-  //             unique, and a '~' if the dimension is unordered. The
-  //             abbreviations can be:
+  //             level type, followed by a '~' if the dimension is unordered.
+  //            The  abbreviations can be:
   //               D: DIM_DENSE
   //               C: DIM_COMPRESSED
   //               S: DIM_SINGLETON
   //               H: DIM_LOOSE_COMPRESSED
   //             E.g.
-  //               D(D,C+~): dimension 0 is dense.
-  //                         dimension 1 is compressed, not unique, and
-  //                         unordered.
+  //               D(D,C~): dimension 0 is dense.
+  //                        dimension 1 is compressed and unordered.
   //             If omitted, all dimensions are dense.
   //     T(...)...(...): The tiling (each (...) is acomma-separated list of
   //                     tile bound sizes). E.g.
@@ -362,22 +359,6 @@ class Layout {
     return *this;
   }
 
-  // Methods for accessing the dim_unique array.
-  int dim_unique_size() const { return n_dim_unique_; }
-  bool dim_unique(int index) const { return dim_attributes_[index].dim_unique; }
-  Layout& set_dim_unique(int index, bool unique) {
-    dim_attributes_[index].dim_unique = unique;
-    return *this;
-  }
-  Layout& add_dim_unique(bool unique) {
-    while (n_dim_unique_ >= dim_attributes_.size()) {
-      dim_attributes_.push_back(DimInfo());
-    }
-    dim_attributes_[n_dim_unique_].dim_unique = unique;
-    n_dim_unique_++;
-    return *this;
-  }
-
   // Methods for accessing the dim_ordered array.
   int dim_ordered_size() const { return n_dim_ordered_; }
   bool dim_ordered(int index) const {
@@ -416,8 +397,8 @@ class Layout {
   DimensionVector* mutable_minor_to_major() { return &minor_to_major_; }
 
   // Removes the given dimension from 'minor_to_major_', and adjusts the other
-  // dimensions accordingly. Also adjusts 'dim_level_types_', 'dim_ordered_' and
-  // 'dim_unique_' in case it is a sparse layout.
+  // dimensions accordingly. Also adjusts 'dim_level_types_' and 'dim_ordered_'
+  // in case it is a sparse layout.
   //
   // Precondition: dim_to_delete is in the range [0, minor_to_major_size()).
   Layout& DeleteDimension(int dim_to_delete);
@@ -536,7 +517,6 @@ class Layout {
   absl::InlinedVector<DimInfo, InlineRank()> dim_attributes_;
 
   uint8_t n_dim_level_types_ = 0;
-  uint8_t n_dim_unique_ = 0;
   uint8_t n_dim_ordered_ = 0;
 
   // The primitive type to use for sparse array indices and pointers.  Each of

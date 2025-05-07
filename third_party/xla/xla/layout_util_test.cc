@@ -473,7 +473,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_MissingArrayLayout) {
 TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   *shape.mutable_layout() = LayoutUtil::MakeLayout(
-      {1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}, {}, {Tile({10, 10})});
+      {1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}, {Tile({10, 10})});
   EXPECT_THAT(
       LayoutUtil::ValidateLayoutInShape(shape),
       StatusIs(tsl::error::INVALID_ARGUMENT,
@@ -499,12 +499,6 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
       StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("layout has a physical_shape, but is not a sparse array")));
-  *shape.mutable_layout() =
-      LayoutUtil::MakeLayout({1, 0}, {DIM_DENSE, DIM_DENSE}, {true, false});
-  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
-              StatusIs(tsl::error::INVALID_ARGUMENT,
-                       HasSubstr("layout dimension 1 has invalid level "
-                                 "encoding DIM_DENSE, non-unique")));
 }
 
 TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {

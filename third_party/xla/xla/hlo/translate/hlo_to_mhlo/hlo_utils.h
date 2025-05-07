@@ -105,8 +105,7 @@ static absl::StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
         auto dlt = layout.dim_level_type(i);
         bool ordered =
             i < layout.dim_ordered_size() ? layout.dim_ordered(i) : true;
-        bool unique =
-            i < layout.dim_unique_size() ? layout.dim_unique(i) : true;
+        const bool unique = true;
         switch (dlt) {
           case DimLevelType::DIM_DENSE:
             lts.push_back(*mlir::sparse_tensor::buildLevelType(

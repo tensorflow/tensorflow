@@ -134,12 +134,6 @@ void XlaLayout_ToC(const xla::Layout& cpp_layout) {
               c_dim_level_types[i]);
   }
 
-  absl::Span<const int> c_dim_unique = MakeSpan(c_layout.dim_unique);
-  EXPECT_EQ(cpp_layout.dim_unique_size(), c_dim_unique.size());
-  for (int i = 0; i < c_dim_unique.size(); ++i) {
-    EXPECT_EQ(cpp_layout.dim_unique(i), static_cast<bool>(c_dim_unique[i]));
-  }
-
   absl::Span<const int> c_dim_ordered = MakeSpan(c_layout.dim_ordered);
   EXPECT_EQ(cpp_layout.dim_ordered_size(), c_dim_ordered.size());
   for (int i = 0; i < c_dim_ordered.size(); ++i) {

@@ -4902,7 +4902,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
   // so it can be trivially placed in the alternate memory space.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {0})->mutable_layout() =
       LayoutUtil::MakeLayout(
-          /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*dim_unique=*/{},
+          /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{},
           /*dim_ordered=*/{}, /*tiles=*/{},
           /*tail_padding_alignment_in_elements=*/1,
           /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
@@ -4911,7 +4911,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
   // Index {1} is a scalar, so it is always placed in the default memory.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {1})->mutable_layout() =
       LayoutUtil::MakeLayout(
-          /*minor_to_major=*/{}, /*dim_level_types=*/{}, /*dim_unique=*/{},
+          /*minor_to_major=*/{}, /*dim_level_types=*/{},
           /*dim_ordered=*/{}, /*tiles=*/{},
           /*tail_padding_alignment_in_elements=*/1,
           /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
@@ -4920,7 +4920,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
   // Index {2} of the while loop is placed in the default memory.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {2})->mutable_layout() =
       LayoutUtil::MakeLayout(
-          /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*dim_unique=*/{},
+          /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{},
           /*dim_ordered=*/{}, /*tiles=*/{},
           /*tail_padding_alignment_in_elements=*/1,
           /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,

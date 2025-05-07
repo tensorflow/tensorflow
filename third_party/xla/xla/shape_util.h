@@ -447,7 +447,6 @@ class ShapeUtil {
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major,
       absl::Span<const DimLevelType> dim_level_types,
-      absl::Span<const bool> dim_unique = {},
       absl::Span<const bool> dim_ordered = {},
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
       PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,

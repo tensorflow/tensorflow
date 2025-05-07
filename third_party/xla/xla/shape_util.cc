@@ -118,8 +118,8 @@ absl::StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
-    absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
-    absl::Span<const Tile> tiles, int64_t tail_padding_alignment_in_elements,
+    absl::Span<const bool> dim_ordered, absl::Span<const Tile> tiles,
+    int64_t tail_padding_alignment_in_elements,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
     int64_t element_size_in_bits, int64_t memory_space,
     absl::Span<const SplitConfig> split_configs,
@@ -141,7 +141,7 @@ absl::StatusOr<Shape> MakeShapeWithLayoutInternal(
     element_size_in_bits = 0;
   }
   *shape.mutable_layout() = LayoutUtil::MakeLayout(
-      minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
+      minor_to_major, dim_level_types, dim_ordered, tiles,
       tail_padding_alignment_in_elements, index_primitive_type,
       pointer_primitive_type, element_size_in_bits, memory_space, split_configs,
       std::move(physical_shape));
@@ -348,8 +348,7 @@ static std::vector<bool> MakeDynamicDimensions(
     int64_t memory_space, absl::Span<const SplitConfig> split_configs) {
   auto ret = MakeShapeWithLayoutInternal(
       element_type, dimensions, minor_to_major, /*dim_level_types=*/{},
-      /*dim_unique=*/{}, /*dim_ordered=*/{}, tiles,
-      tail_padding_alignment_in_elements,
+      /*dim_ordered=*/{}, tiles, tail_padding_alignment_in_elements,
       /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
       /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID, element_size_in_bits,
       memory_space, split_configs,
@@ -362,15 +361,15 @@ static std::vector<bool> MakeDynamicDimensions(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
-    absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
-    PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
+    absl::Span<const bool> dim_ordered, PrimitiveType index_primitive_type,
+    PrimitiveType pointer_primitive_type,
     int64_t tail_padding_alignment_in_elements, int64_t element_size_in_bits,
     int64_t memory_space, std::optional<Shape> physical_shape) {
   auto ret = MakeShapeWithLayoutInternal(
-      element_type, dimensions, minor_to_major, dim_level_types, dim_unique,
-      dim_ordered, /*tiles=*/{}, tail_padding_alignment_in_elements,
-      index_primitive_type, pointer_primitive_type, element_size_in_bits,
-      memory_space, /*split_configs=*/{}, std::move(physical_shape));
+      element_type, dimensions, minor_to_major, dim_level_types, dim_ordered,
+      /*tiles=*/{}, tail_padding_alignment_in_elements, index_primitive_type,
+      pointer_primitive_type, element_size_in_bits, memory_space,
+      /*split_configs=*/{}, std::move(physical_shape));
   TF_CHECK_OK(ret.status());
   return *ret;
 }

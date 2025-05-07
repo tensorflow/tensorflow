@@ -101,7 +101,6 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
 
 Layout::Layout(absl::Span<const int64_t> minor_to_major,
                absl::Span<const DimLevelType> dim_level_types,
-               absl::Span<const bool> dim_unique,
                absl::Span<const bool> dim_ordered, absl::Span<const Tile> tiles,
                int64_t tail_padding_alignment_in_elements,
                PrimitiveType index_primitive_type,
@@ -122,18 +121,15 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
       dynamic_shape_metadata_prefix_bytes_(
           dynamic_shape_metadata_prefix_bytes) {
   // Grow dim_attributes_ to the maximum length of "dim_level_types",
-  // "dim_unique", and "dim_ordered", and then initialize the attributes that
+  // and "dim_ordered", and then initialize the attributes that
   // should exist.
   n_dim_level_types_ = dim_level_types.size();
-  n_dim_unique_ = dim_unique.size();
   n_dim_ordered_ = dim_ordered.size();
-  const int n_attributes = std::max<int>(
-      n_dim_level_types_, std::max<int>(n_dim_unique_, n_dim_ordered_));
+  const int n_attributes = std::max<int>(n_dim_level_types_, n_dim_ordered_);
   dim_attributes_.resize(n_attributes);
   for (int i = 0; i < n_attributes; i++) {
     if (i < n_dim_level_types_)
       dim_attributes_[i].dim_level_type = dim_level_types[i];
-    if (i < n_dim_unique_) dim_attributes_[i].dim_unique = dim_unique[i];
     if (i < n_dim_ordered_) dim_attributes_[i].dim_ordered = dim_ordered[i];
   }
 }
@@ -141,7 +137,6 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
 Layout::Layout(const Layout& other)
     : dim_attributes_(other.dim_attributes_),
       n_dim_level_types_(other.n_dim_level_types_),
-      n_dim_unique_(other.n_dim_unique_),
       n_dim_ordered_(other.n_dim_ordered_),
       index_primitive_type_(other.index_primitive_type_),
       pointer_primitive_type_(other.pointer_primitive_type_),
@@ -166,7 +161,6 @@ Layout& Layout::operator=(const Layout& other) {
   if (this != &other) {
     dim_attributes_ = other.dim_attributes_;
     n_dim_level_types_ = other.n_dim_level_types_;
-    n_dim_unique_ = other.n_dim_unique_;
     n_dim_ordered_ = other.n_dim_ordered_;
     minor_to_major_ = other.minor_to_major_;
     tiles_ = other.tiles_;
@@ -195,9 +189,6 @@ Layout& Layout::operator=(Layout&& other) = default;
   Layout layout;
   for (int dim_level_type : proto.dim_level_types()) {
     layout.add_dim_level_type(static_cast<DimLevelType>(dim_level_type));
-  }
-  for (bool dim_unique : proto.dim_unique()) {
-    layout.add_dim_unique(dim_unique);
   }
   for (bool dim_ordered : proto.dim_ordered()) {
     layout.add_dim_ordered(dim_ordered);
@@ -237,9 +228,6 @@ LayoutProto Layout::ToProto() const {
   proto.Clear();
   for (int i = 0; i < n_dim_level_types_; i++) {
     proto.add_dim_level_types(dim_level_type(i));
-  }
-  for (int i = 0; i < n_dim_unique_; i++) {
-    proto.add_dim_unique(dim_unique(i));
   }
   for (int i = 0; i < n_dim_ordered_; i++) {
     proto.add_dim_ordered(dim_ordered(i));
@@ -307,9 +295,6 @@ void Layout::Print(Printer* printer) const {
   if (LayoutUtil::IsSparse(*this)) {
     auto print_one = [&](int i) {
       printer->Append(DimLevelTypeAbbrev(dim_level_type(i)));
-      if (n_dim_unique_ > 0 && !dim_unique(i)) {
-        printer->Append("+");
-      }
       if (n_dim_ordered_ > 0 && !dim_ordered(i)) {
         printer->Append("~");
       }
@@ -435,15 +420,6 @@ bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
         return false;
       }
     }
-    // dim_unique
-    if (lhs.dim_unique_size() != rhs.dim_unique_size()) {
-      return false;
-    }
-    for (int i = 0; i < lhs.dim_unique_size(); i++) {
-      if (lhs.dim_unique(i) != rhs.dim_unique(i)) {
-        return false;
-      }
-    }
     // dim_ordered
     if (lhs.dim_ordered_size() != rhs.dim_ordered_size()) {
       return false;
@@ -535,9 +511,6 @@ Layout& Layout::DeleteDimension(int dim_to_delete) {
   // Delete the corresponding dim level types.
   if (dim_to_delete < n_dim_level_types_) {
     n_dim_level_types_--;
-  }
-  if (dim_to_delete < n_dim_unique_) {
-    n_dim_unique_--;
   }
   if (dim_to_delete < n_dim_ordered_) {
     n_dim_ordered_--;
