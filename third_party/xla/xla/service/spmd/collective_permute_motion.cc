@@ -144,7 +144,7 @@ std::optional<MovableCluster> FindMovableClusterAtBodyRoot(
 
 absl::flat_hash_set<int64_t> FindIndicesUnusedAfterLoop(HloInstruction* loop) {
   absl::flat_hash_set<int64_t> indices;
-  int64_t count = loop->shape().tuple_shapes_size();
+  int64_t count = loop->shape().tuple_shapes().size();
   for (int64_t i = 0; i < count; ++i) {
     indices.insert(i);
   }
@@ -202,7 +202,7 @@ absl::StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
     }
   }
   HloInstruction* ind_var = input_gtes[induction_var_idx];
-  if (ind_var == nullptr || ind_var->shape().dimensions_size() > 0) {
+  if (ind_var == nullptr || ind_var->shape().dimensions().size() > 0) {
     VLOG(2) << "Skip " << loop->name() << ", non-scalar induction var";
     return false;
   }

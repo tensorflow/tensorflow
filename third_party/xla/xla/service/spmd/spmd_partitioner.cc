@@ -2936,7 +2936,7 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
   HloSharding sharding = hlo->sharding();
   int64_t input_count = 1;
   if (hlo->shape().IsTuple()) {
-    input_count = hlo->shape().tuple_shapes_size();
+    input_count = hlo->shape().tuple_shapes().size();
     CHECK_GT(input_count, 0);
   }
   if (sharding.HasUniqueDevice()) {
@@ -3123,7 +3123,7 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
   }
   if (hlo->shape().IsTuple()) {
     // Check that all elements are sharded in the same way.
-    if (hlo->shape().tuple_shapes_size() == 0) {
+    if (hlo->shape().tuple_shapes().size() == 0) {
       return DefaultAction(hlo);
     }
     sharding = hlo->sharding().GetSubSharding(hlo->shape(), {0});
@@ -4010,9 +4010,10 @@ absl::Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
         }
         const Shape& element_shape =
             ShapeUtil::GetSubshape(infeed->shape(), index);
-        if (element_shape.IsTuple() && element_shape.tuple_shapes_size() > 0) {
+        if (element_shape.IsTuple() &&
+            element_shape.tuple_shapes().size() > 0) {
           std::vector<HloInstruction*> padded_elements(
-              element_shape.tuple_shapes_size());
+              element_shape.tuple_shapes().size());
           for (int64_t i = 0; i < padded_elements.size(); ++i) {
             auto sub_index = index;
             sub_index.push_back(i);
@@ -4094,7 +4095,7 @@ absl::Status SpmdPartitioningVisitor::HandleParameter(HloInstruction* hlo) {
 absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
   int64_t input_count = 1;
   if (hlo->shape().IsTuple()) {
-    input_count = hlo->shape().tuple_shapes_size();
+    input_count = hlo->shape().tuple_shapes().size();
     CHECK_GT(input_count, 0);
   }
   if (hlo->sharding().HasUniqueDevice()) {
@@ -4464,9 +4465,10 @@ absl::Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
         const Shape& element_shape =
             ShapeUtil::GetSubshape(outfeed_data->shape(), index);
         // Recursively call slice_outfeed for tuple shapes.
-        if (element_shape.IsTuple() && element_shape.tuple_shapes_size() > 0) {
+        if (element_shape.IsTuple() &&
+            element_shape.tuple_shapes().size() > 0) {
           std::vector<HloInstruction*> slice_elements(
-              element_shape.tuple_shapes_size());
+              element_shape.tuple_shapes().size());
           for (int64_t i = 0; i < slice_elements.size(); ++i) {
             auto sub_index = index;
             sub_index.push_back(i);
