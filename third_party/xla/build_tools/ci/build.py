@@ -104,6 +104,7 @@ class BuildType(enum.Enum):
   XLA_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_B200_GITHUB_ACTIONS = enum.auto()
 
   # Presubmit builds for regression testing.
   XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
@@ -245,12 +246,13 @@ def nvidia_gpu_build_with_compute_capability(
     type_: BuildType,
     configs: Tuple[str, ...],
     compute_capability: int,
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
 ) -> Build:
   extra_gpu_tags = _tag_filters_for_compute_capability(compute_capability)
   return Build(
       type_=type_,
       repo="openxla/xla",
-      target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
+      target_patterns=target_patterns,
       configs=configs,
       test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
       + extra_gpu_tags,
@@ -304,6 +306,33 @@ nvidia_gpu_build_with_compute_capability(
     compute_capability=75,
 )
 
+b200_gpu_filters = (
+    "-no_oss",
+    "requires-gpu-nvidia",
+    "gpu",
+    "-rocm-only",
+) + _tag_filters_for_compute_capability(100)
+
+Build(
+    type_=BuildType.XLA_LINUX_X86_GPU_B200_GITHUB_ACTIONS,
+    repo="openxla/xla",
+    target_patterns=("//xla/backends/gpu/codegen/triton:gpu_b200_tests",),
+    configs=("warnings", "ci_local_gpu"),
+    test_tag_filters=b200_gpu_filters,
+    build_tag_filters=b200_gpu_filters,
+    options={
+        "run_under": "//build_tools/ci:parallel_gpu_execute",
+        "@cuda_driver//:enable_forward_compatibility": "true",
+        **_DEFAULT_BAZEL_OPTIONS,
+    },
+    repo_env=dict(
+        TF_CUDA_COMPUTE_CAPABILITIES=10,
+        HERMETIC_CUDA_VERSION="12.8.0",
+        HERMETIC_CUDNN_VERSION="9.8.0",
+        HERMETIC_PYTHON_VERSION="3.11",
+    ),
+    extra_setup_commands=(["nvidia-smi"],),
+)
 
 Build(
     type_=BuildType.XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS,
