@@ -2210,6 +2210,29 @@ def TF_XlaSparseDenseMatmulWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulWithCsrIn
   );
 }
 
+def TF_XlaSparseDenseMatmulIntWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulIntWithCsrInput", [Pure]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Int32Tensor:$embedding_table,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$input_size,
+    OptionalAttr<F32Attr>:$quantization_config_low,
+    OptionalAttr<F32Attr>:$quantization_config_high,
+    OptionalAttr<I64Attr>:$quantization_config_num_buckets,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$activations
+  );
+}
+
 def TF_XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput", [Pure]> {
   let summary = "This op looks up the embedding vectors on SparseCores and performs the given combiner computation on TensorCores.";
 
@@ -3123,6 +3146,31 @@ def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp : TF_Op<"XlaSpar
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<10>;
   // Number of hyperparameters.
   TF_DerivedOperandSizeAttr M = TF_DerivedOperandSizeAttr<11>;
+}
+
+def TF_XlaSparseDenseMatmulIntGradWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulIntGradWithCsrInput", [AttrSizedOperandSegments, Pure]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$activation_gradients,
+    Variadic<TF_Int32Tensor>:$tables,
+    Variadic<TF_Float32Tensor>:$hyperparameters,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    SymbolRefAttr:$custom_computation,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    Variadic<TF_Int32Tensor>:$updated_tables
+  );
+
+  TF_DerivedOperandSizeAttr M = TF_DerivedOperandSizeAttr<6>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<5>;
 }
 
 // b/394499589: move back to tf_generated_ops.td

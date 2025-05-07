@@ -400,6 +400,9 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulWithCsrInput"),
                 XlaSparseDenseMatmulWithCsrInputOp);
 
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulIntWithCsrInput"),
+                XlaSparseDenseMatmulWithCsrInputOp);
+
 // Similar to XlaSparseDenseMatmulWithCsrInputOp, but with an additional field
 // `sorted_pos_ids` in the input Csr, `weights` which is a tensor of shape
 // [num_weights] to be used by the `combiner_computation`. It produces the same
@@ -752,6 +755,43 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
     custom_computation_ = *name_attr;
   }
 
+  virtual absl::StatusOr<xla::XlaComputation> BuildOptimizerComputation(
+      XlaOpKernelContext* ctx, const NameAttrList& custom_computation,
+      const int32_t feature_width, const std::vector<xla::XlaOp>& tables_inputs,
+      const std::vector<xla::XlaOp>& hyperparameters_inputs) {
+    XlaCompiler::CompileOptions options;
+
+    // We don't use tuple args and always return tuple for this computation.
+    options.use_tuple_arg = false;
+    options.always_return_tuple = true;
+    options.is_entry_computation = false;
+
+    XlaCompiler* compiler = ctx->compiler();
+
+    XlaCompiler::CompilationResult custom_computation_result;
+
+    // The number of arguments is the number of tables + the number of
+    // hyperparameters + 1 for the activation gradients.
+    int32_t num_arguments =
+        1 + tables_inputs.size() + hyperparameters_inputs.size();
+
+    std::vector<XlaCompiler::Argument> arguments(num_arguments);
+
+    // For all the arguments, we use the float type and the shape is
+    // {1, feature_width}.
+    for (int32_t i = 0; i < num_arguments; ++i) {
+      arguments[i].kind = XlaCompiler::Argument::kParameter;
+      arguments[i].type = DT_FLOAT;
+      arguments[i].shape =
+          xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
+    }
+
+    TF_RETURN_IF_ERROR(compiler->CompileFunction(
+        options, custom_computation, arguments, &custom_computation_result));
+
+    return std::move(*custom_computation_result.computation);
+  }
+
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* builder = ctx->builder();
     xla::XlaOp row_pointers = ctx->Input("row_pointers");
@@ -807,38 +847,10 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
               << ", max_uniques = " << max_unique_ids_per_partition;
 
     // Build the optimizer computation.
-    XlaCompiler::CompileOptions options;
-
-    // We don't use tuple args and always return tuple for this computation.
-    options.use_tuple_arg = false;
-    options.always_return_tuple = true;
-    options.is_entry_computation = false;
-
-    XlaCompiler* compiler = ctx->compiler();
-
-    XlaCompiler::CompilationResult custom_computation_result;
-
-    // The number of arguments is the number of tables + the number of
-    // hyperparameters + 1 for the activation gradients.
-    int32_t num_arguments =
-        1 + tables_inputs.size() + hyperparameters_inputs.size();
-
-    std::vector<XlaCompiler::Argument> arguments(num_arguments);
-
-    // For all the arguments, we use the float type and the shape is
-    // {1, feature_width}.
-    for (int32_t i = 0; i < num_arguments; ++i) {
-      arguments[i].kind = XlaCompiler::Argument::kParameter;
-      arguments[i].type = DT_FLOAT;
-      arguments[i].shape =
-          xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
-    }
-
-    CHECK_OK(compiler->CompileFunction(options, custom_computation_, arguments,
-                                       &custom_computation_result));
-
-    xla::XlaComputation optimizer =
-        std::move(*custom_computation_result.computation);
+    OP_REQUIRES_VALUE(
+        xla::XlaComputation optimizer, ctx,
+        BuildOptimizerComputation(ctx, custom_computation_, feature_width,
+                                  tables_inputs, hyperparameters_inputs));
 
     xla::FrontendAttributes original_frontend_attributes =
         builder->frontend_attributes();
@@ -860,7 +872,8 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
     xla_tables_shapes.reserve(tables_shapes.size());
     for (const auto& table_shape : tables_shapes) {
       xla_tables_shapes.push_back(xla::ShapeUtil::MakeShape(
-          xla::F32, {table_shape.dim_size(0), table_shape.dim_size(1)}));
+          ctx->InputXlaType("tables"),
+          {table_shape.dim_size(0), table_shape.dim_size(1)}));
     }
 
     xla::Shape tables_shape = xla::ShapeUtil::MakeTupleShape(xla_tables_shapes);
@@ -1610,6 +1623,64 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInputOp
 REGISTER_XLA_OP(
     Name("XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInput"),
     XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInputOp);
+
+class XlaSparseDenseMatmulIntGradWithCsrInputOp
+    : public XlaSparseDenseMatmulGradWithCsrInputOp {
+ public:
+  explicit XlaSparseDenseMatmulIntGradWithCsrInputOp(OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulGradWithCsrInputOp(ctx) {}
+
+  absl::StatusOr<xla::XlaComputation> BuildOptimizerComputation(
+      XlaOpKernelContext* ctx, const NameAttrList& custom_computation,
+      const int32_t feature_width, const std::vector<xla::XlaOp>& tables_inputs,
+      const std::vector<xla::XlaOp>& hyperparameters_inputs) override {
+    XlaCompiler::CompileOptions options;
+
+    // We don't use tuple args and always return tuple for this computation.
+    options.use_tuple_arg = false;
+    options.always_return_tuple = true;
+    options.is_entry_computation = false;
+
+    XlaCompiler* compiler = ctx->compiler();
+
+    XlaCompiler::CompilationResult custom_computation_result;
+
+    // The number of arguments is the number of tables + the number of
+    // hyperparameters + 1 for the activation gradients.
+    int32_t num_arguments =
+        1 + tables_inputs.size() + hyperparameters_inputs.size();
+
+    std::vector<XlaCompiler::Argument> arguments(num_arguments);
+
+    // For tables and slot variables, we use the int32 type and the shape is
+    // {1, feature_width}.
+    for (int32_t i = 0; i < num_arguments; ++i) {
+      arguments[i].kind = XlaCompiler::Argument::kParameter;
+      if (i > 0 && i < tables_inputs.size() + 1) {
+        arguments[i].type = DT_INT32;
+        arguments[i].shape =
+            xla::ShapeUtil::MakeShape(xla::S32, {1, feature_width});
+      } else {
+        arguments[i].type = DT_FLOAT;
+        arguments[i].shape =
+            xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
+      }
+    }
+
+    TF_RETURN_IF_ERROR(compiler->CompileFunction(
+        options, custom_computation, arguments, &custom_computation_result));
+
+    return std::move(*custom_computation_result.computation);
+  }
+
+ private:
+  XlaSparseDenseMatmulIntGradWithCsrInputOp(
+      const XlaSparseDenseMatmulIntGradWithCsrInputOp&) = delete;
+  void operator=(const XlaSparseDenseMatmulIntGradWithCsrInputOp&) = delete;
+};
+
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulIntGradWithCsrInput"),
+                XlaSparseDenseMatmulIntGradWithCsrInputOp);
 
 // This TensorFlow op calculates the gradients and performs SGD update on the
 // embedding table on SparseCore. It takes the activation gradients, input

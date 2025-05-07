@@ -5813,6 +5813,14 @@ tf_module {
     argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
   }
   member_method {
+    name: "XlaSparseDenseMatmulIntGradWithCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'tables\', \'hyperparameters\', \'num_minibatches_per_physical_sparse_core\', \'custom_computation\', \'table_name\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulIntWithCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'input_size\', \'quantization_config_low\', \'quantization_config_high\', \'quantization_config_num_buckets\', \'table_name\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
     name: "XlaSparseDenseMatmulWithCsrInput"
     argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'input_size\', \'quantization_config_low\', \'quantization_config_high\', \'quantization_config_num_buckets\', \'table_name\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
