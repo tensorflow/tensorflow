@@ -19,3 +19,13 @@ tf_cc_shared_object(
         "//tensorflow/c/experimental/stream_executor:stream_executor_test_util",
     ],
 )
+
+cc_library(
+    name = "test_pluggable_device",
+    srcs = ["test_pluggable_device.cc"],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_test_util",
+    ],
+)

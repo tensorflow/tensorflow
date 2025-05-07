@@ -20,7 +20,17 @@ limitations under the License.
 
 namespace tensorflow {
 
-absl::Status RegisterPluggableDevicePlugin(void* library_filename);
+struct PluggableDeviceInit_Api {
+  void* init_plugin_fn = nullptr;
+  void* init_np_plugin_fn = nullptr;
+  void* get_pjrt_api_fn = nullptr;
+  void* init_kernel_fn = nullptr;
+  void* init_graph_fn = nullptr;
+  void* init_profiler_fn = nullptr;
+};
+
+absl::Status RegisterPluggableDevicePlugin(void* dso_handle);
+absl::Status RegisterPluggableDevicePlugin(PluggableDeviceInit_Api* api);
 
 }  // namespace tensorflow
 
