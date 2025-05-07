@@ -69,6 +69,7 @@ class PjRtLoadedExecutable;
 class PjRtExecutableForwarder;
 struct CompileOptions;
 
+// TODO: Add comment.
 class PjRtMemorySpace {
  public:
   virtual ~PjRtMemorySpace() = default;
