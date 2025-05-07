@@ -258,8 +258,7 @@ IfrtServingExecutable::Create(
   return executable;
 }
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-IfrtServingExecutable::ConvertTensorToArray(
+absl::StatusOr<xla::ifrt::ArrayRef> IfrtServingExecutable::ConvertTensorToArray(
     const tensorflow::Tensor& tensor,
     const xla::ifrt::DeviceListRef& device_list,
     const xla::OpSharding& sharding) {
@@ -678,7 +677,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
 
   VLOG(2) << "Completed AsyncLoadIfrtArray";
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> args;
+  std::vector<xla::ifrt::ArrayRef> args;
   args.reserve(inputs.size());
   int variable_index = 0;
   for (int i = 0; i < inputs.size(); i++) {
@@ -701,7 +700,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
       TF_ASSIGN_OR_RETURN(
           auto loaded_variable,
           ifrt_loaded_variable_registry_.GetLoadedVariable(key));
-      TF_ASSIGN_OR_RETURN(tsl::RCReference<xla::ifrt::Array> single_array,
+      TF_ASSIGN_OR_RETURN(xla::ifrt::ArrayRef single_array,
                           loaded_variable.array.Await());
       args.push_back(std::move(single_array));
       variable_index++;
@@ -755,8 +754,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   output_futures.reserve(execution_result.outputs.size());
   for (int i = 0; i < execution_result.outputs.size(); ++i) {
     tensorflow::TensorShape tensor_shape;
-    const tsl::RCReference<xla::ifrt::Array>& array_for_copy =
-        execution_result.outputs[i];
+    const xla::ifrt::ArrayRef& array_for_copy = execution_result.outputs[i];
     const tpu::TPUCompileMetadataProto::Retval& metadata_retval =
         executable_bundle->compile_metadata.retvals()[i];
 

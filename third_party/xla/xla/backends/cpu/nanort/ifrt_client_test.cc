@@ -131,7 +131,7 @@ static ifrt::DType DTypeFromPrimitiveType(PrimitiveType type) {
   }
 }
 
-static absl::StatusOr<tsl::RCReference<ifrt::Array>> MakeArrayFromLiteral(
+static absl::StatusOr<ifrt::ArrayRef> MakeArrayFromLiteral(
     NanoIfrtClient* client, const Literal& literal,
     ifrt::ShardingRef sharding) {
   return client->MakeArrayFromHostBuffer(
@@ -171,8 +171,8 @@ static void BM_IfRtAddScalars(benchmark::State& state) {
     auto b_array = MakeArrayFromLiteral(client.get(), b, sharding);
     CHECK(a_array.ok() && b_array.ok());
 
-    std::array<tsl::RCReference<ifrt::Array>, 2> args = {std::move(*a_array),
-                                                         std::move(*b_array)};
+    std::array<ifrt::ArrayRef, 2> args = {std::move(*a_array),
+                                          std::move(*b_array)};
 
     auto result = (*executable)
                       ->Execute(absl::MakeSpan(args), execute_options,
@@ -225,8 +225,8 @@ static void BM_IfRtAddManyScalars(benchmark::State& state) {
     auto b_array = MakeArrayFromLiteral(client.get(), b, sharding);
     CHECK(a_array.ok() && b_array.ok());
 
-    std::array<tsl::RCReference<ifrt::Array>, 2> args = {std::move(*a_array),
-                                                         std::move(*b_array)};
+    std::array<ifrt::ArrayRef, 2> args = {std::move(*a_array),
+                                          std::move(*b_array)};
 
     auto result = (*executable)
                       ->Execute(absl::MakeSpan(args), execute_options,

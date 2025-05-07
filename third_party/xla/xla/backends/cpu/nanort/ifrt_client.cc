@@ -523,7 +523,7 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
  public:
   // Creates an array from the given shards. Note that if we can assemble the
   // array using the given sharding, this method will return a NanoArray.
-  static absl::StatusOr<tsl::RCReference<ifrt::Array>> FromShards(
+  static absl::StatusOr<ifrt::ArrayRef> FromShards(
       NanoIfrtClient* client, ifrt::Shape shape, ifrt::ShardingRef sharding,
       std::vector<tsl::RCReference<NanoArray>> shards) {
     if (shards.empty()) {
@@ -807,8 +807,7 @@ class NanoExecutable final
   }
 
   absl::StatusOr<ExecuteResult> Execute(
-      absl::Span<tsl::RCReference<ifrt::Array>> args,
-      const ExecuteOptions& options,
+      absl::Span<ifrt::ArrayRef> args, const ExecuteOptions& options,
       std::optional<ifrt::DeviceListRef> devices) override {
     if (ABSL_PREDICT_FALSE(args.size() != input_shardings_.size())) {
       return InvalidArgument(
@@ -1064,7 +1063,7 @@ class NanoExecutable final
   // had to be assembled.
   absl::StatusOr<std::vector<xla::cpu::NanoRtExecutable::Argument>>
   NanoArgumentsFromIfrtArguments(
-      absl::Span<tsl::RCReference<ifrt::Array>> args,
+      absl::Span<ifrt::ArrayRef> args,
       std::vector<tsl::RCReference<NanoArray>>& tmp) {
     std::vector<xla::cpu::NanoRtExecutable::Argument> nano_args;
     nano_args.reserve(args.size());
@@ -1226,8 +1225,7 @@ ifrt::ShardingRef NanoIfrtClient::default_sharding() const {
                                             ifrt::MemoryKind{});
 }
 
-absl::StatusOr<tsl::RCReference<ifrt::Array>>
-NanoIfrtClient::MakeArrayFromHostBuffer(
+absl::StatusOr<ifrt::ArrayRef> NanoIfrtClient::MakeArrayFromHostBuffer(
     const void* data, ifrt::DType dtype, ifrt::Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides,
     ifrt::ShardingRef sharding, HostBufferSemantics semantics,
@@ -1251,7 +1249,7 @@ NanoIfrtClient::MakeArrayFromHostBuffer(
                                std::move(on_done_with_host_buffer));
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>>
+absl::StatusOr<std::vector<ifrt::ArrayRef>>
 NanoIfrtClient::MakeArraysFromHostBufferShards(
     absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
     HostBufferSemantics semantics,
@@ -1260,7 +1258,7 @@ NanoIfrtClient::MakeArraysFromHostBufferShards(
                                                     std::move(user_context));
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
 NanoIfrtClient::MakeErrorArrays(
     const absl::Status& error,
     absl::Span<const xla::ifrt::ArraySpec> array_specs,
@@ -1269,10 +1267,10 @@ NanoIfrtClient::MakeErrorArrays(
       "NanoIfrtClient does not support MakeErrorArrays.");
 }
 
-absl::StatusOr<tsl::RCReference<ifrt::Array>>
+absl::StatusOr<ifrt::ArrayRef>
 NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
     ifrt::DType dtype, ifrt::Shape shape, ifrt::ShardingRef sharding,
-    absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+    absl::Span<ifrt::ArrayRef> arrays,
     ifrt::ArrayCopySemantics array_copy_semantics,
     ifrt::SingleDeviceShardSemantics single_device_shard_semantics) {
   std::vector<tsl::RCReference<NanoArray>> nano_arrays;
@@ -1289,15 +1287,15 @@ NanoIfrtClient::AssembleArrayFromSingleDeviceArrays(
                                       std::move(nano_arrays));
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>>
-NanoIfrtClient::CopyArrays(absl::Span<tsl::RCReference<ifrt::Array>> arrays,
-                           std::optional<ifrt::DeviceListRef> devices,
-                           std::optional<ifrt::MemoryKind> memory_kind,
-                           ifrt::ArrayCopySemantics semantics) {
-  std::vector<tsl::RCReference<ifrt::Array>> result;
+absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::CopyArrays(
+    absl::Span<ifrt::ArrayRef> arrays,
+    std::optional<ifrt::DeviceListRef> devices,
+    std::optional<ifrt::MemoryKind> memory_kind,
+    ifrt::ArrayCopySemantics semantics) {
+  std::vector<ifrt::ArrayRef> result;
   result.reserve(arrays.size());
   for (const auto& array : arrays) {
-    tsl::RCReference<ifrt::Array> copy;
+    ifrt::ArrayRef copy;
     TF_ASSIGN_OR_RETURN(auto sharding, array->sharding().WithDeviceAssignment(
                                            devices, memory_kind));
     if (auto nano_array = llvm::dyn_cast_or_null<NanoArray>(array.get())) {
@@ -1327,10 +1325,8 @@ NanoIfrtClient::CopyArrays(absl::Span<tsl::RCReference<ifrt::Array>> arrays,
   return result;
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-NanoIfrtClient::RemapArrays(
-    const ifrt::RemapPlan& plan,
-    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::RemapArrays(
+    const ifrt::RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
     ifrt::ArrayCopySemantics semantics) {
   return absl::UnimplementedError("RemapArrays is not implemented.");
 }

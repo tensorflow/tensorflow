@@ -221,7 +221,7 @@ class IfrtServingExecutable {
       const CachedExecutableBundle& executable_bundle,
       const xla::ifrt::DeviceListRef& devices);
 
-  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> ConvertTensorToArray(
+  absl::StatusOr<xla::ifrt::ArrayRef> ConvertTensorToArray(
       const tensorflow::Tensor& tensor,
       const xla::ifrt::DeviceListRef& device_list,
       const xla::OpSharding& sharding);

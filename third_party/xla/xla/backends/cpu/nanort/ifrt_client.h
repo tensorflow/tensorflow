@@ -91,21 +91,19 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   // Creates an array from a host buffer. The buffer will be used directly
   // without a copy if the copy semantics allow it and the layout is row major
   // and dense.
-  absl::StatusOr<tsl::RCReference<ifrt::Array>> MakeArrayFromHostBuffer(
+  absl::StatusOr<ifrt::ArrayRef> MakeArrayFromHostBuffer(
       const void* data, ifrt::DType dtype, ifrt::Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       ifrt::ShardingRef sharding, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer,
       tsl::RCReference<xla::ifrt::UserContext> user_context) override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>>
-  MakeArraysFromHostBufferShards(
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
       HostBufferSemantics semantics,
       tsl::RCReference<xla::ifrt::UserContext> user_context) override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-  MakeErrorArrays(
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> MakeErrorArrays(
       const absl::Status& error,
       absl::Span<const xla::ifrt::ArraySpec> array_specs,
       tsl::RCReference<xla::ifrt::UserContext> user_context) override;
@@ -116,22 +114,20 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   //
   // Otherwise we will produce an assembled array on demand when it is first
   // accessed by an XLA program.
-  absl::StatusOr<tsl::RCReference<ifrt::Array>>
-  AssembleArrayFromSingleDeviceArrays(
+  absl::StatusOr<ifrt::ArrayRef> AssembleArrayFromSingleDeviceArrays(
       ifrt::DType dtype, ifrt::Shape shape, ifrt::ShardingRef sharding,
-      absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+      absl::Span<ifrt::ArrayRef> arrays,
       ifrt::ArrayCopySemantics array_copy_semantics,
       ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> CopyArrays(
-      absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> CopyArrays(
+      absl::Span<ifrt::ArrayRef> arrays,
       std::optional<ifrt::DeviceListRef> devices,
       std::optional<ifrt::MemoryKind> memory_kind,
       ifrt::ArrayCopySemantics semantics) override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> RemapArrays(
-      const ifrt::RemapPlan& plan,
-      absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> RemapArrays(
+      const ifrt::RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ifrt::ArrayCopySemantics semantics) override;
 
   ifrt::Future<> GetReadyFuture(
