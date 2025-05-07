@@ -269,7 +269,8 @@ std::string PrintInstructionPair(const HloInstruction* left_inst,
   if (url_generator == nullptr) {
     return text;
   }
-  std::string url = url_generator->Generate(left_inst, right_inst);
+  std::string url =
+      url_generator->GenerateWithSelectedNodes(left_inst, right_inst);
   if (url.empty()) {
     return text;
   }
@@ -298,7 +299,8 @@ std::string PrintComputationPair(const HloComputation* left_comp,
   if (url_generator == nullptr) {
     return text;
   }
-  std::string url = url_generator->Generate(left_comp, right_comp);
+  std::string url =
+      url_generator->GenerateWithSelectedNodes(left_comp, right_comp);
   if (url.empty()) {
     return text;
   }

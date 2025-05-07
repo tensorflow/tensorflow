@@ -30,16 +30,20 @@ class GraphUrlGenerator {
   virtual ~GraphUrlGenerator() = default;
 
   // Generates a url to the graph visualization for the given selected nodes.
-  virtual std::string Generate(absl::string_view left_selected_node_id,
-                               absl::string_view right_selected_node_id) = 0;
+  virtual std::string GenerateWithSelectedNodes(
+      absl::string_view left_selected_node_id,
+      absl::string_view right_selected_node_id) = 0;
 
   // Generates a url to the graph visualization for the given instruction pair.
-  virtual std::string Generate(const HloInstruction* left_inst,
-                               const HloInstruction* right_inst) = 0;
+  virtual std::string GenerateWithSelectedNodes(
+      const HloInstruction* left_inst, const HloInstruction* right_inst) = 0;
 
   // Generates a url to the graph visualization for the given computation pair.
-  virtual std::string Generate(const HloComputation* left_comp,
-                               const HloComputation* right_comp) = 0;
+  virtual std::string GenerateWithSelectedNodes(
+      const HloComputation* left_comp, const HloComputation* right_comp) = 0;
+
+  // Generates a url to the graph visualization without any selected nodes.
+  inline std::string Generate() { return GenerateWithSelectedNodes("", ""); }
 };
 
 }  // namespace hlo_diff
