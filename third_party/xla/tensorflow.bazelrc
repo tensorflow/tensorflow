@@ -86,6 +86,10 @@ build --enable_platform_specific_config
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --config=short_logs
 
+# Precompiling results in some action conflicts. Disable it for now until
+# the problematic targets are fixed.
+build --@rules_python//python/config_settings:precompile=force_disabled
+
 # TF now has `cc_shared_library` targets, so it needs the experimental flag
 # TODO(rostam): Remove when `cc_shared_library` is enabled by default
 common --experimental_cc_shared_library
