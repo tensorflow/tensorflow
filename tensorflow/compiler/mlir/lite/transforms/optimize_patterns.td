@@ -2191,3 +2191,27 @@ def AddComputedZeroLHS : Pat<
     TFL_AF_None),
   (replaceWithValue $input),
   [(HasSameType $input, $output)]>;
+
+// Replace matmul where inputs & weights have a last dimension of 1 with an
+// elementwise multiplication that broadcasts, i.e. replace:
+//   [a, b, 1] x [n, 1] => [a, b, n]
+// with:
+//   [a, b, 1] * [n] => [a, b, n]
+def DegenerateFCtoMul : Pat<
+  (TFL_FullyConnectedOp
+    $input,
+    (Arith_ConstantOp:$filter $filterVal),
+    $bias,
+    $fused_activation_function,
+    TFL_FCWO_Default,
+    ConstBoolAttrTrue,
+    $asymmetric_quantize_inputs),
+  (TFL_MulOp
+    $input,
+    (Arith_ConstantOp (FlattenTo1D $filterVal)),
+    $fused_activation_function),
+  [(HasRankAtMost<4> $input),
+   (HasRank<2> $filter),
+   (IsLastDimensionEqualOne $input),
+   (SameElementType $input, $filter),
+   (IsNoneType $bias)]>;
