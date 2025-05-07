@@ -1,16 +1,17 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/*
+    Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+       http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
 ==============================================================================*/
 
 syntax = "proto2";
@@ -19,7 +20,6 @@ package tflite.evaluation;
 
 import "tensorflow/lite/tools/evaluation/proto/preprocessing_steps.proto";
 
-option cc_enable_arenas = true;
 option java_multiple_files = true;
 option java_package = "tflite.evaluation";
 
@@ -45,14 +45,19 @@ message ProcessSpecification {
 message LatencyMetrics {
   // Latency for the last Run.
   optional int64 last_us = 1;
+
   // Maximum latency observed for any Run.
   optional int64 max_us = 2;
+
   // Minimum latency observed for any Run.
   optional int64 min_us = 3;
+
   // Sum of all Run latencies.
   optional int64 sum_us = 4;
+
   // Average latency across all Runs.
   optional double avg_us = 5;
+
   // Standard deviation for latency across all Runs.
   optional int64 std_deviation_us = 6;
 }
@@ -63,10 +68,13 @@ message LatencyMetrics {
 message AccuracyMetrics {
   // Maximum value observed for any Run.
   optional float max_value = 1;
+
   // Minimum value observed for any Run.
   optional float min_value = 2;
+
   // Average value across all Runs.
   optional double avg_value = 3;
+
   // Standard deviation across all Runs.
   optional float std_deviation = 4;
 }
@@ -95,6 +103,7 @@ message ProcessMetrics {
 message ImagePreprocessingParams {
   // Required.
   repeated ImagePreprocessingStepParams steps = 1;
+
   // Same as tflite::TfLiteType.
   required int32 output_type = 2;
 }
@@ -114,7 +123,9 @@ message TfliteInferenceParams {
     XNNPACK = 4;
     COREML = 5;
   }
+
   optional Delegate delegate = 2;
+
   // Number of threads available to the TFLite Interpreter.
   optional int32 num_threads = 3 [default = 1];
 
@@ -176,6 +187,7 @@ message ImageClassificationMetrics {
   optional LatencyMetrics pre_processing_latency = 1;
   optional LatencyMetrics inference_latency = 2;
   optional TfliteInferenceMetrics inference_metrics = 3;
+
   // Not set if topk_accuracy_eval_params was not populated in
   // ImageClassificationParams.
   optional TopkAccuracyEvalMetrics topk_accuracy_metrics = 4;
@@ -189,8 +201,10 @@ message ImageClassificationMetrics {
 message InferenceProfilerMetrics {
   // Latency metrics from Single-thread CPU inference.
   optional LatencyMetrics reference_latency = 1;
+
   // Latency from TfliteInferenceParams under test.
   optional LatencyMetrics test_latency = 2;
+
   // For reference & test output vectors {R, T}, the error is computed as:
   // Mean([Abs(R[i] - T[i]) for i in num_elements])
   // output_errors[v] : statistics for the error value of the vth output vector
@@ -221,16 +235,20 @@ message ObjectDetectionResult {
 
     // Required.
     optional int32 class_id = 1;
+
     // Required
     optional NormalizedBoundingBox bounding_box = 2;
+
     // Value in (0, 1.0] denoting confidence in this prediction.
     // Default value of 1.0 for ground-truth data.
     optional float score = 3 [default = 1.0];
   }
 
   repeated ObjectInstance objects = 1;
+
   // Filename of the image.
   optional string image_name = 2;
+
   // Unique id for the image.
   optional int64 image_id = 3;
 }
@@ -252,6 +270,7 @@ message ObjectDetectionAveragePrecisionParams {
   // Total object classes. The AP value returned for each IoU threshold is an
   // average over all classes encountered in predicted/ground truth sets.
   optional int32 num_classes = 1;
+
   // A predicted box matches a ground truth box if and only if
   // IoU between these two are larger than an IoU threshold.
   // AP is computed for all relevant {IoU threshold, class} combinations and
@@ -259,6 +278,7 @@ message ObjectDetectionAveragePrecisionParams {
   // If left empty, evaluation is done for all IoU threshods in the range
   // 0.5:0.05:0.95 (min:increment:max).
   repeated float iou_thresholds = 2;
+
   // AP is computed as the average of maximum precision at (1
   // + num_recall_points) recall levels. E.g., if num_recall_points is 10,
   // recall levels are 0., 0.1, 0.2, ..., 0.9, 1.0.
@@ -281,6 +301,7 @@ message ObjectDetectionAveragePrecisionMetrics {
   // ObjectDetectionAveragePrecisionParams::iou_thresholds, averaged over all
   // classes.
   repeated AveragePrecision individual_average_precisions = 1;
+
   // Average of Average Precision across all IoU thresholds.
   optional float overall_mean_average_precision = 2;
 }
@@ -295,11 +316,13 @@ message ObjectDetectionParams {
   // Refer:
   // https://www.tensorflow.org/lite/examples/object_detection/overview#output_signature
   optional TfliteInferenceParams inference_params = 1;
+
   // Optional. Used to match ground-truth categories with model output.
   // SSD Mobilenet V1 Model trained on COCO assumes class 0 is background class
   // in the label file and class labels start from 1 to number_of_classes+1.
   // Therefore, default value is set as 1.
   optional int32 class_offset = 2 [default = 1];
+
   optional ObjectDetectionAveragePrecisionParams ap_params = 3;
 }
 
