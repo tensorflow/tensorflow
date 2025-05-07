@@ -92,6 +92,7 @@ using ::mlir::func::FuncOp;
 using ::mlir::sdy::AxisRefAttr;
 using ::mlir::sdy::DimensionShardingAttr;
 using ::mlir::sdy::kShardingAttr;
+using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::MeshAxisAttr;
 using ::mlir::sdy::MeshOp;
@@ -163,9 +164,15 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
     if (auto sdySharding = funcOp.getArgAttrOfType<TensorShardingAttr>(
             argNum, kShardingAttr)) {
-      funcOp.setArgAttr(
-          argNum, kXlaShardingAttr,
-          getStringAttr(convertToHloSharding(sdySharding, getMeshAttr)));
+      ArrayRef<StringAttr> manualAxes;
+      if (ManualAxesAttr manualAxesAttr =
+              funcOp.getArgAttrOfType<ManualAxesAttr>(argNum, kManualAxes)) {
+        manualAxes = manualAxesAttr.getValue();
+        funcOp.removeArgAttr(argNum, kManualAxes);
+      }
+      funcOp.setArgAttr(argNum, kXlaShardingAttr,
+                        getStringAttr(convertToHloSharding(
+                            sdySharding, getMeshAttr, manualAxes)));
       funcOp.removeArgAttr(argNum, kShardingAttr);
     }
   }
@@ -173,25 +180,40 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
   for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
     if (auto sdySharding = funcOp.getResultAttrOfType<TensorShardingAttr>(
             resNum, kShardingAttr)) {
-      funcOp.setResultAttr(
-          resNum, kXlaShardingAttr,
-          getStringAttr(convertToHloSharding(sdySharding, getMeshAttr)));
+      ArrayRef<StringAttr> manualAxes;
+      if (ManualAxesAttr manualAxesAttr =
+              funcOp.getResultAttrOfType<ManualAxesAttr>(resNum, kManualAxes)) {
+        manualAxes = manualAxesAttr.getValue();
+        funcOp.removeResultAttr(resNum, kManualAxes);
+      }
+      funcOp.setResultAttr(resNum, kXlaShardingAttr,
+                           getStringAttr(convertToHloSharding(
+                               sdySharding, getMeshAttr, manualAxes)));
       funcOp.removeResultAttr(
           resNum, StringAttr::get(funcOp.getContext(), kShardingAttr));
     }
   }
 
   funcOp.front().walk([&](Operation* op) {
+    ArrayRef<StringAttr> manualAxes;
+    if (ManualAxesAttr manualAxesAttr =
+            op->getAttrOfType<ManualAxesAttr>(kManualAxes)) {
+      manualAxes = manualAxesAttr.getValue();
+      op->removeAttr(kManualAxes);
+    }
+
     if (ArrayRef<TensorShardingAttr> shardings = mlir::sdy::getShardings(op);
         !shardings.empty()) {
-      setHloShardingAttr(op, shardings, getMeshAttr);
+      setHloShardingAttr(op, shardings, getMeshAttr, manualAxes);
       op->removeAttr(kShardingAttr);
     } else if (addMissingShardingToControlFlow &&
                mlir::isa<stablehlo::WhileOp, stablehlo::CaseOp,
-                         stablehlo::IfOp>(op) &&
-               !op->hasAttr(kXlaShardingAttr)) {
-      // We check if the op already has a `kXlaShardingAttr`, since a manual
-      // sharding might have been added in shard map export pass.
+                         stablehlo::IfOp>(op)) {
+      // The shard map export pass assigns shardings to any operation with
+      // manual axes. Since this operation lacks shardings
+      // (`shardings.empty()`), it cannot have manual axes. This CHECK asserts
+      // this invariant before we add a replicated sharding.
+      CHECK(manualAxes.empty());
       op->setAttr(kXlaShardingAttr, getStringAttr(HloSharding::Replicate()));
     }
   });
