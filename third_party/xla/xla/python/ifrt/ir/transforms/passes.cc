@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/Passes.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/python/ifrt/executable.h"
@@ -40,7 +41,8 @@ void CreateIfrtToOutlinedAtomProgramsPipeline(
   // Passes that verify the correctness of the module.
   pm.addPass(CreateSpmdExpandableInterfaceVerificationPass(
       {{mlir::mhlo::MhloDialect::getDialectNamespace().str(),
-        mlir::stablehlo::StablehloDialect::getDialectNamespace().str()}}));
+        mlir::stablehlo::StablehloDialect::getDialectNamespace().str(),
+        mlir::sdy::SdyDialect::getDialectNamespace().str()}}));
   pm.addNestedPass<mlir::func::FuncOp>(CreateIfrtVerifyDonationPass());
 
   pm.addPass(CreateIfrtOutlineAtomProgramToModulePass());
