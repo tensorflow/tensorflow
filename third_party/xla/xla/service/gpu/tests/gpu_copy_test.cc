@@ -312,5 +312,88 @@ TEST_F(GpuCopyTest, DoNotUseMemcpyForDynamicUpdateSlice) {
                      /*run_optimization_passes=*/false);
 }
 
+constexpr char kDynamicUpdateSliceWithBitcastModule[] = R"(
+    dynamic_update_slice {
+      p0 = s32[8,8] parameter(0)
+      p1 = s32[1,4] parameter(1)
+      p2 = s32[] parameter(2)
+      bc0 = s32[64] bitcast(p0)
+      bc1 = s32[4] bitcast(p1)
+      update-slice = s32[64] dynamic-update-slice(bc0, bc1, p2)
+      ROOT bc = s32[8,8] bitcast(update-slice)
+    }
+
+    add {
+      p0 = s32[] parameter(0)
+      c1 = s32[] constant(1)
+      ROOT sum = s32[] add(p0, c1)
+    }
+
+    body {
+      while_arg = (s32[], s32[8,8], s32[1,4]) parameter(0)
+      ivar = s32[] get-tuple-element(while_arg), index=0
+      input = s32[8,8] get-tuple-element(while_arg), index=1
+      update = s32[1,4] get-tuple-element(while_arg), index=2
+      input-copy = s32[8,8] copy(input)
+      ivar-copy = s32[] copy(ivar)
+
+      updated_bc = s32[8,8] fusion(input-copy, update, ivar-copy), kind=kLoop,
+          calls=dynamic_update_slice,
+          backend_config={"fusion_backend_config":{"kind":"__dynamic_memcpy"}}
+      next_ivar = s32[] fusion(ivar-copy), kind=kLoop, calls=add
+
+      ROOT result = (s32[], s32[8,8], s32[1,4])
+          tuple(next_ivar, updated_bc, update)
+    }
+
+    compare {
+      p0 = s32[] parameter(0)
+      c6 = s32[] constant(6)
+      ROOT cmp = pred[] compare(p0, c6), direction=LT
+    }
+
+    condition {
+      while_arg = (s32[], s32[8,8], s32[1,4]) parameter(0)
+      ivar = s32[] get-tuple-element(while_arg), index=0
+      ROOT cmp = pred[] fusion(ivar), kind=kLoop, calls=compare
+    }
+
+    input {
+      iota = s32[64] iota(), iota_dimension=0
+      ROOT bc = s32[8,8] bitcast(iota)
+    }
+
+    ENTRY main {
+      input = s32[8,8] fusion(), kind=kLoop, calls=input
+      init_acc = s32[1,4] constant({{3,2,1,0}})
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[8,8], s32[1,4]) tuple(c0, input, init_acc)
+      ROOT while = (s32[], s32[8,8], s32[1,4]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"6"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSliceWithBitcasts) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kDynamicUpdateSliceWithBitcastModule));
+
+  CompileAndVerifyIr(std::move(hlo_module), R"(
+    CHECK-NOT: void @
+    CHECK: void @input
+    CHECK-NOT: void @
+    CHECK: void @cmp
+    CHECK-NOT: void @
+    CHECK: void @next_ivar
+    CHECK-NOT: void @
+  )",
+                     /*match_optimized_ir=*/false,
+                     /*run_optimization_passes=*/false);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kDynamicUpdateSliceWithBitcastModule,
+                                       ErrorSpec{0, 0}));
+}
+
 }  // namespace gpu
 }  // namespace xla

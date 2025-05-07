@@ -123,6 +123,29 @@ TEST_F(CopyFusionTest, ClampedConstantNegative) {
   EXPECT_EQ(descriptor->dst_byte_static_offset, 0);
 }
 
+TEST_F(CopyFusionTest, UpdateSliceOfBitcast) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    dynamic_slice {
+      p0 = f32[1,100] parameter(0)
+      p1 = f32[1,10] parameter(1)
+      p2 = s32[] parameter(2)
+      bc0 = f32[100] bitcast(p0)
+      bc1 = f32[10] bitcast(p1)
+      ROOT slice = f32[100] dynamic-update-slice(bc0, bc1, p2)
+    }
+
+    ENTRY main {
+      p0 = f32[1,100] parameter(0)
+      p1 = f32[1,10] parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT fusion = f32[100] fusion(p0, p1, p2), kind=kLoop, calls=dynamic_slice
+    }
+  )")
+                    .value();
+
+  EXPECT_TRUE(DynamicMemcpyFusion::IsCandidateFusion(GetFusion(module.get())));
+}
+
 constexpr char kSliceMemcpyModule[] = R"(
     dynamic_slice {
       p0 = s32[4,8,8,8] parameter(0)

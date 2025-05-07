@@ -43,6 +43,18 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
+
+HloInstructionAdaptor SkipOptionalBitcast(HloInstructionAdaptor adaptor) {
+  return adaptor.opcode() == HloOpcode::kBitcast ? adaptor.GetOperand(0)
+                                                 : adaptor;
+}
+
+const HloInstruction* SkipOptionalBitcast(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kBitcast ? instr->operand(0) : instr;
+}
+
+}  // namespace
 
 absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
     IrEmitterContext& ir_emitter_context,
@@ -87,7 +99,7 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
     const HloFusionInstruction& fusion) const {
   CHECK_EQ(analysis_.fusion_roots().size(), 1);
 
-  auto root = analysis_.fusion_roots().front();
+  auto root = SkipOptionalBitcast(analysis_.fusion_roots().front());
 
   int source_operand_index;
   const Shape* copy_shape;
@@ -100,12 +112,13 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
     // prefix, one for the updated slice, one for the unchanged suffix). The
     // first option is inefficient, the second option is currently not
     // implemented: we only support dynamic offsets, no dynamic sizes.
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input,
-                        buffer_assignment_->GetUniqueSlice(
-                            &root.GetOperand(0).instruction(), {}));
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst,
+    TF_ASSIGN_OR_RETURN(
+        BufferAllocation::Slice input_slice,
+        buffer_assignment_->GetUniqueSlice(
+            &SkipOptionalBitcast(root.GetOperand(0)).instruction(), {}));
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_slice,
                         buffer_assignment_->GetUniqueSlice(&fusion, {}));
-    CHECK_EQ(input, dst);
+    CHECK_EQ(input_slice, dst_slice);
 
     source_operand_index = 1;
     copy_shape = &root.GetOperand(source_operand_index).shape();
@@ -115,7 +128,8 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
     copy_shape = &root.shape();
   }
 
-  const auto* src_instr = &root.GetOperand(source_operand_index).instruction();
+  const auto* src_instr =
+      &SkipOptionalBitcast(root.GetOperand(source_operand_index)).instruction();
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
                       buffer_assignment_->GetUniqueSlice(src_instr, {}));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
@@ -163,7 +177,8 @@ int GetFirstOffsetOperandIndex(const HloInstruction* slice) {
 
 bool DynamicMemcpyFusion::IsCandidateFusion(
     const HloFusionInstruction& instruction) {
-  const HloInstruction* root = instruction.fused_expression_root();
+  const HloInstruction* root =
+      SkipOptionalBitcast(instruction.fused_expression_root());
   if (root->opcode() != HloOpcode::kDynamicSlice &&
       root->opcode() != HloOpcode::kDynamicUpdateSlice) {
     return false;
@@ -184,7 +199,8 @@ bool DynamicMemcpyFusion::IsCandidateFusion(
 
   int first_offset_index = GetFirstOffsetOperandIndex(root);
   for (int i = 0; i < first_offset_index; ++i) {
-    if (root->operand(i)->opcode() != HloOpcode::kParameter) {
+    auto* operand = SkipOptionalBitcast(root->operand(i));
+    if (operand->opcode() != HloOpcode::kParameter) {
       VLOG(5) << "Not a slice of a parameter.";
       return false;
     }
@@ -202,7 +218,8 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
     return std::nullopt;
   }
 
-  const HloInstruction* slice = fusion.fused_expression_root();
+  const HloInstruction* slice =
+      SkipOptionalBitcast(fusion.fused_expression_root());
   const Shape& slice_input_shape = slice->operand(0)->shape();
   std::optional<absl::InlinedVector<int64_t, 4>> strides =
       ShapeUtil::ByteStrides(slice_input_shape);
