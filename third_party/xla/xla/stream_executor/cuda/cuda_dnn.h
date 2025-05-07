@@ -708,7 +708,9 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     const dnn::MatmulTensorDescriptor& v_descriptor,
     const dnn::TensorDescriptor& o_descriptor,
     std::optional<dnn::TensorDescriptor> bias_descriptor,
-    std::optional<dnn::TensorDescriptor> stats_descriptor, double scale,
+    std::optional<dnn::TensorDescriptor> stats_descriptor,
+    std::optional<dnn::TensorDescriptor> page_table_k_descriptor,
+    std::optional<dnn::TensorDescriptor> page_table_v_descriptor, double scale,
     bool use_dropout, std::optional<double> dropout_rate,
     dnn::FMHAMaskKind mask_type, int sliding_window_length,
     int max_seg_per_batch);

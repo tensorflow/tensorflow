@@ -296,6 +296,9 @@ message CudnnfMHABackendConfig {
   // Only used with packed layout
   // ignored if the valued <= 1
   int32 max_seg_per_batch = 25;
+
+  // Is Paged Attention
+  bool is_paged_attention = 26;
 }
 
 // Backend config for a general custom call instruction, e.g. XLA FFI.
