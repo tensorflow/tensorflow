@@ -211,8 +211,8 @@ IRMapping CloneSrcFuncArgumentsToMainFunc(func::FuncOp src_func_op,
     const DictionaryAttr main_arg_attr =
         src_func_op.getArgAttrDict(src_arg_idx);
 
-    main_func_op.insertArgument(main_arg_idx, src_arg.getType(), main_arg_attr,
-                                src_arg.getLoc());
+    (void)main_func_op.insertArgument(main_arg_idx, src_arg.getType(),
+                                      main_arg_attr, src_arg.getLoc());
 
     const std::string new_input_name =
         absl::StrCat(GetInitializerType(src_func_op), "_", src_arg_idx, ":0");
