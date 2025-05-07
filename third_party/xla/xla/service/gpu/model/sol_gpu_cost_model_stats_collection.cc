@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/model/sol_gpu_cost_model_stats_collection.h"
 
+#include <memory>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -22,9 +24,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/model/collective_interpolator.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/service/gpu/model/sol_latency_estimator.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -32,6 +36,10 @@ absl::StatusOr<bool> SolGpuCostModelStatsCollection::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   SolGPUCostModel::Config config = SolGPUCostModel::GetConfig(module);
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<CollectiveInterpolator> collective_interpolator,
+      CollectiveInterpolator::Create(device_info_));
 
   hlo_query::ForEachInstructionWithPred(
       *module,
@@ -41,7 +49,8 @@ absl::StatusOr<bool> SolGpuCostModelStatsCollection::Run(
       [&](HloInstruction* instr) {
         // Generate exec time for a collective.
         absl::Duration exec_time = SolLatencyEstimator::ComputeCollectiveTime(
-            *instr, device_info_, shape_size_in_bytes_fn_, config);
+            *instr, device_info_, shape_size_in_bytes_fn_, config,
+            collective_interpolator.get());
 
         // Set it in the `CollectiveBackendConfig`.
         auto gpu_config = instr->backend_config<GpuBackendConfig>();

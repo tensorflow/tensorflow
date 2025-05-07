@@ -17,23 +17,37 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/model/collective_interpolator.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
+#include "xla/service/gpu/model/hlo_op_profile.pb.h"
+#include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -41,54 +55,28 @@ namespace gpu {
 
 namespace {
 
-int GetNumGpus(const HloInstruction& instr) {
-  const HloInstruction* i = &instr;
-  if (instr.opcode() == HloOpcode::kAsyncStart) {
-    i = instr.async_wrapped_instruction();
+absl::StatusOr<HloInstructionProfileList> ReadProfiles(
+    const std::string& perf_table_path,
+    const se::DeviceDescription& device_info) {
+  DeviceHloInstructionProfiles profile;
+
+  TF_RETURN_IF_ERROR(tsl::Env::Default()->FileExists(perf_table_path));
+  TF_RETURN_IF_ERROR(tsl::ReadTextOrBinaryProto(tsl::Env::Default(),
+                                                perf_table_path, &profile));
+  std::string key = HloOpProfiles::GetProfileName(device_info);
+
+  if (!profile.entries().contains(key)) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Key not present: ", key));
   }
-  int size = 0;
-  for (auto& rg : i->replica_groups()) {
-    size += rg.replica_ids_size();
-  }
-  return size;
+  return profile.entries().at(key);
 }
 
-}  // namespace
-
-/*static*/ absl::Duration SolLatencyEstimator::ComputeCollectiveTime(
+std::optional<absl::Duration> DCNCollectiveDuration(
+    int num_participating_hosts, absl::string_view mask,
     const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
-    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-    const SolGPUCostModel::Config& sol_flags) {
-  GpuHloCostAnalysis analysis(
-      GpuHloCostAnalysis::Options{shape_size_fn,
-                                  /*per_second_rates=*/{},
-                                  /*min_latencies_seconds=*/{},
-                                  /*count_multiple_input_accesses=*/true},
-      gpu_device_info);
-
-  CHECK_OK(instr.parent()->Accept(&analysis));
-
-  return SolLatencyEstimator::ComputeCollectiveTime(
-      instr, gpu_device_info, shape_size_fn, sol_flags, analysis);
-}
-
-/*static*/ absl::Duration SolLatencyEstimator::ComputeCollectiveTime(
-    const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
-    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
     const SolGPUCostModel::Config& sol_flags,
     const GpuHloCostAnalysis& analysis) {
-  // TODO(b/390095346): This is incorrect way of determining how many nodes
-  // participate in a collective.
-  const int num_nodes = GetNumGpus(instr) / sol_flags.gpus_per_node;
-  if (num_nodes == 1) {
-    VLOG(8) << "Returning only kernel launch overhead for a single node.";
-    return GpuPerformanceModelBase::kNcclKernelLaunchOverhead;
-  }
-
-  if (HloDataflowAnalysis::IsAsynchronousOperationDone(instr.opcode())) {
-    VLOG(8) << "Returning 0 cost for async done op " << instr.name();
-    return absl::ZeroDuration();
-  }
   SolGPUCostModel sol_model(sol_flags);
   const int64_t msg_size = analysis.BytesTransferred(instr);
 
@@ -101,7 +89,8 @@ int GetNumGpus(const HloInstruction& instr) {
     case HloOpcode::kAllGather:
     case HloOpcode::kAllGatherStart: {
       result += sol_model.RingLatency(
-          msg_size, num_nodes, SolGPUCostModel::CollectiveType::kAllGather);
+          msg_size, num_participating_hosts,
+          SolGPUCostModel::CollectiveType::kAllGather, mask);
       break;
     }
     case HloOpcode::kAllReduce:
@@ -110,7 +99,8 @@ int GetNumGpus(const HloInstruction& instr) {
           gpu_performance_model.EstimateRunTimeForInstruction(&instr, &analysis)
               .compute_time;
       result += sol_model.RingLatency(
-          msg_size, num_nodes, SolGPUCostModel::CollectiveType::kAllReduce);
+          msg_size, num_participating_hosts,
+          SolGPUCostModel::CollectiveType::kAllReduce, mask);
       break;
     }
     case HloOpcode::kReduceScatter: {
@@ -118,7 +108,8 @@ int GetNumGpus(const HloInstruction& instr) {
           gpu_performance_model.EstimateRunTimeForInstruction(&instr, &analysis)
               .compute_time;
       result += sol_model.RingLatency(
-          msg_size, num_nodes, SolGPUCostModel::CollectiveType::kReduceScatter);
+          msg_size, num_participating_hosts,
+          SolGPUCostModel::CollectiveType::kReduceScatter, mask);
       break;
     }
     case HloOpcode::kAsyncStart: {
@@ -128,15 +119,16 @@ int GetNumGpus(const HloInstruction& instr) {
                           instr.async_wrapped_instruction(), &analysis)
                       .compute_time;
         result += sol_model.RingLatency(
-            msg_size, num_nodes,
-            SolGPUCostModel::CollectiveType::kReduceScatter);
+            msg_size, num_participating_hosts,
+            SolGPUCostModel::CollectiveType::kReduceScatter, mask);
       }
       break;
     }
     case HloOpcode::kRecv:
     case HloOpcode::kSend: {
       result += sol_model.RingLatency(
-          msg_size, num_nodes, SolGPUCostModel::CollectiveType::kSendRecv);
+          msg_size, num_participating_hosts,
+          SolGPUCostModel::CollectiveType::kSendRecv, mask);
       break;
     }
     // note: AllToAll is not yet supported in XLA
@@ -150,6 +142,103 @@ int GetNumGpus(const HloInstruction& instr) {
   return result;
 }
 
+std::optional<absl::Duration> DispatchEstimation(
+    const absl::StatusOr<GPUCommunicationType>& communication_type,
+    const HloCollectiveInstruction& instr,
+    const se::DeviceDescription& gpu_device_info,
+    const SolGPUCostModel::Config& sol_flags,
+    const GpuHloCostAnalysis& analysis,
+    const CollectiveInterpolator* collective_interpolator) {
+  if (!communication_type.ok()) {
+    VLOG(1) << "Failed to determine communication type: "
+            << communication_type.status();
+    return std::nullopt;
+  }
+
+  GPUCommunicationType comm = *communication_type;
+  auto num_groups_and_devices = GetReplicaGroupCountAndSize(&instr);
+  if (!num_groups_and_devices.ok()) {
+    VLOG(1) << "Failed to determine a number of devices participating in "
+               "the collective: "
+            << instr.ToString();
+    return std::nullopt;
+  }
+
+  switch (comm) {
+    case GPUCommunicationType::RAIL_ALIGNED: {
+      return DCNCollectiveDuration(
+          (*num_groups_and_devices)->second / sol_flags.gpus_per_node,
+          SolGPUCostModel::kSplitMaskWorldLevel, instr, gpu_device_info,
+          sol_flags, analysis);
+    }
+    case GPUCommunicationType::NON_RAIL_ALIGNED: {
+      return DCNCollectiveDuration((*num_groups_and_devices)->second,
+                                   SolGPUCostModel::kSplitMaskNonRailAligned,
+                                   instr, gpu_device_info, sol_flags, analysis);
+    }
+    case GPUCommunicationType::SINGLE_HOST: {
+      if (collective_interpolator == nullptr) {
+        return GpuPerformanceModelBase::kNcclKernelLaunchOverhead;
+      }
+      return collective_interpolator->EstimatedRuntime(instr);
+    }
+    case xla::gpu::GPUCommunicationType::UNDEFINED:
+      LOG(WARNING) << "Cannot determine communication type: "
+                   << instr.ToString();
+      return std::nullopt;
+  }
+}
+
+}  // namespace
+
+/*static*/ absl::Duration SolLatencyEstimator::ComputeCollectiveTime(
+    const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+    const SolGPUCostModel::Config& sol_flags,
+    const CollectiveInterpolator* collective_interpolator) {
+  GpuHloCostAnalysis analysis(
+      GpuHloCostAnalysis::Options{shape_size_fn,
+                                  /*per_second_rates=*/{},
+                                  /*min_latencies_seconds=*/{},
+                                  /*count_multiple_input_accesses=*/true},
+      gpu_device_info);
+
+  CHECK_OK(instr.parent()->Accept(&analysis));
+
+  if (instr.IsAsynchronous()) {
+    CHECK_OK(instr.async_wrapped_instruction()->Accept(&analysis));
+  }
+
+  return SolLatencyEstimator::ComputeCollectiveTime(
+      instr, gpu_device_info, shape_size_fn, sol_flags, analysis,
+      collective_interpolator);
+}
+
+/*static*/ absl::Duration SolLatencyEstimator::ComputeCollectiveTime(
+    const HloInstruction& instr, const se::DeviceDescription& gpu_device_info,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+    const SolGPUCostModel::Config& sol_flags,
+    const GpuHloCostAnalysis& analysis,
+    const CollectiveInterpolator* collective_interpolator) {
+  if (HloDataflowAnalysis::IsAsynchronousOperationDone(instr.opcode())) {
+    VLOG(8) << "Returning 0 cost for async done op " << instr.name();
+    return absl::ZeroDuration();
+  }
+
+  if (auto* collective_instr = DynCast<HloCollectiveInstruction>(
+          instr.IsAsynchronous() ? instr.async_wrapped_instruction() : &instr);
+      collective_instr != nullptr) {
+    absl::StatusOr<GPUCommunicationType> communication_type = CommunicationType(
+        *collective_instr, gpu_device_info.gpu_compute_capability());
+    return DispatchEstimation(communication_type, *collective_instr,
+                              gpu_device_info, sol_flags, analysis,
+                              collective_interpolator)
+        .value_or(absl::ZeroDuration());
+  }
+
+  return absl::ZeroDuration();
+}
+
 LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
   const HloOpcode from_op = from.GetInstr().opcode();
@@ -159,9 +248,9 @@ LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(
   }
 
   if (IsAsyncPair(from, target)) {
-    double coll_time = absl::ToDoubleMicroseconds(
-        ComputeCollectiveTime(from.GetInstr(), gpu_info_, shape_size_function_,
-                              sol_flags_, *cost_analysis_));
+    double coll_time = absl::ToDoubleMicroseconds(ComputeCollectiveTime(
+        from.GetInstr(), gpu_info_, shape_size_function_, sol_flags_,
+        *cost_analysis_, collective_interpolator_.get()));
     VLOG(10) << "[SoL] Analytical estimator calculated latency between "
              << from.GetInstr().name() << " and " << target.GetInstr().name()
              << " to be: " << coll_time << " us.";
@@ -206,12 +295,33 @@ SolLatencyEstimator::SolLatencyEstimator(
                                   /*min_latencies_seconds=*/{},
                                   /*count_multiple_input_accesses=*/true},
       gpu_info_);
-  TF_CHECK_OK(computation->Accept(&cost_analysis_.value()));
+  if (!computation->Accept(&cost_analysis_.value()).ok()) {
+    VLOG(1) << "Cannot analyze computation: " << computation->ToString();
+  }
+
   if (sol_flags_.nccl_op_launch_time == absl::ZeroDuration() ||
       sol_flags_.nic_speed_gbps == 0 ||
       sol_flags_.chunk_prep_time == absl::ZeroDuration() ||
       sol_flags_.rtt == absl::ZeroDuration() || sol_flags_.gpus_per_node == 0) {
-    LOG(WARNING) << "[SoL] Failed to parse SoL system config options.";
+    VLOG(1) << "[SoL] Failed to parse SoL system config options.";
+  }
+
+  absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
+      collective_interpolator;
+  absl::StatusOr<HloInstructionProfileList> collective_profiles =
+      ReadProfiles(computation->parent()
+                       ->config()
+                       .debug_options()
+                       .xla_gpu_experimental_collective_perf_table_path(),
+                   gpu_info);
+  if (collective_profiles.ok()) {
+    collective_interpolator =
+        CollectiveInterpolator::Create(*collective_profiles, gpu_info);
+  } else {
+    collective_interpolator = CollectiveInterpolator::Create(gpu_info);
+  }
+  if (collective_interpolator.ok()) {
+    collective_interpolator_ = *std::move(collective_interpolator);
   }
 }
 

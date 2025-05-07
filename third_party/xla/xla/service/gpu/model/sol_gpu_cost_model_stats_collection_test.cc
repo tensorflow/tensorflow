@@ -18,19 +18,24 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
+
+using ::testing::DoubleNear;
+using ::testing::Property;
 
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
 
@@ -53,7 +58,8 @@ class SolGpuCostModelStatsCollectionTest
   }
 
  protected:
-  se::DeviceDescription device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  se::DeviceDescription device_info_ =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo(se::CudaComputeCapability(9, 0));
   ShapeSizeFn shape_size_fn_;
 };
 
@@ -85,10 +91,13 @@ TEST_F(SolGpuCostModelStatsCollectionTest,
   VLOG(1) << module->ToString();
 
   EXPECT_FALSE(changed);
-  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-  CHECK: ar-start
-  CHECK-SAME: "exec_time_us":1
-  )"));
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->operand(0)
+                  ->backend_config<GpuBackendConfig>()
+                  ->reification_cost(),
+              ElementsAre(Property(&ReificationCost::exec_time_us,
+                                   DoubleNear(643.1, /*max_abs_error=*/0.1))));
 }
 
 }  // namespace

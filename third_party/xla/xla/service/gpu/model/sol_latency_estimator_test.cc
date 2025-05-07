@@ -26,8 +26,10 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -50,7 +52,8 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
  protected:
   SolLatencyEstimatorTest()
       : shape_size_fn_(HloCostAnalysis::DefaultShapeSize),
-        gpu_device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo()),
+        gpu_device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo(
+            se::CudaComputeCapability(9, 0))),
         sol_flags_({
             /*nccl_op_launch_time=*/absl::Microseconds(100),
             /*nic_speed_gbps=*/100,
@@ -95,10 +98,9 @@ ENTRY main {
     use_global_device_ids=true,
     dimensions={1}
   ROOT ag-done = bf16[16000,8000] all-gather-done(ag-start)
-
 })",
       /*opcode=*/HloOpcode::kAllGatherStart,
-      /*expected_latency=*/absl::Microseconds(2303),
+      /*expected_latency=*/GpuPerformanceModelBase::kNcclKernelLaunchOverhead,
   };
 
   EstimatorTestCase all_gather_inter_host_pairwise = {
@@ -116,7 +118,7 @@ ENTRY main {
   ROOT ag-done = bf16[16000,8000] all-gather-done(ag-start)
 })",
       /*opcode=*/HloOpcode::kAllGatherStart,
-      /*expected_latency=*/absl::Microseconds(2178),
+      /*expected_latency=*/absl::Microseconds(5445),
   };
 
   EstimatorTestCase all_gather_all_ranks = {
@@ -164,7 +166,7 @@ ENTRY main {
   ROOT rs-done = bf16[64,128256] async-done(rs-start)
 })",
       /*opcode=*/HloOpcode::kAsyncStart,
-      /*expected_latency=*/absl::Microseconds(18894),
+      /*expected_latency=*/absl::Microseconds(18895),
   };
 
   return {
