@@ -245,6 +245,10 @@ int main(int argc, char** argv) {
       // This test expects copies to multiple devices to fail, but we only have
       // one device and it doesn't seem worth pretending that we have more.
       "-ArrayImplTest.CopyMixedSourceDevices:"
+      // String arrays are not supported in NanoIfrtClient.
+      "ArrayImplTest.MakeArrayFromHostBufferAndCopyToHostBufferWithString:"
+      "ArrayImplTest."
+      "MakeArraysFromHostBufferShardsAndCopyToHostBufferWithString:"
       // `MakeErrorArrays` is not supported in NanoIfrtClient.
       "ArrayImplTest.MakeErrorArrays";
   xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);

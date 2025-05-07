@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -66,6 +68,17 @@ std::vector<Device*> GetNonAddressableDevices(Client* client) {
     }
   }
   return devices;
+}
+
+// Returns all addressable CPU devices in the client.
+std::vector<Device*> GetAddressableCpuDevices(Client* client) {
+  std::vector<Device*> cpu_devices;
+  for (const auto& device : client->GetAllDevices()) {
+    if (device->IsAddressable() && device->Kind() == "cpu") {
+      cpu_devices.push_back(device);
+    }
+  }
+  return cpu_devices;
 }
 
 TEST(ArrayImplTest, MakeArrayFromHostBuffer) {
@@ -580,6 +593,159 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentMemoryKinds) {
     status = result.status();
   }
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBufferWithString) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  auto cpu_devices = GetAddressableCpuDevices(client.get());
+  if (cpu_devices.empty()) {
+    GTEST_SKIP()
+        << "This test is relevant only for clients with at least 1 CPU device";
+  }
+
+  DType dtype(DType::kString);
+  Shape shape({2, 3});
+  auto cords = std::make_shared<std::vector<absl::Cord>>();
+  cords->reserve(shape.num_elements());
+  for (int64_t k = 0; k < shape.num_elements(); ++k) {
+    cords->push_back(absl::Cord(absl::StrCat("string-", k)));
+  }
+  void* data_ptr = static_cast<void*>(cords->data());
+  Device* device = cpu_devices.front();
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array,
+      client->MakeArrayFromHostBuffer(
+          data_ptr, dtype, shape,
+          /*byte_strides=*/std::nullopt, std::move(sharding),
+          Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
+          /*on_done_with_host_buffer=*/[cords = std::move(cords)]() {}));
+
+  std::vector<absl::Cord> out_data(shape.num_elements());
+  auto future =
+      array->CopyToHostBuffer(out_data.data(), /*byte_strides=*/std::nullopt,
+                              ArrayCopySemantics::kAlwaysCopy);
+  TF_ASSERT_OK(future.Await());
+  for (int k = 0; k < shape.num_elements(); ++k) {
+    EXPECT_EQ(out_data[k].Flatten(), absl::StrCat("string-", k))
+        << "Unexpected data at element " << k;
+  }
+}
+
+TEST(ArrayImplTest,
+     MakeArraysFromHostBufferShardsAndCopyToHostBufferWithString) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  auto cpu_devices = GetAddressableCpuDevices(client.get());
+  if (cpu_devices.size() < 2) {
+    GTEST_SKIP()
+        << "This test is relevant only for clients with at least 2 CPU devices";
+  }
+
+  DType dtype(DType::kString);
+  Shape shape({2, 3});
+  Shape shard_shape({1, 3});
+
+  auto cords0 = std::make_shared<std::vector<absl::Cord>>();
+  cords0->reserve(shard_shape.num_elements());
+  for (int64_t k = 0; k < shard_shape.num_elements(); ++k) {
+    cords0->push_back(absl::Cord(absl::StrCat("string-", k)));
+  }
+  void* data_ptr0 = static_cast<void*>(cords0->data());
+
+  auto cords1 = std::make_shared<std::vector<absl::Cord>>();
+  cords1->reserve(shard_shape.num_elements());
+  for (int64_t k = 0; k < shard_shape.num_elements(); ++k) {
+    cords1->push_back(absl::Cord(absl::StrCat("string-", k + 100)));
+  }
+  void* data_ptr1 = static_cast<void*>(cords1->data());
+
+  absl::Span<Device* const> devices =
+      absl::MakeConstSpan(cpu_devices).subspan(0, 2);
+  TF_ASSERT_OK_AND_ASSIGN(
+      ShardingRef sharding,
+      ShardingParamSharding::Create(
+          ShardingParam(
+              /*dim_shards=*/{2, 1},
+              {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}}),
+          client->MakeDeviceList(devices), MemoryKind()));
+
+  std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
+  // Create two arrays with the same sharding, but swapped host buffers (data0
+  // and data1).
+  specs.push_back({
+      /*buffers=*/{
+          {{0},
+           {data_ptr0, dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/[cords0]() {}}},
+          {{1},
+           {data_ptr1, dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/[cords1]() {}}}},
+      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+  });
+  specs.push_back({
+      /*buffers=*/{
+          {{0},
+           {data_ptr1, dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/[cords1]() {}}},
+          {{1},
+           {data_ptr0, dtype, shard_shape, /*byte_strides=*/std::nullopt,
+            /*on_done_with_host_buffer=*/[cords0]() {}}}},
+      /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+  });
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arrays,
+      client->MakeArraysFromHostBufferShards(
+          absl::MakeSpan(specs),
+          Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
+          client->CreateUserContext()));
+  ASSERT_THAT(arrays, SizeIs(2));
+
+  // Resetting these references does not necessarily destroy host buffers
+  // immediately. The host buffer will be destroyed once the transfer also
+  // finishes and `on_done_with_host_buffer` is destroyed.
+  //
+  // There is no need to reset references, but doing so in this test may shorten
+  // the lifetime of host buffers and help detect an incorrect API
+  // implementation as a form of use-after-free if the implementation destroyed
+  // `on_done_with_host_buffer` prematurely.
+  cords0 = nullptr;
+  cords1 = nullptr;
+
+  for (int i = 0; i < arrays.size(); ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto single_device_arrays,
+        arrays[i]->DisassembleIntoSingleDeviceArrays(
+            ArrayCopySemantics::kAlwaysCopy,
+            SingleDeviceShardSemantics::kAddressableShards));
+    ASSERT_EQ(single_device_arrays.size(), devices.size());
+    for (int j = 0; j < single_device_arrays.size(); ++j) {
+      EXPECT_THAT(single_device_arrays[j]->sharding().devices()->devices(),
+                  ElementsAre(devices[j]))
+          << "Unexpected array sharding devices for array " << i << " shard "
+          << j;
+
+      std::vector<absl::Cord> out_data(shard_shape.num_elements());
+      auto future = single_device_arrays[j]->CopyToHostBuffer(
+          out_data.data(),
+          /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
+      TF_ASSERT_OK(future.Await());
+      if ((i + j) % 2 == 0) {
+        for (int k = 0; k < shard_shape.num_elements(); ++k) {
+          EXPECT_EQ(out_data[k].Flatten(), absl::StrCat("string-", k))
+              << "Unexpected data at array " << i << " shard " << j
+              << " element " << k;
+        }
+      } else {
+        for (int k = 0; k < shard_shape.num_elements(); ++k) {
+          EXPECT_EQ(out_data[k].Flatten(), absl::StrCat("string-", k + 100))
+              << "Unexpected data at array " << i << " shard " << j
+              << " element " << k;
+        }
+      }
+    }
+  }
 }
 
 TEST(ArrayImplTest, MakeErrorArrays) {
