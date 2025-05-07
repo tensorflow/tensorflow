@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/cpu/tfrt_raw_buffer.h"
+#include "xla/pjrt/cpu/raw_buffer.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -25,12 +25,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
-#include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
+#include "xla/pjrt/cpu/abstract_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
@@ -38,7 +37,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
@@ -49,14 +47,14 @@ limitations under the License.
 
 namespace xla {
 
-void TfrtCpuTrackedDeviceEventPromise::Set(
+void CpuTrackedDeviceEventPromise::Set(
     tsl::RCReference<PjRtDeviceEvent> event) {
   auto tpu_event =
-      tensorflow::down_cast<TfrtCpuTrackedDeviceEvent*>(event.get())->event();
+      tensorflow::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
   av_->ForwardTo(std::move(tpu_event));
 }
 
-PjRtFuture<> TfrtCpuTrackedDeviceEvent::GetReadyFuture() {
+PjRtFuture<> CpuTrackedDeviceEvent::GetReadyFuture() {
   PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
   event_.AndThen([promise, event = event_]() mutable {
     if (auto* error = event.GetErrorIfPresent()) {
@@ -84,26 +82,23 @@ PjRtFuture<> TfrtCpuTrackedDeviceEvent::GetReadyFuture() {
       });
 }
 
-void TfrtCpuTrackedDeviceEvent::AndThen(absl::AnyInvocable<void() &&> cb) {
+void CpuTrackedDeviceEvent::AndThen(absl::AnyInvocable<void() &&> cb) {
   event_.AndThen(std::move(cb));
 }
 
-/*static*/ absl::StatusOr<tsl::RCReference<TfrtCpuRawBuffer>>
-TfrtCpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes) {
+/*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
+CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes) {
   TF_ASSIGN_OR_RETURN(auto memory, CpuDeviceMemory::Allocate(size_bytes));
-  return tsl::MakeRef<TfrtCpuRawBuffer>(memory_space, std::move(memory));
+  return tsl::MakeRef<CpuRawBuffer>(memory_space, std::move(memory));
 }
 
-size_t TfrtCpuRawBuffer::GetOnDeviceSizeInBytes() const {
+size_t CpuRawBuffer::GetOnDeviceSizeInBytes() const {
   return buffer_->size_bytes();
 }
 
-void* TfrtCpuRawBuffer::GetHostPointer() const {
-  return buffer_->untyped_data();
-}
+void* CpuRawBuffer::GetHostPointer() const { return buffer_->untyped_data(); }
 
-absl::Status TfrtCpuRawBuffer::ValidateSlice(int64_t offset,
-                                             int64_t slice_size) {
+absl::Status CpuRawBuffer::ValidateSlice(int64_t offset, int64_t slice_size) {
   size_t buffer_size = GetOnDeviceSizeInBytes();
   if (offset < 0 || offset > buffer_size || buffer_size - offset < slice_size) {
     return InvalidArgument(
@@ -115,18 +110,17 @@ absl::Status TfrtCpuRawBuffer::ValidateSlice(int64_t offset,
 }
 
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-TfrtCpuRawBuffer::CopyRawHostToDeviceAndReturnEvent(const void* src,
-                                                    int64_t offset,
-                                                    int64_t transfer_size) {
+CpuRawBuffer::CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
+                                                int64_t transfer_size) {
   TF_RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
   std::memcpy(static_cast<uint8_t*>(GetHostPointer()) + offset, src,
               transfer_size);
-  return tsl::MakeRef<TfrtCpuTrackedDeviceEvent>(
+  return tsl::MakeRef<CpuTrackedDeviceEvent>(
       tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
-PjRtFuture<> TfrtCpuRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
-                                                   int64_t transfer_size) {
+PjRtFuture<> CpuRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
+                                               int64_t transfer_size) {
   auto s = ValidateSlice(offset, transfer_size);
   if (!s.ok()) {
     return PjRtFuture<>(s);
@@ -136,10 +130,9 @@ PjRtFuture<> TfrtCpuRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
   return PjRtFuture<>(absl::OkStatus());
 }
 
-absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-TfrtCpuRawBuffer::CopyFromLiteral(const LiteralSlice& literal,
-                                  const xla::Layout& layout,
-                                  AsyncWorkRunner* async_work_runner) {
+absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> CpuRawBuffer::CopyFromLiteral(
+    const LiteralSlice& literal, const xla::Layout& layout,
+    AsyncWorkRunner* async_work_runner) {
   const xla::Shape& shape = literal.shape();
   if ((shape.has_layout() &&
        !xla::LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) ||
@@ -155,8 +148,8 @@ TfrtCpuRawBuffer::CopyFromLiteral(const LiteralSlice& literal,
                buffer->size_bytes());
     event.SetStateConcrete();
   });
-  return tsl::MakeRef<TfrtCpuTrackedDeviceEvent>(
-      std::move(event), "TfrtCpuRawBuffer", "CopyFromLiteral");
+  return tsl::MakeRef<CpuTrackedDeviceEvent>(std::move(event), "CpuRawBuffer",
+                                             "CopyFromLiteral");
 }
 
 absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(

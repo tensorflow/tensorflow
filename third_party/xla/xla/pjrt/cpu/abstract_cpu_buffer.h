@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_CPU_ABSTRACT_TFRT_CPU_BUFFER_H_
-#define XLA_PJRT_CPU_ABSTRACT_TFRT_CPU_BUFFER_H_
+#ifndef XLA_PJRT_CPU_ABSTRACT_CPU_BUFFER_H_
+#define XLA_PJRT_CPU_ABSTRACT_CPU_BUFFER_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -77,7 +77,7 @@ class MarkEventReadyOnExit {
   tsl::AsyncValueRef<CpuEvent> event_;
 };
 
-class AbstractTfrtCpuBuffer : public CommonPjRtBuffer {
+class AbstractCpuBuffer : public CommonPjRtBuffer {
  public:
   class ScopedHold : public CommonPjRtBuffer::ScopedHold {
    public:
@@ -87,19 +87,19 @@ class AbstractTfrtCpuBuffer : public CommonPjRtBuffer {
     }
     TrackedCpuDeviceBuffer* operator->() const { return buffer(); }
     const TrackedCpuDeviceBuffer& operator*() const { return *buffer(); }
-    AbstractTfrtCpuBuffer* parent() const {
-      return static_cast<AbstractTfrtCpuBuffer*>(
+    AbstractCpuBuffer* parent() const {
+      return static_cast<AbstractCpuBuffer*>(
           CommonPjRtBuffer::ScopedHold::parent());
     }
 
    private:
     using CommonPjRtBuffer::ScopedHold::ScopedHold;
-    friend class AbstractTfrtCpuBuffer;
+    friend class AbstractCpuBuffer;
   };
-  AbstractTfrtCpuBuffer(
+  AbstractCpuBuffer(
       Shape on_device_shape,
       std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer);
-  ~AbstractTfrtCpuBuffer() override;
+  ~AbstractCpuBuffer() override;
 
   const Shape& on_device_shape() const override { return on_device_shape_; }
 
@@ -187,7 +187,7 @@ class AbstractTfrtCpuBuffer : public CommonPjRtBuffer {
       const Shape& shape, AsyncWorkRunner* async_work_runner,
       absl::Mutex* transpose_mu, TransposePlanCache* transpose_cache);
 
-  // Returns a hold on the TrackedTfrtTpuDeviceBuffer holding the device
+  // Returns a hold on the TrackedCpuDeviceBuffer holding the device
   // buffers. See comment on ScopedHold.
   ScopedHold GetBufferWithHold(ScopedHold::Type type);
 
@@ -251,4 +251,4 @@ void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
 
 }  // namespace xla
 
-#endif  // XLA_PJRT_CPU_ABSTRACT_TFRT_CPU_BUFFER_H_
+#endif  // XLA_PJRT_CPU_ABSTRACT_CPU_BUFFER_H_

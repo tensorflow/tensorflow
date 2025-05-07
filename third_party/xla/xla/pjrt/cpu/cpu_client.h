@@ -47,7 +47,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/common_pjrt_client.h"
-#include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
+#include "xla/pjrt/cpu/abstract_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_device.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
@@ -311,7 +311,7 @@ class TfrtCpuClient final : public CommonPjRtClient {
       tsl::MakeAvailableAsyncValueRef<CpuEvent>();
 };
 
-class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
+class TfrtCpuBuffer final : public AbstractCpuBuffer {
  public:
   TfrtCpuBuffer(Shape on_device_shape,
                 std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,

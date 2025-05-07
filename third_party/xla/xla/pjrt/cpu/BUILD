@@ -64,14 +64,14 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "abstract_tfrt_cpu_buffer",
+    name = "abstract_cpu_buffer",
     srcs = [
-        "abstract_tfrt_cpu_buffer.cc",
-        "tfrt_raw_buffer.cc",
+        "abstract_cpu_buffer.cc",
+        "raw_buffer.cc",
     ],
     hdrs = [
-        "abstract_tfrt_cpu_buffer.h",
-        "tfrt_raw_buffer.h",
+        "abstract_cpu_buffer.h",
+        "raw_buffer.h",
     ],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_buffer_internal_users"]),
     deps = [
@@ -158,7 +158,7 @@ cc_library(
     hdrs = ["cpu_client.h"],
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_client_users"]),
     deps = [
-        ":abstract_tfrt_cpu_buffer",
+        ":abstract_cpu_buffer",
         ":cpu_async_execution_tracker",
         ":cpu_device",
         ":cpu_event",

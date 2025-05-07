@@ -399,13 +399,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
   }
   // Annotate tensors with the buffer indices. This way, the buffer propagation
   // pass can clean them up later.
-  int next_slice_index = 0;
-  absl::flat_hash_map<BufferAllocation::Slice, std::optional<int>>
-      slice_indices;
-  auto get_arg_attrs = [&](int index) -> absl::StatusOr<mlir::Attribute> {
+  auto get_arg_attrs = [&](int index) -> mlir::Attribute {
     if (!args) {
       return builder.getDictionaryAttr({builder.getNamedAttr(
-          "xla.slice_index", builder.getIndexAttr(next_slice_index++))});
+          "xla.slice_index", builder.getIndexAttr(index))});
     }
 
     const auto& arg = args->args()[index];
@@ -425,24 +422,21 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
     return builder.getDictionaryAttr(attrs);
   };
 
+  auto result_types = emitters::ShapeToMlirTypes(fusion.shape(), builder);
+
   SmallVector<mlir::Attribute> arg_attrs;
-  int arg_index = 0;
-  for (auto* param : fusion.operands()) {
+  arg_attrs.reserve(fusion.operands().size() + result_types.size());
+
+  for (auto [arg_index, param] : llvm::enumerate(fusion.operands())) {
     param_types.push_back(
         emitters::TensorShapeToMlirType(param->shape(), builder));
-    TF_ASSIGN_OR_RETURN(arg_attrs.emplace_back(), get_arg_attrs(arg_index++));
+    arg_attrs.push_back(get_arg_attrs(arg_index));
   }
 
-  auto result_types = emitters::ShapeToMlirTypes(fusion.shape(), builder);
-  param_types.append(result_types.begin(), result_types.end());
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      fusion.shape(), [&](const auto& shape, const ShapeIndex& index) {
-        if (shape.IsArray()) {
-          TF_ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
-                              get_arg_attrs(arg_index++));
-        }
-        return absl::OkStatus();
-      }));
+  for (auto [result_index, type] : llvm::enumerate(result_types)) {
+    param_types.push_back(type);
+    arg_attrs.push_back(get_arg_attrs(fusion.operands().size() + result_index));
+  }
 
   builder.setInsertionPointToStart(module->getBody());
   auto entry_func = builder.create<FuncOp>(

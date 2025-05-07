@@ -46,13 +46,23 @@ Compiler::TargetConfig::TargetConfig(const se::GpuTargetConfigProto& proto)
     : device_description({proto.gpu_device_info()}),
       platform_name(proto.platform_name()),
       dnn_version_info(proto.dnn_version_info()),
-      device_description_str(proto.device_description_str()) {}
+      device_description_str(proto.device_description_str()) {
+  se::SemanticVersion runtime_version(proto.runtime_version().major(),
+                                      proto.runtime_version().minor(),
+                                      proto.runtime_version().patch());
+  device_description.set_runtime_version(runtime_version);
+}
 
 se::GpuTargetConfigProto Compiler::TargetConfig::ToProto() const {
   stream_executor::GpuTargetConfigProto proto;
   *proto.mutable_gpu_device_info() = device_description.ToGpuProto();
   proto.set_platform_name(platform_name);
   *proto.mutable_dnn_version_info() = dnn_version_info.ToProto();
+  se::RuntimeVersionProto runtime_version_proto;
+  runtime_version_proto.set_major(device_description.runtime_version().major());
+  runtime_version_proto.set_minor(device_description.runtime_version().minor());
+  runtime_version_proto.set_patch(device_description.runtime_version().patch());
+  *proto.mutable_runtime_version() = runtime_version_proto;
   proto.set_device_description_str(device_description_str);
   return proto;
 }

@@ -38,13 +38,14 @@ TEST(TargetConfigTest, DISABLED_ON_CPU(ExecutorConstructorFillsAllFields)) {
   // We don't attempt to validate values because doing so would require talking
   // to the driver directly.
   EXPECT_GT(target.dnn_version_info().major(), 0) << target.DebugString();
+  EXPECT_GT(target.runtime_version().major(), 0) << target.DebugString();
   EXPECT_GT(target.gpu_device_info().threads_per_block_limit(), 0)
       << target.DebugString();
   EXPECT_NE(target.device_description_str(), "") << target.DebugString();
   EXPECT_NE(target.platform_name(), "") << target.DebugString();
   EXPECT_EQ(target.autotune_results().version(), 0);
 
-  EXPECT_EQ(5,
+  EXPECT_EQ(6,
             stream_executor::GpuTargetConfigProto::descriptor()->field_count())
       << "Make sure all the fields in GpuTargetConfigProto are set and "
          "validated!";
@@ -54,6 +55,7 @@ TEST(TargetConfigTest, ProtoConstructorFillsAllFields) {
   stream_executor::GpuTargetConfigProto config_proto;
   config_proto.set_platform_name("platform");
   config_proto.mutable_dnn_version_info()->set_major(2);
+  config_proto.mutable_runtime_version()->set_major(12);
   config_proto.mutable_gpu_device_info()->set_threads_per_block_limit(5);
   config_proto.set_device_description_str("foo");
 
@@ -63,13 +65,16 @@ TEST(TargetConfigTest, ProtoConstructorFillsAllFields) {
   EXPECT_EQ(target.dnn_version_info().major(),
             config_proto.dnn_version_info().major())
       << target.DebugString();
+  EXPECT_EQ(target.runtime_version().major(),
+            config_proto.runtime_version().major())
+      << target.DebugString();
   EXPECT_EQ(target.gpu_device_info().threads_per_block_limit(), 5)
       << target.DebugString();
   EXPECT_EQ(target.device_description_str(), "foo") << target.DebugString();
   EXPECT_EQ(target.platform_name(), "platform") << target.DebugString();
   EXPECT_EQ(target.autotune_results().version(), 0);
 
-  EXPECT_EQ(5,
+  EXPECT_EQ(6,
             stream_executor::GpuTargetConfigProto::descriptor()->field_count())
       << "Make sure all the fields in GpuTargetConfigProto are set and "
          "validated!";

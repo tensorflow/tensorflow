@@ -1,0 +1,252 @@
+diff --git a/shardy/dialect/sdy/ir/attrs.td b/shardy/dialect/sdy/ir/attrs.td
+index 27aa8cd..a1d21f4 100644
+--- a/shardy/dialect/sdy/ir/attrs.td
++++ b/shardy/dialect/sdy/ir/attrs.td
+@@ -576,9 +576,10 @@ def Sdy_TensorSharding : AttrDef<Sdy_Dialect, "TensorSharding"> {
+     - Elements in `dim_shardings` must satisfy the constraints listed in `DimensionShardingAttr`.
+     - Elements in `replicated_axes` must satisfy the constraints listed in `AxisRefListAttr`.
+     - If the corresponding tensor type isn't a `ShapedType`, the sharding must have rank 0 and no replicated axes.
+-    - The tensor should have a rank.
+-    - The number of dimension shardings is equal to the rank of the tensor.
+-    - Dimensions of size 0 aren't sharded.
++    - If it is a `ShapedType`, then:
++      - The tensor should have a rank.
++      - The number of dimension shardings is equal to the rank of the tensor.
++      - Dimensions of size 0 aren't sharded.
+     - Items in `replicated_axes` are ordered w.r.t. `mesh_or_ref` (see `AxisRefAttr::getMeshComparator`).
+   }];
+   let parameters = (ins
+diff --git a/shardy/dialect/sdy/ir/ops.td b/shardy/dialect/sdy/ir/ops.td
+index ebfb06d..fbf80d5 100644
+--- a/shardy/dialect/sdy/ir/ops.td
++++ b/shardy/dialect/sdy/ir/ops.td
+@@ -17,6 +17,7 @@ limitations under the License.
+ #define SDY_OPS
+ 
+ include "mlir/Interfaces/SideEffectInterfaces.td"
++include "mlir/IR/AttrTypeBase.td"
+ include "mlir/IR/BuiltinAttributeInterfaces.td"
+ include "mlir/IR/OpBase.td"
+ include "mlir/IR/SymbolInterfaces.td"
+@@ -141,6 +142,9 @@ def Sdy_ManualComputationOp : Sdy_Op<"manual_computation",
+     The body is local wrt the manual_axes. Propagation will occur through
+     the body on any free axes - those not in the manual_axes list.
+ 
++    Note that any unranked tensors are expected to have a sharding with rank 0,
++    i.e. fully replicated.
++
+     **Constraints:**
+     - Elements in `in_shardings` and `out_shardings` must satisfy the constraints listed in `TensorShardingAttr`.
+     - The number of global and local tensor inputs/outputs of the op region must match.
+@@ -151,12 +155,12 @@ def Sdy_ManualComputationOp : Sdy_Op<"manual_computation",
+   }];
+ 
+   let arguments = (ins
+-    Variadic<AnyRankedTensor>:$tensors,
++    Variadic<AnyType>:$tensors,
+     Sdy_TensorShardingPerValue:$in_shardings,
+     Sdy_TensorShardingPerValue:$out_shardings,
+     Sdy_ManualAxes:$manual_axes
+   );
+-  let results = (outs Variadic<AnyRankedTensor>:$results);
++  let results = (outs Variadic<AnyType>:$results);
+   let regions = (region SizedRegion<1>:$body);
+ 
+   let assemblyFormat = [{
+diff --git a/shardy/dialect/sdy/ir/test/manual_computation_verification.mlir b/shardy/dialect/sdy/ir/test/manual_computation_verification.mlir
+index e07c803..22bd93f 100644
+--- a/shardy/dialect/sdy/ir/test/manual_computation_verification.mlir
++++ b/shardy/dialect/sdy/ir/test/manual_computation_verification.mlir
+@@ -328,3 +328,18 @@ func.func @correct_dynamic_dim_static_dim_mismatch(%arg0: tensor<?x32xf32>) -> t
+   } : (tensor<?x32xf32>) -> tensor<?x64xf32>
+   func.return %0: tensor<?x64xf32>
+ }
++
++// -----
++
++sdy.mesh @mesh = <["a"=2]>
++
++func.func @ranked_sharding_on_token(%arg0: !stablehlo.token) -> !stablehlo.token {
++  // expected-error @+1 {{'sdy.manual_computation' op operand - non-shaped tensors can only have a sharding with rank 0 and no replicated axes.}}
++  %0 = sdy.manual_computation(%arg0)
++      in_shardings=[<@mesh, [{"a"}]>]
++      out_shardings=[<@mesh, [{"a"}]>]
++      manual_axes={"b"} (%arg1: !stablehlo.token) {
++    sdy.return %arg1 : !stablehlo.token
++  } : (!stablehlo.token) -> !stablehlo.token
++  return %0 : !stablehlo.token
++}
+diff --git a/shardy/dialect/sdy/ir/verifiers.cc b/shardy/dialect/sdy/ir/verifiers.cc
+index 9bcab5f..ccbb6f2 100644
+--- a/shardy/dialect/sdy/ir/verifiers.cc
++++ b/shardy/dialect/sdy/ir/verifiers.cc
+@@ -859,9 +859,14 @@ LogicalResult verifyManualComputationValue(
+     }
+ 
+     SmallVector<int64_t> newDimSizes;
+-    auto globalRankedType = mlir::cast<RankedTensorType>(globalType);
++    auto globalShapedType = mlir::dyn_cast<ShapedType>(globalType);
++    if (!globalShapedType) {
++      // Skipping verification for non-shaped types. This could for example be
++      // a token type.
++      continue;
++    }
+     for (auto [dimensionSize, dimSharding] : llvm::zip_equal(
+-             globalRankedType.getShape(), sharding.getDimShardings())) {
++        globalShapedType.getShape(), sharding.getDimShardings())) {
+       if (dimensionSize == ShapedType::kDynamic) {
+         newDimSizes.push_back(ShapedType::kDynamic);
+       } else {
+@@ -884,7 +889,7 @@ LogicalResult verifyManualComputationValue(
+     // 6. Verify the global shape and local shapes of the op regions
+     //    arguments/results match.
+     auto expectedLocalRankedType =
+-        RankedTensorType::get(newDimSizes, globalRankedType.getElementType());
++        RankedTensorType::get(newDimSizes, globalShapedType.getElementType());
+     auto localRankedType = mlir::cast<RankedTensorType>(localType);
+     if (expectedLocalRankedType != localRankedType) {
+       return op->emitOpError(valueKindStr)
+diff --git a/shardy/dialect/sdy/transforms/import/manual_axes_cleanup.cc b/shardy/dialect/sdy/transforms/import/manual_axes_cleanup.cc
+index 67e2042..4bf5d06 100644
+--- a/shardy/dialect/sdy/transforms/import/manual_axes_cleanup.cc
++++ b/shardy/dialect/sdy/transforms/import/manual_axes_cleanup.cc
+@@ -25,9 +25,11 @@ limitations under the License.
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/SymbolTable.h"
++#include "mlir/IR/TypeRange.h"
+ #include "mlir/Pass/Pass.h"  // IWYU pragma: keep
+ #include "mlir/Rewrite/FrozenRewritePatternSet.h"
+ #include "mlir/Support/LLVM.h"
+@@ -49,12 +51,17 @@ namespace {
+ // its mesh with `commonMeshOrRef`.
+ std::optional<SmallVector<TensorShardingAttr>>
+ addUnusedManualAxesToReplicatedAxes(
+-    ArrayRef<TensorShardingAttr> shardings, ArrayRef<StringAttr> manualAxes,
+-    Attribute commonMeshOrRef, const SymbolTable& symbolTable,
++    ArrayRef<TensorShardingAttr> shardings, TypeRange types,
++    ArrayRef<StringAttr> manualAxes, Attribute commonMeshOrRef,
++    const SymbolTable& symbolTable,
+     std::function<bool(AxisRefAttr lhs, AxisRefAttr rhs)> meshComparator) {
+   SmallVector<TensorShardingAttr> newShardings;
+   bool modified = false;
+-  for (TensorShardingAttr sharding : shardings) {
++  for (auto [sharding, type] : llvm::zip_equal(shardings, types)) {
++    if (!isa<ShapedType>(type)) {
++      newShardings.push_back(sharding);
++      continue;
++    }
+     llvm::SmallSet<StringRef, 2> unusedManualAxes;
+     unusedManualAxes.insert(manualAxes.begin(), manualAxes.end());
+     sharding.forEachAxisRef([&unusedManualAxes](AxisRefAttr axis) {
+@@ -97,15 +104,15 @@ void addUnusedManualAxesToReplicatedAxes(ManualComputationOp op, MeshAttr mesh,
+ 
+   if (std::optional<SmallVector<TensorShardingAttr>> newShardings =
+           addUnusedManualAxesToReplicatedAxes(
+-              op.getInShardings().getShardings(), manualAxes, commonMeshOrRef,
+-              symbolTable, meshComparator)) {
++              op.getInShardings().getShardings(), op->getOperandTypes(),
++              manualAxes, commonMeshOrRef, symbolTable, meshComparator)) {
+     op.setInShardings(*newShardings);
+   }
+ 
+   if (std::optional<SmallVector<TensorShardingAttr>> newShardings =
+           addUnusedManualAxesToReplicatedAxes(
+-              op.getOutShardings().getShardings(), manualAxes, commonMeshOrRef,
+-              symbolTable, meshComparator)) {
++              op.getOutShardings().getShardings(), op->getResultTypes(),
++              manualAxes, commonMeshOrRef, symbolTable, meshComparator)) {
+     op.setOutShardings(*newShardings);
+   }
+ }
+diff --git a/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir b/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir
+index bcdd692..8379926 100644
+--- a/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir
++++ b/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir
+@@ -180,6 +180,23 @@ func.func @named_computation_skip_tokens(%arg0: tensor<8x2xi32>, %arg1: !stableh
+   return %0#0, %0#1 : tensor<8x2xi32>, !stablehlo.token
+ }
+ 
++// CHECK-LABEL: func @manual_computation_skip_tokens
++func.func @manual_computation_skip_tokens(%arg0: tensor<8x2xi32>, %arg1: !stablehlo.token) -> (tensor<8x2xi32>, !stablehlo.token) {
++  // CHECK-NEXT: %[[MC:.*]]:2 = sdy.manual_computation(%arg0, %arg1)
++  // CHECK-NEXT:   %[[EDGE_1:.*]] = sdy.data_flow_edge %arg2 sharding=<@mesh, [{"a", ?}, {?}]> : tensor<8x2xi32>
++  // CHECK-NEXT:   sdy.return %[[EDGE_1]], %arg3 : tensor<8x2xi32>, !stablehlo.token
++  // CHECK-NEXT: } : (tensor<8x2xi32>, !stablehlo.token) -> (tensor<8x2xi32>, !stablehlo.token)
++  // CHECK-NEXT: %[[EDGE_2:.*]] = sdy.data_flow_edge %[[MC]]#0 sharding=<@mesh, [{"a", ?}, {?}], replicated={"b"}> : tensor<8x2xi32>
++  // CHECK-NEXT: return %[[EDGE_2]], %[[MC]]#1 : tensor<8x2xi32>, !stablehlo.token
++  %0:2 = sdy.manual_computation(%arg0, %arg1)
++      in_shardings=[<@mesh, [{"a", ?}, {?}], replicated={"b"}>, <@mesh, []>]
++      out_shardings=[<@mesh, [{"a", ?}, {?}], replicated={"b"}>, <@mesh, []>]
++      manual_axes={"b"}  (%arg2: tensor<8x2xi32>, %arg3: !stablehlo.token) {
++    sdy.return %arg2, %arg3 : tensor<8x2xi32>, !stablehlo.token
++  } : (tensor<8x2xi32>, !stablehlo.token) -> (tensor<8x2xi32>, !stablehlo.token)
++  return %0#0, %0#1 : tensor<8x2xi32>, !stablehlo.token
++}
++
+ // CHECK-LABEL: func @manual_computation_multiple_inputs_outputs
+ func.func @manual_computation_multiple_inputs_outputs(%arg0: tensor<8x2xi32>, %arg1: tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>) {
+   // CHECK-NEXT: %[[MC:.*]]:2 = sdy.manual_computation(%arg0, %arg1)
+diff --git a/shardy/dialect/sdy/transforms/import/test/manual_axes_cleanup.mlir b/shardy/dialect/sdy/transforms/import/test/manual_axes_cleanup.mlir
+index e2f9d1d..b37708b 100644
+--- a/shardy/dialect/sdy/transforms/import/test/manual_axes_cleanup.mlir
++++ b/shardy/dialect/sdy/transforms/import/test/manual_axes_cleanup.mlir
+@@ -126,3 +126,18 @@ func.func @empty_mesh_operand(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+   } : (tensor<8xf32>) -> tensor<8xf32>
+   return %0 : tensor<8xf32>
+ }
++
++// CHECK-LABEL: @dont_add_manual_axes_to_non_shaped_types
++func.func @dont_add_manual_axes_to_non_shaped_types(%arg0: !stablehlo.token, %arg1: tensor<8xf32>) -> (!stablehlo.token, tensor<8xf32>) {
++  // CHECK-NEXT: sdy.manual_computation(%arg0, %arg1)
++  // CHECK-SAME{LITERAL}: in_shardings=[<@mesh, []>, <@mesh, [{?}], replicated={"c"}>]
++  // CHECK-SAME{LITERAL}: out_shardings=[<@mesh, []>, <@mesh, [{?}], replicated={"c"}>]
++  // CHECK-SAME{LITERAL}: manual_axes={"c"} (%arg2: !stablehlo.token, %arg3: tensor<8xf32>) {
++  %0:2 = sdy.manual_computation(%arg0, %arg1)
++      in_shardings=[<@mesh, []>, <@mesh, [{?}]>]
++      out_shardings=[<@mesh, []>, <@mesh, [{?}]>]
++      manual_axes={"c"} (%arg2: !stablehlo.token, %arg3: tensor<8xf32>) {
++    sdy.return %arg2, %arg3 : !stablehlo.token, tensor<8xf32>
++  } : (!stablehlo.token, tensor<8xf32>) -> (!stablehlo.token, tensor<8xf32>)
++  return %0#0, %0#1 : !stablehlo.token, tensor<8xf32>
++}
+diff --git a/shardy/dialect/sdy/transforms/propagation/test/basic_propagation_manual_computation.mlir b/shardy/dialect/sdy/transforms/propagation/test/basic_propagation_manual_computation.mlir
+index f48fcac..f79adf5 100644
+--- a/shardy/dialect/sdy/transforms/propagation/test/basic_propagation_manual_computation.mlir
++++ b/shardy/dialect/sdy/transforms/propagation/test/basic_propagation_manual_computation.mlir
+@@ -488,3 +488,31 @@ func.func @dont_propagate_into_in_sharding_closed_dim_from_outside(%arg0: tensor
+   } : (tensor<32x32xf32>) -> tensor<32x32xf32>
+   func.return %1: tensor<32x32xf32>
+ }
++
++// CHECK-LABEL: func @manual_computation_with_tokens
++// CHECK-SAME:      %arg0: !stablehlo.token {sdy.sharding = #sdy.sharding<@mesh, []>},
++// CHECK-SAME:      %arg1: tensor<4x4xi64> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {"b", ?}]>})
++// CHECK-SAME:      -> (!stablehlo.token, tensor<4x4xi64> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b", ?}]>}) {
++func.func @manual_computation_with_tokens(
++    %arg0: !stablehlo.token {sdy.sharding = #sdy.sharding<@mesh, []>},
++    %arg1: tensor<4x4xi64> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {?}]>}
++) -> (!stablehlo.token, tensor<4x4xi64>) {
++  // CHECK-NEXT: %[[MAN_COMP:.*]]:2 = sdy.manual_computation(%arg0, %arg1)
++  // CHECK-SAME{LITERAL}:   in_shardings=[<@mesh, []>, <@mesh, [{"a", ?}, {"b"}]>]
++  // CHECK-SAME{LITERAL}:   out_shardings=[<@mesh, []>, <@mesh, [{"a", ?}, {"b"}]>]
++  // CHECK-SAME{LITERAL}:   manual_axes={"b"} (%arg2: !stablehlo.token, %arg3: tensor<4x2xi64>) {
++  // CHECK-NEXT:   %[[TOK:.*]] = stablehlo.custom_call @sdy_testonly(%arg2) : (!stablehlo.token) -> !stablehlo.token
++  // CHECK-NEXT:   %[[ADD:.*]] = stablehlo.add %arg3, %arg3 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", ?}, {?}]>]>} : tensor<4x2xi64>
++  // CHECK-NEXT:   sdy.return %[[TOK]], %[[ADD]] : !stablehlo.token, tensor<4x2xi64>
++  // CHECK-NEXT: } : (!stablehlo.token, tensor<4x4xi64>) -> (!stablehlo.token, tensor<4x4xi64>)
++  // CHECK-NEXT: return %[[MAN_COMP]]#0, %[[MAN_COMP]]#1 : !stablehlo.token, tensor<4x4xi64>
++  %0:2 = sdy.manual_computation(%arg0, %arg1)
++      in_shardings=[<@mesh, []>, <@mesh, [{?}, {"b"}]>]
++      out_shardings=[<@mesh, []>, <@mesh, [{?}, {"b"}]>]
++      manual_axes={"b"} (%arg2: !stablehlo.token, %arg3: tensor<4x2xi64>) {
++    %1 = stablehlo.custom_call @sdy_testonly(%arg2) : (!stablehlo.token) -> (!stablehlo.token)
++    %2 = stablehlo.add %arg3, %arg3 : tensor<4x2xi64>
++    sdy.return %1, %2 : !stablehlo.token, tensor<4x2xi64>
++  } : (!stablehlo.token, tensor<4x4xi64>) -> (!stablehlo.token, tensor<4x4xi64>)
++  return %0#0, %0#1 : !stablehlo.token, tensor<4x4xi64>
++}
