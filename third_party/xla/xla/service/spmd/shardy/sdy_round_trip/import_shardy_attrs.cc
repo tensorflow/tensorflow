@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/ScopedPrinter.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -76,19 +75,20 @@ using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::OpShardingRuleAttr;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
+using ::mlir::stablehlo::CustomCallOp;
 
 namespace stablehlo = ::mlir::stablehlo;
 
-stablehlo::CustomCallOp dynCastX64CombineCustomCall(Operation* op) {
-  auto customCallOp = mlir::dyn_cast<stablehlo::CustomCallOp>(op);
+CustomCallOp dynCastX64CombineCustomCall(Operation* op) {
+  auto customCallOp = mlir::dyn_cast<CustomCallOp>(op);
   if (!customCallOp || customCallOp.getCallTargetName() != "X64Combine") {
     return nullptr;
   }
   return customCallOp;
 }
 
-stablehlo::CustomCallOp getX64CombineOnFuncResultSharding(
-    stablehlo::CustomCallOp funcResultSharding) {
+CustomCallOp getX64CombineOnFuncResultSharding(
+    CustomCallOp funcResultSharding) {
   if (funcResultSharding.getNumResults() != 2 ||
       !funcResultSharding.getResult(0).hasOneUse() ||
       !funcResultSharding.getResult(1).hasOneUse()) {
@@ -100,6 +100,63 @@ stablehlo::CustomCallOp getX64CombineOnFuncResultSharding(
     return nullptr;
   }
   return dynCastX64CombineCustomCall(lhsUser);
+}
+
+void handleFuncResultSharding(CustomCallOp funcResultSharding, FuncOp funcOp,
+                              DictionaryAttr dictAttr, IRRewriter& rewriter) {
+  // This is a temporary CustomCallOp that holds the sharding from a
+  // func result. When importing we want to move that sharding to the
+  // func result and delete the CustomCallOp.
+  auto shardingPerValueAttr = parseStringAttr<TensorShardingPerValueAttr>(
+      dictAttr, kShardingRoundTripAttr);
+
+  auto resultUses = funcResultSharding->getUses();
+  auto x64CombineOp = getX64CombineOnFuncResultSharding(funcResultSharding);
+  if (x64CombineOp) {
+    // X64Rewriter pass will pass through the two split 32-bit operands to
+    // the `xla.sdy.FuncResultSharding`, which will return two 32-bit results,
+    // that would then be passed to a `X64Combine` custom-call. Therefore, we
+    // need to look at the uses of the `X64Combine` instead to find the
+    // corresponding `func.return` op.
+    mlir::sdy::setShardings(x64CombineOp, shardingPerValueAttr);
+    resultUses = x64CombineOp->getUses();
+  } else if (auto* defOp = funcResultSharding.getOperand(0).getDefiningOp();
+             defOp && funcResultSharding->use_empty()) {
+    // It `funcResultSharding` has no uses, it is likely because it has a
+    // dimension of size 0 (i.e. 0 num-elements), in which case its uses will be
+    // replaced with a constant of the same shape, which will replace the
+    // operand of the `funcResultSharding`.
+    resultUses = defOp->getUses();
+  }
+  TensorShardingAttr sharding = shardingPerValueAttr.getSharding(0);
+  bool hasNonFuncReturnUses = false;
+  for (mlir::OpOperand& use : llvm::make_early_inc_range(resultUses)) {
+    if (mlir::isa<mlir::func::ReturnOp>(use.getOwner())) {
+      funcOp.setResultAttr(use.getOperandNumber(), kShardingAttr,
+                           shardingPerValueAttr.getSharding(0));
+    } else if (use.getOwner() != funcResultSharding &&
+               !dynCastX64CombineCustomCall(use.getOwner())) {
+      hasNonFuncReturnUses = true;
+      LOG(WARNING) << std::string_view(  // non-absl ok
+                          kFuncResultShardingTargetName)
+                   << " custom-call has a user that isn't `func.return` ("
+                   << std::string_view(  // non-absl ok
+                          use.getOwner()->getName().getStringRef())
+                   << "). Please file a bug with a reproducer.";
+    }
+  }
+  if (hasNonFuncReturnUses && !x64CombineOp) {
+    // If there are users that are not the func return op, which might happen
+    // due to inlined func ops that originally had result shardings, we replace
+    // the `xla.sdy.FuncResultSharding` with a `ShardingConstraintOp` to
+    // preserve the original func result sharding.
+    rewriter.setInsertionPoint(funcResultSharding);
+    CHECK_EQ(funcResultSharding.getNumOperands(), 1);
+    rewriter.replaceOpWithNewOp<mlir::sdy::ShardingConstraintOp>(
+        funcResultSharding, funcResultSharding.getOperand(0), sharding);
+  } else {
+    rewriter.replaceOp(funcResultSharding, funcResultSharding.getOperands());
+  }
 }
 
 // Builds the shardy attributes coming from Shardy previously. This means
@@ -151,46 +208,10 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
     // which may mean the shapes are wrong when the new instruction is a reshape
     // for example. This does mean we can't fully round-trip b/w HLO and MLIR
     // after SDY propagation.
-    if (auto customCallOp = mlir::dyn_cast<stablehlo::CustomCallOp>(op)) {
+    if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
       StringRef targetName = customCallOp.getCallTargetName();
       if (targetName == kFuncResultShardingTargetName) {
-        // This is a temporary CustomCallOp that holds the sharding from a
-        // func result. When importing we want to move that sharding to the
-        // func result and delete the CustomCallOp.
-        auto shardingPerValueAttr = parseStringAttr<TensorShardingPerValueAttr>(
-            dictAttr, kShardingRoundTripAttr);
-
-        auto resultUses = customCallOp->getUses();
-        if (auto x64CombineOp =
-                getX64CombineOnFuncResultSharding(customCallOp)) {
-          // X64Rewriter pass will pass through the two split 32-bit operands to
-          // the `kFuncResultShardingTargetName`, which will return two 32-bit
-          // results, that would then be passed to a `X64Combine` custom-call.
-          // Therefore, we need to look at the uses of the `X64Combine` instead
-          // to find the corresponding `func.return` op.
-          mlir::sdy::setShardings(x64CombineOp, shardingPerValueAttr);
-          resultUses = x64CombineOp->getUses();
-        }
-        for (mlir::OpOperand& use : llvm::make_early_inc_range(resultUses)) {
-          // We currently ignore users that are not the func return op.
-          // This might happen due to inlined func ops that originally had
-          // result shardings.
-          // TODO(b/370984308): explore if we need to support this properly.
-          if (mlir::isa<mlir::func::ReturnOp>(use.getOwner())) {
-            funcOp.setResultAttr(use.getOperandNumber(), kShardingAttr,
-                                 shardingPerValueAttr.getSharding(0));
-          } else if (!dynCastX64CombineCustomCall(use.getOwner())) {
-            LOG(WARNING)
-                << std::string_view(  // non-absl ok
-                       kFuncResultShardingTargetName)
-                << " custom-call has a user that isn't `func.return` ("
-                << std::string_view(  // non-absl ok
-                       use.getOwner()->getName().getStringRef())
-                << "), which will be ignored. Please file a bug with a "
-                << "reproducer.";
-          }
-        }
-        rewriter.replaceOp(customCallOp, customCallOp.getOperands());
+        handleFuncResultSharding(customCallOp, funcOp, dictAttr, rewriter);
         return;
       }
       if (targetName == kShardingCustomCallTargetName ||
