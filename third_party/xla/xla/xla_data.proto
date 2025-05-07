@@ -226,21 +226,34 @@ message SplitConfigProto {
 // LINT.IfChange
 message LayoutProto {
   // Sequence of dimension indices, from minor (fastest varying index) to major
-  // (slowest varying index). The size of this field must equal the table's
-  // rank.
+  // (slowest varying index). The size of this field must equal the array's
+  // number of dimensions.
   repeated int64 minor_to_major = 1;
 
+  // The following 3 repeated fields describe the attributes of each dimension
+  // in the array. The i-th element in each of these fields corresponds to the
+  // i-th dimension in the array.
+  //
+  // Conceputally, these lists should have the same length as the number of
+  // dimensions. However, as an optimization, each list may be shorter than
+  // the number of dimensions. In this case, the remaining dimensions have the
+  // default attribute value.
+
   // The dimension level type list for this array, specifying the way in which
-  // each array dimension is represented in memory. If this list is empty, the
-  // array is assumed to be dense.
+  // each array dimension is represented in memory. If shorter than the number
+  // of dimensions, the remaining dimensions are assumed to be dense.
   repeated DimLevelType dim_level_types = 9;
 
-  // Whether each dimension is unique or ordered.  Each of the following lists
-  // must either be empty or have one entry for each entry of dim_level_types.
-  // If either list is empty, all dimensions are assumed to be unique or
-  // ordered, respectively.  Entries in this list may not be false for some
-  // DimLevelType values (such as DIM_DENSE in particular).
+  // Whether each dimension is unique. If shorter than the number of
+  // dimensions, the remaining dimensions are assumed to be unique.
+  // If the corresponding dimension level type is DIM_DENSE, this field must be
+  // true.
   repeated bool dim_unique = 13;
+
+  // Whether each dimension is ordered. If shorter than the number of
+  // dimensions, the remaining dimensions are assumed to be ordered.
+  // If the corresponding dimension level type is DIM_DENSE, this field must be
+  // true.
   repeated bool dim_ordered = 14;
 
   // A sequence of tiles, starting from the tile that's applied first to the
@@ -312,8 +325,8 @@ message LayoutProto {
 // A shape describes the number of dimensions in the array, the size of each
 // dimension, and the primitive component type.
 //
-// Tuples are a special case in that they have rank zero and have tuple_shapes
-// defined.
+// Tuples are a special case in that they have no dimensions and have
+// tuple_shapes defined.
 //
 // See https://openxla.org/xla/shapes for more information on shapes and
 // layouts.
@@ -686,7 +699,7 @@ message GatherDimensionNumbers {
   // The window indices for a specific output index Out is computed as:
   //
   //  i = 0
-  //  for (k : [0, input_tensor_shape.rank))
+  //  for (k : [0, input_tensor_shape.dimensions().size())
   //    window_indices[k] =
   //      if k in collapsed_slice_dims
   //      then 0
@@ -929,8 +942,8 @@ message OpSharding {
   Type type = 1;
   // The shape of the sharded tile.
   ShapeProto tile_shape = 2;
-  // The shape of the tile assignment tensor - this must be the same rank as
-  // tile_shape and the product of its dimensions must equal
+  // The shape of the tile assignment tensor - this must be the same number of
+  // dimensions as tile_shape and the product of its dimensions must equal
   // tile_assignment_devices.size().
   repeated int64 tile_assignment_dimensions = 3;
   // Flattened list of device IDs. The order of flattening is the same as used
