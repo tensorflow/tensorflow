@@ -47,21 +47,69 @@ enum class BfsTraversalDirection : std::int8_t { kForward, kReverse };
 //
 // If the expand_node_fn returns false for a node, the children of the node
 // will not be visited.
+//
+// Both per_node_fn and expand_node_fn receive an 'int distance' parameter,
+// representing the distance (number of edges) from the start node(s) to the
+// currently visited node.
 void HloGumgraphBfs(
-    const HloInstructionNode& start_node,
-    absl::FunctionRef<bool(const HloInstructionNode&)> per_node_fn,
+    absl::Span<const HloInstructionNode* const> start_nodes,
+    absl::FunctionRef<bool(const HloInstructionNode&, int distance)>
+        per_node_fn,
     BfsTraversalDirection direction, int node_limit,
-    absl::FunctionRef<bool(const HloInstructionNode&)> expand_node_fn =
-        [](const HloInstructionNode&) { return true; });
+    absl::FunctionRef<bool(const HloInstructionNode&, int distance)>
+        expand_node_fn =
+            [](const HloInstructionNode&, int distance) { return true; });
 
-// Breadth first search from multiple start nodes. Check comment of
-// HloGumgraphBfs for more details.
-void HloGumgraphBfs(
+// Same function as above but with a single start node.
+inline void HloGumgraphBfs(
+    const HloInstructionNode& start_node,
+    absl::FunctionRef<bool(const HloInstructionNode&, int distance)>
+        per_node_fn,
+    BfsTraversalDirection direction, int node_limit,
+    absl::FunctionRef<bool(const HloInstructionNode&, int distance)>
+        expand_node_fn =
+            [](const HloInstructionNode&, int distance) { return true; }) {
+  return HloGumgraphBfs(std::vector<const HloInstructionNode*>({&start_node}),
+                        per_node_fn, direction, node_limit, expand_node_fn);
+};
+
+// Breadth first search from multiple start nodes. Takes no extra distance
+// parameter.
+inline void HloGumgraphBfs(
     absl::Span<const HloInstructionNode* const> start_nodes,
     absl::FunctionRef<bool(const HloInstructionNode&)> per_node_fn,
     BfsTraversalDirection direction, int node_limit,
     absl::FunctionRef<bool(const HloInstructionNode&)> expand_node_fn =
-        [](const HloInstructionNode&) { return true; });
+        [](const HloInstructionNode&) { return true; }) {
+  HloGumgraphBfs(
+      start_nodes,
+      [&](const HloInstructionNode& node, int distance) {
+        return per_node_fn(node);
+      },
+      direction, node_limit,
+      [&](const HloInstructionNode& node, int distance) {
+        return expand_node_fn(node);
+      });
+};
+
+// Performs a breadth first search of the HLO Module starting with specified
+// instruction node. Takes no extra distance parameter.
+inline void HloGumgraphBfs(
+    const HloInstructionNode& start_node,
+    absl::FunctionRef<bool(const HloInstructionNode&)> per_node_fn,
+    BfsTraversalDirection direction, int node_limit,
+    absl::FunctionRef<bool(const HloInstructionNode&)> expand_node_fn =
+        [](const HloInstructionNode&) { return true; }) {
+  HloGumgraphBfs(
+      std::vector<const HloInstructionNode*>({&start_node}),
+      [&](const HloInstructionNode& node, int distance) {
+        return per_node_fn(node);
+      },
+      direction, node_limit,
+      [&](const HloInstructionNode& node, int distance) {
+        return expand_node_fn(node);
+      });
+}
 
 // Returns all nodes start from the given node in BFS order. Check comment of
 // HloGumgraphBfs for more details.

@@ -69,19 +69,18 @@ class GreedySubGraphExactMatcher : public HloGumgraphMatcher {
 // Dice similarity: Number of nodes to traverse in subgraph are limited.
 class GreedyLimitedCandidatesBottomUpMatcher : public HloGumgraphMatcher {
  public:
-  GreedyLimitedCandidatesBottomUpMatcher(const HloGumgraph* left,
-                                         const HloGumgraph* right,
-                                         double min_similarity = 1.2,
-                                         int max_dice_subgraph_size = 200,
-                                         int max_ancestors_to_consider = 100,
-                                         int right_seeds_traversal_limit = 40,
-                                         int candidate_traversal_limit = 200)
+  GreedyLimitedCandidatesBottomUpMatcher(
+      const HloGumgraph* left, const HloGumgraph* right,
+      double min_similarity = 1.2, int max_dice_subgraph_size = 200,
+      int min_bfs_distance = 1, int max_ancestors_to_consider = 100,
+      int right_seeds_traversal_limit = 40, int candidate_traversal_limit = 200)
       : HloGumgraphMatcher(
             MatcherType::kGreedyLimitedCandidatesBottomUpMatcher),
         left_(*ABSL_DIE_IF_NULL(left)),
         right_(*ABSL_DIE_IF_NULL(right)),
         min_similarity_(min_similarity),
         max_dice_subgraph_size_(max_dice_subgraph_size),
+        min_bfs_distance_(min_bfs_distance),
         max_ancestors_to_consider_(max_ancestors_to_consider),
         right_seeds_traversal_limit_(right_seeds_traversal_limit),
         candidate_traversal_limit_(candidate_traversal_limit) {}
@@ -95,7 +94,12 @@ class GreedyLimitedCandidatesBottomUpMatcher : public HloGumgraphMatcher {
   const double min_similarity_;
 
   // Maximum size of the subgraph to consider when calculating dice similarity.
+  // Subject to min_bfs_distance_.
   const int max_dice_subgraph_size_;
+
+  // Minimum height of the subgraph to consider when find seeds and candidates
+  // and calculate dice similarity.
+  const int min_bfs_distance_;
 
   // Maximum number of ancestors to consider when calculating ancestor
   // similarity.

@@ -156,22 +156,24 @@ void RecursiveTopDownMatcher(const HloInstructionNode* left,
 double DiceSimLimitedSubgraph(const HloInstructionNode* absl_nonnull left,
                               const HloInstructionNode* absl_nonnull right,
                               HloGumgraphMappings& mappings,
-                              int max_subgraph_size, int left_graph_size,
-                              int right_graph_size) {
+                              int max_subgraph_size, int min_bfs_distance,
+                              int left_graph_size, int right_graph_size) {
   absl::flat_hash_set<const HloInstructionNode*> left_nodes;
   absl::flat_hash_set<const HloInstructionNode*> right_nodes;
   HloGumgraphBfs(
       *left,
-      [&](const HloInstructionNode& node) {
+      [&](const HloInstructionNode& node, int distance) {
         left_nodes.insert(&node);
-        return left_nodes.size() < max_subgraph_size;
+        return distance <= min_bfs_distance ||
+               left_nodes.size() < max_subgraph_size;
       },
       BfsTraversalDirection::kForward, left_graph_size);
   HloGumgraphBfs(
       *right,
-      [&](const HloInstructionNode& node) {
+      [&](const HloInstructionNode& node, int distance) {
         right_nodes.insert(&node);
-        return right_nodes.size() < max_subgraph_size;
+        return distance <= min_bfs_distance ||
+               right_nodes.size() < max_subgraph_size;
       },
       BfsTraversalDirection::kForward, right_graph_size);
   int common = 0;
@@ -223,23 +225,28 @@ double NodeAttributesSimilarity(const HloInstructionNode* absl_nonnull left,
 double AncestorSubGraphSimilarity(const HloInstructionNode* left,
                                   const HloInstructionNode* right,
                                   const int candidate_traversal_limit,
+                                  const int min_bfs_distance,
                                   int left_graph_size, int right_graph_size) {
   absl::flat_hash_map<uint64_t, int> left_ancestor_fingerprints,
       right_ancestor_fingerprints;
   int left_traversal_count = 0;
   HloGumgraphBfs(
       *left,
-      [&](const HloInstructionNode& node) {
+      [&](const HloInstructionNode& node, int distance) {
         ++left_ancestor_fingerprints[node.props.fingerprint];
-        return ++left_traversal_count < candidate_traversal_limit;
+        ++left_traversal_count;
+        return distance <= min_bfs_distance ||
+               left_traversal_count < candidate_traversal_limit;
       },
       BfsTraversalDirection::kReverse, left_graph_size);
   int right_traversal_count = 0;
   HloGumgraphBfs(
       *right,
-      [&](const HloInstructionNode& node) {
+      [&](const HloInstructionNode& node, int distance) {
         ++right_ancestor_fingerprints[node.props.fingerprint];
-        return ++right_traversal_count < candidate_traversal_limit;
+        ++right_traversal_count;
+        return distance <= min_bfs_distance ||
+               right_traversal_count < candidate_traversal_limit;
       },
       BfsTraversalDirection::kReverse, right_graph_size);
 
@@ -465,7 +472,7 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
     int count = 0;
     HloGumgraphBfs(
         *left_node,
-        [&](const HloInstructionNode& node) {
+        [&](const HloInstructionNode& node, int distance) {
           if (auto it = mappings.left_to_right_instruction_map.left.find(&node);
               it != mappings.left_to_right_instruction_map.left.end()) {
             right_seeds.push_back(it->second);
@@ -476,7 +483,8 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
           if (node.children.size() > right_seeds_traversal_limit_ / 2) {
             return false;
           }
-          return ++count < right_seeds_traversal_limit_;
+          return distance <= min_bfs_distance_ ||
+                 ++count < right_seeds_traversal_limit_;
         },
         BfsTraversalDirection::kForward, left_.GetNodeCount());
 
@@ -486,7 +494,7 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
     count = 0;
     HloGumgraphBfs(
         right_seeds,
-        [&](const HloInstructionNode& node) {
+        [&](const HloInstructionNode& node, int distance) {
           if (!mappings.InstructionMapContainsRight(&node) &&
               node.instruction->opcode() == left_node->instruction->opcode()) {
             // Found candidate. Calculate similarity.
@@ -495,11 +503,11 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
                 mappings);
             double dice_sim = DiceSimLimitedSubgraph(
                 left_node, &node, mappings, max_dice_subgraph_size_,
-                left_.GetNodeCount(), right_.GetNodeCount());
+                min_bfs_distance_, left_.GetNodeCount(), right_.GetNodeCount());
             double node_attributes_similarity =
                 NodeAttributesSimilarity(left_node, &node);
             double ancestor_similarity = AncestorSubGraphSimilarity(
-                left_node, &node, max_ancestors_to_consider_,
+                left_node, &node, max_ancestors_to_consider_, min_bfs_distance_,
                 left_.GetNodeCount(), right_.GetNodeCount());
             // We give ancestor similarity a lower weight as its lower signal
             // in comparison to dice similarity and node attributes similarity.
@@ -511,7 +519,8 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
               right_candidate = &node;
             }
           }
-          return ++count < candidate_traversal_limit_;
+          return distance <= min_bfs_distance_ ||
+                 ++count < right_seeds_traversal_limit_;
         },
         BfsTraversalDirection::kReverse, right_.GetNodeCount());
     if (max_similarity > min_similarity_) {
