@@ -1,4 +1,6 @@
-"""Build rules for XLA testing. This file is only used for the OSS build."""
+"""Build rules for XLA testing. This file is only used for the OSS build and running tests on
+github.
+"""
 
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -207,6 +209,9 @@ def xla_test(
         fail_if_no_test_linked = True,
         **kwargs):
     """Generates strict_cc_test targets for the given XLA backends.
+
+    This rule is similar to platforms/.../build_defs.bzl but only meant for running the tests on
+    github.
 
     This rule generates a cc_test target for one or more XLA backends. The arguments
     are identical to cc_test with two additions: 'backends' and 'backend_args'.
