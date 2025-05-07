@@ -296,7 +296,9 @@ struct CompiledMemoryStats {
   int64_t host_alias_size_in_bytes = 0;
   int64_t host_temp_size_in_bytes = 0;
 
-  std::string serialized_hlo_proto = "";
+  std::string serialized_hlo_proto;  // Deprecated; use `buffer_assignment`.
+  std::optional<xla::BufferAssignmentProto> buffer_assignment;
+
   std::string DebugString() const;
 
   CompiledMemoryStatsProto ToProto() const;

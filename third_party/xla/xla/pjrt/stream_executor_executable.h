@@ -103,9 +103,7 @@ class StreamExecutorExecutable : public PjRtExecutable {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffers,
                           aot_executable->buffer_assignment());
 
-      const HloModule& module = *aot_executable->optimized_module();
-      HloProto proto = MakeHloProto(module);
-      memory_stats.serialized_hlo_proto = proto.SerializeAsString();
+      memory_stats.buffer_assignment = buffers->ToProto();
       memory_stats.PopulateBufferStatsFromAllocations(buffers->Allocations());
       return memory_stats;
     } else {
@@ -116,9 +114,10 @@ class StreamExecutorExecutable : public PjRtExecutable {
             "Retrieving CompiledMemoryStats is not supported for multiple "
             "executables.");
       }
-      const HloProto* proto = local_executables[0]->executable()->hlo_proto();
+      const BufferAssignmentProto* proto =
+          local_executables[0]->executable()->buffer_assignment_proto();
       if (proto != nullptr) {
-        memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+        memory_stats.buffer_assignment = *proto;
       }
       memory_stats.PopulateBufferStatsFromAllocations(
           local_executables[0]->executable()->GetAllocations());

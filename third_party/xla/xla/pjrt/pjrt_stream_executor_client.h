@@ -750,9 +750,10 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
     }
     CompiledMemoryStats memory_stats = CompiledMemoryStats();
     memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
-    const HloProto* proto = executables_[0]->executable()->hlo_proto();
+    const BufferAssignmentProto* proto =
+        executables_[0]->executable()->buffer_assignment_proto();
     if (proto != nullptr) {
-      memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+      memory_stats.buffer_assignment = *proto;
     }
     memory_stats.PopulateBufferStatsFromAllocations(
         executables_[0]->executable()->GetAllocations());
