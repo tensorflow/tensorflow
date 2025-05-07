@@ -1,4 +1,4 @@
-load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load("//xla/service/cpu:build_defs.bzl", "runtime_copts")
 load("//xla/tsl:tsl.bzl", "if_google", "if_windows", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
@@ -254,6 +254,7 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/runtime:execution_graph",
         "//xla/runtime:resource_use",
+        "//xla/service:execution_graph_renderer",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
@@ -273,7 +274,7 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@local_tsl//tsl/profiler/lib:traceme",
-    ],
+    ] + xla_internal(["service:execution_graph_visualizer_google"]),
 )
 
 xla_cc_test(
