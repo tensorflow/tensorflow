@@ -16,10 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_GRAPH_VIEW_H_
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_GRAPH_VIEW_H_
 
+#include <functional>
+#include <set>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
