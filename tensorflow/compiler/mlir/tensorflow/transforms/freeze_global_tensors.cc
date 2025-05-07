@@ -209,9 +209,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       it.first->eraseOperands(it.second);
     }
 
-    if (failed(func.eraseArguments(args_to_erase))) {
-      return signalPassFailure();
-    }
+    func.eraseArguments(args_to_erase);
   }
 
   // Erase all global tensors that were frozen.

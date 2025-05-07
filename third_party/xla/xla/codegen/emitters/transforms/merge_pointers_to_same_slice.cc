@@ -78,10 +78,7 @@ struct PackedArgs {
         arg.replaceAllUsesWith(op.getArgument(replacement_args[idx]));
       }
     }
-
-    auto res = op.eraseArguments(args_to_erase);
-    (void)res;
-    assert(llvm::succeeded(res));
+    op.eraseArguments(args_to_erase);
     for (int i = 0; i < op.getNumArguments(); ++i) {
       if (op.getArgAttr(i, "xla.slice_index")) {
         op.removeArgAttr(i, "xla.slice_index");

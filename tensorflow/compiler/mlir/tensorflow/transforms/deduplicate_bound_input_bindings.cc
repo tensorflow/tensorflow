@@ -52,9 +52,7 @@ void DedupBoundInputBindingPass::runOnOperation() {
     duplicate_arg.replaceAllUsesWith(original_arg);
     arg_indices_to_erase.set(i);
   }
-  if (failed(func.eraseArguments(arg_indices_to_erase))) {
-    return signalPassFailure();
-  }
+  func.eraseArguments(arg_indices_to_erase);
 }
 
 }  // namespace

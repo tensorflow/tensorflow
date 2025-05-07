@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -69,14 +68,12 @@ void UpdateTerminatorArguments(T& func,
 
 // Erases function arguments indexed at `args_to_erase`. Also applies the
 // changes to any relevant function attributes accordingly.
-LogicalResult EraseFuncOpArguments(func::FuncOp func_op,
-                                   const ArrayRef<unsigned> args_to_erase) {
+void EraseFuncOpArguments(func::FuncOp func_op,
+                          const ArrayRef<unsigned> args_to_erase) {
   BitVector args_to_erase_bit_vector(func_op.getNumArguments());
   for (const unsigned i : args_to_erase) args_to_erase_bit_vector.set(i);
 
-  if (failed(func_op.eraseArguments(args_to_erase_bit_vector))) {
-    return failure();
-  }
+  func_op.eraseArguments(args_to_erase_bit_vector);
 
   // Erases entries in "tf._input_shapes" attribute of `func_op` that correspond
   // to the erased arguments.
@@ -96,7 +93,6 @@ LogicalResult EraseFuncOpArguments(func::FuncOp func_op,
         kTfInputShapesAttr,
         ArrayAttr::get(func_op.getContext(), updated_input_shapes_attr));
   }
-  return success();
 }
 
 // Updates 'while_op' signatures based on which arguments should be removed
@@ -240,13 +236,9 @@ LogicalResult EraseObsoleteResourceUses(
       // 3) Update function result to match the terminator.
       llvm::BitVector result_indices_to_erase;
       UpdateTerminatorArguments(func, args_to_erase, result_indices_to_erase);
-      if (failed(EraseFuncOpArguments(func, args_to_erase))) {
-        return failure();
-      }
+      EraseFuncOpArguments(func, args_to_erase);
 
-      if (failed(func.eraseResults(result_indices_to_erase))) {
-        return failure();
-      }
+      func.eraseResults(result_indices_to_erase);
     } else if (auto read_var = dyn_cast<TF::ReadVariableOp>(user_op)) {
       // Read variables was already replaced by constant op. Just remove the op.
       read_var->erase();

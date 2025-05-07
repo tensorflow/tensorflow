@@ -1,585 +1,105 @@
-diff --git a/docs/sdy_op_interfaces.md b/docs/sdy_op_interfaces.md
-index f5ea571..88ffc07 100755
---- a/docs/sdy_op_interfaces.md
-+++ b/docs/sdy_op_interfaces.md
-@@ -236,17 +236,6 @@ Gets the non-owner targets of a data flow edge given the edge `owner`.
- 
- NOTE: This method *must* be implemented by the user.
- 
--#### `shouldKeepEdgeOwnerShardingsDivisible`
--
--```c++
--bool shouldKeepEdgeOwnerShardingsDivisible();
--```
--
--Returns true if the sharding of the edge owners divides the
--dimension size, to avoid the need for padding.
--
--NOTE: This method *must* be implemented by the user.
--
- ## ShardingRuleOpInterface (`Sdy_ShardingRuleOpInterface`)
- 
- An op interface that allows the op to define its own sharding rule.
-@@ -266,14 +255,3 @@ mlir::sdy::OpShardingRuleAttr getShardingRule();
- Returns the sharding rule of the op.
- 
- NOTE: This method *must* be implemented by the user.
--
--#### `shouldKeepOutputShardingsDivisible`
--
--```c++
--bool shouldKeepOutputShardingsDivisible();
--```
--
--Returns true if the output sharding divides the dimension size,
--to avoid the need for padding.
--
--NOTE: This method *must* be implemented by the user.
-diff --git a/shardy/dialect/sdy/ir/op_interface.td b/shardy/dialect/sdy/ir/op_interface.td
-index 82741d8..e069f74 100644
---- a/shardy/dialect/sdy/ir/op_interface.td
-+++ b/shardy/dialect/sdy/ir/op_interface.td
-@@ -185,17 +185,6 @@ def Sdy_ShardableDataFlowOpInterface : OpInterface<"ShardableDataFlowOpInterface
-       /*methodBody=*/"",
-       /*defaultImplementation=*/"return {};"
-     >,
--    InterfaceMethod<
--      /*desc=*/[{
--        Returns true if the sharding of the edge owners divides the
--        dimension size, to avoid the need for padding.
--      }],
--      /*retType=*/"bool",
--      /*methodName=*/"shouldKeepEdgeOwnerShardingsDivisible",
--      /*args=*/(ins),
--      /*methodBody=*/"",
--      /*defaultImplementation=*/"return false;"
--    >,
-   ];
- 
-   let extraClassDeclaration = [{
-@@ -246,17 +235,6 @@ def Sdy_ShardingRuleOpInterface : OpInterface<"ShardingRuleOpInterface"> {
-       /*retType=*/"mlir::sdy::OpShardingRuleAttr",
-       /*methodName=*/"getShardingRule"
-     >,
--    InterfaceMethod<
--      /*desc=*/[{
--        Returns true if the output sharding divides the dimension size,
--        to avoid the need for padding.
--      }],
--      /*retType=*/"bool",
--      /*methodName=*/"shouldKeepOutputShardingsDivisible",
--      /*args=*/(ins),
--      /*methodBody=*/"",
--      /*defaultImplementation=*/"return false;"
--    >,
-   ];
- }
- 
-diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
-index 84d3e94..b6ce598 100644
---- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
-+++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
-@@ -1845,215 +1845,6 @@ func.func @custom_call(%arg0: tensor<128x128xf32> {sdy.sharding = #sdy.sharding<
-   return %0 : tensor<128x128xf32>
- }
- 
--// CHECK-LABEL: func @custom_call_inspect_sharding
--func.func @custom_call_inspect_sharding(%arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=4, j=8}>
--  // CHECK-NOT: sdy.reshard
--  %0 = stablehlo.custom_call @InspectSharding(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x"}]>]>} : (tensor<4x8xf32>) -> tensor<4x8xf32>
--  return %0 : tensor<4x8xf32>
--}
--
--// CHECK-LABEL: func @custom_call_x64_combine
--func.func @custom_call_x64_combine(%arg0: tensor<8x2xui32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, %arg1: tensor<8x2xui32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x":(1)2}]>}) -> (tensor<8x2xui64> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, j])->([i, j]) {i=8, j=2}>
--  // CHECK-NOT: sdy.reshard
--  %0 = stablehlo.custom_call @X64Combine(%arg0, %arg1) {backend_config = "", sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {"y"}]>]>} : (tensor<8x2xui32>, tensor<8x2xui32>) -> tensor<8x2xui64>
--  return %0 : tensor<8x2xui64>
--}
--
--// CHECK-LABEL: func @custom_call_x64_split_high
--func.func @custom_call_x64_split_high(%arg0: tensor<8x2xui64> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<8x2xui32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x":(1)2}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=2}>
--  // CHECK-NOT: sdy.reshard
--  %0 = stablehlo.custom_call @X64SplitHigh(%arg0) {backend_config = "", sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x":(1)2}]>]>}  : (tensor<8x2xui64>) -> tensor<8x2xui32>
--  return %0 : tensor<8x2xui32>
--}
--
--// CHECK-LABEL: func @custom_call_x64_split_low
--func.func @custom_call_x64_split_low(%arg0: tensor<8x2xui64> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<8x2xui32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x":(1)2}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=2}>
--  // CHECK-NOT: sdy.reshard
--  %0 = stablehlo.custom_call @X64SplitLow(%arg0) {backend_config = "", sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x":(1)2}]>]>} : (tensor<8x2xui64>) -> tensor<8x2xui32>
--  return %0 : tensor<8x2xui32>
--}
--
--// CHECK-LABEL: func @custom_call_xla_megascale_provide_metadata
--func.func @custom_call_xla_megascale_provide_metadata(%arg0: tensor<8x2xbf16> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<8x2xbf16> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x":(1)2}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=2}>
--  // CHECK-NOT: sdy.reshard
--  %0 = stablehlo.custom_call @local_xla.megascale.provide_metadata(%arg0) {backend_config = "", sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x":(1)2}]>]>} : (tensor<8x2xbf16>) -> tensor<8x2xbf16>
--  return %0 : tensor<8x2xbf16>
--}
--
--// CHECK-LABEL: func @custom_call_move_to_device
--func.func @custom_call_move_to_device(%arg0: tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=4}>
--  // CHECK-NOT: sdy.reshard
--  %0 = stablehlo.custom_call @MoveToDevice(%arg0) {backend_config = "", sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x"}]>]>} : (tensor<8x4xf32>) -> tensor<8x4xf32>
--  return %0 : tensor<8x4xf32>
--}
--
--// CHECK-LABEL: func @custom_call_move_to_host
--func.func @custom_call_move_to_host(%arg0: tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=4}>
--  // CHECK-NOT: sdy.reshard
--  %0 = stablehlo.custom_call @MoveToHost(%arg0) {backend_config = "", sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x"}]>]>} : (tensor<8x4xf32>) -> tensor<8x4xf32>
--  return %0 : tensor<8x4xf32>
--}
--
--// CHECK-LABEL: func @custom_call_layout_constraint
--func.func @custom_call_layout_constraint(%arg0: tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=4}>
--  // CHECK-NOT: sdy.reshard
--  %0 = stablehlo.custom_call @LayoutConstraint(%arg0) {backend_config = "", sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x"}]>]>} : (tensor<8x4xf32>) -> tensor<8x4xf32>
--  return %0 : tensor<8x4xf32>
--}
--
--// CHECK-LABEL: func @custom_call_eigh
--func.func @custom_call_eigh(%arg0: tensor<8x4x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}, {}]>}) -> (tensor<8x4x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {"y"}]>}, tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k])->([i, j, k], [i, k]) {i=8, j=4, k=4}>
--  // CHECK-NOT: sdy.reshard
--  %0:2 = stablehlo.custom_call @Eigh(%arg0) {backend_config = "1,1,100,1e-6", sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}, {"y"}]>, <@mesh, [{}, {"y"}]>]>} : (tensor<8x4x4xf32>) -> (tensor<8x4x4xf32>, tensor<8x4xf32>)
--  return %0#0, %0#1 : tensor<8x4x4xf32>, tensor<8x4xf32>
--}
--
--// CHECK-LABEL: func @custom_call_qr
--func.func @custom_call_qr(%arg0: tensor<8x5x3xf32>) -> (tensor<8x5x3xf32>, tensor<8x3xf32>) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k])->([i, j, k], [i, l]) {i=8, j=5, k=3, l=1}>
--  // CHECK-NOT: sdy.reshard
--  %0:2 = stablehlo.custom_call @Qr(%arg0) : (tensor<8x5x3xf32>) -> (tensor<8x5x3xf32>, tensor<8x3xf32>)
--  return %0#0, %0#1 : tensor<8x5x3xf32>, tensor<8x3xf32>
--}
--
--// CHECK-LABEL: func @custom_call_qr_decomposition_block
--func.func @custom_call_qr_decomposition_block(%arg0: tensor<8x5x3xf32>) -> (tensor<8x5x3xf32>, tensor<8x3xf32>) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k])->([i, j, k], [i, l]) {i=8, j=5, k=3, l=1}>
--  // CHECK-NOT: sdy.reshard
--  %0:2 = stablehlo.custom_call @QrDecompositionBlock(%arg0) : (tensor<8x5x3xf32>) -> (tensor<8x5x3xf32>, tensor<8x3xf32>)
--  return %0#0, %0#1 : tensor<8x5x3xf32>, tensor<8x3xf32>
--}
--
--// CHECK-LABEL: func @custom_call_householder_product
--func.func @custom_call_householder_product(%arg0: tensor<8x12x16xf32>, %arg1: tensor<8x5xf32>) -> tensor<8x12x16xf32> {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k], [i, l])->([i, j, k]) {i=8, j=12, k=16, l=1}>
--  // CHECK-NOT: sdy.reshard
--  %0 = stablehlo.custom_call @ProductOfElementaryHouseholderReflectors(%arg0, %arg1) : (tensor<8x12x16xf32>, tensor<8x5xf32>) -> tensor<8x12x16xf32>
--  return %0 : tensor<8x12x16xf32>
--}
--
--// CHECK-LABEL: func @custom_call_erf
--func.func @custom_call_erf(%arg0: tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=4}>
--  // CHECK-NOT: sdy.reshard
--  %0 = stablehlo.custom_call @mhlo.erf (%arg0) {backend_config = "", sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x"}]>]>} : (tensor<8x4xf32>) -> tensor<8x4xf32>
--  return %0 : tensor<8x4xf32>
--}
--
--// CHECK-LABEL: func @custom_call_topk_of_1d
--func.func @custom_call_topk_of_1d(%arg0: tensor<16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) -> (tensor<16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}, tensor<16xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i])->([i], [i]) {i=16}>
--  // CHECK-NOT: sdy.reshard
--  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
--    mhlo.attributes = {
--        k = 1 : i64,
--        largest = true},
--    mhlo.version = 1 : i64, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>, <@mesh, [{"x"}]>]>}
--    : (tensor<16xf32>) -> (tensor<16xf32>, tensor<16xi32>)
--  return %0#0, %0#1 : tensor<16xf32>, tensor<16xi32>
--}
--
--// CHECK-LABEL: func @custom_call_topk_of_2d
--func.func @custom_call_topk_of_2d(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<16x1xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}, tensor<16x1xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j], [i, j]) {i=16, j=8} blocked_propagation={j}>
--  // CHECK-NOT: sdy.reshard
--  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
--    mhlo.attributes = {
--        k = 1 : i64,
--        largest = true},
--    mhlo.version = 1 : i64, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>, <@mesh, [{"y"}, {}]>]>}
--    : (tensor<16x8xf32>) -> (tensor<16x1xf32>, tensor<16x1xi32>)
--  return %0#0, %0#1 : tensor<16x1xf32>, tensor<16x1xi32>
--}
--
--// CHECK-LABEL: func @custom_call_top2_of_2d
--func.func @custom_call_top2_of_2d(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<16x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, tensor<16x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x":(1)2}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j], [i, j]) {i=16, j=8} blocked_propagation={j}>
--  // CHECK-NOT: sdy.reshard
--  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
--    mhlo.attributes = {
--        k = 2 : i64,
--        largest = true},
--    mhlo.version = 1 : i64, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {"y"}]>, <@mesh, [{"y"}, {"x":(1)2}]>]>}
--    : (tensor<16x8xf32>) -> (tensor<16x2xf32>, tensor<16x2xi32>)
--  return %0#0, %0#1 : tensor<16x2xf32>, tensor<16x2xi32>
--}
--
--// CHECK-LABEL: func @custom_call_approx_topk
--func.func @custom_call_approx_topk(%arg0: tensor<16x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, %arg1: tensor<16x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x":(2)2}]>}, %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<16x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x":(1)2}, {"y"}]>}, tensor<16x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x":(1)2}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, j], [], [])->([i, j], [i, j]) {i=16, j=4} blocked_propagation={j}>
--  // CHECK-NOT: sdy.reshard
--  %0:2 = stablehlo.custom_call @ApproxTopK(%arg0, %arg1, %arg2, %arg3) {
--    mhlo.backend_config = {
--      aggregate_to_topk = true,
--      recall_target = 0.9 : f32,
--      reduction_dim = 1 : i64,
--      reduction_input_size_override = -1 : i64,
--      top_k = 2 : i64},
--    called_computations = [@top_k_gt_f32_comparator], sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(1)2}, {"y"}]>, <@mesh, [{"y"}, {"x":(1)2}]>]>} :
--    (tensor<16x4xf32>, tensor<16x4xf32>, tensor<f32>, tensor<i32>) -> (tensor<16x2xf32>, tensor<16x2xf32>)
--  return %0#0, %0#1 : tensor<16x2xf32>, tensor<16x2xf32>
--}
--
--// CHECK-LABEL: func @custom_call_approx_topk_majority_does_not_fit_all_factors
--func.func @custom_call_approx_topk_majority_does_not_fit_all_factors(%arg0: tensor<16x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>}, %arg1: tensor<16x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>}, %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<16x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x":(1)2}]>}, tensor<16x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, j], [], [])->([i, j], [i, j]) {i=16, j=4} blocked_propagation={j}>
--  // CHECK-NOT: sdy.reshard
--  %0:2 = stablehlo.custom_call @ApproxTopK(%arg0, %arg1, %arg2, %arg3) {
--    mhlo.backend_config = {
--      aggregate_to_topk = true,
--      recall_target = 0.9 : f32,
--      reduction_dim = 1 : i64,
--      reduction_input_size_override = -1 : i64,
--      top_k = 2 : i64},
--    called_computations = [@top_k_gt_f32_comparator], sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x":(1)2}]>, <@mesh, [{}, {"y"}]>]>} :
--    (tensor<16x4xf32>, tensor<16x4xf32>, tensor<f32>, tensor<i32>) -> (tensor<16x2xf32>, tensor<16x2xf32>)
--  return %0#0, %0#1 : tensor<16x2xf32>, tensor<16x2xf32>
--}
--
--// CHECK-LABEL: func @custom_call_partial_reduce
--func.func @custom_call_partial_reduce(%arg0: tensor<16x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, %arg1: tensor<16x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x":(2)2}]>}, %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<16x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x":(1)2}, {"y"}]>}, tensor<16x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x":(1)2}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, j], [], [])->([i, j], [i, j]) {i=16, j=4} blocked_propagation={j}>
--  // CHECK-NOT: sdy.reshard
--  %0:2 = stablehlo.custom_call @PartialReduce(%arg0, %arg1, %arg2, %arg3) {
--    mhlo.backend_config = {
--      aggregate_to_topk = true,
--      recall_target = 0.9 : f32,
--      reduction_dim = 1 : i64,
--      reduction_input_size_override = -1 : i64,
--      top_k = 2 : i64},
--    called_computations = [@top_k_gt_f32_comparator], sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(1)2}, {"y"}]>, <@mesh, [{"y"}, {"x":(1)2}]>]>} :
--    (tensor<16x4xf32>, tensor<16x4xf32>, tensor<f32>, tensor<i32>) -> (tensor<16x2xf32>, tensor<16x2xf32>)
--  return %0#0, %0#1 : tensor<16x2xf32>, tensor<16x2xf32>
--}
--
--// CHECK-LABEL: func @custom_call_partial_reduce_string_backend_config
--func.func @custom_call_partial_reduce_string_backend_config(%arg0: tensor<16x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}, %arg1: tensor<16x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x":(1)2}]>}, %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<16x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x":(1)2}, {"y"}]>}, tensor<16x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x":(1)2}]>}) {
--  // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, j], [], [])->([i, j], [i, j]) {i=16, j=4} blocked_propagation={j}>
--  // CHECK-NOT: sdy.reshard
--  %0:2 = stablehlo.custom_call @PartialReduce(%arg0, %arg1, %arg2, %arg3) {
--    backend_config = "{\22log2_reduction\22: 5, \22reduction_dim\22: 1, \22to_apply_type\22: \22comparator\22, \22top_k\22: 2, \22recall_target\22: 0.950000}",
--    called_computations = [@top_k_gt_f32_comparator], sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(1)2}, {"y"}]>, <@mesh, [{"y"}, {"x":(1)2}]>]>} :
--    (tensor<16x4xf32>, tensor<16x4xf32>, tensor<f32>, tensor<i32>) -> (tensor<16x2xf32>, tensor<16x2xf32>)
--  return %0#0, %0#1 : tensor<16x2xf32>, tensor<16x2xf32>
--}
--
--// CHECK-LABEL: func @unregisterd_custom_call_with_existing_rule
--func.func @unregisterd_custom_call_with_existing_rule(%arg0: tensor<4x2xf32>  {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<2x4xf32>  {sdy.sharding = #sdy.sharding<@mesh, [{"x":(1)2}, {"y"}]>}){
--  // CHECK-NOT: sdy.reshard
--  %0 = stablehlo.custom_call @foo(%arg0) {sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([j, i]) {i=4, j=2}, custom>, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(1)2}, {"y"}]>]>} : (tensor<4x2xf32>) -> tensor<2x4xf32>
--  return %0 : tensor<2x4xf32>
--}
--
- // CHECK-LABEL: func @reduce_single_result_reduction_dim_not_sharded
- func.func @reduce_single_result_reduction_dim_not_sharded(%arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}) -> tensor<2x13xf32> {
-   // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<2x64x13xf32>, tensor<f32>) -> tensor<2x13xf32>
-@@ -2540,14 +2331,3 @@ func.func @negate_different_maximal_meshes(%arg0: tensor<210xf32> {sdy.sharding
-   %0 = stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_maximal_another, []>]>} : tensor<210xf32>
-   return %0 : tensor<210xf32>
- }
--
--// CHECK-LABEL: func @rng_bit_generator
--func.func @rng_bit_generator(%arg0: tensor<2xui64> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) -> tensor<2xui64> {
--  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}]> : tensor<2xui64>
--  // CHECK-NEXT: %output_state, %output = stablehlo.rng_bit_generator %[[RESHARD1]], algorithm =  DEFAULT {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}]>, <@mesh, [{"y"}, {"x":(2)2}]>]>}
--  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %output_state <@mesh, [{"x":(1)2}]> : tensor<2xui64>
--  // CHECK-NEXT: stablehlo.negate %[[RESHARD2]]
--  %0, %output = stablehlo.rng_bit_generator %arg0, algorithm =  DEFAULT {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(1)2}]>, <@mesh, [{"y"}, {"x":(2)2}]>]>} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<4x1000xui32>)
--  %1 = stablehlo.negate %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(1)2}]>]>} : tensor<2xui64>
--  return %1 : tensor<2xui64>
--}
-diff --git a/shardy/dialect/sdy/transforms/export/update_non_divisible_input_output_shardings.cc b/shardy/dialect/sdy/transforms/export/update_non_divisible_input_output_shardings.cc
-index 84b90a9..8290a9c 100644
---- a/shardy/dialect/sdy/transforms/export/update_non_divisible_input_output_shardings.cc
-+++ b/shardy/dialect/sdy/transforms/export/update_non_divisible_input_output_shardings.cc
-@@ -15,10 +15,12 @@ limitations under the License.
- 
- #include <cassert>
- #include <cstdint>
-+#include <functional>
- #include <numeric>
- 
- #include "llvm/ADT/ArrayRef.h"
- #include "llvm/ADT/STLExtras.h"
-+#include "llvm/Support/ErrorHandling.h"
- #include "mlir/Dialect/Func/IR/FuncOps.h"
- #include "mlir/IR/BuiltinAttributes.h"
- #include "mlir/IR/BuiltinTypeInterfaces.h"
-@@ -28,10 +30,9 @@ limitations under the License.
- #include "mlir/Pass/Pass.h"  // IWYU pragma: keep
- #include "mlir/Support/LLVM.h"
- #include "mlir/Transforms/DialectConversion.h"
-+#include "shardy/dialect/sdy/ir/constants.h"
- #include "shardy/dialect/sdy/ir/dialect.h"
- #include "shardy/dialect/sdy/ir/utils.h"
--#include "mlir/IR/Visitors.h"
--#include "mlir/IR/ValueRange.h"
- 
- namespace mlir {
- namespace sdy {
-@@ -135,19 +136,6 @@ void updateValueShardings(
-   }
- }
- 
--void updateValueShardings(
--    ValueRange values,
--    func::FuncOp funcOp) {
--  updateValueShardings(
--        values.getTypes(),
--        [&](int64_t index) { return getSharding(values[index]); },
--        [&](int64_t index, TensorShardingAttr sharding) {
--          setSharding(values[index], sharding);
--        },
--        funcOp);
--}
--
--
- struct UpdateNonDivisibleInputOutputShardingsPass
-     : public impl::UpdateNonDivisibleInputOutputShardingsPassBase<
-           UpdateNonDivisibleInputOutputShardingsPass> {
-@@ -172,35 +160,6 @@ struct UpdateNonDivisibleInputOutputShardingsPass
-           setFuncResultSharding(funcOp, index, sharding);
-         },
-         funcOp);
--
--    // Update edge owner shardings for `ShardableDataFlowOp`s and
--    // `ShardingRuleOp`s.
--    // TODO: b/415294308 - Make this pass more efficient by updating shardings
--    // all at once.
--    funcOp.walk<WalkOrder::PreOrder>([&](Operation* op) {
--      return TypeSwitch<Operation*, WalkResult>(op)
--          .Case<ShardableDataFlowOpInterface>([&](ShardableDataFlowOpInterface
--                                                      shardableDataFlowOp)
--                                                  -> WalkResult {
--            if (shardableDataFlowOp.shouldKeepEdgeOwnerShardingsDivisible()) {
--              updateValueShardings(
--                  shardableDataFlowOp.getBlockArgumentEdgeOwners(), funcOp);
--              updateValueShardings(shardableDataFlowOp.getOpResultEdgeOwners(),
--                                   funcOp);
--            }
--            return WalkResult::skip();
--          })
--          .Case<ShardingRuleOpInterface>(
--              [&](ShardingRuleOpInterface shardableRuleOp) -> WalkResult {
--                if (shardableRuleOp.shouldKeepOutputShardingsDivisible()) {
--                  updateValueShardings(shardableRuleOp->getResults(), funcOp);
--                }
--                return WalkResult::skip();
--              })
--          .Default([&](Operation* op) -> WalkResult {
--            return WalkResult::advance();
--          });
--    });
-   }
- };
- 
-diff --git a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
-index 2d2c457..cfeda72 100644
---- a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
-+++ b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
-@@ -463,19 +463,14 @@ OpShardingRuleAttr createOpShardingRule(Operation* op,
-           // sharding it in the same way, given how QR decomposition is
-           // computed.
-           ArrayRef<int64_t> inShape = getTensorShape(customCall.getOperand(0));
--          ArrayRef<int64_t> outShapeRhs =
--              getTensorShape(customCall.getResult(1));
-           int64_t nonBatchDim1 = inShape.size() - 2;
-           int64_t nonBatchDim2 = inShape.size() - 1;
-           return OpShardingRuleBuilder(customCall)
-               .addPointwise(inShape.drop_back(2))
-               .addFactor(nonBatchDim1, {nonBatchDim1, kNullDim},
--                         inShape[nonBatchDim1], FactorType::kNeedReplication)
-+                         inShape[nonBatchDim1])
-               .addFactor(nonBatchDim2, {nonBatchDim2, kNullDim},
--                         inShape[nonBatchDim2], FactorType::kNeedReplication)
--              .addFactor(kNullDim, {kNullDim, nonBatchDim1},
--                         outShapeRhs[nonBatchDim1],
--                         FactorType::kNeedReplication)
-+                         inShape[nonBatchDim2])
-               .build();
-         }
-         if (callTargetName == "ProductOfElementaryHouseholderReflectors") {
-@@ -487,20 +482,15 @@ OpShardingRuleAttr createOpShardingRule(Operation* op,
-           // would require communication. The 2nd input (taus) has a single
-           // non-batch dimension that doesn't correspond to any dimension in the
-           // other tensors.
--          ArrayRef<int64_t> inShapeLhs =
--              getTensorShape(customCall.getOperand(0));
--          ArrayRef<int64_t> inShapeRhs =
--              getTensorShape(customCall.getOperand(1));
--          int64_t nonBatchDim1 = inShapeLhs.size() - 2;
--          int64_t nonBatchDim2 = inShapeLhs.size() - 1;
-+          ArrayRef<int64_t> inShape = getTensorShape(customCall.getOperand(0));
-+          int64_t nonBatchDim1 = inShape.size() - 2;
-+          int64_t nonBatchDim2 = inShape.size() - 1;
-           return OpShardingRuleBuilder(customCall)
--              .addPointwise(inShapeLhs.drop_back(2))
-+              .addPointwise(inShape.drop_back(2))
-               .addFactor({nonBatchDim1, kNullDim}, nonBatchDim1,
--                         inShapeLhs[nonBatchDim1], FactorType::kNeedReplication)
-+                         inShape[nonBatchDim1])
-               .addFactor({nonBatchDim2, kNullDim}, nonBatchDim2,
--                         inShapeLhs[nonBatchDim2], FactorType::kNeedReplication)
--              .addFactor({kNullDim, nonBatchDim1}, kNullDim,
--                         inShapeRhs[nonBatchDim1], FactorType::kNeedReplication)
-+                         inShape[nonBatchDim2])
-               .build();
-         }
-         if (callTargetName == "mhlo.topk") {
-diff --git a/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir b/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir
-index dc5acbe..f0398c0 100644
---- a/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir
-+++ b/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir
-@@ -273,21 +273,21 @@ func.func @custom_call_eigh(%arg0: tensor<8x4x4xf32>) -> (tensor<8x4x4xf32>, ten
- 
- // CHECK-LABEL: func @custom_call_qr
- func.func @custom_call_qr(%arg0: tensor<8x5x3xf32>) -> (tensor<8x5x3xf32>, tensor<8x3xf32>) {
--  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k])->([i, j, k], [i, l]) {i=8, j=5, k=3, l=3} need_replication={j, k, l}>
-+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k])->([i, j, k], [i, l]) {i=8, j=5, k=3, l=1}>
-   %0:2 = stablehlo.custom_call @Qr(%arg0) : (tensor<8x5x3xf32>) -> (tensor<8x5x3xf32>, tensor<8x3xf32>)
-   return %0#0, %0#1 : tensor<8x5x3xf32>, tensor<8x3xf32>
- }
- 
- // CHECK-LABEL: func @custom_call_qr_decomposition_block
- func.func @custom_call_qr_decomposition_block(%arg0: tensor<8x5x3xf32>) -> (tensor<8x5x3xf32>, tensor<8x3xf32>) {
--  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k])->([i, j, k], [i, l]) {i=8, j=5, k=3, l=3} need_replication={j, k, l}>
-+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k])->([i, j, k], [i, l]) {i=8, j=5, k=3, l=1}>
-   %0:2 = stablehlo.custom_call @QrDecompositionBlock(%arg0) : (tensor<8x5x3xf32>) -> (tensor<8x5x3xf32>, tensor<8x3xf32>)
-   return %0#0, %0#1 : tensor<8x5x3xf32>, tensor<8x3xf32>
- }
- 
- // CHECK-LABEL: func @custom_call_householder_product
- func.func @custom_call_householder_product(%arg0: tensor<8x12x16xf32>, %arg1: tensor<8x5xf32>) -> tensor<8x12x16xf32> {
--  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k], [i, l])->([i, j, k]) {i=8, j=12, k=16, l=5} need_replication={j, k, l}>
-+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k], [i, l])->([i, j, k]) {i=8, j=12, k=16, l=1}>
-   %0 = stablehlo.custom_call @ProductOfElementaryHouseholderReflectors(%arg0, %arg1) : (tensor<8x12x16xf32>, tensor<8x5xf32>) -> tensor<8x12x16xf32>
-   return %0 : tensor<8x12x16xf32>
- }
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index fedf09a..8d6b113 100644
+index 1c6b5a1..fedf09a 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,12 +1,57 @@
+@@ -1,76 +1,12 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/lldb/unittests/Core/MangledTest.cpp b/lldb/unittests/Core/MangledTest.cpp
----- a/lldb/unittests/Core/MangledTest.cpp
--+++ b/lldb/unittests/Core/MangledTest.cpp
--@@ -605,6 +605,7 @@
--   EXPECT_EQ(get_part(OB.NameInfo.BasenameRange), basename);
--   EXPECT_EQ(get_part(OB.NameInfo.ScopeRange), scope);
--   EXPECT_EQ(get_part(OB.NameInfo.QualifiersRange), qualifiers);
--+  std::free(OB.getBuffer());
-+diff -ruN --strip-trailing-cr a/clang/include/clang/AST/Type.h b/clang/include/clang/AST/Type.h
-+--- a/clang/include/clang/AST/Type.h
-++++ b/clang/include/clang/AST/Type.h
-+@@ -3602,6 +3602,9 @@
-+   }
-+ 
-+   NestedNameSpecifier *getQualifier() const { return Qualifier; }
-++  /// Note: this can trigger extra deserialization when external AST sources are
-++  /// used. Prefer `getCXXRecordDecl()` unless you really need the most recent
-++  /// decl.
-+   CXXRecordDecl *getMostRecentCXXRecordDecl() const;
-+ 
-+   bool isSugared() const;
-+@@ -3610,7 +3613,10 @@
-+   }
-+ 
-+   void Profile(llvm::FoldingSetNodeID &ID) {
-+-    Profile(ID, getPointeeType(), getQualifier(), getMostRecentCXXRecordDecl());
-++    // FIXME: `getMostRecentCXXRecordDecl()` should be possible to use here,
-++    // however when external AST sources are used it causes nondeterminism
-++    // issues (see https://github.com/llvm/llvm-project/pull/137910).
-++    Profile(ID, getPointeeType(), getQualifier(), getCXXRecordDecl());
-+   }
-+ 
-+   static void Profile(llvm::FoldingSetNodeID &ID, QualType Pointee,
-+@@ -3620,6 +3626,9 @@
-+   static bool classof(const Type *T) {
-+     return T->getTypeClass() == MemberPointer;
-+   }
-++
-++private:
-++  CXXRecordDecl *getCXXRecordDecl() const;
-+ };
-+ 
-+ /// Capture whether this is a normal array (e.g. int X[4])
-+diff -ruN --strip-trailing-cr a/clang/lib/AST/Type.cpp b/clang/lib/AST/Type.cpp
-+--- a/clang/lib/AST/Type.cpp
-++++ b/clang/lib/AST/Type.cpp
-+@@ -5305,10 +5305,14 @@
-+     ID.AddPointer(Cls->getCanonicalDecl());
+-diff -ruN --strip-trailing-cr a/clang/include/clang/AST/OperationKinds.def b/clang/include/clang/AST/OperationKinds.def
+---- a/clang/include/clang/AST/OperationKinds.def
+-+++ b/clang/include/clang/AST/OperationKinds.def
+-@@ -119,7 +119,8 @@
+- CAST_OPERATION(FunctionToPointerDecay)
+- 
+- /// CK_NullToPointer - Null pointer constant to pointer, ObjC
+--/// pointer, or block pointer.
+-+/// pointer, or block pointer. The result of this conversion can
+-+/// still be a null pointer constant if it has type std::nullptr_t.
+- ///   (void*) 0
+- ///   void (^block)() = 0;
+- CAST_OPERATION(NullToPointer)
+-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenTypes.cpp b/clang/lib/CodeGen/CodeGenTypes.cpp
+---- a/clang/lib/CodeGen/CodeGenTypes.cpp
+-+++ b/clang/lib/CodeGen/CodeGenTypes.cpp
+-@@ -850,12 +850,14 @@
+- }
+- 
+- bool CodeGenTypes::isPointerZeroInitializable(QualType T) {
+--  assert((T->isAnyPointerType() || T->isBlockPointerType()) && "Invalid type");
+-+  assert((T->isAnyPointerType() || T->isBlockPointerType() ||
+-+          T->isNullPtrType()) &&
+-+         "Invalid type");
+-   return isZeroInitializable(T);
++diff -ruN --strip-trailing-cr a/lldb/unittests/Core/MangledTest.cpp b/lldb/unittests/Core/MangledTest.cpp
++--- a/lldb/unittests/Core/MangledTest.cpp
+++++ b/lldb/unittests/Core/MangledTest.cpp
++@@ -605,6 +605,7 @@
++   EXPECT_EQ(get_part(OB.NameInfo.BasenameRange), basename);
++   EXPECT_EQ(get_part(OB.NameInfo.ScopeRange), scope);
++   EXPECT_EQ(get_part(OB.NameInfo.QualifiersRange), qualifiers);
+++  std::free(OB.getBuffer());
   }
   
-- INSTANTIATE_TEST_SUITE_P(DemanglingPartsTests, DemanglingPartsTestFixture,
-++CXXRecordDecl *MemberPointerType::getCXXRecordDecl() const {
-++  return dyn_cast<MemberPointerType>(getCanonicalTypeInternal())
-++      ->getQualifier()
-++      ->getAsRecordDecl();
-++}
-++
-+ CXXRecordDecl *MemberPointerType::getMostRecentCXXRecordDecl() const {
-+-  auto *RD = dyn_cast<MemberPointerType>(getCanonicalTypeInternal())
-+-                 ->getQualifier()
-+-                 ->getAsRecordDecl();
-++  auto *RD = getCXXRecordDecl();
-+   if (!RD)
-+     return nullptr;
-+   return RD->getMostRecentNonInjectedDecl();
+- bool CodeGenTypes::isZeroInitializable(QualType T) {
+--  if (T->getAs<PointerType>())
+-+  if (T->getAs<PointerType>() || T->isNullPtrType())
+-     return Context.getTargetNullPointerValue(T) == 0;
+- 
+-   if (const auto *AT = Context.getAsArrayType(T)) {
+-diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/nullptr.cpp b/clang/test/CodeGenCXX/nullptr.cpp
+---- a/clang/test/CodeGenCXX/nullptr.cpp
+-+++ b/clang/test/CodeGenCXX/nullptr.cpp
+-@@ -70,3 +70,10 @@
+-   void f(nullptr_t);
+-   void g() { f(null); }
+- }
+-+
+-+// CHECK-LABEL: define {{.*}}pr137276
+-+// CHECK: {{^}}  store i64 0, ptr %arr, align 8{{$}}
+-+void pr137276(nullptr_t np, int i) {
+-+  long arr[] = { long(np), i, 0 };
+-+  (void)arr;
+-+}
+-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/SampleProfileMatcher.cpp b/llvm/lib/Transforms/IPO/SampleProfileMatcher.cpp
+---- a/llvm/lib/Transforms/IPO/SampleProfileMatcher.cpp
+-+++ b/llvm/lib/Transforms/IPO/SampleProfileMatcher.cpp
+-@@ -737,14 +737,16 @@
+-     auto FunctionName = FName.str();
+-     if (Demangler.partialDemangle(FunctionName.c_str()))
+-       return std::string();
+--    constexpr size_t MaxBaseNameSize = 65536;
+--    std::vector<char> BaseNameBuf(MaxBaseNameSize, 0);
+--    size_t BaseNameSize = MaxBaseNameSize;
+--    char *BaseNamePtr =
+--        Demangler.getFunctionBaseName(BaseNameBuf.data(), &BaseNameSize);
+--    return (BaseNamePtr && BaseNameSize)
+--               ? std::string(BaseNamePtr, BaseNameSize)
+--               : std::string();
+-+    size_t BaseNameSize = 0;
+-+    // The demangler API follows the __cxa_demangle one, and thus needs a
+-+    // pointer that originates from malloc (or nullptr) and the caller is
+-+    // responsible for free()-ing the buffer.
+-+    char *BaseNamePtr = Demangler.getFunctionBaseName(nullptr, &BaseNameSize);
+-+    std::string Result = (BaseNamePtr && BaseNameSize)
+-+                             ? std::string(BaseNamePtr, BaseNameSize)
+-+                             : std::string();
+-+    free(BaseNamePtr);
+-+    return Result;
+-   };
+-   auto IRBaseName = GetBaseName(IRFunc.getName());
+-   auto ProfBaseName = GetBaseName(ProfFunc.stringRef());
++ INSTANTIATE_TEST_SUITE_P(DemanglingPartsTests, DemanglingPartsTestFixture,
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 9851b18..b41439e 100644
+index 246aeb6..9851b18 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "7752e0a10b25da2f2eadbed10606bd5454dbca05"
--    LLVM_SHA256 = "1e67e67854bf00c07e5f876083cf7482d2ed4719b8d6595179a945f9c9f7ffe7"
-+    LLVM_COMMIT = "2d287f51eff2a5fbf84458a33f7fb2493cf67965"
-+    LLVM_SHA256 = "e06d0a35b0e0570b2f54dfd23d0e9fe6f084e032c14bb7ab194b06cb8c9cb86c"
+-    LLVM_COMMIT = "cfc5baf6e6fc083fdbb584534a3fb8ea289752d2"
+-    LLVM_SHA256 = "1c592b928d3f60ff36a98d76c0fc1606f0508342f01791aca1ae7d206697c361"
++    LLVM_COMMIT = "7752e0a10b25da2f2eadbed10606bd5454dbca05"
++    LLVM_SHA256 = "1e67e67854bf00c07e5f876083cf7482d2ed4719b8d6595179a945f9c9f7ffe7"
  
      tf_http_archive(
          name = name,
-diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index bdca7e0..6164236 100755
---- a/third_party/stablehlo/temporary.patch
-+++ b/third_party/stablehlo/temporary.patch
-@@ -250,6 +250,15 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
-  
-    return success();
-  }
-+@@ -1094,7 +1094,7 @@
-+   size_t firstFunctionalArgument =
-+       leadingTokenOperands + key.getGlobalConstants().size();
-+   argIndices.set(leadingTokenOperands, firstFunctionalArgument);
-+-  func.eraseArguments(argIndices);
-++  if (failed(func.eraseArguments(argIndices))) return failure();
-+ 
-+   // Refine the remaining argument types, wrap with shape buffer custom calls.
-+   SmallVector<Type> refinedTypes =
- diff --ruN a/stablehlo/stablehlo/transforms/StablehloWrapInComposite.cpp b/stablehlo/stablehlo/transforms/StablehloWrapInComposite.cpp
- --- stablehlo/stablehlo/transforms/StablehloWrapInComposite.cpp
- +++ stablehlo/stablehlo/transforms/StablehloWrapInComposite.cpp

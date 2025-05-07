@@ -137,7 +137,7 @@ void EraseUnusedGlobalTensors(ModuleOp module,
   }
 }
 
-LogicalResult EraseUnusedBoundInputs(ModuleOp module) {
+void EraseUnusedBoundInputs(ModuleOp module) {
   for (auto func : module.getOps<func::FuncOp>()) {
     llvm::BitVector args_to_erase(func.getNumArguments());
     for (int i = 0, e = func.getNumArguments(); i < e; i++) {
@@ -146,12 +146,8 @@ LogicalResult EraseUnusedBoundInputs(ModuleOp module) {
         args_to_erase.set(i);
       }
     }
-
-    if (failed(func.eraseArguments(args_to_erase))) {
-      return failure();
-    }
+    func.eraseArguments(args_to_erase);
   }
-  return success();
 }
 
 void OptimizeGlobalTensorsPass::runOnOperation() {
@@ -160,9 +156,7 @@ void OptimizeGlobalTensorsPass::runOnOperation() {
     return;
   }
 
-  if (failed(EraseUnusedBoundInputs(module))) {
-    return signalPassFailure();
-  }
+  EraseUnusedBoundInputs(module);
 
   TF::ResourceAnalyzer resource_analyzer(module);
 
