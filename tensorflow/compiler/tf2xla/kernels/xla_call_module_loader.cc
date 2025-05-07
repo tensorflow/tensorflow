@@ -187,7 +187,7 @@ absl::Status XlaCallModuleLoader::SetPlatformIndex(
       platform_index_arg.getLoc(), const_attr);
   platform_index_arg.replaceAllUsesWith(platform_index_op);
 
-  main_.eraseArgument(0);
+  CHECK(llvm::succeeded(main_.eraseArgument(0)));
   platform_index_arg_set_ = true;
   return absl::OkStatus();
 }
