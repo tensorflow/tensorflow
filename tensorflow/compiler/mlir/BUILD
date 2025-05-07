@@ -214,6 +214,43 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "tf_register_common_dialects",
+    testonly = True,
+    srcs = ["tf_register_common_dialects.cc"],
+    hdrs = ["tf_register_common_dialects.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/core/ir/types:Dialect",
+        "@llvm-project//mlir:AllExtensions",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TosaDialect",
+        "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir/framework/ir:xla_framework",
+        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
+        "@stablehlo//:register",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_register_common_dialects_test",
+    srcs = ["tf_register_common_dialects_test.cc"],
+    deps = [
+        ":tf_register_common_dialects",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 tf_cc_binary(
     name = "tf-mlir-translate",
     testonly = True,
