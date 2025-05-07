@@ -1423,7 +1423,7 @@ TfrtGpuClient::CreateUninitializedBuffer(const Shape& shape,
   tsl::profiler::TraceMe traceme("TfrtGpuClient::CreateUninitializedBuffer");
   if (VLOG_IS_ON(1)) {
     LOG(INFO) << "TfrtGpuClient::CreateUninitializedBuffer: shape: "
-              << shape.DebugString()
+              << shape.ToString()
               << " memory_space: " << memory_space->DebugString();
   }
   TransferManager* transfer_manager =
@@ -1992,7 +1992,7 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   tsl::profiler::TraceMe traceme("TfrtGpuClient::BufferFromHostLiteral");
   if (VLOG_IS_ON(1)) {
     LOG(INFO) << "TfrtGpuClient::BufferFromHostLiteral: shape: "
-              << literal.shape().DebugString()
+              << literal.shape().ToString()
               << " device: " << device->DebugString();
   }
   const Shape& shape = literal.shape();

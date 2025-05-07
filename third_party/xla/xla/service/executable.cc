@@ -47,8 +47,8 @@ absl::Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
   const Shape& input_shape = shape();
   if (!ShapeUtil::DynamicShapeIsCompatible(input_shape, dynamic_shape)) {
     return tsl::errors::InvalidArgument(
-        "Cannot set dynamic shape: ", input_shape.DebugString(), " vs. ",
-        dynamic_shape.DebugString());
+        "Cannot set dynamic shape: ", input_shape.ToString(), " vs. ",
+        dynamic_shape.ToString());
   }
   dynamic_shape_ = std::make_unique<Shape>(std::move(dynamic_shape));
   return absl::OkStatus();

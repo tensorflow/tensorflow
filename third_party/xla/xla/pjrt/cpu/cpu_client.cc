@@ -959,7 +959,7 @@ TfrtCpuClient::CreateUninitializedBuffer(const Shape& shape,
                                          PjRtMemorySpace* memory_space) {
   tsl::profiler::TraceMe traceme("TfrtCpuClient::CreateUninitializedBuffer");
   VLOG(1) << "TfrtCpuClient::CreateUninitializedBuffer: shape: "
-          << shape.DebugString()
+          << shape.ToString()
           << " memory_space: " << memory_space->DebugString();
   CHECK_EQ(memory_space->devices().size(), 1);
   PjRtDevice* device = memory_space->devices().front();
@@ -1076,8 +1076,7 @@ TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
 
   tsl::profiler::TraceMe traceme("TfrtCpuClient::BufferFromHostLiteral");
   VLOG(1) << "TfrtCpuClient::BufferFromHostLiteral: shape: "
-          << literal.shape().DebugString()
-          << " device: " << device->DebugString();
+          << literal.shape().ToString() << " device: " << device->DebugString();
   const Shape& shape = literal.shape();
 
   absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4> avs;

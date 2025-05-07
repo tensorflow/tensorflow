@@ -258,12 +258,11 @@ absl::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
   int num_dims = attrs.num_spatial_dims + 2;
   if (input_shape.dimensions().size() != num_dims) {
     return errors::InvalidArgument("input must be ", num_dims, "-dimensional",
-                                   input_shape.DebugString());
+                                   input_shape.ToString());
   }
   if (filter_shape.dimensions().size() != num_dims) {
-    return errors::InvalidArgument(
-        "filter must be ", num_dims,
-        "-dimensional: ", filter_shape.DebugString());
+    return errors::InvalidArgument("filter must be ", num_dims,
+                                   "-dimensional: ", filter_shape.ToString());
   }
 
   // The last two dimensions of the filter are the input and output shapes.

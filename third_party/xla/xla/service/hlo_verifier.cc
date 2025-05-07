@@ -1513,7 +1513,7 @@ absl::Status ShapeVerifier::HandleConditional(HloInstruction* conditional) {
   if (!ShapeUtil::IsScalar(conditional->operand(0)->shape())) {
     return InvalidArgument(
         "The first operand of conditional must be a scalar. Got %s",
-        conditional->operand(0)->shape().DebugString());
+        conditional->operand(0)->shape().ToString());
   }
   const int num_branches = conditional->branch_count();
   PrimitiveType operand0_type = conditional->operand(0)->shape().element_type();

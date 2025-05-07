@@ -367,9 +367,9 @@ absl::Status XlaComputationLaunchContext::PopulateOutputs(
   Allocator* allocator = ctx->device()->GetAllocator({});
 
   // Computation output should always be a tuple.
-  VLOG(2) << "Result tuple shape: " << output.on_host_shape().DebugString();
+  VLOG(2) << "Result tuple shape: " << output.on_host_shape().ToString();
   VLOG(2) << "Result tuple shape (on device): "
-          << output.on_device_shape().DebugString();
+          << output.on_device_shape().ToString();
   CHECK_EQ(ctx->num_outputs(), compilation_result->outputs.size());
 
   // If the on-host-shape isn't a tuple, create a new single-element tuple

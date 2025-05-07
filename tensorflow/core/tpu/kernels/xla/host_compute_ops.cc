@@ -75,7 +75,7 @@ absl::Status MakeXlaShapes(absl::Span<const TensorShape> shapes,
     xla::Shape single_xla_shape;
     TF_RETURN_IF_ERROR(
         TensorShapeToXLAShape(dtypes[i], shapes[i], &single_xla_shape));
-    VLOG(2) << "Shape " << single_xla_shape.DebugString();
+    VLOG(2) << "Shape " << single_xla_shape.ToString();
     xla_shapes->push_back(single_xla_shape);
   }
   // Temporarily add a dummy output to the shape array before making the tuple:
@@ -130,7 +130,7 @@ class HostComputeOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, MakeXlaShapes(static_output_shapes_, output_dtypes_,
                                         &static_xla_output_shapes_,
                                         &static_xla_output_shape_));
-      VLOG(2) << "Output Shape: " << static_xla_output_shape_.DebugString();
+      VLOG(2) << "Output Shape: " << static_xla_output_shape_.ToString();
     } else {
       FunctionLibraryRuntime* flib_runtime = ctx->function_library();
       OP_REQUIRES(ctx, flib_runtime != nullptr,

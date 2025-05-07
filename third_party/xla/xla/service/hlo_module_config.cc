@@ -68,7 +68,7 @@ std::string HloModuleConfig::compilation_cache_key() const {
   if (entry_computation_layout_.has_value()) {
     for (const ShapeLayout& param_layout :
          entry_computation_layout_->parameter_layouts()) {
-      params.push_back(param_layout.shape().DebugString());
+      params.push_back(param_layout.shape().ToString());
     }
     StrAppend(&key, absl::StrJoin(params, ", "), ") => ",
               entry_computation_layout_->result_shape()

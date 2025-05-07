@@ -104,7 +104,7 @@ absl::StatusOr<XlaOp> ReconsileBranchDifference(const Shape& left_branch_shape,
   if (right_branch_shape.IsTuple()) {
     return InvalidArgument(
         "right_branch_shape should not be a tuple, received %s",
-        right_branch_shape.DebugString());
+        right_branch_shape.ToString());
   }
   if (left_branch_shape.dimensions().size() !=
       right_branch_shape.dimensions().size()) {
