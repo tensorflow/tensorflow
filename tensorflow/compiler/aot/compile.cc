@@ -15,25 +15,42 @@ limitations under the License.
 
 #include "tensorflow/compiler/aot/compile.h"
 
+#include <cstddef>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "llvm-c/Target.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "tensorflow/compiler/aot/codegen.h"
+#include "tensorflow/compiler/aot/embedded_constant_buffers.h"
 #include "tensorflow/compiler/aot/flags.h"
 #include "tensorflow/compiler/aot/quantize.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/client/client_library.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
+#include "xla/shape.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -93,12 +110,29 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
     return errors::Unknown("XLA compilation failed: ",
                            aot_or.status().message());
   }
-  compile_result->aot =
-      xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResultLegacy>(
-          std::move(aot_or.value().back()));
+  compile_result->set_aot(
+      xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResult>(
+          std::move(aot_or.value().back())));
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =
       xla::CompileOnlyClient::PointerSizeForTriple(aot_opts.triple());
+  return absl::OkStatus();
+}
+
+// Renames the computation proto to ensure unique symbol names to avoid linking
+// errors when linking multiple tf_library targets.
+absl::Status ConfigureKernelNamingConvention(
+    xla::cpu::CpuAotCompilationOptions& aot_opts,
+    xla::XlaComputation& computation, const std::string& cpp_class) {
+  aot_opts.mutable_debug_options()
+      ->set_xla_cpu_generate_unique_c_style_kernel_entry_points(true);
+
+  TF_ASSIGN_OR_RETURN(std::string class_name_as_valid_c_name,
+                      xla::cpu::ConvertToCName(cpp_class));
+  // Rename proto to ensure unique symbol names.
+  *computation.mutable_proto()->mutable_name() =
+      absl::StrCat(computation.proto().name(), "_", class_name_as_valid_c_name);
+
   return absl::OkStatus();
 }
 
@@ -163,10 +197,8 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
         flags.sanitize_abilists_dataflow, ',', absl::SkipEmpty()));
   }
 
-  // AOT compilation is currently not supported for the thunk runtime.
-  if (aot_opts.debug_options().xla_cpu_use_thunk_runtime()) {
-    aot_opts.mutable_debug_options()->set_xla_cpu_use_thunk_runtime(false);
-  }
+  TF_RETURN_IF_ERROR(
+      ConfigureKernelNamingConvention(aot_opts, computation, flags.cpp_class));
 
   return CompileXla(client, computation, aot_opts, compile_result);
 }
@@ -281,14 +313,26 @@ absl::Status Main(const MainFlags& flags) {
 
   // Write output files.
   Env* env = Env::Default();
-  const std::vector<char>& obj = compile_result.aot->object_file_data();
-  TF_RETURN_IF_ERROR(
-      WriteStringToFile(env, flags.out_function_object,
-                        absl::string_view(obj.data(), obj.size())));
+
+  if (compile_result.is_aot_thunks()) {
+    const auto obj_files = compile_result.get_aot_thunks().value()->obj_files();
+    DCHECK_EQ(obj_files.size(), 1);
+    const absl::string_view obj_file = obj_files[0];
+    TF_RETURN_IF_ERROR(
+        WriteStringToFile(env, flags.out_function_object, obj_file));
+  } else {
+    const std::vector<char>& obj_file =
+        compile_result.get_aot_legacy().value()->object_file_data();
+    TF_RETURN_IF_ERROR(
+        WriteStringToFile(env, flags.out_function_object,
+                          absl::string_view(obj_file.data(), obj_file.size())));
+  }
+
   CodegenOpts codegen_opts;
   codegen_opts.gen_name_to_index = flags.gen_name_to_index;
   codegen_opts.gen_program_shape = flags.gen_program_shape;
   codegen_opts.target_triple = flags.target_triple;
+  codegen_opts.use_xla_nanort_runtime = flags.use_xla_nanort_runtime;
   // Set the XLA Runtime bit if this is an HloLowering.
   if (!flags.mlir_components.empty() && flags.mlir_components != "None") {
     for (auto component : absl::StrSplit(flags.mlir_components, ',')) {
@@ -306,6 +350,20 @@ absl::Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(ParseCppClass(flags.cpp_class, &codegen_opts.class_name,
                                    &codegen_opts.namespaces));
 
+  EmbeddedConstantBuffers embedded_constant_buffers;
+  if (compile_result.is_aot_thunks()) {
+    if (flags.out_constant_buffers_object.empty()) {
+      return absl::InvalidArgumentError(
+          "Must specify --out_constant_buffers_object when using AOT thunks");
+    }
+    TF_ASSIGN_OR_RETURN(
+        embedded_constant_buffers,
+        GenerateConstantBuffersData(codegen_opts, compile_result));
+    TF_RETURN_IF_ERROR(
+        WriteStringToFile(env, flags.out_constant_buffers_object,
+                          embedded_constant_buffers.object_file_data));
+  }
+
   MetadataResult metadata_result;
   TF_RETURN_IF_ERROR(
       GenerateMetadata(codegen_opts, compile_result, &metadata_result));
@@ -313,7 +371,8 @@ absl::Status Main(const MainFlags& flags) {
                                        metadata_result.object_file_data));
   string header;
   TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
-                                    metadata_result, &header));
+                                    metadata_result, embedded_constant_buffers,
+                                    &header));
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_header, header));
   return absl::OkStatus();
 }

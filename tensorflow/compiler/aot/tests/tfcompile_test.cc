@@ -13,18 +13,49 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
+// TODO(basioli): We are still supporting both runtimes. This enables us to test
+// both of them.
+#include <cstdint>
+#include <cstring>
 #include <vector>
-#define EIGEN_USE_THREADS
-#define EIGEN_USE_CUSTOM_THREAD_POOL
+#if defined(ENABLE_XLA_THUNK_TEST)
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfcond_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tffunction_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfgather_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_with_constant_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfrandom_uniform_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfscatter_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfsplits_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_thunks.h"
 
-#include "absl/strings/str_split.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "xla/hlo/testlib/test.h"
-#include "xla/service/hlo_profile_printer.h"
-#include "xla/shape_util.h"
-#include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/platform/test.h"
+#elif defined(ENABLE_XLA_NANORT_TEST)
+
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfcond_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tffunction_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfgather_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_with_constant_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfrandom_uniform_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfscatter_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfsplits_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates_nanort.h"
+
+#else
 
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
@@ -34,33 +65,46 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tffunction.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfgather.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmul.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_with_constant.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_with_profiling.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfrandom_uniform.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfscatter.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfsplits.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tftop_k.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates.h"
 
+#endif
+
+#include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+
+#define EIGEN_USE_THREADS
+#define EIGEN_USE_CUSTOM_THREAD_POOL
+
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+
 namespace tensorflow {
 namespace tfcompile {
 namespace {
-
-using ::testing::ContainsRegex;
-using ::testing::IsSupersetOf;
 
 TEST(TFCompileTest, Add) {
   AddComp add;
   EXPECT_EQ(add.arg0_data(), add.arg_data(0));
   EXPECT_EQ(add.arg1_data(), add.arg_data(1));
-
   add.arg0() = 1;
   add.arg1() = 2;
   EXPECT_TRUE(add.Run());
   EXPECT_EQ(add.error_msg(), "");
   EXPECT_EQ(add.result0(), 3);
   EXPECT_EQ(add.result0_data()[0], 3);
-  EXPECT_EQ(add.result0_data(), add.results()[0]);
+  EXPECT_EQ(add.result0_data(), add.result_data(0));
 
   add.arg0_data()[0] = 123;
   add.arg1_data()[0] = 456;
@@ -68,7 +112,7 @@ TEST(TFCompileTest, Add) {
   EXPECT_EQ(add.error_msg(), "");
   EXPECT_EQ(add.result0(), 579);
   EXPECT_EQ(add.result0_data()[0], 579);
-  EXPECT_EQ(add.result0_data(), add.results()[0]);
+  EXPECT_EQ(add.result0_data(), add.result_data(0));
 
   const AddComp& add_const = add;
   EXPECT_EQ(add_const.error_msg(), "");
@@ -80,7 +124,7 @@ TEST(TFCompileTest, Add) {
   EXPECT_EQ(add_const.arg1_data(), add.arg_data(1));
   EXPECT_EQ(add_const.result0(), 579);
   EXPECT_EQ(add_const.result0_data()[0], 579);
-  EXPECT_EQ(add_const.result0_data(), add_const.results()[0]);
+  EXPECT_EQ(add_const.result0_data(), add_const.result_data(0));
 }
 
 // Run tests that use set_argN_data separately, to avoid accidentally re-using
@@ -89,8 +133,8 @@ TEST(TFCompileTest, Add_SetArg) {
   AddComp add(
       XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
 
-  int32 arg_x = 10;
-  int32 arg_y = 32;
+  alignas(32) int32 arg_x = 10;
+  alignas(32) int32 arg_y = 32;
   add.set_arg0_data(&arg_x);
   add.set_arg1_data(&arg_y);
   EXPECT_EQ(add.arg0_data(), add.arg_data(0));
@@ -100,7 +144,7 @@ TEST(TFCompileTest, Add_SetArg) {
   EXPECT_EQ(add.error_msg(), "");
   EXPECT_EQ(add.result0(), 42);
   EXPECT_EQ(add.result0_data()[0], 42);
-  EXPECT_EQ(add.result0_data(), add.results()[0]);
+  EXPECT_EQ(add.result0_data(), add.result_data(0));
 }
 
 TEST(TFCompileTest, AddWithCkpt) {
@@ -112,14 +156,14 @@ TEST(TFCompileTest, AddWithCkpt) {
   EXPECT_EQ(add.error_msg(), "");
   EXPECT_EQ(add.result0(), 43);
   EXPECT_EQ(add.result0_data()[0], 43);
-  EXPECT_EQ(add.result0_data(), add.results()[0]);
+  EXPECT_EQ(add.result0_data(), add.result_data(0));
 
   add.arg0_data()[0] = 111;
   EXPECT_TRUE(add.Run());
   EXPECT_EQ(add.error_msg(), "");
   EXPECT_EQ(add.result0(), 153);
   EXPECT_EQ(add.result0_data()[0], 153);
-  EXPECT_EQ(add.result0_data(), add.results()[0]);
+  EXPECT_EQ(add.result0_data(), add.result_data(0));
 
   const AddWithCkptComp& add_const = add;
   EXPECT_EQ(add_const.error_msg(), "");
@@ -128,7 +172,7 @@ TEST(TFCompileTest, AddWithCkpt) {
   EXPECT_EQ(add_const.arg0_data(), add_const.arg_data(0));
   EXPECT_EQ(add_const.result0(), 153);
   EXPECT_EQ(add_const.result0_data()[0], 153);
-  EXPECT_EQ(add_const.result0_data(), add_const.results()[0]);
+  EXPECT_EQ(add_const.result0_data(), add_const.result_data(0));
 }
 
 TEST(TFCompileTest, AddWithCkptSaver) {
@@ -140,14 +184,14 @@ TEST(TFCompileTest, AddWithCkptSaver) {
   EXPECT_EQ(add.error_msg(), "");
   EXPECT_EQ(add.result0(), 43);
   EXPECT_EQ(add.result0_data()[0], 43);
-  EXPECT_EQ(add.result0_data(), add.results()[0]);
+  EXPECT_EQ(add.result0_data(), add.result_data(0));
 
   add.arg0_data()[0] = 111;
   EXPECT_TRUE(add.Run());
   EXPECT_EQ(add.error_msg(), "");
   EXPECT_EQ(add.result0(), 153);
   EXPECT_EQ(add.result0_data()[0], 153);
-  EXPECT_EQ(add.result0_data(), add.results()[0]);
+  EXPECT_EQ(add.result0_data(), add.result_data(0));
 
   const AddWithCkptSaverComp& add_const = add;
   EXPECT_EQ(add_const.error_msg(), "");
@@ -156,7 +200,7 @@ TEST(TFCompileTest, AddWithCkptSaver) {
   EXPECT_EQ(add_const.arg0_data(), add_const.arg_data(0));
   EXPECT_EQ(add_const.result0(), 153);
   EXPECT_EQ(add_const.result0_data()[0], 153);
-  EXPECT_EQ(add_const.result0_data(), add_const.results()[0]);
+  EXPECT_EQ(add_const.result0_data(), add_const.result_data(0));
 }
 
 TEST(TFCompileTest, Cond) {
@@ -170,17 +214,19 @@ TEST(TFCompileTest, Cond) {
     cond.arg0() = true;
     const int32 expected_result = cond.arg1();
     EXPECT_TRUE(cond.Run());
+    EXPECT_EQ(cond.error_msg(), "");
     EXPECT_EQ(cond.result0(), expected_result);
     EXPECT_EQ(cond.result0_data()[0], expected_result);
-    EXPECT_EQ(cond.result0_data(), cond.results()[0]);
+    EXPECT_EQ(cond.result0_data(), cond.result_data(0));
   }
   {
     cond.arg0() = false;
     const int32 expected_result = cond.arg2();
     EXPECT_TRUE(cond.Run());
+    EXPECT_EQ(cond.error_msg(), "");
     EXPECT_EQ(cond.result0(), expected_result);
     EXPECT_EQ(cond.result0_data()[0], expected_result);
-    EXPECT_EQ(cond.result0_data(), cond.results()[0]);
+    EXPECT_EQ(cond.result0_data(), cond.result_data(0));
   }
 }
 
@@ -202,7 +248,7 @@ TEST(TFCompileTest, Gather) {
       EXPECT_EQ(gather.result0(i), results[i]);
       EXPECT_EQ(gather.result0_data()[i], results[i]);
     }
-    EXPECT_EQ(gather.result0_data(), gather.results()[0]);
+    EXPECT_EQ(gather.result0_data(), gather.result_data(0));
 
     const GatherComp& gather_const = gather;
     EXPECT_EQ(gather_const.error_msg(), "");
@@ -220,7 +266,7 @@ TEST(TFCompileTest, Gather) {
       EXPECT_EQ(gather_const.result0(i), results[i]);
       EXPECT_EQ(gather_const.result0_data()[i], results[i]);
     }
-    EXPECT_EQ(gather_const.result0_data(), gather.results()[0]);
+    EXPECT_EQ(gather_const.result0_data(), gather.result_data(0));
   }
 }
 
@@ -256,7 +302,7 @@ TEST(TFCompileTest, MatMul2) {
       EXPECT_EQ(matmul.result0(i / 2, i % 2), results[i]);
       EXPECT_EQ(matmul.result0_data()[i], results[i]);
     }
-    EXPECT_EQ(matmul.result0_data(), matmul.results()[0]);
+    EXPECT_EQ(matmul.result0_data(), matmul.result_data(0));
   }
 
   // Test using the argN_data() methods.
@@ -271,7 +317,7 @@ TEST(TFCompileTest, MatMul2) {
       EXPECT_EQ(matmul.result0(i / 2, i % 2), results[i]);
       EXPECT_EQ(matmul.result0_data()[i], results[i]);
     }
-    EXPECT_EQ(matmul.result0_data(), matmul.results()[0]);
+    EXPECT_EQ(matmul.result0_data(), matmul.result_data(0));
 
     const foo::bar::MatMulComp& matmul_const = matmul;
     EXPECT_EQ(matmul_const.error_msg(), "");
@@ -289,7 +335,7 @@ TEST(TFCompileTest, MatMul2) {
       EXPECT_EQ(matmul_const.result0(i / 2, i % 2), results[i]);
       EXPECT_EQ(matmul_const.result0_data()[i], results[i]);
     }
-    EXPECT_EQ(matmul_const.result0_data(), matmul.results()[0]);
+    EXPECT_EQ(matmul_const.result0_data(), matmul.result_data(0));
   }
 }
 
@@ -304,8 +350,9 @@ TEST(TFCompileTest, MatMul2_SetArg) {
   matmul.set_thread_pool(&device);
 
   // Test using the set_argN_data() methods.
-  float arg0[2][3] = {{1, 2, 3}, {4, 5, 6}};
-  float arg1[3][2] = {{7, 8}, {9, 10}, {11, 12}};
+
+  alignas(32) float arg0[2][3] = {{1, 2, 3}, {4, 5, 6}};
+  alignas(32) float arg1[3][2] = {{7, 8}, {9, 10}, {11, 12}};
   matmul.set_arg0_data(&arg0);
   matmul.set_arg1_data(&arg1);
   EXPECT_EQ(matmul.arg0_data(), matmul.arg_data(0));
@@ -318,7 +365,7 @@ TEST(TFCompileTest, MatMul2_SetArg) {
     EXPECT_EQ(matmul.result0(i / 2, i % 2), results[i]);
     EXPECT_EQ(matmul.result0_data()[i], results[i]);
   }
-  EXPECT_EQ(matmul.result0_data(), matmul.results()[0]);
+  EXPECT_EQ(matmul.result0_data(), matmul.result_data(0));
 }
 
 TEST(TFCompileTest, MatMulAndAdd1) {
@@ -345,8 +392,8 @@ TEST(TFCompileTest, MatMulAndAdd1) {
       EXPECT_EQ(muladd.result1(i / 2, i % 2), results1[i]);
       EXPECT_EQ(muladd.result1_data()[i], results1[i]);
     }
-    EXPECT_EQ(muladd.result0_data(), muladd.results()[0]);
-    EXPECT_EQ(muladd.result1_data(), muladd.results()[1]);
+    EXPECT_EQ(muladd.result0_data(), muladd.result_data(0));
+    EXPECT_EQ(muladd.result1_data(), muladd.result_data(1));
 
     const ::foo::bar::MatMulAndAddComp& muladd_const = muladd;
     EXPECT_EQ(muladd_const.error_msg(), "");
@@ -366,8 +413,8 @@ TEST(TFCompileTest, MatMulAndAdd1) {
       EXPECT_EQ(muladd_const.result1(i / 2, i % 2), results1[i]);
       EXPECT_EQ(muladd_const.result1_data()[i], results1[i]);
     }
-    EXPECT_EQ(muladd_const.result0_data(), muladd.results()[0]);
-    EXPECT_EQ(muladd_const.result1_data(), muladd.results()[1]);
+    EXPECT_EQ(muladd_const.result0_data(), muladd.result_data(0));
+    EXPECT_EQ(muladd_const.result1_data(), muladd.result_data(1));
   }
 
   // Test methods with named args and results.
@@ -385,8 +432,8 @@ TEST(TFCompileTest, MatMulAndAdd1) {
       EXPECT_EQ(muladd.result_x_y_sum(i / 2, i % 2), results1[i]);
       EXPECT_EQ(muladd.result_x_y_sum_data()[i], results1[i]);
     }
-    EXPECT_EQ(muladd.result_x_y_prod_data(), muladd.results()[0]);
-    EXPECT_EQ(muladd.result_x_y_sum_data(), muladd.results()[1]);
+    EXPECT_EQ(muladd.result_x_y_prod_data(), muladd.result_data(0));
+    EXPECT_EQ(muladd.result_x_y_sum_data(), muladd.result_data(1));
 
     // Test const methods.
     const ::foo::bar::MatMulAndAddComp& muladd_const = muladd;
@@ -407,8 +454,8 @@ TEST(TFCompileTest, MatMulAndAdd1) {
       EXPECT_EQ(muladd_const.result_x_y_sum(i / 2, i % 2), results1[i]);
       EXPECT_EQ(muladd_const.result_x_y_sum_data()[i], results1[i]);
     }
-    EXPECT_EQ(muladd_const.result_x_y_prod_data(), muladd.results()[0]);
-    EXPECT_EQ(muladd_const.result_x_y_sum_data(), muladd.results()[1]);
+    EXPECT_EQ(muladd_const.result_x_y_prod_data(), muladd.result_data(0));
+    EXPECT_EQ(muladd_const.result_x_y_sum_data(), muladd.result_data(1));
   }
 }
 
@@ -424,7 +471,7 @@ TEST(TFCompileTest, Function) {
   EXPECT_EQ(add_fn.error_msg(), "");
   EXPECT_EQ(add_fn.result0(), 3);
   EXPECT_EQ(add_fn.result0_data()[0], 3);
-  EXPECT_EQ(add_fn.result0_data(), add_fn.results()[0]);
+  EXPECT_EQ(add_fn.result0_data(), add_fn.result_data(0));
 }
 
 TEST(TFCompileTest, Splits) {
@@ -455,6 +502,10 @@ TEST(TFCompileTest, Splits) {
   EXPECT_NEAR(expected[3], fn.result0(1, 1), 1e4);
 }
 
+// NOTE(basioli): Requires implementation of SortThunk which is complicated and
+// not needed for actual use cases.
+#if !defined(ENABLE_XLA_THUNK_TEST) && !defined(ENABLE_XLA_NANORT_TEST)
+
 TEST(TFCompileTest, TopK) {
   Eigen::ThreadPool tp(1);
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
@@ -479,16 +530,21 @@ TEST(TFCompileTest, TopK) {
   EXPECT_EQ(expected_indices[1], fn.result1(1));
 }
 
+#endif
+
 TEST(TFCompileTest, VariableReadonly) {
   Eigen::ThreadPool tp(1);
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
 
   VariableReadonlyComp fn;
-  float x = 23;
+
+  alignas(32) float x = 23;
   fn.set_var_x_data(&x);
 
   fn.set_thread_pool(&device);
-  fn.Run();
+  EXPECT_TRUE(fn.Run());
+  EXPECT_EQ(fn.error_msg(), "");
+
   EXPECT_EQ(fn.result0(), 65);
   EXPECT_EQ(fn.var_x(), 23);
 }
@@ -498,18 +554,21 @@ TEST(TFCompileTest, Variable) {
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
 
   VariableComp fn;
-  float x = 23;
+
+  alignas(32) float x = 23;
   fn.set_var_x_data(&x);
 
   fn.set_thread_pool(&device);
-  fn.Run();
+  EXPECT_TRUE(fn.Run());
+  EXPECT_EQ(fn.error_msg(), "");
   EXPECT_EQ(fn.result0(0, 0), 23);
   EXPECT_EQ(fn.result0(1, 0), 65);
   EXPECT_EQ(fn.var_x(), 65);
 
   EXPECT_EQ(fn.var_x_data(), &x);
   EXPECT_EQ(x, 65);
-  fn.Run();
+  EXPECT_TRUE(fn.Run());
+  EXPECT_EQ(fn.error_msg(), "");
   EXPECT_EQ(fn.result0(0, 0), 65);
   EXPECT_EQ(fn.result0(1, 0), 107);
   EXPECT_EQ(fn.var_x(), 107);
@@ -528,17 +587,19 @@ TEST(TFCompileTest, VariableSequentialUpdates) {
 
   fn.set_thread_pool(&device);
   // First calculate x[3]
-  fn.Run();
+  EXPECT_TRUE(fn.Run());
+  EXPECT_EQ(fn.error_msg(), "");
   EXPECT_NEAR(fn.var_x(), 1.187f, 1e-6);
 
-  const float y = 1;
+  alignas(32) const float y = 1;
   fn.set_var_y_data(&y);
 
-  // Now const_cast<float*>(fn.var_y_data()) is not longer legal since we've set
-  // the buffer to point to a constant location.
+  // Now const_cast<float*>(fn.var_y_data()) is not longer legal since we've
+  // set the buffer to point to a constant location.
 
   // Then calculate x[6]
-  fn.Run();
+  EXPECT_TRUE(fn.Run());
+  EXPECT_EQ(fn.error_msg(), "");
   EXPECT_NEAR(fn.var_x(), 0.594322f, 1e-6);
 }
 
@@ -551,24 +612,101 @@ TEST(TFCompileTest, VariableSequentialUpdatesNoAlloc) {
   // x[n+1] = x[n] - 0.1*(x[n-1] + 1.0)
   VariableSequentialUpdatesComp fn(
       XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
-  float x = 2;
-  float y = 1;
+
+  alignas(32) float x = 2;
+  alignas(32) float y = 1;
   fn.set_var_x_data(&x);
   fn.set_var_y_data(&y);
 
   fn.set_thread_pool(&device);
   // First calculate x[3]
-  fn.Run();
+  EXPECT_TRUE(fn.Run());
+  EXPECT_EQ(fn.error_msg(), "");
   EXPECT_NEAR(x, 1.187f, 1e-6);
 
   // Then calculate x[6]
-  fn.Run();
+  EXPECT_TRUE(fn.Run());
+  EXPECT_EQ(fn.error_msg(), "");
   EXPECT_NEAR(x, 0.594322f, 1e-6);
 }
 
+TEST(TFCompileTest, MatMulWithConstants) {
+  Eigen::ThreadPool tp(2);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  foo::bar::MatMulWithConstantComp matmul;
+  matmul.set_thread_pool(&device);
+  EXPECT_EQ(matmul.arg0_data(), matmul.arg_data(0));
+
+  // Test using the argN() methods.
+  {
+    for (int i = 0; i < 512; ++i) {
+      for (int j = 0; j < 1024; ++j) {
+        matmul.arg0(i, j) = 1;
+      }
+    }
+
+    EXPECT_TRUE(matmul.Run());
+    EXPECT_EQ(matmul.error_msg(), "");
+    std::vector<float> results(512 * 256, 1024);
+    for (int i = 0; i < results.size(); ++i) {
+      ASSERT_EQ(matmul.result0(i / 512, i % 256), results[i]);
+      ASSERT_EQ(matmul.result0_data()[i], results[i]);
+    }
+    EXPECT_EQ(matmul.result0_data(), matmul.result_data(0));
+  }
+}
+
+TEST(TFCompileTest, RandomUniform) {
+  RandomUniformComp random_uniform;
+  EXPECT_TRUE(random_uniform.Run());
+  EXPECT_EQ(random_uniform.error_msg(), "");
+  EXPECT_LE(random_uniform.result0(), 5.0);
+  EXPECT_GE(random_uniform.result0(), 0.0);
+}
+TEST(TFCompileTest, Scatter) {
+  ScatterComp scatter;
+
+  const std::vector<int32_t> indices0 = {4, 3, 1, 7};
+  const std::vector<float> updates0 = {9.0, 10.0, 11.0, 12.0};
+
+  const std::vector<int32_t> indices1 = {2, 5, 3, 6};
+  const std::vector<float> updates1 = {17.0, 2.0, 5.0, -1.0};
+
+  std::memcpy(scatter.arg0_data(), indices0.data(),
+              indices0.size() * sizeof(int32_t));
+  std::memcpy(scatter.arg1_data(), updates0.data(),
+              updates0.size() * sizeof(float));
+
+  std::memcpy(scatter.arg2_data(), indices1.data(),
+              indices1.size() * sizeof(int32_t));
+  std::memcpy(scatter.arg3_data(), updates1.data(),
+              updates1.size() * sizeof(float));
+
+  EXPECT_TRUE(scatter.Run());
+  EXPECT_EQ(scatter.error_msg(), "");
+
+  const std::vector<float> expected0 = {0, 11, 0, 10, 9, 0, 0, 12};
+  const std::vector<float> expected1 = {0, 0, 17, 5, 0, 2, -1, 0};
+
+  // NOTE(basioli): Shape is hardcoded to 8 in tensorflow config.
+  EXPECT_EQ(scatter.result0_count(), expected0.size());
+
+  for (int i = 0; i < scatter.result0_count(); ++i) {
+    EXPECT_EQ(scatter.result0(i), expected0[i]);
+  }
+
+  // NOTE(basioli): Shape is hardcoded to 8 in tensorflow config.
+  EXPECT_EQ(scatter.result1_count(), expected1.size());
+
+  for (int i = 0; i < scatter.result1_count(); ++i) {
+    EXPECT_EQ(scatter.result1(i), expected1[i]) << "i: " << i;
+  }
+}
+
 TEST(TFCompileTest, AssertEqAndReturnDiff) {
-  // Assert is converted into a no-op in XLA, so there is no failure even if the
-  // two args are different.
+  // Assert is converted into a no-op in XLA, so there is no failure even if
+  // the two args are different.
   AssertComp assert;
   EXPECT_EQ(assert.arg0_data(), assert.arg_data(0));
   EXPECT_EQ(assert.arg1_data(), assert.arg_data(1));
@@ -580,7 +718,7 @@ TEST(TFCompileTest, AssertEqAndReturnDiff) {
   EXPECT_EQ(assert.error_msg(), "");
   EXPECT_EQ(assert.result0(), expected_result);
   EXPECT_EQ(assert.result0_data()[0], expected_result);
-  EXPECT_EQ(assert.result0_data(), assert.results()[0]);
+  EXPECT_EQ(assert.result0_data(), assert.result_data(0));
 }
 
 TEST(TFCompileTest, LookupNameIndex) {
@@ -636,61 +774,6 @@ TEST(TFCompileTest, ProgramShape) {
   const xla::Shape& muladd_result1 =
       ShapeUtil::GetTupleElementShape(muladd_result, 1);
   EXPECT_TRUE(ShapeUtil::Compatible(muladd_result1, f32_2x2));
-}
-
-TEST(TFCompileTest, HloProfiling) {
-  Eigen::ThreadPool tp(1);
-  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
-
-  MatMulAndAddCompWithProfiling fn;
-  ASSERT_TRUE(fn.hlo_profiling_enabled());
-
-  fn.set_thread_pool(&device);
-
-  // x = [[1, 2], [3, 4]]
-  fn.arg0(0, 0) = 1;
-  fn.arg0(0, 1) = 2;
-  fn.arg0(1, 0) = 3;
-  fn.arg0(1, 1) = 4;
-
-  // y = [[10, 20], [30, 40]]
-  fn.arg1(0, 0) = 10;
-  fn.arg1(0, 1) = 20;
-  fn.arg1(1, 0) = 30;
-  fn.arg1(1, 1) = 40;
-
-  EXPECT_TRUE(fn.Run());
-
-  string hlo_profile_as_string =
-      xla::PrintHloProfile(fn.hlo_profile_printer_data(), fn.profile_counters(),
-                           /*clock_rate_ghz=*/1.0);
-  VLOG(1) << "Original HLO profile string:\n" << hlo_profile_as_string;
-
-  // Strip away identifier details from the profile string to avoid this test
-  // being a change detector for xla internals. Identifiers such as '%dot.0.7'
-  // just become '%dot'.
-  RE2::GlobalReplace(&hlo_profile_as_string, "(%[a-zA-Z0-9]*)[.0-9]*", "\\1");
-  VLOG(1) << "Stripped HLO profile string:\n" << hlo_profile_as_string;
-
-  std::vector<string> hlo_profile_lines =
-      absl::StrSplit(hlo_profile_as_string, '\n');
-
-  auto header = ContainsRegex("Execution profile for");
-  auto total_cycles_profile_line = ContainsRegex(R"(\[total\])");
-  auto dot_profile_line =
-      ContainsRegex(R"(%dot = f32\[2,2\]{1,0\} dot\(.*%arg0, .*%arg1\))");
-  auto add_profile_line =
-      ContainsRegex(R"(%add = f32\[2,2\]\{1,0\} add\(.*%arg0, .*%arg1\))");
-  auto tuple_profile_line = ContainsRegex(
-      R"(%tuple = \(f32\[2,2\]\{1,0\}, f32\[2,2\]\{1,0\}\) tuple\(.*%dot, .*%add\))");
-  auto arg0_profile_line =
-      ContainsRegex(R"(%arg0 = f32\[2,2\]\{1,0\} parameter\(0\))");
-  auto arg1_profile_line =
-      ContainsRegex(R"(%arg1 = f32\[2,2\]\{1,0\} parameter\(1\))");
-
-  EXPECT_THAT(hlo_profile_lines,
-              IsSupersetOf({header, total_cycles_profile_line, dot_profile_line,
-                            add_profile_line, tuple_profile_line}));
 }
 
 }  // namespace

@@ -19,11 +19,13 @@ namespace xla { class ExecutableRunOptions; }
 
 // (Implementation detail) Entry point to the function in the object file.
 extern "C" void entry_point(
-    void* result, const ::xla::ExecutableRunOptions* run_options,
-    const void** args, void** temps, XlaCustomCallStatus* status,
-    int64_t* profile_counters);
+   void* result, const ::xla::ExecutableRunOptions* run_options,
+   const void** args, void** temps, XlaCustomCallStatus* status,
+   int64_t* profile_counters);
+
 
 extern "C" char __tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[];
+
 
 
 namespace foo {
@@ -80,7 +82,7 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
     static XlaCompiledCpuFunction::StaticData* kStaticData = [](){
       XlaCompiledCpuFunction::StaticData* data =
         new XlaCompiledCpuFunction::StaticData;
-      set_static_data_raw_function(data, entry_point);
+      set_static_data_function_library_symbol_map(data, FunctionLibrarySymbolMap());
       set_static_data_buffer_infos(data, BufferInfos());
       set_static_data_num_buffers(data, kNumBuffers);
       set_static_data_result_index_table(data, ResultIndexToBufferIndex());
@@ -88,15 +90,18 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
       set_static_data_arg_index_table(data, ArgIndexToBufferIndex());
       set_static_data_num_args(data, kNumArgs);
       set_static_data_num_variables(data, kNumVariables);
-      set_static_data_result_index(data, kResultIndex);
+      set_static_data_temp_allocation_index(data, kTempAllocationIndex);
       set_static_data_arg_shape_infos(data, ArgShapeInfos());
       set_static_data_result_shape_infos(data, ResultShapeInfos());
       set_static_data_arg_names(data, StaticArgNames());
       set_static_data_variable_names(data, StaticVariableNames());
       set_static_data_result_names(data, StaticResultNames());
       set_static_data_program_shape(data, StaticProgramShape());
-      set_static_data_hlo_profile_printer_data(
-          data, StaticHloProfilePrinterData());
+      set_static_data_compilation_result_proto(data, nullptr);
+      
+set_static_data_raw_function(data, entry_point);
+set_static_data_hlo_profile_printer_data(data, StaticHloProfilePrinterData());
+
 
       return data;
     }();
@@ -105,10 +110,14 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
 
   MyClass(AllocMode alloc_mode =
             AllocMode::ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS)
-      : XlaCompiledCpuFunction(StaticData(), alloc_mode) {}
+      : XlaCompiledCpuFunction(StaticData(), alloc_mode) {
+    
+  }
 
   MyClass(const MyClass&) = delete;
   MyClass& operator=(const MyClass&) = delete;
+
+  
 
   // Arg methods for managing input buffers. Buffers are in row-major order.
   // There is a set of methods for each positional argument, with the following
@@ -390,8 +399,8 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
     return kArgIndexToBufferIndex;
   }
 
-  // The 0-based index of the result tuple in the temporary buffers.
-  static constexpr size_t kResultIndex = 0;
+  // Temp allocation index..
+  static constexpr std::optional<size_t> kTempAllocationIndex = std::nullopt;
 
   // Shapes of the input arguments.
   static constexpr int32_t kArg0Shapes[] = {
@@ -467,12 +476,24 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
     return kShape;
   }
 
-  // Metadata that can be used to pretty-print profile counters.
-  static const ::xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
-    static const ::xla::HloProfilePrinterData* kHloProfilePrinterData =
-      nullptr;
-    return kHloProfilePrinterData;
+  
+
+  
+// Metadata that can be used to pretty-print profile counters.
+ static const ::xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
+   static const ::xla::HloProfilePrinterData* kHloProfilePrinterData =
+     nullptr;
+   return kHloProfilePrinterData;
+}
+
+
+  static absl::flat_hash_map<std::string, void*> FunctionLibrarySymbolMap() {
+    return {};
   }
+ protected:
+  bool is_thunk_mode() const override { return false; }
+
+  
 };
 
 }  // end namespace bar

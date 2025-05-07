@@ -36,6 +36,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.training import saver as saver_lib
@@ -87,7 +88,8 @@ def tfassert_eq(_):
   x = array_ops.placeholder(dtypes.int32, name='x_hold')
   y = array_ops.placeholder(dtypes.int32, name='y_hold')
   control_flow_assert.Assert(
-      math_ops.equal(x, y), ['Expected x == y.'], name='assert_eq')
+      math_ops.equal(x, y), ['Expected x == y.'], name='assert_eq'
+  )
   math_ops.add(x, math_ops.negative(y), name='x_y_diff')
 
 
@@ -109,6 +111,14 @@ def tfmatmul(_):
   x = array_ops.placeholder(dtypes.float32, name='x_hold')
   y = array_ops.placeholder(dtypes.float32, name='y_hold')
   math_ops.matmul(x, y, name='x_y_prod')
+
+
+def tfmatmul_with_constant(_):
+  x = array_ops.placeholder(dtypes.float32, name='x_hold')
+  constant_y = array_ops.ones(
+      shape=[1024, 256], dtype=dtypes.float32, name='constant_y_hold'
+  )
+  math_ops.matmul(x, constant_y, name='x_constant_y_prod')
 
 
 def tfmatmulandadd(_):
@@ -184,6 +194,23 @@ def tfvariable_sequential_updates(_):
   array_ops.identity(updates, name='result')
 
 
+def tfrandom_uniform(_):
+  x = random_ops.random_uniform(shape=[1], minval=0.0, maxval=5.0)
+  array_ops.identity(x, name='result')
+
+
+def tfscatter(_):
+  # NOTE(basioli): We run two scatter operations to make sure fusion kernels
+  # get named correctly in XLA:CPU.
+  indices0 = array_ops.placeholder(dtypes.int32, name='indices_0')
+  updates0 = array_ops.placeholder(dtypes.float32, name='updates_0')
+  indices1 = array_ops.placeholder(dtypes.int32, name='indices_1')
+  updates1 = array_ops.placeholder(dtypes.float32, name='updates_1')
+  shape = constant_op.constant([8], name='shape')
+  array_ops.scatter_nd(indices0, updates0, shape, name='result_0')
+  array_ops.scatter_nd(indices1, updates1, shape, name='result_1')
+
+
 def write_graph(build_graph, out_dir):
   """Build a graph using build_graph and write it out."""
   g = ops.Graph()
@@ -208,12 +235,15 @@ def main(_):
   write_graph(tffunction, FLAGS.out_dir)
   write_graph(tfgather, FLAGS.out_dir)
   write_graph(tfmatmul, FLAGS.out_dir)
+  write_graph(tfmatmul_with_constant, FLAGS.out_dir)
   write_graph(tfmatmulandadd, FLAGS.out_dir)
   write_graph(tfsplits, FLAGS.out_dir)
   write_graph(tftop_k, FLAGS.out_dir)
   write_graph(tfvariable, FLAGS.out_dir)
   write_graph(tfvariable_readonly, FLAGS.out_dir)
   write_graph(tfvariable_sequential_updates, FLAGS.out_dir)
+  write_graph(tfrandom_uniform, FLAGS.out_dir)
+  write_graph(tfscatter, FLAGS.out_dir)
 
 
 if __name__ == '__main__':
@@ -223,6 +253,7 @@ if __name__ == '__main__':
       '--out_dir',
       type=str,
       default='',
-      help='Output directory for graphs, checkpoints and savers.')
+      help='Output directory for graphs, checkpoints and savers.',
+  )
   FLAGS, unparsed = parser.parse_known_args()
   app.run(main=main, argv=[sys.argv[0]] + unparsed)
