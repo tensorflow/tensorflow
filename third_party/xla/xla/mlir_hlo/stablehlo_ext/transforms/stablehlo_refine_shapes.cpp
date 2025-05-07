@@ -154,7 +154,7 @@ struct StablehloRefineShapesPass
           patterns->add<RefineDynamicReduceWindowOpPattern>(context);
           patterns->add<RefineDynamicRngBitGeneratorOpPattern>(context);
           patterns->add<RefineDynamicTopKOpPattern>(context);
-          populateSdyShapeRefinementPatterns(context, patterns);
+          populateSdyShapeRefinementPatterns(patterns, context);
         };
 
     if (failed(stablehlo::refineEntryFunction(*context, func,
@@ -167,12 +167,12 @@ struct StablehloRefineShapesPass
 
 void populateStablehloExtRefineShapesPatterns(RewritePatternSet *patterns,
                                               MLIRContext *context) {
-  stablehlo::populateStablehloRefineShapesPatterns(context, patterns);
-  stablehlo::populateStablehloShapeFolderPatterns(context, patterns);
+  stablehlo::populateStablehloRefineShapesPatterns(patterns, context);
+  stablehlo::populateStablehloShapeFolderPatterns(patterns, context);
   patterns->add<RefineDynamicReduceWindowOpPattern>(context);
   patterns->add<RefineDynamicRngBitGeneratorOpPattern>(context);
   patterns->add<RefineDynamicTopKOpPattern>(context);
-  populateSdyShapeRefinementPatterns(context, patterns);
+  populateSdyShapeRefinementPatterns(patterns, context);
 }
 
 }  // namespace stablehlo_ext

@@ -192,8 +192,8 @@ struct StablehloCanonicalizeDynamismPass
         .setStrictness(GreedyRewriteStrictness::AnyOp);
 
     RewritePatternSet patterns(&getContext());
-    stablehlo::populateStablehloCanonicalizeDynamismPatterns(&getContext(),
-                                                             &patterns);
+    stablehlo::populateStablehloCanonicalizeDynamismPatterns(&patterns,
+                                                             &getContext());
     patterns.add<CanonicalizeDynamicReduceWindowOpPattern>(&getContext());
     patterns.add<CanonicalizeDynamicRngBitGeneratorOpPattern>(&getContext());
     patterns.add<CanonicalizeDynamicTopKOpPattern>(&getContext());
