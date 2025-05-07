@@ -51,7 +51,7 @@ TEST(OpRegistrationTest, TestDuplicate) {
 
   TF_EXPECT_OK(registry->SetWatcher(
       [](const absl::Status& s, const OpDef& op_def) -> absl::Status {
-        EXPECT_TRUE(errors::IsAlreadyExists(s));
+        EXPECT_TRUE(absl::IsAlreadyExists(s));
         return absl::OkStatus();
       }));
   Register("Foo", registry.get());
