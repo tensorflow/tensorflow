@@ -103,7 +103,7 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   static char ID;  // NOLINT
 };
 
-using ExecutableRef = std::unique_ptr<Executable>;
+using ExecutableRef = std::shared_ptr<Executable>;
 
 struct ExecuteOptions {
   // If non-zero, identifies this execution as part of a potentially
@@ -270,7 +270,7 @@ class LoadedExecutable
   static char ID;  // NOLINT
 };
 
-using LoadedExecutableRef = std::unique_ptr<LoadedExecutable>;
+using LoadedExecutableRef = std::shared_ptr<LoadedExecutable>;
 
 }  // namespace ifrt
 }  // namespace xla
