@@ -315,8 +315,8 @@ func.func @callback_no_result(%arg0: tensor<f64>) {
   // CHECK-SAME:   api_version = 2 : i32, backend_config = "56238273106176",
   // CHECK-SAME:   has_side_effect = true,
   // CHECK-SAME:   operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>],
-  // CHECK-SAME:   result_layouts = [dense<> : tensor<0xindex>]
-  // CHECK-SAME: } : (tensor<i64>, tensor<f64>) -> tensor<i64>
+  // CHECK-SAME:   result_layouts = []
+  // CHECK-SAME: } : (tensor<i64>, tensor<f64>) -> ()
   %c = stablehlo.constant dense<56238273106176> : tensor<i64>
   stablehlo.custom_call @xla_python_cpu_callback(%c, %arg0) {api_version = 2 : i32, backend_config = "56238273106176", has_side_effect = true, operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>], result_layouts = []} : (tensor<i64>, tensor<f64>) -> ()
   return
@@ -327,11 +327,11 @@ func.func @callback_no_result(%arg0: tensor<f64>) {
 module @maximal_sharding_module attributes {mhlo.frontend_attributes = {xla.sdy.meshes = "{maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>}"}} {
   // CHECK-LABEL: @maximal_sharding_empty_tuple
   func.func @maximal_sharding_empty_tuple(%arg0: tensor<2xi64>) -> tensor<2xi64> {
-    // CHECK-NEXT: %[[DUMMY_VAL:.*]] = stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
+    // CHECK-NEXT: stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
     // CHECK-SAME:   api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
-    // CHECK-SAME:   has_side_effect = true, operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [dense<0> : tensor<1xindex>],
+    // CHECK-SAME:   has_side_effect = true, operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [],
     // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>, xla_shape = "()"
-    // CHECK-SAME: } : (tensor<2xi64>) -> tensor<2xi64>
+    // CHECK-SAME: } : (tensor<2xi64>) -> ()
     // CHECK-NEXT: return %arg0 : tensor<2xi64>
     %2 = stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
       api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},

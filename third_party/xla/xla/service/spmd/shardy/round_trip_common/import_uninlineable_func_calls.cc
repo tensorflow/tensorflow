@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
@@ -145,6 +146,10 @@ class ImportUninlineableFuncCallsPass
     return "Creates a pass that converts a `CallOp` with a `backend_config` "
            "or `inlineable=false` frontend attr to a `NamedComputationOp` with "
            "the function body inlined and the name of the callee.";
+  }
+
+  void getDependentDialects(mlir::DialectRegistry& registry) const final {
+    registry.insert<mlir::sdy::SdyDialect>();
   }
 };
 

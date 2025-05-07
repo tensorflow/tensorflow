@@ -386,7 +386,8 @@ class ShardMapExportPass
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
-    registry.insert<SdyDialect, mlir::mhlo::MhloDialect>();
+    registry.insert<SdyDialect, mlir::mhlo::MhloDialect,
+                    mlir::stablehlo::StablehloDialect>();
   }
 };
 
