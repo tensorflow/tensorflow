@@ -668,6 +668,46 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_quantize_preprocess",
+    srcs = [
+        "tf_quantize_preprocess.cc",
+    ],
+    hdrs = [
+        "tf_quantize_preprocess.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":tf_passes",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_pass_pipeline",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
+        "//tensorflow/compiler/mlir/stablehlo:fold_broadcast_pass",
+        "//tensorflow/compiler/mlir/stablehlo:legalize_tf_xla_call_module_to_stablehlo_pass",
+        "//tensorflow/compiler/mlir/stablehlo:rename_entrypoint_to_main",
+        # "//tensorflow/compiler/mlir/stablehlo:tf_fuse_convolution_pass",
+        "//tensorflow/compiler/mlir/stablehlo:tf_stablehlo",
+        "//tensorflow/compiler/mlir/stablehlo:unfuse_batch_norm_pass",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_freeze_variables",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
+        "@local_xla//xla/mlir_hlo:all_passes",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/platform:path",
+    ],
+)
+
+cc_library(
     name = "quantize_preprocess",
     srcs = [
         "quantize_preprocess.cc",
