@@ -105,7 +105,15 @@ TEST_P(HloShardingTest, IsFullyReplicated) {
     EXPECT_FALSE(sharding->IsFullyReplicated());
   }
   {
-    // Maximal HloSharding is not fully replicated.
+    // Maximal HloSharding with a single device is fully replicated.
+    auto device_list = GetDevices({0});  // This sharding uses 1 device.
+    auto xla_hlo_sharding = xla::HloSharding::AssignDevice(/*device_id=*/0);
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_TRUE(sharding->IsFullyReplicated());
+  }
+  {
+    // Maximal HloSharding with more than one device is not fully replicated.
     auto xla_hlo_sharding = xla::HloSharding::AssignDevice(/*device_id=*/0);
     std::shared_ptr<const HloSharding> sharding =
         HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
