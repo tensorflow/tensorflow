@@ -132,8 +132,8 @@ class GraphOperation : public TracingOperation {
     // TODO(b/145674566): We use Graph::NewName to get a unique name here but
     // this may not be consistent with python's naming policy.
     mutex_lock l(g_->mu);
-    op_.reset(new TF_OperationDescription(g_, op_type_.c_str(),
-                                          g_->graph.NewName(op_name).c_str()));
+    op_ = std::make_unique<TF_OperationDescription>(
+        g_, op_type_.c_str(), g_->graph.NewName(op_name).c_str());
     return absl::OkStatus();
   }
   const string& Name() const override { return op_type_; }
