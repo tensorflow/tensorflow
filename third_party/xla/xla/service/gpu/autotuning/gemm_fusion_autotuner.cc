@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_status_key.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/dot_search_space.h"
+#include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -1206,16 +1207,22 @@ absl::StatusOr<AutotuneResult> GemmFusionAutotunerImpl::MeasurePerformance(
   if (!stream_exec->SynchronizeAllActivity()) {
     return Internal("Failed to synchronize GPU for autotuning.");
   }
-  TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
 
   VLOG(5) << "Trying : " << ConfigToString(candidate.config);
   AutotuneResult res = FromConfig(candidate.config);
 
   const HloComputation* fusion_computation = fusion.called_computation();
-  TF_ASSIGN_OR_RETURN(auto rz_buffers,
-                      RedzoneBuffers::FromInstruction(
-                          *fusion_computation->FusionInstruction(), config_,
-                          debug_options_, RedzoneBuffers::kAllInputs));
+
+  bool should_init_buffers = config_.should_init_buffers();
+  bool should_check_correctness = config_.should_check_correctness();
+  int redzone_padding_bytes = debug_options_.xla_gpu_redzone_padding_bytes();
+  TF_ASSIGN_OR_RETURN(se::Stream * stream, config_.GetStream());
+  TF_ASSIGN_OR_RETURN(
+      auto rz_buffers,
+      RedzoneBuffers::FromInstruction(
+          *fusion_computation->FusionInstruction(), config_.GetAllocator(),
+          stream, RedzoneBuffers::kAllInputs, should_init_buffers,
+          should_check_correctness, redzone_padding_bytes));
 
   TF_ASSIGN_OR_RETURN(
       ProfilingOutput profiling_output,

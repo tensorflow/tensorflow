@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/triton_fusion_numerics_verifier.h"
 
 #include <memory>
-#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
@@ -32,10 +31,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
@@ -45,14 +46,13 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tools/hlo_decomposer.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -135,10 +135,15 @@ absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
     return Internal("Failed to compile Triton fusion.");
   }
 
-  TF_ASSIGN_OR_RETURN(auto rz_buffers, RedzoneBuffers::FromInstruction(
-                                           fusion, config, debug_opts,
-                                           RedzoneBuffers::kAllInputs));
-  TF_ASSIGN_OR_RETURN(auto stream, config.GetStream());
+  bool should_init_buffers = config.should_init_buffers();
+  bool should_check_correctness = config.should_check_correctness();
+  int redzone_padding_bytes = debug_opts.xla_gpu_redzone_padding_bytes();
+  TF_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
+  TF_ASSIGN_OR_RETURN(auto rz_buffers,
+                      RedzoneBuffers::FromInstruction(
+                          fusion, config.GetAllocator(), stream,
+                          RedzoneBuffers::kAllInputs, should_init_buffers,
+                          should_check_correctness, redzone_padding_bytes));
   TF_ASSIGN_OR_RETURN(ProfilingOutput profiling_output,
                       util.ProfileExecutable(executable.get(), stream,
                                              rz_buffers.input_buffers(),

@@ -42,9 +42,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/gpu_autotuning.pb.h"
+#include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
@@ -445,10 +445,16 @@ absl::StatusOr<GpuConvAlgorithmPicker::AutotuneRuntimeArguments>
 GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
     const HloCustomCallInstruction* instr, const AutotuneConfig& config,
     const DebugOptions& debug_options) {
-  TF_ASSIGN_OR_RETURN(auto rz_buffers,
-                      RedzoneBuffers::FromInstruction(
-                          *instr, config, debug_options,
-                          RedzoneBuffers::kAllInputsOutputsNoScratch));
+  bool should_init_buffers = config.should_init_buffers();
+  bool should_check_correctness = config.should_check_correctness();
+  int redzone_padding_bytes = debug_options.xla_gpu_redzone_padding_bytes();
+  TF_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
+  TF_ASSIGN_OR_RETURN(
+      auto rz_buffers,
+      RedzoneBuffers::FromInstruction(
+          *instr, config.GetAllocator(), stream,
+          RedzoneBuffers::kAllInputsOutputsNoScratch, should_init_buffers,
+          should_check_correctness, redzone_padding_bytes));
 
   // Get canonical HLO.
   std::string canonical_hlo(
