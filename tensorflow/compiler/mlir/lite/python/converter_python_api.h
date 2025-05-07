@@ -20,8 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
-
 namespace tflite {
 
 // Convert a model represented in `input_contents`. `model_flags_proto`
@@ -35,9 +33,7 @@ PyObject* Convert(PyObject* model_flags_proto_txt_raw,
                   PyObject* converter_flags_proto_txt_raw,
                   PyObject* input_contents_txt_raw,
                   bool extended_return = false,
-                  PyObject* debug_info_txt_raw = nullptr,
-                  const tensorflow::quantization::PyFunctionLibrary*
-                      quantization_py_function_library = nullptr);
+                  PyObject* debug_info_txt_raw = nullptr);
 
 // Quantize the model with calibration data. Throw errors if `fully_quantize`
 // is specified by the calibration data are not sufficient to quantize the
