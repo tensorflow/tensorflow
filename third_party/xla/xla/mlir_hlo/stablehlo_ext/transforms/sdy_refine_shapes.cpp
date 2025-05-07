@@ -401,8 +401,8 @@ struct RefineInferTypeOpInterfacePattern
 }  // namespace
 
 /// Patterns for refining shapes of Shardy ops.
-void populateSdyShapeRefinementPatterns(MLIRContext* context,
-                                        RewritePatternSet* patterns) {
+void populateSdyShapeRefinementPatterns(RewritePatternSet* patterns,
+                                        MLIRContext* context) {
   patterns->add<RefineManualComputationOpPattern>(context);
   patterns->add<RefineNamedComputationOpPattern>(context);
   patterns->add<RefineInferTypeOpInterfacePattern>(context);
