@@ -52,8 +52,8 @@ class TensorShapeRep {
   // can be reassigned into, but its dimensions and number of elements can be
   // nonsensical (e.g., negative dimension sizes, or number of elements not
   // properly recomputed).
-  TensorShapeRep(TensorShapeRep&& b);
-  void operator=(TensorShapeRep&& b);
+  TensorShapeRep(TensorShapeRep&& b) noexcept;
+  void operator=(TensorShapeRep&& b) noexcept;
 
   /// Clear a tensor shape, producing the scalar shape.
   void Clear();
@@ -721,7 +721,7 @@ inline TensorShapeRep::TensorShapeRep(const TensorShapeRep& b) {
   }
 }
 
-inline TensorShapeRep::TensorShapeRep(TensorShapeRep&& b) {
+inline TensorShapeRep::TensorShapeRep(TensorShapeRep&& b) noexcept {
   num_elements_ = b.num_elements_;
   memcpy(buf(), b.buf(), sizeof(u_.buf));
   // memcpy above Implicitly does:
@@ -748,7 +748,7 @@ inline void TensorShapeRep::operator=(const TensorShapeRep& b) {
   }
 }
 
-inline void TensorShapeRep::operator=(TensorShapeRep&& b) {
+inline void TensorShapeRep::operator=(TensorShapeRep&& b) noexcept {
   if (tag() == REP_OUT_OF_LINE) {
     DestructorOutOfLine();
   }
