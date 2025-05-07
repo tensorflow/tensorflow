@@ -3197,20 +3197,23 @@ PjRtStreamExecutorLoadedExecutable::GetOutputMemoryKinds() const {
 }
 
 absl::Status PjRtStreamExecutorClient::UpdateCompileOptions(
-    CompileOptions* options) {
-  return UpdateCompileOptionsInternal(options, /*returned_extras=*/nullptr);
+    CompileOptions* options, bool lookup_addressable_devices) {
+  return UpdateCompileOptionsInternal(options, /*returned_extras=*/nullptr,
+                                      lookup_addressable_devices);
 }
 
 absl::StatusOr<PjRtStreamExecutorClient::ExecutableExtras>
 PjRtStreamExecutorClient::UpdateCompileOptionsAndGetExecutableExtras(
     CompileOptions* options) {
   ExecutableExtras extras;
-  TF_RETURN_IF_ERROR(UpdateCompileOptionsInternal(options, &extras));
+  TF_RETURN_IF_ERROR(UpdateCompileOptionsInternal(
+      options, &extras, /*lookup_addressable_devices=*/true));
   return extras;
 }
 
 absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
-    CompileOptions* options, ExecutableExtras* returned_extras) {
+    CompileOptions* options, ExecutableExtras* returned_extras,
+    bool lookup_addressable_devices) {
   ExecutableBuildOptions& build_options = options->executable_build_options;
   if (!build_options.compile_thread_pool()) {
     build_options.set_compile_thread_pool(thread_pool());
@@ -3247,6 +3250,20 @@ absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
   };
 
   build_options.set_layout_canonicalization_callback(layout_callback);
+
+  // We don't look up devices when it is not required. It could fail if
+  // we look up a device ID on a client with a different topology.
+  // Note that we always look up devices for XLA GPU shard autotuning, as it
+  // needs to know the number of processes and the current process index.
+  const bool use_xla_gpu_shard_autotuning =
+      build_options.has_debug_options() &&
+      build_options.debug_options().xla_gpu_shard_autotuning();
+  if (!lookup_addressable_devices && !use_xla_gpu_shard_autotuning) {
+    if (build_options.device_ordinal() < 0) {
+      build_options.set_device_ordinal(0);
+    }
+    return absl::OkStatus();
+  }
 
   ExecutableExtras extras;
   std::shared_ptr<DeviceAssignment>& device_assignment =
@@ -3316,7 +3333,7 @@ PjRtStreamExecutorClient::CompileInternal(
     const XlaComputation& computation,
     const std::vector<const Shape*>& argument_layout_pointers,
     LayoutCanonicalizationCallback layout_canonicalization_callback,
-    CompileOptions options) {
+    CompileOptions options, bool lookup_addressable_devices) {
   tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::CompileInternal");
   VLOG(1) << "PjRtStreamExecutorClient::CompileInternal";
   if (key_value_store().has_value() &&
@@ -3326,7 +3343,8 @@ PjRtStreamExecutorClient::CompileInternal(
   auto input_options = options;
 
   TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
-  TF_RETURN_IF_ERROR(UpdateCompileOptions(&options));
+  TF_RETURN_IF_ERROR(
+      UpdateCompileOptions(&options, lookup_addressable_devices));
 
   // It is important to set the canonicalization callback after creating
   // a copy of the options so that the executable's options remain without
@@ -3347,6 +3365,13 @@ PjRtStreamExecutorClient::CompileInternal(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
                                   CompileOptions options) {
+  return Compile(computation, options, /*lookup_addressable_devices=*/false);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
+                                  CompileOptions options,
+                                  bool lookup_addressable_devices) {
   std::vector<const Shape*> argument_layout_pointers;
   const ExecutableBuildOptions& build_options =
       options.executable_build_options;
@@ -3368,12 +3393,18 @@ PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
       &argument_layout_pointers));
   return CompileInternal(computation, argument_layout_pointers,
                          /* layout_canonicalization_callback = */ nullptr,
-                         options);
+                         options, lookup_addressable_devices);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
                                   CompileOptions options) {
+  return Compile(module, options, /*lookup_addressable_devices=*/false);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+PjRtStreamExecutorClient::Compile(mlir::ModuleOp module, CompileOptions options,
+                                  bool lookup_addressable_devices) {
   XlaComputation xla_computation;
   const ExecutableBuildOptions& exec_build_options =
       options.executable_build_options;
@@ -3385,7 +3416,7 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
   // If the compile options specify argument layout, then let's
   // fall back to using the options to determine layouts.
   if (options.argument_layouts) {
-    return Compile(xla_computation, options);
+    return Compile(xla_computation, options, lookup_addressable_devices);
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
@@ -3429,22 +3460,24 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
                           options.executable_build_options));
 
   return CompileInternal(xla_computation, arg_layouts_and_pointers.second,
-                         layout_callback, options);
+                         layout_callback, options, lookup_addressable_devices);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::CompileAndLoad(const XlaComputation& computation,
                                          CompileOptions options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                      Compile(computation, options));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtExecutable> executable,
+      Compile(computation, options, /*lookup_addressable_devices=*/true));
   return Load(std::move(executable), LoadOptions());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::CompileAndLoad(mlir::ModuleOp module,
                                          CompileOptions options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                      Compile(module, options));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtExecutable> executable,
+      Compile(module, options, /*lookup_addressable_devices=*/true));
   return Load(std::move(executable), LoadOptions());
 }
 
