@@ -722,9 +722,9 @@ void ExecutorState<PropagatorStateType>::ProcessConstTensor(
   nodestats::SetOpStart(stats);
   nodestats::SetOpEnd(stats);
   Entry& output = (*outputs)[0];
-  output.state = Entry::State::HAS_CONST_TENSOR;
   output.const_tensor = item.const_tensor;
   output.alloc_attr = item.output_attrs()[0];
+  output.state.store(Entry::State::HAS_CONST_TENSOR, std::memory_order_release);
 }
 
 template <class PropagatorStateType>
@@ -983,12 +983,13 @@ absl::Status ExecutorState<PropagatorStateType>::PrepareInputs(
     const bool expect_ref = TF_PREDICT_FALSE(item.is_any_input_ref_typed) &&
                             IsRefType(item.input_type(i));
     Entry* entry = first_input + i;
+    auto state = entry->state.load(std::memory_order_acquire);
     (*input_alloc_attrs)[i] = entry->alloc_attr;
 
     // i-th input.
     TensorValue* inp = &(*inputs)[i];
 
-    switch (entry->state) {
+    switch (state) {
       case Entry::State::NO_VALUE: {
         // Only merge and transfer nodes can have no-value inputs.
         inp->mutex_if_ref = nullptr;
@@ -997,8 +998,9 @@ absl::Status ExecutorState<PropagatorStateType>::PrepareInputs(
         } else {
           DCHECK(item.is_transfer_node)
               << item.kernel->name() << " - input " << i;
-          entry->state = Entry::State::HAS_CONST_TENSOR;
           entry->const_tensor = kEmptyTensor;
+          entry->state.store(Entry::State::HAS_CONST_TENSOR,
+                             std::memory_order_release);
           // NOTE(mrry): This `const_cast` is necessary because `TensorValue`
           // stores a non-const `Tensor*`, and relies on the `OpKernelContext`
           // accessors making dynamic checks that prevent using an immutable
@@ -1060,7 +1062,8 @@ absl::Status ExecutorState<PropagatorStateType>::PrepareInputs(
             tf_shared_lock l(*ref_mu);
             entry->val.Init(*ref_tensor);
           }
-          entry->state = Entry::State::HAS_VALUE;
+          entry->state.store(Entry::State::HAS_VALUE,
+                             std::memory_order_release);
 
           inp->mutex_if_ref = nullptr;
           inp->tensor = entry->val.get();
@@ -1145,9 +1148,10 @@ absl::Status ExecutorState<PropagatorStateType>::ProcessOutputs(
           nodestats::SetOutput(stats, i, val.tensor);
         }
         if (val.is_ref()) {
-          out->state = Entry::State::HAS_REF_TENSOR;
           out->ref_tensor.tensor = val.tensor;
           out->ref_tensor.mu = val.mutex_if_ref;
+          out->state.store(Entry::State::HAS_REF_TENSOR,
+                           std::memory_order_release);
           if (log_memory_) {
             Tensor to_log;
             {
@@ -1161,8 +1165,8 @@ absl::Status ExecutorState<PropagatorStateType>::ProcessOutputs(
         } else {
           // NOTE that std::move is used here, so val.tensor goes to
           // uninitialized state (val.tensor->IsInitialized return false).
-          out->state = Entry::State::HAS_VALUE;
           out->val.Init(std::move(*val.tensor));
+          out->state.store(Entry::State::HAS_VALUE, std::memory_order_release);
           if (log_memory_) {
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
                                           ctx->step_id(), i, *out->val);
