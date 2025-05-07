@@ -232,13 +232,15 @@ namespace {
 // execution graph from a command sequence.
 class CommandOperation : public ExecutionGraph::Operation {
  public:
-  explicit CommandOperation(CommandBufferCmd::BufferUseVector buffers)
-      : buffers_(std::move(buffers)) {}
+  explicit CommandOperation(const CommandBufferCmd* cmd)
+      : name_(cmd->ToString()), buffers_(cmd->buffers()) {}
 
+  absl::string_view name() const final { return name_; }
   absl::Span<const BufferUse> BufferUses() const final { return buffers_; }
   absl::Span<const ResourceUse> ResourceUses() const final { return {}; }
 
  private:
+  std::string name_;
   CommandBufferCmd::BufferUseVector buffers_;
 };
 }  // namespace
@@ -255,7 +257,7 @@ absl::StatusOr<CommandBufferCmdExecutor> CommandBufferCmdExecutor::Create(
     std::vector<CommandOperation> operations;
     operations.reserve(commands.size());
     for (const std::unique_ptr<CommandBufferCmd>& cmd : commands) {
-      operations.emplace_back(cmd->buffers());
+      operations.emplace_back(cmd.get());
     }
     TF_ASSIGN_OR_RETURN(execution_graph,
                         ExecutionGraph::Create<CommandOperation>(operations));
@@ -637,7 +639,7 @@ ComputationIdCmd::ComputationIdCmd(ExecutionStreamId execution_stream_id,
       dest_(dest),
       kind_(kind) {}
 
-CommandBufferCmd::BufferUseVector ComputationIdCmd::buffers() {
+CommandBufferCmd::BufferUseVector ComputationIdCmd::buffers() const {
   return {{dest_, MemoryAccess::kWrite}};
 }
 
@@ -751,7 +753,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> LaunchCmd::Record(
       });
 }
 
-CommandBufferCmd::BufferUseVector LaunchCmd::buffers() {
+CommandBufferCmd::BufferUseVector LaunchCmd::buffers() const {
   BufferUseVector buffers;
   for (int32_t i = 0; i < args_.size(); ++i) {
     buffers.emplace_back(args_[i], args_access_[i]);
@@ -831,7 +833,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CustomKernelLaunchCmd::Record(
       });
 }
 
-CommandBufferCmd::BufferUseVector CustomKernelLaunchCmd::buffers() {
+CommandBufferCmd::BufferUseVector CustomKernelLaunchCmd::buffers() const {
   BufferUseVector buffers;
   for (int32_t i = 0; i < args_.size(); ++i) {
     buffers.emplace_back(args_[i], args_access_[i]);
@@ -882,7 +884,7 @@ MemcpyDeviceToDeviceCmd::Record(const Thunk::ExecuteParams& execute_params,
       });
 }
 
-CommandBufferCmd::BufferUseVector MemcpyDeviceToDeviceCmd::buffers() {
+CommandBufferCmd::BufferUseVector MemcpyDeviceToDeviceCmd::buffers() const {
   return {{dst_, MemoryAccess::kWrite}, {src_, MemoryAccess::kRead}};
 }
 
@@ -923,7 +925,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> MemzeroCmd::Record(
       });
 }
 
-CommandBufferCmd::BufferUseVector MemzeroCmd::buffers() {
+CommandBufferCmd::BufferUseVector MemzeroCmd::buffers() const {
   return {{dst_, MemoryAccess::kWrite}};
 }
 
@@ -966,7 +968,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> Memset32Cmd::Record(
       });
 }
 
-CommandBufferCmd::BufferUseVector Memset32Cmd::buffers() {
+CommandBufferCmd::BufferUseVector Memset32Cmd::buffers() const {
   return {{dst_, MemoryAccess::kWrite}};
 }
 
@@ -1035,7 +1037,7 @@ bool CaseCmd::force_update() {
                         [](const auto& seq) { return seq.force_update(); });
 }
 
-CommandBufferCmd::BufferUseVector CaseCmd::buffers() {
+CommandBufferCmd::BufferUseVector CaseCmd::buffers() const {
   absl::flat_hash_set<BufferUse> buffers;
   buffers.emplace(index_, MemoryAccess::kRead);
   for (auto& branch : branches_) {
@@ -1095,7 +1097,7 @@ bool WhileCmd::force_update() {
   return (cond_commands_.force_update() || body_commands_.force_update());
 }
 
-CommandBufferCmd::BufferUseVector WhileCmd::buffers() {
+CommandBufferCmd::BufferUseVector WhileCmd::buffers() const {
   absl::flat_hash_set<BufferUse> buffers;
   buffers.emplace(pred_, MemoryAccess::kWrite);
   buffers.insert(cond_commands_.buffers().begin(),
@@ -1158,7 +1160,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> GemmCmd::Record(
                              });
 }
 
-CommandBufferCmd::BufferUseVector GemmCmd::buffers() {
+CommandBufferCmd::BufferUseVector GemmCmd::buffers() const {
   return {{lhs_buffer_, MemoryAccess::kRead},
           {rhs_buffer_, MemoryAccess::kRead},
           {output_buffer_, MemoryAccess::kWrite},
@@ -1211,7 +1213,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CublasLtCmd::Record(
       });
 }
 
-CommandBufferCmd::BufferUseVector CublasLtCmd::buffers() {
+CommandBufferCmd::BufferUseVector CublasLtCmd::buffers() const {
   BufferUseVector buffer_usage;
   buffer_usage.reserve(13);
   buffer_usage.push_back({a_, MemoryAccess::kRead});
@@ -1303,7 +1305,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnCmd::Record(
       });
 }
 
-CommandBufferCmd::BufferUseVector CuDnnCmd::buffers() {
+CommandBufferCmd::BufferUseVector CuDnnCmd::buffers() const {
   CommandBufferCmd::BufferUseVector buffer_usage;
   buffer_usage.reserve(args_.size());
   for (int i = 0; i < args_.size() - 1; ++i) {
@@ -1476,7 +1478,7 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
       });
 }
 
-CommandBufferCmd::BufferUseVector CustomCallCmd::buffers() {
+CommandBufferCmd::BufferUseVector CustomCallCmd::buffers() const {
   CommandBufferCmd::BufferUseVector buffer_usage;
   for (auto& slices : {operands_, results_}) {
     for (const std::optional<Slice>& slice : slices) {
@@ -1587,7 +1589,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllReduceCmd::Record(
       });
 }
 
-CommandBufferCmd::BufferUseVector AllReduceCmd::buffers() {
+CommandBufferCmd::BufferUseVector AllReduceCmd::buffers() const {
   BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
     buffer_usage.emplace_back(buffer.source_buffer, MemoryAccess::kRead);
@@ -1651,7 +1653,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> ReduceScatterCmd::Record(
                              });
 }
 
-CommandBufferCmd::BufferUseVector ReduceScatterCmd::buffers() {
+CommandBufferCmd::BufferUseVector ReduceScatterCmd::buffers() const {
   BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
     buffer_usage.emplace_back(buffer.source_buffer, MemoryAccess::kRead);
@@ -1712,7 +1714,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllToAllCmd::Record(
       });
 }
 
-CommandBufferCmd::BufferUseVector AllToAllCmd::buffers() {
+CommandBufferCmd::BufferUseVector AllToAllCmd::buffers() const {
   BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
     buffer_usage.emplace_back(buffer.source_buffer, MemoryAccess::kRead);
@@ -1773,7 +1775,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllGatherCmd::Record(
                              });
 }
 
-CommandBufferCmd::BufferUseVector AllGatherCmd::buffers() {
+CommandBufferCmd::BufferUseVector AllGatherCmd::buffers() const {
   BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
     buffer_usage.emplace_back(buffer.source_buffer, MemoryAccess::kRead);
@@ -1836,7 +1838,7 @@ CollectiveBroadcastCmd::Record(const Thunk::ExecuteParams& execute_params,
       });
 }
 
-CommandBufferCmd::BufferUseVector CollectiveBroadcastCmd::buffers() {
+CommandBufferCmd::BufferUseVector CollectiveBroadcastCmd::buffers() const {
   BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
     buffer_usage.emplace_back(buffer.source_buffer, MemoryAccess::kRead);
@@ -2095,14 +2097,12 @@ absl::StatusOr<const se::CommandBuffer::Command*> DynamicSliceFusionCmd::Record(
       });
 }
 
-CommandBufferCmd::BufferUseVector DynamicSliceFusionCmd::buffers() {
+CommandBufferCmd::BufferUseVector DynamicSliceFusionCmd::buffers() const {
   CommandBufferCmd::BufferUseVector buffers;
   auto embed_buffers = embedded_commands_.buffers();
   for (auto buffer_usage : embed_buffers) {
-    CHECK(
-        embeded_to_origin_slice_map_[buffer_usage.slice().index()].has_value());
     buffers.emplace_back(
-        embeded_to_origin_slice_map_[buffer_usage.slice().index()].value(),
+        *embeded_to_origin_slice_map_.at(buffer_usage.slice().index()),
         buffer_usage.access());
   }
   return buffers;

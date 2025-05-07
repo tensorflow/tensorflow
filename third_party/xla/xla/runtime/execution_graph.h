@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
@@ -66,6 +67,26 @@ class ExecutionGraph {
 
   static constexpr NodeId kInvalidNodeId = std::numeric_limits<NodeId>::min();
 
+  // A base class for an operation that can be executed by the runtime.
+  class Operation {
+   public:
+    virtual ~Operation() = default;
+
+    virtual absl::string_view name() const = 0;
+    virtual absl::Span<const BufferUse> BufferUses() const = 0;
+    virtual absl::Span<const ResourceUse> ResourceUses() const = 0;
+
+   protected:
+    Operation() = default;
+
+    Operation(const Operation&) = default;
+    Operation& operator=(const Operation&) = default;
+
+    Operation(Operation&&) = default;
+    Operation& operator=(Operation&&) = default;
+  };
+
+  // An edge between two nodes created for the execution graph operations.
   struct NodeEdge {
     // Edge kind defines execution ordering between two operations. Scheduling
     // edge is weaker than an execution edge, as it gives more flexibility
@@ -128,24 +149,6 @@ class ExecutionGraph {
     // assumption is that by executing nodes with higher priority first we will
     // unlock more nodes for execution.
     int64_t priority = 0;
-  };
-
-  // A base class for an operation that can be executed by the runtime.
-  class Operation {
-   public:
-    virtual ~Operation() = default;
-
-    virtual absl::Span<const BufferUse> BufferUses() const = 0;
-    virtual absl::Span<const ResourceUse> ResourceUses() const = 0;
-
-   protected:
-    Operation() = default;
-
-    Operation(const Operation&) = default;
-    Operation& operator=(const Operation&) = default;
-
-    Operation(Operation&&) = default;
-    Operation& operator=(Operation&&) = default;
   };
 
   // Constructs an execution graph from a sequence of operations.

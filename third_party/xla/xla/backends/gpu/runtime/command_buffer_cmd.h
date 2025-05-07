@@ -256,7 +256,7 @@ class CommandBufferCmd {
 
   // Returns all buffers used by the cmd. These will be used to track cmd
   // updates, thus they need to be consistent across calls to the function.
-  virtual BufferUseVector buffers() = 0;
+  virtual BufferUseVector buffers() const = 0;
 
   // Returns true if command implemented as a nested command buffer.
   virtual bool IsNestedCommandBuffer() const { return false; }
@@ -491,7 +491,7 @@ class ComputationIdCmd : public CommandBufferCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
  private:
   BufferAllocation::Slice dest_;
@@ -517,7 +517,7 @@ class LaunchCmd : public CommandBufferCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
  private:
   std::string kernel_name_;
@@ -552,7 +552,7 @@ class CustomKernelLaunchCmd : public CommandBufferCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
  private:
   std::vector<BufferAllocation::Slice> args_;
@@ -581,7 +581,7 @@ class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
  private:
   BufferAllocation::Slice dst_;
@@ -603,7 +603,7 @@ class MemzeroCmd : public CommandBufferCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
  private:
   BufferAllocation::Slice dst_;
@@ -623,7 +623,7 @@ class Memset32Cmd : public CommandBufferCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
  private:
   BufferAllocation::Slice dst_;
@@ -649,7 +649,7 @@ class CaseCmd : public CommandBufferCmd {
 
   bool force_update() override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
  private:
   BufferAllocation::Slice index_;
@@ -677,7 +677,7 @@ class WhileCmd : public CommandBufferCmd {
 
   bool force_update() override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
  private:
   BufferAllocation::Slice pred_;
@@ -705,7 +705,7 @@ class GemmCmd : public TracedCommandBufferCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
   bool IsNestedCommandBuffer() const final { return true; }
 
@@ -741,7 +741,7 @@ class CublasLtCmd : public TracedCommandBufferCmd, public CublasLtMatmulThunk {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
   bool IsNestedCommandBuffer() const final { return true; }
 };
@@ -764,7 +764,7 @@ class CuDnnCmd : public TracedCommandBufferCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
   bool IsNestedCommandBuffer() const final { return true; }
 
@@ -819,7 +819,7 @@ class CustomCallCmd : public CommandBufferCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
   bool IsNestedCommandBuffer() const final { return true; }
 
  private:
@@ -921,7 +921,7 @@ class AllReduceCmd : public CollectiveCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
   AsyncStreamKind GetAsyncStreamKind() override {
     return AsyncStreamKind::kCollective;
@@ -948,7 +948,7 @@ class ReduceScatterCmd : public CollectiveCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
   AsyncStreamKind GetAsyncStreamKind() override {
     return AsyncStreamKind::kCollective;
@@ -975,7 +975,7 @@ class AllToAllCmd : public CollectiveCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
   AsyncStreamKind GetAsyncStreamKind() override {
     return AsyncStreamKind::kCollective;
@@ -1001,7 +1001,7 @@ class AllGatherCmd : public CollectiveCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
   AsyncStreamKind GetAsyncStreamKind() override {
     return AsyncStreamKind::kCollective;
@@ -1027,7 +1027,7 @@ class CollectiveBroadcastCmd : public CollectiveCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
  private:
   std::vector<CollectiveThunk::Buffer> buffers_;
@@ -1062,7 +1062,7 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  BufferUseVector buffers() override;
+  BufferUseVector buffers() const override;
 
   bool force_update() override;
 

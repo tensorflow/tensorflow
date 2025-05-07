@@ -989,6 +989,7 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
