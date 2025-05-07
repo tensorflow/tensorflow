@@ -48,15 +48,10 @@ namespace gpu {
 // <HLO computation fingerprint, serialized compiled object>.
 using BinaryMap = absl::flat_hash_map<std::string, std::string>;
 
-// If a dimensions is smaller than this, untiled transposition may be more
-// efficient.
-inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
-// But if both swap dimensions are larger than 'kMinDimensionToTransposeTiled2',
-// and the product of the dimensions to be swapped is larger than
+// If the product of the dimensions to be swapped is larger than
 // 'kMinTotalDimensionsToTransposeTiled', tiled transposition may be more
-// efficient.
-inline constexpr int64_t kMinDimensionToTransposeTiled2 = 8;
-inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
+// efficient. See go/xla-transpose-emitter-performance-analysis.
+inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 16 * 16;
 // As the amount of shared memory is limited, we need to make sure that we don't
 // detect 102 transposes that would require too much bytes for the most minor
 // dimension.

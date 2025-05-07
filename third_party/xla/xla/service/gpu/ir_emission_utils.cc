@@ -448,28 +448,23 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     return TransposeDescription{&hero, dimensions, permutation,
                                 shmem_usage_bytes};
   }
+  int64_t num_elements_after_transposed_dims = 1;
+  std::pair<int64_t, int64_t> transposed_dims;
   if (permutation.back() == dimensions.size() - 1) {
-    operand_most_minor_dim =
-        hero.operand(0)->shape().dimensions(dimensions.size() - 2);
-    if (byte_width * dimensions.back() <= kMaxBytesInMostMinorDimension &&
-        byte_width * dimensions.back() *
-                std::min(operand_most_minor_dim,
-                         dimensions[dimensions.size() - 2]) >=
-            kMinDimensionToTransposeTiled) {
-      // Tile size for transposition.
-      int64_t shmem_usage_bytes = kNumShmemBanks * (kNumShmemBanks + 1) *
-                                  byte_width * dimensions.back();
-      return TransposeDescription{&hero, dimensions, permutation,
-                                  shmem_usage_bytes};
+    if (byte_width * dimensions.back() > kMaxBytesInMostMinorDimension) {
+      return std::nullopt;
     }
-  } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
-              dimensions.back() >= kMinDimensionToTransposeTiled) ||
-             (operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
-              dimensions.back() >= kMinDimensionToTransposeTiled2 &&
-              operand_most_minor_dim * dimensions.back() >=
-                  kMinTotalDimensionsToTransposeTiled)) {
-    int64_t shmem_usage_bytes =
-        kNumShmemBanks * (kNumShmemBanks + 1) * byte_width;
+    num_elements_after_transposed_dims = dimensions.back();
+    transposed_dims = {
+        hero.operand(0)->shape().dimensions(dimensions.size() - 2),
+        dimensions[dimensions.size() - 2]};
+  } else {
+    transposed_dims = {operand_most_minor_dim, dimensions.back()};
+  }
+  if (transposed_dims.first * transposed_dims.second >=
+      kMinTotalDimensionsToTransposeTiled) {
+    int64_t shmem_usage_bytes = kNumShmemBanks * (kNumShmemBanks + 1) *
+                                byte_width * num_elements_after_transposed_dims;
     return TransposeDescription{&hero, dimensions, permutation,
                                 shmem_usage_bytes};
   }
