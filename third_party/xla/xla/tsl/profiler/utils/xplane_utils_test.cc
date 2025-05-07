@@ -884,6 +884,17 @@ TEST(XplaneUtilsTest, XPlaneGroupingPropagatesGroupId) {
   });
 }
 
+TEST(XplaneUtilsTest, TestPlaneNameHit) {
+  XPlane xplane;
+  XPlaneBuilder builder(&xplane);
+  builder.SetName("/device:TPU:0");
+  absl::string_view regex_str1 = "TPU:0";
+  EXPECT_TRUE(PlaneNameHit(xplane.name(), regex_str1));
+
+  absl::string_view regex_str2 = "CPU";
+  EXPECT_FALSE(PlaneNameHit(xplane.name(), regex_str2));
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl
