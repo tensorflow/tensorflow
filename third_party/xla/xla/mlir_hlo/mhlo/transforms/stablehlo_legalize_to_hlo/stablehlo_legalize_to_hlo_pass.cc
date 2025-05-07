@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "third_party/stablehlo/stablehlo/dialect/StablehloOps.h"
 
 namespace mlir {
 namespace mhlo {
@@ -67,7 +68,16 @@ void legalDirectStablehloToHloConversionOps(ConversionTarget& target) {
       stablehlo::TriangularSolveOp, stablehlo::XorOp, stablehlo::CreateTokenOp,
       stablehlo::TupleOp, stablehlo::SendOp, stablehlo::RecvOp,
       stablehlo::InfeedOp, stablehlo::OutfeedOp, stablehlo::GetTupleElementOp,
-      stablehlo::OptimizationBarrierOp>();
+      stablehlo::OptimizationBarrierOp, stablehlo::WhileOp, stablehlo::CaseOp,
+      stablehlo::IfOp, stablehlo::AllReduceOp, stablehlo::ReduceOp,
+      stablehlo::MapOp, stablehlo::ReturnOp, stablehlo::AllToAllOp,
+      stablehlo::BatchNormGradOp, stablehlo::BatchNormTrainingOp,
+      stablehlo::BitcastConvertOp, stablehlo::ClampOp,
+      stablehlo::CollectiveBroadcastOp, stablehlo::CompareOp, stablehlo::SortOp,
+      stablehlo::CompositeOp, stablehlo::CustomCallOp, stablehlo::DotGeneralOp,
+      stablehlo::DotOp, stablehlo::DynamicConvOp, stablehlo::DynamicGatherOp,
+      stablehlo::DynamicPadOp, stablehlo::DynamicReshapeOp,
+      stablehlo::DynamicIotaOp, stablehlo::ReshapeOp>();
 }
 
 struct StablehloLegalizeToHloPass
