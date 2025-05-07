@@ -24,6 +24,11 @@ limitations under the License.
 namespace {
 
 void FuzzTest(const std::vector<std::string> ss) {
+    
+    // Validate the size of the input vector
+    if (ss.size() < 3) {
+        return;
+    }
   const std::string all = ss[0] + ss[1] + ss[2];
 
   int n[4] = {-1, -1, -1, -1};
