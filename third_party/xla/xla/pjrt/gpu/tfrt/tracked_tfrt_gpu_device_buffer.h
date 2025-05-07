@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PJRT_GPU_TFRT_TRACKED_TFRT_GPU_DEVICE_BUFFER_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <utility>
 
@@ -78,6 +79,10 @@ class MaybeOwningGpuMemory {
   // Owning.
   static absl::StatusOr<MaybeOwningGpuMemory> AllocateShared(
       se::DeviceMemoryAllocator* allocator, int device_ordinal, size_t size);
+
+  static absl::StatusOr<MaybeOwningGpuMemory> AllocateShared(
+      se::DeviceMemoryAllocator* allocator, int device_ordinal, size_t size,
+      int64_t memory_space);
 
   stream_executor::DeviceMemoryBase buffer() const { return buffer_; }
   size_t size() const { return buffer_.size(); }

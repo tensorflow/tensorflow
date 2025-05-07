@@ -610,9 +610,6 @@ TEST(TfrtGpuClientTest, BufferFromHostBufferPinnedMemory) {
 }
 
 TEST(TfrtGpuClientTest, CopyToPinnedHostMemorySpace) {
-  // TODO(sizhi): Re-enable this test after the feature is implemented.
-  GTEST_SKIP() << "Skipping this test.";
-
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
   std::vector<int32_t> data{1, 2, 3, 4};
   Shape shape = ShapeUtil::MakeShape(S32, {4});
@@ -642,9 +639,6 @@ TEST(TfrtGpuClientTest, CopyToPinnedHostMemorySpace) {
 }
 
 TEST(TfrtGpuClientTest, CopyToPinnedHostMemorySpaceInt4) {
-  // TODO(sizhi): Re-enable this test after the feature is implemented.
-  GTEST_SKIP() << "Skipping this test.";
-
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
   std::vector<int8_t> data{1, 2, 3, 4};
   Shape shape = ShapeUtil::MakeShape(S4, {4});

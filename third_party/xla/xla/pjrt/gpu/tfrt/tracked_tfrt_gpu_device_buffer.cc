@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <utility>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/statusor.h"
@@ -58,10 +60,20 @@ void MaybeOwningGpuMemory::SetUnOwned() {
 
 absl::StatusOr<MaybeOwningGpuMemory> MaybeOwningGpuMemory::AllocateShared(
     se::DeviceMemoryAllocator* allocator, int device_ordinal, size_t size) {
+  return AllocateShared(allocator, device_ordinal, size,
+                        static_cast<int>(se::MemoryType::kDevice));
+}
+
+absl::StatusOr<MaybeOwningGpuMemory> MaybeOwningGpuMemory::AllocateShared(
+    se::DeviceMemoryAllocator* allocator, int device_ordinal, size_t size,
+    int64_t memory_space) {
   if (size == 0) {
     return MaybeOwningGpuMemory(se::DeviceMemoryBase());
   }
-  TF_ASSIGN_OR_RETURN(auto memory, allocator->Allocate(device_ordinal, size));
+  TF_ASSIGN_OR_RETURN(
+      auto memory,
+      allocator->Allocate(device_ordinal, size, /*retry_on_failure=*/true,
+                          memory_space));
   return MaybeOwningGpuMemory(std::move(memory));
 }
 

@@ -185,7 +185,8 @@ absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
   TF_ASSIGN_OR_RETURN(
       auto device_buffer,
       MaybeOwningGpuMemory::AllocateShared(
-          client->allocator(), device->local_device_id().value(), byte_size));
+          client->allocator(), device->local_device_id().value(), byte_size,
+          LayoutUtil::MemorySpace(on_device_shape)));
   auto buffer_async_value_ref =
       tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
           std::move(device_buffer));
@@ -2794,15 +2795,11 @@ bool TfrtGpuBuffer::IsDeleted() {
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
     PjRtMemorySpace* dst_memory_space) {
-  // TODO: b/382117736 -  Support non-default memory spaces.
   tsl::profiler::TraceMe traceme("TfrtGpuBuffer::CopyToMemorySpace");
   PjRtDevice* dst_device = dst_memory_space->devices()[0];
 
-  // TODO(sizhi): Support copy data to the pinned host memory space.
-  if (dst_memory_space->kind() == PinnedHostMemorySpace::kKind) {
-    return Unimplemented(
-        "Copy data to pinned host memory space is not implemented.");
-  }
+  VLOG(2) << " TfrtGpuBuffer::CopyToMemorySpace:  dst_device: " << dst_device
+          << "dst_memory_space: " << dst_memory_space->kind();
 
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
@@ -2824,8 +2821,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
   }
 
   // Copy each leaf buffer to a destination buffer.
-  auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  TrackedTfrtGpuDeviceBuffer* src_device_buffer = AcquireUsage(usage_event);
+  auto src_usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  TrackedTfrtGpuDeviceBuffer* src_device_buffer = AcquireUsage(src_usage_event);
   if (src_device_buffer == nullptr) {
     return InvalidArgument(
         "CopyToMemorySpace called on deleted or donated buffer");
@@ -2834,42 +2831,43 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
   TfrtGpuDevice* gpu_dst_device = tsl::down_cast<TfrtGpuDevice*>(dst_device);
   tsl::AsyncValueRef<MaybeOwningGpuMemory> src_buffer =
       src_device_buffer->buffer();
-  auto dst_buffer = tsl::MakeUnconstructedAsyncValueRef<MaybeOwningGpuMemory>();
+
   auto dst_definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  TF_ASSIGN_OR_RETURN(auto output_buffer,
+                      AllocateTfrtGpuDestinationBuffer(
+                          on_device_shape_, {dst_definition_event.CopyRef()},
+                          gpu_dst_device, client_, dst_memory_space));
+  auto dst_usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  TrackedTfrtGpuDeviceBuffer* allocated_dst_device_buffer =
+      output_buffer->AcquireUsage(dst_usage_event);
+  CHECK(allocated_dst_device_buffer != nullptr);
+  auto allocated_dst_buffer = allocated_dst_device_buffer->buffer();
 
   absl::AnyInvocable<void()> transfer_d2d =
-      [src_buffer(src_buffer.CopyRef()), dst_buffer(dst_buffer.CopyRef()),
+      [src_buffer(src_buffer.CopyRef()),
+       allocated_dst_buffer(allocated_dst_buffer.CopyRef()),
        dst_definition_event(dst_definition_event.CopyRef()),
        src_definition_event(src_device_buffer->definition_event().CopyRef()),
-       dst_device(gpu_dst_device), usage_event(usage_event.CopyRef())]() {
+       dst_device(gpu_dst_device), src_usage_event(src_usage_event.CopyRef()),
+       dst_usage_event(dst_usage_event.CopyRef())]() {
         tsl::profiler::TraceMe traceme("D2D copy");
+
+        MarkGpuEventReadyOnExit ready_on_exit_src(std::move(src_usage_event));
+        MarkGpuEventReadyOnExit ready_on_exit_dst(std::move(dst_usage_event));
+
         if (const absl::Status* error =
                 dst_definition_event.GetErrorIfPresent()) {
-          dst_buffer.SetError(*error);
+          allocated_dst_buffer.SetError(*error);
           dst_definition_event.SetError(*error);
-          usage_event.SetStateConcrete();
           return;
         }
 
         if (const absl::Status* error =
                 src_definition_event.GetErrorIfPresent()) {
-          dst_buffer.SetError(*error);
+          allocated_dst_buffer.SetError(*error);
           dst_definition_event.SetError(*error);
-          usage_event.SetStateConcrete();
           return;
         }
-        MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
-        absl::StatusOr<MaybeOwningGpuMemory> allocated_dst_buffer =
-            MaybeOwningGpuMemory::AllocateShared(
-                dst_device->allocator(),
-                dst_device->local_hardware_id().value(),
-                src_buffer->buffer().size());
-        if (!allocated_dst_buffer.ok()) {
-          dst_buffer.SetError(allocated_dst_buffer.status());
-          dst_definition_event.SetError(allocated_dst_buffer.status());
-          return;
-        }
-        dst_buffer.emplace(std::move(allocated_dst_buffer.value()));
 
         absl::StatusOr<BoundedStreamPool::Handle> stream =
             dst_device->stream_pool().Borrow();
@@ -2877,7 +2875,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
           dst_definition_event.SetError(stream.status());
           return;
         }
-        se::DeviceMemoryBase dst(dst_buffer->buffer());
+        se::DeviceMemoryBase dst(allocated_dst_buffer->buffer());
         absl::Status status = stream->get()->Memcpy(
             &dst, src_buffer->buffer(), src_buffer->buffer().size());
         if (!status.ok()) {
@@ -2895,11 +2893,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
   EnqueueWorkWhenReady(client_->blocking_thread_pool(),
                        {src_device_buffer->definition_event().CopyRCRef()},
                        std::move(transfer_d2d));
-  return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtGpuBuffer>(
-      on_device_shape_,
-      std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-          std::move(dst_buffer), std::move(dst_definition_event)),
-      client(), tsl::down_cast<TfrtGpuDevice*>(dst_device), dst_memory_space));
+  return output_buffer;
 }
 
 void TfrtGpuBuffer::DropExternalReference() {
