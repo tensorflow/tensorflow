@@ -56,10 +56,7 @@ struct CompilerMetadataSerializedProto {
   size_t size;
 };
 
-struct HostComputeMetadataSerializedProto {
-  const char* bytes;
-  size_t size;
-};
+struct HostComputeMetadataSerializedProto {};
 
 typedef struct XLA_TpuMeshState XLA_TpuMeshState;
 
@@ -483,8 +480,6 @@ bool TpuNodeContext_CompactionSupported(int device_ordinal);
 TFTPU_CAPI_EXPORT void TfTpu_InitializeTpuModelServer();
 
 typedef struct TpuEmbeddingEngine_ExecutePartitioner_Params {
-  int32_t struct_size;
-  void* priv;
   TpuSerializedProto tpu_embedding_config;
 
   // out
@@ -497,9 +492,6 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ExecutePartitioner(
     TpuEmbeddingEngine_ExecutePartitioner_Params* params);
 
 typedef struct TpuEmbeddingEngine_ConfigureMemory_Params {
-  int32_t struct_size;
-  void* priv;
-
   int num_inputs;
   size_t common_config_size;
   const char* common_config;
@@ -514,9 +506,6 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ConfigureMemory(
     TpuEmbeddingEngine_ConfigureMemory_Params* params);
 
 typedef struct TpuEmbeddingEngine_CollateMemory_Params {
-  int32_t struct_size;
-  void* priv;
-
   size_t memory_configs_size;
   const TpuSerializedProto* memory_configs;
 
@@ -530,9 +519,6 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_CollateMemory(
     TpuEmbeddingEngine_CollateMemory_Params* params);
 
 typedef struct TpuEmbeddingEngine_ConfigureHost_Params {
-  int32_t struct_size;
-  void* priv;
-
   int num_inputs;
   size_t common_config_size;
   const char* common_config;
@@ -550,9 +536,6 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ConfigureHost(
     TpuEmbeddingEngine_ConfigureHost_Params* params);
 
 typedef struct TpuEmbeddingEngine_ConnectHosts_Params {
-  int32_t struct_size;
-  void* priv;
-
   size_t network_configs_size;
   const TpuSerializedProto* network_configs;
 
@@ -564,8 +547,6 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ConnectHosts(
     TpuEmbeddingEngine_ConnectHosts_Params* params);
 
 typedef struct TpuEmbeddingEngine_Finalize_Params {
-  int32_t struct_size;
-  void* priv;
   const XLA_TpuMeshState* tpu_mesh_state;
 
   size_t common_config_size;
@@ -581,9 +562,6 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_Finalize(
     TpuEmbeddingEngine_Finalize_Params* params);
 
 typedef struct TpuEmbeddingEngine_IsInitialized_Params {
-  int32_t struct_size;
-  void* priv;
-
   size_t config_string_size;
   const char* config_string;
 
@@ -604,9 +582,6 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ReadParameters(
 typedef struct TF_Tensor TF_Tensor;
 
 typedef struct TpuEmbeddingEngine_EnqueueTensorBatch_Params {
-  int32_t struct_size;
-  void* priv;
-
   int32_t mode;
   int32_t local_device_ordinal;
   TpuEmbedding_TensorBatchFixedState* fixed_state;
@@ -624,9 +599,6 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_EnqueueTensorBatch(
     TpuEmbeddingEngine_EnqueueTensorBatch_Params* params);
 
 typedef struct TpuEmbedding_TensorBatchFixedState_Create_Params {
-  int32_t struct_size;
-  void* priv;
-
   size_t combiners_size;
   char** combiners;
 
@@ -641,9 +613,6 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingTensorBatchFixedState_Destroy(
     TpuEmbedding_TensorBatchFixedState* fixed_state);
 
 typedef struct TpuEmbeddingEngine_RecvActivationsComputation_Params {
-  int32_t struct_size;
-  void* priv;
-
   TpuSerializedProto tpu_embedding_config;
   TpuSerializedProto embedding_partitions;
   TpuSerializedProto hbm_buffers_config;
@@ -661,9 +630,6 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_RecvActivationsComputation(
 
 typedef struct
     TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation_Params {
-  int32_t struct_size;
-  void* priv;
-
   TpuSerializedProto tpu_embedding_config;
   TpuSerializedProto embedding_partitions;
   TpuSerializedProto hbm_buffers_config;
@@ -680,9 +646,6 @@ TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation(
         params);
 
 typedef struct TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params {
-  int32_t struct_size;
-  void* priv;
-
   int32_t num_inputs;
   TpuSerializedProto tpu_embedding_config;
   TpuSerializedProto embedding_partitions;
@@ -701,9 +664,6 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation(
     TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params* params);
 
 typedef struct TpuEmbeddingEngine_DedupDataSizeComputation_Params {
-  int32_t struct_size;
-  void* priv;
-
   TpuSerializedProto tpu_embedding_config;
   TpuSerializedProto embedding_partitions;
   TpuSerializedProto hbm_buffers_config;
@@ -717,9 +677,6 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_DedupDataSizeComputation(
     TpuEmbeddingEngine_DedupDataSizeComputation_Params* params);
 
 typedef struct TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params {
-  int32_t struct_size;
-  void* priv;
-
   TpuSerializedProto tpu_embedding_config;
   TpuSerializedProto embedding_partitions;
   TpuSerializedProto hbm_buffers_config;
@@ -733,8 +690,6 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_DedupDataTupleMaskComputation(
     TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params* params);
 
 typedef struct SparseCore_GetMaxIdsAndUniques_Params {
-  size_t struct_size;
-  void* priv;
   const char* program_key;
   const char* table_name;
   int64_t num_samples_per_sparse_core;
