@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
@@ -83,7 +84,7 @@ struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
     return nullptr;
   }
 
-  BufferUseVector buffers() override { return buffer_usage; }
+  BufferUseVector buffers() const override { return buffer_usage; }
 
   BufferUseVector buffer_usage;
 };
@@ -99,7 +100,8 @@ class FakeCmd : public CommandBufferCmd {
       se::CommandBuffer*) override {
     return nullptr;
   }
-  BufferUseVector buffers() override { return BufferUseVector{}; }
+
+  BufferUseVector buffers() const override { return BufferUseVector{}; }
 };
 
 TEST(CommandBufferCmdStateManageTest, GetOrCreateState) {
