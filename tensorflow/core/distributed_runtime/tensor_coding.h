@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_TENSOR_CODING_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_TENSOR_CODING_H_
 
+#include "absl/status/status.h"
+#include "third_party/protobuf/io/coded_stream.h"
+#include "third_party/protobuf/io/zero_copy_stream.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
