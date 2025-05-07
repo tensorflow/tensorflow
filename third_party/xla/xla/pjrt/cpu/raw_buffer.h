@@ -13,18 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_CPU_TFRT_RAW_BUFFER_H_
-#define XLA_PJRT_CPU_TFRT_RAW_BUFFER_H_
+#ifndef XLA_PJRT_CPU_RAW_BUFFER_H_
+#define XLA_PJRT_CPU_RAW_BUFFER_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+
+#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
+#include "xla/pjrt/device_event.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 
-class TfrtCpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
+class CpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
  public:
-  explicit TfrtCpuTrackedDeviceEventPromise(
+  explicit CpuTrackedDeviceEventPromise(
       tsl::RCReference<tsl::IndirectAsyncValue> av)
       : av_(av) {}
 
@@ -40,11 +55,11 @@ class TfrtCpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
   tsl::RCReference<tsl::IndirectAsyncValue> av_;
 };
 
-class TfrtCpuTrackedDeviceEvent : public PjRtDeviceEvent {
+class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
  public:
-  explicit TfrtCpuTrackedDeviceEvent(
+  explicit CpuTrackedDeviceEvent(
       tsl::AsyncValueRef<CpuEvent> event,
-      const char* callee_type = "TfrtTpuTrackedDeviceEvent",
+      const char* callee_type = "CpuTrackedDeviceEvent",
       const char* callee_method = "Unknown")
       : event_(std::move(event)),
         callee_type_(callee_type),
@@ -77,16 +92,16 @@ class TfrtCpuTrackedDeviceEvent : public PjRtDeviceEvent {
   const char* callee_method_;
 };
 
-class TfrtCpuRawBuffer : public CommonPjRtRawBuffer {
+class CpuRawBuffer : public CommonPjRtRawBuffer {
  public:
-  TfrtCpuRawBuffer(PjRtMemorySpace* memory_space,
-                   tsl::AsyncValueRef<CpuDeviceMemory> buffer)
+  CpuRawBuffer(PjRtMemorySpace* memory_space,
+               tsl::AsyncValueRef<CpuDeviceMemory> buffer)
       : memory_space_(memory_space), buffer_(std::move(buffer)) {}
 
   absl::Status ValidateSlice(int64_t offset, int64_t slice_size);
 
   // Allocates owning memory.
-  static absl::StatusOr<tsl::RCReference<TfrtCpuRawBuffer>> Allocate(
+  static absl::StatusOr<tsl::RCReference<CpuRawBuffer>> Allocate(
       PjRtMemorySpace* memory_space, size_t size_bytes);
 
   size_t GetOnDeviceSizeInBytes() const override;
@@ -118,4 +133,4 @@ absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(xla::Shape shape,
 
 }  // namespace xla
 
-#endif  // XLA_PJRT_CPU_TFRT_RAW_BUFFER_H_
+#endif  // XLA_PJRT_CPU_RAW_BUFFER_H_
