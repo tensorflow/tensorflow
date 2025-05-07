@@ -94,7 +94,7 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
     auto zero_matcher = op::Constant(LiteralUtil::Zero(U32));
 
     std::vector<::testing::Matcher<const ::xla::HloInstruction *>> ds_operands(
-        shape.dimensions_size() + 1, zero_matcher);
+        shape.dimensions().size() + 1, zero_matcher);
     ds_operands[0] = op::AllReduce(op::Parameter(0));
     ds_operands[shard_dimension + 1] =
         op::Multiply(slice_index, op::Constant(std::move(multiplier)));

@@ -500,8 +500,8 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
     for (int64_t operand_no = 0; operand_no < instruction->operand_count();
          ++operand_no) {
       const HloInstruction* operand = instruction->operand(operand_no);
-      if (instruction->shape().dimensions_size() !=
-          operand->shape().dimensions_size()) {
+      if (instruction->shape().dimensions().size() !=
+          operand->shape().dimensions().size()) {
         continue;
       }
       TF_RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),

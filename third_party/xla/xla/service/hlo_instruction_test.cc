@@ -864,7 +864,7 @@ TEST_F(HloInstructionTest, AsyncOp) {
           add, {ShapeUtil::MakeScalarShape(U32)}, "parallel_thread"));
   auto* async_start = async_done->operand(0);
 
-  EXPECT_EQ(async_start->shape().tuple_shapes_size(), 3);
+  EXPECT_EQ(async_start->shape().tuple_shapes().size(), 3);
   EXPECT_EQ(async_start->async_execution_thread(), "parallel_thread");
   EXPECT_EQ(async_done->async_execution_thread(), "parallel_thread");
   EXPECT_TRUE(ShapeUtil::Equal(async_start->shape().tuple_shapes(2),
@@ -921,7 +921,7 @@ TEST_F(HloInstructionTest, AsyncOpWithDeps) {
   EXPECT_EQ(async_done->control_successors().size(), 1);
   EXPECT_EQ(async_done->control_successors()[0], add2);
 
-  EXPECT_EQ(async_start->shape().tuple_shapes_size(), 3);
+  EXPECT_EQ(async_start->shape().tuple_shapes().size(), 3);
   EXPECT_EQ(async_start->async_execution_thread(), "parallel_thread");
   EXPECT_EQ(async_done->async_execution_thread(), "parallel_thread");
   EXPECT_TRUE(ShapeUtil::Equal(async_start->shape().tuple_shapes(2),
