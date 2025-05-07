@@ -1,4 +1,4 @@
-"""Repository rule for hermetic CUDA autoconfiguration.
+"""Repository rule for hermetic CUDA configuration.
 
 `cuda_configure` depends on the following environment variables:
 
@@ -67,6 +67,8 @@ def _find_cc(repository_ctx):
         cc_name = cc_name_from_env
     cc = which(repository_ctx, cc_name, allow_failure = True)
     if not cc:
+        # Use print instead of fail because fail interrupts execution,
+        # but tensorflow needs an empty toolchain when the compiler is not found.
         print(("Cannot find {}, either correct your path," +
                " or set the CLANG_CUDA_COMPILER_PATH or CC" +
                " environment variables").format(cc_name))  # buildifier: disable=print
@@ -123,6 +125,7 @@ def get_cuda_version(repository_ctx):
 def _is_clang(cc):
     return "clang" in cc
 
+# Function works only in pair with non-hermetic toolchain
 def _get_clang_major_version(repository_ctx, cc):
     """Gets the major version of the clang at `cc`"""
     cmd = "echo __clang_major__ | \"%s\" -E -P -" % cc
@@ -131,6 +134,24 @@ def _get_clang_major_version(repository_ctx, cc):
         [get_bash_bin(repository_ctx), "-c", cmd],
     )
     return result.stdout.strip()
+
+# Function works only in pair with non-hermetic toolchain
+def _get_cpu_compiler(repository_ctx):
+    if _use_hermetic_toolchains(repository_ctx):
+        return "clang"
+
+    cc = _find_cc(repository_ctx)
+    if not _is_clang(cc):
+        # We support builds by clang only
+        return "clang"
+
+    return "clang {}".format(_get_clang_major_version(repository_ctx, cc))
+
+def _is_linux_x86_64(repository_ctx):
+    return repository_ctx.os.arch == "amd64" and repository_ctx.os.name == "linux"
+
+def _use_hermetic_toolchains(repository_ctx):
+    return _flag_enabled(repository_ctx, USE_HERMETIC_CC_TOOLCHAIN)
 
 def enable_cuda(repository_ctx):
     """Returns whether to build with CUDA support."""
@@ -225,10 +246,7 @@ def _ptx_version_to_int(version):
     major, minor = version.split(".")
     return int(major + minor)
 
-def _compute_cuda_ptx_version_copt(repository_ctx, cuda_version, cc):
-    if not _is_clang(cc):
-        return []
-    clang_version = _get_clang_major_version(repository_ctx, cc)
+def _get_cuda_ptx_version(cuda_version, clang_version):
     cuda_version = ".".join(cuda_version.split(".")[:2])
     clang_dict = PTX_VERSION_DICT["clang"]
     cuda_dict = PTX_VERSION_DICT["cuda"]
@@ -254,18 +272,41 @@ def _compute_cuda_ptx_version_copt(repository_ctx, cuda_version, cc):
         _ptx_version_to_int(clang_dict[clang_version]),
         _ptx_version_to_int(cuda_dict[cuda_version]),
     )
-    return ["--cuda-feature=+ptx{version}".format(version = ptx_version)]
 
-def _compute_cuda_extra_copts(repository_ctx, cuda_version, compute_capabilities, cc):
-    copts = ["--no-cuda-include-ptx=all"] if _is_clang(cc) else []
-    copts.extend(_compute_cuda_ptx_version_copt(repository_ctx, cuda_version, cc))
+    return ptx_version
+
+def _create_cuda_copts_list(compute_capabilities):
+    copts = []
+
     for capability in compute_capabilities:
         if capability.startswith("compute_"):
             capability = capability.replace("compute_", "sm_")
             copts.append("--cuda-include-ptx=%s" % capability)
         copts.append("--cuda-gpu-arch=%s" % capability)
+    return copts
 
-    return str(copts)
+# Function works only in pair with non-hermetic toolchain
+def _create_cuda_ptx_copts_list(repository_ctx, cuda_version):
+    copts = []
+
+    if _use_hermetic_toolchains(repository_ctx):
+        return copts
+
+    cc = _find_cc(repository_ctx)
+    if not _is_clang(cc):
+        return copts
+
+    ptx_version = _get_cuda_ptx_version(
+        cuda_version,
+        _get_clang_major_version(repository_ctx, cc),
+    )
+
+    copts.append("--no-cuda-include-ptx=all")
+    copts.append(
+        "--cuda-feature=+ptx{version}".format(version = ptx_version),
+    )
+
+    return copts
 
 def _get_cuda_config(repository_ctx):
     """Detects and returns information about the CUDA installation on the system.
@@ -343,7 +384,18 @@ def _cuda_include_paths(repository_ctx):
         repository_ctx.attr.nvtx_version,
     ]]
 
-def _setup_toolchains(repository_ctx, cc, cuda_version):
+def _create_dummy_toolchains_repository(repository_ctx):
+    repository_ctx.file(
+        "crosstool/error_gpu_disabled.bzl",
+        _DUMMY_CROSSTOOL_BZL_FILE,
+    )
+    repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
+
+def _create_local_toolchains_repository(repository_ctx):
+    cc = _find_cc(repository_ctx)
+    if not cc:
+        return False
+
     is_nvcc_and_clang = _use_nvcc_and_clang(repository_ctx)
     is_nvcc_for_cuda = _use_nvcc_for_cuda(repository_ctx)
     tf_sysroot = _tf_sysroot(repository_ctx)
@@ -416,32 +468,14 @@ def _setup_toolchains(repository_ctx, cc, cuda_version):
           "-Wno-invalid-partial-specialization"
       """
         cuda_defines["%{compiler_deps}"] = ":cuda_nvcc_files"
-        repository_ctx.file(
-            "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
-            "",
-        )
+
+        _create_dummy_nvcc_wrapper(repository_ctx)
     else:
         cuda_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
         cuda_defines["%{host_compiler_warnings}"] = ""
         cuda_defines["%{compiler_deps}"] = ":crosstool_wrapper_driver_is_not_gcc"
 
-        wrapper_defines = {
-            "%{cpu_compiler}": str(cc),
-            "%{cuda_version}": cuda_version,
-            "%{nvcc_path}": nvcc_relative_path,
-            "%{host_compiler_path}": str(cc),
-            "%{use_clang_compiler}": str(is_clang_compiler),
-            "%{tmpdir}": get_host_environ(
-                repository_ctx,
-                _TMPDIR,
-                "",
-            ),
-        }
-        repository_ctx.template(
-            "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
-            repository_ctx.attr.crosstool_wrapper_driver_is_not_gcc_tpl,
-            wrapper_defines,
-        )
+        _create_nvcc_wrapper(repository_ctx, cc)
 
     _verify_build_defines(cuda_defines)
 
@@ -459,8 +493,42 @@ def _setup_toolchains(repository_ctx, cc, cuda_version):
         repository_ctx.attr.cc_toolchain_config_tpl,
         {},
     )
+    return True
 
-def _create_dummy_repository(repository_ctx):
+def _create_dummy_nvcc_wrapper(repository_ctx):
+    repository_ctx.file(
+        "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
+        "",
+    )
+
+def _create_nvcc_wrapper(repository_ctx, cc):
+    cuda_config = _get_cuda_config(repository_ctx)
+
+    nvcc_relative_path = "%s/%s" % (
+        repository_ctx.attr.nvcc_binary.workspace_root,
+        repository_ctx.attr.nvcc_binary.name,
+    )
+
+    wrapper_defines = {
+        "%{cpu_compiler}": str(cc),
+        "%{cuda_version}": cuda_config.cuda_version,
+        "%{nvcc_path}": nvcc_relative_path,
+        "%{host_compiler_path}": str(cc),
+        "%{use_clang_compiler}": str(True),
+        "%{tmpdir}": get_host_environ(
+            repository_ctx,
+            _TMPDIR,
+            "",
+        ),
+    }
+
+    repository_ctx.template(
+        "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
+        repository_ctx.attr.crosstool_wrapper_driver_is_not_gcc_tpl,
+        wrapper_defines,
+    )
+
+def _create_dummy_cuda_repository(repository_ctx):
     cpu_value = get_cpu_value(repository_ctx)
 
     # Set up BUILD file for cuda/.
@@ -472,6 +540,7 @@ def _create_dummy_repository(repository_ctx):
             "%{cuda_extra_copts}": "[]",
             "%{cuda_gpu_architectures}": "[]",
             "%{cuda_version}": "0.0",
+            "%{use_hermetic_cc_toolchain}": str(_use_hermetic_toolchains(repository_ctx)),
         },
     )
 
@@ -531,22 +600,9 @@ def _create_dummy_repository(repository_ctx):
         _py_tmpl_dict({}),
     )
 
-    cc = None
-    if repository_ctx.os.arch == "amd64" and repository_ctx.os.name == "linux":
-        cc = _find_cc(repository_ctx)
-    if cc:
-        _setup_toolchains(repository_ctx, cc, "")
-    else:
-        repository_ctx.file(
-            "crosstool/error_gpu_disabled.bzl",
-            _DUMMY_CROSSTOOL_BZL_FILE,
-        )
-        repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
-
 def _create_local_cuda_repository(repository_ctx):
     """Creates the repository containing files set up to build with CUDA."""
     cuda_config = _get_cuda_config(repository_ctx)
-    cc = _find_cc(repository_ctx)
 
     # Set up BUILD file for cuda/
     repository_ctx.template(
@@ -554,14 +610,13 @@ def _create_local_cuda_repository(repository_ctx):
         repository_ctx.attr.build_defs_tpl,
         {
             "%{cuda_is_configured}": "True",
-            "%{cuda_extra_copts}": _compute_cuda_extra_copts(
-                repository_ctx,
-                cuda_config.cuda_version,
-                cuda_config.compute_capabilities,
-                cc,
+            "%{cuda_extra_copts}": str(
+                _create_cuda_ptx_copts_list(repository_ctx, cuda_config.cuda_version) +
+                _create_cuda_copts_list(cuda_config.compute_capabilities),
             ),
             "%{cuda_gpu_architectures}": str(cuda_config.compute_capabilities),
             "%{cuda_version}": cuda_config.cuda_version,
+            "%{use_hermetic_cc_toolchain}": str(_use_hermetic_toolchains(repository_ctx)),
         },
     )
 
@@ -574,9 +629,6 @@ def _create_local_cuda_repository(repository_ctx):
             ),
         },
     )
-
-    # Set up crosstool/
-    _setup_toolchains(repository_ctx, cc, cuda_config.cuda_version)
 
     # Set up cuda_config.h, which is used by
     # tensorflow/compiler/xla/stream_executor/dso_loader.cc.
@@ -610,18 +662,31 @@ def _create_local_cuda_repository(repository_ctx):
             "cuda_version": cuda_config.cuda_version,
             "cudnn_version": cuda_config.cudnn_version,
             "cuda_compute_capabilities": cuda_config.compute_capabilities,
-            "cpu_compiler": str(cc),
+            "cpu_compiler": _get_cpu_compiler(repository_ctx),
         }),
     )
 
-def _cuda_autoconf_impl(repository_ctx):
-    """Implementation of the cuda_autoconf repository rule."""
+def _create_cuda_repository(repository_ctx):
+    if enable_cuda(repository_ctx):
+        _create_local_cuda_repository(repository_ctx)
+    else:
+        _create_dummy_cuda_repository(repository_ctx)
+
+def _create_toolchains_repository(repository_ctx):
+    created = False
+    if enable_cuda(repository_ctx) or _is_linux_x86_64(repository_ctx):
+        created = _create_local_toolchains_repository(repository_ctx)
+
+    if not created:
+        _create_dummy_toolchains_repository(repository_ctx)
+
+def _cuda_configure_impl(repository_ctx):
+    """Implementation of the cuda_configure repository rule."""
     build_file = repository_ctx.attr.local_config_cuda_build_file
 
-    if not enable_cuda(repository_ctx):
-        _create_dummy_repository(repository_ctx)
-    else:
-        _create_local_cuda_repository(repository_ctx)
+    _create_cuda_repository(repository_ctx)
+    if not _use_hermetic_toolchains(repository_ctx):
+        _create_toolchains_repository(repository_ctx)
 
     repository_ctx.symlink(build_file, "BUILD")
 
@@ -630,6 +695,7 @@ _CLANG_CUDA_COMPILER_PATH = "CLANG_CUDA_COMPILER_PATH"
 _HERMETIC_CUDA_COMPUTE_CAPABILITIES = "HERMETIC_CUDA_COMPUTE_CAPABILITIES"
 _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 HERMETIC_CUDA_VERSION = "HERMETIC_CUDA_VERSION"
+USE_HERMETIC_CC_TOOLCHAIN = "USE_HERMETIC_CC_TOOLCHAIN"
 TF_CUDA_VERSION = "TF_CUDA_VERSION"
 TF_NEED_CUDA = "TF_NEED_CUDA"
 _TF_NEED_ROCM = "TF_NEED_ROCM"
@@ -659,7 +725,7 @@ _ENVIRONS = [
 ]
 
 cuda_configure = repository_rule(
-    implementation = _cuda_autoconf_impl,
+    implementation = _cuda_configure_impl,
     environ = _ENVIRONS,
     attrs = {
         "environ": attr.string_dict(),
