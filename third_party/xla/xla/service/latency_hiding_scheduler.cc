@@ -2946,7 +2946,7 @@ LatencyHidingScheduler::SchedulerStatistics::ToProto() const {
 void LatencyHidingScheduler::LogScheduleStatistics(
     const HloComputation* computation) {
   XLA_VLOG_LINES(
-      1, LatencyHidingStatistics(computation, latency_estimator_.get(),
+      3, LatencyHidingStatistics(computation, latency_estimator_.get(),
                                  async_tracker_.get(), shape_size_bytes_)
              .ToString());
 }
@@ -3015,11 +3015,11 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
             << scheduler_core_->GetMemoryPeak()
             << " bytes. Current limit: " << scheduler_core_->GetMemoryLimit();
   for (HloComputation* computation : computations_to_schedule) {
-    VLOG(1) << "[" << name() << "] Statistics before scheduling:";
+    VLOG(3) << "[" << name() << "] Statistics before scheduling:";
     LogScheduleStatistics(computation);
     module->schedule().set_sequence(
         computation, absl::MakeConstSpan(saved_schedules[computation]));
-    VLOG(1) << "[" << name() << "] Statistics after scheduling:";
+    VLOG(3) << "[" << name() << "] Statistics after scheduling:";
     LogScheduleStatistics(computation);
   }
   if (debug_options.xla_dump_latency_hiding_schedule()) {
