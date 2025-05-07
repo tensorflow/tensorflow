@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/tools/graph_transforms/file_utils.h"
 
+#include "third_party/protobuf/text_format.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace graph_transforms {
