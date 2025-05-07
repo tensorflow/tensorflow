@@ -33,12 +33,13 @@ using BenchmarkSuite = xla::BenchmarkSuite;
 absl::StatusOr<BenchmarkSuite> LoadBenchmarkSuiteFromFile(
     const std::string& registry_path);
 
-// Generates the benchmark matrix JSON object.
+// Generates the benchmark matrix JSON object based on the run frequency
+// (e.g., presubmit, postsubmit, nightly, manual).
 // Returns an empty JSON value object if the suite is empty or errors occur
 // during generation (though errors are primarily handled by printing
 // warnings).
 absl::StatusOr<Json::Value> BuildGitHubActionsMatrix(
-    const BenchmarkSuite& suite);
+    const BenchmarkSuite& suite, RunFrequency run_frequency);
 
 // Attempts to find the absolute path to the registry file.
 // Checks the provided path directly, then relative to BUILD_WORKSPACE_DIRECTORY

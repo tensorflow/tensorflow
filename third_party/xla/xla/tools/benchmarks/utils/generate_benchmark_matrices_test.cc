@@ -237,124 +237,121 @@ TEST_F(GenerateBenchmarkMatricesTest, LoadBenchmarkSuiteMissingArtifactSource) {
 }
 
 // --- BuildGitHubActionsMatrix Tests ---
-
-TEST_F(GenerateBenchmarkMatricesTest, BuildMatrixSuccessWithInputArtifact) {
+TEST_F(GenerateBenchmarkMatricesTest, BuildMatrixForPresubmitSuccess) {
   std::string filepath = CreateTempRegistryFile(CreateTestRegistryContent());
   ASSERT_FALSE(filepath.empty());
   TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
                           LoadBenchmarkSuiteFromFile(filepath));
-  TF_ASSERT_OK_AND_ASSIGN(Json::Value matrix, BuildGitHubActionsMatrix(suite));
 
-  ASSERT_THAT(matrix, IsJsonObject());
-  const Json::Value& include_array = matrix["include"];
-  ASSERT_THAT(include_array, IsJsonArray());
+  // Test for PRESUBMIT frequency
+  TF_ASSERT_OK_AND_ASSIGN(
+      Json::Value matrix_array,
+      BuildGitHubActionsMatrix(suite, RunFrequency::PRESUBMIT));
+  ASSERT_THAT(matrix_array, IsJsonArray());
+  // Only "fusion_hlo_cpu" runs on PRESUBMIT (1 target * 1 frequency)
+  EXPECT_THAT(matrix_array, JsonArraySizeIs(1));
 
-  // Expected: gemma*B200*POST, gemma*B200*SCHED, gemma*L4*POST, gemma*L4*SCHED,
-  // fusion*CPU*PRE = 5 The "no_source" benchmark config will fail
-  // GetArtifactInfo and be skipped.
-  EXPECT_THAT(include_array, SizeIs(5));
-
-  // Find and check gemma entry
-  bool found_gemma_entry = false;
-  for (const auto& entry : include_array) {
-    if (entry["benchmark_name"] == "gemma_stablehlo_gpu" &&
-        entry["hardware_category"] == "GPU_B200") {
-      found_gemma_entry = true;
-      EXPECT_THAT(
-          entry["config_id"],
-          JsonEq("gemma_gpu_b200_1h1d"));  // Check config_id is included
-      EXPECT_THAT(entry["input_format"], JsonEq("STABLEHLO_MLIR"));
-      EXPECT_THAT(entry["artifact_location"], JsonEq("gs://bucket/gemma.mlir"));
-      EXPECT_THAT(entry["is_gcs_artifact"], JsonEq(true));
-      break;
-    }
-  }
-  EXPECT_TRUE(found_gemma_entry);
-
-  // Find and check fusion entry
-  bool found_fusion_entry = false;
-  for (const auto& entry : include_array) {
-    if (entry["benchmark_name"] == "fusion_hlo_cpu") {
-      found_fusion_entry = true;
-      EXPECT_THAT(entry["config_id"], JsonEq("fusion_cpu_x86_1h1d"));
-      EXPECT_THAT(entry["input_format"], JsonEq("HLO_TEXT"));
-      EXPECT_THAT(entry["artifact_location"], JsonEq("hlo/fusion.hlo"));
-      EXPECT_THAT(entry["is_gcs_artifact"], JsonEq(false));
-      break;
-    }
-  }
-  EXPECT_TRUE(found_fusion_entry);
+  const auto& entry0 = matrix_array[0];
+  EXPECT_THAT(entry0["benchmark_name"], JsonStringEq("fusion_hlo_cpu"));
+  EXPECT_THAT(entry0["config_id"], JsonStringEq("fusion_cpu_x86_1h1d"));
+  EXPECT_THAT(entry0["run_frequency"], JsonStringEq("PRESUBMIT"));
+  EXPECT_THAT(entry0["hardware_category"], JsonStringEq("CPU_X86"));
+  EXPECT_THAT(entry0["input_format"], JsonStringEq("HLO_TEXT"));
+  EXPECT_THAT(entry0["artifact_location"], JsonStringEq("hlo/fusion.hlo"));
+  EXPECT_THAT(entry0["is_gcs_artifact"], JsonBoolEq(false));
+  EXPECT_THAT(entry0["xla_compilation_flags"], JsonArraySizeIs(1));
+  EXPECT_THAT(entry0["xla_compilation_flags"],
+              JsonArrayContains("--flag1=true"));
 }
 
-TEST_F(GenerateBenchmarkMatricesTest, BuildMatrixSkipsConfigsWithInputErrors) {
+TEST_F(GenerateBenchmarkMatricesTest, BuildMatrixForPostsubmitSuccess) {
   std::string filepath = CreateTempRegistryFile(CreateTestRegistryContent());
   ASSERT_FALSE(filepath.empty());
   TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
                           LoadBenchmarkSuiteFromFile(filepath));
 
-  // Reuse and modify the suite in memory to test skipping during generation
-  BenchmarkSuite modified_suite;
-  for (const auto& bm : suite.benchmarks()) {
-    if (bm.name() == "no_source") {
-      BenchmarkConfig* bad_config = modified_suite.add_benchmarks();
-      *bad_config = bm;
-      // Make it fail GetArtifactInfo by clearing the source within the artifact
-      // msg
-      bad_config->mutable_input_artifact()->clear_artifact_source();
-    } else if (bm.name() !=
-               "unmappable") {  // Keep valid ones except unmappable
-      *modified_suite.add_benchmarks() = bm;
+  // Test for POSTSUBMIT frequency
+  TF_ASSERT_OK_AND_ASSIGN(
+      Json::Value matrix_array,
+      BuildGitHubActionsMatrix(suite, RunFrequency::POSTSUBMIT));
+  ASSERT_THAT(matrix_array, IsJsonArray());
+  // "gemma_stablehlo_gpu" runs on POSTSUBMIT (2 targets * 1 frequency)
+  EXPECT_THAT(matrix_array, JsonArraySizeIs(2));
+
+  bool found_b200 = false;
+  bool found_l4 = false;
+  for (const auto& entry : matrix_array) {
+    EXPECT_THAT(entry["benchmark_name"], JsonStringEq("gemma_stablehlo_gpu"));
+    EXPECT_THAT(entry["config_id"], JsonStringEq("gemma_gpu_b200_1h1d"));
+    EXPECT_THAT(entry["run_frequency"], JsonStringEq("POSTSUBMIT"));
+    EXPECT_THAT(entry["input_format"], JsonStringEq("STABLEHLO_MLIR"));
+    EXPECT_THAT(entry["artifact_location"],
+                JsonStringEq("gs://bucket/gemma.mlir"));
+    EXPECT_THAT(entry["is_gcs_artifact"], JsonBoolEq(true));
+    EXPECT_THAT(entry["runtime_flags"], JsonArraySizeIs(1));
+    EXPECT_THAT(entry["runtime_flags"], JsonArrayContains("--num_repeat=5"));
+
+    if (entry["hardware_category"] == Json::Value("GPU_B200")) {
+      found_b200 = true;
+    }
+    if (entry["hardware_category"] == Json::Value("GPU_L4")) {
+      found_l4 = true;
     }
   }
-  // Add back unmappable to ensure it's skipped by mapping logic
-  for (const auto& bm : suite.benchmarks()) {
-    if (bm.name() == "unmappable") {
-      *modified_suite.add_benchmarks() = bm;
-    }
-  }
+  EXPECT_TRUE(found_b200);
+  EXPECT_TRUE(found_l4);
+}
 
-  TF_ASSERT_OK_AND_ASSIGN(Json::Value matrix,
-                          BuildGitHubActionsMatrix(modified_suite));
-  ASSERT_TRUE(matrix.isMember("include"));
-  // Expected: gemma*B200*POST, gemma*B200*SCHED, gemma*L4*POST, gemma*L4*SCHED,
-  // fusion*CPU*PRE = 5 unmappable is skipped by mapping. no_source is skipped
-  // by GetArtifactInfo.
-  EXPECT_THAT(matrix["include"], SizeIs(5));
+TEST_F(GenerateBenchmarkMatricesTest, BuildMatrixSkipsDueToMappingError) {
+  std::string filepath = CreateTempRegistryFile(CreateTestRegistryContent());
+  ASSERT_FALSE(filepath.empty());
+  TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
+                          LoadBenchmarkSuiteFromFile(filepath));
 
-  // Check that the skipped benchmarks are NOT present
-  for (const auto& entry : matrix["include"]) {
-    EXPECT_NE(entry["benchmark_name"].asString(), "unmappable");
-    EXPECT_NE(entry["benchmark_name"].asString(), "no_source");
-  }
+  // Test for MANUAL frequency where "unmappable_target_config" should be
+  // attempted but fail mapping
+  TF_ASSERT_OK_AND_ASSIGN(
+      Json::Value matrix_array,
+      BuildGitHubActionsMatrix(suite, RunFrequency::MANUAL));
+  ASSERT_THAT(matrix_array, IsJsonArray());
+  EXPECT_THAT(matrix_array, IsEmpty());
+}
+
+TEST_F(GenerateBenchmarkMatricesTest,
+       BuildMatrixSkipsDueToMissingArtifactSource) {
+  // Create a registry with only the config that's missing artifact source
+  std::string content = R"(
+      benchmarks: [ {
+          config_id: "no_source_path_manual"
+          name: "missing_artifact_source_config" owner:"tester@" model_source_info:"validation test"
+          input_artifact: { input_format:HLO_TEXT } # Missing artifact_path/gcs_path
+          hardware_targets: [{
+            hardware_category:CPU_X86,
+            topology:{num_hosts:1, num_devices_per_host:1, multi_host: false, multi_device: false},
+            target_metrics: [CPU_TIME]
+          }]
+          run_frequencies:[MANUAL] update_frequency_policy:WEEKLY
+      } ] )";
+  std::string filepath = CreateTempRegistryFile(content);
+  ASSERT_FALSE(filepath.empty());
+  TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
+                          LoadBenchmarkSuiteFromFile(filepath));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Json::Value matrix_array,
+      BuildGitHubActionsMatrix(suite, RunFrequency::MANUAL));
+  ASSERT_THAT(matrix_array, IsJsonArray());
+  EXPECT_THAT(matrix_array,
+              IsEmpty());  // Should be skipped because GetArtifactInfo fails
 }
 
 TEST_F(GenerateBenchmarkMatricesTest, BuildMatrixEmptySuite) {
-  BenchmarkSuite suite;  // Empty suite
-  TF_ASSERT_OK_AND_ASSIGN(Json::Value matrix, BuildGitHubActionsMatrix(suite));
-  ASSERT_TRUE(matrix.isObject());
-  ASSERT_TRUE(matrix.isMember("include"));
-  EXPECT_THAT(matrix["include"], IsEmpty());
-}
-
-TEST_F(GenerateBenchmarkMatricesTest, BuildMatrixSkipsConfigsWithErrors) {
-  // Use the content that includes unmappable and missing HLO configs
-  std::string content = CreateTestRegistryContent();
-  std::string filepath =
-      CreateTempRegistryFile(content, "build_matrix_skip_test");
-  ASSERT_FALSE(filepath.empty());
-  TF_ASSERT_OK_AND_ASSIGN(BenchmarkSuite suite,
-                          LoadBenchmarkSuiteFromFile(filepath));
-
-  TF_ASSERT_OK_AND_ASSIGN(Json::Value matrix, BuildGitHubActionsMatrix(suite));
-  ASSERT_TRUE(matrix.isObject() && matrix.isMember("include"));
-  EXPECT_EQ(matrix["include"].size(), 5)
-      << "Should skip unmappable and missing HLO entries";
-
-  // Check that the skipped benchmarks are NOT present
-  for (const auto& entry : matrix["include"]) {
-    EXPECT_NE(entry["benchmark_name"].asString(), "unmappable_target");
-    EXPECT_NE(entry["benchmark_name"].asString(), "missing_hlo_source");
-  }
+  BenchmarkSuite suite;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Json::Value matrix_array,
+      BuildGitHubActionsMatrix(suite, RunFrequency::PRESUBMIT));
+  ASSERT_THAT(matrix_array, IsJsonArray());
+  EXPECT_THAT(matrix_array, IsEmpty());
 }
 
 // --- FindRegistryFile Tests ---

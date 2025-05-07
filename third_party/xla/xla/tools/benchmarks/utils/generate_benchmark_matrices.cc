@@ -314,6 +314,17 @@ absl::StatusOr<Json::Value> BuildGitHubActionMatrixEntry(
   return entry;
 }
 
+// Checks if a benchmark should run for the current frequency.
+bool ShouldRunForFrequency(const BenchmarkConfig& benchmark,
+                           RunFrequency run_frequency) {
+  for (const auto& freq_in_config : benchmark.run_frequencies()) {
+    if (static_cast<RunFrequency>(freq_in_config) == run_frequency) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 // --- Public API Function Implementations ---
@@ -339,35 +350,35 @@ absl::StatusOr<BenchmarkSuite> LoadBenchmarkSuiteFromFile(
 }
 
 absl::StatusOr<Json::Value> BuildGitHubActionsMatrix(
-    const BenchmarkSuite& suite) {
-  Json::Value github_actions_matrix(Json::objectValue);
+    const BenchmarkSuite& suite, RunFrequency run_frequency) {
   Json::Value matrix_entries(Json::arrayValue);
 
   for (const auto& benchmark : suite.benchmarks()) {
+    if (!ShouldRunForFrequency(benchmark, run_frequency)) {
+      VLOG(1) << "Skipping benchmark '" << benchmark.name()
+              << "' as its run_frequencies do not include current workflow: "
+              << RunFrequency_Name(run_frequency);
+      continue;
+    }
     if (benchmark.name().empty()) {
       LOG(WARNING)
           << "Skipping BenchmarkConfig entry because 'name' field is missing.";
       continue;
     }
-    // Build a matrix entry for each hardware target and run frequency.
+    // Build a matrix entry for each hardware target for the given run
+    // frequency.
     for (const auto& target : benchmark.hardware_targets()) {
-      for (const auto& freq_enum_val : benchmark.run_frequencies()) {
-        RunFrequency frequency = static_cast<RunFrequency>(freq_enum_val);
-
-        absl::StatusOr<Json::Value> matrix_entry =
-            BuildGitHubActionMatrixEntry(benchmark, target, frequency);
-
-        if (matrix_entry.ok()) {
-          matrix_entries.append(std::move(*matrix_entry));
-        } else {
-          LOG(WARNING) << "Skipping matrix entry generation. Reason: "
-                       << matrix_entry.status().message();
-        }
+      absl::StatusOr<Json::Value> matrix_entry =
+          BuildGitHubActionMatrixEntry(benchmark, target, run_frequency);
+      if (matrix_entry.ok()) {
+        matrix_entries.append(*matrix_entry);
+      } else {
+        LOG(ERROR) << "Failed to create matrix entry for benchmark '"
+                   << benchmark.name() << "': " << matrix_entry.status();
       }
     }
   }
-  github_actions_matrix["include"] = matrix_entries;
-  return github_actions_matrix;
+  return matrix_entries;
 }
 
 absl::StatusOr<std::string> FindRegistryFile(
