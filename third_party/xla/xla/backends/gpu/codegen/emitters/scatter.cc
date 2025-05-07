@@ -899,7 +899,6 @@ std::unique_ptr<ScatterFusion> CreateScatterFusion(
 
   int64_t max_active_warps =
       kNumWarpsPerBlock * analysis.device_info().core_count();
-  // TODO(b/385081952): Investigate why bf16 and f64 leads to incorrect results.
   // If we have enough data, we assign each warp to process a single
   // slice.
   if (num_slices > max_active_warps &&
