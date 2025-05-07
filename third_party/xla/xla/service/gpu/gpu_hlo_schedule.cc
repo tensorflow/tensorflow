@@ -649,17 +649,16 @@ uint64_t GetSchedulerMemoryLimit(const HloModule& module,
         total_io_size -= get_device_shape_size(subshape);
       });
 
-  uint64_t limit = 0;
   if (total_io_size > base_limit) {
     LOG(ERROR) << "The byte size of input/output arguments (" << total_io_size
                << ") exceeds the base limit (" << base_limit
                << "). This indicates an error in the calculation!";
-  } else {
-    limit = (base_limit - total_io_size) *
-            module.config().debug_options().xla_gpu_memory_limit_slop_factor() /
-            100;
+    return 0;
   }
-  return limit;
+
+  return (base_limit - total_io_size) *
+         module.config().debug_options().xla_gpu_memory_limit_slop_factor() /
+         100;
 }
 
 bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint) {
