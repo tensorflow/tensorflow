@@ -19,9 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -165,6 +168,71 @@ class HloRunnerPjRt : public HloRunnerInterface {
   std::unique_ptr<PjRtClient> pjrt_client_;
   DeviceShapeRepresentationFn device_shape_representation_fn_;
   DeviceShapeSizeFn device_shape_size_fn_;
+};
+
+// This class works just like a HloRunnerPjRt, but it only runs compilation
+// (persisting the executable to disk) and does not run the executable.
+class CompilePhaseHloRunnerPjRt : public HloRunnerPjRt {
+ public:
+  CompilePhaseHloRunnerPjRt(
+      std::unique_ptr<PjRtClient> pjrt_client,
+      DeviceShapeRepresentationFn device_shape_representation_fn,
+      DeviceShapeSizeFn device_shape_size_fn, absl::string_view artifact_dir)
+      : HloRunnerPjRt(std::move(pjrt_client),
+                      std::move(device_shape_representation_fn),
+                      std::move(device_shape_size_fn)),
+        artifact_dir_(artifact_dir) {}
+
+  absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
+      std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
+
+  absl::StatusOr<Literal> ExecuteWithExecutable(
+      OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
+      ExecutionProfile* profile) override {
+    return absl::UnimplementedError(
+        "CompilePhaseHloRunnerPjRt does not support execution. This is "
+        "expected.");
+  }
+
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::function<OpaqueExecutable*(int64_t)> executable_provider,
+      std::function<int64_t(int64_t)> argument_count_provider,
+      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment) override {
+    return absl::UnimplementedError(
+        "CompilePhaseHloRunnerPjRt does not support execution. This is "
+        "expected.");
+  }
+
+ private:
+  std::string artifact_dir_;
+};
+
+// This class works just like a HloRunnerPjRt, but it only runs execution
+// (reading the executable from disk) and does not compile the executable.  If
+// `compile_if_not_found` is true, this class will attempt to compile the
+// executable if the serialized version from the compile phase could not be
+// found. This effectively makes this class equivalent to HloRunnerPjRt.
+class ExecutePhaseHloRunnerPjRt : public HloRunnerPjRt {
+ public:
+  ExecutePhaseHloRunnerPjRt(
+      std::unique_ptr<PjRtClient> pjrt_client,
+      DeviceShapeRepresentationFn device_shape_representation_fn,
+      DeviceShapeSizeFn device_shape_size_fn, absl::string_view artifact_dir,
+      bool compile_if_not_found = true)
+      : HloRunnerPjRt(std::move(pjrt_client),
+                      std::move(device_shape_representation_fn),
+                      std::move(device_shape_size_fn)),
+        artifact_dir_(artifact_dir),
+        compile_if_not_found_(compile_if_not_found) {}
+
+  absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
+      std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
+
+ private:
+  std::string artifact_dir_;
+  bool compile_if_not_found_;
 };
 
 }  // namespace xla

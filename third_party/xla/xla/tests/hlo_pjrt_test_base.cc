@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/hlo_runner_pjrt.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
+#include "xla/tests/hlo_runner_pjrt_test_utils.h"
 #include "xla/tests/pjrt_client_registry.h"
 
 namespace xla {
@@ -45,7 +45,7 @@ std::unique_ptr<HloRunnerInterface> GetHloRunnerForTest() {
   PjRtClientTestFactoryRegistry::DeviceShapeSizeFn device_shape_size_fn =
       pjrt_registry.GetDeviceShapeSizeFn(client->get());
 
-  return std::make_unique<HloRunnerPjRt>(
+  return MakeHloRunnerPjRtSplitPhaseAware(
       *std::move(client), device_shape_representation_fn, device_shape_size_fn);
 }
 
