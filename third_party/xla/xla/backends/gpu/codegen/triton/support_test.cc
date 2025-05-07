@@ -2524,6 +2524,50 @@ INSTANTIATE_TEST_SUITE_P(AfterAllSuite, AfterAllTest,
                          ::testing::ValuesIn(AllDevicesToTest()),
                          TritonSupportTestDeviceToString);
 
+using TupleTest = TritonSupportTestWithDeviceParam;
+
+TEST_P(TupleTest, Tuple) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+    ENTRY triton_computation {
+      p0 = f32[10] parameter(0)
+      p1 = s32[5] parameter(1)
+      ROOT tuple_op = (f32[10], s32[5]) tuple(p0, p1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                          ParseTemplateAndGetInstruction(
+                              kHloTestTemplate,
+                              PRIMITIVE_TYPE_INVALID,  // Type is irrelevant.
+                              HloOpcode::kTuple));
+  RunSupportTestMultipleOutputTiles(std::move(ti),
+                                    /*output_tile_sizes=*/{{1}, {1}}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(TupleSuite, TupleTest,
+                         ::testing::ValuesIn(AllDevicesToTest()),
+                         TritonSupportTestDeviceToString);
+
+using GetTupleElementTest = TritonSupportTestWithDeviceParam;
+
+TEST_P(GetTupleElementTest, GetTupleElement) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+    ENTRY triton_computation {
+      tuple_op = (f32[10], s32[5]) parameter(0)
+      ROOT gte = f32[10] get-tuple-element(tuple_op), index=0
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                          ParseTemplateAndGetInstruction(
+                              kHloTestTemplate,
+                              PRIMITIVE_TYPE_INVALID,  // Type is irrelevant.
+                              HloOpcode::kGetTupleElement));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(GetTupleElementSuite, GetTupleElementTest,
+                         ::testing::ValuesIn(AllDevicesToTest()),
+                         TritonSupportTestDeviceToString);
+
 using CustomCallTest = TritonSupportTestWithDeviceParam;
 
 TEST_P(CustomCallTest, CustomCall) {
@@ -2785,7 +2829,6 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
     HloOpcode::kGather,
-    HloOpcode::kGetTupleElement,
     HloOpcode::kPad,
     HloOpcode::kRaggedDot,
     HloOpcode::kRecv,
@@ -2800,7 +2843,6 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kStochasticConvert,
     HloOpcode::kTopK,
     HloOpcode::kTriangularSolve,
-    HloOpcode::kTuple,
     // go/keep-sorted end
     // clang-format on
 };
@@ -2842,10 +2884,12 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kDot);
   ret.emplace(HloOpcode::kFft);
   ret.emplace(HloOpcode::kGetDimensionSize);
+  ret.emplace(HloOpcode::kGetTupleElement);
   ret.emplace(HloOpcode::kMap);
   ret.emplace(HloOpcode::kReverse);
   ret.emplace(HloOpcode::kRngBitGenerator);
   ret.emplace(HloOpcode::kRngGetAndUpdateState);
+  ret.emplace(HloOpcode::kTuple);
   ret.emplace(HloOpcode::kWhile);
   ret.emplace(HloOpcode::kFusion);
   ret.emplace(HloOpcode::kInfeed);
