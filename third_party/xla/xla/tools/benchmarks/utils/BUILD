@@ -1,5 +1,6 @@
 load(
     "//xla:xla.default.bzl",
+    "xla_cc_binary",
     "xla_cc_test",
 )
 load(
@@ -49,5 +50,20 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@jsoncpp_git//:jsoncpp",
         "@local_tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_binary(
+    name = "generate_benchmark_matrices_main",
+    srcs = ["generate_benchmark_matrices_main.cc"],
+    deps = [
+        ":generate_benchmark_matrices_cc",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@jsoncpp_git//:jsoncpp",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )

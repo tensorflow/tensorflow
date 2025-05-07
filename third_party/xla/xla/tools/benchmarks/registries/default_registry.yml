@@ -20,9 +20,12 @@ benchmarks: [
     name: "gemma3_1b_flax_call"
     description: "Benchmarks Gemma3 1b in Flax using B200 GPUs."
     owner: "juliagmt-google@"
-    hlo_gcs_bucket_path: "https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo"
+    input_artifact: {
+      input_format: HLO_TEXT
+      artifact_gcs_bucket_path: "https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo"
+    }
     model_source_info: ["Gemma3 1B"]
-    hardware_target: [{
+    hardware_targets: [{
       hardware_category: GPU_B200
       topology: { num_hosts: 1, num_devices_per_host: 1 }
       target_metrics: [WALL_TIME, GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME, PEAK_GPU_MEMORY]
@@ -36,9 +39,12 @@ benchmarks: [
     name: "gemma2_2b_keras_jax"
     description: "Gemma2 2B in Keras on x86 CPU."
     owner: "company-A@"
-    hlo_path: "benchmarks/hlo/gemma2_2b_keras_jax.hlo"
+    input_artifact: {
+      input_format: HLO_TEXT
+      artifact_path: "benchmarks/hlo/gemma2_2b_keras_jax.hlo"
+    }
     model_source_info: ["Gemma2 2B"]
-    hardware_target: [{
+    hardware_targets: [{
       hardware_category: GPU_B200
       topology: { num_hosts: 1, num_devices_per_host: 1 }
       target_metrics: [WALL_TIME, GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME, PEAK_GPU_MEMORY]
