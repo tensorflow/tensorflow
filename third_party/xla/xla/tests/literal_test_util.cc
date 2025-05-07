@@ -89,16 +89,6 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
   return StatusToAssertion(literal_comparison::EqualShapes(expected, actual));
 }
 
-/* static */ ::testing::AssertionResult LiteralTestUtil::EqualShapesAndLayouts(
-    const Shape& expected, const Shape& actual) {
-  if (expected.ShortDebugString() != actual.ShortDebugString()) {
-    return ::testing::AssertionFailure()
-           << "want: " << expected.ShortDebugString()
-           << " got: " << actual.ShortDebugString();
-  }
-  return ::testing::AssertionSuccess();
-}
-
 /* static */ ::testing::AssertionResult LiteralTestUtil::Equal(
     const LiteralSlice& expected, const LiteralSlice& actual) {
   return StatusToAssertion(literal_comparison::Equal(expected, actual));

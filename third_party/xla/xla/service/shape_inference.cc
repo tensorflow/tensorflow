@@ -1615,8 +1615,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     default:
       return Unimplemented(
           "Binary op shape inference: %s; lhs: %s; rhs: %s is not implemented.",
-          HloOpcodeString(opcode), lhs.ShortDebugString(),
-          rhs.ShortDebugString());
+          HloOpcodeString(opcode), lhs.ToString(), rhs.ToString());
   }
 }
 

@@ -72,8 +72,8 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
   // same dimensions.
   for (const IrArray& array : target_arrays) {
     CHECK(ShapeUtil::SameDimensions(shape_, array.GetShape()))
-        << ": '" << shape_.ShortDebugString() << "' does not match '"
-        << array.GetShape().ShortDebugString() << "'";
+        << ": '" << shape_.ToString() << "' does not match '"
+        << array.GetShape().ToString() << "'";
   }
 }
 

@@ -212,7 +212,7 @@ IrArray::IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape)
   if (!shape_.IsArray() || ShapeUtil::IsScalar(shape_)) {
     DCHECK(depth == 1 || depth == 0) << depth;
   } else {
-    DCHECK_EQ(depth, shape_.dimensions().size()) << shape_.ShortDebugString();
+    DCHECK_EQ(depth, shape_.dimensions().size()) << shape_.ToString();
   }
 }
 

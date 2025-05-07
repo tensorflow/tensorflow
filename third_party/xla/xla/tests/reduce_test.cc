@@ -87,7 +87,7 @@ class ReduceTest : public ClientLibraryTestBase {
     CHECK(ShapeUtil::Equal(
         literal_3d_.shape(),
         ShapeUtil::MakeShape(F32, {/*z=*/4, /*y=*/2, /*x=*/3})))
-        << literal_3d_.shape().ShortDebugString();
+        << literal_3d_.shape().ToString();
   }
 
   // Runs an R1 => R0 reduction test with the given number of elements.
