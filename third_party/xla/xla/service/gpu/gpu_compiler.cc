@@ -1109,6 +1109,8 @@ absl::Status RunLayoutAssignmentPasses(
   return pipeline.Run(hlo_module).status();
 }
 
+}  // namespace
+
 absl::Status RunFusionPasses(HloModule* hlo_module,
                              const Compiler::TargetConfig& gpu_target_config,
                              tsl::thread::ThreadPool* thread_pool,
@@ -1136,6 +1138,8 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
 
   return absl::OkStatus();
 }
+
+namespace {
 
 // Adds unrolling while loop optimization. Mostly to get rid of extra D2D
 // copies, but also there are some performance benefits (better comm-compute
