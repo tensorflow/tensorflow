@@ -1961,7 +1961,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       auto is_async_shape_correct = [](const Shape& shape) {
-        return shape.IsTuple() && shape.tuple_shapes_size() >= 2 &&
+        return shape.IsTuple() && shape.tuple_shapes().size() >= 2 &&
                shape.tuple_shapes(0).IsTuple();
       };
       // Verify operand/resulting shapes
@@ -2201,9 +2201,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     }
     case HloOpcode::kTuple: {
       if ((!preset_operands &&
-           !(shape.has_value()
-                 ? ParseOperands(&operands, builder, shape->tuple_shapes_size())
-                 : ParseOperands(&operands, builder))) ||
+           !(shape.has_value() ? ParseOperands(&operands, builder,
+                                               shape->tuple_shapes().size())
+                               : ParseOperands(&operands, builder))) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
         return nullptr;
       }
