@@ -26,7 +26,7 @@ limitations under the License.
 
 #include "jpeglib.h"  // from @libjpeg_turbo
 #include "tensorflow/core/platform/jpeg.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/logging.h"  // build_cleaner: keep
 #include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {

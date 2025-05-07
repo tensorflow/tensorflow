@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/jpeg.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/types.h"  // build_cleaner: keep
 
 namespace tensorflow {
 namespace jpeg {

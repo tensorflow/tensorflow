@@ -21,13 +21,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_
 #define TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_
 
+#include <cstdint>
 #include <functional>
-#include <string>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/jpeg.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/types.h"  // build_cleaner: keep
 
 namespace tensorflow {
 namespace jpeg {
