@@ -42,7 +42,7 @@ struct TfLiteModel {
   std::shared_ptr<const tflite::impl::FlatBufferModel> impl;
 };
 
-// The `TfLiteOpResolver` struct is an abstract callback interface that
+// The `TfLiteOpResolverCallbacks` struct is an abstract callback interface that
 // contains function pointers for callbacks that return a
 // `TfLiteRegistration` given an op code or custom op name. This mechanism is
 // used to map ops referenced in the flatbuffer model to executable function
@@ -292,6 +292,16 @@ class CallbackOpResolver : public ::tflite::OpResolver {
 TfLiteInterpreter* InterpreterCreateWithOpResolver(
     const TfLiteModel* model, const TfLiteInterpreterOptions* optional_options,
     tflite::MutableOpResolver* mutable_resolver);
+
+// Create a dynamically allocated `TfLiteRegistration` object that wraps
+// an existing `TfLiteOperator` external registration object.
+TfLiteRegistration* OperatorToRegistration(
+    const TfLiteOperator* registration_external);
+
+// Initialize an already-allocated `TfLiteRegistration` object to wrap
+// an existing `TfLiteOperator` external registration object.
+void InitTfLiteRegistration(TfLiteRegistration* registration,
+                            TfLiteOperator* registration_external);
 
 }  // namespace internal
 }  // namespace tflite

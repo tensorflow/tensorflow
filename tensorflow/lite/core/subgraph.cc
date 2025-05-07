@@ -1308,10 +1308,16 @@ void* Subgraph::OpInit(const TfLiteRegistration& op_reg, const char* buffer,
   //    or a stable delegate kernel, and in both of those cases we need to use
   //    the callbacks stored within the 'TfLiteOperator' itself.
   if (op_reg.registration_external) {
+    const TfLiteRegistration* referenced_registration;
     if (op_reg.registration_external->node_index != -1) {
-      TfLiteRegistration* referenced_registration =
+      referenced_registration =
           &nodes_and_registration_[op_reg.registration_external->node_index]
                .second;
+    } else {
+      referenced_registration =
+          op_reg.registration_external->builtin_op_registration;
+    }
+    if (referenced_registration != nullptr) {
       if (referenced_registration->init == nullptr) return nullptr;
       return referenced_registration->init(&context_, buffer, length);
     }
@@ -1345,10 +1351,16 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
   //    or a stable delegate kernel, and in both of those cases we need to use
   //    the callbacks stored within the 'TfLiteOperator' itself.
   if (op_reg.registration_external) {
+    const TfLiteRegistration* referenced_registration;
     if (op_reg.registration_external->node_index != -1) {
-      TfLiteRegistration* referenced_registration =
+      referenced_registration =
           &nodes_and_registration_[op_reg.registration_external->node_index]
                .second;
+    } else {
+      referenced_registration =
+          op_reg.registration_external->builtin_op_registration;
+    }
+    if (referenced_registration != nullptr) {
       if (referenced_registration->prepare == nullptr) {
         if (IsUnresolvedCustomOp(op_reg)) {
           ReportError(
@@ -1418,10 +1430,16 @@ TfLiteStatus Subgraph::OpInvoke(const TfLiteRegistration& op_reg,
   //    or a stable delegate kernel, and in both of those cases we need to use
   //    the callbacks stored within the 'TfLiteOperator' itself.
   if (op_reg.registration_external) {
+    const TfLiteRegistration* referenced_registration;
     if (op_reg.registration_external->node_index != -1) {
-      TfLiteRegistration* referenced_registration =
+      referenced_registration =
           &nodes_and_registration_[op_reg.registration_external->node_index]
                .second;
+    } else {
+      referenced_registration =
+          op_reg.registration_external->builtin_op_registration;
+    }
+    if (referenced_registration != nullptr) {
       if (referenced_registration->invoke == nullptr) return kTfLiteError;
       return referenced_registration->invoke(&context_, node);
     }
@@ -1457,10 +1475,16 @@ void Subgraph::OpFree(const TfLiteRegistration& op_reg, void* buffer) {
   //    or a stable delegate kernel, and in both of those cases we need to use
   //    the callbacks stored within the 'TfLiteOperator' itself.
   if (op_reg.registration_external && buffer) {
+    const TfLiteRegistration* referenced_registration;
     if (op_reg.registration_external->node_index != -1) {
-      TfLiteRegistration* referenced_registration =
+      referenced_registration =
           &nodes_and_registration_[op_reg.registration_external->node_index]
                .second;
+    } else {
+      referenced_registration =
+          op_reg.registration_external->builtin_op_registration;
+    }
+    if (referenced_registration != nullptr) {
       if (referenced_registration->free == nullptr) return;
       return referenced_registration->free(&context_, buffer);
     }
