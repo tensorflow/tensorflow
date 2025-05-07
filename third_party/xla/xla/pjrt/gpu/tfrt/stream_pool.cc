@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace se = ::stream_executor;
 
@@ -45,6 +46,8 @@ BoundedStreamPool::BoundedStreamPool(se::StreamExecutor* executor,
 }
 
 absl::StatusOr<BoundedStreamPool::Handle> BoundedStreamPool::Borrow() {
+  tsl::profiler::TraceMe t("BoundedStreamPool::Borrow");
+
   absl::MutexLock lock(&mu_);
   auto stream_available = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return !streams_.empty();
