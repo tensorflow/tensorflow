@@ -200,8 +200,8 @@ class HloRunnerPjRtExecutable : public OpaqueExecutable {
                           std::unique_ptr<PjRtExecutable> executable)
       : OpaqueExecutable(creator), executable_(std::move(executable)) {}
   // Construct an internal executable with a pre-loaded PjRt executable. This
-  // only exists to support PjRt clients that do not implement Compile()
-  // functionality.
+  // only exists to support PjRt clients that do not implement Compile() and
+  // DeserializeExecutable() functionality.
   HloRunnerPjRtExecutable(
       const HloRunnerPjRt* absl_nonnull creator,
       std::unique_ptr<PjRtLoadedExecutable> loaded_executable)
@@ -494,10 +494,24 @@ HloRunnerPjRt::DeserializeExecutable(const absl::string_view serialized) const {
   // handling the default case where it is not present. The options are
   // serialized with the executable and we can read them from there.
   // Remove this comment once the bug is closed.
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                      pjrt_client_->DeserializeExecutable(
-                          serialized, /*options=*/std::nullopt));
-  return std::make_unique<HloRunnerPjRtExecutable>(this, std::move(executable));
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> pjrt_executable =
+      pjrt_client_->DeserializeExecutable(serialized, /*options=*/std::nullopt);
+  if (pjrt_executable.ok()) {
+    return std::make_unique<HloRunnerPjRtExecutable>(
+        this, *std::move(pjrt_executable));
+  }
+  if (!absl::IsUnimplemented(pjrt_executable.status())) {
+    return pjrt_executable.status();
+  }
+
+  // Fall back to deserialize + load if DeserializeExecutable() was not
+  // implemented. This is similar to how we handle CreateExecutable above.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtLoadedExecutable> pjrt_loaded_executable,
+      pjrt_client_->LoadSerializedExecutable(
+          serialized, /*options=*/std::nullopt, LoadOptions()));
+  return std::make_unique<HloRunnerPjRtExecutable>(
+      this, std::move(pjrt_loaded_executable));
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
