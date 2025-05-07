@@ -1,12 +1,1 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/lldb/unittests/Core/MangledTest.cpp b/lldb/unittests/Core/MangledTest.cpp
---- a/lldb/unittests/Core/MangledTest.cpp
-+++ b/lldb/unittests/Core/MangledTest.cpp
-@@ -605,6 +605,7 @@
-   EXPECT_EQ(get_part(OB.NameInfo.BasenameRange), basename);
-   EXPECT_EQ(get_part(OB.NameInfo.ScopeRange), scope);
-   EXPECT_EQ(get_part(OB.NameInfo.QualifiersRange), qualifiers);
-+  std::free(OB.getBuffer());
- }
- 
- INSTANTIATE_TEST_SUITE_P(DemanglingPartsTests, DemanglingPartsTestFixture,
