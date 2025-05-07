@@ -46,6 +46,10 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
+FileDescriptor FileDescriptor::Duplicate(int fd) {
+  return FileDescriptor(dup(fd));
+}
+
 FileDescriptor FileDescriptor::Duplicate() const {
   if (!IsValid()) {
     return FileDescriptor(-1);

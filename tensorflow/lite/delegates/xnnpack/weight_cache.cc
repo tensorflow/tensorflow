@@ -244,18 +244,22 @@ WeightCacheBuilder& WeightCacheBuilder::operator=(WeightCacheBuilder&& other) {
   return *this;
 }
 
-bool WeightCacheBuilder::Start(const char* path) {
+bool WeightCacheBuilder::Start(const char* path, FileDescriptor fd) {
   XNNPACK_RETURN_CHECK(!IsStarted());
   file_path_ = path;
 
-  if (IsInMemoryCachePath(file_path_)) {
-    fd_ = CreateInMemoryFileDescriptor("XNNPack in-memory weight cache");
+  if (fd.IsValid()) {
+    fd_ = std::move(fd);
   } else {
-    fd_ = FileDescriptor::Open(file_path_.c_str(), O_CREAT | O_TRUNC | O_RDWR,
-                               0644);
+    if (IsInMemoryCachePath(file_path_)) {
+      fd_ = CreateInMemoryFileDescriptor("XNNPack in-memory weight cache");
+    } else {
+      fd_ = FileDescriptor::Open(file_path_.c_str(), O_CREAT | O_TRUNC | O_RDWR,
+                                 0644);
+    }
+    XNNPACK_RETURN_CHECK(fd_.IsValid(), "could not open file ('%s'): %s.",
+                         file_path_.c_str(), strerror(errno));
   }
-  XNNPACK_RETURN_CHECK(fd_.IsValid(), "could not open file ('%s'): %s.",
-                       file_path_.c_str(), strerror(errno));
 
   // Write data in the header, this will be overwritten in the `Finalize` call.
   // We explicitly set the header as invalid. If any error happens during
@@ -425,12 +429,14 @@ void MMapWeightCacheProvider::SetFilePath(const char* path) {
   }
 }
 
-bool MMapWeightCacheProvider::LoadOrStartBuild(const char* path) {
-  if (!IsInMemoryCachePath(path) && Load(path)) {
+bool MMapWeightCacheProvider::LoadOrStartBuild(const char* path,
+                                               FileDescriptor fd) {
+  FileDescriptor build_fd = fd.Duplicate();
+  if (!IsInMemoryCachePath(path) && Load(path, std::move(fd))) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
                     "XNNPack weight cache loaded from '%s'.", path);
     return true;
-  } else if (StartBuild(path)) {
+  } else if (StartBuild(path, std::move(build_fd))) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
                     "XNNPack weight cache build for '%s' started.", path);
     return true;
@@ -438,19 +444,18 @@ bool MMapWeightCacheProvider::LoadOrStartBuild(const char* path) {
   return false;
 }
 
-bool MMapWeightCacheProvider::StartBuild(const char* path) {
+bool MMapWeightCacheProvider::StartBuild(const char* path, FileDescriptor fd) {
   SetFilePath(path);
-  building_run_ = builder_.Start(path);
-  if (IsInMemoryCachePath(file_path_)) {
-    // Duplicate the file descriptor to avoid loosing the temporary file when
-    // the builder is reset.
-    temporary_file_descriptor_ = builder_.GetFileDescriptor().Duplicate();
-  }
+  building_run_ = builder_.Start(path, std::move(fd));
+  // Duplicate the file descriptor to avoid loosing the temporary file when
+  // the builder is reset.
+  temporary_file_descriptor_ = builder_.GetFileDescriptor().Duplicate();
   return building_run_;
 }
 
-bool MMapWeightCacheProvider::Load(const std::string& path) {
+bool MMapWeightCacheProvider::Load(const std::string& path, FileDescriptor fd) {
   SetFilePath(path.c_str());
+  temporary_file_descriptor_ = std::move(fd);
   return Load();
 }
 
