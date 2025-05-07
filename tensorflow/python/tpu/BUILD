@@ -1180,4 +1180,29 @@ tpu_py_strict_test(
     ],
 )
 
+tpu_py_strict_test(
+    name = "tpu_embedding_v3_checkpoint_test",
+    srcs = ["tpu_embedding_v3_checkpoint_test.py"],
+    disable_experimental = True,
+    disable_tfrt = False,
+    disable_v2 = True,
+    disable_v3 = True,
+    # copybara:uncomment disable_v4i = True,
+    # copybara:uncomment disable_v5 = False,
+    # copybara:uncomment disable_v5_grm = True,
+    deps = [
+        ":tpu_embedding_v2_utils",
+        ":tpu_embedding_v3",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/ops:init_ops_v2",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 internal_create_sanitizer_settings()
