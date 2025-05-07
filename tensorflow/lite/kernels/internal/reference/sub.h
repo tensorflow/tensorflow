@@ -264,8 +264,8 @@ void BroadcastSubSlow(const ArithmeticParams& params,
       [](T input1_val, T input2_val, const ArithmeticParams& params) {
         T activation_min, activation_max;
         GetActivationParams(params, &activation_min, &activation_max);
-        return ActivationFunctionWithMinMax(input1_val - input2_val,
-                                            activation_min, activation_max);
+        return ActivationFunctionWithMinMax<T>(input1_val - input2_val,
+                                               activation_min, activation_max);
       });
 }
 
@@ -430,6 +430,20 @@ inline void SetActivationMinMax(const ArithmeticParams& params,
 }
 
 inline void SetActivationMinMax(const ArithmeticParams& params,
+                                int8_t* activation_min,
+                                int8_t* activation_max) {
+  *activation_min = params.int8_activation_min;
+  *activation_max = params.int8_activation_max;
+}
+
+inline void SetActivationMinMax(const ArithmeticParams& params,
+                                int16_t* activation_min,
+                                int16_t* activation_max) {
+  *activation_min = params.int16_activation_min;
+  *activation_max = params.int16_activation_max;
+}
+
+inline void SetActivationMinMax(const ArithmeticParams& params,
                                 float* activation_min, float* activation_max) {
   *activation_min = params.float_activation_min;
   *activation_max = params.float_activation_max;
@@ -441,6 +455,22 @@ inline void SetActivationMinMax(const ArithmeticParams& params,
   *activation_min = params.int64_activation_min;
   *activation_max = params.int64_activation_max;
 }
+
+#ifndef EIGEN_TFLITE
+inline void SetActivationMinMax(const ArithmeticParams& params,
+                                Eigen::half* activation_min,
+                                Eigen::half* activation_max) {
+  *activation_min = params.Eigen_half_activation_min;
+  *activation_max = params.Eigen_half_activation_max;
+}
+
+inline void SetActivationMinMax(const ArithmeticParams& params,
+                                Eigen::bfloat16* activation_min,
+                                Eigen::bfloat16* activation_max) {
+  *activation_min = params.bf16_activation_min;
+  *activation_max = params.bf16_activation_max;
+}
+#endif
 
 template <typename T>
 inline void SubWithActivation(
@@ -454,7 +484,7 @@ inline void SubWithActivation(
   SetActivationMinMax(params, &activation_min, &activation_max);
 
   for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
+    output_data[i] = ActivationFunctionWithMinMax<T>(
         input1_data[i] - input2_data[i], activation_min, activation_max);
   }
 }

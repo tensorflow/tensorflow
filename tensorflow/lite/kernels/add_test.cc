@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "Eigen/Core"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -71,7 +72,10 @@ class FloatAddOpModel : public BaseAddOpModel {
  public:
   using BaseAddOpModel::BaseAddOpModel;
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  template <typename T>
+  std::vector<T> GetOutput() {
+    return ExtractVector<T>(output_);
+  }
 };
 
 class IntegerAddOpModel : public BaseAddOpModel {
@@ -144,7 +148,7 @@ TEST(FloatAddOpModel, NoActivationInplaceInput0) {
   TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
   output_tensor->data.data = input_tensor->data.data;
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(),
+  EXPECT_THAT(m.GetOutput<float>(),
               Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3}));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
@@ -161,7 +165,7 @@ TEST(FloatAddOpModel, NoActivationInplaceInput1) {
   TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
   output_tensor->data.data = input_tensor->data.data;
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(),
+  EXPECT_THAT(m.GetOutput<float>(),
               Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3}));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
@@ -173,8 +177,45 @@ TEST(FloatAddOpModel, NoActivation) {
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(),
+  EXPECT_THAT(m.GetOutput<float>(),
               Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3}));
+}
+
+TEST(Float16AddOpModel, NoActivation) {
+  FloatAddOpModel m({TensorType_FLOAT16, {1, 2, 2, 1}},
+                    {TensorType_FLOAT16, {1, 2, 2, 1}},
+                    {TensorType_FLOAT16, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<Eigen::half>(
+      m.input1(), {Eigen::half(-7.586670e-02), Eigen::half(-2.060550e+00),
+                   Eigen::half(2.714840e+00), Eigen::half(4.710940e+00)});
+  m.PopulateTensor<Eigen::half>(
+      m.input2(), {Eigen::half(1.427730e+00), Eigen::half(1.889650e+00),
+                   Eigen::half(3.423830e+00), Eigen::half(5.590820e-01)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput<Eigen::half>(),
+      ElementsAreArray({Eigen::half(1.351560e+00), Eigen::half(-1.708980e-01),
+                        Eigen::half(6.140630e+00), Eigen::half(5.269530e+00)}));
+}
+
+TEST(BFloat16AddOpModel, NoActivation) {
+  FloatAddOpModel m({TensorType_BFLOAT16, {1, 2, 2, 1}},
+                    {TensorType_BFLOAT16, {1, 2, 2, 1}},
+                    {TensorType_BFLOAT16, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<Eigen::bfloat16>(
+      m.input1(),
+      {Eigen::bfloat16(4.031250e+00), Eigen::bfloat16(-2.949220e-01),
+       Eigen::bfloat16(9.492180e-01), Eigen::bfloat16(2.093750e+00)});
+  m.PopulateTensor<Eigen::bfloat16>(
+      m.input2(),
+      {Eigen::bfloat16(-1.476560e+00), Eigen::bfloat16(-7.070310e-01),
+       Eigen::bfloat16(2.265630e-01), Eigen::bfloat16(-1.031250e+00)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput<Eigen::bfloat16>(),
+      ElementsAreArray(
+          {Eigen::bfloat16(2.562500e+00), Eigen::bfloat16(-1.000000e+00),
+           Eigen::bfloat16(1.171880e+00), Eigen::bfloat16(1.062500e+00)}));
 }
 
 TEST(FloatAddOpModel, ActivationRELU_N1_TO_1) {
@@ -184,7 +225,7 @@ TEST(FloatAddOpModel, ActivationRELU_N1_TO_1) {
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(),
+  EXPECT_THAT(m.GetOutput<float>(),
               Pointwise(FloatingPointEq(), {-1.0, 0.4, 1.0, 1.0}));
 }
 
@@ -198,7 +239,7 @@ TEST(FloatAddOpModel, VariousInputShapes) {
     m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
     m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5, 1.1, 0.1});
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(m.GetOutput(),
+    EXPECT_THAT(m.GetOutput<float>(),
                 Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3, 2.2, 2.1}))
         << "With shape number " << i;
   }
@@ -215,7 +256,7 @@ TEST(FloatAddOpModel, WithBroadcast) {
     m.PopulateTensor<float>(m.input2(), {0.1});
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(
-        m.GetOutput(),
+        m.GetOutput<float>(),
         ElementsAreArray(ArrayFloatNear({-1.9, 0.3, 0.8, 0.9, 1.2, 2.1})))
         << "With shape number " << i;
   }
@@ -230,7 +271,7 @@ TEST(FloatAddOpModel, WithBroadcastGeneric) {
   m.PopulateTensor<float>(m.input1(), {0.1, 0.2, 0.3});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.4});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(),
+  EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({0.2, 0.3, 0.3, 0.4, 0.4, 0.5,
                                                0.4, 0.5, 0.5, 0.6, 0.6, 0.7})));
 }
@@ -262,7 +303,7 @@ TEST(FloatAddOpModel, MixedBroadcast) {
     model_fixture.PopulateTensor<float>(model_fixture.input2(),
                                         {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
     ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
-    EXPECT_THAT(model_fixture.GetOutput(),
+    EXPECT_THAT(model_fixture.GetOutput<float>(),
                 ElementsAreArray(ArrayFloatNear(test_outputs[i], 0.0001f)))
         << "With shape number " << i;
   }
@@ -277,7 +318,7 @@ TEST(FloatAddOpModel, MixedBroadcast) {
         model_fixture.input2(), {-0.3f, 2.3f, 0.9f, 0.5f, 0.8f, -1.1f, 1.2f,
                                  2.8f, -1.6f, 0.0f, 0.7f, -2.2f});
     ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
-    EXPECT_THAT(model_fixture.GetOutput(),
+    EXPECT_THAT(model_fixture.GetOutput<float>(),
                 ElementsAreArray(ArrayFloatNear(test_outputs[i], 0.0001f)))
         << "With shape number " << i;
   }
@@ -368,7 +409,7 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), output_ref));
+  EXPECT_THAT(m.GetOutput<float>(), Pointwise(FloatingPointEq(), output_ref));
 }
 
 template <typename IntegerType>
@@ -552,8 +593,8 @@ TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard9) {
 template <typename T>
 class IntegerAddOpTest : public ::testing::Test {};
 
-using Int16OrInt32Or64Types = ::testing::Types<int16_t, int32_t, int64_t>;
-TYPED_TEST_SUITE(IntegerAddOpTest, Int16OrInt32Or64Types);
+using Int8OrInt16OrInt32Or64Types = ::testing::Types<int8_t, int16_t, int32_t, int64_t>;
+TYPED_TEST_SUITE(IntegerAddOpTest, Int8OrInt16OrInt32Or64Types);
 
 // To improve automatic test sharding (via shard_count in the BUILD file),
 // we need to ensure that each individual test case runs in a reasonable time,

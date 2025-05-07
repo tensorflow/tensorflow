@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <limits>
 
+#include "Eigen/Core"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -270,9 +271,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int input1_scale_log2_rounded{0};
   int input2_scale_log2_rounded{0};
   int output_scale_log2_rounded{0};
+  
+  // As we ensured input1->type == input2->type
+  bool input_quantized = input1->quantization.type != kTfLiteNoQuantization; 
 
   if (input1->type == kTfLiteInt16 && input2->type == kTfLiteInt16 &&
-      output->type == kTfLiteInt16) {
+      output->type == kTfLiteInt16 && input_quantized) {
     TF_LITE_ENSURE_EQ(context, input1->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, input2->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
@@ -297,11 +301,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   data->pot_scale_int16 = !general_scale_int16;
 
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
-      general_scale_int16) {
+  if ((output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
+      general_scale_int16) && input_quantized) {
     TF_LITE_ENSURE_OK(context, PrepareGeneralSubOp(context, input1, input2,
                                                    output, params, data));
-  } else if (output->type == kTfLiteInt16) {
+  } else if (output->type == kTfLiteInt16 && input_quantized) {
     // LSTM-special case with scale parameter of POT
     TF_LITE_ENSURE_OK(context, PrepareInt16SubOpPOT(context, input1, input2,
                                                     output, params, data));
@@ -357,14 +361,32 @@ void EvalSub(TfLiteContext* context, TfLiteNode* node, TfLiteSubParams* params,
              const OpData* data, const TfLiteTensor* input1,
              const TfLiteTensor* input2, TfLiteTensor* output) {
   const bool requires_broadcast = data->requires_broadcast;
+  tflite::ArithmeticParams op_params;
   switch (output->type) {
     case kTfLiteInt32:
       EvalSubImpl<kernel_type, int32_t>(context, node, params, data, input1,
                                         input2, requires_broadcast, output);
       break;
+    case kTfLiteInt16:
+      EvalSubImpl<kernel_type, int16_t>(context, node, params, data, input1,
+                                        input2, requires_broadcast, output);
+      break;
+    case kTfLiteInt8:
+      EvalSubImpl<kernel_type, int8_t>(context, node, params, data, input1,
+                                        input2, requires_broadcast, output);
+      break;
     case kTfLiteFloat32:
       EvalSubImpl<kernel_type, float>(context, node, params, data, input1,
                                       input2, requires_broadcast, output);
+      break;
+    case kTfLiteFloat16:
+      EvalSubImpl<kernel_type, Eigen::half>(context, node, params, data, input1,
+                                            input2, requires_broadcast, output);
+      break;
+    case kTfLiteBFloat16:
+      EvalSubImpl<kernel_type, Eigen::bfloat16>(context, node, params, data,
+                                                input1, input2,
+                                                requires_broadcast, output);
       break;
     case kTfLiteInt64:
       EvalSubImpl<kernel_type, int64_t>(context, node, params, data, input1,
@@ -462,9 +484,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
-
-  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32 ||
-      output->type == kTfLiteInt64) {
+  bool is_quantized = output->quantization.type != kTfLiteNoQuantization; 
+  if ((output->type == kTfLiteFloat32 || output->type == kTfLiteBFloat16 ||
+      output->type == kTfLiteFloat16 || output->type == kTfLiteInt32 ||
+      output->type == kTfLiteInt64 || output->type == kTfLiteInt16 || 
+      output->type == kTfLiteInt8) && !is_quantized) {
     EvalSub<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
              output->type == kTfLiteInt16) {
