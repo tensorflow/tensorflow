@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/kernels/sparse_matmul_op_hwy.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/errors.h"
@@ -104,16 +105,7 @@ struct SparseSlice {
 
  public:
   // Indices of three elements on the same row.
-  struct Index3 {
-    Index3(uint8 m, uint8 k1, uint8 k2, uint8 k3)
-        : m(m), k1(k1), k2(k2), k3(k3) {}
-
-    uint8 m;  // row
-    // columns
-    uint8 k1;
-    uint8 k2;
-    uint8 k3;
-  };
+  using Index3 = std::tuple<uint8, uint8, uint8, uint8>;
 
   // Index of one element.
   struct Index {
@@ -667,39 +659,49 @@ inline void GEPP(
 
       const int end3 = left.index3_offset[i];
       int j = begin3;
-      // Loop unrolled for 2 iterations.
-      for (; j + 1 < end3; j += 2) {
-        Packet l1, l2, l3, nl1, nl2, nl3;
-        LoadSixScalars(&data3, &l1, &l2, &l3, &nl1, &nl2, &nl3);
-        const auto& index = left.index3[j];
-        const auto& nindex = left.index3[j + 1];
-        float* out = out_ptrs[index.m];
-        float* nout = out_ptrs[nindex.m];
-        const auto* r1 = right_ptrs[index.k1];
-        const auto* r2 = right_ptrs[index.k2];
-        const auto* r3 = right_ptrs[index.k3];
+      bool fast_path = false;
+      if constexpr (std::is_same_v<TL, float> && std::is_same_v<TR, float>) {
+        fast_path = cols == 128;
+        if (fast_path) {
+          j = hwy::GEPP_helper(&data3, j, end3, left.index3, out_ptrs,
+                               right_ptrs);
+        }
+      }
+      if (!fast_path) {
+        // Loop unrolled for 2 iterations.
+        for (; j + 1 < end3; j += 2) {
+          auto [m, k1, k2, k3] = left.index3[j];
+          auto [nm, nk1, nk2, nk3] = left.index3[j + 1];
+          float* out = out_ptrs[m];
+          float* nout = out_ptrs[nm];
+          const auto* r1 = right_ptrs[k1];
+          const auto* r2 = right_ptrs[k2];
+          const auto* r3 = right_ptrs[k3];
 
-        const auto* nr1 = right_ptrs[nindex.k1];
-        const auto* nr2 = right_ptrs[nindex.k2];
-        const auto* nr3 = right_ptrs[nindex.k3];
-        if (cols == 128) {
-          MulAdd3Way128(l1, l2, l3, &r1, &r2, &r3, &out);
-          MulAdd3Way128(nl1, nl2, nl3, &nr1, &nr2, &nr3, &nout);
-        } else {
-          for (int n = 0; n < cols / kNumOperandsR; ++n) {
-            MulAdd3Way(l1, l2, l3, &r1, &r2, &r3, &out);
-            MulAdd3Way(nl1, nl2, nl3, &nr1, &nr2, &nr3, &nout);
-          }
+          const auto* nr1 = right_ptrs[nk1];
+          const auto* nr2 = right_ptrs[nk2];
+          const auto* nr3 = right_ptrs[nk3];
+          Packet l1, l2, l3, nl1, nl2, nl3;
+          LoadSixScalars(&data3, &l1, &l2, &l3, &nl1, &nl2, &nl3);
+          if (cols == 128) {
+            MulAdd3Way128(l1, l2, l3, &r1, &r2, &r3, &out);
+            MulAdd3Way128(nl1, nl2, nl3, &nr1, &nr2, &nr3, &nout);
+          } else {
+            for (int n = 0; n < cols / kNumOperandsR; ++n) {
+              MulAdd3Way(l1, l2, l3, &r1, &r2, &r3, &out);
+              MulAdd3Way(nl1, nl2, nl3, &nr1, &nr2, &nr3, &nout);
+            }
 
-          const float sl1 = Eigen::internal::pfirst<Packet>(l1);
-          const float sl2 = Eigen::internal::pfirst<Packet>(l2);
-          const float sl3 = Eigen::internal::pfirst<Packet>(l3);
-          const float nsl1 = Eigen::internal::pfirst<Packet>(nl1);
-          const float nsl2 = Eigen::internal::pfirst<Packet>(nl2);
-          const float nsl3 = Eigen::internal::pfirst<Packet>(nl3);
-          for (int k = 0; k < cols_mod; ++k) {
-            ScalarMulAdd3Way(sl1, sl2, sl3, &r1, &r2, &r3, &out);
-            ScalarMulAdd3Way(nsl1, nsl2, nsl3, &nr1, &nr2, &nr3, &nout);
+            const float sl1 = Eigen::internal::pfirst<Packet>(l1);
+            const float sl2 = Eigen::internal::pfirst<Packet>(l2);
+            const float sl3 = Eigen::internal::pfirst<Packet>(l3);
+            const float nsl1 = Eigen::internal::pfirst<Packet>(nl1);
+            const float nsl2 = Eigen::internal::pfirst<Packet>(nl2);
+            const float nsl3 = Eigen::internal::pfirst<Packet>(nl3);
+            for (int k = 0; k < cols_mod; ++k) {
+              ScalarMulAdd3Way(sl1, sl2, sl3, &r1, &r2, &r3, &out);
+              ScalarMulAdd3Way(nsl1, nsl2, nsl3, &nr1, &nr2, &nr3, &nout);
+            }
           }
         }
       }
@@ -707,11 +709,11 @@ inline void GEPP(
         Packet l1, l2, l3;
         LoadThreeScalars(&data3, &l1, &l2, &l3);
 
-        const auto& index = left.index3[j];
-        float* out = out_ptrs[index.m];
-        const auto* r1 = right_ptrs[index.k1];
-        const auto* r2 = right_ptrs[index.k2];
-        const auto* r3 = right_ptrs[index.k3];
+        auto [m, k1, k2, k3] = left.index3[j];
+        float* out = out_ptrs[m];
+        const auto* r1 = right_ptrs[k1];
+        const auto* r2 = right_ptrs[k2];
+        const auto* r3 = right_ptrs[k3];
         if (cols == 128) {
           MulAdd3Way128(l1, l2, l3, &r1, &r2, &r3, &out);
         } else {
