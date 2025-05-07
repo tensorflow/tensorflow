@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_NUMBERS_H_
 #define TENSORFLOW_TSL_PLATFORM_NUMBERS_H_
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 
 #include "absl/base/macros.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
 
@@ -76,6 +78,43 @@ size_t FastUInt64ToBufferLeft(uint64_t i, char* buffer);  // at least 22 bytes
 // Required buffer size for FloatToBuffer is kFastToBufferSize.
 size_t DoubleToBuffer(double value, char* buffer);
 size_t FloatToBuffer(float value, char* buffer);
+
+namespace strings_internal {
+// AlphaNumBuffer allows a way to pass a string to absl::StrCat without having
+// to do memory allocation. It is simply a pair of a fixed-size character
+// array, and a size.  Please don't use outside of the "strings" package.
+struct AlphaNumBuffer {
+  std::array<char, kFastToBufferSize> data;
+  size_t size;
+
+  // Support for absl::StrCat() etc.
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const AlphaNumBuffer& buffer) {
+    absl::Format(&sink, "%s",
+                 absl::string_view(buffer.data.data(), buffer.size));
+  }
+};
+}  // namespace strings_internal
+
+// Helper function for legacy google formatting.
+template <typename T>
+const T& LegacyPrecision(const T& t) {
+  return t;
+}
+
+// Have to use overloads rather than specialization because specialization can't
+// change the function return type.
+
+// Helper function for the old strings::StrCat default "float" format, which was
+// either %.6g, %.7g, %.8g, or %.9g, basically the smallest string that would
+// round-trip back to the original float. This is fast.
+strings_internal::AlphaNumBuffer LegacyPrecision(float f);
+
+// Helper function for the old strings::StrCat default "double" format, which
+// was either %.15g or %.17g, depending on whether the %.15g format would
+// round-trip back to the original double.  This is approx. 20-30x slower than
+// the others.
+strings_internal::AlphaNumBuffer LegacyPrecision(double d);
 
 // Convert a 64-bit fingerprint value to an ASCII representation.
 std::string FpToString(Fprint fp);
