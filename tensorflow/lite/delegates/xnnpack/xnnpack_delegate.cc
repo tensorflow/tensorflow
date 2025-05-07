@@ -5056,25 +5056,8 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteReshapeParams* reshape_params,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
-    switch (node->inputs->size) {
-      case 1:
-      case 2:
-        break;
-      default:
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "unexpected number of inputs (%d) in node #%d: "
-            "either one or two inputs expected",
-            node->inputs->size, node_index);
-        return kTfLiteError;
-    }
-    if (node->outputs->size != 1) {
-      TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                               "unexpected number of outputs (%d) in node "
-                               "#%d: one output expected",
-                               node->outputs->size, node_index);
-      return kTfLiteError;
-    }
+    TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
+        logging_context, node, 1, 2, 1, BuiltinOperator_RESHAPE, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
     TF_LITE_ENSURE_STATUS(
@@ -6755,22 +6738,17 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       return nullptr;  // Hard error.
     }
 
-    if (node->inputs->size != 1) {
-      TF_LITE_KERNEL_LOG(
-          context, "unexpected number of inputs (%d) in %d node %d",
-          node->inputs->size,
-          static_cast<BuiltinOperator>(registration->builtin_code),
-          producer_index);
+    if (CheckNumInputs(context, node, /*expected_num_inputs=*/1,
+                       static_cast<BuiltinOperator>(registration->builtin_code),
+                       producer_index) != kTfLiteOk) {
       TfLiteIntArrayFree(nodes_to_delegate);
       return nullptr;  // Hard error.
     }
 
-    if (node->outputs->size != 1) {
-      TF_LITE_KERNEL_LOG(
-          context, "unexpected number of outputs (%d) in %d node %d",
-          node->outputs->size,
-          static_cast<BuiltinOperator>(registration->builtin_code),
-          producer_index);
+    if (CheckNumOutputs(
+            context, node, /*expected_num_outputs=*/1,
+            static_cast<BuiltinOperator>(registration->builtin_code),
+            producer_index) != kTfLiteOk) {
       TfLiteIntArrayFree(nodes_to_delegate);
       return nullptr;  // Hard error.
     }
