@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/stat_summarizer.h"
 
-#include <iomanip>
+#include <cstdint>
 #include <map>
 #include <queue>
 #include <sstream>
@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
