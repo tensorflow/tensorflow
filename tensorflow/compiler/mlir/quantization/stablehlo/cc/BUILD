@@ -252,6 +252,27 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "tf_pass_pipeline",
+    srcs = ["tf_pass_pipeline.cc"],
+    hdrs = ["tf_pass_pipeline.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:tf_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@stablehlo//:stablehlo_passes",
+    ],
+)
+
+cc_library(
     name = "pass_pipeline",
     srcs = ["pass_pipeline.cc"],
     hdrs = ["pass_pipeline.h"],

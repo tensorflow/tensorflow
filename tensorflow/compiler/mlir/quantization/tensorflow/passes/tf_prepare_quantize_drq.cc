@@ -123,9 +123,10 @@ class TFPrepareQuantizeDRQPass
 // and Dequantize ops with per-tensor scale.
 class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
  public:
-  explicit PrepareDRQQuantizableOp(
-      MLIRContext* context, const tf_quant::QuantizationSpecs& quant_specs,
-      OpSet op_set, bool enable_per_channel_quantization)
+  explicit PrepareDRQQuantizableOp(MLIRContext* context,
+                                   const QuantizationSpecs& quant_specs,
+                                   OpSet op_set,
+                                   bool enable_per_channel_quantization)
       : OpRewritePattern<arith::ConstantOp>(context),
         quant_specs_(quant_specs),
         op_set_(op_set),
@@ -204,13 +205,13 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
 
     if (is_per_channel_quantization) {
       quant_type = mlir::dyn_cast<quant::QuantizedType>(
-          GetUniformQuantizedPerAxisTypeForWeight(
-              attr, quant_dim,
-              /*symmetric=*/true, bit_width, is_signed, is_narrow_range,
-              is_legacy_float));
+          GetUniformQuantizedPerAxisTypeForWeight(attr, quant_dim,
+                                                  /*symmetric=*/true, bit_width,
+                                                  is_signed, is_narrow_range,
+                                                  is_legacy_float));
     } else {
-      quant_type = mlir::dyn_cast<quant::QuantizedType>(
-          GetUniformQuantizedTypeForWeight(
+      quant_type =
+          mlir::dyn_cast<quant::QuantizedType>(GetUniformQuantizedTypeForWeight(
               attr, is_narrow_range && is_signed, bit_width, is_signed,
               is_narrow_range, is_legacy_float));
     }

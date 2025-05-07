@@ -84,6 +84,7 @@ cc_library(
     hdrs = [
         "passes/tf_passes.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":bfloat16_type",
         ":fill_quantization_options",
