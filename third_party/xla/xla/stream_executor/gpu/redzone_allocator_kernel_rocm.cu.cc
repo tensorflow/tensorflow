@@ -14,9 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <map>
+#include <string>
+#include <tuple>
 
-#include "absl/container/node_hash_map.h"
+#include "absl/base/const_init.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
 #include "xla/stream_executor/kernel.h"
