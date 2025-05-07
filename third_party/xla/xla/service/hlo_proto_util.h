@@ -19,6 +19,7 @@ limitations under the License.
 #define XLA_SERVICE_HLO_PROTO_UTIL_H_
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo.pb.h"

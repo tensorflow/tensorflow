@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/service/hlo_proto_util.h"
 
-#include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

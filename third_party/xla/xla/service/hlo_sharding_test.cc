@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/hash/hash.h"
