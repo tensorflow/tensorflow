@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/overload.h"
 #include "xla/status_macros.h"
@@ -101,9 +102,8 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto branch_index_or_pred = [&]() -> std::variant<int32_t*, bool*> {
     if (branch_index_is_bool_) {
       return handle.get<bool>();
-    } else {
-      return handle.get<int32_t>();
     }
+    return handle.get<int32_t>();
   }();
 
   se::DeviceMemoryBase branch_index_address =
@@ -150,6 +150,22 @@ void ConditionalThunk::ForAllThunks(
   for (const std::unique_ptr<SequentialThunk>& branch_thunk : branch_thunks_) {
     branch_thunk->ForAllThunks(fn);
   }
+}
+
+absl::StatusOr<ThunkProto> ConditionalThunk::ToProto() const {
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  auto* conditional_thunk_proto = proto.mutable_conditional_thunk();
+  TF_ASSIGN_OR_RETURN(*conditional_thunk_proto->mutable_branch_index_buffer(),
+                      branch_index_buffer_index_.ToProto());
+
+  for (const auto& seq_thunk : branch_thunks_) {
+    TF_ASSIGN_OR_RETURN(ThunkProto seq_thunk_proto, seq_thunk->ToProto());
+    *conditional_thunk_proto->add_branch_thunks() =
+        std::move(seq_thunk_proto).sequential_thunk();
+  }
+
+  conditional_thunk_proto->set_branch_index_is_bool(branch_index_is_bool_);
+  return proto;
 }
 
 }  // namespace gpu

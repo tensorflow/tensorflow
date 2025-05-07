@@ -72,8 +72,8 @@ TEST(NanoIfrtClientTest, BigResult) {
   mlir::MLIRContext context;
   auto module = xla::ParseMlirModuleString(kBigResult, context);
 
-  auto executable =
-      compiler->Compile(std::make_unique<ifrt::HloProgram>(**module), nullptr);
+  auto executable = compiler->CompileAndLoad(
+      std::make_unique<ifrt::HloProgram>(**module), nullptr);
   CHECK_OK(executable);
 
   ifrt::DType dtype(ifrt::DType::kF32);
@@ -106,7 +106,7 @@ TEST(NanoIfrtClientTest, BigResult) {
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
 
-static absl::StatusOr<ifrt::LoadedExecutableRef> Compile(
+static absl::StatusOr<ifrt::LoadedExecutableRef> CompileAndLoad(
     NanoIfrtClient* client, absl::string_view program) {
   auto compiler = client->GetDefaultCompiler();
 
@@ -118,8 +118,8 @@ static absl::StatusOr<ifrt::LoadedExecutableRef> Compile(
       xla::CompileOptions(), std::move(devices));
   compile_options->compile_options.compile_portable_executable = true;
 
-  return compiler->Compile(std::make_unique<ifrt::HloProgram>(**module),
-                           std::move(compile_options));
+  return compiler->CompileAndLoad(std::make_unique<ifrt::HloProgram>(**module),
+                                  std::move(compile_options));
 }
 
 static ifrt::DType DTypeFromPrimitiveType(PrimitiveType type) {
@@ -154,7 +154,7 @@ static void BM_IfRtAddScalars(benchmark::State& state) {
       })";
 
   auto client = NanoIfrtClient::Create();
-  auto executable = Compile(client.get(), program);
+  auto executable = CompileAndLoad(client.get(), program);
 
   ifrt::Device* device = client->addressable_devices().at(0);
   ifrt::ShardingRef sharding =
@@ -208,7 +208,7 @@ static void BM_IfRtAddManyScalars(benchmark::State& state) {
       })";
 
   auto client = NanoIfrtClient::Create();
-  auto executable = Compile(client.get(), program);
+  auto executable = CompileAndLoad(client.get(), program);
 
   ifrt::Device* device = client->addressable_devices().at(0);
   ifrt::ShardingRef sharding =
