@@ -434,7 +434,7 @@ func.func @shared_i4() -> tensor<10xi4> {
   %shared = xla_gpu.allocate_shared : tensor<10xi4>
   return %shared : tensor<10xi4>
 }
-// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<10 x i4>
+// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<5 x i8>
 // CHECK-LABEL: @shared_i4
 
 // -----

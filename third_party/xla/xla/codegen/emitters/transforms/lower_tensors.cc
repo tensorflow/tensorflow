@@ -620,19 +620,21 @@ ml::GlobalOp CreateGlobalOp(mlir::Attribute value,
   // Needed to support complex element type.
   mlir::LLVMTypeConverter converter(b.getContext());
   auto llvm_element_type = converter.convertType(element_type);
-  if (value && element_type.isIntOrFloat() &&
+  if (element_type.isIntOrFloat() &&
       element_type.getIntOrFloatBitWidth() == 4) {
     num_elements = CeilOfRatio<int64_t>(num_elements, 2);
     llvm_element_type = b.getI8Type();
-    auto unpacked_data =
-        mlir::cast<mlir::DenseElementsAttr>(value).getRawData();
-    std::vector<char> packed_data(num_elements);
-    absl::Span<char> packed_data_span =
-        absl::MakeSpan(packed_data.data(), packed_data.size());
-    PackIntN(4, unpacked_data, packed_data_span);
-    value = mlir::DenseElementsAttr::getFromRawBuffer(
-        mlir::RankedTensorType::get({num_elements}, llvm_element_type),
-        packed_data);
+    if (value) {
+      auto unpacked_data =
+          mlir::cast<mlir::DenseElementsAttr>(value).getRawData();
+      std::vector<char> packed_data(num_elements);
+      absl::Span<char> packed_data_span =
+          absl::MakeSpan(packed_data.data(), packed_data.size());
+      PackIntN(4, unpacked_data, packed_data_span);
+      value = mlir::DenseElementsAttr::getFromRawBuffer(
+          mlir::RankedTensorType::get({num_elements}, llvm_element_type),
+          packed_data);
+    }
   }
   auto array_ty = ml::LLVMArrayType::get(llvm_element_type, num_elements);
   std::string name;
