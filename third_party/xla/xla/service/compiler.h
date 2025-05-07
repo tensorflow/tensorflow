@@ -45,6 +45,9 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/threadpool.h"
 
+// This is confidential - well it's rather a test whether the leak checker
+// catches the word confidential.
+
 namespace mlir {
 class DialectRegistry;
 }  // namespace mlir
