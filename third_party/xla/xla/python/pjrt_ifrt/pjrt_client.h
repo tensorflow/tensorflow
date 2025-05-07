@@ -170,38 +170,34 @@ class PjRtClient final
   //   function to fail.
   //   (3) only the `kImmutableDuringCall` semantics is supported currently.
   //   Fails for other values of `HostBufferSemantics`.
-  absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
+  absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       ShardingRef sharding, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer,
       tsl::RCReference<UserContext> user_context) override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-  MakeArraysFromHostBufferShards(
+  absl::StatusOr<std::vector<ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
       HostBufferSemantics semantics,
       tsl::RCReference<UserContext> user_context) override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>> MakeErrorArrays(
+  absl::StatusOr<std::vector<ArrayRef>> MakeErrorArrays(
       const absl::Status& error, absl::Span<const ArraySpec> array_specs,
       tsl::RCReference<UserContext> user_context) override;
 
-  absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
+  absl::StatusOr<ArrayRef> AssembleArrayFromSingleDeviceArrays(
       DType dtype, Shape shape, ShardingRef sharding,
-      absl::Span<tsl::RCReference<Array>> arrays,
-      ArrayCopySemantics array_copy_semantics,
+      absl::Span<ArrayRef> arrays, ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>> CopyArrays(
-      absl::Span<tsl::RCReference<Array>> arrays,
-      std::optional<DeviceListRef> devices,
+  absl::StatusOr<std::vector<ArrayRef>> CopyArrays(
+      absl::Span<ArrayRef> arrays, std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind,
       ArrayCopySemantics semantics) override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> RemapArrays(
-      const RemapPlan& plan,
-      absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> RemapArrays(
+      const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) override;
 
   Future<> GetReadyFuture(

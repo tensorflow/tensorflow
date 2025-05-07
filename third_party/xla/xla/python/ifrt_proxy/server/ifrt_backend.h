@@ -116,12 +116,12 @@ class IfrtBackend final : public BackendInterface {
 
     // Returns the `absl::StatusOr<RCReference<Array>>>` that maps to `handle`.
     // Returns a NOT_FOUND error if the handle is not found.
-    absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Find(uint64_t handle);
+    absl::StatusOr<xla::ifrt::ArrayRef> Find(uint64_t handle);
 
     // Same as above but takes a list of handles. If any of the handles maps to
     // an error (or are not found) returns the error corresponding to the first
     // such handle.
-    absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> Find(
+    absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Find(
         absl::Span<const uint64_t> handles);
 
     // Removes the given list of handles from the maintained mapping. Returns
@@ -135,7 +135,7 @@ class IfrtBackend final : public BackendInterface {
     // Adds handles[i] ==> arrays[i] to the map. CHECK-fails if the handles
     // already exist in the map.
     void Insert(absl::Span<const uint64_t> handles,
-                absl::Span<const tsl::RCReference<xla::ifrt::Array>> arrays)
+                absl::Span<const xla::ifrt::ArrayRef> arrays)
         ABSL_LOCKS_EXCLUDED(mu_);
 
     // Adds handles[i] ==> status, for all handles[i] to the map. CHECK-fails if
@@ -144,9 +144,8 @@ class IfrtBackend final : public BackendInterface {
         ABSL_LOCKS_EXCLUDED(mu_);
 
     absl::Mutex mu_;
-    absl::flat_hash_map<uint64_t,
-                        absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>>
-        arrays_ ABSL_GUARDED_BY(mu_);
+    absl::flat_hash_map<uint64_t, absl::StatusOr<xla::ifrt::ArrayRef>> arrays_
+        ABSL_GUARDED_BY(mu_);
   };
 
   IfrtBackend(IfrtProxyVersion version, uint64_t session_id,

@@ -154,7 +154,7 @@ Future<> BasicStringArray::GetReadyFuture() const {
   return ready_future_;
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<Array>>>
+absl::StatusOr<std::vector<ArrayRef>>
 BasicStringArray::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
@@ -242,7 +242,7 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
   // up above runs.
   TF_ASSIGN_OR_RETURN(auto shapes_and_shadings, sharding_->Disassemble(shape_));
 
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   arrays.reserve(num_shards);
   for (int i = 0; i < num_shards; ++i) {
     TF_ASSIGN_OR_RETURN(auto array,
@@ -293,7 +293,7 @@ Future<> BasicStringArray::CopyToHostBuffer(
   return copy_completion_future;
 }
 
-absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::Copy(
+absl::StatusOr<ArrayRef> BasicStringArray::Copy(
     std::optional<xla::ifrt::DeviceListRef> devices,
     std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
@@ -351,7 +351,7 @@ absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::Copy(
 }
 
 // Makes a single sharded BasicStringArray from the first shard.
-absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::FullyReplicatedShard(
+absl::StatusOr<ArrayRef> BasicStringArray::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
   absl::MutexLock lock(&mu_);
   if (is_deleted_) {

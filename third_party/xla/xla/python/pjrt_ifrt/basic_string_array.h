@@ -74,7 +74,7 @@ class BasicStringArray final
 
   ~BasicStringArray() override;
 
-  absl::StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
+  absl::StatusOr<ArrayRef> FullyReplicatedShard(
       ArrayCopySemantics semantics) override;
 
   // ifrt::Array API
@@ -107,8 +107,7 @@ class BasicStringArray final
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout()
       const override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-  DisassembleIntoSingleDeviceArrays(
+  absl::StatusOr<std::vector<ArrayRef>> DisassembleIntoSingleDeviceArrays(
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) override;
 
@@ -117,7 +116,7 @@ class BasicStringArray final
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
 
-  absl::StatusOr<tsl::RCReference<Array>> Copy(
+  absl::StatusOr<ArrayRef> Copy(
       std::optional<xla::ifrt::DeviceListRef> devices,
       std::optional<xla::ifrt::MemoryKind> memory_kind,
       ArrayCopySemantics semantics);

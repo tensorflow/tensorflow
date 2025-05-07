@@ -499,7 +499,7 @@ absl::StatusOr<xla::ifrt::AttributeMap> LoadedExecutable::GetCostAnalysis()
 }
 
 absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult>
-LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
+LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
                           const ExecuteOptions& options,
                           std::optional<xla::ifrt::DeviceListRef> devices) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
@@ -509,7 +509,7 @@ LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
 
   TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
   for (int i = 0; i < args.size(); ++i) {
-    tsl::RCReference<xla::ifrt::Array>& arg = args[i];
+    xla::ifrt::ArrayRef& arg = args[i];
     auto* array = llvm::dyn_cast_or_null<Array>(arg.get());
     if (array == nullptr) {
       return absl::InvalidArgumentError(

@@ -68,7 +68,7 @@ namespace ifrt {
 class MockArray : public llvm::RTTIExtends<MockArray, Array> {
  public:
   MockArray() = default;
-  explicit MockArray(tsl::RCReference<xla::ifrt::Array> delegated);
+  explicit MockArray(xla::ifrt::ArrayRef delegated);
 
   // LINT.IfChange
   MOCK_METHOD(Client*, client, (), (const, final));
@@ -82,12 +82,12 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(ShardingRef, shared_ptr_sharding, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>, layout,
               (), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               DisassembleIntoSingleDeviceArrays,
               (ArrayCopySemantics array_copy_semantics,
                SingleDeviceShardSemantics single_device_shard_semantics),
               (final));
-  MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>, FullyReplicatedShard,
+  MOCK_METHOD(absl::StatusOr<ArrayRef>, FullyReplicatedShard,
               (ArrayCopySemantics semantics), (final));
   MOCK_METHOD(Future<>, CopyToHostBuffer,
               (void* data,
@@ -96,14 +96,14 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
               (final));
   // LINT.ThenChange(mock.cc:MockArrayDelegation)
 
-  tsl::RCReference<xla::ifrt::Array> delegated() const { return delegated_; }
+  xla::ifrt::ArrayRef delegated() const { return delegated_; }
 
   std::string DebugString() const final { return "MockArray"; }
 
   static char ID;  // NOLINT
 
  private:
-  const tsl::RCReference<xla::ifrt::Array> delegated_;
+  const xla::ifrt::ArrayRef delegated_;
 };
 
 // client.h
@@ -114,41 +114,38 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   explicit MockClient(std::unique_ptr<xla::ifrt::Client> delegated);
 
   // LINT.IfChange
-  MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>, MakeArrayFromHostBuffer,
+  MOCK_METHOD(absl::StatusOr<ArrayRef>, MakeArrayFromHostBuffer,
               (const void* data, DType dtype, Shape shape,
                std::optional<absl::Span<const int64_t>> byte_strides,
                ShardingRef sharding, HostBufferSemantics semantics,
                std::function<void()> on_done_with_host_buffer,
                tsl::RCReference<UserContext> user_context),
               (final));
-  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               MakeArraysFromHostBufferShards,
               (absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
                HostBufferSemantics semantics,
                tsl::RCReference<UserContext> user_context),
               (final));
-  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
-              MakeErrorArrays,
+  MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, MakeErrorArrays,
               (const absl::Status& error,
                absl::Span<const ArraySpec> array_specs,
                tsl::RCReference<UserContext> user_context),
               (final));
-  MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>,
-              AssembleArrayFromSingleDeviceArrays,
+  MOCK_METHOD(absl::StatusOr<ArrayRef>, AssembleArrayFromSingleDeviceArrays,
               (DType dtype, Shape shape, ShardingRef sharding,
-               absl::Span<tsl::RCReference<Array>> arrays,
+               absl::Span<ArrayRef> arrays,
                ArrayCopySemantics array_copy_semantics,
                SingleDeviceShardSemantics single_device_shard_semantics),
               (final));
-  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>, CopyArrays,
-              (absl::Span<tsl::RCReference<Array>> arrays,
+  MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, CopyArrays,
+              (absl::Span<ArrayRef> arrays,
                std::optional<DeviceListRef> devices,
                std::optional<MemoryKind> memory_kind,
                ArrayCopySemantics semantics),
               (final));
-  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>, RemapArrays,
-              (const RemapPlan& plan,
-               absl::Span<tsl::RCReference<Array>> arrays,
+  MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, RemapArrays,
+              (const RemapPlan& plan, absl::Span<ArrayRef> arrays,
                ArrayCopySemantics semantics),
               (final));
   MOCK_METHOD(Future<>, GetReadyFuture,
@@ -317,8 +314,7 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::StatusOr<xla::ifrt::AttributeMap>, GetCostAnalysis, (),
               (const, final));
   MOCK_METHOD(absl::StatusOr<ExecuteResult>, Execute,
-              (absl::Span<tsl::RCReference<Array>> args,
-               const ExecuteOptions& options,
+              (absl::Span<ArrayRef> args, const ExecuteOptions& options,
                std::optional<DeviceListRef> devices),
               (final));
   MOCK_METHOD(Future<>, Delete, (), (final));

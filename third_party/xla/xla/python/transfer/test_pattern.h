@@ -30,7 +30,7 @@ namespace aux::tests {
 
 std::vector<int32_t> CreateTestPattern(size_t offset, size_t length);
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> CopyTestPatternToDevice(
+absl::StatusOr<xla::ifrt::ArrayRef> CopyTestPatternToDevice(
     xla::ifrt::Client* client, xla::ifrt::Device* dest_device,
     const std::vector<int32_t>& pattern);
 

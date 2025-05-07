@@ -89,7 +89,7 @@ namespace ifrt {
 namespace proxy {
 namespace {
 
-using IfrtArrayRef = tsl::RCReference<xla::ifrt::Array>;
+using IfrtArrayRef = xla::ifrt::ArrayRef;
 
 absl::StatusOr<IfrtArrayRef> MakeStringArrayFromHostBuffer(
     Client* client, std::shared_ptr<const std::string> host_buffer, DType dtype,
@@ -919,7 +919,7 @@ IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
 
   std::move(cleanup).Invoke();
 
-  TF_ASSIGN_OR_RETURN(std::vector<tsl::RCReference<xla::ifrt::Array>> arrays,
+  TF_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArrayRef> arrays,
                       client_->MakeArraysFromHostBufferShards(
                           absl::MakeSpan(specs),
                           xla::ifrt::Client::HostBufferSemantics::
@@ -2009,7 +2009,7 @@ absl::StatusOr<std::vector<IfrtArrayRef>> IfrtBackend::ArrayStore::Find(
 std::vector<uint64_t> IfrtBackend::ArrayStore::EraseAndReturnMissing(
     absl::Span<const uint64_t> handles) {
   std::vector<uint64_t> missing_handles;
-  std::vector<tsl::RCReference<xla::ifrt::Array>> to_destruct;
+  std::vector<xla::ifrt::ArrayRef> to_destruct;
   {
     absl::MutexLock l(&mu_);
     for (const uint64_t h : handles) {
@@ -2037,7 +2037,7 @@ void IfrtBackend::ArrayStore::Insert(absl::Span<const uint64_t> handles,
 
 void IfrtBackend::ArrayStore::Insert(
     absl::Span<const uint64_t> handles,
-    absl::Span<const tsl::RCReference<xla::ifrt::Array>> arrays) {
+    absl::Span<const xla::ifrt::ArrayRef> arrays) {
   CHECK_EQ(handles.size(), arrays.size());
   absl::MutexLock l(&mu_);
   for (int i = 0; i < handles.size(); ++i) {

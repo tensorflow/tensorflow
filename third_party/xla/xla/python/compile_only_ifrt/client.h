@@ -205,7 +205,7 @@ class CompileOnlyIfRtClient final
     }
   }
 
-  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromHostBuffer(
+  absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromHostBuffer(
       const void* data, xla::ifrt::DType dtype, xla::ifrt::Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       xla::ifrt::ShardingRef sharding, HostBufferSemantics semantics,
@@ -215,8 +215,7 @@ class CompileOnlyIfRtClient final
         "MakeArrayFromHostBuffer not available with compile-only client.");
   }
 
-  absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>>
-  MakeArraysFromHostBufferShards(
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
       HostBufferSemantics semantics,
       tsl::RCReference<xla::ifrt::UserContext> user_context) override {
@@ -225,17 +224,16 @@ class CompileOnlyIfRtClient final
         "client.");
   }
 
-  absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> MakeErrorArrays(
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeErrorArrays(
       const absl::Status& error, absl::Span<const ifrt::ArraySpec> array_specs,
       tsl::RCReference<ifrt::UserContext> user_context) override {
     return Unimplemented(
         "MakeErrorArrays not available with compile-only client.");
   }
 
-  absl::StatusOr<tsl::RCReference<ifrt::Array>>
-  AssembleArrayFromSingleDeviceArrays(
+  absl::StatusOr<ifrt::ArrayRef> AssembleArrayFromSingleDeviceArrays(
       ifrt::DType dtype, ifrt::Shape shape, ifrt::ShardingRef sharding,
-      absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+      absl::Span<ifrt::ArrayRef> arrays,
       ifrt::ArrayCopySemantics array_copy_semantics,
       ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override {
     return Unimplemented(
@@ -243,17 +241,16 @@ class CompileOnlyIfRtClient final
         "client.");
   }
 
-  absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> CopyArrays(
-      absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> CopyArrays(
+      absl::Span<ifrt::ArrayRef> arrays,
       std::optional<ifrt::DeviceListRef> devices,
       std::optional<ifrt::MemoryKind> memory_kind,
       ifrt::ArrayCopySemantics semantics) override {
     return Unimplemented("CopyArrays not available with compile-only client.");
   }
 
-  absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> RemapArrays(
-      const ifrt::RemapPlan& plan,
-      absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> RemapArrays(
+      const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
       ifrt::ArrayCopySemantics semantics) override {
     return Unimplemented("RemapArrays not available with compile-only client.");
   }

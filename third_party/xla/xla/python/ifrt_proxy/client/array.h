@@ -58,50 +58,45 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   // `Array::MakeArrayFromHostBuffer()` implements
   // `Client::MakeArrayFromHostBuffer()`.
   // TODO(b/261226026): Implement logic directly in client.cc.
-  static absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-  MakeArrayFromHostBuffer(xla::ifrt::Client* client,
-                          std::shared_ptr<RpcHelper> rpc_helper,
-                          const void* data, DType dtype, Shape shape,
-                          std::optional<absl::Span<const int64_t>> byte_strides,
-                          ShardingRef sharding,
-                          xla::ifrt::Client::HostBufferSemantics semantics,
-                          std::function<void()> on_done_with_host_buffer);
+  static absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromHostBuffer(
+      xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+      const void* data, DType dtype, Shape shape,
+      std::optional<absl::Span<const int64_t>> byte_strides,
+      ShardingRef sharding, xla::ifrt::Client::HostBufferSemantics semantics,
+      std::function<void()> on_done_with_host_buffer);
 
   // `Array::MakeArraysFromHostBufferShards()` implements
   // `Client::MakeArraysFromHostBufferShards()`.
   // TODO(b/261226026): Implement logic directly in client.cc.
-  static absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+  static absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
   MakeArraysFromHostBufferShards(
       xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
       absl::Span<xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec> specs,
       xla::ifrt::Client::HostBufferSemantics semantics,
       tsl::RCReference<xla::ifrt::UserContext> user_context);
 
-  static absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-  MakeErrorArrays(xla::ifrt::Client* client,
-                  std::shared_ptr<RpcHelper> rpc_helper,
-                  const absl::Status& error,
-                  absl::Span<const ArraySpec> array_specs,
-                  tsl::RCReference<UserContext> user_context);
+  static absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> MakeErrorArrays(
+      xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+      const absl::Status& error, absl::Span<const ArraySpec> array_specs,
+      tsl::RCReference<UserContext> user_context);
 
   // `Array::AssembleArrayFromSingleDeviceArrays()` implements
   // `Client::AssembleArrayFromSingleDeviceArrays()`.
   // TODO(b/261226026): Implement logic directly in client.cc.
-  static absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
+  static absl::StatusOr<xla::ifrt::ArrayRef>
   AssembleArrayFromSingleDeviceArrays(
       xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
       DType dtype, Shape shape, ShardingRef sharding,
-      absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+      absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics);
 
   // `Array::RemapArrays()` implements `Client::RemapArrays()`.
   // TODO(b/261226026): Implement logic directly in client.cc.
-  static absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-  RemapArrays(xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-              const RemapPlan& plan,
-              absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-              ArrayCopySemantics semantics);
+  static absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> RemapArrays(
+      xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+      const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
+      ArrayCopySemantics semantics);
 
   // Destructs the array associated with the given handle. The corresponding
   // array becomes unusable afterwards.
@@ -159,12 +154,12 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
         "Array::layout() not implemented for IFRT proxy");
   };
 
-  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
   DisassembleIntoSingleDeviceArrays(
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) override;
 
-  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> FullyReplicatedShard(
+  absl::StatusOr<xla::ifrt::ArrayRef> FullyReplicatedShard(
       xla::ifrt::ArrayCopySemantics semantics) override;
 
   ABSL_MUST_USE_RESULT

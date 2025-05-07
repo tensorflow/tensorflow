@@ -83,7 +83,7 @@ class MockArrayTest : public testing::Test {
                             CreateClient(absl::StrCat("grpc://", address)));
   }
 
-  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> NewArray() {
+  absl::StatusOr<xla::ifrt::ArrayRef> NewArray() {
     DType dtype(DType::kF32);
     Shape shape({2, 3});
     auto data = std::make_unique<std::vector<float>>(6);
@@ -124,7 +124,7 @@ class MockArrayTest : public testing::Test {
                 ShardingRef sharding, Client::HostBufferSemantics semantics,
                 std::function<void()> on_done_with_host_buffer,
                 tsl::RCReference<UserContext> user_context)
-                -> absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> {
+                -> absl::StatusOr<xla::ifrt::ArrayRef> {
               TF_ASSIGN_OR_RETURN(
                   auto delegated,
                   mock_backend->delegated()->MakeArrayFromHostBuffer(

@@ -50,7 +50,7 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
 // An structure which represents a single copy of a chunk out of a buffer
 // with an assigned 'buffer_id'.
 struct DmaCopyChunk {
-  tsl::RCReference<xla::ifrt::Array> arr;
+  xla::ifrt::ArrayRef arr;
   xla::PjRtBuffer* buffer;
   size_t buffer_id;
   size_t offset;
@@ -58,8 +58,7 @@ struct DmaCopyChunk {
 
   // Divides an IFRT array up evenly for copying.
   static absl::StatusOr<std::vector<DmaCopyChunk>> DivideBufferCopiesEvenly(
-      tsl::RCReference<xla::ifrt::Array> arr, size_t xfer_size,
-      size_t buffer_id);
+      xla::ifrt::ArrayRef arr, size_t xfer_size, size_t buffer_id);
 };
 
 // Copies into subdivisions of scratch asyncly in parallel calling on_done

@@ -317,7 +317,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
   // Utility method to set up a given MockArray (in the backend) that can then
   // be the target of the other Array-specific methods. Returns the array
   // handle.
-  absl::StatusOr<uint64_t> MakeTestArray(tsl::RCReference<Array> mock_array) {
+  absl::StatusOr<uint64_t> MakeTestArray(ArrayRef mock_array) {
     EXPECT_CALL(*mock_client_, MakeArrayFromHostBuffer(_, _, _, _, _, _, _, _))
         .WillOnce(Return(std::move(mock_array)));
 
@@ -609,7 +609,7 @@ TEST_P(IfrtBackendHandlerTest, Init) {
 TEST_P(IfrtBackendHandlerTest, DisassembleIntoSingleDeviceArraysSucceeds) {
   // Set up a mock source array that returns two single device arrays on
   // disassembly.
-  std::vector<tsl::RCReference<xla::ifrt::Array>> single_device_arrays;
+  std::vector<xla::ifrt::ArrayRef> single_device_arrays;
   single_device_arrays.push_back(tsl::MakeRef<xla::ifrt::MockArray>());
   single_device_arrays.push_back(tsl::MakeRef<xla::ifrt::MockArray>());
   tsl::RCReference<xla::ifrt::MockArray> source_mock_array =
@@ -966,10 +966,10 @@ TEST_P(IfrtBackendHandlerTest,
 MATCHER_P(EqualsDeviceList, device_list, "") { return *arg == *device_list; }
 
 TEST_P(IfrtBackendHandlerTest, CopyArrays) {
-  std::vector<tsl::RCReference<xla::ifrt::Array>> src_arrays;
+  std::vector<xla::ifrt::ArrayRef> src_arrays;
   src_arrays.push_back(tsl::MakeRef<xla::ifrt::MockArray>());
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> copied_arrays;
+  std::vector<xla::ifrt::ArrayRef> copied_arrays;
   copied_arrays.push_back(tsl::MakeRef<xla::ifrt::MockArray>());
 
   BasicDeviceList::Devices ds;
@@ -982,8 +982,7 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
                                         Optional(EqualsDeviceList(devices)),
                                         Optional(memory_kind),
                                         ArrayCopySemantics::kAlwaysCopy))
-      .WillOnce(Return(
-          std::vector<tsl::RCReference<xla::ifrt::Array>>(copied_arrays)));
+      .WillOnce(Return(std::vector<xla::ifrt::ArrayRef>(copied_arrays)));
 
   auto ifrt_request = NewIfrtRequest(NewOpId());
   CopyArraysRequest* copy_arrays_request =
@@ -1391,7 +1390,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
     return array;
   };
 
-  std::vector<tsl::RCReference<Array>> outputs;
+  std::vector<ArrayRef> outputs;
   outputs.reserve(kNumOutputs);
   for (int i = 0; i < kNumOutputs; ++i) {
     outputs.push_back(make_array());
@@ -1399,7 +1398,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
 
   EXPECT_CALL(*executable, Execute(SizeIs(kNumArgs), _, _))
       .WillOnce(
-          Invoke([&](absl::Span<tsl::RCReference<Array>> args,
+          Invoke([&](absl::Span<ArrayRef> args,
                      const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
                      std::optional<DeviceListRef> devices)
                      -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
@@ -1490,7 +1489,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecuteErrorWithClientHandles) {
 
   EXPECT_CALL(*executable, Execute(SizeIs(kNumArgs), _, _))
       .WillOnce(
-          Invoke([&](absl::Span<tsl::RCReference<Array>> args,
+          Invoke([&](absl::Span<ArrayRef> args,
                      const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
                      std::optional<DeviceListRef> devices)
                      -> absl::StatusOr<LoadedExecutable::ExecuteResult> {

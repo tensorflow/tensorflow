@@ -66,7 +66,7 @@ using ::tsl::testing::StatusIs;
 // user-supplied buffers and on_done_with_buffer callback by means of the
 // factory method: `BasicStringArray::Create`. Uses the first device from the
 // `client->addressable_devices()`.
-absl::StatusOr<tsl::RCReference<Array>> CreateTestArray(
+absl::StatusOr<ArrayRef> CreateTestArray(
     Client* client, Future<BasicStringArray::Buffers> buffers,
     BasicStringArray::OnDoneWithBuffer on_done_with_buffer) {
   Shape shape({1});
@@ -341,7 +341,7 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
 
 // Makes a single device sharded string ifrt::Array. Makes the necessary host
 // string buffers.
-absl::StatusOr<tsl::RCReference<Array>> MakeSingleDeviceStringTestArray(
+absl::StatusOr<ArrayRef> MakeSingleDeviceStringTestArray(
     absl::Span<const std::string> contents, Client* client,
     Device* const device) {
   Shape shape(absl::MakeConstSpan({static_cast<int64_t>(contents.size())}));
@@ -363,8 +363,8 @@ absl::StatusOr<tsl::RCReference<Array>> MakeSingleDeviceStringTestArray(
 
 // Makes a single device sharded test array containing floats on the given
 // Device.
-absl::StatusOr<tsl::RCReference<Array>> MakeSingleDeviceFloatTestArray(
-    Client* client, Device* const device) {
+absl::StatusOr<ArrayRef> MakeSingleDeviceFloatTestArray(Client* client,
+                                                        Device* const device) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   auto data = std::make_unique<std::vector<float>>(6);
@@ -380,7 +380,7 @@ absl::StatusOr<tsl::RCReference<Array>> MakeSingleDeviceFloatTestArray(
 
 // Makes a sharded string array with two shards. Uses the first two strings from
 // the input `data`, one per shard.
-absl::StatusOr<tsl::RCReference<Array>> MakeShardedStringTestArray(
+absl::StatusOr<ArrayRef> MakeShardedStringTestArray(
     Client* client, absl::Span<const std::string> data,
     bool is_fully_replicated) {
   if (data.size() < 2) {
@@ -397,7 +397,7 @@ absl::StatusOr<tsl::RCReference<Array>> MakeShardedStringTestArray(
       client->MakeDeviceList({devices[0], devices[1]}), MemoryKind(),
       Shape({2, 1}), Shape({1}), is_fully_replicated);
 
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   for (int i = 0; i < 2; ++i) {
     TF_ASSIGN_OR_RETURN(auto array, MakeSingleDeviceStringTestArray(
                                         {data[i]}, client, devices[i]));
@@ -437,7 +437,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest, FailsWithNonStringArrays) {
   ShardingRef opaque_sharding = OpaqueSharding::Create(
       client->MakeDeviceList({devices[0], devices[1]}), MemoryKind());
 
-  std::vector<tsl::RCReference<Array>> arrays(2);
+  std::vector<ArrayRef> arrays(2);
   TF_ASSERT_OK_AND_ASSIGN(
       arrays[0], MakeSingleDeviceFloatTestArray(client.get(), devices[0]));
   TF_ASSERT_OK_AND_ASSIGN(
@@ -458,7 +458,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
   ShardingRef opaque_sharding = OpaqueSharding::Create(
       client->MakeDeviceList({devices[0], devices[1]}), MemoryKind());
 
-  std::vector<tsl::RCReference<Array>> arrays(2);
+  std::vector<ArrayRef> arrays(2);
   const std::vector<std::string> per_shard_contents({"abc", "def"});
   TF_ASSERT_OK_AND_ASSIGN(
       arrays[0], MakeShardedStringTestArray(client.get(), per_shard_contents,
@@ -482,7 +482,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
       client->MakeDeviceList({devices[0], devices[1]}), MemoryKind());
 
   // Make two non-ready single device sharded arrays.
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   std::vector<Promise<BasicStringArray::Buffers>> promises;
   arrays.reserve(2);
   auto buf_and_on_done_with_buffer = MakeBuffersAndOnDoneWithBuffer({"abc"});
@@ -532,7 +532,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
       client->MakeDeviceList({devices[0], devices[1]}), MemoryKind());
 
   // Make two non-ready single device sharded arrays.
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   std::vector<Promise<BasicStringArray::Buffers>> promises;
   arrays.reserve(2);
 
@@ -651,7 +651,7 @@ TEST(CopyTest, SuccessSingleDeviceShardedArray) {
   ASSERT_GE(devices.size(), 2);
 
   auto [buffers, on_done_with_buffer] = MakeBuffersAndOnDoneWithBuffer({"abc"});
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
       arrays.emplace_back(),
       CreateTestArray(client.get(), Future<BasicStringArray::Buffers>(buffers),
@@ -679,7 +679,7 @@ TEST(CopyTest, SuccessMultiDeviceShardedArray) {
   ASSERT_GE(devices.size(), 4);
 
   const std::vector<std::string> per_shard_contents({"shard 0", "shard 1"});
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
       arrays.emplace_back(),
       MakeShardedStringTestArray(client.get(), per_shard_contents,
@@ -706,7 +706,7 @@ TEST(CopyTest, FailsAfterDeletion) {
   ASSERT_GE(devices.size(), 2);
 
   auto [buffers, on_done_with_buffer] = MakeBuffersAndOnDoneWithBuffer({"abc"});
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
       arrays.emplace_back(),
       CreateTestArray(client.get(), Future<BasicStringArray::Buffers>(buffers),
@@ -726,7 +726,7 @@ TEST(CopyTest, FailsWithDifferentNumbersDevices) {
   ASSERT_GE(devices.size(), 2);
 
   auto [buffers, on_done_with_buffer] = MakeBuffersAndOnDoneWithBuffer({"abc"});
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
       arrays.emplace_back(),
       CreateTestArray(client.get(), Future<BasicStringArray::Buffers>(buffers),
@@ -750,7 +750,7 @@ TEST(CopyTest, NonReadySourceArraySuccessfullyBecomesReadyAfterCopy) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto ret, CreateNonReadyTestArray(client.get(), devices[0],
                                         std::move(on_done_with_buffer)));
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   arrays.push_back(std::move(ret.first));
   auto promise = std::move(ret.second);
 
@@ -788,7 +788,7 @@ TEST(CopyTest, NonReadySourceArrayFailsToBecomeReadyAfterCopy) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto ret, CreateNonReadyTestArray(client.get(), devices[0],
                                         std::move(on_done_with_buffer)));
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   arrays.push_back(std::move(ret.first));
   auto promise = std::move(ret.second);
 

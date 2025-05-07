@@ -199,8 +199,7 @@ absl::StatusOr<uint64_t> MakeHostBuffer(
 
 char Array::ID = 0;
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-Array::MakeArrayFromHostBuffer(
+absl::StatusOr<xla::ifrt::ArrayRef> Array::MakeArrayFromHostBuffer(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
@@ -246,12 +245,12 @@ Array::MakeArrayFromHostBuffer(
 
   std::move(cleanup).Cancel();
 
-  return tsl::RCReference<xla::ifrt::Array>(
+  return xla::ifrt::ArrayRef(
       tsl::MakeRef<Array>(client, std::move(rpc_helper), dtype,
                           std::move(shape), std::move(sharding), arr_handle));
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
 Array::MakeArraysFromHostBufferShards(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     absl::Span<xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec> specs,
@@ -363,7 +362,7 @@ Array::MakeArraysFromHostBufferShards(
 
   std::move(cleanup).Cancel();
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays;
+  std::vector<xla::ifrt::ArrayRef> arrays;
   arrays.reserve(specs.size());
   for (int spec_idx = 0; spec_idx < specs.size(); ++spec_idx) {
     xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec& spec =
@@ -376,12 +375,10 @@ Array::MakeArraysFromHostBufferShards(
   return arrays;
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-Array::MakeErrorArrays(xla::ifrt::Client* client,
-                       std::shared_ptr<RpcHelper> rpc_helper,
-                       const absl::Status& error,
-                       absl::Span<const ArraySpec> array_specs,
-                       tsl::RCReference<UserContext> user_context) {
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::MakeErrorArrays(
+    xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+    const absl::Status& error, absl::Span<const ArraySpec> array_specs,
+    tsl::RCReference<UserContext> user_context) {
   auto req = std::make_unique<MakeErrorArraysRequest>();
   *req->mutable_error() = tsl::StatusToProto(error);
 
@@ -406,7 +403,7 @@ Array::MakeErrorArrays(xla::ifrt::Client* client,
                                 arr_handles);
   }
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays;
+  std::vector<xla::ifrt::ArrayRef> arrays;
   arrays.reserve(array_specs.size());
   for (int i = 0; i < array_specs.size(); ++i) {
     const xla::ifrt::ArraySpec& array_spec = array_specs[i];
@@ -522,11 +519,10 @@ bool Array::IsDeleted() const {
   }
 }
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-Array::AssembleArrayFromSingleDeviceArrays(
+absl::StatusOr<xla::ifrt::ArrayRef> Array::AssembleArrayFromSingleDeviceArrays(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     DType dtype, Shape shape, ShardingRef sharding,
-    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+    absl::Span<xla::ifrt::ArrayRef> arrays,
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
@@ -551,7 +547,7 @@ Array::AssembleArrayFromSingleDeviceArrays(
   req->set_single_device_shard_semantics(
       ToSingleDeviceShardSemanticsProto(single_device_shard_semantics));
   *req->mutable_dtype() = dtype.ToProto();
-  for (const tsl::RCReference<xla::ifrt::Array>& rcref : arrays) {
+  for (const xla::ifrt::ArrayRef& rcref : arrays) {
     Array* array = llvm::dyn_cast<Array>(rcref.get());
     if (array == nullptr) {
       return absl::InvalidArgumentError(absl::Substitute(
@@ -580,16 +576,15 @@ Array::AssembleArrayFromSingleDeviceArrays(
         result_handle);
   }
 
-  return tsl::RCReference<xla::ifrt::Array>(tsl::MakeRef<Array>(
+  return xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
       client, std::move(rpc_helper), dtype, std::move(shape),
       std::move(sharding), result_handle));
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-Array::RemapArrays(xla::ifrt::Client* client,
-                   std::shared_ptr<RpcHelper> rpc_helper, const RemapPlan& plan,
-                   absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-                   ArrayCopySemantics semantics) {
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
+    xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+    const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
+    ArrayCopySemantics semantics) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_arrays = arrays.size()]() {
     return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointRemapArrays",
                                         {{"n_arrays", n_arrays}});
@@ -609,7 +604,7 @@ Array::RemapArrays(xla::ifrt::Client* client,
   TF_ASSIGN_OR_RETURN(*req->mutable_plan(), plan.ToProto());
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
   for (int i = 0; i < num_inputs; ++i) {
-    const tsl::RCReference<xla::ifrt::Array>& rcref = arrays[i];
+    const xla::ifrt::ArrayRef& rcref = arrays[i];
     Array* array = llvm::dyn_cast<Array>(rcref.get());
     if (array == nullptr) {
       return absl::InvalidArgumentError(
@@ -667,10 +662,10 @@ Array::RemapArrays(xla::ifrt::Client* client,
                                 result_handles);
   }
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> result;
+  std::vector<xla::ifrt::ArrayRef> result;
   result.reserve(result_handles.size());
   for (int i = 0; i < result_handles.size(); ++i) {
-    result.push_back(tsl::RCReference<xla::ifrt::Array>(
+    result.push_back(xla::ifrt::ArrayRef(
         tsl::MakeRef<Array>(client, rpc_helper, plan.output_specs[i].dtype,
                             plan.output_specs[i].shape,
                             plan.output_specs[i].sharding, result_handles[i])));
@@ -678,7 +673,7 @@ Array::RemapArrays(xla::ifrt::Client* client,
   return result;
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
 Array::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
@@ -725,10 +720,10 @@ Array::DisassembleIntoSingleDeviceArrays(
       << " " << absl::StrJoin(result_handles, ",") << " " << shape_ << " "
       << *sharding_ << " ";
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> result;
+  std::vector<xla::ifrt::ArrayRef> result;
   result.reserve(result_handles.size());
   for (int i = 0; i < result_handles.size(); ++i) {
-    result.push_back(tsl::RCReference<xla::ifrt::Array>(tsl::MakeRef<Array>(
+    result.push_back(xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
         client_, rpc_helper_, dtype_, std::move(shape_and_shardings[i].first),
         std::move(shape_and_shardings[i].second), result_handles[i])));
   }
@@ -736,7 +731,7 @@ Array::DisassembleIntoSingleDeviceArrays(
   return result;
 }
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Array::FullyReplicatedShard(
+absl::StatusOr<xla::ifrt::ArrayRef> Array::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointFullyReplicatedShard");
@@ -768,7 +763,7 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Array::FullyReplicatedShard(
       xla::ifrt::SingleDeviceSharding::Create(
           sharding_->devices()->devices().front(), sharding_->memory_kind());
 
-  return tsl::RCReference<xla::ifrt::Array>(
+  return xla::ifrt::ArrayRef(
       tsl::MakeRef<Array>(client_, rpc_helper_, dtype_, shape_,
                           std::move(single_device_sharding), result_handle));
 }

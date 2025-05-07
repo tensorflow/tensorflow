@@ -281,7 +281,7 @@ TEST_F(LoadedExecutableTest, Execute) {
 
   DeviceListRef devices = BasicDeviceList::Create({&device});
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> args;
+  std::vector<xla::ifrt::ArrayRef> args;
   for (const uint64_t handle : {1000, 1001}) {
     args.push_back(tsl::MakeRef<Array>(
         &client, rpc_helper_, DType(DType::kF32), Shape({2, 2}),

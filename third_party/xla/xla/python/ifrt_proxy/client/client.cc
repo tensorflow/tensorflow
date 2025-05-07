@@ -222,8 +222,7 @@ absl::StatusOr<xla::ifrt::Device*> Client::LookupDevice(
   return it->second.get();
 }
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-Client::MakeArrayFromHostBuffer(
+absl::StatusOr<xla::ifrt::ArrayRef> Client::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
     xla::ifrt::Client::HostBufferSemantics semantics,
@@ -235,7 +234,7 @@ Client::MakeArrayFromHostBuffer(
       std::move(sharding), semantics, std::move(on_done_with_host_buffer));
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
 Client::MakeArraysFromHostBufferShards(
     absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
     xla::ifrt::Client::HostBufferSemantics semantics,
@@ -244,18 +243,17 @@ Client::MakeArraysFromHostBufferShards(
       this, rpc_helper_, specs, semantics, std::move(user_context));
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-Client::MakeErrorArrays(const absl::Status& error,
-                        absl::Span<const xla::ifrt::ArraySpec> array_specs,
-                        tsl::RCReference<xla::ifrt::UserContext> user_context) {
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::MakeErrorArrays(
+    const absl::Status& error,
+    absl::Span<const xla::ifrt::ArraySpec> array_specs,
+    tsl::RCReference<xla::ifrt::UserContext> user_context) {
   return Array::MakeErrorArrays(this, rpc_helper_, error, array_specs,
                                 std::move(user_context));
 }
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-Client::AssembleArrayFromSingleDeviceArrays(
+absl::StatusOr<xla::ifrt::ArrayRef> Client::AssembleArrayFromSingleDeviceArrays(
     DType dtype, Shape shape, ShardingRef sharding,
-    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+    absl::Span<xla::ifrt::ArrayRef> arrays,
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
   return Array::AssembleArrayFromSingleDeviceArrays(
@@ -263,17 +261,16 @@ Client::AssembleArrayFromSingleDeviceArrays(
       array_copy_semantics, single_device_shard_semantics);
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-                   std::optional<xla::ifrt::DeviceListRef> devices,
-                   std::optional<MemoryKind> memory_kind,
-                   ArrayCopySemantics semantics) {
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
+    absl::Span<xla::ifrt::ArrayRef> arrays,
+    std::optional<xla::ifrt::DeviceListRef> devices,
+    std::optional<MemoryKind> memory_kind, ArrayCopySemantics semantics) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_arrays = arrays.size()]() {
     return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointCopyArrays",
                                         {{"n_arrays", n_arrays}});
   });
   if (arrays.empty()) {
-    return std::vector<tsl::RCReference<xla::ifrt::Array>>();
+    return std::vector<xla::ifrt::ArrayRef>();
   }
 
   for (int i = 1; i < arrays.size(); ++i) {
@@ -332,7 +329,7 @@ Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
         });
   }
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> new_arrays;
+  std::vector<xla::ifrt::ArrayRef> new_arrays;
   new_arrays.reserve(arrays.size());
   for (int i = 0; i < result_handles.size(); ++i) {
     TF_ASSIGN_OR_RETURN(
@@ -345,10 +342,9 @@ Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
   return new_arrays;
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-Client::RemapArrays(const RemapPlan& plan,
-                    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-                    ArrayCopySemantics semantics) {
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::RemapArrays(
+    const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
+    ArrayCopySemantics semantics) {
   return Array::RemapArrays(this, rpc_helper_, plan, arrays, semantics);
 }
 

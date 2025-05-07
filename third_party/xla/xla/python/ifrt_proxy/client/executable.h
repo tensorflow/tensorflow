@@ -98,8 +98,7 @@ class LoadedExecutable final
   // `result->status.Await()` will return the error, where `result` is the
   // returned value from the `Execute()` call).
   absl::StatusOr<ExecuteResult> Execute(
-      absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
-      const ExecuteOptions& options,
+      absl::Span<xla::ifrt::ArrayRef> args, const ExecuteOptions& options,
       std::optional<xla::ifrt::DeviceListRef> devices) override;
 
   Future<> Delete() override;

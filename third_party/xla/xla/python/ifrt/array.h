@@ -39,6 +39,7 @@ namespace xla {
 namespace ifrt {
 
 class Client;
+class Array;
 
 // Semantics for operations that may copy or move sharded buffers in an array.
 enum class ArrayCopySemantics : int {
@@ -56,6 +57,8 @@ enum class ArrayCopySemantics : int {
   // input array no longer usable and reclaiming its on-device resources.
   kDonateInput,
 };
+
+using ArrayRef = tsl::RCReference<Array>;
 
 // Represents a single logical array from one or more sharded buffers.
 // Implementations must be thread-safe.
@@ -81,7 +84,7 @@ class Array : public llvm::RTTIExtends<Array, Value> {
 
   // Breaks an array up into per-device arrays. This is the elimination
   // counterpart of `Client::AssembleArrayFromSingleDeviceArrays()`.
-  virtual absl::StatusOr<std::vector<tsl::RCReference<Array>>>
+  virtual absl::StatusOr<std::vector<ArrayRef>>
   DisassembleIntoSingleDeviceArrays(
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) = 0;
@@ -89,8 +92,8 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   // TODO(hyeontaek): Replace this API with the version that takes
   // `SingleDeviceShardSemantics`.
   ABSL_DEPRECATE_AND_INLINE()
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-  DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
+  absl::StatusOr<std::vector<ArrayRef>> DisassembleIntoSingleDeviceArrays(
+      ArrayCopySemantics semantics) {
     return DisassembleIntoSingleDeviceArrays(
         semantics, SingleDeviceShardSemantics::kAddressableShards);
   }
@@ -99,7 +102,7 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   // optimization so that instead of disassembling into all the shards when
   // the Array is fully replicated, we can just get 1 shard out and create an
   // Array from it.
-  virtual absl::StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
+  virtual absl::StatusOr<ArrayRef> FullyReplicatedShard(
       ArrayCopySemantics semantics) = 0;
 
   // Fetches the array to host and stores it as unreplicated, unsharded data.
@@ -139,8 +142,7 @@ class Array : public llvm::RTTIExtends<Array, Value> {
 
 // Convenience function to create a list of pointer Arrays from a list of
 // RCReference<Array>s.
-std::vector<Array*> MakeArrayPointerList(
-    absl::Span<const tsl::RCReference<Array>> arrays);
+std::vector<Array*> MakeArrayPointerList(absl::Span<const ArrayRef> arrays);
 
 }  // namespace ifrt
 }  // namespace xla

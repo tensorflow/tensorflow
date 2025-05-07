@@ -84,10 +84,9 @@ module {
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
   TF_ASSERT_OK_AND_ASSIGN(
-      tsl::RCReference<Array> input,
-      CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
-                  DType(DType::kS32), ShardingParam({2, 1}, {{0}, {2}}),
-                  devices));
+      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                  DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
 
   ExecuteOptions options;
   options.fill_status = true;
@@ -135,10 +134,9 @@ module {
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
   TF_ASSERT_OK_AND_ASSIGN(
-      tsl::RCReference<Array> input,
-      CreateArray({data_shard0.data(), data_shard1.data()}, Shape({2, 2}),
-                  DType(DType::kS32), ShardingParam({2, 1}, {{0}, {2}}),
-                  devices));
+      ArrayRef input, CreateArray({data_shard0.data(), data_shard1.data()},
+                                  Shape({2, 2}), DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
 
   ExecuteOptions options;
   options.fill_status = true;
@@ -190,10 +188,9 @@ module {
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
   TF_ASSERT_OK_AND_ASSIGN(
-      tsl::RCReference<Array> input,
-      CreateArray({data_shard0.data(), data_shard1.data()}, Shape({2, 2}),
-                  DType(DType::kS32), ShardingParam({2, 1}, {{0}, {2}}),
-                  devices));
+      ArrayRef input, CreateArray({data_shard0.data(), data_shard1.data()},
+                                  Shape({2, 2}), DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
 
   ExecuteOptions options;
   options.fill_status = true;
@@ -249,10 +246,9 @@ module {
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
   TF_ASSERT_OK_AND_ASSIGN(
-      tsl::RCReference<Array> input,
-      CreateArray({data_shard0.data(), data_shard1.data()}, Shape({2, 2}),
-                  DType(DType::kS32), ShardingParam({2, 1}, {{0}, {2}}),
-                  devices));
+      ArrayRef input, CreateArray({data_shard0.data(), data_shard1.data()},
+                                  Shape({2, 2}), DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
 
   ExecuteOptions options;
   options.fill_status = true;
@@ -305,10 +301,9 @@ module {
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
   TF_ASSERT_OK_AND_ASSIGN(
-      tsl::RCReference<Array> input,
-      CreateArray({data_shard0.data(), data_shard1.data()}, Shape({2, 2}),
-                  DType(DType::kS32), ShardingParam({2, 1}, {{0}, {2}}),
-                  devices));
+      ArrayRef input, CreateArray({data_shard0.data(), data_shard1.data()},
+                                  Shape({2, 2}), DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
 
   ExecuteOptions options;
   options.fill_status = true;
@@ -370,10 +365,9 @@ module {
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
   TF_ASSERT_OK_AND_ASSIGN(
-      tsl::RCReference<Array> input,
-      CreateArray({data_shard0.data(), data_shard1.data()}, Shape({2, 2}),
-                  DType(DType::kS32), ShardingParam({2, 1}, {{0}, {2}}),
-                  devices));
+      ArrayRef input, CreateArray({data_shard0.data(), data_shard1.data()},
+                                  Shape({2, 2}), DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
 
   ExecuteOptions options;
   options.fill_status = true;
@@ -409,7 +403,7 @@ module {
 
   std::vector<int> data = {1, 2};
   TF_ASSERT_OK_AND_ASSIGN(
-      tsl::RCReference<Array> input,
+      ArrayRef input,
       CreateArray({data.data()}, Shape({2}), DType(DType::kS32),
                   ShardingParam({1}, {{0}, {1}}),
                   client_->MakeDeviceList({devices->devices()[0]})));
@@ -456,7 +450,7 @@ module {
 
   std::vector<int> data = {0, 1, 2, 3};
   TF_ASSERT_OK_AND_ASSIGN(
-      tsl::RCReference<Array> input,
+      ArrayRef input,
       CreateArray({data.data()}, Shape({2, 2}), DType(DType::kS32),
                   ShardingParam({1, 1}, {{0}, {1}}),
                   client_->MakeDeviceList({devices->devices()[0]})));
@@ -545,10 +539,9 @@ module {
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
   TF_ASSERT_OK_AND_ASSIGN(
-      tsl::RCReference<Array> input,
-      CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
-                  DType(DType::kS32), ShardingParam({2, 1}, {{0}, {2}}),
-                  devices));
+      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                  DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
 
   ExecuteOptions options;
   options.fill_status = true;
@@ -592,10 +585,9 @@ module {
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
   TF_ASSERT_OK_AND_ASSIGN(
-      tsl::RCReference<Array> input,
-      CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
-                  DType(DType::kS32), ShardingParam({2, 1}, {{0}, {2}}),
-                  devices));
+      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                  DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
 
   ExecuteOptions options;
   options.fill_status = true;
@@ -649,10 +641,9 @@ module {
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
   TF_ASSERT_OK_AND_ASSIGN(
-      tsl::RCReference<Array> input,
-      CreateArray({data_shard0.data(), data_shard1.data()}, Shape({2, 2}),
-                  DType(DType::kS32), ShardingParam({2, 1}, {{0}, {2}}),
-                  devices));
+      ArrayRef input, CreateArray({data_shard0.data(), data_shard1.data()},
+                                  Shape({2, 2}), DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
 
   ExecuteOptions options;
   options.fill_status = true;
@@ -697,10 +688,9 @@ module {
   std::vector<int> data_shard0 = {0, 1};
   std::vector<int> data_shard1 = {2, 3};
   TF_ASSERT_OK_AND_ASSIGN(
-      tsl::RCReference<Array> input,
-      CreateArray({data_shard0.data(), data_shard1.data()}, Shape({2, 2}),
-                  DType(DType::kS32), ShardingParam({2, 1}, {{0}, {2}}),
-                  devices));
+      ArrayRef input, CreateArray({data_shard0.data(), data_shard1.data()},
+                                  Shape({2, 2}), DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
 
   ExecuteOptions options;
   options.fill_status = true;
@@ -774,10 +764,9 @@ module {
   std::vector<int> data0 = {0, 1};
   std::vector<int> data1 = {2, 3};
   TF_ASSERT_OK_AND_ASSIGN(
-      tsl::RCReference<Array> input,
-      CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
-                  DType(DType::kS32), ShardingParam({2, 1}, {{0}, {2}}),
-                  devices));
+      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                  DType(DType::kS32),
+                                  ShardingParam({2, 1}, {{0}, {2}}), devices));
 
   ExecuteOptions execute_options;
   execute_options.fill_status = true;

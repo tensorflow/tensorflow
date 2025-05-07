@@ -599,7 +599,7 @@ TEST(ArrayImplTest, MakeErrorArrays) {
 
   const absl::Status error = absl::InternalError("injected error");
   TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<tsl::RCReference<xla::ifrt::Array>> arrays,
+      const std::vector<xla::ifrt::ArrayRef> arrays,
       client->MakeErrorArrays(error, {array_spec, array_spec},
                               client->CreateUserContext()));
   ASSERT_EQ(arrays.size(), 2);
@@ -636,7 +636,7 @@ TEST(ArrayImplTest, MakeErrorArraysWithAddressableAndNonAddressableDevice) {
 
   const absl::Status error = absl::InternalError("injected error");
   TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<tsl::RCReference<xla::ifrt::Array>> arrays,
+      const std::vector<xla::ifrt::ArrayRef> arrays,
       client->MakeErrorArrays(error, {array_spec, array_spec},
                               client->CreateUserContext()));
   ASSERT_EQ(arrays.size(), 2);
@@ -672,7 +672,7 @@ TEST(ArrayImplTest, AssembleArray) {
                        Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                        /*on_done_with_host_buffer=*/{}));
 
-  std::vector<tsl::RCReference<Array>> arrays({array0, array1});
+  std::vector<ArrayRef> arrays({array0, array1});
   Shape assembled_shape({4, 3});
   ShardingRef assembled_sharding = OpaqueSharding::Create(
       client->MakeDeviceList({array0->sharding().devices()->devices().front(),
@@ -716,7 +716,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
                        Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                        /*on_done_with_host_buffer=*/{}));
 
-  std::vector<tsl::RCReference<Array>> arrays({array0, array1});
+  std::vector<ArrayRef> arrays({array0, array1});
   Shape assembled_shape({4, 3});
   ShardingParam sharding_param(
       /*dim_shards=*/{2, 1}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}});
@@ -774,7 +774,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleSingleDeviceArray) {
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
-  std::vector<tsl::RCReference<Array>> arrays({array});
+  std::vector<ArrayRef> arrays({array});
 
   TF_ASSERT_OK_AND_ASSIGN(auto assembled_array,
                           client->AssembleArrayFromSingleDeviceArrays(
@@ -847,7 +847,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleNonAddressableArray) {
   Device* device1 = client->addressable_devices().at(1);
   ShardingRef sharding1 = SingleDeviceSharding::Create(device1, MemoryKind());
 
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   Shape assembled_shape({4, 3});
   ShardingParam sharding_param(
       /*dim_shards=*/{2, 1}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}});
@@ -893,7 +893,7 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
   std::vector<float> data(6);
   std::iota(data.begin(), data.end(), 0);
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
-  std::vector<tsl::RCReference<Array>> shards;
+  std::vector<ArrayRef> shards;
   for (auto* device : devices->devices()) {
     ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
     TF_ASSERT_OK_AND_ASSIGN(shards.emplace_back(),
@@ -905,7 +905,7 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
 
   // Intentionally use different shardings to verify that each result array has
   // the correct sharding.
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   {
     std::vector<Shape> shapes(shards.size(), shape);
     ShardingRef sharding =
@@ -970,7 +970,7 @@ TEST(ArrayImplTest, CopyMixedSourceDevices) {
   std::iota(data.begin(), data.end(), 0);
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
 
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   for (auto* device : client->addressable_devices()) {
     ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
     TF_ASSERT_OK_AND_ASSIGN(
@@ -1004,7 +1004,7 @@ TEST(ArrayImplTest, CopyMixedSourceMemoryKind) {
   Device* device = client->addressable_devices().at(0);
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
 
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   for (auto* memory : device->Memories()) {
     ShardingRef sharding = SingleDeviceSharding::Create(device, memory->Kind());
     TF_ASSERT_OK_AND_ASSIGN(arrays.emplace_back(),

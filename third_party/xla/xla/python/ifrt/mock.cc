@@ -58,7 +58,7 @@ using ::testing::_;
 }
 
 // LINT.IfChange(MockArrayDelegation)
-MockArray::MockArray(tsl::RCReference<xla::ifrt::Array> delegated)
+MockArray::MockArray(xla::ifrt::ArrayRef delegated)
     : delegated_(std::move(delegated)) {
   ON_CALL(*this, GetReadyFuture).WillByDefault([this]() {
     return delegated_->GetReadyFuture();
@@ -138,7 +138,7 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, AssembleArrayFromSingleDeviceArrays(_, _, _, _, _, _))
       .WillByDefault(
           [this](DType dtype, Shape shape, ShardingRef sharding,
-                 absl::Span<tsl::RCReference<Array>> arrays,
+                 absl::Span<ArrayRef> arrays,
                  ArrayCopySemantics array_copy_semantics,
                  SingleDeviceShardSemantics single_device_shard_semantics) {
             return delegated_->AssembleArrayFromSingleDeviceArrays(
@@ -146,7 +146,7 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                 array_copy_semantics, single_device_shard_semantics);
           });
   ON_CALL(*this, CopyArrays)
-      .WillByDefault([this](absl::Span<tsl::RCReference<Array>> arrays,
+      .WillByDefault([this](absl::Span<ArrayRef> arrays,
                             std::optional<DeviceListRef> devices,
                             std::optional<MemoryKind> memory_kind,
                             ArrayCopySemantics semantics) {
@@ -154,8 +154,7 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                                       semantics);
       });
   ON_CALL(*this, RemapArrays)
-      .WillByDefault([this](const RemapPlan& plan,
-                            absl::Span<tsl::RCReference<Array>> arrays,
+      .WillByDefault([this](const RemapPlan& plan, absl::Span<ArrayRef> arrays,
                             ArrayCopySemantics semantics) {
         return delegated_->RemapArrays(plan, arrays, semantics);
       });
