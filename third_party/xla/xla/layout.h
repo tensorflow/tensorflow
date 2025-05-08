@@ -22,6 +22,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
