@@ -558,8 +558,7 @@ class HloParserImpl : public HloParser {
   bool ParseLayoutIntAttribute(int64_t* attr_value,
                                absl::string_view attr_description);
   bool ParseDimLevelTypes(
-      absl::InlinedVector<DimLevelType, InlineRank()>* dim_level_types,
-      absl::InlinedVector<bool, InlineRank()>* dim_ordered);
+      absl::InlinedVector<DimLevelType, InlineRank()>* dim_level_types);
   bool ParseTiles(std::vector<Tile>* tiles);
   bool ParseSplitConfigs(std::vector<SplitConfig>& split_configs);
   bool ParsePhysicalShape(Shape* physical_shape);
@@ -5951,8 +5950,7 @@ bool HloParserImpl::ParseDimensionSizes(std::vector<int64_t>* dimension_sizes,
 //   ::= 'C'
 //   ::= 'S'
 bool HloParserImpl::ParseDimLevelTypes(
-    absl::InlinedVector<DimLevelType, InlineRank()>* dim_level_types,
-    absl::InlinedVector<bool, InlineRank()>* dim_ordered) {
+    absl::InlinedVector<DimLevelType, InlineRank()>* dim_level_types) {
   auto parse_and_add_item = [&]() {
     if (lexer_.GetKind() == TokKind::kIdent) {
       bool dim_level_type_valid = false;
@@ -5978,17 +5976,10 @@ bool HloParserImpl::ParseDimLevelTypes(
         if (lexer_.GetKind() == TokKind::kPlus) {
           lexer_.Lex();
         }
-        bool new_dim_ordered = true;
         if (lexer_.GetKind() == TokKind::kTilde) {
-          new_dim_ordered = false;
           lexer_.Lex();
         }
-        if (!LayoutUtil::ValidateDimLevel(dim_level_type, new_dim_ordered)) {
-          return Error(lexer_.GetLoc(),
-                       "invalid DimLevelType/ordered combination in shape");
-        }
         dim_level_types->push_back(dim_level_type);
-        dim_ordered->push_back(new_dim_ordered);
         return true;
       }
     }
@@ -6145,7 +6136,6 @@ bool HloParserImpl::ParseSplitConfigs(std::vector<SplitConfig>& split_configs) {
 bool HloParserImpl::ParseLayout(Layout* layout) {
   absl::InlinedVector<int64_t, InlineRank()> minor_to_major;
   DimLevelTypeVector dim_level_types;
-  absl::InlinedVector<bool, InlineRank()> dim_ordered;
   std::vector<Tile> tiles;
   PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID;
   PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID;
@@ -6185,7 +6175,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
 
       if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "D") {
         lexer_.Lex();
-        ParseDimLevelTypes(&dim_level_types, &dim_ordered);
+        ParseDimLevelTypes(&dim_level_types);
       }
 
       if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "T") {
@@ -6262,7 +6252,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
     vec_tiles[i] = Tile(tiles[i]);
   }
   *layout = LayoutUtil::MakeLayout(
-      minor_to_major, dim_level_types, dim_ordered, vec_tiles,
+      minor_to_major, dim_level_types, vec_tiles,
       tail_padding_alignment_in_elements, index_primitive_type,
       pointer_primitive_type, element_size_in_bits, memory_space, split_configs,
       std::move(physical_shape), dynamic_shape_metadata_prefix_bytes);

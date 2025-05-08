@@ -44,7 +44,6 @@ class LayoutUtil {
   static Layout MakeLayout(
       absl::Span<const int64_t> minor_to_major,
       absl::Span<const DimLevelType> dim_level_types = {},
-      absl::Span<const bool> dim_ordered = {},
       absl::Span<const Tile> tiles = {},
       int64_t tail_padding_alignment_in_elements = 1,
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
@@ -282,12 +281,6 @@ class LayoutUtil {
   static int64_t MemorySpace(const Shape& shape);
 
   static xla::DimLevelType GetDimLevelType(const Layout& layout, int64_t dim);
-  static bool DimOrdered(const Layout& layout, int64_t dim);
-
-  // Return true iff the given DimLevelType and dim_ordered values
-  // represent a valid encoding.
-  static bool ValidateDimLevel(xla::DimLevelType dim_level_type,
-                               bool dim_ordered);
 
   // Returns true if `byte_strides` is major to minor order, i.e. the strides
   // form a cumulative product of the byte size and dimensions in reverse order

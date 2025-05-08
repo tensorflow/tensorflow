@@ -65,8 +65,7 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
 /* static */ Layout LayoutUtil::MakeLayout(
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
-    absl::Span<const bool> dim_ordered, absl::Span<const Tile> tiles,
-    int64_t tail_padding_alignment_in_elements,
+    absl::Span<const Tile> tiles, int64_t tail_padding_alignment_in_elements,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
     int64_t element_size_in_bits, int64_t memory_space,
     absl::Span<const SplitConfig> split_configs,
@@ -78,9 +77,6 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
   }
   for (DimLevelType dim_level_type : dim_level_types) {
     layout.add_dim_level_type(dim_level_type);
-  }
-  for (bool ordered : dim_ordered) {
-    layout.add_dim_ordered(ordered);
   }
   for (const Tile& tile : tiles) {
     for (int64_t dim : tile.dimensions()) {
@@ -286,24 +282,6 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
     }
   }
 
-  if (layout.dim_ordered_size() > 0) {
-    if (layout.dim_ordered_size() != shape.dimensions().size()) {
-      std::vector<bool> dim_ordered(layout.dim_ordered_size());
-      for (int i = 0; i < dim_ordered.size(); i++) {
-        dim_ordered[i] = layout.dim_ordered(i);
-      }
-      return InvalidArgument(
-          "layout dim_ordered field contains %d elements, but shape has "
-          "%d dimensions: {%s}; shape: %s",
-          layout.dim_ordered_size(), shape.dimensions().size(),
-          absl::StrJoin(dim_ordered, ", ",
-                        [](std::string* out, bool dim_ordered) {
-                          absl::StrAppend(out, BoolToString(dim_ordered));
-                        }),
-          shape.ToString());
-    }
-  }
-
   if (layout.tail_padding_alignment_in_elements() <= 0) {
     return InvalidArgument(
         "layout tail_padding_alignment_in_elements field is <= 0: {%d}",
@@ -369,17 +347,6 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
         return InvalidArgument("layout has invalid tiles: %s",
                                shape.ToString());
       }
-    }
-  }
-
-  for (int64_t dim = 0; dim < shape.dimensions().size(); ++dim) {
-    DimLevelType dim_level_type = GetDimLevelType(layout, dim);
-    const bool dim_ordered = DimOrdered(layout, dim);
-    if (!ValidateDimLevel(dim_level_type, dim_ordered)) {
-      return InvalidArgument(
-          "layout dimension %d has invalid level encoding %s%s: %s", dim,
-          DimLevelType_Name(dim_level_type), dim_ordered ? "" : ", non-ordered",
-          shape.ToString());
     }
   }
 
@@ -720,28 +687,6 @@ absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   }
   CHECK_LT(dim, layout.dim_level_types_size());
   return layout.dim_level_type(dim);
-}
-
-/*static*/ bool LayoutUtil::DimOrdered(const Layout& layout, int64_t dim) {
-  if (layout.dim_ordered_size() == 0) {
-    return true;
-  }
-  CHECK_LT(dim, layout.dim_ordered_size());
-  return layout.dim_ordered(dim);
-}
-
-bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type,
-                                  bool dim_ordered) {
-  switch (dim_level_type) {
-    case DIM_DENSE:
-      return dim_ordered;
-    case DIM_COMPRESSED:
-    case DIM_SINGLETON:
-    case DIM_LOOSE_COMPRESSED:
-      return true;
-    default:
-      return false;
-  }
 }
 
 /*static*/ bool LayoutUtil::ByteStridesIsMajorToMinor(

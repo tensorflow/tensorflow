@@ -4903,7 +4903,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {0})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{},
-          /*dim_ordered=*/{}, /*tiles=*/{},
+          /*tiles=*/{},
           /*tail_padding_alignment_in_elements=*/1,
           /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
           /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID,
@@ -4912,7 +4912,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {1})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{}, /*dim_level_types=*/{},
-          /*dim_ordered=*/{}, /*tiles=*/{},
+          /*tiles=*/{},
           /*tail_padding_alignment_in_elements=*/1,
           /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
           /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID,
@@ -4921,7 +4921,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {2})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{},
-          /*dim_ordered=*/{}, /*tiles=*/{},
+          /*tiles=*/{},
           /*tail_padding_alignment_in_elements=*/1,
           /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
           /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID,

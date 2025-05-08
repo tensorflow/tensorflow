@@ -2781,12 +2781,12 @@ ENTRY test {
 R"(HloModule test
 
 ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C~,S~)} parameter(0)
+  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
 })",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C~,S~)})->f32[10,10]{1,0:D(C~,S~)}}
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C,S)})->f32[10,10]{1,0:D(C,S)}}
 
 ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C~,S~)} parameter(0)
+  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
 })",
 },
 });
@@ -4794,16 +4794,6 @@ TEST_F(HloParserTest, ParseDynamicTuple) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
-}
-
-TEST_F(HloParserTest, ParseInvalidDimLevel) {
-  constexpr absl::string_view shape_string = "f32[123]{0:D(D+~)}";
-  absl::StatusOr<Shape> result = ParseShape(shape_string);
-  ASSERT_THAT(result.status(),
-              tsl::testing::StatusIs(
-                  tsl::error::INVALID_ARGUMENT,
-                  testing::HasSubstr(
-                      "invalid DimLevelType/ordered combination in shape")));
 }
 
 TEST_F(HloParserTest, NegativeParameterNumber) {

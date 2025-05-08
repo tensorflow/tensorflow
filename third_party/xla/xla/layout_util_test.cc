@@ -473,7 +473,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_MissingArrayLayout) {
 TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   *shape.mutable_layout() = LayoutUtil::MakeLayout(
-      {1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}, {Tile({10, 10})});
+      {1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {Tile({10, 10})});
   EXPECT_THAT(
       LayoutUtil::ValidateLayoutInShape(shape),
       StatusIs(tsl::error::INVALID_ARGUMENT,

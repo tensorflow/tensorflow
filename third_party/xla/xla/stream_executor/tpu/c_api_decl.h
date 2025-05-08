@@ -234,7 +234,6 @@ typedef struct TileList {
 typedef struct XLA_Layout {
   Int64List minor_to_major;
   IntList dim_level_types;
-  IntList dim_ordered;
   TileList tiles;
   int index_primitive_type;
   int pointer_primitive_type;

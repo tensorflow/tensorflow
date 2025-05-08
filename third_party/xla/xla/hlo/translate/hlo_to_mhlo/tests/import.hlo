@@ -3,7 +3,7 @@
 // RUN: hlo-translate --print-sugar=false -hlo-to-mlir -emit-mhlo %s | FileCheck %s -check-prefix=FLATTEN-CHECK
 
 // CHECK: #[[$DC:.*]] = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed), posWidth = 32, crdWidth = 32 }>
-// CHECK: #[[$CSS:.*]] = #sparse_tensor.encoding<{ map = (d0, d1, d2) -> (d0 : compressed, d1 : singleton(nonordered), d2 : singleton(nonordered)), posWidth = 32, crdWidth = 32 }>
+// CHECK: #[[$CSS:.*]] = #sparse_tensor.encoding<{ map = (d0, d1, d2) -> (d0 : compressed, d1 : singleton, d2 : singleton), posWidth = 32, crdWidth = 32 }>
 
 // NO_DEAD_FUNCTION-NOT: @test
 
@@ -2004,7 +2004,7 @@ add {
 // CHECK-LABEL : func private @sparse_nu_no
 // CHECK: tensor<3x4x5xf32, #[[$CSS]]>) -> tensor<3x4x5xf32, #[[$CSS]]>
 %sparse_nu_no {
-  ROOT root = f32[3,4,5]{2,1,0:D(C+,S+~,S~)} parameter(0)
+  ROOT root = f32[3,4,5]{2,1,0:D(C+,S+,S)} parameter(0)
 }
 
 // CHECK-LABEL: func private @add_dependency
