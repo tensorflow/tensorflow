@@ -2210,8 +2210,8 @@ class Subgraph {
                 TF_LITE_MAYBE_KERNEL_LOG(
                     context,
                     "4 bit weights must be per channel and not per tensor "
-                    "quantized"
-                    "#%d",
+                    "quantized in channel #%" PRId32
+                    " in tensor #%d in node #%d",
                     quantization_params->quantized_dimension, tensor_index,
                     node_index);
                 return kTfLiteError;
