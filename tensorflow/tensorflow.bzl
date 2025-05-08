@@ -2454,7 +2454,7 @@ def pywrap_tensorflow_macro_opensource(
     """Builds the pywrap_tensorflow_internal shared object."""
 
     if use_pywrap_rules():
-        native.py_library(
+        _plain_py_library(
             name = name,
             srcs = [],
             deps = [],

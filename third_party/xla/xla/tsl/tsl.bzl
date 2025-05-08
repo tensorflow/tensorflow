@@ -1,5 +1,6 @@
 """Provides build configuration for TSL"""
 
+load("@rules_python//python:py_library.bzl", "py_library")
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
@@ -817,7 +818,7 @@ def tsl_pybind_extension_opensource(
         testonly = testonly,
     )
 
-    native.py_library(
+    py_library(
         name = name,
         data = select({
             clean_dep("//xla/tsl:windows"): [pyd_file],
