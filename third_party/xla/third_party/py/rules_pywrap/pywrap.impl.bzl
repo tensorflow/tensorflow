@@ -1063,11 +1063,6 @@ def _pywrap_binaries_impl(ctx):
         content = str(wheel_locations),
     )
 
-    original_to_final_binaries.append(
-        "^^^ Shared objects correspondence map^^^\n\n",
-    )
-    print("\n".join(original_to_final_binaries))
-
     return [DefaultInfo(files = depset(direct = final_binaries))]
 
 def _construct_final_binary_location(final_binary, new_package):
