@@ -69,16 +69,4 @@ diff --ruN a/stablehlo/stablehlo/tests/canonicalize.mlir b/stablehlo/stablehlo/t
 +
 +// CHECK: return %arg1
 +}
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
---- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-+++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-@@ -1097,7 +1097,7 @@
-   size_t firstFunctionalArgument =
-       leadingTokenOperands + key.getGlobalConstants().size();
-   argIndices.set(leadingTokenOperands, firstFunctionalArgument);
--  if (failed(func.eraseArguments(argIndices))) return failure();
-+  func.eraseArguments(argIndices);
- 
-   // Refine the remaining argument types, wrap with shape buffer custom calls.
-   SmallVector<Type> refinedTypes =
 
