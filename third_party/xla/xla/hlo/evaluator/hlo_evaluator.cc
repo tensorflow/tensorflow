@@ -3597,10 +3597,10 @@ absl::StatusOr<Literal> TryParseAndEvaluateWhileInductionVar(
       Literal result,
       CreateScalarLiteral(induction_var_value, result_shape.element_type()));
   std::vector<Literal*> while_result_element_ptrs;
-  while_result_element_ptrs.reserve(while_hlo->shape().tuple_shapes_size());
+  while_result_element_ptrs.reserve(while_hlo->shape().tuple_shapes().size());
   std::vector<Literal> while_result_elements(
-      while_hlo->shape().tuple_shapes_size());
-  for (int i = 0; i < while_hlo->shape().tuple_shapes_size(); ++i) {
+      while_hlo->shape().tuple_shapes().size());
+  for (int i = 0; i < while_hlo->shape().tuple_shapes().size(); ++i) {
     if (i == parsed_while_loop->static_while_loop->induction_var_index) {
       while_result_element_ptrs.push_back(&result);
     } else {
