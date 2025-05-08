@@ -813,3 +813,219 @@ func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 // CHECK-DIRECT: stablehlo.optimization_barrier
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(pred[], f32[], f32[])->f32[]}
+
+// CHECK:       %[[$region_0_4:[^ ]+]]
+// CHECK-NEXT:  ROOT %[[Arg__5:[^ ]+]] = f32[] parameter(0)
+
+// CHECK:       %[[$region_1_6:[^ ]+]]
+// CHECK-NEXT:  ROOT %[[Arg__7:[^ ]+]] = f32[] parameter(0)
+
+// CHECK:       ENTRY %[[$main_9:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = pred[] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = f32[] parameter(1)
+// CHECK-NEXT:  %[[Arg_2_3:[^ ]+]] = f32[] parameter(2)
+// CHECK-NEXT:  ROOT %[[conditional_8:[^ ]+]] = f32[] conditional(%[[Arg_0_1]], %[[Arg_1_2]], %[[Arg_2_3]]), true_computation=%[[$region_0_4]], false_computation=%[[$region_1_6]], metadata=
+
+func.func @main(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+  %0 = "stablehlo.if"(%arg0) ({
+  "stablehlo.return"(%arg1) : (tensor<f32>) -> ()
+  }, {
+  "stablehlo.return"(%arg2) : (tensor<f32>) -> ()
+  }) : (tensor<i1>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+// CHECK-DIRECT: stablehlo.if
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(s32[], f32[])->f32[]}
+
+// CHECK:       %[[$region_0_3:[^ ]+]]
+// CHECK-NEXT:  ROOT %[[Arg__4:[^ ]+]] = f32[] parameter(0)
+
+// CHECK:       ENTRY %[[$main_6:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = s32[] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = f32[] parameter(1)
+// CHECK-NEXT:  ROOT %[[conditional_5:[^ ]+]] = f32[] conditional(%[[Arg_0_1]], %[[Arg_1_2]]), branch_computations={%[[$region_0_3]]}, metadata=
+
+func.func @main(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %0 = "stablehlo.case"(%arg0) ({
+  "stablehlo.return"(%arg1) : (tensor<f32>) -> ()
+  }) : (tensor<i32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+// CHECK-DIRECT: stablehlo.case
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[10]{0})->f32[10]{0}}
+
+// CHECK:       %[[$region_0_2:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_3:[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_4:[^ ]+]] = f32[] parameter(1)
+// CHECK-NEXT:  ROOT %[[maximum_5:[^ ]+]] = f32[] maximum(%[[Arg_0_3]], %[[Arg_1_4]]), metadata=
+
+// CHECK:       ENTRY %[[$main_7:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
+// CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), channel_id=5,
+// CHECK-SAME{{LITERAL}}:  replica_groups={{0,2,4,6},{1,3,5,7}}, to_apply=%[[$region_0_2]], metadata=
+
+module {
+  func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %0 = "stablehlo.all_reduce"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 5, type = 2>, replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>}> ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+  %1 = stablehlo.maximum %arg1, %arg2 : tensor<f32>
+  stablehlo.return %1 : tensor<f32>
+  }) : (tensor<10xf32>) -> tensor<10xf32>
+  return %0 : tensor<10xf32>
+  }
+}
+// CHECK-DIRECT: stablehlo.all_reduce
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[10]{0})->f32[10]{0}}
+
+// CHECK:       %[[$region_0_2:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_3:[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_4:[^ ]+]] = f32[] parameter(1)
+// CHECK-NEXT:  ROOT %[[maximum_5:[^ ]+]] = f32[] maximum(%[[Arg_0_3]], %[[Arg_1_4]]), metadata=
+
+// CHECK:       ENTRY %[[$main_7:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
+// CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), channel_id=5,
+// CHECK-SAME{{LITERAL}}:  replica_groups={{0,2,4},{1,3,5,6}}, to_apply=%[[$region_0_2]], metadata=
+
+module {
+  func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %0 = "stablehlo.all_reduce"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 5, type = 2>, replica_groups = dense<[[0, 2, 4, -1], [1, 3, 5, 6]]> : tensor<2x4xi64>}> ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+  %1 = stablehlo.maximum %arg1, %arg2 : tensor<f32>
+  stablehlo.return %1 : tensor<f32>
+  }) : (tensor<10xf32>) -> tensor<10xf32>
+  return %0 : tensor<10xf32>
+  }
+}
+// CHECK-DIRECT: stablehlo.all_reduce
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[10]{0})->f32[10]{0}}
+
+// CHECK:       %[[$region_0_2:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_3:[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_4:[^ ]+]] = f32[] parameter(1)
+// CHECK-NEXT:  ROOT %[[maximum_5:[^ ]+]] = f32[] maximum(%[[Arg_0_3]], %[[Arg_1_4]]), metadata=
+
+// CHECK:       ENTRY %[[$main_7:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
+// CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), channel_id=5,
+// CHECK-SAME{{LITERAL}}:  replica_groups={{0,2,4,6},{1,3,5,7}}, use_global_device_ids=true, to_apply=%[[$region_0_2]], metadata=
+
+module {
+  func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %0 = "stablehlo.all_reduce"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 5, type = 2>, replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>, use_global_device_ids}> ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+  %1 = stablehlo.maximum %arg1, %arg2 : tensor<f32>
+  stablehlo.return %1 : tensor<f32>
+  }) : (tensor<10xf32>) -> tensor<10xf32>
+  return %0 : tensor<10xf32>
+  }
+}
+// CHECK-DIRECT: stablehlo.all_reduce
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[8]{0}, f32[])->(f32[8]{0}, f32[])}
+
+// CHECK:       %[[$region_0_6:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_7:[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_8:[^ ]+]] = f32[] parameter(1)
+// CHECK-NEXT:  ROOT %[[add_9:[^ ]+]] = f32[] add(%[[Arg_0_7]], %[[Arg_1_8]]), metadata=
+
+// CHECK:       ENTRY %[[$main_14:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[8] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = f32[] parameter(1)
+// CHECK-NEXT:  %[[tuple_3:[^ ]+]] = (f32[8], f32[]) tuple(%[[Arg_0_1]], %[[Arg_1_2]]), metadata=
+// CHECK-NEXT:  %[[get_tuple_element_4:[^ ]+]] = f32[8] get-tuple-element(%[[tuple_3]]), index=0, metadata=
+// CHECK-NEXT:  %[[get_tuple_element_5:[^ ]+]] = f32[] get-tuple-element(%[[tuple_3]]), index=1, metadata=
+// CHECK-NEXT:  %[[all_reduce_10:[^ ]+]] = (f32[8], f32[]) all-reduce(%[[get_tuple_element_4]], %[[get_tuple_element_5]]), replica_groups={}, to_apply=%[[$region_0_6]], metadata=
+// CHECK-NEXT:  %[[get_tuple_element_11:[^ ]+]] = f32[8] get-tuple-element(%[[all_reduce_10]]), index=0, metadata=
+// CHECK-NEXT:  %[[get_tuple_element_12:[^ ]+]] = f32[] get-tuple-element(%[[all_reduce_10]]), index=1, metadata=
+// CHECK-NEXT:  ROOT %[[tuple_13:[^ ]+]] = (f32[8], f32[]) tuple(%[[get_tuple_element_11]], %[[get_tuple_element_12]]), metadata=
+
+module {
+  func.func @main(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tuple<tensor<8xf32>, tensor<f32>> {
+  %0:2 = "stablehlo.all_reduce"(%arg0, %arg1) <{replica_groups = dense<> : tensor<0x0xi64>}> ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+  %2 = stablehlo.add %arg2, %arg3 : tensor<f32>
+  stablehlo.return %2 : tensor<f32>
+  }) : (tensor<8xf32>, tensor<f32>) -> (tensor<8xf32>, tensor<f32>)
+  %1 = stablehlo.tuple %0#0, %0#1 {xla_shape = "(f32[8]{0}, f32[])"} : tuple<tensor<8xf32>, tensor<f32>>
+  return %1 : tuple<tensor<8xf32>, tensor<f32>>
+  }
+}
+// CHECK-DIRECT: stablehlo.all_reduce
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[1,10]{1,0}, s32[1,10]{1,0}, f32[], s32[])->(f32[1]{0}, s32[1]{0})}
+
+// CHECK:       %[[$region_0_5:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_6:[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:  %[[Arg_2_8:[^ ]+]] = f32[] parameter(2)
+// CHECK-NEXT:  %[[maximum_10:[^ ]+]] = f32[] maximum(%[[Arg_0_6]], %[[Arg_2_8]]),
+// CHECK-NEXT:  %[[Arg_1_7:[^ ]+]] = s32[] parameter(1)
+// CHECK-NEXT:  %[[Arg_3_9:[^ ]+]] = s32[] parameter(3)
+// CHECK-NEXT:  %[[maximum_11:[^ ]+]] = s32[] maximum(%[[Arg_1_7]], %[[Arg_3_9]]),
+// CHECK-NEXT:  ROOT %[[tuple_12:[^ ]+]] = (f32[], s32[]) tuple(%[[maximum_10]], %[[maximum_11]])
+
+// CHECK:  ENTRY %[[$main_17:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[1,10] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = s32[1,10] parameter(1)
+// CHECK-NEXT:  %[[Arg_2_3:[^ ]+]] = f32[] parameter(2)
+// CHECK-NEXT:  %[[Arg_3_4:[^ ]+]] = s32[] parameter(3)
+// CHECK-NEXT:  %[[reduce_13:[^ ]+]] = (f32[1], s32[1]) reduce(%[[Arg_0_1]], %[[Arg_1_2]], %[[Arg_2_3]], %[[Arg_3_4]]), dimensions={1}, to_apply=%[[$region_0_5]],
+// CHECK-NEXT:  %[[get_tuple_element_14:[^ ]+]] = f32[1] get-tuple-element(%[[reduce_13]]), index=0,
+// CHECK-NEXT:  %[[get_tuple_element_15:[^ ]+]] = s32[1] get-tuple-element(%[[reduce_13]]), index=1,
+// CHECK-NEXT:  ROOT %[[tuple_16:[^ ]+]] = (f32[1], s32[1]) tuple(%[[get_tuple_element_14]], %[[get_tuple_element_15]])
+func.func @main(%arg0: tensor<1x10xf32>, %arg1: tensor<1x10xi32>, %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>) {
+  %0:2 = stablehlo.reduce(%arg0 init: %arg2), (%arg1 init: %arg3) across dimensions = [1] : (tensor<1x10xf32>, tensor<1x10xi32>, tensor<f32>, tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>)
+    reducer(%arg4: tensor<f32>, %arg6: tensor<f32>) (%arg5: tensor<i32>, %arg7: tensor<i32>)  {
+    %1 = stablehlo.maximum %arg4, %arg6 : tensor<f32>
+    %2 = stablehlo.maximum %arg5, %arg7 : tensor<i32>
+    stablehlo.return %1, %2 : tensor<f32>, tensor<i32>
+  }
+  return %0#0, %0#1 : tensor<1xf32>, tensor<1xi32>
+}
+// CHECK-DIRECT: stablehlo.reduce
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[4]{0}, f32[4]{0})->f32[4]{0}}
+
+// CHECK:       %[[$region_0_3:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_4:[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_5:[^ ]+]] = f32[] parameter(1)
+// CHECK-NEXT:  ROOT %[[add_6:[^ ]+]] = f32[] add(%[[Arg_0_4]], %[[Arg_1_5]]), metadata=
+
+// CHECK:       ENTRY %[[$main_8:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[4] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = f32[4] parameter(1)
+// CHECK-NEXT:  ROOT %[[map_7:[^ ]+]] = f32[4] map(%[[Arg_0_1]], %[[Arg_1_2]]), dimensions={0}, to_apply=%[[$region_0_3]], metadata=
+
+module {
+  func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  %0 = "stablehlo.map"(%arg0, %arg1) <{dimensions = array<i64: 0>}> ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+  %1 = stablehlo.add %arg2, %arg3 : tensor<f32>
+  stablehlo.return %1 : tensor<f32>
+  }) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+  }
+}
+// CHECK-DIRECT: stablehlo.map
