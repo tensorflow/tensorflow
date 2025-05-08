@@ -95,6 +95,15 @@ class AlgebraicSimplifierOptions {
 
   bool is_layout_sensitive() const { return is_layout_sensitive_; }
 
+  void set_is_slice_dynamic_shape_sensitive(
+      bool is_slice_dynamic_shape_sensitive) {
+    is_slice_dynamic_shape_sensitive_ = is_slice_dynamic_shape_sensitive;
+  }
+
+  bool is_slice_dynamic_shape_sensitive() const {
+    return is_slice_dynamic_shape_sensitive_;
+  }
+
   void set_use_associative_reordering(bool use_associative_reordering) {
     use_associative_reordering_ = use_associative_reordering;
   }
@@ -363,6 +372,7 @@ class AlgebraicSimplifierOptions {
   ReshapeIsBitcastCallback reshape_is_bitcast_callback_;
   ConvIsLowerableCallback conv_is_lowerable_callback_;
   bool is_layout_sensitive_{false};
+  bool is_slice_dynamic_shape_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
   bool supports_non_canonical_dots_{true};
   bool enable_dot_to_multiply_rewrite_{true};
