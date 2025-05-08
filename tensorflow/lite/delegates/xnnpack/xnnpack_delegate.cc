@@ -6738,14 +6738,15 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       return nullptr;  // Hard error.
     }
 
-    if (CheckNumInputs(context, node, /*expected_num_inputs=*/1,
-                       static_cast<BuiltinOperator>(registration->builtin_code),
-                       producer_index) != kTfLiteOk) {
+    if (Subgraph::CheckNumInputs(
+            context, node, /*expected_num_inputs=*/1,
+            static_cast<BuiltinOperator>(registration->builtin_code),
+            producer_index) != kTfLiteOk) {
       TfLiteIntArrayFree(nodes_to_delegate);
       return nullptr;  // Hard error.
     }
 
-    if (CheckNumOutputs(
+    if (Subgraph::CheckNumOutputs(
             context, node, /*expected_num_outputs=*/1,
             static_cast<BuiltinOperator>(registration->builtin_code),
             producer_index) != kTfLiteOk) {
