@@ -769,6 +769,25 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tf_quantize_passes",
+    srcs = ["tf_quantize_passes.cc"],
+    hdrs = ["tf_quantize_passes.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":quantization_options_proto_cc",
+        ":tf_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
+        "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir_hlo:mhlo_passes",
+    ],
+)
+
 # OSS only: This target is header-only. Link `quantization_options_proto_impl` only to
 # `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link
 # `quantization_options_proto_impl` directly unless the target does not link
