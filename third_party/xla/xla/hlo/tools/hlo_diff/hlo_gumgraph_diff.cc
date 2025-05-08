@@ -62,8 +62,8 @@ absl::StatusOr<std::unique_ptr<const HloGumgraphMappings>> FindMappings(
       /*visit_unreachable_nodes=*/true));
 
   std::vector<std::unique_ptr<HloGumgraphMatcher>> matchers;
-  matchers.push_back(
-      std::make_unique<GreedySubGraphExactMatcher>(&left, &right));
+  matchers.push_back(std::make_unique<GreedyTopDownMatcher>(
+      &left, &right, /*require_same_children=*/true));
   matchers.push_back(
       std::make_unique<GreedyLimitedCandidatesBottomUpMatcher>(&left, &right));
   if (options.use_top_down_matcher) {

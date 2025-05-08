@@ -546,6 +546,83 @@ ENTRY entry {
           Pair("root_L", "root_R")));
 }
 
+TEST_F(HloMatcherTest, GreedyTopDownMatcherStopAtDifferentChildren) {
+  // Create left module with entry computation containing the following
+  // structure:
+  // [Const 0] ---> ┌-------┐
+  //                | add_0 | --------> ┌-------┐
+  // [Const 1] ---> └-------┘           |       |      ┌-------┐
+  //                                    | add_3 | ---> |       |
+  // [Const 2] ---> ┌------------┐      |       |      |       |      ┌------┐
+  //                | subtract_1 | ---> └-------┘      | add_4 | ---> | ROOT |
+  // [Const 3] ---> └------------┘                     |       |      └------┘
+  //                                                   |       |
+  // [Const 4] --------------------------------------> └-------┘
+  //
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  constant.0 = f32[] constant(0)
+  constant.1 = f32[] constant(0)
+  constant.2 = f32[] constant(0)
+  constant.3 = f32[] constant(0)
+  constant.4 = f32[] constant(0)
+  add.0 = f32[] add(constant.0, constant.1)
+  subtract.1 = f32[] subtract(constant.2, constant.3)
+  add.3 = f32[] add(add.0, subtract.1)
+  add.4 = f32[] add(add.3, constant.4)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                          HloGumgraph::Create(module_l.get()));
+
+  // Create right module with entry computation containing the following
+  // structure:
+  // [Const 0] ---> ┌-------┐
+  //                | add_0 | ---> ┌-------┐
+  // [Const 1] ---> └-------┘      |       |      ┌-------┐
+  //                               | add_3 | ---> |       |
+  // [Const 2] ---> ┌-------┐      |       |      |       |      ┌------┐
+  //                | add_1 | ---> └-------┘      | add_4 | ---> | ROOT |
+  // [Const 3] ---> └-------┘                     |       |      └------┘
+  //                                              |       |
+  // [Const 4] ---------------------------------> └-------┘
+  //
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  constant.0 = f32[] constant(0)
+  constant.1 = f32[] constant(0)
+  constant.2 = f32[] constant(0)
+  constant.3 = f32[] constant(0)
+  constant.4 = f32[] constant(0)
+  add.0 = f32[] add(constant.0, constant.1)
+  add.1 = f32[] add(constant.2, constant.3)
+  add.3 = f32[] add(add.0, add.1)
+  add.4 = f32[] add(add.3, constant.4)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                          HloGumgraph::Create(module_r.get()));
+  auto mappings = std::make_unique<HloGumgraphMappings>();
+  auto matcher = std::make_unique<GreedyTopDownMatcher>(
+      graph_l.get(), graph_r.get(), /*require_same_children=*/true);
+  // Root nodes are matched by default before the matcher is called.
+  mappings->MapInstructionsIfAbsent(&graph_l->GetRoot(), &graph_r->GetRoot(),
+                                    MatcherType::kManual);
+  matcher->Match(*mappings);
+  auto mapped_nodes = ExtractMappedInstructionNames(*mappings);
+
+  EXPECT_THAT(mapped_nodes,
+              UnorderedElementsAre(
+                  Pair("add.3", "add.3"), Pair("constant.4", "constant.4"),
+                  Pair("add.4", "add.4"), Pair("root_L", "root_R")));
+}
+
 }  // namespace
 }  // namespace hlo_diff
 }  // namespace xla

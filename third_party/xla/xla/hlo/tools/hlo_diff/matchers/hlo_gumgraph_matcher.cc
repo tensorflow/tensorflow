@@ -133,7 +133,19 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
 void RecursiveTopDownMatcher(const HloInstructionNode* left,
                              const HloInstructionNode* right,
                              const MatcherType matcher_type,
-                             HloGumgraphMappings& mappings) {
+                             HloGumgraphMappings& mappings,
+                             bool require_same_children) {
+  if (require_same_children) {
+    if (left->children.size() != right->children.size()) {
+      return;
+    }
+    for (auto i = 0; i < left->children.size(); ++i) {
+      if (left->children[i]->instruction->opcode() !=
+          right->children[i]->instruction->opcode()) {
+        return;
+      }
+    }
+  }
   for (auto i = 0; i < left->children.size() && i < right->children.size();
        ++i) {
     const HloInstructionNode* left_child = left->children[i];
@@ -147,7 +159,8 @@ void RecursiveTopDownMatcher(const HloInstructionNode* left,
       // non-overwriting mapping failed.
       continue;
     }
-    RecursiveTopDownMatcher(left_child, right_child, matcher_type, mappings);
+    RecursiveTopDownMatcher(left_child, right_child, matcher_type, mappings,
+                            require_same_children);
   }
 }
 
@@ -544,7 +557,8 @@ void GreedyTopDownMatcher::Match(HloGumgraphMappings& mappings) const {
           return;
         }
 
-        RecursiveTopDownMatcher(&left_node, it->second, type_, mappings);
+        RecursiveTopDownMatcher(&left_node, it->second, type_, mappings,
+                                require_same_children_);
       },
       DfsTraversalOrder::kPostOrder, left_.GetNodeCount());
   LOG(INFO) << "Finished GreedyTopDownMatcher. Total left to right mappings: "

@@ -116,15 +116,18 @@ class GreedyLimitedCandidatesBottomUpMatcher : public HloGumgraphMatcher {
 // Matcher that matches nodes top down by same type sequence along the path.
 class GreedyTopDownMatcher : public HloGumgraphMatcher {
  public:
-  GreedyTopDownMatcher(const HloGumgraph* left, const HloGumgraph* right)
+  GreedyTopDownMatcher(const HloGumgraph* left, const HloGumgraph* right,
+                       bool require_same_children = false)
       : HloGumgraphMatcher(MatcherType::kGreedyTopDownMatcher),
         left_(*ABSL_DIE_IF_NULL(left)),
-        right_(*ABSL_DIE_IF_NULL(right)) {}
+        right_(*ABSL_DIE_IF_NULL(right)),
+        require_same_children_(require_same_children) {}
   void Match(HloGumgraphMappings& mappings) const override;
 
  private:
   const HloGumgraph& left_;
   const HloGumgraph& right_;
+  const bool require_same_children_;
 };
 
 }  // namespace hlo_diff
