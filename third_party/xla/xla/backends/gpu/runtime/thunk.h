@@ -475,6 +475,12 @@ class Thunk {
   // Returns `true` if this thunk requires inter-GPU communication.
   bool IsCollective() const;
 
+  // Returns any communicators used during execution.
+  virtual absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
+      const ExecuteParams& params) const {
+    return std::vector<Communicator*>();
+  }
+
   // Invokes `fn` with this thunk and all nested thunks.
   virtual void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const;
 

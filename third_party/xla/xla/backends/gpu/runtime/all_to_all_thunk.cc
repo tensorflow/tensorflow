@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -265,38 +266,24 @@ absl::Status RunAllToAll(GpuCollectives* collectives, bool has_split_dimension,
   return absl::OkStatus();
 }
 
-static absl::Status SendPtrToPeer(void* ptr, RankId peer, Communicator* comm,
+static absl::Status SendPtrToPeer(void* ptr, RankId peer, GpuCommunicator* comm,
                                   se::Stream& stream) {
   VLOG(3) << absl::StreamFormat(
       "RecvPtrFromPeer on device #%d; peer=%d; comm=%p; stream=%p",
       stream.parent()->device_ordinal(), peer.value(), comm, &stream);
 
-  auto event = comm->Send(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1,
+  return comm->LaunchSend(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1,
                           peer, GpuCollectives::On(stream));
-
-  tsl::BlockUntilReady(event);
-  if (event.IsError()) {
-    return event.GetError();
-  }
-
-  return absl::OkStatus();
 }
 
-static absl::Status RecvPtrFromPeer(void* ptr, RankId peer, Communicator* comm,
-                                    se::Stream& stream) {
+static absl::Status RecvPtrFromPeer(void* ptr, RankId peer,
+                                    GpuCommunicator* comm, se::Stream& stream) {
   VLOG(3) << absl::StreamFormat(
       "RecvPtrFromPeer on device #%d; peer=%d; comm=%p; stream=%p",
       stream.parent()->device_ordinal(), peer.value(), comm, &stream);
 
-  auto event = comm->Recv(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1,
+  return comm->LaunchRecv(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1,
                           peer, GpuCollectives::On(stream));
-
-  tsl::BlockUntilReady(event);
-  if (event.IsError()) {
-    return event.GetError();
-  }
-
-  return absl::OkStatus();
 }
 
 // TODO(b/380457503): Memcpy AllToAll implementation must be moved to
@@ -314,6 +301,7 @@ absl::Status RunMemCpyAllToAll(GpuCollectives* collectives,
       MaybeRegisterBuffers(collectives, stream.parent(), buffers, comm));
 
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
+  TF_ASSIGN_OR_RETURN(GpuCommunicator * gpu_comm, collectives->TryCast(comm));
 
   // AllToAll can operate in two modes. Either it specifies a split dimension,
   // in which case inputs are split and outputs concatenated in that dimension
@@ -326,19 +314,27 @@ absl::Status RunMemCpyAllToAll(GpuCollectives* collectives,
 
       size_t chunk_element_count = buffer.element_count / num_ranks;
 
-      TF_RETURN_IF_ERROR(collectives->GroupStart());
-      for (int peer = 0; peer < num_ranks; ++peer) {
-        se::DeviceMemoryBase recv_slice =
-            collectives->Slice(buffer.destination_buffer, buffer.element_type,
-                               peer * chunk_element_count, chunk_element_count);
-        send_pointer_map[peer] = (uint64_t)recv_slice.opaque();
+      tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
+          [num_ranks, collectives, chunk_element_count, send_pointer_map,
+           receive_pointer_map, &buffer,
+           &stream](GpuCommunicator* comm) -> absl::Status {
+            for (int peer = 0; peer < num_ranks; ++peer) {
+              se::DeviceMemoryBase recv_slice = collectives->Slice(
+                  buffer.destination_buffer, buffer.element_type,
+                  peer * chunk_element_count, chunk_element_count);
+              send_pointer_map[peer] = (uint64_t)recv_slice.opaque();
 
-        TF_RETURN_IF_ERROR(
-            SendPtrToPeer(&send_pointer_map[peer], RankId(peer), comm, stream));
-        TF_RETURN_IF_ERROR(RecvPtrFromPeer(&receive_pointer_map[peer],
-                                           RankId(peer), comm, stream));
+              TF_RETURN_IF_ERROR(SendPtrToPeer(&send_pointer_map[peer],
+                                               RankId(peer), comm, stream));
+              TF_RETURN_IF_ERROR(RecvPtrFromPeer(&receive_pointer_map[peer],
+                                                 RankId(peer), comm, stream));
+            }
+            return absl::OkStatus();
+          });
+      tsl::BlockUntilReady(event);
+      if (event.IsError()) {
+        return event.GetError();
       }
-      TF_RETURN_IF_ERROR(collectives->GroupEnd());
       TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
       for (int peer = 0; peer < num_ranks; ++peer) {
@@ -355,17 +351,24 @@ absl::Status RunMemCpyAllToAll(GpuCollectives* collectives,
     TF_RET_CHECK(buffers.size() == num_ranks)
         << "Number of inputs didn't match the number of participants.";
 
-    TF_RETURN_IF_ERROR(collectives->GroupStart());
-    for (int peer = 0; peer < num_ranks; ++peer) {
-      send_pointer_map[peer] =
-          (uint64_t)buffers[peer].destination_buffer.opaque();
+    tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
+        [num_ranks, send_pointer_map, receive_pointer_map, &buffers,
+         &stream](GpuCommunicator* comm) -> absl::Status {
+          for (int peer = 0; peer < num_ranks; ++peer) {
+            send_pointer_map[peer] =
+                (uint64_t)buffers[peer].destination_buffer.opaque();
 
-      TF_RETURN_IF_ERROR(
-          SendPtrToPeer(&send_pointer_map[peer], RankId(peer), comm, stream));
-      TF_RETURN_IF_ERROR(RecvPtrFromPeer(&receive_pointer_map[peer],
-                                         RankId(peer), comm, stream));
+            TF_RETURN_IF_ERROR(SendPtrToPeer(&send_pointer_map[peer],
+                                             RankId(peer), comm, stream));
+            TF_RETURN_IF_ERROR(RecvPtrFromPeer(&receive_pointer_map[peer],
+                                               RankId(peer), comm, stream));
+          }
+          return absl::OkStatus();
+        });
+    tsl::BlockUntilReady(event);
+    if (event.IsError()) {
+      return event.GetError();
     }
-    TF_RETURN_IF_ERROR(collectives->GroupEnd());
     TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
     for (int peer = 0; peer < num_ranks; ++peer) {
