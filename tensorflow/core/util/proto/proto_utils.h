@@ -52,17 +52,18 @@ class StringErrorCollector : public protobuf::io::ErrorCollector {
   StringErrorCollector(const StringErrorCollector&) = delete;
   StringErrorCollector& operator=(const StringErrorCollector&) = delete;
 
-  // Implementation of protobuf::io::ErrorCollector::AddError.
-  void AddError(int line, int column, const string& message) override;
+  // Implementation of protobuf::io::ErrorCollector::RecordError.
+  void RecordError(int line, protobuf::io::ColumnNumber column,
+                   absl::string_view message) override;
 
-  // Implementation of protobuf::io::ErrorCollector::AddWarning.
-  void AddWarning(int line, int column, const string& message) override;
+  // Implementation of protobuf::io::ErrorCollector::RecordWarning.
+  void RecordWarning(int line, protobuf::io::ColumnNumber column,
+                     absl::string_view message) override;
 
  private:
   string* const error_text_;
   const int index_offset_;
 };
-
 
 }  // namespace proto_utils
 }  // namespace tensorflow

@@ -53,11 +53,32 @@
 build --define framework_shared_object=true
 build --define tsl_protobuf_header_only=true
 
-build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 
 build --spawn_strategy=standalone
 build -c opt
+
+build --repo_env=USE_PYWRAP_RULES=True
+build --copt=-DGRPC_BAZEL_BUILD
+build --host_copt=-DGRPC_BAZEL_BUILD
+build --action_env=GRPC_BAZEL_RUNTIME=1
+build --repo_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
+build --action_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
+build --repo_env=RULES_PYTHON_ENABLE_PYSTAR=0
+# Do not do this. This is how gRPC builds itself by default, but we don't want
+# that as it would link protobuf into its own set of dynamic libraries, which
+# would conflict with our protobuf linkage.
+#build --define=use_fast_cpp_protos=true
+
+# For local build, without dependency on rbe
+build:linux_cpu --config=avx_linux
+build:linux_cpu --linkopt=-lrt
+build:linux_cpu --host_linkopt=-lrt
+build:linux_cpu --linkopt=-lm
+build:linux_cpu --host_linkopt=-lm
+build:linux_cpu --config=avx_linux
+build:linux_cpu --copt=-Wno-error=unused-command-line-argument
+build:linux_cpu --copt=-Wno-gnu-offsetof-extensions
 
 # Make Bazel print out all options from rc files.
 common --announce_rc
@@ -373,8 +394,8 @@ build:avx_linux --copt=-mavx
 build:avx_linux --host_copt=-mavx
 build:avx_win --copt=/arch:AVX
 
-build:win_clang_base --@com_google_protobuf//:use_dlls=True
-build:win_clang_base --@com_google_absl//absl:use_dlls
+build:win_clang_base --@com_google_protobuf//build_defs:use_dlls=True
+build:win_clang_base --@com_google_absl//absl:use_dlls=True
 build:win_clang_base --linkopt=/demangle:no --host_linkopt=/demangle:no
 build:win_clang_base --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
 build:win_clang_base --copt=/clang:-Weverything
