@@ -2597,6 +2597,7 @@ xla_cc_test(
     data = ["data/hlo_algorithm_denylist.pbtxt"],
     deps = [
         ":hlo_algorithm_denylist",
+        "//xla:debug_options_flags",
         "//xla/stream_executor:dnn",
         "//xla/tests:test_utils",
         "@com_google_absl//absl/strings",

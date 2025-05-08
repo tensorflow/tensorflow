@@ -209,6 +209,7 @@ void DumpNonDefaultDebugOptions(const HloModule& module,
 
 // Returns the non-default debug options as a string. The default debug options
 // are received from DefaultDebugOptionsIgnoringFlags().
+// TODO: move this to xla/debug_options_flags.cc
 std::string GetNonDefaultDebugOptions(const DebugOptions& debug_options);
 
 }  // namespace xla
