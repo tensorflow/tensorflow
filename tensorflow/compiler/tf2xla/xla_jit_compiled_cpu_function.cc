@@ -15,20 +15,25 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_jit_compiled_cpu_function.h"
 
+#include <cstddef>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
+#include "xla/backends/cpu/codegen/compiled_function_library.h"
 #include "xla/client/client_library.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/cpu/buffer_info_util.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
@@ -39,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -131,22 +137,15 @@ XlaJitCompiledCpuFunction::Compile(
     arg_shapes.push_back(&program_shape->parameters(i));
   }
 
-  // TODO(b/342515164): Implement XLA jit compiled functions + thunks.
-  xla::ExecutableBuildOptions build_options_copy = build_options;
-  build_options_copy.mutable_debug_options()->set_xla_cpu_use_thunk_runtime(
-      false);
-
   // Compile the executable. The static_cast to the CpuExecutable subclass is
   // necessary since the raw function and buffer assignments are only available
   // there.
-  TF_ASSIGN_OR_RETURN(auto executables, client->Compile(computation, arg_shapes,
-                                                        build_options_copy));
+  TF_ASSIGN_OR_RETURN(auto executables,
+                      client->Compile(computation, arg_shapes, build_options));
   TF_RET_CHECK(executables.size() == 1);
   std::unique_ptr<xla::LocalExecutable> executable = std::move(executables[0]);
-  const xla::cpu::CpuExecutable* cpu_executable =
+  xla::cpu::CpuExecutable* cpu_executable =
       static_cast<xla::cpu::CpuExecutable*>(executable->executable());
-  XlaCompiledCpuFunction::RawFunction raw_function =
-      cpu_executable->compute_function();
   const xla::BufferAssignment& buffer_assignment =
       cpu_executable->buffer_assignment();
 
@@ -156,26 +155,82 @@ XlaJitCompiledCpuFunction::Compile(
                                                       buffer_assignment);
   std::vector<int32> arg_index_table =
       xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
+  std::vector<int32> result_index_table =
+      xla::cpu::CreateResultIndexTableFromBufferInfos(buffer_infos);
   TF_ASSIGN_OR_RETURN(size_t result_index,
                       ComputeResultIndex(buffer_assignment));
   const int num_results = CountResults(buffer_infos);
 
   std::unique_ptr<XlaJitCompiledCpuFunction> jit_unique_ptr(
       new XlaJitCompiledCpuFunction);
+
   XlaJitCompiledCpuFunction* jit = jit_unique_ptr.get();
+
+  if (!cpu_executable->has_thunks()) {
+    return absl::InternalError(
+        "JIT compilation supports only thunk execution.");
+  }
+
+  {
+    // This is here for simplicity, effectively just used to get the thunk
+    // information to the XlaCompiledCpuFunction.
+    TF_ASSIGN_OR_RETURN(
+        auto compilation_result,
+        xla::cpu::CpuAotCompilationResultThunks::Create(
+            &cpu_executable->module(), &cpu_executable->buffer_assignment(),
+            cpu_executable->module_name(),
+            // Symbols and object files are not needed since the function
+            // library will be backed by the one in the executable which is
+            // owned by XlaJitCompiledCpuFunction.
+            /*obj_files=*/{}, /*symbols=*/{},
+            cpu_executable->thunks().thunk_sequence(),
+            cpu_executable->function_library(),
+            /*hlo_profile_printer_data=*/nullptr));
+
+    const std::optional<size_t> temp_allocation_index =
+        compilation_result->temp_allocation_index();
+
+    XlaCompiledCpuFunction::set_static_data_temp_allocation_index(
+        &jit->static_data_, temp_allocation_index);
+
+    jit->compilation_result_proto_ =
+        std::make_unique<xla::cpu::CompilationResultProto>(
+            compilation_result->proto());
+
+    auto compiled_function_library =
+        tsl::down_cast<xla::cpu::CompiledFunctionLibrary*>(
+            cpu_executable->function_library());
+
+    if (!compiled_function_library) {
+      return absl::InternalError(
+          "Could not downcast FunctionLibrary to CompiledFunctionLibrary");
+    }
+
+    // NOTE: This will work because the function library is by the
+    // executable and keeps the function pointers alive.
+    jit->function_library_symbol_map_ =
+        compiled_function_library->GetTypelessSymbolsMap();
+  }
+
   jit->executable_ = std::move(executable);
   jit->buffer_infos_ = std::move(buffer_infos);
   jit->arg_index_table_ = std::move(arg_index_table);
+  jit->result_index_table_ = std::move(result_index_table);
   jit->program_shape_ =
       std::make_unique<xla::ProgramShapeProto>(program_shape->ToProto());
-  XlaCompiledCpuFunction::set_static_data_raw_function(&jit->static_data_,
-                                                       raw_function);
+  XlaCompiledCpuFunction::set_static_data_compilation_result_proto(
+      &jit->static_data_, jit->compilation_result_proto_.get());
+  XlaCompiledCpuFunction::set_static_data_function_library_symbol_map(
+      &jit->static_data_, jit->function_library_symbol_map_);
+
   XlaCompiledCpuFunction::set_static_data_buffer_infos(
       &jit->static_data_, jit->buffer_infos_.data());
   XlaCompiledCpuFunction::set_static_data_num_buffers(
       &jit->static_data_, jit->buffer_infos_.size());
   XlaCompiledCpuFunction::set_static_data_arg_index_table(
       &jit->static_data_, jit->arg_index_table_.data());
+  XlaCompiledCpuFunction::set_static_data_result_index_table(
+      &jit->static_data_, jit->result_index_table_.data());
   XlaCompiledCpuFunction::set_static_data_num_args(
       &jit->static_data_, jit->arg_index_table_.size());
   XlaCompiledCpuFunction::set_static_data_num_variables(&jit->static_data_,
