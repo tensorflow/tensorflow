@@ -836,6 +836,8 @@ class Subgraph {
         case kTfLiteBuiltinExpandDims:
         case kTfLiteBuiltinMean:
         case kTfLiteBuiltinPad:
+        case kTfLiteBuiltinReduceMax:
+        case kTfLiteBuiltinReduceMin:
         case kTfLiteBuiltinSum:
         case kTfLiteBuiltinReshape:
         case kTfLiteBuiltinResizeBilinear:
@@ -2865,7 +2867,22 @@ class Subgraph {
                                   node_index, node, context->tensors,
                                   pool_params, input_output_tensors);
       }
-
+      case kTfLiteBuiltinReduceMin: {
+        const TfLiteReducerParams* reducer_params =
+            static_cast<const TfLiteReducerParams*>(node->builtin_data);
+        return VisitReduceNode(BuiltinOperator_MIN, xnn_reduce_min, subgraph,
+                               delegate, logging_context, node_index, node,
+                               context->tensors, reducer_params,
+                               input_output_tensors);
+      }
+      case kTfLiteBuiltinReduceMax: {
+        const TfLiteReducerParams* reducer_params =
+            static_cast<const TfLiteReducerParams*>(node->builtin_data);
+        return VisitReduceNode(BuiltinOperator_MAX, xnn_reduce_max, subgraph,
+                               delegate, logging_context, node_index, node,
+                               context->tensors, reducer_params,
+                               input_output_tensors);
+      }
       case kTfLiteBuiltinSum: {
         const TfLiteReducerParams* reducer_params =
             static_cast<const TfLiteReducerParams*>(node->builtin_data);
