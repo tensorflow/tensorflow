@@ -596,6 +596,20 @@ cc_library(
 )
 
 gentbl_cc_library(
+    name = "tf_stablehlo_test_passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = {"passes/testing/tf_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=Test",
+    ]},
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/testing/tf_passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+gentbl_cc_library(
     name = "stablehlo_test_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
     tbl_outs = {"passes/testing/passes.h.inc": [
@@ -606,6 +620,48 @@ gentbl_cc_library(
     td_file = "passes/testing/passes.td",
     deps = [
         "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "tf_test_passes",
+    srcs = [
+        "passes/testing/tf_test_lift_quantizable_spots_as_functions_with_quantization_specs.cc",
+        "passes/testing/tf_test_post_calibration_component.cc",
+        "passes/testing/tf_test_pre_calibration_component.cc",
+        "passes/testing/tf_test_tf_to_stablehlo_pass.cc",
+    ],
+    hdrs = [
+        "passes/testing/tf_passes.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":quantization_config_proto_cc",
+        ":tf_passes",
+        ":tf_stablehlo_test_passes_inc_gen",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:config",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_post_calibration",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_pre_calibration",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quantize_preprocess",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SparseTensorDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:UBDialect",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//xla/mlir_hlo",
+        "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:vhlo_ops",
     ],
 )
 

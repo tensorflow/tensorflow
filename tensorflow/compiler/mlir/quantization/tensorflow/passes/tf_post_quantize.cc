@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_traits.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
 
@@ -81,9 +82,9 @@ struct RemoveVolatileOps
   LogicalResult matchAndRewrite(mlir::quant::ir::DequantizeCastOp op,
                                 PatternRewriter& rewriter) const override {
     auto input_op = op.getArg().getDefiningOp();
-    if (auto q = llvm::dyn_cast_or_null<mlir::quant::ir::QuantizeCastOp>(
-      input_op)) {
-      if (!q->getAttr(tf_quant::kVolatileOpAttrName)) return failure();
+    if (auto q =
+            llvm::dyn_cast_or_null<mlir::quant::ir::QuantizeCastOp>(input_op)) {
+      if (!q->getAttr(kVolatileOpAttrName)) return failure();
 
       if (remove_volatile_ops_type == kPreserveInputsAndOutputs) {
         // Don't remove leading and trailing QDQ for PTQ workflow, so the io
@@ -139,9 +140,8 @@ void TFPostQuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
-  patterns
-      .add<tf_quant::FoldTrivalRequantizeOp<mlir::quant::ir::QuantizeCastOp>,
-           RemoveVolatileOps<kPreserveNone>, RemoveRedundantScast>(ctx);
+  patterns.add<FoldTrivalRequantizeOp<mlir::quant::ir::QuantizeCastOp>,
+               RemoveVolatileOps<kPreserveNone>, RemoveRedundantScast>(ctx);
   populateWithGenerated(patterns);
   if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     signalPassFailure();
