@@ -21,6 +21,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 
+// The order of includes here is important.
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_attrs.cc.inc"
 
