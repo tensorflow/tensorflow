@@ -1530,13 +1530,15 @@ TEST(FunctionLibraryDefinitionTest, ReachableDefinitions) {
   EXPECT_FALSE(reachable_flib.Contains("Func6"));
 }
 
-TEST(FunctionLibraryDefinitionTest, AddAndFindOptimizedFunctionGraph) {
+TEST(FunctionLibraryDefinitionTest, AddHasAndFindOptimizedFunctionGraph) {
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   EXPECT_FALSE(lib_def.FindOptimizedFunctionGraph("test").has_value());
+  EXPECT_FALSE(lib_def.HasOptimizedFunctionGraph("test"));
   OptimizedFunctionGraph proto;
   lib_def.AddOptimizedFunctionGraph("test", proto);
   EXPECT_TRUE(lib_def.FindOptimizedFunctionGraph("test").has_value());
   EXPECT_TRUE(lib_def.FindOptimizedFunctionGraph("test").value().ok());
+  EXPECT_TRUE(lib_def.HasOptimizedFunctionGraph("test"));
 }
 
 TEST(FunctionLibraryDefinitionTest, MoveTest) {
@@ -1549,6 +1551,7 @@ TEST(FunctionLibraryDefinitionTest, MoveTest) {
   EXPECT_TRUE(copy_lib_def.Contains("XTimesTwo"));
   EXPECT_TRUE(copy_lib_def.FindOptimizedFunctionGraph("test").has_value());
   EXPECT_TRUE(copy_lib_def.FindOptimizedFunctionGraph("test").value().ok());
+  EXPECT_TRUE(copy_lib_def.HasOptimizedFunctionGraph("test"));
 }
 
 TEST(FunctionLibraryDefinitionTest, ConstructFromGraphDef) {
