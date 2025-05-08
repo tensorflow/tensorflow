@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/convolution_lib.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 namespace tfcompile {
