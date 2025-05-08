@@ -59,7 +59,6 @@ cc_library(
         "//xla/service:while_loop_constant_sinking",
         "//xla/service:while_loop_invariant_code_motion",
         "//xla/service:while_loop_simplifier",
-        "//xla/service/gpu/transforms:collective_permute_valid_iteration_annotator",
         "//xla/service/gpu/transforms:scatter_expander",
         "//xla/service/gpu/transforms:scatter_slice_simplifier",
         "//xla/service/gpu/transforms/collectives:all_gather_dynamic_slice_simplifier",
