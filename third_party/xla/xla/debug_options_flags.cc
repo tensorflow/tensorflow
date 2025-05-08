@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/cpu_info.h"  // NOLINT
@@ -372,7 +373,7 @@ static thread_local std::unique_ptr<
 // Logs a warning if a pass's fuel was never consumed, on the theory that this
 // may be a typo in the flag value.  Called atexit.
 static void WarnIfFuelWasNeverConsumed() {
-  CHECK(fuel_ever_consumed != nullptr);
+  CHECK_NOTNULL(fuel_ever_consumed);
   for (const auto& kv : *fuel_ever_consumed) {
     absl::string_view pass = kv.first;
     bool was_consumed = kv.second;
@@ -2451,7 +2452,7 @@ void ResetThreadLocalFuel() {
 
   thread_fuel = std::make_unique<
       absl::node_hash_map<std::string, std::atomic<int64_t>>>();
-  CHECK(initial_fuel != nullptr);
+  CHECK_NOTNULL(initial_fuel);
   for (const auto& kv : *initial_fuel) {
     thread_fuel->emplace(kv.first, kv.second);
   }
