@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
-#include "xla/pjrt/gpu/tfrt/stream_pool.h"
 #include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -129,7 +128,6 @@ class TfrtGpuDevice final : public PjRtDevice {
     PjRtLocalDeviceId local_device_id;
     PjRtLocalHardwareId local_hardware_id;
     se::StreamExecutor* executor;
-    int stream_capacity;
     int max_inflight_computations;
     std::string platform_version;
     std::string compute_capability;
@@ -195,7 +193,7 @@ class TfrtGpuDevice final : public PjRtDevice {
   // Returns a fresh, PRNG-generated random seed for an XLA computation.
   int GetNewPrngSeed();
 
-  BoundedStreamPool& stream_pool() { return stream_pool_; }
+  se::Stream* stream() const { return stream_.get(); }
 
   se::StreamExecutor* executor() { return executor_; }
 
@@ -215,7 +213,7 @@ class TfrtGpuDevice final : public PjRtDevice {
   const PjRtLocalDeviceId local_device_id_;
   const PjRtLocalHardwareId local_hardware_id_;
   se::StreamExecutor* executor_;
-  BoundedStreamPool stream_pool_;
+  std::unique_ptr<se::Stream> stream_;
   absl::InlinedVector<PjRtMemorySpace*, 1> memory_spaces_;
   absl::flat_hash_map<int, PjRtMemorySpace*> memory_spaces_by_kind_id_;
 

@@ -64,7 +64,6 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
-#include "xla/pjrt/gpu/tfrt/stream_pool.h"
 #include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -447,10 +446,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
       ShapedBuffer shaped_buffer =
           buffer->AsShapedBuffer(device_shapes_[buffer_index], device_);
 
-      absl::StatusOr<BoundedStreamPool::Handle> stream =
-          device_->stream_pool().Borrow();
-      TF_CHECK_OK(stream.status());
-      CHECK_NE(stream->get(), nullptr);
+      auto stream = device_->stream();
 
       GenericTransferManager::LiteralFromDeviceMetadata transfer_metadata;
       // We never call device functions from the `done` callback.
@@ -461,9 +457,9 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
               : nullptr;
 
       TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-          stream->get(), literal, shaped_buffer, transfer_metadata_ptr));
+          stream, literal, shaped_buffer, transfer_metadata_ptr));
 
-      TF_CHECK_OK((*stream)->BlockHostUntilDone())
+      TF_CHECK_OK(stream->BlockHostUntilDone())
           << "Failed to block host until done";
 
       CleanUp(buffer_index, /*is_last_transfer=*/true, std::move(on_done));
@@ -544,17 +540,13 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
               std::memcpy(staging_buffer.get(), data, transfer_size);
             }
 
-            absl::StatusOr<BoundedStreamPool::Handle> stream =
-                device_->stream_pool().Borrow();
-            TF_CHECK_OK(stream.status())
-                << "Failed to borrow a stream from the pool";
-            CHECK_NE(stream->get(), nullptr);
+            auto stream = device_->stream();
 
-            TF_CHECK_OK((*stream)->Memcpy(
+            TF_CHECK_OK(stream->Memcpy(
                 &sub_buffer, staging_buffer ? staging_buffer.get() : data,
                 transfer_size))
                 << "Failed to copy data to GPU";
-            auto status = (*stream)->BlockHostUntilDone();
+            auto status = stream->BlockHostUntilDone();
             TF_CHECK_OK(status) << "Failed to block host until done";
           }
           CleanUp(buffer_index, is_last_transfer, std::move(on_done));
@@ -946,7 +938,7 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
       local_device_id_(options.local_device_id),
       local_hardware_id_(options.local_hardware_id),
       executor_(options.executor),
-      stream_pool_(options.executor, options.max_inflight_computations),
+      stream_(options.executor->CreateStream().value()),
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()),
@@ -1906,13 +1898,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
       return;
     }
 
-    absl::StatusOr<BoundedStreamPool::Handle> handle_or =
-        device->stream_pool().Borrow();
-    if (!handle_or.ok()) {
-      copy_event.SetError(handle_or.status());
-      return;
-    }
-    BoundedStreamPool::Handle stream = std::move(handle_or.value());
+    auto stream = device->stream();
 
     se::DeviceMemoryBase dest = gpu_buffer->buffer();
     const void* host_data_ptr;
@@ -2032,11 +2018,7 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
                 TransferManager* transfer_manager =
                     xla_client()->backend().transfer_manager();
 
-                absl::StatusOr<BoundedStreamPool::Handle> handle_or =
-                    device->stream_pool().Borrow();
-                CHECK_OK(handle_or.status())
-                    << "Failed to borrow a stream from the pool";
-                BoundedStreamPool::Handle stream = std::move(handle_or.value());
+                auto stream = device->stream();
 
                 const auto& buffer = device_buffer->buffer();
                 CHECK_EQ(literal.size_bytes(), buffer->size());
@@ -2044,9 +2026,8 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
                 ShapedBuffer shaped_buffer =
                     buffer->AsShapedBuffer(shape, device);
 
-                CHECK_NE(stream.get(), nullptr);
                 TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-                    stream.get(), literal, shaped_buffer));
+                    stream, literal, shaped_buffer));
 
                 auto status = stream->BlockHostUntilDone();
                 CHECK_OK(status) << "Failed to block host until done";
@@ -2188,7 +2169,6 @@ absl::StatusOr<std::vector<std::unique_ptr<TfrtGpuDevice>>> GetTfrtGpuDevices(
     options.local_device_id = executor->device_ordinal();
     options.local_hardware_id = executor->device_ordinal();
     options.executor = executor;
-    options.stream_capacity = 4;
     options.max_inflight_computations = 1;
     const se::Platform* platform = executor->GetPlatform();
     TF_ASSIGN_OR_RETURN(
@@ -2322,10 +2302,9 @@ absl::StatusOr<Shape> TfrtGpuBuffer::logical_on_device_shape() {
   TransferManager* transfer_manager =
       client_->xla_client()->backend().transfer_manager();
 
-  TF_ASSIGN_OR_RETURN(BoundedStreamPool::Handle stream,
-                      device_->stream_pool().Borrow());
-  TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
-      stream.get(), &shaped_buffer, &ret_shape));
+  auto stream = device_->stream();
+  TF_RETURN_IF_ERROR(
+      transfer_manager->ReadDynamicShapes(stream, &shaped_buffer, &ret_shape));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return ret_shape;
 }
@@ -2573,12 +2552,7 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
       tsl::profiler::TraceMe traceme2("D2H GPU copy");
       MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
 
-      auto stream_or = device->stream_pool().Borrow();
-      if (!stream_or.ok()) {
-        promise.Set(stream_or.status());
-        return;
-      }
-      BoundedStreamPool::Handle stream = std::move(stream_or.value());
+      auto stream = device->stream();
 
       CHECK_OK(stream->Memcpy(buffer_ptr, device_buffer->buffer()->buffer(),
                               byte_size))
@@ -2693,13 +2667,7 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
           {
             tsl::profiler::TraceMe traceme2("D2H GPU copy");
             MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
-            auto stream_or = device->stream_pool().Borrow();
-            if (!stream_or.ok()) {
-              promise.Set(stream_or.status());
-              LOG(ERROR) << "Failed to borrow a stream from the pool";
-              return;
-            }
-            BoundedStreamPool::Handle stream = std::move(stream_or.value());
+            auto stream = device->stream();
             void* host_ptr =
                 staging_buffer != nullptr ? staging_buffer.get() : dst.value();
 
@@ -2869,20 +2837,15 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
           return;
         }
 
-        absl::StatusOr<BoundedStreamPool::Handle> stream =
-            dst_device->stream_pool().Borrow();
-        if (!stream.ok()) {
-          dst_definition_event.SetError(stream.status());
-          return;
-        }
+        auto stream = dst_device->stream();
         se::DeviceMemoryBase dst(allocated_dst_buffer->buffer());
-        absl::Status status = stream->get()->Memcpy(
-            &dst, src_buffer->buffer(), src_buffer->buffer().size());
+        absl::Status status = stream->Memcpy(&dst, src_buffer->buffer(),
+                                             src_buffer->buffer().size());
         if (!status.ok()) {
           dst_definition_event.SetError(status);
           return;
         }
-        status = stream->get()->BlockHostUntilDone();
+        status = stream->BlockHostUntilDone();
         if (status.ok()) {
           dst_definition_event.SetStateConcrete();
         } else {
@@ -3346,18 +3309,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           }
         }
 
-        absl::StatusOr<BoundedStreamPool::Handle> stream_or =
-            device->stream_pool().Borrow();
-        if (!stream_or.ok()) {
-          set_error(stream_or.status());
-          return;
-        }
-
-        BoundedStreamPool::Handle stream = std::move(stream_or.value());
+        auto stream = device->stream();
         ExecutableRunOptions run_options;
-        run_options.set_stream(stream.get());
-        run_options.set_host_to_device_stream(stream.get());
-        run_options.set_device_to_host_stream(stream.get());
+        run_options.set_stream(stream);
+        run_options.set_host_to_device_stream(stream);
+        run_options.set_device_to_host_stream(stream);
         run_options.set_allocator(client->allocator());
         run_options.set_device_assignment(device_assignment.get());
 

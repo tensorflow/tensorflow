@@ -23,7 +23,6 @@ cc_library(
     deps = [
         ":gpu_event",
         ":host_memory_allocator",
-        ":stream_pool",
         ":tracked_tfrt_gpu_device_buffer",
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
@@ -312,44 +311,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:casts",
-    ],
-)
-
-cc_library(
-    name = "stream_pool",
-    srcs = ["stream_pool.cc"],
-    hdrs = ["stream_pool.h"],
-    deps = [
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_executor_h",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/profiler/lib:traceme",
-    ],
-)
-
-xla_cc_test(
-    name = "stream_pool_test",
-    srcs = ["stream_pool_test.cc"],
-    tags = [
-        "gpu",
-        "no_oss",
-        "noasan",
-        "nomsan",
-        "requires-gpu-nvidia:2",
-    ],
-    deps = [
-        ":stream_pool",
-        "//xla/service:backend",
-        "//xla/service:gpu_plugin",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream_executor_h",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
