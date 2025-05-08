@@ -2355,6 +2355,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_experimental_enable_triton_tma),
       debug_options->xla_gpu_experimental_enable_triton_tma(),
       "Enable Triton's TMA loads/stores for arguments where applicable."));
+  flag_list->push_back(
+      tsl::Flag("xla_compilation_selection",
+                string_setter_for(&DebugOptions::set_xla_compilation_selection),
+                debug_options->xla_compilation_selection(),
+                "Enable log recorder in the executable."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
