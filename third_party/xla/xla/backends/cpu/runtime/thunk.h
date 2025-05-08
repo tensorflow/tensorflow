@@ -165,7 +165,6 @@ class Thunk {
     const DeviceAssignment* device_assignment = nullptr;
     CpuCollectives* collectives = nullptr;
 
-   private:
     CollectiveExecuteParams(RunId run_id, int64_t local_device_ordinal,
                             GlobalDeviceId global_device_id,
                             const DeviceAssignment* device_assignment,
