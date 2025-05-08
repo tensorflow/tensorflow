@@ -246,12 +246,6 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kCuDnn;
   }
 
-  // TODO(b/406763726): Only some emitters currently can handle packed
-  // inputs/outputs, due to the special handling with IrArray needed to deal
-  // with multiple values occupying a single byte.
-  bool has_subtype_type = input_output_info_.smallest_input_dtype_bits < 8 ||
-                          input_output_info_.smallest_output_dtype_bits < 8;
-
   std::optional<HloInstructionAdaptor> first_reduce_hero;
   for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
     if (IsRealReductionHero(root.instruction(), hero.instruction(),
@@ -304,8 +298,7 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kScatter;
   }
 
-  if (UseConcatenateFusion(fusion_roots_, fusion_heroes_) &&
-      !has_subtype_type) {
+  if (UseConcatenateFusion(fusion_roots_, fusion_heroes_)) {
     return EmitterFusionKind::kConcatenate;
   }
 
