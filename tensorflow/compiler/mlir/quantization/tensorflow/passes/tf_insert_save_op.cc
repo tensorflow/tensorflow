@@ -55,12 +55,12 @@ constexpr StringRef kTfQuantSaveReturnOpName = "tf_quant__save_return";
 // `tf.AssignVariableOp(tf.VarHandleOp, tf.Const)` pattern in the initializer
 // function of type "restore_op" to identify the VarHandleOps that should be
 // saved using the SaveV2 op.
-class TFInsertSaveOpPass
-    : public PassWrapper<TFInsertSaveOpPass, OperationPass<ModuleOp>> {
+class InsertSaveOpPass
+    : public PassWrapper<InsertSaveOpPass, OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFInsertSaveOpPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertSaveOpPass)
 
-  explicit TFInsertSaveOpPass() = default;
+  explicit InsertSaveOpPass() = default;
 
   // The argument used to refer to the pass in the textual format (e.g. on the
   // commandline).
@@ -220,7 +220,7 @@ void CreateSaveFunc(ModuleOp module_op,
       NameLoc::get(builder.getStringAttr(kTfQuantSaveReturnOpName)));
 }
 
-void TFInsertSaveOpPass::runOnOperation() {
+void InsertSaveOpPass::runOnOperation() {
   ModuleOp module_op = getOperation();
 
   func::FuncOp session_init_func = GetInitializerFunction(
@@ -242,12 +242,12 @@ void TFInsertSaveOpPass::runOnOperation() {
   CreateSaveFunc(module_op, target_var_handle_ops);
 }
 
-static PassRegistration<TFInsertSaveOpPass> pass{};
+static PassRegistration<InsertSaveOpPass> pass{};
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFInsertSaveOpPass() {
-  return std::make_unique<TFInsertSaveOpPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateInsertSaveOpPass() {
+  return std::make_unique<InsertSaveOpPass>();
 }
 
 }  // namespace tf_quant

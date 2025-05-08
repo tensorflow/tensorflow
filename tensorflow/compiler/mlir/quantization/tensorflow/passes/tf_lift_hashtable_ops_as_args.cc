@@ -46,12 +46,11 @@ namespace {
 
 constexpr StringRef kSharedNameAttr = "shared_name";
 
-class TFLiftHashTableOpsAsArgsPass
-    : public PassWrapper<TFLiftHashTableOpsAsArgsPass,
-                         OperationPass<ModuleOp>> {
+class LiftHashTableOpsAsArgsPass
+    : public PassWrapper<LiftHashTableOpsAsArgsPass, OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFLiftHashTableOpsAsArgsPass)
-  explicit TFLiftHashTableOpsAsArgsPass() = default;
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LiftHashTableOpsAsArgsPass)
+  explicit LiftHashTableOpsAsArgsPass() = default;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -203,7 +202,7 @@ LogicalResult LiftHashTableOpsToArguments(ModuleOp module_op,
   return success();
 }
 
-void TFLiftHashTableOpsAsArgsPass::runOnOperation() {
+void LiftHashTableOpsAsArgsPass::runOnOperation() {
   auto module_op = getOperation();
 
   for (auto func_op : module_op.getOps<func::FuncOp>()) {
@@ -214,12 +213,12 @@ void TFLiftHashTableOpsAsArgsPass::runOnOperation() {
   }
 }
 
-static PassRegistration<TFLiftHashTableOpsAsArgsPass> pass;
+static PassRegistration<LiftHashTableOpsAsArgsPass> pass;
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFLiftHashTableOpsAsArgsPass() {
-  return std::make_unique<TFLiftHashTableOpsAsArgsPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateLiftHashTableOpsAsArgsPass() {
+  return std::make_unique<LiftHashTableOpsAsArgsPass>();
 }
 
 }  // namespace tf_quant

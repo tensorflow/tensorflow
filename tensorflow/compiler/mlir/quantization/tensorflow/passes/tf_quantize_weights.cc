@@ -49,18 +49,18 @@ namespace mlir {
 namespace tf_quant {
 namespace {
 
-class TFQuantizeWeightsPass
-    : public mlir::PassWrapper<TFQuantizeWeightsPass, OperationPass<ModuleOp>> {
+class QuantizeWeightsPass
+    : public mlir::PassWrapper<QuantizeWeightsPass, OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFQuantizeWeightsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizeWeightsPass)
 
-  explicit TFQuantizeWeightsPass() : test_mode_(true) { initializeForTest(); }
+  explicit QuantizeWeightsPass() : test_mode_(true) { initializeForTest(); }
 
-  explicit TFQuantizeWeightsPass(
+  explicit QuantizeWeightsPass(
       const tensorflow::quantization::QuantizationOptions& quant_options)
       : test_mode_(false), quant_options_(quant_options) {}
 
-  TFQuantizeWeightsPass(const TFQuantizeWeightsPass& other) {
+  QuantizeWeightsPass(const QuantizeWeightsPass& other) {
     test_mode_ = other.test_mode_;
     quant_options_ = other.quant_options_;
     initializeForTest();
@@ -229,7 +229,7 @@ class QuantizeConstWeights : public OpRewritePattern<TF::ConstOp> {
     if (weight_component_spec.tensor_type() ==
         tensorflow::quantization::QuantizationComponentSpec::TENSORTYPE_INT_8) {
       // TODO - b/296535985: [Converter Component][TF-Quantizer] Factor out
-      // quant/dequant in TFQuantizeWeightsPass
+      // quant/dequant in QuantizeWeightsPass
       auto dequantized_val =
           ApplyUniformQuantization(rewriter, op, weight_component_spec);
       if (!dequantized_val.has_value()) return failure();
@@ -245,9 +245,9 @@ class QuantizeConstWeights : public OpRewritePattern<TF::ConstOp> {
   tensorflow::quantization::QuantizationOptions quant_options_;
 };
 
-static PassRegistration<TFQuantizeWeightsPass> pass;
+static PassRegistration<QuantizeWeightsPass> pass;
 
-void TFQuantizeWeightsPass::runOnOperation() {
+void QuantizeWeightsPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   auto module_op = getOperation();
   RewritePatternSet patterns(ctx);
@@ -269,9 +269,9 @@ void TFQuantizeWeightsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFQuantizeWeightsPass(
+std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeWeightsPass(
     const tensorflow::quantization::QuantizationOptions& quant_options) {
-  return std::make_unique<TFQuantizeWeightsPass>(quant_options);
+  return std::make_unique<QuantizeWeightsPass>(quant_options);
 }
 
 }  // namespace tf_quant

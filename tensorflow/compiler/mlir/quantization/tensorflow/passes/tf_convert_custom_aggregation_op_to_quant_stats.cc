@@ -38,12 +38,12 @@ namespace mlir {
 namespace tf_quant {
 namespace {
 
-class TFConvertCustomAggregationOpToQuantStatsPass
-    : public PassWrapper<TFConvertCustomAggregationOpToQuantStatsPass,
+class ConvertCustomAggregationOpToQuantStatsPass
+    : public PassWrapper<ConvertCustomAggregationOpToQuantStatsPass,
                          OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      TFConvertCustomAggregationOpToQuantStatsPass)
+      ConvertCustomAggregationOpToQuantStatsPass)
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in the textual format (on
@@ -101,9 +101,9 @@ class ConvertCustomAggregationOpToQuantStats
   }
 };
 
-static PassRegistration<TFConvertCustomAggregationOpToQuantStatsPass> pass;
+static PassRegistration<ConvertCustomAggregationOpToQuantStatsPass> pass;
 
-void TFConvertCustomAggregationOpToQuantStatsPass::runOnOperation() {
+void ConvertCustomAggregationOpToQuantStatsPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
   func::FuncOp func = getOperation();
@@ -119,8 +119,8 @@ void TFConvertCustomAggregationOpToQuantStatsPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateTFConvertCustomAggregationOpToQuantStatsPass() {
-  return std::make_unique<TFConvertCustomAggregationOpToQuantStatsPass>();
+CreateConvertCustomAggregationOpToQuantStatsPass() {
+  return std::make_unique<ConvertCustomAggregationOpToQuantStatsPass>();
 }
 
 }  // namespace tf_quant

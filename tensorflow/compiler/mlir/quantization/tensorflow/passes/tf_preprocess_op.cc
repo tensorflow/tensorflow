@@ -64,28 +64,27 @@ using ::tensorflow::quantization::OpSet;
 
 // Preprocesses ops to allow multi-axis quantization, prior to quantization
 // passes. Currently, per-channel quantization only supports 1D results.
-class TFPreprocessOpPass
-    : public PassWrapper<TFPreprocessOpPass, OperationPass<ModuleOp>> {
+class PreprocessOpPass
+    : public PassWrapper<PreprocessOpPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect, quant::QuantDialect,
                     mlir::quant::ir::TFQuantDialect>();
   }
 
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFPreprocessOpPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PreprocessOpPass)
 
-  explicit TFPreprocessOpPass() = default;
+  explicit PreprocessOpPass() = default;
 
   // Constructor used by manually creating the pass.
-  explicit TFPreprocessOpPass(OpSet op_set,
-                      const QuantMethod quantization_method,
-                      bool enable_per_channel_quantization) {
+  explicit PreprocessOpPass(OpSet op_set, const QuantMethod quantization_method,
+                            bool enable_per_channel_quantization) {
     op_set_ = op_set;
     quantization_method_ = quantization_method;
     enable_per_channel_quantization_ = enable_per_channel_quantization;
   }
 
-  TFPreprocessOpPass(const TFPreprocessOpPass& other) {
+  PreprocessOpPass(const PreprocessOpPass& other) {
     op_set_ = other.op_set_;
     quantization_method_ = other.quantization_method_;
     enable_per_channel_quantization_ = other.enable_per_channel_quantization_;
@@ -242,7 +241,7 @@ class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/preprocess_op.inc"
 
-void TFPreprocessOpPass::runOnOperation() {
+void PreprocessOpPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   RewritePatternSet patterns(ctx);
   ModuleOp module_op = getOperation();
@@ -264,14 +263,14 @@ void TFPreprocessOpPass::runOnOperation() {
 
 // Creates an instance of the TensorFlow dialect PreprocessOp
 // pass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFPreprocessOpPass(
+std::unique_ptr<OperationPass<ModuleOp>> CreatePreprocessOpPass(
     const OpSet op_set, QuantMethod quantization_method,
     const bool enable_per_channel_quantization) {
-  return std::make_unique<TFPreprocessOpPass>(op_set, quantization_method,
+  return std::make_unique<PreprocessOpPass>(op_set, quantization_method,
                                             enable_per_channel_quantization);
 }
 
-static PassRegistration<TFPreprocessOpPass> pass;
+static PassRegistration<PreprocessOpPass> pass;
 
 }  // namespace tf_quant
 }  // namespace mlir

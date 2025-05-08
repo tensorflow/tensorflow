@@ -48,19 +48,19 @@ namespace {
 using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 using ::tensorflow::quantization::OpSet;
 
-class TFInsertQuantizedFunctionsPass
-    : public PassWrapper<TFInsertQuantizedFunctionsPass,
+class InsertQuantizedFunctionsPass
+    : public PassWrapper<InsertQuantizedFunctionsPass,
                          OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFInsertQuantizedFunctionsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertQuantizedFunctionsPass)
 
-  explicit TFInsertQuantizedFunctionsPass() = default;
-  explicit TFInsertQuantizedFunctionsPass(QuantMethod quantization_method,
-                                          OpSet op_set) {
+  explicit InsertQuantizedFunctionsPass() = default;
+  explicit InsertQuantizedFunctionsPass(QuantMethod quantization_method,
+                                        OpSet op_set) {
     quantization_method_ = quantization_method;
     op_set_ = op_set;
   }
-  TFInsertQuantizedFunctionsPass(const TFInsertQuantizedFunctionsPass& other) {
+  InsertQuantizedFunctionsPass(const InsertQuantizedFunctionsPass& other) {
     quantization_method_ = other.quantization_method_;
     op_set_ = other.op_set_;
   }
@@ -115,7 +115,7 @@ class TFInsertQuantizedFunctionsPass
                      "Uses TF Uniform Quantized ops"))};
 };
 
-llvm::StringRef TFInsertQuantizedFunctionsPass::GetFunctionLibrary(
+llvm::StringRef InsertQuantizedFunctionsPass::GetFunctionLibrary(
     QuantMethod quantization_method, OpSet op_set) {
   absl::flat_hash_map<OpSet, llvm::StringRef> function_library_map;
   if (quantization_method ==
@@ -149,9 +149,9 @@ llvm::StringRef TFInsertQuantizedFunctionsPass::GetFunctionLibrary(
   return llvm::StringRef();
 }
 
-static PassRegistration<TFInsertQuantizedFunctionsPass> pass;
+static PassRegistration<InsertQuantizedFunctionsPass> pass;
 
-void TFInsertQuantizedFunctionsPass::runOnOperation() {
+void InsertQuantizedFunctionsPass::runOnOperation() {
   ModuleOp module = getOperation();
   SymbolTable symbol_table(module);
 
@@ -214,10 +214,10 @@ void TFInsertQuantizedFunctionsPass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the pass for inserting quantized functions.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFInsertQuantizedFunctionsPass(
+std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass(
     QuantMethod quantization_method, OpSet target_opset) {
-  return std::make_unique<TFInsertQuantizedFunctionsPass>(quantization_method,
-                                                          target_opset);
+  return std::make_unique<InsertQuantizedFunctionsPass>(quantization_method,
+                                                        target_opset);
 }
 
 }  // namespace tf_quant

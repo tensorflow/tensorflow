@@ -42,13 +42,13 @@ namespace {
 
 constexpr StringRef kDequantizeFunctionName = "composite_dequantize";
 
-class TFPropagateQuantizeType
-    : public PassWrapper<TFPropagateQuantizeType, OperationPass<ModuleOp>> {
+class PropagateQuantizeType
+    : public PassWrapper<PropagateQuantizeType, OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFPropagateQuantizeType)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PropagateQuantizeType)
 
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
-  explicit TFPropagateQuantizeType() = default;
+  explicit PropagateQuantizeType() = default;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -141,7 +141,7 @@ class PropagateDequantizeOpIfAllowed
   }
 };
 
-void TFPropagateQuantizeType::runOnOperation() {
+void PropagateQuantizeType::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto module_op = getOperation();
   MLIRContext* ctx = &getContext();
@@ -160,12 +160,12 @@ void TFPropagateQuantizeType::runOnOperation() {
 
 }  // namespace
 
-// Creates an instance of the TensorFlow dialect TFPropagateQuantizeType pass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFPropagateQuantizeTypePass() {
-  return std::make_unique<TFPropagateQuantizeType>();
+// Creates an instance of the TensorFlow dialect PropagateQuantizeType pass.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePropagateQuantizeTypePass() {
+  return std::make_unique<PropagateQuantizeType>();
 }
 
-static PassRegistration<TFPropagateQuantizeType> pass;
+static PassRegistration<PropagateQuantizeType> pass;
 
 }  // namespace tf_quant
 }  // namespace mlir

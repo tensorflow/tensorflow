@@ -44,13 +44,13 @@ namespace tf_quant {
 namespace {
 
 // Applies all the clean up steps after quantization.
-class TFPostQuantizePass
-    : public PassWrapper<TFPostQuantizePass, OperationPass<func::FuncOp>> {
+class PostQuantizePass
+    : public PassWrapper<PostQuantizePass, OperationPass<func::FuncOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFPostQuantizePass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizePass)
 
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
-  explicit TFPostQuantizePass() = default;
+  explicit PostQuantizePass() = default;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -136,7 +136,7 @@ class RemoveRedundantScast
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_post_quantize.inc"
 
-void TFPostQuantizePass::runOnOperation() {
+void PostQuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
@@ -151,11 +151,11 @@ void TFPostQuantizePass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect PostQuantize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTFPostQuantizePass() {
-  return std::make_unique<TFPostQuantizePass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass() {
+  return std::make_unique<PostQuantizePass>();
 }
 
-static PassRegistration<TFPostQuantizePass> pass;
+static PassRegistration<PostQuantizePass> pass;
 
 }  // namespace tf_quant
 }  // namespace mlir

@@ -51,13 +51,13 @@ using ::mlir::tf_executor::IslandOp;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::tensorflow::kImportModelDefaultGraphFuncName;
 
-class TFMergeSaveFunctionOpsToMainPass
-    : public PassWrapper<TFMergeSaveFunctionOpsToMainPass,
+class MergeSaveFunctionOpsToMainPass
+    : public PassWrapper<MergeSaveFunctionOpsToMainPass,
                          OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFMergeSaveFunctionOpsToMainPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MergeSaveFunctionOpsToMainPass)
 
-  explicit TFMergeSaveFunctionOpsToMainPass() = default;
+  explicit MergeSaveFunctionOpsToMainPass() = default;
 
   StringRef getArgument() const override {
     return "tf-quant-merge-save-function-ops-to-main";
@@ -271,7 +271,7 @@ void MergeSaveFunctionOpsToMain(func::FuncOp save_func_op,
 
 }  // namespace
 
-void TFMergeSaveFunctionOpsToMainPass::runOnOperation() {
+void MergeSaveFunctionOpsToMainPass::runOnOperation() {
   ModuleOp module_op = getOperation();
 
   func::FuncOp main_func_op = GetMainFunction(module_op);
@@ -290,12 +290,12 @@ void TFMergeSaveFunctionOpsToMainPass::runOnOperation() {
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateTFMergeSaveFunctionOpsToMainPass() {
-  return std::make_unique<TFMergeSaveFunctionOpsToMainPass>();
+CreateMergeSaveFunctionOpsToMainPass() {
+  return std::make_unique<MergeSaveFunctionOpsToMainPass>();
 }
 
-static PassRegistration<TFMergeSaveFunctionOpsToMainPass> pass([] {
-  return CreateTFMergeSaveFunctionOpsToMainPass();
+static PassRegistration<MergeSaveFunctionOpsToMainPass> pass([] {
+  return CreateMergeSaveFunctionOpsToMainPass();
 });
 
 }  // namespace tf_quant

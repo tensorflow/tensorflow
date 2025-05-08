@@ -49,12 +49,12 @@ using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 // type "restore_op" that initializes variables from checkpoint. It finds
 // tf.AssignVariableOp(tf.VarHandleOp, tf.Const) patterns in the initializer
 // function and replaces tf.Consts with the results of RestoreV2.
-class TFInsertRestoreOpPass
-    : public PassWrapper<TFInsertRestoreOpPass, OperationPass<ModuleOp>> {
+class InsertRestoreOpPass
+    : public PassWrapper<InsertRestoreOpPass, OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFInsertRestoreOpPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertRestoreOpPass)
 
-  explicit TFInsertRestoreOpPass() = default;
+  explicit InsertRestoreOpPass() = default;
 
   // The argument used to refer to the pass in the textual format (e.g. on the
   // commandline).
@@ -192,7 +192,7 @@ void CreateRestoreV2Op(std::vector<TF::VarHandleOp>& target_var_handle_ops,
 
 // TODO(b/261813194): Do not create a new RestoreV2 op when a RestoreV2 op
 // already exists.
-void TFInsertRestoreOpPass::runOnOperation() {
+void InsertRestoreOpPass::runOnOperation() {
   ModuleOp module_op = getOperation();
 
   func::FuncOp session_init_func = GetInitializerFunction(
@@ -214,12 +214,12 @@ void TFInsertRestoreOpPass::runOnOperation() {
   CreateRestoreV2Op(target_var_handle_ops, session_init_func);
 }
 
-static PassRegistration<TFInsertRestoreOpPass> pass{};
+static PassRegistration<InsertRestoreOpPass> pass{};
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFInsertRestoreOpPass() {
-  return std::make_unique<TFInsertRestoreOpPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateInsertRestoreOpPass() {
+  return std::make_unique<InsertRestoreOpPass>();
 }
 
 }  // namespace tf_quant

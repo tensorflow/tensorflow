@@ -42,24 +42,24 @@ constexpr StringRef kTfNoinlineAttr = "tf._noinline";
 // This pass marks functions with the attribute `tf._noinline = true` so that
 // they aren't inlined by the `InlinerPass`. The names of the functions to be
 // marked noinline should be specified by the `noinline-functions` option.
-class TFMarkFunctionsNoinlinePass
-    : public PassWrapper<TFMarkFunctionsNoinlinePass,
+class MarkFunctionsNoinlinePass
+    : public PassWrapper<MarkFunctionsNoinlinePass,
                          OperationPass<func::FuncOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFMarkFunctionsNoinlinePass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MarkFunctionsNoinlinePass)
 
-  explicit TFMarkFunctionsNoinlinePass()
-      : TFMarkFunctionsNoinlinePass(
+  explicit MarkFunctionsNoinlinePass()
+      : MarkFunctionsNoinlinePass(
             /*noinline_functions=*/ArrayRef<std::string>{}) {}
 
   // `noinline_functions` is a list of function names to be marked noinline.
-  explicit TFMarkFunctionsNoinlinePass(
+  explicit MarkFunctionsNoinlinePass(
       const ArrayRef<std::string> noinline_functions)
       : noinline_functions_(CreateNoinlineFunctionsOption(noinline_functions)) {
   }
 
-  TFMarkFunctionsNoinlinePass(const TFMarkFunctionsNoinlinePass& other)
-      : TFMarkFunctionsNoinlinePass() {
+  MarkFunctionsNoinlinePass(const MarkFunctionsNoinlinePass& other)
+      : MarkFunctionsNoinlinePass() {
     noinline_functions_ = other.noinline_functions_;
   }
 
@@ -97,7 +97,7 @@ class TFMarkFunctionsNoinlinePass
   ListOption<std::string> noinline_functions_;
 };
 
-void TFMarkFunctionsNoinlinePass::runOnOperation() {
+void MarkFunctionsNoinlinePass::runOnOperation() {
   const llvm::StringSet<> noinline_functions = GetNoinlineFunctionsSet();
 
   func::FuncOp func_op = getOperation();
@@ -112,13 +112,13 @@ void TFMarkFunctionsNoinlinePass::runOnOperation() {
   }
 }
 
-static PassRegistration<TFMarkFunctionsNoinlinePass> pass{};
+static PassRegistration<MarkFunctionsNoinlinePass> pass{};
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTFMarkFunctionsNoinlinePass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateMarkFunctionsNoinlinePass(
     const ArrayRef<std::string> noinline_functions) {
-  return std::make_unique<TFMarkFunctionsNoinlinePass>(noinline_functions);
+  return std::make_unique<MarkFunctionsNoinlinePass>(noinline_functions);
 }
 
 }  // namespace tf_quant

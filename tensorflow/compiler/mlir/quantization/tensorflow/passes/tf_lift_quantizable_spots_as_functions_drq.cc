@@ -46,18 +46,18 @@ using QuantMethod =
     ::tensorflow::quantization::QuantizationMethod::PresetMethod;
 using ::tensorflow::quantization::OpSet;
 
-class TFLiftQuantizableSpotsAsFunctionsDRQPass
-    : public PassWrapper<TFLiftQuantizableSpotsAsFunctionsDRQPass,
+class LiftQuantizableSpotsAsFunctionsDRQPass
+    : public PassWrapper<LiftQuantizableSpotsAsFunctionsDRQPass,
                          OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      TFLiftQuantizableSpotsAsFunctionsDRQPass)
+      LiftQuantizableSpotsAsFunctionsDRQPass)
 
   // Constructor used by the PassRegistration. This is only used by test.
-  explicit TFLiftQuantizableSpotsAsFunctionsDRQPass() = default;
+  explicit LiftQuantizableSpotsAsFunctionsDRQPass() = default;
 
   // Constructor used by manually creating the pass.
-  explicit TFLiftQuantizableSpotsAsFunctionsDRQPass(
+  explicit LiftQuantizableSpotsAsFunctionsDRQPass(
       const QuantMethod quantization_method, const OpSet target_opset,
       const int min_num_elements_for_weights) {
     quantization_method_ = quantization_method;
@@ -65,8 +65,8 @@ class TFLiftQuantizableSpotsAsFunctionsDRQPass
     min_num_elements_for_weights_ = min_num_elements_for_weights;
   }
 
-  TFLiftQuantizableSpotsAsFunctionsDRQPass(
-      const TFLiftQuantizableSpotsAsFunctionsDRQPass& other) {
+  LiftQuantizableSpotsAsFunctionsDRQPass(
+      const LiftQuantizableSpotsAsFunctionsDRQPass& other) {
     quantization_method_ = other.quantization_method_;
     target_opset_ = other.target_opset_;
     min_num_elements_for_weights_ = other.min_num_elements_for_weights_;
@@ -177,11 +177,11 @@ class CheckQuantizableOps
   int min_num_elements_for_weights_;
 };
 
-static PassRegistration<TFLiftQuantizableSpotsAsFunctionsDRQPass> pass;
+static PassRegistration<LiftQuantizableSpotsAsFunctionsDRQPass> pass;
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/lift_quantizable_spots_as_functions_drq.inc"
 
-void TFLiftQuantizableSpotsAsFunctionsDRQPass::runOnOperation() {
+void LiftQuantizableSpotsAsFunctionsDRQPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   RewritePatternSet patterns(ctx);
   ModuleOp module = getOperation();
@@ -202,10 +202,10 @@ void TFLiftQuantizableSpotsAsFunctionsDRQPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateTFLiftQuantizableSpotsAsFunctionsDRQPass(
+CreateLiftQuantizableSpotsAsFunctionsDRQPass(
     const QuantMethod quantization_method, const OpSet target_opset,
     const int min_num_elements_for_weights) {
-  return std::make_unique<TFLiftQuantizableSpotsAsFunctionsDRQPass>(
+  return std::make_unique<LiftQuantizableSpotsAsFunctionsDRQPass>(
       quantization_method, target_opset, min_num_elements_for_weights);
 }
 

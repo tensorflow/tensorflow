@@ -57,12 +57,12 @@ namespace {
 //
 // A set of predefined ops and operand indices is used to determine whether an
 // operand is a target for constant duplication.
-class TFDuplicateShapeDeterminingConstantsPass
-    : public PassWrapper<TFDuplicateShapeDeterminingConstantsPass,
+class DuplicateShapeDeterminingConstantsPass
+    : public PassWrapper<DuplicateShapeDeterminingConstantsPass,
                          OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      TFDuplicateShapeDeterminingConstantsPass)
+      DuplicateShapeDeterminingConstantsPass)
 
   StringRef getArgument() const final {
     return "tf-quant-duplicate-shape-determining-constants";
@@ -208,7 +208,7 @@ void DuplicateShapeDeterminingConstants(func::FuncOp func_op) {
   }
 }
 
-void TFDuplicateShapeDeterminingConstantsPass::runOnOperation() {
+void DuplicateShapeDeterminingConstantsPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
 
   DuplicateShapeDeterminingConstants<
@@ -361,13 +361,13 @@ void TFDuplicateShapeDeterminingConstantsPass::runOnOperation() {
       >(func_op);
 }
 
-static PassRegistration<TFDuplicateShapeDeterminingConstantsPass> pass{};
+static PassRegistration<DuplicateShapeDeterminingConstantsPass> pass{};
 
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateTFDuplicateShapeDeterminingConstantsPass() {
-  return std::make_unique<TFDuplicateShapeDeterminingConstantsPass>();
+CreateDuplicateShapeDeterminingConstantsPass() {
+  return std::make_unique<DuplicateShapeDeterminingConstantsPass>();
 }
 
 }  // namespace tf_quant

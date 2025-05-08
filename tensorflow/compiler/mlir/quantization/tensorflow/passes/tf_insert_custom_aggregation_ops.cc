@@ -92,27 +92,25 @@ std::optional<StringRef> GetCompsiteFunctionName(Operation *op) {
   }
 }
 
-class TFInsertCustomAggregationOpsPass
-    : public PassWrapper<TFInsertCustomAggregationOpsPass,
+class InsertCustomAggregationOpsPass
+    : public PassWrapper<InsertCustomAggregationOpsPass,
                          OperationPass<func::FuncOp>> {
  public:
-  explicit TFInsertCustomAggregationOpsPass() : test_mode_(true) {
+  explicit InsertCustomAggregationOpsPass() : test_mode_(true) {
     initializeForTest();
   }
 
-  explicit TFInsertCustomAggregationOpsPass(
-      const CalibrationOptions &calib_opts)
+  explicit InsertCustomAggregationOpsPass(const CalibrationOptions &calib_opts)
       : test_mode_(false), calib_opts_(calib_opts) {}
 
-  TFInsertCustomAggregationOpsPass(
-      const TFInsertCustomAggregationOpsPass &other) {
+  InsertCustomAggregationOpsPass(const InsertCustomAggregationOpsPass &other) {
     test_mode_ = other.test_mode_;
     test_case_ = other.test_case_;
     calib_opts_ = other.calib_opts_;
     initializeForTest();
   }
 
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFInsertCustomAggregationOpsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertCustomAggregationOpsPass)
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in the textual format (on
@@ -227,7 +225,7 @@ class TFInsertCustomAggregationOpsPass
   }
 };
 
-static PassRegistration<TFInsertCustomAggregationOpsPass> pass;
+static PassRegistration<InsertCustomAggregationOpsPass> pass;
 
 class AddCustomAggregationOp : public RewritePattern {
  public:
@@ -349,7 +347,7 @@ class AddCustomAggregationOp : public RewritePattern {
   CalibrationOptions calib_opts_;
 };
 
-void TFInsertCustomAggregationOpsPass::runOnOperation() {
+void InsertCustomAggregationOpsPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
   func::FuncOp func = getOperation();
@@ -364,8 +362,8 @@ void TFInsertCustomAggregationOpsPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateTFInsertCustomAggregationOpsPass(const CalibrationOptions &calib_opts) {
-  return std::make_unique<TFInsertCustomAggregationOpsPass>(calib_opts);
+CreateInsertCustomAggregationOpsPass(const CalibrationOptions &calib_opts) {
+  return std::make_unique<InsertCustomAggregationOpsPass>(calib_opts);
 }
 
 }  // namespace tf_quant

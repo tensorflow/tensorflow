@@ -430,12 +430,12 @@ void TFInsertMainFunctionPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFInsertMainFunctionPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateInsertMainFunctionPass() {
   return std::make_unique<TFInsertMainFunctionPass>();
 }
 
 static PassRegistration<TFInsertMainFunctionPass> pass([] {
-  return CreateTFInsertMainFunctionPass();
+  return CreateInsertMainFunctionPass();
 });
 
 }  // namespace tf_quant

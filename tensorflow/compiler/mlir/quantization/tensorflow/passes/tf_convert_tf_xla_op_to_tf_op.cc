@@ -50,13 +50,13 @@ namespace mlir {
 namespace tf_quant {
 namespace {
 
-class TFConvertTfXlaOpToTfOpPass
-    : public PassWrapper<TFConvertTfXlaOpToTfOpPass,
+class ConvertTfXlaOpToTfOpPass
+    : public PassWrapper<ConvertTfXlaOpToTfOpPass,
                          OperationPass<func::FuncOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFConvertTfXlaOpToTfOpPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertTfXlaOpToTfOpPass)
 
-  TFConvertTfXlaOpToTfOpPass() = default;
+  ConvertTfXlaOpToTfOpPass() = default;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -313,7 +313,7 @@ bool IsPrecisionEmpty(StringAttr prec_str) {
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_convert_tf_xla_op_to_tf_op.inc"
 
-void TFConvertTfXlaOpToTfOpPass::runOnOperation() {
+void ConvertTfXlaOpToTfOpPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   auto func = getOperation();
 
@@ -331,12 +331,11 @@ void TFConvertTfXlaOpToTfOpPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateTFConvertTfXlaOpToTfOpPass() {
-  return std::make_unique<TFConvertTfXlaOpToTfOpPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertTfXlaOpToTfOpPass() {
+  return std::make_unique<ConvertTfXlaOpToTfOpPass>();
 }
 
-static PassRegistration<TFConvertTfXlaOpToTfOpPass> pass;
+static PassRegistration<ConvertTfXlaOpToTfOpPass> pass;
 
 }  // namespace tf_quant
 }  // namespace mlir

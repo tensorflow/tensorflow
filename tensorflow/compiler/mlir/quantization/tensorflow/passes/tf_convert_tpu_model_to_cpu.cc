@@ -41,11 +41,11 @@ namespace {
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_convert_tpu_model_to_cpu.inc"
 
 // Convert a TPU model to be compatible on CPU by rewriting/removing TPU ops.
-class TFConvertTpuModelToCpuPass
-    : public PassWrapper<TFConvertTpuModelToCpuPass, OperationPass<ModuleOp>> {
+class ConvertTpuModelToCpuPass
+    : public PassWrapper<ConvertTpuModelToCpuPass, OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFConvertTpuModelToCpuPass)
-  explicit TFConvertTpuModelToCpuPass() = default;
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertTpuModelToCpuPass)
+  explicit ConvertTpuModelToCpuPass() = default;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -124,7 +124,7 @@ class ReplaceTpuPartitionedCallOpWithPartitionedCallOp
   }
 };
 
-void TFConvertTpuModelToCpuPass::runOnOperation() {
+void ConvertTpuModelToCpuPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   RewritePatternSet patterns(ctx);
   ModuleOp module_op = getOperation();
@@ -144,12 +144,12 @@ void TFConvertTpuModelToCpuPass::runOnOperation() {
 
 }  // namespace
 
-// Creates an instance of `TFConvertTpuModelToCpuPass`.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFConvertTpuModelToCpuPass() {
-  return std::make_unique<TFConvertTpuModelToCpuPass>();
+// Creates an instance of `ConvertTpuModelToCpuPass`.
+std::unique_ptr<OperationPass<ModuleOp>> CreateConvertTpuModelToCpuPass() {
+  return std::make_unique<ConvertTpuModelToCpuPass>();
 }
 
-static PassRegistration<TFConvertTpuModelToCpuPass> pass;
+static PassRegistration<ConvertTpuModelToCpuPass> pass;
 
 }  // namespace tf_quant
 }  // namespace mlir

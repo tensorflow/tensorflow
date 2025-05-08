@@ -44,12 +44,12 @@ using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 // in an information loss and uninitialized variable errors. Make sure that this
 // effect is desired (e.g. there is a `tf.RestoreV2Op` restoring the variables
 // instead).
-class TFRemoveVariableInitializationByConstPass
-    : public PassWrapper<TFRemoveVariableInitializationByConstPass,
+class RemoveVariableInitializationByConstPass
+    : public PassWrapper<RemoveVariableInitializationByConstPass,
                          OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      TFRemoveVariableInitializationByConstPass)
+      RemoveVariableInitializationByConstPass)
 
   StringRef getArgument() const final {
     return "tf-quant-remove-var-init-by-const";
@@ -89,7 +89,7 @@ struct RemoveVariableAssignmentByConst
   }
 };
 
-void TFRemoveVariableInitializationByConstPass::runOnOperation() {
+void RemoveVariableInitializationByConstPass::runOnOperation() {
   MLIRContext& ctx = getContext();
 
   RewritePatternSet patterns(&ctx);
@@ -106,17 +106,17 @@ void TFRemoveVariableInitializationByConstPass::runOnOperation() {
     }
   } else {
     LOG(INFO) << "Initializer function with type 'restore_op' does not exist. "
-                 "'TFRemoveVariableInitializationByConstPass' is a no-op.";
+                 "'RemoveVariableInitializationByConstPass' is a no-op.";
   }
 }
 
-static PassRegistration<TFRemoveVariableInitializationByConstPass> pass{};
+static PassRegistration<RemoveVariableInitializationByConstPass> pass{};
 
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateTFRemoveVariableInitializationByConstPass() {
-  return std::make_unique<TFRemoveVariableInitializationByConstPass>();
+CreateRemoveVariableInitializationByConstPass() {
+  return std::make_unique<RemoveVariableInitializationByConstPass>();
 }
 }  // namespace tf_quant
 }  // namespace mlir

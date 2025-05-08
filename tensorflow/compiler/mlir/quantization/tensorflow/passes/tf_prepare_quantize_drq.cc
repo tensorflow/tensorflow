@@ -63,30 +63,30 @@ using ::tensorflow::quantization::OpSet;
 
 // Applies prepare quantization on the model in TF dialect for dynamic range
 // quantization case.
-class TFPrepareQuantizeDRQPass
-    : public PassWrapper<TFPrepareQuantizeDRQPass, OperationPass<ModuleOp>> {
+class PrepareQuantizeDRQPass
+    : public PassWrapper<PrepareQuantizeDRQPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect, ::mlir::quant::QuantDialect,
                     ::mlir::quant::ir::TFQuantDialect>();
   }
 
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFPrepareQuantizeDRQPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareQuantizeDRQPass)
 
   // Constructor used by the PassRegistration and enforce int8 quantization.
   // This is only used by test.
-  explicit TFPrepareQuantizeDRQPass() : op_set_(OpSet::UNIFORM_QUANTIZED) {
+  explicit PrepareQuantizeDRQPass() : op_set_(OpSet::UNIFORM_QUANTIZED) {
     quant_specs_.inference_type = tensorflow::DT_QINT8;
   }
 
   // Constructor used by manually creating the pass.
-  explicit TFPrepareQuantizeDRQPass(const QuantizationSpecs& quant_specs,
-                                    OpSet op_set)
+  explicit PrepareQuantizeDRQPass(const QuantizationSpecs& quant_specs,
+                                  OpSet op_set)
       : quant_specs_(quant_specs), op_set_(op_set) {
     enable_per_channel_quantization_ = !quant_specs_.disable_per_channel;
   }
 
-  TFPrepareQuantizeDRQPass(const TFPrepareQuantizeDRQPass& other) {
+  PrepareQuantizeDRQPass(const PrepareQuantizeDRQPass& other) {
     quant_specs_ = other.quant_specs_;
     op_set_ = other.op_set_;
     enable_per_channel_quantization_ = !quant_specs_.disable_per_channel;
@@ -270,7 +270,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
 };
 
 // Remove all the stats ops which are redundant for dynamic range quantization.
-void TFPrepareQuantizeDRQPass::removeAllStatsOp(func::FuncOp func) {
+void PrepareQuantizeDRQPass::removeAllStatsOp(func::FuncOp func) {
   func.walk([&](mlir::quant::ir::StatisticsOp stats_op) {
     stats_op.replaceAllUsesWith(stats_op.getArg());
     stats_op.erase();
@@ -279,7 +279,7 @@ void TFPrepareQuantizeDRQPass::removeAllStatsOp(func::FuncOp func) {
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_prepare_quantize.inc"
 
-void TFPrepareQuantizeDRQPass::runOnOperation() {
+void PrepareQuantizeDRQPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   RewritePatternSet patterns(ctx);
   ModuleOp module_op = getOperation();
@@ -302,12 +302,12 @@ void TFPrepareQuantizeDRQPass::runOnOperation() {
 
 // Creates an instance of the TensorFlow dialect PrepareQuantizeDRQ
 // pass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFPrepareQuantizeDRQPass(
+std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareQuantizeDRQPass(
     const QuantizationSpecs& quant_specs, const OpSet op_set) {
-  return std::make_unique<TFPrepareQuantizeDRQPass>(quant_specs, op_set);
+  return std::make_unique<PrepareQuantizeDRQPass>(quant_specs, op_set);
 }
 
-static PassRegistration<TFPrepareQuantizeDRQPass> pass;
+static PassRegistration<PrepareQuantizeDRQPass> pass;
 
 }  // namespace tf_quant
 }  // namespace mlir

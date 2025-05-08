@@ -35,11 +35,11 @@ namespace mlir {
 namespace tf_quant {
 namespace {
 
-class TFCastBf16OpsToF32Pass
-    : public PassWrapper<TFCastBf16OpsToF32Pass, OperationPass<ModuleOp>> {
+class CastBf16OpsToF32Pass
+    : public PassWrapper<CastBf16OpsToF32Pass, OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFCastBf16OpsToF32Pass)
-  explicit TFCastBf16OpsToF32Pass() = default;
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CastBf16OpsToF32Pass)
+  explicit CastBf16OpsToF32Pass() = default;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -124,7 +124,7 @@ class CastBf16OpsToF32 : public RewritePattern {
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_cast_bf16_ops_to_f32.inc"
 
-void TFCastBf16OpsToF32Pass::runOnOperation() {
+void CastBf16OpsToF32Pass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   RewritePatternSet patterns(ctx);
   auto module_op = getOperation();
@@ -141,11 +141,11 @@ void TFCastBf16OpsToF32Pass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the Cast BF16 ops to F32 pass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFCastBf16OpsToF32Pass() {
-  return std::make_unique<TFCastBf16OpsToF32Pass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateCastBf16OpsToF32Pass() {
+  return std::make_unique<CastBf16OpsToF32Pass>();
 }
 
-static PassRegistration<TFCastBf16OpsToF32Pass> pass;
+static PassRegistration<CastBf16OpsToF32Pass> pass;
 
 }  // namespace tf_quant
 }  // namespace mlir

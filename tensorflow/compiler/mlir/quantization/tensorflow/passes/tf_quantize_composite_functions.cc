@@ -92,15 +92,15 @@ constexpr StringRef kQuantizedFuncPrefix = "quantized_";
 constexpr StringRef kFloatOutputFuncSuffix = "_float_output_fn";
 constexpr StringRef kHybridFuncSuffix = "_hybrid_fn";
 
-class TFQuantizeCompositeFunctionsPass
-    : public mlir::PassWrapper<TFQuantizeCompositeFunctionsPass,
+class QuantizeCompositeFunctionsPass
+    : public mlir::PassWrapper<QuantizeCompositeFunctionsPass,
                                OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFQuantizeCompositeFunctionsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizeCompositeFunctionsPass)
 
-  explicit TFQuantizeCompositeFunctionsPass() = default;
+  explicit QuantizeCompositeFunctionsPass() = default;
 
-  explicit TFQuantizeCompositeFunctionsPass(
+  explicit QuantizeCompositeFunctionsPass(
       const QuantMethod quantization_method, const OpSet target_opset,
       const bool enable_per_channel_quantization,
       const int min_num_elements_for_weights,
@@ -114,8 +114,7 @@ class TFQuantizeCompositeFunctionsPass
     enable_per_channel_quantization_ = enable_per_channel_quantization;
   }
 
-  TFQuantizeCompositeFunctionsPass(
-      const TFQuantizeCompositeFunctionsPass& other) {
+  QuantizeCompositeFunctionsPass(const QuantizeCompositeFunctionsPass& other) {
     quantization_method_ = other.quantization_method_;
     target_opset_ = other.target_opset_;
     enable_per_channel_quantization_ = other.enable_per_channel_quantization_;
@@ -1269,11 +1268,11 @@ class QuantizationSummary {
   SymbolTable symbol_table_;
 };
 
-static PassRegistration<TFQuantizeCompositeFunctionsPass> pass;
+static PassRegistration<QuantizeCompositeFunctionsPass> pass;
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quantize_composite_functions.inc"
 
-void TFQuantizeCompositeFunctionsPass::runOnOperation() {
+void QuantizeCompositeFunctionsPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   ModuleOp module = getOperation();
 
@@ -1287,8 +1286,8 @@ void TFQuantizeCompositeFunctionsPass::runOnOperation() {
   quant_specs.inference_type = tensorflow::DT_QINT8;
   quant_specs.disable_per_channel = !enable_per_channel_quantization_;
 
-  pm.addPass(CreateTFPreprocessOpPass(target_opset_, quantization_method_,
-                                      enable_per_channel_quantization_));
+  pm.addPass(CreatePreprocessOpPass(target_opset_, quantization_method_,
+                                    enable_per_channel_quantization_));
 
   // Apply activation-weight quantization.
   if (quantization_method_ ==
@@ -1296,19 +1295,19 @@ void TFQuantizeCompositeFunctionsPass::runOnOperation() {
     // For XLA case, weight quantization will be applied for the remaining f32
     // weights even in SRQ.
     pm.addNestedPass<func::FuncOp>(
-        CreateTFPrepareQuantizePass(quant_specs, quantization_method_));
+        CreatePrepareQuantizePass(quant_specs, quantization_method_));
     pm.addNestedPass<func::FuncOp>(
-        CreateTFQuantizePass(quant_specs, target_opset_));
-    pm.addNestedPass<func::FuncOp>(CreateTFPostQuantizePass());
+        CreateQuantizePass(quant_specs, target_opset_));
+    pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
   } else {
     // Apply weight quantization.
     quant_specs.minimum_elements_for_weights = min_num_elements_for_weights_;
     quant_specs.weight_quantization = true;
     quant_specs.weight_only_quantization = enable_legacy_weight_only_;
-    pm.addPass(CreateTFPrepareQuantizeDRQPass(quant_specs, target_opset_));
+    pm.addPass(CreatePrepareQuantizeDRQPass(quant_specs, target_opset_));
     pm.addNestedPass<func::FuncOp>(
-        CreateTFQuantizePass(quant_specs, target_opset_));
-    pm.addNestedPass<func::FuncOp>(CreateTFPostQuantizePass());
+        CreateQuantizePass(quant_specs, target_opset_));
+    pm.addNestedPass<func::FuncOp>(CreatePostQuantizePass());
   }
 
   absl::Status pm_run_status = tensorflow::quantization::RunPassesOnModuleOp(
@@ -1350,7 +1349,7 @@ void TFQuantizeCompositeFunctionsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFQuantizeCompositeFunctionsPass(
+std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
     const QuantMethod quantization_method, const OpSet target_opset,
     const bool enable_per_channel_quantization,
     const int min_num_elements_for_weights,
@@ -1361,7 +1360,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTFQuantizeCompositeFunctionsPass(
     mlir_dump_file_name = absl::StrCat(mlir_dump_file_prefix.value(),
                                        kQuantizeCompositeFunctionsStepName);
   }
-  return std::make_unique<TFQuantizeCompositeFunctionsPass>(
+  return std::make_unique<QuantizeCompositeFunctionsPass>(
       quantization_method, target_opset, enable_per_channel_quantization,
       min_num_elements_for_weights, enable_legacy_weight_only,
       mlir_dump_file_name);

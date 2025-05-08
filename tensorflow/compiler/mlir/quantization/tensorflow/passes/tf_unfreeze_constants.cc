@@ -74,20 +74,20 @@ constexpr int64_t kDefaultConstantSizeThresholdInBytes = 64 * 1024;  // 64KiB
 //
 // The constants whose sizes are smaller than `size_threshold_in_bytes_` will
 // not be converted to variables.
-class TFUnfreezeConstantsPass
-    : public PassWrapper<TFUnfreezeConstantsPass, OperationPass<ModuleOp>> {
+class UnfreezeConstantsPass
+    : public PassWrapper<UnfreezeConstantsPass, OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFUnfreezeConstantsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(UnfreezeConstantsPass)
 
-  explicit TFUnfreezeConstantsPass()
-      : TFUnfreezeConstantsPass(kDefaultConstantSizeThresholdInBytes) {}
+  explicit UnfreezeConstantsPass()
+      : UnfreezeConstantsPass(kDefaultConstantSizeThresholdInBytes) {}
 
-  explicit TFUnfreezeConstantsPass(const int64_t size_threshold_in_bytes)
+  explicit UnfreezeConstantsPass(const int64_t size_threshold_in_bytes)
       : size_threshold_in_bytes_(
             CreateSizeThresholdInBytesOption(size_threshold_in_bytes)) {}
 
-  TFUnfreezeConstantsPass(const TFUnfreezeConstantsPass& other)
-      : TFUnfreezeConstantsPass{} {
+  UnfreezeConstantsPass(const UnfreezeConstantsPass& other)
+      : UnfreezeConstantsPass{} {
     size_threshold_in_bytes_ = other.size_threshold_in_bytes_.getValue();
   }
 
@@ -322,14 +322,14 @@ void CreateAssignVariableOps(
   }
 }
 
-void TFUnfreezeConstantsPass::runOnOperation() {
+void UnfreezeConstantsPass::runOnOperation() {
   ModuleOp module_op = getOperation();
 
   // Find the ConstOps to "unfreeze" into VarHandleOps.
   const std::vector<TF::ConstOp> target_const_ops =
       GetTargetConstOps(size_threshold_in_bytes_.getValue(), module_op);
   if (target_const_ops.empty()) {
-    VLOG(1) << "No ConstOps found. TFUnfreezeConstantsPass is a no-op.";
+    VLOG(1) << "No ConstOps found. UnfreezeConstantsPass is a no-op.";
     return;
   }
 
@@ -349,12 +349,12 @@ void TFUnfreezeConstantsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFUnfreezeConstantsPass() {
-  return std::make_unique<TFUnfreezeConstantsPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateUnfreezeConstantsPass() {
+  return std::make_unique<UnfreezeConstantsPass>();
 }
 
-static PassRegistration<TFUnfreezeConstantsPass> pass([] {
-  return CreateTFUnfreezeConstantsPass();
+static PassRegistration<UnfreezeConstantsPass> pass([] {
+  return CreateUnfreezeConstantsPass();
 });
 
 }  // namespace tf_quant

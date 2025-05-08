@@ -60,24 +60,24 @@ using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 // across ops. This step is necessary for post-training quantization and also
 // making the quantization rule for some operations in the quantization-aware
 // training quantization simpler.
-class TFPrepareQuantizePass
-    : public PassWrapper<TFPrepareQuantizePass, OperationPass<func::FuncOp>> {
+class PrepareQuantizePass
+    : public PassWrapper<PrepareQuantizePass, OperationPass<func::FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect, ::mlir::quant::QuantDialect,
                     ::mlir::quant::ir::TFQuantDialect>();
   }
 
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFPrepareQuantizePass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareQuantizePass)
 
   // Constructor used by the PassRegistration and enforce uint8 quantization.
   // This is only used by test.
-  explicit TFPrepareQuantizePass() {
+  explicit PrepareQuantizePass() {
     quant_specs_.inference_type = tensorflow::DT_QINT8;
   }
 
   // Constructor used by manually creating the pass.
-  explicit TFPrepareQuantizePass(const QuantizationSpecs& quant_specs,
+  explicit PrepareQuantizePass(const QuantizationSpecs& quant_specs,
                                QuantMethod quantization_method)
       : quant_specs_(quant_specs) {
     quant_specs_.inference_type = tensorflow::DT_QINT8;
@@ -87,13 +87,13 @@ class TFPrepareQuantizePass
                                     METHOD_STATIC_RANGE_INT8);
   }
 
-  TFPrepareQuantizePass(const TFPrepareQuantizePass& other) {
+  PrepareQuantizePass(const PrepareQuantizePass& other) {
     quant_specs_ = other.quant_specs_;
     enable_post_training_quantize_ = other.enable_post_training_quantize_;
     enable_per_channel_quantization_ = !quant_specs_.disable_per_channel;
   }
 
-  explicit TFPrepareQuantizePass(const QuantizationSpecs& quant_specs)
+  explicit PrepareQuantizePass(const QuantizationSpecs& quant_specs)
       : quant_specs_(quant_specs) {
     enable_post_training_quantize_ = quant_specs.post_training_quantization;
   }
@@ -165,7 +165,7 @@ class TFPrepareQuantizePass
       llvm::cl::desc("Whether enable per-channel quantized weights.")};
 };
 
-bool TFPrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
+bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
   StringRef func_name = func.getName();
   auto has_quantize_op = [&](const Value arg) {
     return (arg.hasOneUse() &&
@@ -237,7 +237,7 @@ bool TFPrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
   return false;
 }
 
-bool TFPrepareQuantizePass::RemoveRedundantStats(func::FuncOp func) {
+bool PrepareQuantizePass::RemoveRedundantStats(func::FuncOp func) {
   return mlir::tf_quant::RemoveRedundantStatsOps(func, GetTFOpQuantSpec,
                                                  GetTfQuantScaleSpec);
 }
@@ -252,7 +252,7 @@ static Value Quantized(Operation* user) {
   return {};
 }
 
-void TFPrepareQuantizePass::SanityCheckAndAdjustment(func::FuncOp func) {
+void PrepareQuantizePass::SanityCheckAndAdjustment(func::FuncOp func) {
   // If an op output has two users: one of them is a quantize op and another
   // one is returned directly, we decide to return the quantized result instead,
   // so this op can be quantized. This is only applied on the returned result
@@ -355,7 +355,7 @@ class MergeConsecutiveQuantizeCast
   }
 };
 
-bool TFPrepareQuantizePass::ContainsQuantizeOps(func::FuncOp func) {
+bool PrepareQuantizePass::ContainsQuantizeOps(func::FuncOp func) {
   for (const auto& op : func.getOps()) {
     if (llvm::isa<mlir::quant::ir::DequantizeCastOp>(op)) return true;
   }
@@ -368,7 +368,7 @@ using PrepareQuantStats =
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_prepare_quantize.inc"
 
-void TFPrepareQuantizePass::runOnOperation() {
+void PrepareQuantizePass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
 
@@ -430,13 +430,13 @@ void TFPrepareQuantizePass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect PrepareQuantize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTFPrepareQuantizePass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
     const QuantizationSpecs& quant_specs, QuantMethod quantization_method) {
-  return std::make_unique<TFPrepareQuantizePass>(quant_specs,
+  return std::make_unique<PrepareQuantizePass>(quant_specs,
                                                quantization_method);
 }
 
-static PassRegistration<TFPrepareQuantizePass> pass;
+static PassRegistration<PrepareQuantizePass> pass;
 
 }  // namespace tf_quant
 }  // namespace mlir

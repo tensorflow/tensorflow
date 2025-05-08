@@ -39,11 +39,11 @@ using ::mlir::tf_executor::IslandOp;
 
 constexpr StringRef kSharedNameAttr = "shared_name";
 
-class TFMergeDuplicateResourceOpsPass
-    : public PassWrapper<TFMergeDuplicateResourceOpsPass,
+class MergeDuplicateResourceOpsPass
+    : public PassWrapper<MergeDuplicateResourceOpsPass,
                          OperationPass<func::FuncOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFMergeDuplicateResourceOpsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MergeDuplicateResourceOpsPass)
 
   StringRef getArgument() const final {
     return "tf-quant-merge-duplicate-resource-ops";
@@ -97,7 +97,7 @@ GraphOp GetGraphOpFromFuncOp(func::FuncOp func_op) {
   return {};
 }
 
-void TFMergeDuplicateResourceOpsPass::runOnOperation() {
+void MergeDuplicateResourceOpsPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
   GraphOp graph_op = GetGraphOpFromFuncOp(func_op);
   if (!graph_op) return;
@@ -136,13 +136,13 @@ void TFMergeDuplicateResourceOpsPass::runOnOperation() {
   }
 }
 
-static PassRegistration<TFMergeDuplicateResourceOpsPass> pass{};
+static PassRegistration<MergeDuplicateResourceOpsPass> pass{};
 
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateTFMergeDuplicateResourceOpsPass() {
-  return std::make_unique<TFMergeDuplicateResourceOpsPass>();
+CreateMergeDuplicateResourceOpsPass() {
+  return std::make_unique<MergeDuplicateResourceOpsPass>();
 }
 
 }  // namespace tf_quant

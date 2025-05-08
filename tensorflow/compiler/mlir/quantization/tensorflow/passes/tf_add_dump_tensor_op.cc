@@ -111,20 +111,20 @@ Operation *DuplicateOp(TF::XlaCallModuleOp call_op, PatternRewriter &rewriter,
 
 // AddDumpTensorOp pass adds DumpTensorOp - which saves entire value of its
 // input into a file - to quantizable layer's output.
-class TFAddDumpTensorOpPass
-    : public PassWrapper<TFAddDumpTensorOpPass, OperationPass<ModuleOp>> {
+class AddDumpTensorOpPass
+    : public PassWrapper<AddDumpTensorOpPass, OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFAddDumpTensorOpPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AddDumpTensorOpPass)
 
-  explicit TFAddDumpTensorOpPass() = default;
+  explicit AddDumpTensorOpPass() = default;
 
-  explicit TFAddDumpTensorOpPass(DebuggerType debugger_type,
-                                 std::string log_dir_path)
+  explicit AddDumpTensorOpPass(DebuggerType debugger_type,
+                               std::string log_dir_path)
       : log_dir_path_(std::move(log_dir_path)) {
     debugger_type_ = debugger_type;
   }
 
-  TFAddDumpTensorOpPass(const TFAddDumpTensorOpPass &other) {
+  AddDumpTensorOpPass(const AddDumpTensorOpPass &other) {
     debugger_type_ = other.debugger_type_;
     log_dir_path_ = other.log_dir_path_;
   }
@@ -292,9 +292,9 @@ class AddDumpTensorOp : public OpRewritePattern<LiftedOpT> {
   std::string log_dir_path_;
 };
 
-static PassRegistration<TFAddDumpTensorOpPass> pass;
+static PassRegistration<AddDumpTensorOpPass> pass;
 
-void TFAddDumpTensorOpPass::runOnOperation() {
+void AddDumpTensorOpPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
   ModuleOp module = getOperation();
@@ -311,10 +311,10 @@ void TFAddDumpTensorOpPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTFAddDumpTensorOpPass(
+std::unique_ptr<OperationPass<ModuleOp>> CreateAddDumpTensorOpPass(
     DebuggerType debugger_type, std::string log_dir_path) {
-  return std::make_unique<TFAddDumpTensorOpPass>(debugger_type,
-                                                 std::move(log_dir_path));
+  return std::make_unique<AddDumpTensorOpPass>(debugger_type,
+                                               std::move(log_dir_path));
 }
 
 }  // namespace tf_quant

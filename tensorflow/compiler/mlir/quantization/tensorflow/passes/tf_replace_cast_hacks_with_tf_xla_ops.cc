@@ -60,12 +60,11 @@ constexpr StringRef kTfQuantCreatedEinsum = "__tf_quant_created_einsum";
 
 // Replaces mixed-type Conv and Matmul cast hacks with TF XLA ops.
 // TODO(b/228403741): Support conversion for dynamic-shaped TF ops.
-class TFReplaceCastHacksWithTFXLAOpsPass
-    : public PassWrapper<TFReplaceCastHacksWithTFXLAOpsPass,
+class ReplaceCastHacksWithTFXLAOpsPass
+    : public PassWrapper<ReplaceCastHacksWithTFXLAOpsPass,
                          OperationPass<func::FuncOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      TFReplaceCastHacksWithTFXLAOpsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ReplaceCastHacksWithTFXLAOpsPass)
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -1153,7 +1152,7 @@ Value CreateXlaDotV2OpFromTfEinsumOp(OpBuilder &builder, Location loc,
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_replace_cast_hacks_with_tf_xla_ops.inc"
 
-void TFReplaceCastHacksWithTFXLAOpsPass::runOnOperation() {
+void ReplaceCastHacksWithTFXLAOpsPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
@@ -1167,10 +1166,10 @@ void TFReplaceCastHacksWithTFXLAOpsPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateTFReplaceCastHacksWithTFXLAOpsPass() {
-  return std::make_unique<TFReplaceCastHacksWithTFXLAOpsPass>();
+CreateReplaceCastHacksWithTFXLAOpsPass() {
+  return std::make_unique<ReplaceCastHacksWithTFXLAOpsPass>();
 }
 
-static PassRegistration<TFReplaceCastHacksWithTFXLAOpsPass> pass;
+static PassRegistration<ReplaceCastHacksWithTFXLAOpsPass> pass;
 
 }  // namespace mlir::tf_quant

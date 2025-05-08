@@ -43,12 +43,12 @@ using QuantizationUnit =
     tensorflow::quantization::UnitWiseQuantizationSpec::QuantizationUnit;
 
 // Adds QuantizationUnitLoc to quantizable layers.
-class TFAddQuantizationUnitLocPass
-    : public PassWrapper<TFAddQuantizationUnitLocPass,
+class AddQuantizationUnitLocPass
+    : public PassWrapper<AddQuantizationUnitLocPass,
                          OperationPass<func::FuncOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFAddQuantizationUnitLocPass)
-  explicit TFAddQuantizationUnitLocPass() = default;
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AddQuantizationUnitLocPass)
+  explicit AddQuantizationUnitLocPass() = default;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -176,7 +176,7 @@ class AddQuantizationUnitLoc : public RewritePattern {
   }
 };
 
-void TFAddQuantizationUnitLocPass::runOnOperation() {
+void AddQuantizationUnitLocPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   RewritePatternSet patterns(ctx);
   func::FuncOp func = getOperation();
@@ -191,13 +191,13 @@ void TFAddQuantizationUnitLocPass::runOnOperation() {
 
 }  // namespace
 
-// Creates an instance of `TFAddQuantizationUnitLocPass`.
+// Creates an instance of `AddQuantizationUnitLocPass`.
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateTFAddQuantizationUnitLocPass() {
-  return std::make_unique<TFAddQuantizationUnitLocPass>();
+CreateAddQuantizationUnitLocPass() {
+  return std::make_unique<AddQuantizationUnitLocPass>();
 }
 
-static PassRegistration<TFAddQuantizationUnitLocPass> pass;
+static PassRegistration<AddQuantizationUnitLocPass> pass;
 
 }  // namespace tf_quant
 }  // namespace mlir

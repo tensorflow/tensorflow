@@ -62,16 +62,16 @@ using ::tensorflow::quantization::OpSet;
 using tf_quant::CloneOpWithReplacedOperands;
 using tf_quant::HasStaticShape;
 
-class TFPrepareLiftingPass
-    : public PassWrapper<TFPrepareLiftingPass, OperationPass<func::FuncOp>> {
+class PrepareLiftingPass
+    : public PassWrapper<PrepareLiftingPass, OperationPass<func::FuncOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFPrepareLiftingPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareLiftingPass)
 
-  TFPrepareLiftingPass() = default;
+  PrepareLiftingPass() = default;
 
-  explicit TFPrepareLiftingPass(OpSet op_set) { op_set_ = op_set; }
+  explicit PrepareLiftingPass(OpSet op_set) { op_set_ = op_set; }
 
-  TFPrepareLiftingPass(const TFPrepareLiftingPass& other) {
+  PrepareLiftingPass(const PrepareLiftingPass& other) {
     op_set_ = other.op_set_;
   }
 
@@ -323,7 +323,7 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_prepare_lifting.inc"
 
-void TFPrepareLiftingPass::runOnOperation() {
+void PrepareLiftingPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   auto func = getOperation();
 
@@ -348,12 +348,12 @@ void TFPrepareLiftingPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTFPrepareLiftingPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass(
     const OpSet target_opset) {
-  return std::make_unique<TFPrepareLiftingPass>(target_opset);
+  return std::make_unique<PrepareLiftingPass>(target_opset);
 }
 
-static PassRegistration<TFPrepareLiftingPass> pass;
+static PassRegistration<PrepareLiftingPass> pass;
 
 }  // namespace tf_quant
 }  // namespace mlir

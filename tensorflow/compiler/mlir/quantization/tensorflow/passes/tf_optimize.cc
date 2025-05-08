@@ -30,10 +30,10 @@ namespace mlir::tf_quant {
 namespace {
 
 // Applies optimization after quantization.
-class TFOptimizePass
-    : public PassWrapper<TFOptimizePass, OperationPass<func::FuncOp>> {
+class OptimizePass
+    : public PassWrapper<OptimizePass, OperationPass<func::FuncOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFOptimizePass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizePass)
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -50,7 +50,7 @@ class TFOptimizePass
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_optimize.inc"
 
-void TFOptimizePass::runOnOperation() {
+void OptimizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   populateWithGenerated(patterns);
   auto func = getOperation();
@@ -61,10 +61,10 @@ void TFOptimizePass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTFOptimizePass() {
-  return std::make_unique<TFOptimizePass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass() {
+  return std::make_unique<OptimizePass>();
 }
 
-static PassRegistration<TFOptimizePass> pass;
+static PassRegistration<OptimizePass> pass;
 
 }  // namespace mlir::tf_quant

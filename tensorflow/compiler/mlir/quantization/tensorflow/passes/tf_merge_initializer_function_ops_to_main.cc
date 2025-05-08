@@ -82,14 +82,14 @@ constexpr std::array<StringRef, 2> kInitializerTypesByMergeOrder = {
 // new `tf.NoOp` that has control dependency to the initializer function for
 // non-variable resources will be created. The control output of the new
 // `tf.NoOp` will be merged into the main function's `FetchOp`.
-class TFMergeInitializerFunctionOpsToMainPass
-    : public PassWrapper<TFMergeInitializerFunctionOpsToMainPass,
+class MergeInitializerFunctionOpsToMainPass
+    : public PassWrapper<MergeInitializerFunctionOpsToMainPass,
                          OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      TFMergeInitializerFunctionOpsToMainPass)
+      MergeInitializerFunctionOpsToMainPass)
 
-  explicit TFMergeInitializerFunctionOpsToMainPass() = default;
+  explicit MergeInitializerFunctionOpsToMainPass() = default;
 
   StringRef getArgument() const override {
     return "tf-quant-merge-initializer-function-ops-to-main";
@@ -324,7 +324,7 @@ Location CreateInitOpLoc(MLIRContext* ctx, func::FuncOp init_func_ops) {
   return NameLoc::get(StringAttr::get(ctx, name));
 }
 
-void TFMergeInitializerFunctionOpsToMainPass::runOnOperation() {
+void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
   ModuleOp module_op = getOperation();
   MLIRContext* ctx = module_op.getContext();
 
@@ -389,13 +389,13 @@ void TFMergeInitializerFunctionOpsToMainPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateTFMergeInitializerFunctionOpsToMainPass() {
-  return std::make_unique<TFMergeInitializerFunctionOpsToMainPass>();
+CreateMergeInitializerFunctionOpsToMainPass() {
+  return std::make_unique<MergeInitializerFunctionOpsToMainPass>();
 }
 
-// Registers TFMergeInitializerFunctionOpsToMainPass.
-static PassRegistration<TFMergeInitializerFunctionOpsToMainPass> pass([] {
-  return CreateTFMergeInitializerFunctionOpsToMainPass();
+// Registers MergeInitializerFunctionOpsToMainPass.
+static PassRegistration<MergeInitializerFunctionOpsToMainPass> pass([] {
+  return CreateMergeInitializerFunctionOpsToMainPass();
 });
 
 }  // namespace tf_quant

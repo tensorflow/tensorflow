@@ -34,11 +34,11 @@ namespace mlir {
 namespace tf_quant {
 namespace {
 
-class TFConvertFakeQuantToQdqPass
-    : public PassWrapper<TFConvertFakeQuantToQdqPass,
+class ConvertFakeQuantToQdqPass
+    : public PassWrapper<ConvertFakeQuantToQdqPass,
                          OperationPass<func::FuncOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFConvertFakeQuantToQdqPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertFakeQuantToQdqPass)
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -60,9 +60,9 @@ class TFConvertFakeQuantToQdqPass
   void runOnOperation() override;
 };
 
-static PassRegistration<TFConvertFakeQuantToQdqPass> pass;
+static PassRegistration<ConvertFakeQuantToQdqPass> pass;
 
-void TFConvertFakeQuantToQdqPass::runOnOperation() {
+void ConvertFakeQuantToQdqPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
   func::FuncOp func = getOperation();
 
@@ -81,9 +81,8 @@ void TFConvertFakeQuantToQdqPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateTFConvertFakeQuantToQdqPass() {
-  return std::make_unique<TFConvertFakeQuantToQdqPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertFakeQuantToQdqPass() {
+  return std::make_unique<ConvertFakeQuantToQdqPass>();
 }
 
 }  // namespace tf_quant

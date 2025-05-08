@@ -472,26 +472,25 @@ struct QuantizeAvgPoolOpPattern
 };
 
 // Applies quantization on the model in TF dialect.
-class TFQuantizePass
-    : public PassWrapper<TFQuantizePass, OperationPass<func::FuncOp>> {
+class QuantizePass
+    : public PassWrapper<QuantizePass, OperationPass<func::FuncOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFQuantizePass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizePass)
 
   // Constructor used by the PassRegistration and only used by test.
-  explicit TFQuantizePass() {
+  explicit QuantizePass() {
     quant_specs_.inference_type = tensorflow::DT_QINT8;
   }
 
   // Constructor used by manually creating the pass.
-  explicit TFQuantizePass(const QuantizationSpecs& quant_specs,
-                          OpSet target_opset)
+  explicit QuantizePass(const QuantizationSpecs& quant_specs,
+                        OpSet target_opset)
       : quant_specs_(quant_specs) {
     weight_quantization_ = quant_specs.weight_quantization;
     target_opset_ = target_opset;
   }
 
-  TFQuantizePass(const TFQuantizePass& other)
-      : quant_specs_(other.quant_specs_) {
+  QuantizePass(const QuantizePass& other) : quant_specs_(other.quant_specs_) {
     weight_quantization_ = other.weight_quantization_;
     target_opset_ = other.target_opset_;
   }
@@ -529,13 +528,13 @@ class TFQuantizePass
                      "Uses TF Uniform Quantized ops"))};
 };
 
-bool TFQuantizePass::shouldKeepUnusedQdqPattern() {
+bool QuantizePass::shouldKeepUnusedQdqPattern() {
   return target_opset_ == OpSet::XLA &&
          (quant_specs_.weight_only_quantization ||
           quant_specs_.weight_quantization);
 }
 
-void TFQuantizePass::runOnOperation() {
+void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
@@ -556,7 +555,7 @@ void TFQuantizePass::runOnOperation() {
     patterns.add<QuantizeAvgPoolOpPattern>(ctx);
   }
   if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
-    func.emitWarning("Failed to converge pattern at TFQuantizePass.");
+    func.emitWarning("Failed to converge pattern at QuantizePass.");
   }
 
   if (!shouldKeepUnusedQdqPattern()) {
@@ -570,17 +569,17 @@ void TFQuantizePass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect Quantize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTFQuantizePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass() {
   QuantizationSpecs quant_specs;
-  return std::make_unique<TFQuantizePass>(quant_specs, OpSet::TF);
+  return std::make_unique<QuantizePass>(quant_specs, OpSet::TF);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTFQuantizePass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
     QuantizationSpecs quant_specs, OpSet target_opset) {
-  return std::make_unique<TFQuantizePass>(quant_specs, target_opset);
+  return std::make_unique<QuantizePass>(quant_specs, target_opset);
 }
 
-static PassRegistration<TFQuantizePass> pass;
+static PassRegistration<QuantizePass> pass;
 
 }  // namespace tf_quant
 }  // namespace mlir
