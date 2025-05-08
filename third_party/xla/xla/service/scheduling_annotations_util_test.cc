@@ -93,7 +93,7 @@ TEST_P(ParameterizedSchedulingAnnotationsUtilTest,
        SetSchedulingAnnotationTest_NoAnnotation) {
   const std::string hlo_string = R"(
   HloModule Module
-  
+
   ENTRY entry {
   p0 = f32[32,32]{1,0} parameter(0)
   ROOT p1 = f32[32,32]{1,0} copy(p0)
@@ -113,7 +113,7 @@ TEST_P(ParameterizedSchedulingAnnotationsUtilTest,
        SetSchedulingAnnotationTest_WithAnnotation) {
   const std::string hlo_string = R"(
   HloModule Module
-  
+
   ENTRY entry {
     p0 = f32[32,32]{1,0} parameter(0)
     ROOT p1 = f32[32,32]{1,0} copy(p0), frontend_attributes={_scheduling_group_id="<scheduling_annotation>"}
@@ -135,7 +135,7 @@ TEST_P(ParameterizedSchedulingAnnotationsUtilTest,
        RemoveSchedulingAnnotationTest) {
   const std::string hlo_string = R"(
   HloModule Module
-  
+
   ENTRY entry {
   p0 = f32[32,32]{1,0} parameter(0)
     ROOT p1 = f32[32,32]{1,0} copy(p0), frontend_attributes={_scheduling_group_id="<scheduling_annotation>"}

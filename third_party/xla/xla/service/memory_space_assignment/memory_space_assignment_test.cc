@@ -5755,7 +5755,7 @@ ENTRY main {
   p0 = f32[32,16] parameter(0)
   p1 = f32[16,16] parameter(1)
   p2 = f32[32,16] parameter(2)
-  
+
   negate0 = f32[32,16] negate(p0) // We will set highest priority for this.
   negate1 = f32[16,16] negate(p1) // We will color this, but set lowest priority.
   negate2 = f32[16,16] negate(negate1)
@@ -5848,7 +5848,7 @@ ENTRY main {
   p0 = f32[32,16] parameter(0)
   p1 = f32[16,16] parameter(1)
   p2 = f32[32,16] parameter(2)
-  
+
   negate0 = f32[32,16] negate(p0) // We will set highest priority for this.
   negate1 = f32[16,16] negate(p1) // We will color this, but set lowest priority.
   negate2 = f32[16,16] negate(negate1)

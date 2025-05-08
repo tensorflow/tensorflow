@@ -341,7 +341,7 @@ TEST_F(WhileLoopFusibleSinkingTest, TestNoPlumbWithBadCondition) {
     y = s32[] parameter(1)
     ROOT add = s32[] add(x, y)
   }
-  
+
   loop.body {
     loop_var.1 = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) parameter(0)
     get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(loop_var.1), index=0
@@ -389,7 +389,7 @@ TEST_F(WhileLoopFusibleSinkingTest, TestNoPlumbWithUnknonwnTripCount) {
     y = s32[] parameter(1)
     ROOT add = s32[] add(x, y)
   }
-  
+
   loop.body {
     loop_var.1 = (s32[]{:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}, s32[4,3,5]{2,1,0}) parameter(0)
     get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(loop_var.1), index=0
