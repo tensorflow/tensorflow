@@ -101,7 +101,7 @@ struct IfrtIRCompileOptions
   IfrtIRCompileOptions() = default;
   explicit IfrtIRCompileOptions(
       std::vector<DeviceId> device_assignments,
-      absl::flat_hash_map<std::string, std::shared_ptr<LoadedExecutable>>
+      absl::flat_hash_map<std::string, LoadedExecutableRef>
           loaded_exec_binding = {},
       std::shared_ptr<absl::flat_hash_map<
           std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
@@ -119,8 +119,7 @@ struct IfrtIRCompileOptions
   // Map from symbol names of LoadedExecutableOp in the IFRT IR MLIR module
   // to pre-compiled `LoadedExecutable` instance. The `LoadedExecutable`s must
   // outlive the `LoadedExecutable` of the IFRT IR program.
-  absl::flat_hash_map<std::string, std::shared_ptr<LoadedExecutable>>
-      loaded_exec_binding;
+  absl::flat_hash_map<std::string, LoadedExecutableRef> loaded_exec_binding;
 
   // Mapping from values of `ifrt.compile_option_key` attribute of a `CallOp` to
   // compile options. If a `CallOp` does not have have the attribute set or does

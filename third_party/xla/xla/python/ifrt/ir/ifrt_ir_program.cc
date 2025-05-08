@@ -78,7 +78,7 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
   }
   return std::make_unique<IfrtIRCompileOptions>(
       std::move(device_ids),
-      absl::flat_hash_map<std::string, std::shared_ptr<LoadedExecutable>>(),
+      absl::flat_hash_map<std::string, LoadedExecutableRef>(),
       std::move(compile_options_overrides), proto.propagate_shardings());
 }
 
