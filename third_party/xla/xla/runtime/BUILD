@@ -130,3 +130,11 @@ cc_library(
     name = "thunk",
     hdrs = ["thunk.h"],
 )
+
+cc_library(
+    name = "device_id",
+    hdrs = ["device_id.h"],
+    deps = [
+        "//xla/tsl/lib/gtl:int_type",
+    ],
+)

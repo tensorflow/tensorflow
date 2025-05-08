@@ -5136,7 +5136,7 @@ cc_library(
     srcs = ["global_device_id.cc"],
     hdrs = ["global_device_id.h"],
     deps = [
-        "//xla/tsl/lib/gtl:int_type",
+        "//xla/runtime:device_id",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
