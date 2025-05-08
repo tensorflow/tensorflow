@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 #include "xla/stream_executor/kernel_spec.h"
