@@ -339,6 +339,7 @@ build:rocm --config=rocm_base
 build:rocm --config=release_cpu_linux_base
 build:rocm --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
 build:rocm --action_env=TF_ROCM_CLANG="1"
+build:rocm --action_env=HIPCC_COMPILE_FLAGS_APPEND="--offload-compress"
 build:rocm --linkopt="-fuse-ld=lld"
 build:rocm --host_linkopt="-fuse-ld=lld"
 # We have some invalid linker scripts in the build,
