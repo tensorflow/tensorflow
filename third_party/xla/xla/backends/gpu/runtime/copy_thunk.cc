@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -32,8 +33,8 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -106,6 +107,17 @@ absl::StatusOr<std::unique_ptr<se::Event>> CopyThunk::AsyncEvents::Extract(
   return absl::InternalError("Async copy event was not found!");
 }
 
+absl::Status CopyThunk::ToProto(ThunkProto* proto) const {
+  TF_RETURN_IF_ERROR(Thunk::ToProto(proto));
+  CopyThunkProto* copy_thunk_proto = proto->mutable_copy_thunk();
+  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
+                      source().ToProto());
+  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
+                      destination().ToProto());
+  copy_thunk_proto->set_mem_size(size_bytes());
+  return absl::OkStatus();
+}
+
 //===----------------------------------------------------------------------===//
 // DeviceToHostCopyThunk
 //===----------------------------------------------------------------------===//
@@ -144,6 +156,19 @@ absl::Status DeviceToHostCopyThunk::ExecuteOnStream(
   return async_events_->Emplace(executor, instr_, std::move(event));
 }
 
+absl::Status DeviceToHostCopyThunk::ToProto(ThunkProto* proto) const {
+  TF_RETURN_IF_ERROR(Thunk::ToProto(proto));
+  DeviceToHostCopyThunkProto* d2h_copy_thunk_proto =
+      proto->mutable_device_to_host_copy_thunk();
+  CopyThunkProto* copy_thunk_proto = d2h_copy_thunk_proto->mutable_copy_thunk();
+  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
+                      source().ToProto());
+  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
+                      destination().ToProto());
+  copy_thunk_proto->set_mem_size(size_bytes());
+  return absl::OkStatus();
+}
+
 //===----------------------------------------------------------------------===//
 // HostToDeviceCopyThunk
 //===----------------------------------------------------------------------===//
@@ -180,6 +205,19 @@ absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
   VLOG(3) << "Emplace events: " << event.get()
           << " for instr: " << instr_->ToString();
   return async_events_->Emplace(executor, instr_, std::move(event));
+}
+
+absl::Status HostToDeviceCopyThunk::ToProto(ThunkProto* proto) const {
+  TF_RETURN_IF_ERROR(Thunk::ToProto(proto));
+  HostToDeviceCopyThunkProto* h2d_copy_thunk_proto =
+      proto->mutable_host_to_device_copy_thunk();
+  CopyThunkProto* copy_thunk_proto = h2d_copy_thunk_proto->mutable_copy_thunk();
+  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
+                      source().ToProto());
+  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
+                      destination().ToProto());
+  copy_thunk_proto->set_mem_size(size_bytes());
+  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//

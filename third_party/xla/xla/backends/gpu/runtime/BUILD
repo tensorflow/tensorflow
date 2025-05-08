@@ -525,6 +525,7 @@ cc_library(
     hdrs = ["copy_thunk.h"],
     deps = [
         ":thunk",
+        ":thunk_proto_cc",
         ":while_thunk",
         "//xla:literal_util",
         "//xla/hlo/evaluator:hlo_evaluator",
@@ -533,6 +534,8 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:event",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
@@ -540,8 +543,20 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "copy_thunk_test",
+    srcs = ["copy_thunk_test.cc"],
+    deps = [
+        ":copy_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1732,5 +1747,8 @@ tf_proto_library(
     name = "thunk_proto",
     srcs = [
         "thunk.proto",
+    ],
+    protodeps = [
+        "//xla/service:buffer_assignment_proto",
     ],
 )

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/event.h"
@@ -96,6 +97,8 @@ class CopyThunk : public Thunk {
   }
   uint64_t size_bytes() const { return mem_size_; }
 
+  absl::Status ToProto(ThunkProto* thunk_proto) const override;
+
  private:
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
@@ -122,6 +125,8 @@ class DeviceToHostCopyThunk : public CopyThunk {
                         const HloInstruction* instr);
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  absl::Status ToProto(ThunkProto* thunk_proto) const override;
+
  private:
   std::shared_ptr<CopyThunk::AsyncEvents> async_events_;
   const HloInstruction* instr_;
@@ -146,6 +151,8 @@ class HostToDeviceCopyThunk : public CopyThunk {
                         std::shared_ptr<CopyThunk::AsyncEvents> events,
                         const HloInstruction* instr);
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  absl::Status ToProto(ThunkProto* thunk_proto) const override;
 
  private:
   std::shared_ptr<CopyThunk::AsyncEvents> async_events_;

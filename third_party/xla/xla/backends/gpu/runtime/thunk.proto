@@ -17,10 +17,26 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "xla/service/buffer_assignment.proto";
+
 // Contains basic pieces of information that every thunk type has.
 message ThunkInfoProto {
   string profile_annotation = 1;
   int64 execution_stream_id = 2;
+}
+
+message CopyThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto source_buffer = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto destination_buffer = 2;
+  int64 mem_size = 3;
+}
+
+message DeviceToHostCopyThunkProto {
+  CopyThunkProto copy_thunk = 1;
+}
+
+message HostToDeviceCopyThunkProto {
+  CopyThunkProto copy_thunk = 1;
 }
 
 message ThunkProto {
@@ -28,6 +44,9 @@ message ThunkProto {
 
   oneof impl {
     SequentialThunkProto sequential_thunk = 2;
+    CopyThunkProto copy_thunk = 3;
+    DeviceToHostCopyThunkProto device_to_host_copy_thunk = 4;
+    HostToDeviceCopyThunkProto host_to_device_copy_thunk = 5;
   }
 }
 
