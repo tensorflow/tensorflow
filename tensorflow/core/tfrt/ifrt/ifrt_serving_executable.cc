@@ -524,7 +524,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
           [&](std::unique_ptr<xla::ifrt::Program> program,
               std::unique_ptr<xla::ifrt::CompileOptions> options)
               -> absl::StatusOr<xla::ifrt::LoadedExecutableRef> {
-            return ifrt_client_->GetDefaultCompiler()->Compile(
+            return ifrt_client_->GetDefaultCompiler()->CompileAndLoad(
                 std::move(program), std::move(options));
           }));
 
