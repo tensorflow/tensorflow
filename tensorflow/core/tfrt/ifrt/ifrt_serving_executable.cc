@@ -446,7 +446,9 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_hlo_module,
       xla::ConvertHloToMlirHlo(*module_copy->getContext(),
-                               &tf2hlo_result.hlo_module_proto));
+                               &tf2hlo_result.hlo_module_proto,
+                               /*import_all_computations=*/false,
+                               /*flatten_computation_args_result=*/true));
 
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("ifrt_after_bridge_phase2",
