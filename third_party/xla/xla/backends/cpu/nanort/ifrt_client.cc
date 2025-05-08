@@ -391,16 +391,15 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
     return std::make_shared<PjRtLayout>(xla::Layout(shape().dims()));
   }
 
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-  DisassembleIntoSingleDeviceArrays(
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> DisassembleIntoSingleDeviceArrays(
       ifrt::ArrayCopySemantics array_copy_semantics,
       ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override {
     TF_RETURN_IF_ERROR(ValidateNotDeleted());
     TF_ASSIGN_OR_RETURN(auto shards, Disassemble());
-    return std::vector<tsl::RCReference<Array>>(shards.begin(), shards.end());
+    return std::vector<ifrt::ArrayRef>(shards.begin(), shards.end());
   }
 
-  absl::StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
+  absl::StatusOr<ifrt::ArrayRef> FullyReplicatedShard(
       ifrt::ArrayCopySemantics semantics) override {
     TF_RETURN_IF_ERROR(ValidateNotDeleted());
     return tsl::FormRef(this);
@@ -602,15 +601,14 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
     return std::make_shared<PjRtLayout>(xla::Layout(shape().dims()));
   }
 
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-  DisassembleIntoSingleDeviceArrays(
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> DisassembleIntoSingleDeviceArrays(
       ifrt::ArrayCopySemantics array_copy_semantics,
       ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override {
     TF_RETURN_IF_ERROR(ValidateNotDeleted());
-    return std::vector<tsl::RCReference<Array>>(shards_.begin(), shards_.end());
+    return std::vector<ifrt::ArrayRef>(shards_.begin(), shards_.end());
   }
 
-  absl::StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
+  absl::StatusOr<ifrt::ArrayRef> FullyReplicatedShard(
       ifrt::ArrayCopySemantics semantics) override {
     TF_RETURN_IF_ERROR(ValidateNotDeleted());
     return tsl::FormRef(this);
@@ -1258,8 +1256,7 @@ NanoIfrtClient::MakeArraysFromHostBufferShards(
                                                     std::move(user_context));
 }
 
-absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
-NanoIfrtClient::MakeErrorArrays(
+absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::MakeErrorArrays(
     const absl::Status& error,
     absl::Span<const xla::ifrt::ArraySpec> array_specs,
     tsl::RCReference<xla::ifrt::UserContext> user_context) {
@@ -1325,8 +1322,8 @@ absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::CopyArrays(
   return result;
 }
 
-absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::RemapArrays(
-    const ifrt::RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
+absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::RemapArrays(
+    const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
     ifrt::ArrayCopySemantics semantics) {
   return absl::UnimplementedError("RemapArrays is not implemented.");
 }
