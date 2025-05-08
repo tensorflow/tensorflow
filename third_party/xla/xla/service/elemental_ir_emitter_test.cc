@@ -674,10 +674,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// TODO(b/324385428): Failing on GPU at head due to an LLVM integrate. Re-enable
-// once this has been fixed.
 XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           DISABLED_MinimumHandlesNaNsOnTheRight) {
+           MinimumHandlesNaNsOnTheRight) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
