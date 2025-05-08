@@ -150,6 +150,14 @@ func.func @all_reduce(%arg0: tensor<8x8xf32> {sdy.sharding=#sdy.sharding<@mesh_2
   return %0 : tensor<8x8xf32>
 }
 
+// CHECK-LABEL: func @reduce_scatter
+func.func @reduce_scatter(%arg0: tensor<8x8xf32> {sdy.sharding=#sdy.sharding<@mesh_2, [{"x"}, {}]>}) -> tensor<8x8xf32> {
+  // CHECK-NEXT: %[[COPY:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{devices=[8,4]<=[32]}"}
+  // CHECK-NEXT: return %[[COPY]]
+  %0 = sdy.reduce_scatter [{}, {"y"}] %arg0 out_sharding=<@mesh_2, [{"x"}, {"y"}]> : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
 // CHECK-LABEL: func @chain_of_collectives
 func.func @chain_of_collectives(%arg0: tensor<8x8xf32> {sdy.sharding=#sdy.sharding<@mesh_2, [{"y"}, {}]>}) -> tensor<8x8xf32> {
   // CHECK-NEXT: %[[COPY_0:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{devices=[1,4,8]<=[8,4]T(1,0) last_tile_dim_replicate}"}
