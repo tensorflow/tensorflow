@@ -1324,7 +1324,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // We use top-down traversal so that shape inference can fully infer types
   // during pattern rewrite.
   GreedyRewriteConfig config;
-  config.useTopDownTraversal = true;
+  config.setUseTopDownTraversal(true);
   if (failed(applyPatternsGreedily(func, patterns, config))) {
     return failure();
   }
