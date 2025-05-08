@@ -1,3 +1,5 @@
+load("@local_xla//xla/tsl:tsl.bzl", "if_macos")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
@@ -5,11 +7,17 @@ package(
 
 exports_files(["LICENSE"])
 
+# Having fp-contract set to fast causes incorrect results on macos:
+# https://github.com/jax-ml/jax/issues/28217
+fp_contract = if_macos(
+    ["-ffp-contract=on"],
+    ["-ffp-contract=fast"],
+)
+
 DUCC_COPTS = [
     "-frtti",
     "-fexceptions",
-    "-ffp-contract=fast",
-]
+] + fp_contract
 
 # This library exposes the raw DUCC fft API.  It should be used
 # with caution, since inclusion of the headers will require any
