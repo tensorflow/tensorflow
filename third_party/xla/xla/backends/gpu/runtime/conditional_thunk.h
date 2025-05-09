@@ -30,17 +30,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
-
-struct ConditionalThunkConfig {
-  bool branch_index_is_bool;
-  int64_t branch_count;
-  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
-};
 
 // ConditionalThunk implements the conditional instruction on GPU by reading the
 // predicate of the conditional and executing the true or the false computation
@@ -54,8 +47,11 @@ struct ConditionalThunkConfig {
 // false computation share the same allocation.
 class ConditionalThunk : public Thunk {
  public:
-  ConditionalThunk(ThunkInfo thunk_info, ConditionalThunkConfig config,
-                   const BufferAllocation::Slice& branch_index_buffer_index);
+  ConditionalThunk(
+      ThunkInfo thunk_info,
+      const BufferAllocation::Slice& branch_index_buffer_index,
+      std::vector<std::unique_ptr<SequentialThunk>>&& branch_thunks,
+      bool branch_index_is_bool);
 
   ConditionalThunk(const ConditionalThunk&) = delete;
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
@@ -66,7 +62,7 @@ class ConditionalThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   absl::Span<const std::unique_ptr<SequentialThunk>> branch_thunks() const {
-    return config_.branch_thunks;
+    return branch_thunks_;
   }
 
   const BufferAllocation::Slice& branch_index_buffer() const {
@@ -74,11 +70,12 @@ class ConditionalThunk : public Thunk {
   }
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
-  bool branch_index_is_bool() const { return config_.branch_index_is_bool; }
+  bool branch_index_is_bool() const { return branch_index_is_bool_; }
 
  private:
-  const ConditionalThunkConfig config_;
   const BufferAllocation::Slice branch_index_buffer_index_;
+  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks_;
+  bool branch_index_is_bool_;
 
   // Host memory pool for transferring predicate value from device to host.
   absl::Mutex mutex_;
