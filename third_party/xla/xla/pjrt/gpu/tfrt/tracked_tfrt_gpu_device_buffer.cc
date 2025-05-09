@@ -71,7 +71,7 @@ absl::StatusOr<MaybeOwningGpuMemory> MaybeOwningGpuMemory::AllocateShared(
     return MaybeOwningGpuMemory(se::DeviceMemoryBase());
   }
   TF_ASSIGN_OR_RETURN(
-      auto memory,
+      stream_executor::OwningDeviceMemory memory,
       allocator->Allocate(device_ordinal, size, /*retry_on_failure=*/true,
                           memory_space));
   return MaybeOwningGpuMemory(std::move(memory));
