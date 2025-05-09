@@ -223,7 +223,6 @@ def if_nccl(if_true, if_false = []):
     return select({
         clean_dep("//xla/tsl:no_nccl_support"): if_false,
         clean_dep("//xla/tsl:windows"): if_false,
-        clean_dep("//xla/tsl:arm_any"): if_false,
         "//conditions:default": if_true,
     })
 
