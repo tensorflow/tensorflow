@@ -1077,7 +1077,7 @@ xla_test(
 xla_cc_binary(
     name = "print_indexing",
     srcs = ["print_indexing.cc"],
-    visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         ":hlo_module_loader",
         "//xla/hlo/analysis:indexing_analysis",
