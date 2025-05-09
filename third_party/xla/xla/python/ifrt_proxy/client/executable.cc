@@ -554,14 +554,29 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
       output_spec_cache_->Retrieve().has_value();
 
   xla::ifrt::LoadedExecutable::ExecuteResult result;
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>> layouts =
+      GetOutputLayouts();
 
   if (client_generated_handles) {
     auto output_specs = *output_spec_cache_->Retrieve();
-    for (const auto& output_spec : output_specs) {
+    if (layouts.ok() && layouts->size() != output_specs.size()) {
+      return absl::InternalError(absl::StrCat(
+          "Mismatch between output specs and layouts: ", output_specs.size(),
+          " vs ", layouts->size()));
+    }
+    for (int i = 0; i < output_specs.size(); ++i) {
+      const auto& output_spec = output_specs[i];
       uint64_t handle = rpc_helper_->NextHandle();
-      result.outputs.push_back(tsl::MakeRef<Array>(
-          client(), rpc_helper_, output_spec.dtype, output_spec.shape,
-          output_spec.sharding, ArrayHandle{handle}));
+      if (layouts.ok()) {
+        result.outputs.push_back(tsl::MakeRef<Array>(
+            client(), rpc_helper_, output_spec.dtype, output_spec.shape,
+            output_spec.sharding, ArrayHandle{handle},
+            /*layout=*/std::move((*layouts)[i])));
+      } else {
+        result.outputs.push_back(tsl::MakeRef<Array>(
+            client(), rpc_helper_, output_spec.dtype, output_spec.shape,
+            output_spec.sharding, ArrayHandle{handle}, /*layout=*/nullptr));
+      }
       req->add_result_array_handle(handle);
     }
     uint64_t status_handle = rpc_helper_->NextHandle();
@@ -575,34 +590,51 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
       // handle being sent.
       result.status = rpc_helper_->CheckFuture(status_handle);
     }
-  } else {
-    TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<LoadedExecutableExecuteResponse> response,
-        rpc_helper_->LoadedExecutableExecute(std::move(req)).Await());
-    auto status = output_spec_cache_->Cache(response->outputs());
-    if (!status.ok()) {
-      // Handles in `response` need to be destructed remotely.
-      for (const auto& output : response->outputs()) {
-        Array::Destruct(rpc_helper_.get(), ArrayHandle{output.array_handle()});
-      }
-      if (result_needs_exec_status) {
-        // `CheckFuture` deletes the server-side future handle.
-        rpc_helper_->CheckFuture(response->status_handle());
-      }
-      return status;
-    }
-    auto output_specs = *output_spec_cache_->Retrieve();
-    for (int i = 0; i < output_specs.size(); ++i) {
-      result.outputs.push_back(tsl::MakeRef<Array>(
-          client(), rpc_helper_, output_specs[i].dtype, output_specs[i].shape,
-          output_specs[i].sharding,
-          ArrayHandle{response->outputs()[i].array_handle()}));
+
+    return result;
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<LoadedExecutableExecuteResponse> response,
+      rpc_helper_->LoadedExecutableExecute(std::move(req)).Await());
+  auto status = output_spec_cache_->Cache(response->outputs());
+  if (!status.ok()) {
+    // Handles in `response` need to be destructed remotely.
+    for (const auto& output : response->outputs()) {
+      Array::Destruct(rpc_helper_.get(), ArrayHandle{output.array_handle()});
     }
     if (result_needs_exec_status) {
-      result.status = rpc_helper_->CheckFuture(response->status_handle());
-    } else {
-      CHECK_EQ(response->status_handle(), 0);
+      // `CheckFuture` deletes the server-side future handle.
+      rpc_helper_->CheckFuture(response->status_handle());
     }
+    return status;
+  }
+  absl::Span<const ArraySpec> output_specs = *output_spec_cache_->Retrieve();
+  if (layouts.ok() && layouts->size() != output_specs.size()) {
+    return absl::InternalError(absl::StrCat(
+        "Mismatch between output specs and layouts: ", output_specs.size(),
+        " vs ", layouts->size()));
+  }
+  for (int i = 0; i < output_specs.size(); ++i) {
+    const auto& output_spec = output_specs[i];
+    if (layouts.ok()) {
+      result.outputs.push_back(tsl::MakeRef<Array>(
+          client(), rpc_helper_, output_spec.dtype, output_spec.shape,
+          output_spec.sharding,
+          ArrayHandle{response->outputs()[i].array_handle()},
+          /*layout=*/std::move((*layouts)[i])));
+    } else {
+      result.outputs.push_back(tsl::MakeRef<Array>(
+          client(), rpc_helper_, output_spec.dtype, output_spec.shape,
+          output_spec.sharding,
+          ArrayHandle{response->outputs()[i].array_handle()},
+          /*layout=*/nullptr));
+    }
+  }
+  if (result_needs_exec_status) {
+    result.status = rpc_helper_->CheckFuture(response->status_handle());
+  } else {
+    CHECK_EQ(response->status_handle(), 0);
   }
 
   return result;

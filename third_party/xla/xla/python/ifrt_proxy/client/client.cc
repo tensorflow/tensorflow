@@ -335,9 +335,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
     TF_ASSIGN_OR_RETURN(
         auto new_sharding,
         arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
+    auto* proxy_array = llvm::cast<xla::ifrt::proxy::Array>(arrays[i].get());
+    CHECK(proxy_array != nullptr);
     new_arrays.push_back(tsl::MakeRef<Array>(
         this, rpc_helper_, arrays[i]->dtype(), arrays[i]->shape(),
-        std::move(new_sharding), ArrayHandle{result_handles[i]}));
+        std::move(new_sharding), ArrayHandle{result_handles[i]},
+        /*layout=*/proxy_array->raw_xla_layout()));
   }
   return new_arrays;
 }
