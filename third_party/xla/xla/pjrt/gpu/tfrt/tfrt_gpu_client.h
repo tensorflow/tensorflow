@@ -459,10 +459,6 @@ class TfrtGpuClient final : public PjRtClient {
   // Pointers to `owned_memory_spaces_`.
   std::vector<PjRtMemorySpace*> memory_spaces_;
 
-  std::unique_ptr<tsl::thread::ThreadPool> compile_thread_pool_;
-  std::unique_ptr<tsl::thread::ThreadPool> blocking_thread_pool_;
-  std::unique_ptr<tsl::thread::ThreadPool> non_blocking_thread_pool_;
-
   const std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 
   // A cache for transpose plans. We use transposes to convert
@@ -478,6 +474,12 @@ class TfrtGpuClient final : public PjRtClient {
   // Maps dma mapped start pointers to their sizes.
   absl::btree_map<const void*, size_t, std::greater<const void*>> dma_maps_
       ABSL_GUARDED_BY(dma_maps_mutex_);
+
+  // Thread pools must be destroyed before other fields, to make all the pending
+  // tasks complete before the client is destroyed.
+  std::unique_ptr<tsl::thread::ThreadPool> compile_thread_pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> blocking_thread_pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> non_blocking_thread_pool_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(

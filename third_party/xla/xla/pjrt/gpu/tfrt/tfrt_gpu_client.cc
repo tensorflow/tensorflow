@@ -753,8 +753,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
     }
 
     // Delete chunk once the memcpy operation completes.
-    auto* chunk_ptr = std::make_unique<PjRtChunk>(std::move(chunk)).release();
-    auto deleted = stream_->DoHostCallback([chunk_ptr]() { delete chunk_ptr; });
+    auto deleted = stream_->DoHostCallback([chunk = std::move(chunk)]() {});
     if (!deleted.ok()) {
       done_.SetError(deleted);
       return PjRtFuture<>(done_.GetError());
@@ -1247,6 +1246,11 @@ TfrtGpuClient::TfrtGpuClient(
       owned_memory_spaces_(
           InitializeMemorySpaces(owned_devices_.size(), addressable_devices_)),
       memory_spaces_(GetMemorySpacePointers(owned_memory_spaces_)),
+      gpu_run_options_(std::move(gpu_run_options)),
+      transpose_cache_(1024),
+      topology_(GetTopology(platform_name_, std::move(gpu_topology),
+                            addressable_devices_)),
+      kv_store_(std::move(kv_store)),
       compile_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
           tsl::Env::Default(), "TfrtGpuClient_compile_thread_pool",
           std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()))),
@@ -1255,12 +1259,7 @@ TfrtGpuClient::TfrtGpuClient(
           std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()))),
       non_blocking_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
           tsl::Env::Default(), "TfrtGpuClient_non_blocking_thread_pool",
-          std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()))),
-      gpu_run_options_(std::move(gpu_run_options)),
-      transpose_cache_(1024),
-      topology_(GetTopology(platform_name_, std::move(gpu_topology),
-                            addressable_devices_)),
-      kv_store_(std::move(kv_store)) {
+          std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()))) {
   LOG(INFO) << "TfrtGpuClient created.";
 }
 
@@ -3608,13 +3607,17 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         // has completed, so that the next execute_fn can start.
         scheduled_event.SetStateConcrete();
 
-        auto status = stream->DoHostCallback(
-            [complete_event(complete_event.CopyRef()), run_id(run_id),
-             executable_name(executable_name)]() mutable {
-              VLOG(1) << "Device execution done for " << executable_name
-                      << ", run_id: " << run_id.ToInt();
-              complete_event.SetStateConcrete();
-            });
+        absl::Status status = stream->BlockHostUntilDone();
+        if (!status.ok()) {
+          LOG(ERROR) << "BlockHostUntilDone failed for executable "
+                     << executable_name << " on device "
+                     << device->DebugString() << ", status = " << status;
+          complete_event.SetError(status);
+        } else {
+          VLOG(1) << "Device execution done for " << executable_name
+                  << ", run_id: " << run_id.ToInt();
+          complete_event.SetStateConcrete();
+        }
 
         VLOG(1) << "execute_fn done with status " << status;
       };
