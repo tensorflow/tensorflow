@@ -41,6 +41,7 @@ class NvshmemCollectives : public GpuCollectives {
   ~NvshmemCollectives() override;
 
   static NvshmemCollectives* Default();
+  bool IsInitialized() { return initialized_; }
 
   void SetEnvInfo(int process_id, size_t num_processes,
                   size_t device_count_per_process,
@@ -67,9 +68,11 @@ class NvshmemCollectives : public GpuCollectives {
   CreateCommunicators(const CliqueKey& clique_key,
                       const std::optional<CliqueIds>& clique_ids,
                       absl::Span<const DeviceRank> ranks,
-                      const Collectives::Config& config) {
+                      const Collectives::Config& config) override {
     return absl::UnimplementedError("Not implemented.");
   }
+
+  absl::StatusOr<std::unique_ptr<Communicator>> CreateCommunicator() final;
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
       absl::Span<const Communicator* const> comms, int32_t color,

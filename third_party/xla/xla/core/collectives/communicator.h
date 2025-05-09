@@ -85,6 +85,12 @@ class Communicator {
   // have to wait for the completion of scheduled operations.
   virtual absl::Status HealthCheck() const { return absl::OkStatus(); }
 
+  // This is a barrier operation that blocks all participating
+  // ranks from proceeding.
+  virtual absl::Status Barrier(const Executor& executor) {
+    return Unimplemented("Barrier is not implemented");
+  }
+
   // Reduce buffers of length `count` in `send_buff` using `reduction_kind`
   // reduction and leaves identical copies of the result on each `recv_buff`.
   virtual tsl::AsyncValueRef<Event> AllReduce(
@@ -144,6 +150,11 @@ class Communicator {
 
   // Returns the number of ranks in the communicator.
   virtual absl::StatusOr<size_t> NumRanks() const = 0;
+
+  // Returns the current rank number in the communicator.
+  virtual absl::StatusOr<size_t> CurrentRank() {
+    return Unimplemented("CurrentRank is not implemented");
+  }
 
   // Returns a human-readable description of the communicator.
   virtual std::string ToString() const = 0;
