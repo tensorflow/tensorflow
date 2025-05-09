@@ -49,9 +49,6 @@ namespace xla {
 namespace spmd {
 namespace {
 using hlo_sharding_util::GroupedSharding;
-std::vector<GatherScatterPartitioningMethod> preferred_gather_partition_methods;
-std::vector<GatherScatterPartitioningMethod>
-    preferred_scatter_partition_methods;
 
 // Generates per-group partitioned hlo based on given grouped sharding.
 PartitionedHlo PerGroupPartitionedHlo(
@@ -886,7 +883,7 @@ std::pair<int64_t, int64_t> GatherPartitionMethodCostModel(
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor) {
   if (absl::c_any_of(
-          preferred_gather_partition_methods,
+          visitor->options().preferred_gather_partition_methods,
           [&](const GatherScatterPartitioningMethod& preferred_method) {
             return GetGatherPartitionMethod(preferred_method) ==
                    partition_method;
@@ -997,8 +994,6 @@ absl::Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
       batch_dims.push_back(i);
     }
   }
-  preferred_gather_partition_methods =
-      options().preferred_gather_partition_methods;
   TF_ASSIGN_OR_RETURN(
       HloInstruction * pgather,
       PartitionGather(gather, operand, indices, gather->shape(),
@@ -1731,7 +1726,7 @@ std::pair<int64_t, int64_t> ScatterPartitionMethodCostModel(
     const HloSharding& output_sharding, absl::Span<const int64_t> slice_sizes,
     SpmdPartitioningVisitor* visitor) {
   if (absl::c_any_of(
-          preferred_scatter_partition_methods,
+          visitor->options().preferred_scatter_partition_methods,
           [&](const GatherScatterPartitioningMethod& preferred_method) {
             return GetScatterPartitionMethod(preferred_method) ==
                    partition_method;
@@ -1918,8 +1913,6 @@ absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       break;
     }
   }
-  preferred_scatter_partition_methods =
-      options().preferred_scatter_partition_methods;
   std::vector<int64_t> slice_sizes = hlo_sharding_util::GetScatterSliceSize(
       operands[0].base_shape(), updates[0].base_shape(),
       scatter->scatter_dimension_numbers());
