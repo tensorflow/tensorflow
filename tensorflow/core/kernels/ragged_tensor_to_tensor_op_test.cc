@@ -91,6 +91,25 @@ class RaggedTensorToTensorOpTest : public ::tensorflow::OpsTestBase {
   }
 };
 
+TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor_EmptyValuesWithRowSplits) {
+  // Modify the shape to a concrete shape that matches row_splits
+  BuildRaggedTensorToTensorGraph<float, int32>(
+      TensorShape({1}),        // concrete shape matching row splits
+      {"ROW_SPLITS"},          // row_partition_types
+      createVector<float>({}),  // empty values tensor
+      createScalar<float>(0),   // default_value
+      {createVector<int32>({0, 1, 6})}  // row_partition_tensors
+  );
+  
+  // The op should fail gracefully with an error instead of segfaulting
+  Status status = RunOpKernel();
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(errors::IsInvalidArgument(status));
+  EXPECT_THAT(
+      status.ToString(),
+      ::testing::HasSubstr("Invalid row_splits for empty values"));
+}
+
 TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor) {
   // indices = [2, 1, 0, 3]
   // params = [[.1, .2, .3], [], [.4, .5, .6, .7], [.8, .9]]
