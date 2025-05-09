@@ -91,6 +91,7 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:
     case HloOpcode::kPad:
+    case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kScatter:

@@ -788,6 +788,65 @@ XLA_TEST_P(AsyncCollectiveOps,
   EXPECT_EQ(results[1].Get<uint8_t>({1, 0, 0}), 1);
 }
 
+XLA_TEST_P(AsyncCollectiveOps, AsyncRaggedAllToAll_2GPUs_BF16) {
+  const absl::string_view kModuleStr = R"(
+HloModule test
+ENTRY entry {
+  input = bf16[2] constant({4., 8.})
+  output = bf16[2] constant({0., 0.})
+  input_offsets = s64[2] constant({0, 1})
+  send_sizes = s64[2] constant({1, 1})
+  c0 = s64[2] constant({0, 0})
+  replica_id = u32[] replica-id()
+  replica_id_s64 = s64[] convert(replica_id)
+  broadcast_replica_id = s64[2] broadcast(replica_id_s64), dimensions={}
+  output_offsets = s64[2] add(broadcast_replica_id, c0)
+  recv_sizes = s64[2] constant({1, 1})
+  ROOT ragged-all-to-all = bf16[2] ragged-all-to-all(input, output,
+    input_offsets, send_sizes, output_offsets, recv_sizes),
+    replica_groups={{0,1}}
+}
+)";
+
+  const int64_t kNumReplicas = 2;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(kModuleStr, kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+
+  const bool enable_async_ragged_all_to_all = GetParam();
+  HloInstruction* ra2a_start =
+      FindInstruction(hlo_module, HloOpcode::kAsyncStart);
+  HloInstruction* ra2a_done =
+      FindInstruction(hlo_module, HloOpcode::kAsyncDone);
+  ASSERT_THAT(ra2a_start, NotNull());
+  ASSERT_THAT(ra2a_done, NotNull());
+  EXPECT_EQ(IsAsync(ra2a_start), enable_async_ragged_all_to_all);
+
+  HloAsyncInstruction* ra2a_start_async = Cast<HloAsyncInstruction>(ra2a_start);
+  EXPECT_EQ(ra2a_start_async->async_wrapped_opcode(),
+            HloOpcode::kRaggedAllToAll);
+
+  // Check that the element type of ragged-all-to-all was not changed from bf16.
+  EXPECT_EQ(
+      ra2a_start_async->async_wrapped_instruction()->shape().element_type(),
+      BF16);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+  ASSERT_EQ(results.size(), kNumReplicas);
+
+  const bfloat16 four = static_cast<bfloat16>(4.);
+  const bfloat16 eight = static_cast<bfloat16>(8.);
+  LiteralTestUtil::ExpectR1Equal<bfloat16>({four, four}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<bfloat16>({eight, eight}, results[1]);
+}
+
 XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
   const absl::string_view kModuleStr = R"(
   HloModule test
