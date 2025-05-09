@@ -90,8 +90,7 @@ struct AlphaNumBuffer {
   // Support for absl::StrCat() etc.
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const AlphaNumBuffer& buffer) {
-    absl::Format(&sink, "%s",
-                 absl::string_view(buffer.data.data(), buffer.size));
+    sink.Append(absl::string_view(buffer.data.data(), buffer.size));
   }
 };
 }  // namespace strings_internal
