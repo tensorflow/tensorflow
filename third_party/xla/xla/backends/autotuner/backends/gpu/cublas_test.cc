@@ -44,6 +44,9 @@ namespace gpu {
 
 using CublasBackendConfig = AutotuneResult::GemmKey;
 
+using ::tsl::testing::IsOk;
+using ::tsl::testing::StatusIs;
+
 const char kFusionHlo[] = R"(
     HloModule module
 
@@ -128,11 +131,12 @@ TEST_F(CublasBackendTest, GetSupportedConfigsFromCublasCustomCall) {
                           ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
   se::StreamExecutor* stream_executor =
       PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
-  std::vector<std::unique_ptr<BackendConfig>> configs =
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()->operand(0)),
           stream_executor);
-  EXPECT_GT(configs.size(), 0);
+  EXPECT_THAT(configs, IsOk());
+  EXPECT_GT(configs.value().size(), 0);
 }
 
 TEST_F(CublasBackendTest, GetSupportedConfigsFromDot) {
@@ -140,10 +144,11 @@ TEST_F(CublasBackendTest, GetSupportedConfigsFromDot) {
                           ParseAndReturnVerifiedModule(kDotHlo));
   se::StreamExecutor* stream_executor =
       PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
-  std::vector<std::unique_ptr<BackendConfig>> configs =
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()), stream_executor);
-  EXPECT_GT(configs.size(), 0);
+  EXPECT_THAT(configs, IsOk());
+  EXPECT_GT(configs.value().size(), 0);
 }
 
 TEST_F(CublasBackendTest, GetSupportedConfigsFromFusionContainingGemm) {
@@ -152,10 +157,11 @@ TEST_F(CublasBackendTest, GetSupportedConfigsFromFusionContainingGemm) {
 
   se::StreamExecutor* stream_executor =
       PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
-  std::vector<std::unique_ptr<BackendConfig>> configs =
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           *(module->entry_computation()->root_instruction()), stream_executor);
-  EXPECT_GT(configs.size(), 0);
+  EXPECT_THAT(configs, IsOk());
+  EXPECT_GT(configs.value().size(), 0);
 }
 
 TEST_F(CublasBackendTest, GetDefaultConfigFromCublasCustomCall) {
@@ -213,8 +219,7 @@ TEST_F(CublasBackendTest, GetDefaultConfigFailsWithoutGemm) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config,
-              ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(config, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(CublasBackendTest, CompileCublasCustomCall) {

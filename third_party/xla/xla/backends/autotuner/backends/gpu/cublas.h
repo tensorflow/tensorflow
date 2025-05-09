@@ -53,7 +53,8 @@ class CublasBackend : public GpuCodegenBackend {
                          const DebugOptions* debug_options, Compiler* compiler)
       : GpuCodegenBackend("Cublas", target_config, debug_options, compiler) {}
 
-  std::vector<std::unique_ptr<BackendConfig>> GetSupportedConfigs(
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetSupportedConfigs(
       const HloInstruction& instr,
       stream_executor::StreamExecutor* stream_executor) override;
 
