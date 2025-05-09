@@ -3101,7 +3101,7 @@ TEST_P(LiteralSerializationTest, Test) {
           return;
         }
         ASSERT_TRUE(subshape.IsArray());
-        primitive_util::ArrayTypeSwitch<void>(
+        primitive_util::ArrayTypeSwitch(
             [&](auto primitive_type) {
               using NativeT = primitive_util::NativeTypeOf<primitive_type>;
               for (auto& element : literal.data<NativeT>(shape_index)) {

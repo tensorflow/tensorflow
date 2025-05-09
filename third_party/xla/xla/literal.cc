@@ -121,7 +121,7 @@ const Shape& ScalarShapeImpl() {
 }
 
 const Shape& ScalarShape(PrimitiveType type) {
-  return primitive_util::ArrayTypeSwitch<const Shape&>(
+  return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> const Shape& {
         return ScalarShapeImpl<primitive_type_constant>();
       },
@@ -364,7 +364,7 @@ std::optional<int64_t> LiteralBase::GetFirstInteger() const {
   if (!primitive_util::IsIntegralType(shape().element_type())) {
     return std::nullopt;
   }
-  return primitive_util::IntegralTypeSwitch<std::optional<int64_t>>(
+  return primitive_util::IntegralTypeSwitch(
       [&](auto primitive_type_constant) -> std::optional<int64_t> {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         auto first_element = GetFirstElement<NativeT>();
@@ -712,7 +712,7 @@ absl::Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
     memcpy(buffer(), src.buffer(), src.size_bytes_dense());
   } else {
     std::vector<int64_t> origin(subshape().dimensions().size(), 0);
-    primitive_util::ArrayTypeSwitch<void>(
+    primitive_util::ArrayTypeSwitch(
         [&](auto primitive_type_constant) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
           if (only_dynamic_bound) {
@@ -848,7 +848,7 @@ absl::Status MutableLiteralBase::CopySliceFrom(
   TF_RET_CHECK(src_literal.shape().dimensions().size() == src_base.size());
   TF_RET_CHECK(shape().dimensions().size() == dest_base.size());
 
-  return primitive_util::ArrayTypeSwitch<absl::Status>(
+  return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         return CopySliceFromInternal<NativeT>(src_literal, src_base, dest_base,
@@ -1309,7 +1309,7 @@ Literal LiteralBase::Slice(absl::Span<const int64_t> start_indices,
       LayoutUtil::MinorToMajor(shape()));
   ShapeUtil::CopyDynamicDimensions(&result_shape, shape());
   Literal result_literal(result_shape);
-  primitive_util::ArrayTypeSwitch<void>(
+  primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> void {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         return SliceInternal<NativeT>(*this, start_indices, result_literal);
@@ -1342,7 +1342,7 @@ std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
                                      const ShapeIndex& shape_index) const {
   const Shape& subshape = ShapeUtil::GetSubshape(shape(), shape_index);
   CHECK(LayoutUtil::IsDenseArray(subshape));
-  return primitive_util::ArrayTypeSwitch<std::string>(
+  return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> std::string {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         if constexpr (primitive_util::IsIntegralType(primitive_type_constant)) {
@@ -1405,7 +1405,7 @@ std::optional<double> LiteralBase::GetSumAsDouble(
     return std::nullopt;
   }
 
-  return primitive_util::FloatingPointTypeSwitch<double>(
+  return primitive_util::FloatingPointTypeSwitch(
       [&](auto primitive_type_constant) -> double {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         double sum = 0.0;
@@ -1468,7 +1468,7 @@ absl::Status MutableLiteralBase::SetFromDouble(
     return FailedPrecondition("Array element type is not integral: %s",
                               PrimitiveType_Name(shape().element_type()));
   }
-  primitive_util::FloatingPointTypeSwitch<void>(
+  primitive_util::FloatingPointTypeSwitch(
       [&](auto primitive_type_constant) -> void {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         Set<NativeT>(multi_index, static_cast<NativeT>(value));
@@ -1774,7 +1774,7 @@ absl::Status ConvertIfDestTypeMatches(const LiteralBase& src_literal,
   auto src_data = src_literal.data<NativeSrcT>();
   void* dst_base = dst_literal.untyped_data();
   DCHECK_EQ(src_data.size(), dst_literal.element_count());
-  return primitive_util::ArrayTypeSwitch<absl::Status>(
+  return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsComplexType(kSrcType) &&
                       !primitive_util::IsComplexType(primitive_type_constant)) {
@@ -1810,7 +1810,7 @@ absl::StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
   // duplicating it N^2 times in the conversion implementation.
   Literal result(
       ShapeUtil::ChangeElementType(literal.shape(), primitive_dest_type));
-  TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch<absl::Status>(
+  TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         return ConvertIfDestTypeMatches<primitive_type_constant>(literal,
                                                                  result);
@@ -1953,7 +1953,7 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
   }
 
   std::vector<int64_t> multi_index;
-  return primitive_util::ArrayTypeSwitch<bool>(
+  return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         using NativeSrcT = NativeTypeOf<primitive_type_constant>;
         return EqualElementsInternal<NativeSrcT>(other, &multi_index);
@@ -2036,7 +2036,7 @@ bool Literal::Piece::IsAll(const Literal& scalar) const {
   CHECK(LayoutUtil::IsDenseArray(subshape()))
       << __func__ << " is only supported for dense arrays: " << subshape();
   CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
-  return primitive_util::ArrayTypeSwitch<bool>(
+  return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         return AllElementsEqualValue(this->data<NativeT>(),
@@ -2054,7 +2054,7 @@ int64_t Literal::Piece::CountAll(const Literal& scalar) const {
   CHECK(LayoutUtil::IsDenseArray(subshape()))
       << __func__ << " is only supported for dense arrays: " << subshape();
   CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
-  return primitive_util::ArrayTypeSwitch<int64_t>(
+  return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> int64_t {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         return absl::c_count_if(
@@ -2081,7 +2081,7 @@ bool LiteralBase::IsAll(int8_t value) const {
     return false;
   }
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::ArrayTypeSwitch<bool>(
+  return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         NativeT converted(value);
@@ -2112,7 +2112,7 @@ bool LiteralBase::IsAllFloatImpl(float value, bool round_value) const {
     return false;
   }
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::FloatingPointTypeSwitch<bool>(
+  return primitive_util::FloatingPointTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         scalar.Set<NativeT>({}, static_cast<NativeT>(value));
@@ -2130,7 +2130,7 @@ bool LiteralBase::IsAllComplex(complex64 value) const {
     return false;
   }
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::ComplexTypeSwitch<bool>(
+  return primitive_util::ComplexTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         scalar.Set<NativeT>({}, static_cast<NativeT>(value));
@@ -2169,7 +2169,7 @@ bool LiteralBase::IsR1Iota() const {
     return false;
   }
 
-  return primitive_util::ArrayTypeSwitch<bool>(
+  return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         const int64_t elements = ShapeUtil::ElementsIn(shape());
@@ -2216,7 +2216,7 @@ std::optional<int64_t> LiteralBase::IsR1StridedIota() const {
     return std::nullopt;
   }
 
-  return primitive_util::IntegralTypeSwitch<std::optional<int64_t>>(
+  return primitive_util::IntegralTypeSwitch(
       [&](auto primitive_type_constant) -> std::optional<int64_t> {
         using NativeT = NativeTypeOf<primitive_type_constant>;
 
@@ -2241,7 +2241,7 @@ std::optional<int64_t> LiteralBase::IsR1StridedIota() const {
 bool LiteralBase::IsZero(absl::Span<const int64_t> indices) const {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
-  return primitive_util::ArrayTypeSwitch<bool>(
+  return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> bool {
         using NativeT = NativeTypeOf<primitive_type_constant>;
         return Get<NativeT>(indices) == NativeT{0};
