@@ -103,6 +103,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
@@ -1481,13 +1482,50 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
   // to ToLiteral.
   device_buffer.ConvertUsageHold(stream, usage_event, /*reference_held=*/true);
 
+  xla::Layout literal_layout;
+  if (literal->shape().has_layout()) {
+    literal_layout = literal->shape().layout();
+  } else {
+    literal_layout =
+        LayoutUtil::MakeDescendingLayout(on_device_shape().dimensions().size());
+  }
+
+  std::shared_ptr<TransposePlan> transpose;
+  if (on_device_shape().layout() != literal_layout) {
+    absl::InlinedVector<int64_t, 4> byte_strides(
+        on_device_shape().dimensions().size());
+    absl::Status s =
+        ShapeUtil::ByteStrides(on_device_shape(), absl::MakeSpan(byte_strides));
+    if (!s.ok()) {
+      return PjRtFuture<>(s);
+    }
+    absl::Span<const int64_t> dims = on_device_shape().dimensions();
+    absl::InlinedVector<int64_t, 4> permutation(dims.size());
+    absl::c_reverse_copy(literal_layout.minor_to_major(), permutation.begin());
+    TransposePlan::Options options;
+    options.elem_size_in_bytes =
+        primitive_util::ByteWidth(on_device_shape().element_type());
+    options.dims = on_device_shape().dimensions();
+    options.permutation = permutation;
+    options.input_layout = TransposePlan::Striding{byte_strides};
+    {
+      absl::MutexLock lock(&client_->transpose_mu_);
+      absl::StatusOr<std::shared_ptr<TransposePlan>> t =
+          client_->transpose_cache_.GetOrCreate(options);
+      if (!t.ok()) {
+        return PjRtFuture<>(t.status());
+      }
+      transpose = *std::move(t);
+    }
+  }
+
   auto async_to_literal = [usage_event,
                            device_memory = std::move(device_memory),
                            definition_events = std::move(definition_events),
                            stream, device = device_,
                            transfer_manager = std::move(transfer_manager),
-                           on_device_shape{on_device_shape_}, literal, promise,
-                           local_device]() mutable {
+                           on_device_shape{on_device_shape_}, literal,
+                           transpose, promise, local_device]() mutable {
     absl::StatusOr<EventPool::Handle> event_or =
         local_device->event_pool().AllocateEvent(stream->parent());
     if (!event_or.ok()) {
@@ -1515,12 +1553,33 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
             ? &transfer_metadata
             : nullptr;
 
-    transfer_manager->TransferLiteralFromDevice(
-        stream, shaped_buffer, literal,
-        [promise](absl::Status status) mutable {
-          promise.Set(std::move(status));
-        },
-        transfer_metadata_ptr);
+    if (transpose) {
+      // Copy the device buffer to a temporary literal with descending
+      // layout and transpose to the requested layout.
+
+      Shape stage_shape = literal->shape();
+      *stage_shape.mutable_layout() =
+          LayoutUtil::MakeDescendingLayout(stage_shape.dimensions().size());
+      auto staged = std::make_shared<Literal>(stage_shape);
+
+      transfer_manager->TransferLiteralFromDevice(
+          stream, shaped_buffer, staged.get(),
+          [transpose, promise, staged, literal](absl::Status status) mutable {
+            if (status.ok()) {
+              transpose->Execute(staged->untyped_data(),
+                                 literal->untyped_data());
+            }
+            promise.Set(std::move(status));
+          },
+          transfer_metadata_ptr);
+    } else {
+      transfer_manager->TransferLiteralFromDevice(
+          stream, shaped_buffer, literal,
+          [promise](absl::Status status) mutable {
+            promise.Set(std::move(status));
+          },
+          transfer_metadata_ptr);
+    }
 
     local_device->event_pool().ThenRecordEvent(stream, event_or.value());
     usage_event->SetSequencingEvent(std::move(event_or).value(), stream);
