@@ -130,7 +130,7 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
 bool GatherSimplifier::IsSimplifiedGather(const HloGatherInstruction* gather) {
   auto* start_indices = gather->operands()[1];
   const auto& dims = gather->gather_dimension_numbers();
-  return start_indices->shape().dimensions_size() == 2 &&
+  return start_indices->shape().dimensions().size() == 2 &&
          dims.index_vector_dim() == 1 &&
          IsIdentityPermutation(dims.start_index_map()) &&
          dims.collapsed_slice_dims().empty() &&
