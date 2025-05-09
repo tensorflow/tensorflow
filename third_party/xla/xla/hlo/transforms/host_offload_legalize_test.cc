@@ -196,7 +196,7 @@ ENTRY main.24 {
   ASSERT_NE(custom_call, nullptr);
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(custom_call->shape().layout(),
-            LayoutUtil::MakeLayout({0, 1}, {}, {Tile{{8, 128}}}));
+            LayoutUtil::MakeLayout({0, 1}, {Tile{{8, 128}}}));
   EXPECT_EQ(custom_call->users()[0]->shape().layout(),
             LayoutUtil::MakeLayout({1, 0}));
 }
@@ -543,11 +543,11 @@ ENTRY main {
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
   EXPECT_EQ(
       custom_call->shape().layout(),
-      LayoutUtil::MakeLayout({3, 2, 1, 0}, {}, {Tile{{4, 128}}, Tile{{2, 1}}}));
+      LayoutUtil::MakeLayout({3, 2, 1, 0}, {Tile{{4, 128}}, Tile{{2, 1}}}));
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(
       custom_call->users()[0]->shape().layout(),
-      LayoutUtil::MakeLayout({3, 1, 2, 0}, {}, {Tile{{8, 128}}, Tile{{2, 1}}}));
+      LayoutUtil::MakeLayout({3, 1, 2, 0}, {Tile{{8, 128}}, Tile{{2, 1}}}));
 }
 
 TEST_F(HostOffloadLegalizeTest, MoveCopyOverBitcast_2) {
@@ -571,13 +571,13 @@ ENTRY main {
   EXPECT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
-  EXPECT_EQ(custom_call->shape().layout(),
-            LayoutUtil::MakeLayout({4, 3, 2, 1, 0}, {},
-                                   {Tile{{4, 128}}, Tile{{2, 1}}}));
+  EXPECT_EQ(
+      custom_call->shape().layout(),
+      LayoutUtil::MakeLayout({4, 3, 2, 1, 0}, {Tile{{4, 128}}, Tile{{2, 1}}}));
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
-  EXPECT_EQ(custom_call->users()[0]->shape().layout(),
-            LayoutUtil::MakeLayout({3, 4, 2, 1, 0}, {},
-                                   {Tile{{8, 128}}, Tile{{2, 1}}}));
+  EXPECT_EQ(
+      custom_call->users()[0]->shape().layout(),
+      LayoutUtil::MakeLayout({3, 4, 2, 1, 0}, {Tile{{8, 128}}, Tile{{2, 1}}}));
 }
 
 TEST_F(HostOffloadLegalizeTest, MoveCopyUp) {

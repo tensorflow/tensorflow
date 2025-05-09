@@ -43,7 +43,6 @@ class LayoutUtil {
   // convenience function for protobuf construction.)
   static Layout MakeLayout(
       absl::Span<const int64_t> minor_to_major,
-      absl::Span<const DimLevelType> dim_level_types = {},
       absl::Span<const Tile> tiles = {},
       int64_t tail_padding_alignment_in_elements = 1,
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
@@ -134,9 +133,6 @@ class LayoutUtil {
 
   // Returns whether the given Layout has a dense in-memory representation.
   static bool IsDense(const Layout& layout);
-
-  // Returns whether the given Layout has a sparse in-memory representation.
-  static bool IsSparse(const Layout& layout);
 
   // Returns whether the given Layout represents a COO (coordinate matrix)
   // sparse array.

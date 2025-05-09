@@ -342,15 +342,6 @@ void Destroy(XLA_Shape* c_shape) {
 
 void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
   CreateVector(layout.minor_to_major(), &c_layout->minor_to_major);
-  {
-    const int n = layout.dim_level_types_size();
-    absl::InlinedVector<xla::DimLevelType, xla::InlineRank()> dim_level_types(
-        n);
-    for (int i = 0; i < n; i++) {
-      dim_level_types[i] = layout.dim_level_type(i);
-    }
-    CreateVector(dim_level_types, &c_layout->dim_level_types);
-  }
   c_layout->index_primitive_type = layout.index_primitive_type();
   c_layout->pointer_primitive_type = layout.pointer_primitive_type();
   c_layout->element_size_in_bits = layout.element_size_in_bits();
@@ -364,13 +355,6 @@ void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
 
 xla::Layout FromC(const XLA_Layout* c_layout) {
   absl::Span<const int64_t> minor_to_major = MakeSpan(c_layout->minor_to_major);
-  absl::Span<const int> dim_level_type_ints =
-      MakeSpan(c_layout->dim_level_types);
-  xla::DimLevelTypeVector dim_level_types;
-  dim_level_types.reserve(dim_level_type_ints.size());
-  for (int dim_level_type : dim_level_type_ints) {
-    dim_level_types.push_back(static_cast<xla::DimLevelType>(dim_level_type));
-  }
   absl::InlinedVector<xla::Tile, 1> tiles;
   const XLA_Tile* c_tiles = c_layout->tiles.size > TPU_C_API_MAX_INLINED
                                 ? c_layout->tiles.heap
@@ -380,8 +364,7 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
     tiles.push_back(FromC(&c_tiles[i]));
   }
   return xla::Layout(
-      minor_to_major, dim_level_types, tiles,
-      c_layout->tail_padding_alignment_in_elements,
+      minor_to_major, tiles, c_layout->tail_padding_alignment_in_elements,
       static_cast<xla::PrimitiveType>(c_layout->index_primitive_type),
       static_cast<xla::PrimitiveType>(c_layout->pointer_primitive_type),
       c_layout->element_size_in_bits, c_layout->memory_space,
@@ -393,9 +376,6 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
 void Destroy(XLA_Layout* c_layout) {
   if (c_layout->minor_to_major.size > TPU_C_API_MAX_INLINED) {
     delete[] c_layout->minor_to_major.heap;
-  }
-  if (c_layout->dim_level_types.size > TPU_C_API_MAX_INLINED) {
-    delete[] c_layout->dim_level_types.heap;
   }
   if (c_layout->tiles.size > TPU_C_API_MAX_INLINED) {
     delete[] c_layout->tiles.heap;

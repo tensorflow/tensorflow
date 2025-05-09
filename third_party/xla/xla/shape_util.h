@@ -440,13 +440,12 @@ class ShapeUtil {
       int64_t element_size_in_bits = 0, int64_t memory_space = 0,
       absl::Span<const SplitConfig> split_configs = {});
 
-  // Constructs a new sparse array shape with the given minor_to_major order and
-  // dim_level_types in its Layout. Returns a value shape such that
+  // Constructs a new sparse array shape with the given minor_to_major order
+  // in its Layout. Returns a value shape such that
   // shape.has_layout().
   static Shape MakeShapeWithSparseLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major,
-      absl::Span<const DimLevelType> dim_level_types,
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
       PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
       int64_t tail_padding_alignment_in_elements = 1,
