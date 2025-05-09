@@ -2772,6 +2772,15 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     if (opts_.verify_call_nested_computation_thread_name) {
       return CheckCallableInstructionThreadName(call);
     }
+
+    // As opposed to other callable instructions, nothing respects input/output
+    // aliasing for call instructions, so make sure it's not set.
+    const HloCallableInstruction* callable =
+        DynCast<const HloCallableInstruction>(call);
+    TF_RET_CHECK(callable != nullptr);
+    TF_RET_CHECK(callable->output_to_operand_aliasing().empty())
+        << "Call instruction " << call->ToString()
+        << " may not have an output-to-operand aliasing set.";
     return absl::OkStatus();
   }
 
