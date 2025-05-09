@@ -731,6 +731,15 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
 /* static */ void ShapeUtil::PrintHumanStringWithLayout(xla::Printer* printer,
                                                         const Shape& shape) {
+  if (printer->is_hasher()) {
+    printer->Append(shape.FingerprintWithLayout());
+  } else {
+    UncachedPrintHumanStringWithLayout(printer, shape);
+  }
+}
+
+/* static */ void ShapeUtil::UncachedPrintHumanStringWithLayout(
+    xla::Printer* printer, const Shape& shape) {
   if (shape.IsTuple()) {
     PrintTupleShapes</*kPrintLayout=*/true>(printer, shape.tuple_shapes());
     return;

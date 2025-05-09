@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/shape.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <optional>
 #include <ostream>
@@ -41,17 +42,54 @@ limitations under the License.
 
 namespace xla {
 
+const Shape::State& Shape::empty_state() {
+  static State* empty = new State;
+  return *empty;
+}
+
+static uint64_t EmptyFingerprint() {
+  static uint64_t fp = [] {
+    HighwayHashPrinter printer;
+    ShapeUtil::UncachedPrintHumanStringWithLayout(&printer, Shape());
+    return printer.ToFingerprint();
+  }();
+  return fp;
+}
+
 // Defined in .cc file to avoid inlining these large routines
 Shape::Shape() = default;
-Shape::~Shape() = default;
-Shape::Shape(const Shape&) = default;
-Shape::Shape(Shape&&) noexcept = default;
-Shape& Shape::operator=(const Shape&) = default;
-Shape& Shape::operator=(Shape&&) noexcept = default;
+
+Shape::~Shape() { Unref(rep_do_not_use_directly_); }
+
+Shape::Shape(const Shape& s)
+    : rep_do_not_use_directly_(s.rep_do_not_use_directly_) {
+  Ref(rep_do_not_use_directly_);
+}
+
+Shape::Shape(Shape&& s) noexcept
+    : rep_do_not_use_directly_(s.rep_do_not_use_directly_) {
+  s.rep_do_not_use_directly_ = nullptr;
+}
+
+Shape& Shape::operator=(const Shape& s) {
+  Ref(s.rep_do_not_use_directly_);
+  Rep* old_rep = rep_do_not_use_directly_;
+  rep_do_not_use_directly_ = s.rep_do_not_use_directly_;
+  Unref(old_rep);
+  return *this;
+}
+
+Shape& Shape::operator=(Shape&& s) noexcept {
+  Rep* old_rep = rep_do_not_use_directly_;
+  rep_do_not_use_directly_ = s.rep_do_not_use_directly_;
+  s.rep_do_not_use_directly_ = nullptr;
+  Unref(old_rep);
+  return *this;
+}
 
 Shape::Shape(const PrimitiveType element_type) {
   CHECK(element_type == TOKEN || element_type == OPAQUE_TYPE)
-      << "Invalid element type for token or opaque shape: " << element_type_;
+      << "Invalid element type for token or opaque shape: " << element_type;
   set_element_type(element_type);
 }
 
@@ -130,7 +168,7 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& shape_proto) {
 
 ShapeProto Shape::ToProto() const {
   ShapeProto proto;
-  proto.set_element_type(element_type_);
+  proto.set_element_type(element_type());
 
   if (const auto* const state = if_array_state()) {
     proto.mutable_dimensions()->Reserve(state->dimensions.size());
@@ -190,7 +228,12 @@ Shape::TupleState& Shape::tuple_state() {
 
 void Shape::Print(Printer* printer, bool print_layout) const {
   if (print_layout) {
-    ShapeUtil::PrintHumanStringWithLayout(printer, *this);
+    if (printer->is_hasher()) {
+      // Just use fingerprint (which may have been precomputed).
+      printer->Append(FingerprintWithLayout());
+    } else {
+      ShapeUtil::PrintHumanStringWithLayout(printer, *this);
+    }
   } else {
     ShapeUtil::PrintHumanString(printer, *this);
   }
@@ -349,59 +392,58 @@ const std::vector<Shape>& Shape::tuple_shapes() const {
 }
 
 void Shape::Clear() {
-  // Before setting the element type to invalid, we need to clear the state
-  // because the state may be non-empty if the shape was previously valid.
-  // Without this step, set_element_type() may CHECK-fail.
-  if (auto* const state = if_array_state()) {
-    *state = ArrayState();
-  } else if (auto* const state = if_tuple_state()) {
-    *state = TupleState();
-  }
-  set_element_type(PRIMITIVE_TYPE_INVALID);
+  Unref(rep_do_not_use_directly_);
+  rep_do_not_use_directly_ = nullptr;
 }
 
 void Shape::set_element_type(const PrimitiveType value) {
-  element_type_ = value;
+  if (value == element_type()) {
+    // Do not destroy sharing when the element type is not changing.
+    return;
+  }
+
+  mutable_state();  // To remove any sharing
+  rep_do_not_use_directly_->element_type = value;
 
   // Make sure the variant state matches the element type.
   // If we have to change the case of the variant, and the current case is not
   // empty, it's likely a programmer error - we CHECK-fail to catch it.
-  if (element_type_ == TOKEN) {
+  if (element_type() == TOKEN) {
     if (!if_token_state()) {
       CheckStateIsEmpty();
-      state_ = TokenState();
+      *mutable_state() = TokenState();
     }
     return;
   }
-  if (element_type_ == OPAQUE_TYPE) {
+  if (element_type() == OPAQUE_TYPE) {
     if (!if_opaque_state()) {
       CheckStateIsEmpty();
-      state_ = OpaqueState();
+      *mutable_state() = OpaqueState();
     }
     return;
   }
-  if (element_type_ == TUPLE) {
+  if (element_type() == TUPLE) {
     if (!if_tuple_state()) {
       CheckStateIsEmpty();
-      state_ = TupleState();
+      *mutable_state() = TupleState();
     }
     return;
   }
-  if (primitive_util::IsArrayType(element_type_)) {
+  if (primitive_util::IsArrayType(element_type())) {
     if (!if_array_state()) {
       CheckStateIsEmpty();
-      state_ = ArrayState();
+      *mutable_state() = ArrayState();
     }
     return;
   }
   // Treat all other types as invalid.
-  if (element_type_ != PRIMITIVE_TYPE_INVALID) {
-    LOG(ERROR) << "Unsupported element type: " << element_type_;
-    element_type_ = PRIMITIVE_TYPE_INVALID;
+  if (element_type() != PRIMITIVE_TYPE_INVALID) {
+    LOG(ERROR) << "Unsupported element type: " << element_type();
+    rep_do_not_use_directly_->element_type = PRIMITIVE_TYPE_INVALID;
   }
   if (!if_invalid_state()) {
     CheckStateIsEmpty();
-    state_ = InvalidState();
+    *mutable_state() = InvalidState();
   }
 }
 
@@ -413,6 +455,26 @@ Shape* Shape::add_tuple_shapes() {
   auto& state = tuple_state();
   state.tuple_shapes.push_back(Shape());
   return &state.tuple_shapes.back();
+}
+
+uint64_t Shape::FingerprintWithLayout() const {
+  Rep* rep = rep_do_not_use_directly_;
+  if (rep == nullptr) {
+    return EmptyFingerprint();
+  }
+
+  uint64_t fp =
+      rep->cached_fingerprint_with_layout.load(std::memory_order_acquire);
+  if (fp != 0) {
+    return fp;
+  }
+
+  // Compute fingerprint
+  HighwayHashPrinter printer;
+  ShapeUtil::UncachedPrintHumanStringWithLayout(&printer, *this);
+  fp = printer.ToFingerprint();
+  rep->cached_fingerprint_with_layout.store(fp, std::memory_order_release);
+  return fp;
 }
 
 bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {

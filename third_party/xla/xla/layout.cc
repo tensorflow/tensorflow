@@ -46,6 +46,11 @@ TileProto Tile::ToProto() const {
 }
 
 void Tile::Print(Printer* printer) const {
+  if (printer->is_hasher()) {
+    printer->AppendInt64List(dimensions(), false);
+    return;
+  }
+
   printer->Append("(");
   AppendJoin(printer, dimensions(), ",", [&](Printer* printer, int64_t dim) {
     if (dim >= 0) {
@@ -268,7 +273,11 @@ static absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
 
 void Layout::Print(Printer* printer) const {
   printer->Append("{");
-  AppendJoin(printer, minor_to_major(), ",");
+  if (printer->is_hasher()) {
+    printer->AppendInt64List(minor_to_major(), false);
+  } else {
+    AppendJoin(printer, minor_to_major(), ",");
+  }
 
   bool colon_printed = false;
   auto print_colon_if_have_not = [&]() {

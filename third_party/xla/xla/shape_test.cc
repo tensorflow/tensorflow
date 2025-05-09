@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/shape.h"
 
+#include <cstdint>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -49,6 +51,69 @@ class ShapeTest : public ::testing::Test {
   const Shape unbounded_ =
       ShapeUtil::MakeShape(F32, {Shape::kUnboundedSize, 784}, {true, false});
 };
+
+TEST_F(ShapeTest, Empty) {
+  Shape shape;
+  EXPECT_EQ(shape.element_type(), PRIMITIVE_TYPE_INVALID);
+  EXPECT_FALSE(shape.IsArray());
+  EXPECT_FALSE(shape.IsTuple());
+  EXPECT_FALSE(shape.IsToken());
+  EXPECT_FALSE(shape.IsOpaque());
+}
+
+TEST_F(ShapeTest, Array) {
+  Shape shape(F32, {1, 2, 3}, {});
+  EXPECT_EQ(shape.element_type(), F32);
+  EXPECT_TRUE(shape.IsArray());
+
+  shape.Clear();
+  EXPECT_EQ(shape.element_type(), PRIMITIVE_TYPE_INVALID);
+  EXPECT_FALSE(shape.IsArray());
+}
+
+TEST_F(ShapeTest, MutationRemovesSharing) {
+  Shape s1(F32, {1, 2, 3}, {});
+  Shape s2 = s1;
+
+  s1.set_element_type(S32);
+  EXPECT_EQ(s1.element_type(), S32);
+
+  // s2 should not change due to s1 mutation.
+  EXPECT_EQ(s2.element_type(), F32);
+}
+
+TEST_F(ShapeTest, Copy) {
+  Shape s1(F32, {1, 2, 3}, {});
+  Shape s2 = s1;
+  EXPECT_EQ(s2.element_type(), F32);
+  EXPECT_EQ(s2.dimensions(), std::vector<int64_t>({1, 2, 3}));
+
+  Shape s3;
+  s3 = s1;
+  EXPECT_EQ(s3.element_type(), F32);
+  EXPECT_EQ(s3.dimensions(), std::vector<int64_t>({1, 2, 3}));
+}
+
+TEST_F(ShapeTest, Move) {
+  // NOLINTBEGIN(bugprone-use-after-move): intentionally test source after move
+  Shape s1(F32, {1, 2, 3}, {});
+
+  // Move s1 to s2
+  Shape s2(std::move(s1));
+  EXPECT_EQ(s1.element_type(), PRIMITIVE_TYPE_INVALID);
+  EXPECT_FALSE(s1.IsArray());
+  EXPECT_EQ(s2.element_type(), F32);
+  EXPECT_EQ(s2.dimensions(), std::vector<int64_t>({1, 2, 3}));
+
+  // Move s2 to s3.
+  Shape s3;
+  s3 = std::move(s2);
+  EXPECT_EQ(s2.element_type(), PRIMITIVE_TYPE_INVALID);
+  EXPECT_FALSE(s2.IsArray());
+  EXPECT_EQ(s3.element_type(), F32);
+  EXPECT_EQ(s3.dimensions(), std::vector<int64_t>({1, 2, 3}));
+  // NOLINTEND(bugprone-use-after-move)
+}
 
 // Tests that if the dynamic_dimensions parameter empty in the Shape
 // constructor, it's treated as all dimensions are static.
@@ -306,6 +371,115 @@ TEST_F(ShapeTest, SupportsAbslHash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
       {opaque_, token_, scalar_, scalar_with_tile_, matrix_, matrix2_, tuple_,
        nested_tuple_, dynamic_matrix_}));
+}
+
+TEST_F(ShapeTest, Fingerprint) {
+  // Make a list of unique shapes.
+  std::vector<Shape> shapes;
+  shapes.push_back(Shape());
+  shapes.push_back(Shape(F32, {1, 2, 3}, {}));
+  shapes.push_back(Shape(U32, {1, 2, 3}, {}));
+  shapes.push_back(Shape(U32, {1}, {}));
+  shapes.push_back(Shape(U32, {1}, {true}));
+  shapes.push_back(ShapeUtil::MakeTupleShape({shapes[1], shapes[2]}));
+  shapes.push_back(ShapeUtil::MakeTupleShape({shapes[1], shapes[3]}));
+  shapes.push_back(ShapeUtil::MakeTupleShape({shapes[1], shapes.back()}));
+  shapes.push_back(Shape(TOKEN));
+  shapes.push_back(Shape(OPAQUE_TYPE));
+
+  for (const Shape& s1 : shapes) {
+    SCOPED_TRACE(absl::StrCat("s=", ShapeUtil::HumanString(s1)));
+    const uint64_t fp1 = s1.FingerprintWithLayout();
+
+    // Check that copy has same fingerprint.
+    Shape copy = s1;
+    EXPECT_EQ(fp1, copy.FingerprintWithLayout()) << s1;
+
+    // Check that converting to/from proto produces same fingerprint.
+    auto decoded = Shape::FromProto(s1.ToProto());
+    TF_ASSERT_OK(decoded.status());
+    EXPECT_EQ(s1, *decoded);
+    EXPECT_EQ(fp1, decoded->FingerprintWithLayout()) << s1;
+
+    // Check that fingerprints match iff shapes are same.
+    for (const Shape& s2 : shapes) {
+      const uint64_t fp2 = s2.FingerprintWithLayout();
+      if (&s1 == &s2) {
+        EXPECT_EQ(fp1, fp2) << s1 << " vs. " << s2;
+      } else {
+        EXPECT_NE(fp1, fp2) << s1 << " vs. " << s2;
+      }
+    }
+  }
+}
+
+TEST_F(ShapeTest, FingerprintEmpty) {
+  Shape shape;
+  const uint64_t fp = shape.FingerprintWithLayout();
+
+  shape = Shape(F32, {1}, {});
+  ASSERT_NE(fp, shape.FingerprintWithLayout());
+
+  shape.Clear();
+  ASSERT_EQ(fp, shape.FingerprintWithLayout());
+
+  auto decoded = Shape::FromProto(Shape().ToProto());
+  TF_ASSERT_OK(decoded.status());
+  ASSERT_EQ(fp, decoded->FingerprintWithLayout());
+}
+
+TEST_F(ShapeTest, MutationChangesFingerprint) {
+  Shape shape(F32, {1, 2, 3}, {});
+  const uint64_t fp1 = shape.FingerprintWithLayout();
+  Shape copy = shape;
+  EXPECT_EQ(fp1, copy.FingerprintWithLayout());
+
+  // Changing copy changes its fingerprint but not shape's fingerprint.
+  copy.set_dimensions(1, 5);
+  EXPECT_EQ(fp1, shape.FingerprintWithLayout());
+  EXPECT_NE(fp1, copy.FingerprintWithLayout());
+
+  // Changing copy back restores expected fingerprint.
+  copy.set_dimensions(1, 2);
+  EXPECT_EQ(fp1, shape.FingerprintWithLayout());
+  EXPECT_EQ(fp1, copy.FingerprintWithLayout());
+}
+
+TEST_F(ShapeTest, AllMutationsChangeFingerprint) {
+  Shape s(F32, {1, 2, 3, 4}, {});
+  Shape last = s;
+
+  // Apply a sequence of mutations and verify that each one changes the
+  // fingerprint.
+  auto apply = [&](auto mutation) {
+    mutation();
+    EXPECT_NE(s.FingerprintWithLayout(), last.FingerprintWithLayout());
+    last = s;
+  };
+
+  // Array shape mutations.
+  apply([&] { s.set_unbounded_dynamic_dimension(1); });
+  apply([&] { s.set_dynamic_dimension(2, true); });
+  apply([&] { s.set_dynamic_dimension(2, false); });
+  apply([&] { s.DeleteDimension(2); });
+  apply([&] { s.DeleteDimensions({2, 3}); });
+  apply([&] { s.set_element_type(U32); });
+  apply([&] { s.set_dimensions(0, 500); });
+  apply([&] { s.clear_dimensions(); });
+  apply([&] { s.add_dimensions(100); });
+  apply([&] { s.set_dynamic_dimension(0, true); });
+  apply([&] { s.clear_dynamic_dimensions(); });
+  apply([&] { s.clear_dimensions(); });
+  apply([&] { s.add_dimensions(100); });
+
+  // Tuple shape mutations.
+  apply([&] { *s.mutable_layout() = Layout({0}); });
+  apply([&] { s = ShapeUtil::MakeTupleShape({s, s}); });
+  apply([&] { s.mutable_tuple_shapes(0)->add_dimensions(200); });
+  apply([&] { s.mutable_tuple_shapes(1)->set_dimensions(0, 300); });
+  apply([&] { *s.add_tuple_shapes() = Shape(F32, {1}, {}); });
+
+  apply([&] { s.Clear(); });
 }
 
 static const int kDistinctShapes = 4;

@@ -202,6 +202,11 @@ class ShapeUtil {
   static void PrintHumanStringWithLayout(xla::Printer* printer,
                                          const Shape& shape);
 
+  // Variant of PrintHumanStringWithLayout that does not use any pre-cached
+  // data. Useful for actually computing Shape::FingerprintWithLayout().
+  static void UncachedPrintHumanStringWithLayout(xla::Printer* printer,
+                                                 const Shape& shape);
+
   // As above, but for program shapes, prints a string for the form:
   //
   // (param_name: f32[42x12], ...) -> f32[24x42]
@@ -577,12 +582,10 @@ class ShapeUtil {
   //   void fn(Shape* subshape, const ShapeIndex& index) (mutable version)
   template <typename Fn>
   static void ForEachSubshape(const Shape& shape, Fn&& fn) {
-    ForEachSubshapeWithStatus(shape, [&](const Shape& subshape,
-                                         const ShapeIndex& index) {
-      fn(subshape, index);
-      return absl::OkStatus();
-    }).IgnoreError();
+    ShapeIndex index;
+    return ForEachSubshapeHelper(shape, fn, &index);
   }
+
   template <typename Fn>
   static void ForEachMutableSubshape(Shape* shape, Fn&& fn) {
     ForEachMutableSubshapeWithStatus(shape, [&](Shape* subshape,
@@ -630,19 +633,20 @@ class ShapeUtil {
   //   void fn(Shape* subshape, const ShapeIndex& index) (mutable version)
   template <typename Fn>
   static void ForEachLeafShape(const Shape& shape, Fn&& fn) {
-    ForEachLeafShapeWithStatus(shape, [&](const Shape& subshape,
-                                          const ShapeIndex& index) {
-      fn(subshape, index);
-      return absl::OkStatus();
-    }).IgnoreError();
+    ForEachSubshape(shape, [&](const Shape& subshape, const ShapeIndex& index) {
+      if (IsLeafIndex(shape, index)) {
+        fn(subshape, index);
+      }
+    });
   }
   template <typename Fn>
   static void ForEachMutableLeafShape(Shape* shape, Fn&& fn) {
-    ForEachMutableLeafShapeWithStatus(shape, [&](Shape* subshape,
-                                                 const ShapeIndex& index) {
-      fn(subshape, index);
-      return absl::OkStatus();
-    }).IgnoreError();
+    ForEachMutableSubshape(shape,
+                           [&](Shape* subshape, const ShapeIndex& index) {
+                             if (IsLeafIndex(*shape, index)) {
+                               fn(subshape, index);
+                             }
+                           });
   }
 
   // Variants of ForEach(Mutable)Subshape which propagate absl::Status from the
@@ -656,11 +660,8 @@ class ShapeUtil {
   //
   template <typename Fn>
   static absl::Status ForEachSubshapeWithStatus(const Shape& shape, Fn&& fn) {
-    return ForEachMutableSubshapeWithStatus(
-        const_cast<Shape*>(&shape),
-        [&](Shape* subshape, const ShapeIndex& index) -> absl::Status {
-          return fn(*const_cast<const Shape*>(subshape), index);
-        });
+    ShapeIndex index;
+    return ForEachSubshapeWithStatusHelper(shape, fn, &index);
   }
   template <typename Fn>
   static absl::Status ForEachMutableSubshapeWithStatus(Shape* shape, Fn&& fn) {
@@ -1064,11 +1065,45 @@ class ShapeUtil {
   // Helper for ForEachSubshape which visits the subshapes of the given shape in
   // DFS pre-order starting with the index.
   template <typename Fn>
+  static void ForEachSubshapeHelper(const Shape& shape, Fn&& fn,
+                                    ShapeIndex* index) {
+    fn(shape, *index);
+    if (shape.IsTuple()) {
+      const int64_t ntuples = ShapeUtil::TupleElementCount(shape);
+      for (int64_t i = 0; i < ntuples; ++i) {
+        index->push_back(i);
+        ForEachSubshapeHelper(shape.tuple_shapes(i), fn, index);
+        index->pop_back();
+      }
+    }
+  }
+
+  template <typename Fn>
+  static absl::Status ForEachSubshapeWithStatusHelper(const Shape& shape,
+                                                      Fn&& fn,
+                                                      ShapeIndex* index) {
+    TF_RETURN_IF_ERROR(fn(shape, *index));
+    if (shape.IsTuple()) {
+      const int64_t ntuples = ShapeUtil::TupleElementCount(shape);
+      for (int64_t i = 0; i < ntuples; ++i) {
+        index->push_back(i);
+        TF_RETURN_IF_ERROR(
+            ForEachSubshapeWithStatusHelper(shape.tuple_shapes(i), fn, index));
+        index->pop_back();
+      }
+    }
+    return absl::OkStatus();
+  }
+
+  // Helper for ForEachSubshape which visits the subshapes of the given shape in
+  // DFS pre-order starting with the index.
+  template <typename Fn>
   static absl::Status ForEachMutableSubshapeWithStatusHelper(
       Shape* shape, Fn&& fn, ShapeIndex* index) {
     TF_RETURN_IF_ERROR(fn(shape, *index));
     if (shape->IsTuple()) {
-      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
+      const int64_t ntuples = ShapeUtil::TupleElementCount(*shape);
+      for (int64_t i = 0; i < ntuples; ++i) {
         index->push_back(i);
         TF_RETURN_IF_ERROR(ForEachMutableSubshapeWithStatusHelper(
             shape->mutable_tuple_shapes(i), fn, index));
