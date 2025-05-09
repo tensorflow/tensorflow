@@ -50,7 +50,8 @@ Shape& Shape::operator=(const Shape&) = default;
 Shape& Shape::operator=(Shape&&) noexcept = default;
 
 Shape::Shape(const PrimitiveType element_type) {
-  CHECK(element_type == TOKEN || element_type == OPAQUE_TYPE)
+  CHECK(element_type == TOKEN || element_type == OPAQUE_TYPE ||
+        element_type == BUFFER)
       << "Invalid element type for token or opaque shape: " << element_type_;
   set_element_type(element_type);
 }
@@ -81,6 +82,14 @@ Shape::Shape(const PrimitiveType element_type,
 Shape::Shape(std::vector<Shape> tuple_shapes) {
   set_element_type(TUPLE);
   tuple_state().tuple_shapes = std::move(tuple_shapes);
+}
+
+/* static */ Shape Shape::MakeBufferShape(Shape element_shape) {
+  CHECK(element_shape.IsArray())
+      << "element_shape must be an array shape to create a buffer shape.";
+  Shape shape(BUFFER);
+  shape.buffer_state().buffer_shape = {std::move(element_shape)};
+  return shape;
 }
 
 Shape::Shape(const ShapeProto& shape_proto) {
@@ -117,6 +126,8 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& shape_proto) {
       TF_ASSIGN_OR_RETURN(Shape tuple_shape, Shape::FromProto(element_shape));
       state->tuple_shapes.emplace_back(std::move(tuple_shape));
     }
+  } else if (auto* const state = shape.if_buffer_state()) {
+    state->buffer_shape.emplace_back(shape_proto.tuple_shapes(0));
   }
   if (shape_proto.has_layout()) {
     TF_RET_CHECK(shape.IsArray()) << "Malformed shape proto: element_type "
@@ -148,6 +159,9 @@ ShapeProto Shape::ToProto() const {
     for (const Shape& shape : state->tuple_shapes) {
       *proto.add_tuple_shapes() = shape.ToProto();
     }
+  } else if (const auto* const state = if_buffer_state()) {
+    proto.mutable_tuple_shapes()->Reserve(1);
+    *proto.add_tuple_shapes() = state->buffer_shape[0].ToProto();
   }
   return proto;
 }
@@ -185,6 +199,24 @@ Shape::TupleState& Shape::tuple_state() {
                << "\nThis is a programmer error. Please mutate "
                   "the Shape object's tuple properties (e.g. tuple_shapes) "
                   "only when it's a tuple shape.";
+  return *state;
+}
+
+const Shape::BufferState& Shape::buffer_state() const {
+  const auto* const state = if_buffer_state();
+  CHECK(state) << "Expected a buffer shape. Got " << ToString()
+               << "\nThis is a programmer error. Please read "
+                  "the Shape object's buffer properties (e.g. buffer_shapes) "
+                  "only when it's a buffer shape.";
+  return *state;
+}
+
+Shape::BufferState& Shape::buffer_state() {
+  auto* const state = if_buffer_state();
+  CHECK(state) << "Expected a buffer shape. Got " << ToString()
+               << "\nThis is a programmer error. Please mutate "
+                  "the Shape object's buffer properties (e.g. buffer_shapes) "
+                  "only when it's a buffer shape.";
   return *state;
 }
 
@@ -348,6 +380,10 @@ const std::vector<Shape>& Shape::tuple_shapes() const {
   return tuple_state().tuple_shapes;
 }
 
+const Shape& Shape::buffer_shape() const {
+  return buffer_state().buffer_shape[0];
+}
+
 void Shape::Clear() {
   // Before setting the element type to invalid, we need to clear the state
   // because the state may be non-empty if the shape was previously valid.
@@ -387,6 +423,13 @@ void Shape::set_element_type(const PrimitiveType value) {
     }
     return;
   }
+  if (element_type_ == BUFFER) {
+    if (!if_buffer_state()) {
+      CheckStateIsEmpty();
+      state_ = BufferState();
+    }
+    return;
+  }
   if (primitive_util::IsArrayType(element_type_)) {
     if (!if_array_state()) {
       CheckStateIsEmpty();
@@ -421,7 +464,22 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
            absl::c_equal(
                lhs.tuple_shapes(), rhs.tuple_shapes(),
                [=](const Shape& l, const Shape& r) { return (*this)(l, r); });
-  } else if (!lhs.IsArray()) {
+  }
+  if (lhs.IsBuffer() || rhs.IsBuffer()) {
+    if (!ignore_buffer_) {
+      return lhs.IsBuffer() && rhs.IsBuffer() &&
+             lhs.buffer_shape() == rhs.buffer_shape();
+    }
+    auto underline_shape = [](const Shape& shape) {
+      if (shape.IsBuffer()) {
+        return shape.buffer_shape();
+      }
+      return shape;
+    };
+    return underline_shape(lhs) == underline_shape(rhs);
+  }
+
+  if (!lhs.IsArray()) {
     // Non-tuple, non-array tupes such as opaque and token types are trivially
     // the same.
     return lhs.element_type() == rhs.element_type();

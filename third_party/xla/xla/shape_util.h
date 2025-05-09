@@ -411,6 +411,10 @@ class ShapeUtil {
   static Shape MakeShape(PrimitiveType element_type,
                          absl::Span<const int64_t> dimensions,
                          const std::vector<bool>& dynamic_dimensions);
+  // Constructs a new buffer shape with the given element type, and sequence of
+  // dimensions.
+  static Shape MakeBufferShape(PrimitiveType element_type,
+                               absl::Span<const int64_t> dimensions);
 
   // Constructs a new shape with the given element type and sequence of
   // dimensions. Method checks if the element type is valid, the shape's

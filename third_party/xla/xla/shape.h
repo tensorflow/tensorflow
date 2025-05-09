@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SHAPE_H_
 #define XLA_SHAPE_H_
 
+#include <stdbool.h>
+
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -78,9 +80,9 @@ class Shape {
   ABSL_DEPRECATED("Use FromProto instead.")
   explicit Shape(const ShapeProto& shape_proto);
 
-  // Creates a token or opaque shape.
+  // Creates a token, opaque or buffer shape.
   // Precondition:
-  //  - `element_type` must be TOKEN or OPAQUE_TYPE.
+  //  - `element_type` must be TOKEN, OPAQUE_TYPE or BUFFER.
   explicit Shape(PrimitiveType element_type);
 
   // Creates an array shape. `dimensions` can be empty, in which case the shape
@@ -99,6 +101,9 @@ class Shape {
   // Constructs a shape from a ShapeProto. Results in an invalid shape (as
   // opposed to crashing) if the proto has logically invalid fields.
   static absl::StatusOr<Shape> FromProto(const ShapeProto& shape_proto);
+
+  // Creates a buffer shape. `element_shape` must be a valid array shape.
+  static Shape MakeBufferShape(Shape element_shape);
 
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
@@ -124,6 +129,14 @@ class Shape {
     const bool result = element_type() == TUPLE;
     // We do this check in debug mode only to avoid performance regressions.
     DCHECK_EQ(result, if_tuple_state() != nullptr)
+        << "Shape " << ToString()
+        << " has inconsistent element_type and state.";
+    return result;
+  }
+  bool IsBuffer() const {
+    const bool result = element_type() == BUFFER;
+    // We do this check in debug mode only to avoid performance regressions.
+    DCHECK_EQ(result, if_buffer_state() != nullptr)
         << "Shape " << ToString()
         << " has inconsistent element_type and state.";
     return result;
@@ -346,6 +359,10 @@ class Shape {
     return &tuple_state().tuple_shapes;
   }
 
+  // Returns the underlying shape of the buffer.
+  const Shape& buffer_shape() const;
+  Shape* mutable_buffer_shape() { return &buffer_state().buffer_shape[0]; }
+
   // Returns true if the shape is an array and has a layout.
   bool has_layout() const {
     const auto* const state = if_array_state();
@@ -465,6 +482,10 @@ class Shape {
       ignore_split_config_in_layout_ = true;
       return *this;
     }
+    Equal& IgnoreBuffer(bool ignore_buffer = true) {
+      ignore_buffer_ = ignore_buffer;
+      return *this;
+    }
 
    private:
     bool ignore_layout_ = false;
@@ -477,6 +498,7 @@ class Shape {
     bool ignore_dimensions_ = false;
     bool ignore_tail_padding_alignment_in_elements_in_layout_ = false;
     bool ignore_split_config_in_layout_ = false;
+    bool ignore_buffer_ = false;
   };
 
   // Test that all fields of the shape are the same, equivalent to Equal().
@@ -498,6 +520,9 @@ class Shape {
         h = H::combine(std::move(h), state->layout);
       }
       return h;
+    }
+    if (const auto* const state = s.if_buffer_state()) {
+      return H::combine(std::move(h), s.element_type_, state->buffer_shape);
     }
     return H::combine(std::move(h), s.element_type_);
   }
@@ -542,9 +567,14 @@ class Shape {
     // The tuple element subshapes.
     std::vector<Shape> tuple_shapes;
   };
-
+  struct BufferState {
+    // The underlying array shape for the buffer type, represented as a
+    // vector with one element. Using Shape directly or
+    // absl::InlinedVector<Shape, 1> here causes recursive definition.
+    std::vector<Shape> buffer_shape;
+  };
   using State = std::variant<InvalidState, TokenState, OpaqueState, ArrayState,
-                             TupleState>;
+                             TupleState, BufferState>;
 
   // CHECKs that the dimension size is valid.
   void CheckDimensionSize(int dim_index, int64_t size, bool is_dynamic);
@@ -584,6 +614,10 @@ class Shape {
     return std::get_if<TupleState>(&state_);
   }
   TupleState* if_tuple_state() { return std::get_if<TupleState>(&state_); }
+  const BufferState* if_buffer_state() const {
+    return std::get_if<BufferState>(&state_);
+  }
+  BufferState* if_buffer_state() { return std::get_if<BufferState>(&state_); }
 
   const InvalidState& invalid_state() const {
     const auto* const state = if_invalid_state();
@@ -604,6 +638,8 @@ class Shape {
   ArrayState& array_state();
   const TupleState& tuple_state() const;
   TupleState& tuple_state();
+  const BufferState& buffer_state() const;
+  BufferState& buffer_state();
 
   // CHECK-fails if this shape's state is not empty.
   void CheckStateIsEmpty() const;
