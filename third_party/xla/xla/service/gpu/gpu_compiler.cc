@@ -1013,17 +1013,9 @@ absl::Status RunCollectiveOptimizationPasses(
 
   DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level =
       debug_options.xla_gpu_experimental_pipeline_parallelism_opt_level();
-  if (pipeline_parallelism_opt_level ==
-          DebugOptions::
-              PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER ||
-      debug_options.xla_gpu_enable_pipelined_p2p()) {
+  if (debug_options.xla_gpu_enable_pipelined_p2p()) {
     collectives_pipeline.AddPass<CollectivePermuteCycleDecomposer>(
         debug_options.xla_gpu_collective_permute_decomposer_threshold());
-  }
-
-  if (pipeline_parallelism_opt_level ==
-      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER) {
-    collectives_pipeline.AddPass<CollectiveSelectFolder>();
   }
 
   if (pipeline_parallelism_opt_level !=
