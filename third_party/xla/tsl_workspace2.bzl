@@ -583,7 +583,12 @@ def _tf_repositories():
         name = "upb",
         sha256 = "61d0417abd60e65ed589c9deee7c124fe76a4106831f6ad39464e1525cef1454",
         strip_prefix = "upb-9effcbcb27f0a665f9f345030188c0b291e32482",
-        patch_file = ["//third_party/grpc:upb_platform_fix.patch"],
+        patch_file = [
+            "//third_party/grpc:upb_platform_fix.patch",
+            # Disables warning-as-error when building upb, as it generates
+            # warnings when compiled with clang.
+            "//third_party/grpc:upb_build.patch",
+        ],
         urls = tf_mirror_urls("https://github.com/protocolbuffers/upb/archive/9effcbcb27f0a665f9f345030188c0b291e32482.tar.gz"),
     )
 
