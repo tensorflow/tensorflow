@@ -82,74 +82,61 @@ absl::StatusOr<const HloInstruction*> GetGemmInstruction(
       "CublasBackend didn't find a compatible Cublas GEMM.");
 }
 
-std::vector<std::unique_ptr<BackendConfig>> CublasBackend::GetSupportedConfigs(
+absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+CublasBackend::GetSupportedConfigs(
     const HloInstruction& instr,
     stream_executor::StreamExecutor* stream_executor) {
-  absl::StatusOr<const HloInstruction*> gemm_instr = GetGemmInstruction(&instr);
-  if (!gemm_instr.ok()) {
-    LOG(ERROR) << "Failed to get GEMM instruction: " << gemm_instr.status();
-    return {};
-  }
+  TF_ASSIGN_OR_RETURN(const HloInstruction* gemm_instr,
+                      GetGemmInstruction(&instr));
   std::unique_ptr<se::DeviceMemoryAllocator> allocator =
       std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
-  absl::StatusOr<se::Stream*> stream =
-      allocator->GetStream(stream_executor->device_ordinal());
-  if (!stream.ok()) {
-    LOG(ERROR) << "Failed to get stream: " << stream.status();
-    return {};
-  }
+  TF_ASSIGN_OR_RETURN(absl::StatusOr<se::Stream*> stream,
+                      allocator->GetStream(stream_executor->device_ordinal()));
 
   // We use GemmConfig::For with GemmBackendConfig as a fallback because
   // Matmul_utils.cc relies on backend config to determine gemm contracting
   // dimensions.
   GemmBackendConfig backend_config;
   // For custom call, we use the backend config from the custom call.
-  if ((*gemm_instr)->opcode() == HloOpcode::kCustomCall) {
-    backend_config = (*gemm_instr)
-                         ->backend_config<GpuBackendConfig>()
-                         ->gemm_backend_config();
+  if (gemm_instr->opcode() == HloOpcode::kCustomCall) {
+    backend_config =
+        gemm_instr->backend_config<GpuBackendConfig>()->gemm_backend_config();
   } else {
     *backend_config.mutable_dot_dimension_numbers() =
-        (*gemm_instr)->dot_dimension_numbers();
+        gemm_instr->dot_dimension_numbers();
   }
-  absl::StatusOr<GemmConfig> gemm_config = GemmConfig::For(
-      *gemm_instr, backend_config,
-      target_config().device_description.gpu_compute_capability());
-  if (!gemm_config.ok()) {
-    LOG(ERROR) << "Failed to get GEMM config: " << gemm_config.status();
-    return {};
-  }
+  TF_ASSIGN_OR_RETURN(
+      GemmConfig gemm_config,
+      GemmConfig::For(
+          gemm_instr, backend_config,
+          target_config().device_description.gpu_compute_capability()));
 
   // Get dummy buffers for the GEMM instruction.
-  const HloInstruction* lhs_operand = (*gemm_instr)->operand(0);
+  const HloInstruction* lhs_operand = gemm_instr->operand(0);
   se::DeviceMemoryBase lhs_buffer = se::DeviceMemoryBase(
       nullptr, xla::ShapeUtil::ByteSizeOf(lhs_operand->shape()));
-  const HloInstruction* rhs_operand = (*gemm_instr)->operand(1);
+  const HloInstruction* rhs_operand = gemm_instr->operand(1);
   se::DeviceMemoryBase rhs_buffer = se::DeviceMemoryBase(
       nullptr, xla::ShapeUtil::ByteSizeOf(rhs_operand->shape()));
   // For custom call, the output buffer is the first tuple element.
-  const Shape& output_shape = (*gemm_instr)->opcode() == HloOpcode::kCustomCall
-                                  ? (*gemm_instr)->shape().tuple_shapes(0)
-                                  : (*gemm_instr)->shape();
+  const Shape& output_shape = gemm_instr->opcode() == HloOpcode::kCustomCall
+                                  ? gemm_instr->shape().tuple_shapes(0)
+                                  : gemm_instr->shape();
   se::DeviceMemoryBase output_buffer =
       se::DeviceMemoryBase(nullptr, xla::ShapeUtil::ByteSizeOf(output_shape));
 
-  absl::StatusOr<GemmConfig::DescriptorsTuple> desc =
-      gemm_config->GetMatrixDescriptors(lhs_buffer, rhs_buffer, output_buffer);
-  if (!desc.ok()) {
-    LOG(ERROR) << "Failed to get GEMM descriptors: " << desc.status();
-    return {};
-  }
+  TF_ASSIGN_OR_RETURN(
+      GemmConfig::DescriptorsTuple desc,
+      gemm_config.GetMatrixDescriptors(lhs_buffer, rhs_buffer, output_buffer));
 
   se::blas::BlasSupport* blas = stream_executor->AsBlas();
   if (blas == nullptr) {
-    LOG(ERROR) << "Failed to getBlas support.";
-    return {};
+    return absl::InternalError("Failed to getBlas support.");
   }
   std::vector<se::blas::AlgorithmType> algorithms;
-  blas->GetBlasGemmAlgorithms(*stream, (*desc).lhs, (*desc).rhs,
-                              &(*desc).output, &(*gemm_config).alpha,
-                              &(*gemm_config).beta, &algorithms);
+  blas->GetBlasGemmAlgorithms(*stream, desc.lhs, desc.rhs, &desc.output,
+                              &gemm_config.alpha, &gemm_config.beta,
+                              &algorithms);
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.reserve(algorithms.size());
@@ -205,7 +192,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> RewriteToCublasCustomCall(
 
 void SubstituteCublasAlgorithms(const HloInstruction* gemm,
                                 se::blas::AlgorithmType algorithm) {
-  LOG(ERROR) << "YOLO: SUBSTITUTING ALGORITHM " << gemm->ToString();
   GpuBackendConfig gpu_config =
       gemm->backend_config<GpuBackendConfig>().value();
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();

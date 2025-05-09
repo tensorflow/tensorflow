@@ -41,9 +41,9 @@ class CodegenBackend {
   virtual absl::string_view name() const = 0;
 
   // Returns all supported configs for the given HLO instruction.
-  virtual std::vector<std::unique_ptr<BackendConfig>> GetSupportedConfigs(
-      const HloInstruction& instr,
-      stream_executor::StreamExecutor* stream_executor) = 0;
+  virtual absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetSupportedConfigs(const HloInstruction& instr,
+                      stream_executor::StreamExecutor* stream_executor) = 0;
 
   // Returns a default config for the given HLO instruction.
   virtual absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
