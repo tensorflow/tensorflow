@@ -70,7 +70,7 @@ class RepeatedStringSplitter : public ComposableSplitter {
 
   absl::Status BuildChunks() override {
     RepeatedString* repeated_string =
-        tsl::protobuf::DynamicCastToGenerated<RepeatedString>(message());
+        proto2::DynamicCastMessage<RepeatedString>(message());
     auto strings = repeated_string->strings();
 
     if (strings.empty()) {
@@ -241,8 +241,7 @@ class RepeatedRepeatedStringSplitter : public ComposableSplitter {
   absl::Status BuildChunks() override {
     TF_RETURN_IF_ERROR(SetMessageAsBaseChunk());
     RepeatedRepeatedString* msg =
-        tsl::protobuf::DynamicCastToGenerated<RepeatedRepeatedString>(
-            message());
+        proto2::DynamicCastMessage<RepeatedRepeatedString>(message());
     auto repeated_strings = msg->rs();
     for (int i = 0; i < repeated_strings.size(); i++) {
       std::vector<FieldType> fields = {"rs"s, i};
