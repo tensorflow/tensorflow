@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_SEQUENTIAL_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_SEQUENTIAL_THUNK_H_
 
+#include <memory>
 #include <string>
 
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 
@@ -47,6 +49,10 @@ class SequentialThunk : public Thunk {
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<SequentialThunk>> FromProto(
+      ThunkInfo thunk_info, const SequentialThunkProto& thunk_proto,
+      const Deserializer& deserializer);
 
  private:
   // The list of sub-thunks.
