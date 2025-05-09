@@ -1,0 +1,422 @@
+# Copyright 2025 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+# .github/workflows/presubmit_benchmarks.yml
+name: Presubmit - Run Benchmarks
+
+permissions:
+  contents: read
+on:
+  workflow_dispatch:
+    inputs:
+      halt-for-connection:
+        description: 'Should this workflow run wait for a remote connection?'
+        type: choice
+        required: true
+        default: 'no'
+        options:
+        - 'yes'
+        - 'no'
+  pull_request:
+    branches:
+      - main
+
+# Cancel in-progress runs for the same PR if a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ================================================================
+  # Job 1: Generate the matrix specifically for PRESUBMIT benchmarks
+  # ================================================================
+  generate_matrix:
+    name: Generate Presubmit Matrix
+    # Use the reusable workflow defined previously
+    uses: ./.github/workflows/generate_benchmark_matrix.yml
+    with:
+      # Explicitly tell the generator we want PRESUBMIT benchmarks
+      workflow_type: 'presubmit'
+      # Specify the registry file to use for presubmit benchmarks
+      # It could be the default one, or a specific, smaller one for speed.
+      registry_file: 'xla/tools/benchmarks/registries/default_registry.yml'
+      # Checkout the specific commit SHA being tested in the PR
+      checkout_ref: ${{ github.event.pull_request.head.sha || github.sha }} # Handles PR and dispatch triggers
+    # Permissions required by the called workflow
+    permissions:
+      contents: read
+
+  # ================================================================
+  # Job 2: Run benchmarks based on the generated matrix
+  # ================================================================
+  run_benchmarks:
+    name: Run Benchmark (${{ matrix.benchmark_entry.benchmark_name }} / ${{ matrix.benchmark_entry.hardware_category }})
+    needs: generate_matrix
+    if: needs.generate_matrix.result == 'success' && needs.generate_matrix.outputs.matrix_include_json != '[]' && needs.generate_matrix.outputs.matrix_include_json != ''
+
+    strategy:
+      fail-fast: false
+      matrix:
+        benchmark_entry: ${{ fromJson(needs.generate_matrix.outputs.matrix_include_json) }}
+
+    runs-on: ${{ matrix.benchmark_entry.runner_label }}
+    container: ${{ matrix.benchmark_entry.container_image }}
+
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 60 # Adjusted timeout for potentially longer build+run
+
+    env: # Define Env Vars from matrix for easier access
+      BENCHMARK_NAME: ${{ matrix.benchmark_entry.benchmark_name }}
+      CONFIG_ID: ${{ matrix.benchmark_entry.config_id || matrix.benchmark_entry.benchmark_name }} # Use config_id if present
+      RUNNER_LABEL: ${{ matrix.benchmark_entry.runner_label }}
+      CONTAINER_IMAGE: ${{ matrix.benchmark_entry.container_image }}
+      ARTIFACT_LOCATION: ${{ matrix.benchmark_entry.artifact_location }}
+      IS_GCS_ARTIFACT: ${{ matrix.benchmark_entry.is_gcs_artifact }}
+      INPUT_FORMAT: ${{ matrix.benchmark_entry.input_format }}
+      XLA_FLAGS_JSON: ${{ toJson(matrix.benchmark_entry.xla_compilation_flags) }}
+      RUNTIME_FLAGS_JSON: ${{ toJson(matrix.benchmark_entry.runtime_flags) }}
+      TARGET_METRICS_JSON: ${{ toJson(matrix.benchmark_entry.target_metrics) }}
+      TOPOLOGY_JSON: ${{ toJson(matrix.benchmark_entry.topology) }}
+      HARDWARE_CATEGORY: ${{ matrix.benchmark_entry.hardware_category }}
+      GITHUB_LABELS_JSON: ${{ toJson(matrix.benchmark_entry.github_labels) }}
+      CHECKOUT_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+      COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      WORKFLOW_RUN_ID: ${{ github.run_id }}
+      # Consistent output directory based on unique config_id or name
+      OUTPUT_DIR: ${{ github.workspace }}/benchmark_output_${{ matrix.benchmark_entry.config_id || matrix.benchmark_entry.benchmark_name }}_${{ matrix.benchmark_entry.hardware_category }}
+
+    steps:
+      - name: Print Job Info
+        run: |
+          echo "--- Benchmark Job Info ---"
+          echo "Config ID: $CONFIG_ID"
+          echo "Benchmark Name: $BENCHMARK_NAME"
+          echo "Runner Label: $RUNNER_LABEL"
+          echo "Container: $CONTAINER_IMAGE"
+          echo "Hardware Category: $HARDWARE_CATEGORY"
+          echo "Artifact Location: $ARTIFACT_LOCATION (GCS: $IS_GCS_ARTIFACT)"
+          echo "Input Format: $INPUT_FORMAT"
+          echo "XLA Flags: $XLA_FLAGS_JSON"
+          echo "Runtime Flags: $RUNTIME_FLAGS_JSON"
+          echo "Output Directory: $OUTPUT_DIR"
+          mkdir -p "$OUTPUT_DIR"
+          echo "--------------------------"
+
+      - name: Checkout OpenXLA Repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+
+      # --- Configure GPU backend conditionally ---
+      - name: Configure GPU backend
+        if: ${{ contains(env.HARDWARE_CATEGORY, 'GPU') }}
+        run: |
+          echo "Configuring GPU backend..."
+          # Add error checking or alternative configuration methods if needed
+          ./configure.py --backend=CUDA --cuda_compiler=nvcc || echo "Configure failed or not needed."
+
+      # --- Build necessary binaries (Runner and Stats Tool) ---
+      - name: Build Binaries
+        id: build_binaries
+        run: |
+          echo "Building binaries for $HARDWARE_CATEGORY..."
+          # Using standard bazel-bin, adjust BAZEL_BIN_DIR if build commands output elsewhere
+          declare BAZEL_BIN_DIR="bazel-bin"
+          declare runner_binary_path=""
+          declare stats_binary_path=""
+          declare device_type_flag_value=""
+          declare bazel_exit_code=0
+
+          # Determine expected binary paths and set outputs first
+          if [[ "$HARDWARE_CATEGORY" == CPU* ]]; then
+              runner_binary_path="./$BAZEL_BIN_DIR/xla/tools/multihost_hlo_runner/hlo_runner_main"
+              stats_binary_path="./$BAZEL_BIN_DIR/xla/tools/compute_xspace_stats_main"
+              device_type_flag_value="host"
+          elif [[ "$HARDWARE_CATEGORY" == GPU* ]]; then
+              runner_binary_path="./$BAZEL_BIN_DIR/xla/tools/multihost_hlo_runner/hlo_runner_main_gpu"
+              stats_binary_path="./$BAZEL_BIN_DIR/xla/tools/compute_xspace_stats_main_gpu"
+              device_type_flag_value="gpu"
+          else
+              echo "::error::Unsupported hardware category for building binaries: $HARDWARE_CATEGORY"
+              exit 1
+          fi
+
+          echo "Setting step outputs:"
+          echo "runner_binary=$runner_binary_path" >> $GITHUB_OUTPUT
+          echo "stats_binary=$stats_binary_path" >> $GITHUB_OUTPUT
+          echo "device_type_flag=$device_type_flag_value" >> $GITHUB_OUTPUT
+          echo "  runner_binary=$runner_binary_path"
+          echo "  stats_binary=$stats_binary_path"
+          echo "  device_type_flag=$device_type_flag_value"
+
+          # Execute the specific build command based on hardware category
+          if [[ "$HARDWARE_CATEGORY" == CPU* ]]; then
+              if [ -f "./configure.py" ]; then
+                echo "Configuring CPU backend for build..."
+                ./configure.py --backend=CPU || echo "CPU Configure script failed or is not applicable."
+              else
+                echo "Configure script not found, assuming build command handles CPU setup."
+              fi
+              echo "Building CPU binaries with RBE..."
+              # Note: Target paths should match runner_binary_path and stats_binary_path base targets
+              bazel build \
+                --build_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd \
+                --test_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd \
+                --config=warnings \
+                --config=nonccl \
+                --config=rbe_linux_cpu \
+                --color=yes \
+                --test_output=errors \
+                --verbose_failures \
+                --keep_going \
+                --nobuild_tests_only \
+                --profile=profile.json.gz \
+                --flaky_test_attempts=3 \
+                --jobs=150 \
+                --bes_upload_mode=fully_async \
+                //xla/tools/multihost_hlo_runner:hlo_runner_main \
+                //xla/tools:compute_xspace_stats_main
+              bazel_exit_code=$?
+
+          elif [[ "$HARDWARE_CATEGORY" == GPU* ]]; then
+              echo "Building GPU binaries with RBE..."
+              # NOTE: Ensure TF_CUDA_COMPUTE_CAPABILITIES=10 and HERMETIC_CUDA_VERSION/CUDNN_VERSION are correct for the target runner/container
+              # Target paths should match runner_binary_path and stats_binary_path base targets
+              bazel build \
+                --build_tag_filters=-no_oss,requires-gpu-nvidia,gpu,-rocm-only \
+                --test_tag_filters=-no_oss,requires-gpu-nvidia,gpu,-rocm-only,requires-gpu-sm75-only,requires-gpu-sm60,requires-gpu-sm70,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm90,-requires-gpu-sm90-only,-requires-gpu-sm100,-requires-gpu-sm100-only,-requires-gpu-amd \
+                --config=warnings --config=rbe_linux_cuda_nvcc \
+                --repo_env=TF_CUDA_COMPUTE_CAPABILITIES=7.5 \
+                --run_under=//build_tools/ci:parallel_gpu_execute \
+                --@cuda_driver//:enable_forward_compatibility=false --color=yes \
+                --test_output=errors --verbose_failures --keep_going --nobuild_tests_only \
+                --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 \
+                --bes_upload_mode=fully_async \
+                -- //xla/tools/multihost_hlo_runner:hlo_runner_main_gpu //xla/tools:compute_xspace_stats_main_gpu
+
+              bazel_exit_code=$?
+          # No else needed here as it's caught above
+
+          fi
+
+          # Check build result
+          if [ $bazel_exit_code -ne 0 ]; then echo "::error::Bazel build failed with exit code $bazel_exit_code!"; exit $bazel_exit_code; fi
+          echo "Bazel build completed successfully."
+
+          # Verify binaries exist at the expected paths
+          echo "Verifying binary existence..."
+          if [ ! -f "$runner_binary_path" ]; then echo "::error::Runner binary '$runner_binary_path' not found after build!"; exit 1; fi
+          if [ ! -f "$stats_binary_path" ]; then echo "::error::Stats binary '$stats_binary_path' not found after build!"; exit 1; fi
+          echo "Binaries verified."
+
+
+      # --- Prepare the input artifact (HLO/StableHLO) ---
+      - name: Prepare Benchmark Artifact
+        id: prep_artifact
+        run: |
+          # Ensure the base output directory exists (already done in "Print Job Info", but good for robustness here too)
+          mkdir -p "$OUTPUT_DIR"
+          if [ ! -d "$OUTPUT_DIR" ]; then
+            echo "::error::Failed to create or find output directory: $OUTPUT_DIR"
+            exit 1
+          fi
+
+          # Determine local destination path based on artifact filename
+          ARTIFACT_FILE_NAME=$(basename "$ARTIFACT_LOCATION") # ARTIFACT_LOCATION is GCS URL or repo path
+          LOCAL_ARTIFACT_PATH="$OUTPUT_DIR/$ARTIFACT_FILE_NAME"
+          echo "Preparing artifact. Destination: ${LOCAL_ARTIFACT_PATH}"
+
+          # Check the flag set by the generator matrix
+          if [ "$IS_GCS_ARTIFACT" == "true" ]; then
+            echo "Downloading GCS artifact from: $ARTIFACT_LOCATION using wget."
+
+            # Ensure wget is available
+            if ! command -v wget &> /dev/null; then
+              echo "::error::wget command not found in container. Cannot download GCS artifact."
+              exit 1 # Critical error
+            fi
+
+            # Ensure parent directory exists for wget's -O option
+            mkdir -p "$(dirname "$LOCAL_ARTIFACT_PATH")"
+            if [ ! -d "$(dirname "$LOCAL_ARTIFACT_PATH")" ]; then
+              echo "::error::Failed to create parent directory for download: $(dirname "$LOCAL_ARTIFACT_PATH")"
+              exit 1
+            fi
+
+            # Execute wget and capture its exit code
+            # Using -q (quiet) and -nv (non-verbose) for cleaner logs on success
+            # Errors from wget usually go to stderr and will be visible.
+            wget -q -nv -O "$LOCAL_ARTIFACT_PATH" "$ARTIFACT_LOCATION"
+            WGET_EXIT_CODE=$?
+
+            # Check wget download result
+            if [ $WGET_EXIT_CODE -ne 0 ]; then
+              echo "::error::wget failed to download GCS artifact from $ARTIFACT_LOCATION (Exit code: $WGET_EXIT_CODE)"
+              # If wget failed, LOCAL_ARTIFACT_PATH might be empty or contain partial/error content.
+              # It's good practice to remove it to avoid confusion.
+              rm -f "$LOCAL_ARTIFACT_PATH" 
+              exit $WGET_EXIT_CODE
+            fi
+            echo "wget command executed for GCS artifact."
+          else
+            # Handle copying from local repository path
+            REPO_ARTIFACT_PATH="$GITHUB_WORKSPACE/$ARTIFACT_LOCATION" # ARTIFACT_LOCATION is the relative repo path here
+            echo "Copying local artifact from workspace path: $REPO_ARTIFACT_PATH (IS_GCS_ARTIFACT was false)"
+            if [ ! -f "$REPO_ARTIFACT_PATH" ]; then
+               echo "::error::Local artifact not found at repository path: $REPO_ARTIFACT_PATH"
+               exit 1
+            fi
+            cp -v "$REPO_ARTIFACT_PATH" "$LOCAL_ARTIFACT_PATH" || exit 1 # Exit if copy fails
+            echo "Local artifact copied successfully."
+          fi
+
+          # Verify the final destination file exists
+          if [ ! -f "$LOCAL_ARTIFACT_PATH" ]; then
+             echo "::error::Final artifact file not found at destination: $LOCAL_ARTIFACT_PATH"
+             # This indicates the download/copy failed despite not exiting earlier, or path issue.
+             exit 1
+          fi
+          echo "Artifact successfully prepared at $LOCAL_ARTIFACT_PATH."
+
+          # Output the *local* path where the benchmark runner should find the file
+          echo "artifact_local_path=$LOCAL_ARTIFACT_PATH" >> $GITHUB_OUTPUT
+
+      # --- Run the benchmark using the HLO runner ---
+
+      - name: Run Benchmark
+        id: run_hlo
+        run: |
+          echo "Running benchmark $BENCHMARK_NAME..."
+          LOCAL_ARTIFACT="${{ steps.prep_artifact.outputs.artifact_local_path }}"
+          RUNNER_BINARY="${{ steps.build_binaries.outputs.runner_binary }}"
+          DEVICE_TYPE="${{ steps.build_binaries.outputs.device_type_flag }}"
+          STATS_BINARY="${{ steps.build_binaries.outputs.stats_binary }}"
+
+          if [ -z "$LOCAL_ARTIFACT" ] || [ ! -f "$LOCAL_ARTIFACT" ]; then echo "::error::LOCAL_ARTIFACT path is invalid or file not found: '$LOCAL_ARTIFACT'"; exit 1; fi
+          if [ -z "$RUNNER_BINARY" ] || [ ! -x "$RUNNER_BINARY" ]; then echo "::error::RUNNER_BINARY path is invalid or file not executable: '$RUNNER_BINARY'"; exit 1; fi
+          if [ -z "$DEVICE_TYPE" ]; then echo "::error::DEVICE_TYPE is empty"; exit 1; fi
+          if [ -z "$STATS_BINARY" ] || [ ! -x "$STATS_BINARY" ]; then echo "::error::STATS_BINARY path is invalid or file not executable: '$STATS_BINARY'"; exit 1; fi
+
+          RUNNER_STDOUT_FILE="$OUTPUT_DIR/runner_stdout.txt"
+          XSPACE_FILE_PATH="$OUTPUT_DIR/xspace.pb"
+          RESULTS_JSON_FILE="$OUTPUT_DIR/results.json"
+
+          if ! command -v jq &> /dev/null; then echo "::error::jq command not found."; exit 1; fi
+          declare -a xla_flags_array=()
+          declare -a runtime_flags_array=()
+          if echo "$XLA_FLAGS_JSON" | jq -e '. | arrays and length > 0' > /dev/null; then
+             mapfile -t xla_flags_array < <(echo "$XLA_FLAGS_JSON" | jq -r '.[]')
+          fi
+          if echo "$RUNTIME_FLAGS_JSON" | jq -e '. | arrays and length > 0' > /dev/null; then
+             mapfile -t runtime_flags_array < <(echo "$RUNTIME_FLAGS_JSON" | jq -r '.[]')
+          fi
+
+          needs_profile_flag=true
+          for flag in "${runtime_flags_array[@]}"; do
+              if [[ "$flag" == "--profile_execution"* ]]; then
+                  needs_profile_flag=false; break
+              fi
+          done
+          needs_xspace_dump_flag=true # For stats generation
+          if $needs_profile_flag && $needs_xspace_dump_flag; then
+              runtime_flags_array+=("--profile_execution=True")
+          fi
+
+          declare -a runner_command_array=("$RUNNER_BINARY" "--device_type=$DEVICE_TYPE")
+          if [ ${#runtime_flags_array[@]} -gt 0 ]; then runner_command_array+=("${runtime_flags_array[@]}"); fi
+          if [ ${#xla_flags_array[@]} -gt 0 ]; then runner_command_array+=("${xla_flags_array[@]}"); fi
+          if $needs_xspace_dump_flag; then
+             runner_command_array+=("--xla_gpu_dump_xspace_to=$XSPACE_FILE_PATH")
+          fi
+          runner_command_array+=("$LOCAL_ARTIFACT")
+
+          echo "Executing HLO Runner command:"; printf "%q " "${runner_command_array[@]}"; echo
+          set -o pipefail
+          "${runner_command_array[@]}" 2>&1 | tee "$RUNNER_STDOUT_FILE"; RUNNER_EXIT_CODE=$?
+          set +o pipefail
+          echo "Runner stdout/stderr saved to $RUNNER_STDOUT_FILE"; echo "Runner exited with code: $RUNNER_EXIT_CODE"
+
+          STATS_EXIT_CODE=0
+          if [ -f "$XSPACE_FILE_PATH" ] && [ $RUNNER_EXIT_CODE -eq 0 ]; then
+            echo "Running compute_xspace_stats_main..."
+            STATS_PLATFORM_TYPE=$([[ "$HARDWARE_CATEGORY" == GPU* ]] && echo "GPU" || echo "CPU")
+            declare -a stats_command_array=("$STATS_BINARY" "--input=$XSPACE_FILE_PATH" "--device_type=$STATS_PLATFORM_TYPE" "--output_json=$RESULTS_JSON_FILE")
+            echo "Executing Stats command:"; printf "%q " "${stats_command_array[@]}"; echo
+            "${stats_command_array[@]}" >> "$RUNNER_STDOUT_FILE"; STATS_EXIT_CODE=$?
+            if [ $STATS_EXIT_CODE -ne 0 ]; then
+              echo "::warning::compute_xspace_stats_main failed with code $STATS_EXIT_CODE."
+              # Fallback to creating JSON with run status and error message for stats failure
+              jq -n \
+                --arg bn "$BENCHMARK_NAME" --arg cid "$CONFIG_ID" --arg hc "$HARDWARE_CATEGORY" \
+                --arg rs "STATS_FAILURE" \
+                --arg em "compute_xspace_stats_main failed with code $STATS_EXIT_CODE. Runner was successful." \
+                --arg cs "$COMMIT_SHA" --arg wrid "$WORKFLOW_RUN_ID" \
+                '{ benchmark_name: $bn, config_id: $cid, hardware_category: $hc, run_status: $rs, error_message: $em, commit_sha: $cs, workflow_run_id: $wrid }' \
+                > "$RESULTS_JSON_FILE"
+              echo "Fallback results JSON created at $RESULTS_JSON_FILE due to stats failure."
+            else
+              echo "Stats computed and saved to $RESULTS_JSON_FILE"
+            fi
+          else
+            if [ $RUNNER_EXIT_CODE -ne 0 ]; then echo "::warning::Runner failed ($RUNNER_EXIT_CODE), skipping stats."; else echo "::warning::XSpace file missing at $XSPACE_FILE_PATH, skipping stats."; fi
+            RUN_STATUS=$([ $RUNNER_EXIT_CODE -eq 0 ] && echo "SUCCESS_NO_PROFILE" || echo "FAILURE")
+            ERROR_MSG=$([ $RUNNER_EXIT_CODE -ne 0 ] && echo "Runner failed with code $RUNNER_EXIT_CODE" || echo "XSpace file not generated")
+            
+            jq -n \
+              --arg bn "$BENCHMARK_NAME" --arg cid "$CONFIG_ID" --arg hc "$HARDWARE_CATEGORY" \
+              --arg rs "$RUN_STATUS" --arg em "$ERROR_MSG" \
+              --arg cs "$COMMIT_SHA" --arg wrid "$WORKFLOW_RUN_ID" \
+              '{ benchmark_name: $bn, config_id: $cid, hardware_category: $hc, run_status: $rs, error_message: $em, commit_sha: $cs, workflow_run_id: $wrid }' \
+              > "$RESULTS_JSON_FILE"
+            if [ $? -eq 0 ]; then
+                echo "Basic results JSON created at $RESULTS_JSON_FILE using jq."
+            else
+                echo "::error::Failed to create basic results JSON using jq."
+                echo "Fallback error: Benchmark Name: $BENCHMARK_NAME, Run Status: $RUN_STATUS, Error: $ERROR_MSG" > "$RESULTS_JSON_FILE.txt"
+            fi
+          fi
+          # ---- PRINT RESULTS.JSON CONTENT ----
+          echo "--- Content of results.json ---"
+          if [ -f "$RESULTS_JSON_FILE" ]; then
+            # Use jq to pretty-print if available and it's valid JSON, otherwise cat
+            if jq '.' "$RESULTS_JSON_FILE" > /dev/null 2>&1; then
+              jq '.' "$RESULTS_JSON_FILE"
+            else
+              echo "results.json is not valid JSON or jq failed, printing with cat:"
+              cat "$RESULTS_JSON_FILE"
+            fi
+          elif [ -f "$RESULTS_JSON_FILE.txt" ]; then
+            echo "results.json was not created, printing fallback .txt file:"
+            cat "$RESULTS_JSON_FILE.txt"
+          else
+            echo "results.json file not found."
+          fi
+          echo "-------------------------------"
+          # ------------------------------------
+
+          if [ $RUNNER_EXIT_CODE -ne 0 ]; then echo "::error::Benchmark run failed (Runner Exit Code: $RUNNER_EXIT_CODE)."; exit $RUNNER_EXIT_CODE; fi
+
+      # # --- Upload all generated artifacts ---
+      - name: Upload Benchmark Artifacts
+        if: always() # Upload logs/results even on failure
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          # Make artifact name unique and descriptive
+          name: results-${{ env.CONFIG_ID }}-${{ env.HARDWARE_CATEGORY }}
+          path: |
+            ${{ env.OUTPUT_DIR }}/*
+          retention-days: 7
+          if-no-files-found: error # Error if output dir is somehow missing or empty
