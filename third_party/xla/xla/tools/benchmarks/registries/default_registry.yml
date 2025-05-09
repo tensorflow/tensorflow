@@ -32,7 +32,7 @@ benchmarks: [
     }]
     run_frequencies: [POSTSUBMIT]
     update_frequency_policy: QUARTERLY
-    runtime_flags: ["--num_repeat=5"]
+    runtime_flags: ["--num_repeats=5"]
     github_labels: ["blocking_presubmit_test"] # Github label for presubmit triggering
   },
   {
@@ -41,11 +41,11 @@ benchmarks: [
     owner: "company-A@"
     input_artifact: {
       input_format: HLO_TEXT
-      artifact_path: "benchmarks/hlo/gemma2_2b_keras_jax.hlo"
+      artifact_gcs_bucket_path: "https://storage.googleapis.com/xla-benchmarking-temp/gemma2_2b_keras_jax.hlo"
     }
     model_source_info: ["Gemma2 2B"]
     hardware_targets: [{
-      hardware_category: GPU_B200
+      hardware_category: GPU_L4
       topology: { num_hosts: 1, num_devices_per_host: 1 }
       target_metrics: [WALL_TIME, GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME, PEAK_GPU_MEMORY]
     },
@@ -57,7 +57,7 @@ benchmarks: [
     ]
     run_frequencies: [PRESUBMIT, POSTSUBMIT]
     update_frequency_policy: QUARTERLY
-    runtime_flags: ["--num_repeat=5"]
+    runtime_flags: ["--num_repeats=5"]
     github_labels: ["blocking_presubmit_test"] # Github label for presubmit triggering
   }
 ]
