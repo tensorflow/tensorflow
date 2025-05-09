@@ -33,13 +33,8 @@ namespace gpu {
 // A codegen backend for cuBLAS.
 // This backend is used to autotune cuBLAS algorithms.
 //
-// The Cublas backend can handle
-//   - a Cublas custom call instruction
-//   - a dot instruction
-//   - a fusion instruction with a GEMM instruction inside
-//
 // Cublas calls are represented as custom-call instructions, with and
-// configurable algorithm (see ):
+// configurable algorithm:
 // ```
 //   %custom-call.1 = .. custom-call(...), custom_call_target="__cublas$gemm",
 //   backend_config={"
@@ -53,7 +48,8 @@ class CublasBackend : public GpuCodegenBackend {
                          const DebugOptions* debug_options, Compiler* compiler)
       : GpuCodegenBackend("Cublas", target_config, debug_options, compiler) {}
 
-  std::vector<std::unique_ptr<BackendConfig>> GetSupportedConfigs(
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetSupportedConfigs(
       const HloInstruction& instr,
       stream_executor::StreamExecutor* stream_executor) override;
 

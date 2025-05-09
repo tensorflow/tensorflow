@@ -44,35 +44,8 @@ namespace gpu {
 
 using CublasBackendConfig = AutotuneResult::GemmKey;
 
-const char kFusionHlo[] = R"(
-    HloModule module
-
-    computation {
-      p0 = bf16[1024,1024]{1,0} parameter(0)
-      convert0 = f32[1024,1024]{1,0} convert(p0)
-      p1 = bf16[1024,1024]{1,0} parameter(1)
-      convert1 = f32[1024,1024]{1,0} convert(p1)
-      ROOT dot = f32[1024,1024]{1,0} dot(convert0, convert1),
-          lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    }
-
-    ENTRY main {
-      p0 = bf16[1024,1024]{1,0} parameter(0)
-      p1 = bf16[1024,1024]{1,0} parameter(1)
-      ROOT fusion = f32[1024,1024]{1,0} fusion(p0, p1),
-        kind=kCustom, calls=computation,
-        backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
-    })";
-
-const char kDotHlo[] = R"(
-    HloModule module
-
-    ENTRY main.clone {
-      p0 = f32[1024,1024]{1,0} parameter(0)
-      p1 = f32[1024,1024]{1,0} parameter(1)
-      ROOT dot = f32[1024,1024]{1,0} dot(p0, p1),
-          lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    })";
+using ::tsl::proto_testing::EqualsProto;
+using ::tsl::testing::IsOk;
 
 const char kCublasCustomCallHlo[] = R"(
     HloModule module, entry_computation_layout={(f32[100,100]{1,0}, f32[100,100]{1,0})->f32[100,100]{1,0}}
@@ -128,34 +101,12 @@ TEST_F(CublasBackendTest, GetSupportedConfigsFromCublasCustomCall) {
                           ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
   se::StreamExecutor* stream_executor =
       PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
-  std::vector<std::unique_ptr<BackendConfig>> configs =
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()->operand(0)),
           stream_executor);
-  EXPECT_GT(configs.size(), 0);
-}
-
-TEST_F(CublasBackendTest, GetSupportedConfigsFromDot) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kDotHlo));
-  se::StreamExecutor* stream_executor =
-      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
-  std::vector<std::unique_ptr<BackendConfig>> configs =
-      backend_.GetSupportedConfigs(
-          (*module->entry_computation()->root_instruction()), stream_executor);
-  EXPECT_GT(configs.size(), 0);
-}
-
-TEST_F(CublasBackendTest, GetSupportedConfigsFromFusionContainingGemm) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kFusionHlo));
-
-  se::StreamExecutor* stream_executor =
-      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
-  std::vector<std::unique_ptr<BackendConfig>> configs =
-      backend_.GetSupportedConfigs(
-          *(module->entry_computation()->root_instruction()), stream_executor);
-  EXPECT_GT(configs.size(), 0);
+  EXPECT_THAT(configs, IsOk());
+  EXPECT_GT(configs.value().size(), 0);
 }
 
 TEST_F(CublasBackendTest, GetDefaultConfigFromCublasCustomCall) {
@@ -166,88 +117,7 @@ TEST_F(CublasBackendTest, GetDefaultConfigFromCublasCustomCall) {
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()->operand(0)));
   EXPECT_THAT(static_cast<const CublasBackendConfig&>(*config.value()),
-              tsl::proto_testing::EqualsProto(ExpectedDefaultAlgorithm()));
-}
-
-TEST_F(CublasBackendTest, GetDefaultConfigFromDot) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kDotHlo));
-
-  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
-      backend_.GetDefaultConfig(
-          (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(static_cast<const CublasBackendConfig&>(*config.value()),
-              tsl::proto_testing::EqualsProto(ExpectedDefaultAlgorithm()));
-}
-
-TEST_F(CublasBackendTest, GetDefaultConfigFromFusionContainingGemm) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kFusionHlo));
-
-  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
-      backend_.GetDefaultConfig(
-          (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(static_cast<const CublasBackendConfig&>(*config.value()),
-              tsl::proto_testing::EqualsProto(ExpectedDefaultAlgorithm()));
-}
-
-TEST_F(CublasBackendTest, GetDefaultConfigFailsWithoutGemm) {
-  std::string hlo = R"(
-    HloModule module
-
-    computation {
-      p0 = bf16[1024,1024]{1,0} parameter(0)
-      p1 = bf16[1024,1024]{1,0} parameter(1)
-      ROOT sum = f32[1024,1024]{1,0} add(p0, p1)
-    }
-
-    ENTRY main {
-      p0 = bf16[1024,1024]{1,0} parameter(0)
-      p1 = bf16[1024,1024]{1,0} parameter(1)
-      ROOT fusion = f32[1024,1024]{1,0} fusion(p0, p1),
-        kind=kCustom, calls=computation
-    })";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
-  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
-      backend_.GetDefaultConfig(
-          (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config,
-              ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
-}
-
-TEST_F(CublasBackendTest, CompileCublasCustomCall) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
-  auto config = backend_.GetDefaultConfig(
-      (*module->entry_computation()->root_instruction()->operand(0)));
-  EXPECT_THAT(config, ::tsl::testing::IsOk());
-  absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
-      *(module->entry_computation()->root_instruction()->operand(0)),
-      *(config.value()));
-  EXPECT_THAT(executable, ::tsl::testing::IsOk());
-}
-
-TEST_F(CublasBackendTest, CompileDot) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kDotHlo));
-  auto config = backend_.GetDefaultConfig(
-      (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config, ::tsl::testing::IsOk());
-  absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
-      *(module->entry_computation()->root_instruction()), *(config.value()));
-  EXPECT_THAT(executable, ::tsl::testing::IsOk());
-}
-
-TEST_F(CublasBackendTest, CompileFusionContainingGemm) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kFusionHlo));
-  auto config = backend_.GetDefaultConfig(
-      (*module->entry_computation()->root_instruction()));
-  absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
-      *(module->entry_computation()->root_instruction()), *(config.value()));
-  EXPECT_THAT(executable, ::tsl::testing::IsOk());
+              EqualsProto(ExpectedDefaultAlgorithm()));
 }
 
 }  // namespace gpu
