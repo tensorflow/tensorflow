@@ -1210,8 +1210,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::RemapArrays(
   return PjRtCompatibleClientRemapArrays(this, plan, arrays, semantics);
 }
 
-Future<> PjRtClient::GetReadyFuture(
-    absl::Span<const tsl::RCReference<Value>> values) {
+Future<> PjRtClient::GetReadyFuture(absl::Span<const ValueRef> values) {
   absl::InlinedVector<Future<>, 1> futures;
   futures.reserve(values.size());
   for (const auto& value : values) {
@@ -1221,7 +1220,7 @@ Future<> PjRtClient::GetReadyFuture(
 }
 
 absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
-    absl::Span<tsl::RCReference<Value>> values) {
+    absl::Span<ValueRef> values) {
   return PjRtTuple::Create(this, values);
 }
 

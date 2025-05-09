@@ -155,7 +155,7 @@ class MockArrayTest : public testing::Test {
             });
 
     ON_CALL(*mock_backend, GetReadyFuture)
-        .WillByDefault([](absl::Span<const tsl::RCReference<Value>> values) {
+        .WillByDefault([](absl::Span<const ValueRef> values) {
           std::vector<Future<>> futures;
           futures.reserve(values.size());
           for (const auto& value : values) {

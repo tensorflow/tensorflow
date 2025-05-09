@@ -200,11 +200,10 @@ class PjRtClient final
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) override;
 
-  Future<> GetReadyFuture(
-      absl::Span<const tsl::RCReference<Value>> values) override;
+  Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
-      absl::Span<tsl::RCReference<Value>> values) override;
+      absl::Span<ValueRef> values) override;
 
   absl::string_view runtime_type() const override { return "pjrt_ifrt"; }
 

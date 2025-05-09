@@ -97,10 +97,10 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       ArrayCopySemantics semantics) override;
 
   xla::ifrt::Future<> GetReadyFuture(
-      absl::Span<const tsl::RCReference<Value>> values) override;
+      absl::Span<const ValueRef> values) override;
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
-      absl::Span<tsl::RCReference<Value>> values) override {
+      absl::Span<ValueRef> values) override {
     return absl::UnimplementedError(
         "MakeTuple is not supported for the IFRT proxy client.");
   }

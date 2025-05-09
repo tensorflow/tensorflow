@@ -1219,7 +1219,7 @@ TEST(ArrayImplTest, BatchedGetReadyFuture) {
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
 
-  std::vector<tsl::RCReference<Value>> values;
+  std::vector<ValueRef> values;
   for (int i = 0; i < 4; ++i) {
     TF_ASSERT_OK_AND_ASSIGN(values.emplace_back(),
                             client->MakeArrayFromHostBuffer(

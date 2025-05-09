@@ -159,13 +159,12 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
         return delegated_->RemapArrays(plan, arrays, semantics);
       });
   ON_CALL(*this, GetReadyFuture)
-      .WillByDefault([this](absl::Span<const tsl::RCReference<Value>> values) {
+      .WillByDefault([this](absl::Span<const ValueRef> values) {
         return delegated_->GetReadyFuture(values);
       });
-  ON_CALL(*this, MakeTuple)
-      .WillByDefault([this](absl::Span<tsl::RCReference<Value>> values) {
-        return delegated_->MakeTuple(values);
-      });
+  ON_CALL(*this, MakeTuple).WillByDefault([this](absl::Span<ValueRef> values) {
+    return delegated_->MakeTuple(values);
+  });
 
   ON_CALL(*this, runtime_type).WillByDefault([this]() {
     return delegated_->runtime_type();
