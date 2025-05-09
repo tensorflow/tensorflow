@@ -259,7 +259,7 @@ static absl::Status AllReduceOp(
   // Reduce all inputs into the destination buffer at rank 0.
   void* output = chunk_ptr(participants[0].dest);
 
-  TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch<absl::Status>(
+  TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch(
       [&](const auto type_tag) {
         return ReduceScatter<type_tag>(reduction_kind, inputs, output,
                                        chunk_count);
@@ -310,7 +310,7 @@ static absl::Status ReduceScatterOp(
   // Reduce all inputs into the destination buffer.
   void* output = participants[rank].dest.opaque();
 
-  TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch<absl::Status>(
+  TF_RETURN_IF_ERROR(primitive_util::ArrayTypeSwitch(
       [&](const auto type_tag) {
         return ReduceScatter<type_tag>(reduction_kind, inputs, output, count);
       },

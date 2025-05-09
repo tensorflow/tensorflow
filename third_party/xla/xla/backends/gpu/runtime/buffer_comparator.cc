@@ -180,13 +180,13 @@ absl::StatusOr<bool> BufferComparator::CompareEqual(
   };
 
   if (primitive_util::IsFloatingPointType(shape_.element_type())) {
-    return xla::primitive_util::FloatingPointTypeSwitch<absl::StatusOr<bool>>(
-        do_compare, shape_.element_type());
+    return xla::primitive_util::FloatingPointTypeSwitch(do_compare,
+                                                        shape_.element_type());
   }
 
   if (primitive_util::IsIntegralType(shape_.element_type())) {
-    return xla::primitive_util::IntegralTypeSwitch<absl::StatusOr<bool>>(
-        do_compare, shape_.element_type());
+    return xla::primitive_util::IntegralTypeSwitch(do_compare,
+                                                   shape_.element_type());
   }
 
   return Unimplemented("Unimplemented element type for host function");

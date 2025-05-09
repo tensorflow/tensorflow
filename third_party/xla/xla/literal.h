@@ -1755,7 +1755,7 @@ absl::Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
           return InvalidArgument("Shape cannot be serialized: %s",
                                  shape().ToString());
         }
-        primitive_util::ArrayTypeSwitch<void>(
+        primitive_util::ArrayTypeSwitch(
             [&](auto primitive_type) {
               using NativeT = primitive_util::NativeTypeOf<primitive_type>;
               piece.SerializeData<NativeT>(state);
@@ -1789,7 +1789,7 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
               return InvalidArgument("Shape cannot be deserialized: %s",
                                      shape.ToString());
             }
-            bool ok = primitive_util::ArrayTypeSwitch<bool>(
+            bool ok = primitive_util::ArrayTypeSwitch(
                 [&](auto primitive_type) {
                   using NativeT = primitive_util::NativeTypeOf<primitive_type>;
                   return piece->DeserializeData<NativeT>(state);
@@ -1940,7 +1940,7 @@ int64_t LiteralBase::CountEqual(T value) const {
     return 0;
   }
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::ArrayTypeSwitch<int64_t>(
+  return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> int64_t {
         using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
         scalar.Set<NativeT>({}, static_cast<NativeT>(value));
@@ -1956,7 +1956,7 @@ int64_t LiteralBase::CountEqual(std::complex<T> value) const {
     return 0;
   }
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::ComplexTypeSwitch<int64_t>(
+  return primitive_util::ComplexTypeSwitch(
       [&](auto primitive_type_constant) -> int64_t {
         using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
         scalar.Set<NativeT>({}, static_cast<NativeT>(value));
