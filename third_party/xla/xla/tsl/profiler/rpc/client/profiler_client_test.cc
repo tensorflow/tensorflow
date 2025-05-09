@@ -88,7 +88,7 @@ TEST(RemoteProfilerSession, Timeout) {
   absl::Status status;
   auto response = remote_session->WaitForCompletion(status);
   // At end of session we will have a timeout error.
-  EXPECT_TRUE(errors::IsDeadlineExceeded(status));
+  EXPECT_TRUE(absl::IsDeadlineExceeded(status));
   // True because there was no workload traced and subsequently no XEvents.
   EXPECT_TRUE(response->empty_trace());
   // XSpaces are serialized and not returned as tools in ProfileResponse.
