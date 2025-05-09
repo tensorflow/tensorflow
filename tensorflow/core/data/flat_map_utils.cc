@@ -187,10 +187,11 @@ FlatMapRandomAccessHandler::MakeInputDatasets() const {
     }
 
     input_datasets.push_back(nullptr);
+    DatasetBase*& input_dataset = input_datasets.back();
     threads.push_back(ctx_->StartThread(
         "flat_map_random_access_iterator",
-        [this, input_tensors = std::move(input_tensors), &input_datasets,
-         dataset_index = input_datasets.size() - 1, &map_func, &status, &mu]() {
+        [this, input_tensors = std::move(input_tensors), &input_dataset,
+         &map_func, &status, &mu]() {
           absl::StatusOr<DatasetBase*> dataset =
               MakeInputDataset(std::move(input_tensors), *map_func);
           if (!dataset.ok()) {
@@ -198,7 +199,7 @@ FlatMapRandomAccessHandler::MakeInputDatasets() const {
             status.Update(dataset.status());
             return;
           }
-          input_datasets[dataset_index] = *dataset;
+          input_dataset = *dataset;
         }));
   }
   threads.clear();
