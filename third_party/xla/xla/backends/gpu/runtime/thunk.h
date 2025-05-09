@@ -498,15 +498,8 @@ class Thunk {
     return params.collective_params->collectives;
   }
 
-  // Serializes the thunk into the given ThunkProto. `thunk_proto` is an
-  // out-parameter to make the API compatible with Protobuf Arena allocation.
-  virtual absl::Status ToProto(ThunkProto* thunk_proto) const {
-    thunk_proto->mutable_thunk_info()->set_execution_stream_id(
-        execution_stream_id_.value());
-    thunk_proto->mutable_thunk_info()->set_profile_annotation(
-        profile_annotation_);
-    return absl::OkStatus();
-  }
+  // Serializes the thunk into a `ThunkProto`.
+  virtual absl::StatusOr<ThunkProto> ToProto() const;
 
  private:
   Kind kind_;
