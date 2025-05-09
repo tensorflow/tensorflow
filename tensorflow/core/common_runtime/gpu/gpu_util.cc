@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "xla/layout_util.h"
+#include "xla/shape.h"
 
 // TODO(b/282059652): Merge google internal and open-source code path once TF
 // dependency issue is resolved.
@@ -361,9 +363,11 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
       dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(gpu_tensor));
   if (pjrt_tensor_buffer != nullptr) {
     VLOG(1) << "CopyGPUTensorToCPU using PjRtTensorBuffer";
-    auto literal = std::make_unique<xla::MutableBorrowingLiteral>();
-    auto status = tensorflow::HostTensorToMutableBorrowingLiteral(
-        cpu_tensor, literal.get());
+    xla::Shape shape = pjrt_tensor_buffer->pjrt_buffer()->on_device_shape();
+    *shape.mutable_layout() =
+        xla::LayoutUtil::MakeDescendingLayout(shape.dimensions().size());
+    auto literal = std::make_unique<xla::MutableBorrowingLiteral>(
+        cpu_tensor->tensor_data().data(), shape);
     xla::PjRtFuture<> future =
         pjrt_tensor_buffer->pjrt_buffer()->ToLiteral(literal.get());
     future.OnReady([literal = std::move(literal),
