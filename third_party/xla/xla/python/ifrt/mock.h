@@ -148,10 +148,10 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (const RemapPlan& plan, absl::Span<ArrayRef> arrays,
                ArrayCopySemantics semantics),
               (final));
-  MOCK_METHOD(Future<>, GetReadyFuture,
-              (absl::Span<const tsl::RCReference<Value>> values), (final));
+  MOCK_METHOD(Future<>, GetReadyFuture, (absl::Span<const ValueRef> values),
+              (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Tuple>>, MakeTuple,
-              (absl::Span<tsl::RCReference<Value>> values), (final));
+              (absl::Span<ValueRef> values), (final));
   MOCK_METHOD(absl::string_view, runtime_type, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_name, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_version, (), (const, final));

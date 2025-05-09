@@ -256,13 +256,13 @@ class CompileOnlyIfRtClient final
   }
 
   ifrt::Future<> GetReadyFuture(
-      absl::Span<const tsl::RCReference<ifrt::Value>> values) override {
+      absl::Span<const ifrt::ValueRef> values) override {
     return ifrt::Future<>(Unimplemented(
         "GetReadyFuture not available with compile-only client."));
   }
 
   absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
-      absl::Span<tsl::RCReference<ifrt::Value>> values) override {
+      absl::Span<ifrt::ValueRef> values) override {
     return Unimplemented("MakeTuple not available with compile-only client.");
   }
 

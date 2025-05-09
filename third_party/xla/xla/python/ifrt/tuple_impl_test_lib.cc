@@ -55,7 +55,7 @@ TEST(TupleImplTest, NullaryTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto t, client->MakeTuple({}));
 
   EXPECT_EQ(t->Arity(), 0);
-  std::vector<tsl::RCReference<Value>> elements;
+  std::vector<ValueRef> elements;
   TF_EXPECT_OK(t->Unpack(absl::MakeSpan(elements)));
   EXPECT_EQ(elements.size(), 0);
 
@@ -73,11 +73,11 @@ TEST(TupleImplTest, TupleOfArrays) {
   TF_ASSERT_OK_AND_ASSIGN(auto a1, MakeArray(client.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto a2, MakeArray(client.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto a3, MakeArray(client.get()));
-  std::vector<tsl::RCReference<Value>> elements_in{a1, a2, a3};
+  std::vector<ValueRef> elements_in{a1, a2, a3};
   TF_ASSERT_OK_AND_ASSIGN(auto t,
                           client->MakeTuple(absl::MakeSpan(elements_in)));
   EXPECT_EQ(t->Arity(), 3);
-  std::vector<tsl::RCReference<Value>> elements(3);
+  std::vector<ValueRef> elements(3);
   TF_EXPECT_OK(t->Unpack(absl::MakeSpan(elements)));
   EXPECT_THAT(elements, ::testing::ElementsAre(a1, a2, a3));
 
@@ -96,7 +96,7 @@ TEST(TupleImplTest, DeleteOfElementDeletesTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto a1, MakeArray(client.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto a2, MakeArray(client.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto a3, MakeArray(client.get()));
-  std::vector<tsl::RCReference<Value>> elements_in{a1, a2, a3};
+  std::vector<ValueRef> elements_in{a1, a2, a3};
   TF_ASSERT_OK_AND_ASSIGN(auto t,
                           client->MakeTuple(absl::MakeSpan(elements_in)));
 
@@ -111,18 +111,18 @@ TEST(TupleImplTest, NestedTuples) {
   TF_ASSERT_OK_AND_ASSIGN(auto a1, MakeArray(client.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto a2, MakeArray(client.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto a3, MakeArray(client.get()));
-  std::vector<tsl::RCReference<Value>> e1{a1, a2};
+  std::vector<ValueRef> e1{a1, a2};
   TF_ASSERT_OK_AND_ASSIGN(auto t1, client->MakeTuple(absl::MakeSpan(e1)));
   EXPECT_EQ(t1->Arity(), 2);
-  std::vector<tsl::RCReference<Value>> e2{};
+  std::vector<ValueRef> e2{};
   TF_ASSERT_OK_AND_ASSIGN(auto t2, client->MakeTuple(absl::MakeSpan(e2)));
   EXPECT_EQ(t2->Arity(), 0);
 
-  std::vector<tsl::RCReference<Value>> e3{t1, t2, a3};
+  std::vector<ValueRef> e3{t1, t2, a3};
   TF_ASSERT_OK_AND_ASSIGN(auto t3, client->MakeTuple(absl::MakeSpan(e3)));
   EXPECT_EQ(t3->Arity(), 3);
 
-  std::vector<tsl::RCReference<Value>> elements(3);
+  std::vector<ValueRef> elements(3);
   TF_EXPECT_OK(t3->Unpack(absl::MakeSpan(elements)));
   EXPECT_THAT(elements, ::testing::ElementsAre(t1, t2, a3));
 

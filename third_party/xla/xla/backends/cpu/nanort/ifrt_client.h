@@ -131,10 +131,10 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
       ifrt::ArrayCopySemantics semantics) override;
 
   ifrt::Future<> GetReadyFuture(
-      absl::Span<const tsl::RCReference<ifrt::Value>> values) override;
+      absl::Span<const ifrt::ValueRef> values) override;
 
   absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
-      absl::Span<tsl::RCReference<ifrt::Value>> values) override;
+      absl::Span<ifrt::ValueRef> values) override;
 
   absl::string_view runtime_type() const override;
 

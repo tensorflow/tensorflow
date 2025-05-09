@@ -288,12 +288,11 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // Note: this API currently accepts a span of `ArrayRef` for
   // consistency with other APIs. We may change this to take a span of `Array*`
   // instead to reflect its read-only semantics.
-  virtual Future<> GetReadyFuture(
-      absl::Span<const tsl::RCReference<Value>> values) = 0;
+  virtual Future<> GetReadyFuture(absl::Span<const ValueRef> values) = 0;
 
   // Builds a tuple from a sequence of values.
   virtual absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
-      absl::Span<tsl::RCReference<Value>> values) = 0;
+      absl::Span<ValueRef> values) = 0;
 
   // Identifies the IFRT implementation. Most C++ users should use LLVM RTTI to
   // determine the runtime type. This is a string exposed to users mostly for

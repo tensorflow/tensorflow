@@ -697,8 +697,7 @@ char ShardedNanoArray::ID = 'A';  // NOLINT
 // Tuple implementation.
 class NanoTuple final : public NanoValue<NanoTuple, ifrt::Tuple> {
  public:
-  explicit NanoTuple(NanoIfrtClient* client,
-                     absl::Span<tsl::RCReference<ifrt::Value>> values)
+  explicit NanoTuple(NanoIfrtClient* client, absl::Span<ifrt::ValueRef> values)
       : NanoValue<NanoTuple, ifrt::Tuple>(client),
         values_(values.begin(), values.end()) {}
 
@@ -724,8 +723,7 @@ class NanoTuple final : public NanoValue<NanoTuple, ifrt::Tuple> {
   int Arity() override { return values_.size(); }
 
   // Unpacks the tuple into its constituent pieces.
-  absl::Status Unpack(
-      absl::Span<tsl::RCReference<ifrt::Value>> values) override {
+  absl::Status Unpack(absl::Span<ifrt::ValueRef> values) override {
     TF_RETURN_IF_ERROR(ValidateNotDeleted());
     if (values.size() != values_.size()) {
       return InvalidArgument("Tuple arity mismatch: expected %d, got %d",
@@ -750,7 +748,7 @@ class NanoTuple final : public NanoValue<NanoTuple, ifrt::Tuple> {
 
  private:
   bool deleted_ = false;
-  std::vector<tsl::RCReference<ifrt::Value>> values_;
+  std::vector<ifrt::ValueRef> values_;
 };
 
 ABSL_ATTRIBUTE_UNUSED char NanoTuple::ID = 'T';  // NOLINT
@@ -1329,12 +1327,12 @@ absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::RemapArrays(
 }
 
 ifrt::Future<> NanoIfrtClient::GetReadyFuture(
-    absl::Span<const tsl::RCReference<ifrt::Value>> values) {
+    absl::Span<const ifrt::ValueRef> values) {
   return Ready();
 }
 
 absl::StatusOr<tsl::RCReference<ifrt::Tuple>> NanoIfrtClient::MakeTuple(
-    absl::Span<tsl::RCReference<ifrt::Value>> values) {
+    absl::Span<ifrt::ValueRef> values) {
   return tsl::MakeRef<NanoTuple>(this, std::move(values));
 }
 
