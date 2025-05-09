@@ -22,6 +22,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -146,7 +147,8 @@ class SplitConfig {
   // Returns the indices where splits occur.
   absl::Span<const int64_t> split_indices() const { return split_indices_; }
   int64_t split_indices(int64_t idx) const { return split_indices_.at(idx); }
-  int64_t split_indices_size() const { return split_indices_.size(); }
+  ABSL_DEPRECATE_AND_INLINE()
+  int64_t split_indices_size() const { return split_indices().size(); }
   SplitConfig& add_split_indices(int64_t split_index) {
     split_indices_.push_back(split_index);
     return *this;
@@ -359,7 +361,8 @@ class Layout {
   }
 
   // Methods for accessing the minor-to-major array.
-  int minor_to_major_size() const { return minor_to_major_.size(); }
+  ABSL_DEPRECATE_AND_INLINE()
+  int minor_to_major_size() const { return minor_to_major().size(); }
   int64_t minor_to_major(int index) const { return minor_to_major_[index]; }
   Layout& set_minor_to_major(int index, int64_t value) {
     minor_to_major_[index] = value;
@@ -385,7 +388,8 @@ class Layout {
   Layout& DeleteDimension(int dim_to_delete);
 
   // Methods for accessing the tile field.
-  int64_t tiles_size() const { return tiles_.size(); }
+  ABSL_DEPRECATE_AND_INLINE()
+  int64_t tiles_size() const { return tiles().size(); }
   const Tile& tiles(int index) const { return tiles_[index]; }
   Tile* mutable_tiles(int index) { return &tiles_[index]; }
   Tile* add_tiles() {
@@ -438,7 +442,8 @@ class Layout {
     return *this;
   }
 
-  int split_configs_size() const { return split_configs_.size(); }
+  ABSL_DEPRECATE_AND_INLINE()
+  int split_configs_size() const { return split_configs().size(); }
   const SplitConfig& split_configs(int index) const {
     return split_configs_.at(index);
   }
