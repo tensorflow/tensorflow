@@ -129,7 +129,6 @@ class TfrtGpuDevice final : public PjRtDevice {
     PjRtLocalDeviceId local_device_id;
     PjRtLocalHardwareId local_hardware_id;
     se::StreamExecutor* executor;
-    int max_inflight_computations;
     std::string platform_version;
     std::string compute_capability;
     std::string device_vendor;
@@ -162,11 +161,6 @@ class TfrtGpuDevice final : public PjRtDevice {
   absl::Status TransferToInfeed(const LiteralSlice& literal) override;
 
   absl::Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
-
-  // Returns a semaphore for admission control on inflight computations.
-  Semaphore& max_inflight_computations_semaphore() {
-    return max_inflight_computations_semaphore_;
-  }
 
   void AttachMemorySpace(PjRtMemorySpace* memory_space,
                          bool is_default = false);
@@ -233,10 +227,6 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   PjRtStreamExecutorDeviceDescription description_;
   PjRtMemorySpace* default_memory_space_ = nullptr;
-
-  // Semaphore used to limit how many programs can be enqueued by the host
-  // ahead of the device.
-  xla::Semaphore max_inflight_computations_semaphore_;
 };
 
 class TfrtGpuClient final : public PjRtClient {
@@ -783,7 +773,6 @@ class TfrtGpuExecutable final : public PjRtLoadedExecutable {
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
-      tsl::AsyncValueRef<GpuEvent> last_collective_launch_event,
       bool fill_future, TfrtGpuDevice* device = nullptr);
 
   // Create shared pointers so we can free them after the execution: with
