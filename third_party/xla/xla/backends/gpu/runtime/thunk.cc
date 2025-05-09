@@ -375,5 +375,13 @@ void Thunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
   fn(this);
 }
 
+absl::StatusOr<ThunkProto> Thunk::ToProto() const {
+  ThunkProto proto;
+  proto.mutable_thunk_info()->set_execution_stream_id(
+      execution_stream_id_.value());
+  proto.mutable_thunk_info()->set_profile_annotation(profile_annotation_);
+  return proto;
+}
+
 }  // namespace gpu
 }  // namespace xla

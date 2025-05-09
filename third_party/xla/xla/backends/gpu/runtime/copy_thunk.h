@@ -97,7 +97,7 @@ class CopyThunk : public Thunk {
   }
   uint64_t size_bytes() const { return mem_size_; }
 
-  absl::Status ToProto(ThunkProto* thunk_proto) const override;
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   const BufferAllocation::Slice source_buffer_;
@@ -125,7 +125,7 @@ class DeviceToHostCopyThunk : public CopyThunk {
                         const HloInstruction* instr);
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  absl::Status ToProto(ThunkProto* thunk_proto) const override;
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   std::shared_ptr<CopyThunk::AsyncEvents> async_events_;
@@ -152,7 +152,7 @@ class HostToDeviceCopyThunk : public CopyThunk {
                         const HloInstruction* instr);
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  absl::Status ToProto(ThunkProto* thunk_proto) const override;
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   std::shared_ptr<CopyThunk::AsyncEvents> async_events_;

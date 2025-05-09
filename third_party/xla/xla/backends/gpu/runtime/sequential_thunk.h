@@ -46,7 +46,7 @@ class SequentialThunk : public Thunk {
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
 
-  absl::Status ToProto(ThunkProto* thunk_proto) const override;
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   // The list of sub-thunks.
