@@ -30,7 +30,7 @@ struct PluggableDeviceInit_Api {
 };
 
 absl::Status RegisterPluggableDevicePlugin(void* dso_handle);
-absl::Status RegisterPluggableDevicePlugin(PluggableDeviceInit_Api* api);
+absl::Status RegisterPluggableDevicePlugin(const PluggableDeviceInit_Api* api);
 
 }  // namespace tensorflow
 

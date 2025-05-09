@@ -196,7 +196,7 @@ absl::Status RegisterPluggableDevicePlugin(void* dso_handle) {
   return RegisterPluggableDevicePlugin(&api);
 }
 
-absl::Status RegisterPluggableDevicePlugin(PluggableDeviceInit_Api* api) {
+absl::Status RegisterPluggableDevicePlugin(const PluggableDeviceInit_Api* api) {
   if (api == nullptr) {
     VLOG(1) << "PluggableDevice_Api is null";
     return absl::OkStatus();
