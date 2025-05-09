@@ -56,6 +56,7 @@ cc_library(
     deps = [
         ":coordination_client",
         ":coordination_service_error_util",
+        ":key_value_store",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
@@ -203,6 +204,45 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "key_value_store",
+    srcs = ["key_value_store.cc"],
+    hdrs = ["key_value_store.h"],
+    deps = [
+        "//xla/tsl/protobuf:coordination_service_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tsl_cc_test(
+    name = "key_value_store_test",
+    srcs = ["key_value_store_test.cc"],
+    tags = if_oss([
+        "manual",
+        "no_oss",
+    ]),  # no status matchers in OSS.
+    deps = [
+        ":key_value_store",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tsl_cc_test(
     name = "coordination_service_recoverable_job_test",
     srcs = ["coordination_service_recoverable_job_test.cc"],
@@ -269,5 +309,6 @@ filegroup(
     srcs = [
         "coordination_client.h",
         "coordination_service.h",
+        "key_value_store.h",
     ],
 )
