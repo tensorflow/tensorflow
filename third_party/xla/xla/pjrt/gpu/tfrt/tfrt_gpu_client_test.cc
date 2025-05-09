@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
@@ -77,9 +78,11 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -1204,6 +1207,26 @@ TEST(GpuTopology, ToProto) {
   EXPECT_THAT(msg.num_slices(), 2);
   EXPECT_THAT(msg.num_hosts_per_slice(), 1);
   EXPECT_THAT(msg.num_devices_per_host(), 3);
+}
+
+TEST(TfrtGpuClientTest, DistributedInit) {
+  auto kv_store = std::make_shared<InMemoryKeyValueStore>();
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "DistributeInit", 4);
+
+  int num_nodes = 2;
+  for (int i = 0; i < num_nodes; i++) {
+    thread_pool.Schedule([kv_store, i, num_nodes] {
+      GpuClientOptions options;
+      options.node_id = i;
+      options.num_nodes = num_nodes;
+      options.kv_store = kv_store;
+      TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(options));
+      EXPECT_TRUE(client->platform_name() == "cuda" ||
+                  client->platform_name() == "rocm");
+      EXPECT_EQ(client->addressable_device_count(), 2);
+      EXPECT_EQ(client->device_count(), 4);
+    });
+  }
 }
 
 namespace {
