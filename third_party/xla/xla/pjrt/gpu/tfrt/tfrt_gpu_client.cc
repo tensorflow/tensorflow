@@ -2166,11 +2166,19 @@ absl::StatusOr<std::unique_ptr<tsl::Allocator>> CreateAllocatorForDevice(
       return absl::UnimplementedError(
           "CudaAsync allocator is not supported in TfrtGpuClient.");
     case GpuAllocatorConfig::Kind::kDefault:
-    case GpuAllocatorConfig::Kind::kBFC:
+    case GpuAllocatorConfig::Kind::kBFC: {
       LOG_FIRST_N(INFO, 1) << "Using BFC allocator.";
-      return CreateBFCAllocator(executor, allocator_config.memory_fraction,
+      float memory_fraction;
+      if (allocator_config.memory_fraction.has_value()) {
+        memory_fraction = *allocator_config.memory_fraction;
+      } else {
+        TF_ASSIGN_OR_RETURN(memory_fraction,
+                            GetDefaultGpuSystemMemoryFraction());
+      }
+      return CreateBFCAllocator(executor, memory_fraction,
                                 allocator_config.preallocate,
                                 allocator_config.gpu_system_memory_size);
+    }
     case GpuAllocatorConfig::Kind::kPlatform:
       LOG(FATAL) << "Platform allocator should be handled before calling this "
                     "function.";
@@ -2202,12 +2210,17 @@ absl::StatusOr<MaybeOwning<se::DeviceMemoryAllocator>> CreateDeviceAllocator(
         /*device_ordinal=*/executor->device_ordinal(),
         /*platform=*/executor->GetPlatform());
 
+    float memory_fraction;
+    if (allocator_config.memory_fraction.has_value()) {
+      memory_fraction = *allocator_config.memory_fraction;
+    } else {
+      TF_ASSIGN_OR_RETURN(memory_fraction, GetDefaultGpuSystemMemoryFraction());
+    }
     TF_ASSIGN_OR_RETURN(
         auto collective_bfc_allocator,
-        CreateCollectiveBFCAllocator(
-            executor,
-            /*memory_fraction=*/1.0 - allocator_config.memory_fraction,
-            allocator_config.collective_memory_size));
+        CreateCollectiveBFCAllocator(executor,
+                                     /*memory_fraction=*/1.0 - memory_fraction,
+                                     allocator_config.collective_memory_size));
     allocators.emplace_back(std::move(collective_bfc_allocator),
                             /*stream=*/nullptr,
                             /*memory_space=*/1,

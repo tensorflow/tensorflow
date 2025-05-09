@@ -102,7 +102,7 @@ struct HloRunnerConfig {
   int32_t num_repeats = 1;
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
-  float gpu_client_mem_fraction = xla::GpuAllocatorConfig{}.memory_fraction;
+  float gpu_client_mem_fraction = 0.0;
   bool profile_execution = false;
   std::string xla_gpu_dump_xspace_to = "";
 };
@@ -232,9 +232,6 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   QCHECK(opts.dump_output_literal_to.empty() || argc == 2)
       << "Can only dump output literal when single input file is specified";
 
-  QCHECK_GT(opts.gpu_client_mem_fraction, 0.0);
-  QCHECK_LT(opts.gpu_client_mem_fraction, 1.0);
-
   PjRtEnvironment env;
   std::unique_ptr<HLORunnerProfiler> hlo_runner_profiler;
   if (opts.device_type_str == "gpu") {
@@ -242,7 +239,10 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     gpu_options.node_id = opts.task_id;
     gpu_options.num_nodes = opts.num_nodes;
     gpu_options.enable_mock_nccl = opts.enable_mock_nccl;
-    gpu_options.allocator_config.memory_fraction = opts.gpu_client_mem_fraction;
+    if (opts.gpu_client_mem_fraction != 0.0) {
+      gpu_options.allocator_config.memory_fraction =
+          opts.gpu_client_mem_fraction;
+    }
     TF_ASSIGN_OR_RETURN(
         env, xla::GetPjRtEnvironmentForGpu(
                  opts.address_str, gpu_options,
