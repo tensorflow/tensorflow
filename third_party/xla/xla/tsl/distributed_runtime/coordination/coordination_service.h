@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "xla/tsl/distributed_runtime/coordination/key_value_store.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
@@ -611,11 +612,7 @@ class CoordinationService {
       ABSL_GUARDED_BY(state_mu_);
   tensorflow::DeviceInfo cluster_devices_ ABSL_GUARDED_BY(state_mu_);
 
-  absl::Mutex kv_mu_;
-  // Ordered map to store config key-values
-  absl::btree_map<std::string, std::string> kv_store_ ABSL_GUARDED_BY(kv_mu_);
-  absl::flat_hash_map<std::string, std::vector<StatusOrValueCallback>> get_cb_
-      ABSL_GUARDED_BY(kv_mu_);
+  KeyValueStore store_;
 
   absl::flat_hash_map<std::string, BarrierState> barriers_
       ABSL_GUARDED_BY(state_mu_);
