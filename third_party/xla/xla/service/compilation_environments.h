@@ -106,6 +106,9 @@ class CompilationEnvironments {
   template <typename T>
   void DeleteEnv();
 
+  // Initialize all known compilation environments.
+  absl::Status InitializeAllKnownEnvs();
+
   // Removes all added environments.
   void Clear() { environments_.clear(); }
 

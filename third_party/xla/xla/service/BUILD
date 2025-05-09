@@ -5285,6 +5285,7 @@ cc_library(
     hdrs = ["compilation_environments.h"],
     deps = [
         "//xla:xla_proto_cc",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
