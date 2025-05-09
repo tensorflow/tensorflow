@@ -249,9 +249,7 @@ message DebugOptions {
     // Additionally, enable collective-permute cycle decomposer. This set of
     // optimizations will lead to best overlap for trivial pipeline parallelism
     // implementation.
-    // TODO(b/393127848): Remove these optimizations when all users implement
-    // cycle decomposition at the JAX level.
-    PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER = 2;
+    reserved 2;  // Was PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER
   }
 
   // Denylist for cuDNN convolutions.
