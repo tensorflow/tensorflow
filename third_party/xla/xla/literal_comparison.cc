@@ -351,7 +351,7 @@ class NearComparator {
     if (error_.low_precision_fp_error_spec.type ==
         PrimitiveType::PRIMITIVE_TYPE_INVALID)
       return -1;
-    return primitive_util::FloatingPointTypeSwitch<int>(
+    return primitive_util::FloatingPointTypeSwitch(
         [&](const auto kType) -> int {
           using NarrowNativeT = primitive_util::NativeTypeOf<kType>;
           // TODO(b/370786669): Once ml_dtypes is updated to include

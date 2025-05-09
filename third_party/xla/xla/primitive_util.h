@@ -497,10 +497,8 @@ constexpr bool IsArrayType(PrimitiveType primitive_type) {
 //         type);
 //   }
 
-// If `type` is an integral type, returns the result of applying polymorphic
-// functor f on a PrimitiveTypeConstant<type> value; otherwise crashes.
-template <typename R, typename F>
-constexpr R IntegralTypeSwitch(F&& f, PrimitiveType type) {
+template <typename F>
+constexpr decltype(auto) IntegralTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsIntegralType(type))) {
     switch (type) {
       case S1:
@@ -541,8 +539,8 @@ constexpr R IntegralTypeSwitch(F&& f, PrimitiveType type) {
 // If `type` is a floating-point type, returns the result of applying
 // polymorphic functor f on a PrimitiveTypeConstant<type> value; otherwise
 // crashes.
-template <typename R, typename F>
-constexpr R FloatingPointTypeSwitch(F&& f, PrimitiveType type) {
+template <typename F>
+constexpr decltype(auto) FloatingPointTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
     switch (type) {
       case F4E2M1FN:
@@ -589,8 +587,8 @@ constexpr R FloatingPointTypeSwitch(F&& f, PrimitiveType type) {
 
 // If `type` is a complex type, returns the result of applying polymorphic
 // functor f on a PrimitiveTypeConstant<type> value; otherwise crashes.
-template <typename R, typename F>
-constexpr R ComplexTypeSwitch(F&& f, PrimitiveType type) {
+template <typename F>
+constexpr decltype(auto) ComplexTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsComplexType(type))) {
     switch (type) {
       case C64:
@@ -606,17 +604,17 @@ constexpr R ComplexTypeSwitch(F&& f, PrimitiveType type) {
 
 // If `type` is an array type, returns the result of applying polymorphic
 // functor f on a PrimitiveTypeConstant<type> value; otherwise crashes.
-template <typename R, typename F>
-constexpr R ArrayTypeSwitch(F&& f, PrimitiveType type) {
+template <typename F>
+constexpr decltype(auto) ArrayTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsArrayType(type))) {
     if (IsFloatingPointType(type)) {
-      return FloatingPointTypeSwitch<R>(std::forward<F>(f), type);
+      return FloatingPointTypeSwitch(std::forward<F>(f), type);
     }
     if (IsIntegralType(type)) {
-      return IntegralTypeSwitch<R>(std::forward<F>(f), type);
+      return IntegralTypeSwitch(std::forward<F>(f), type);
     }
     if (IsComplexType(type)) {
-      return ComplexTypeSwitch<R>(std::forward<F>(f), type);
+      return ComplexTypeSwitch(std::forward<F>(f), type);
     }
     if (type == PRED) {
       return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::PRED>());
@@ -631,7 +629,7 @@ constexpr R ArrayTypeSwitch(F&& f, PrimitiveType type) {
 template <typename R, typename F>
 constexpr R PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsArrayType(type))) {
-    return ArrayTypeSwitch<R>(std::forward<F>(f), type);
+    return ArrayTypeSwitch(std::forward<F>(f), type);
   }
   if (type == TUPLE) {
     return std::forward<F>(f)(PrimitiveTypeConstant<PrimitiveType::TUPLE>());
@@ -910,7 +908,7 @@ constexpr bool CanRepresent(PrimitiveType type) {
 
 // Returns true if `x` can be represented by the native type of `ty`.
 inline bool FitsInIntegralType(int64_t x, PrimitiveType ty) {
-  return primitive_util::IntegralTypeSwitch<bool>(
+  return primitive_util::IntegralTypeSwitch(
       [&](auto primitive_type) -> bool {
         using NativeT = primitive_util::NativeTypeOf<primitive_type>;
         return std::numeric_limits<NativeT>::min() <= x &&

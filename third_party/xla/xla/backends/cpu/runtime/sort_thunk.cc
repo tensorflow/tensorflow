@@ -766,7 +766,7 @@ static absl::Status SortInplace(
     // Sorts array using builtin comparator functor
     auto builtin_sort = [&](PrimitiveType type,
                             SortThunk::SortDirection direction) {
-      primitive_util::ArrayTypeSwitch<void>(
+      primitive_util::ArrayTypeSwitch(
           [&](auto cst_type) {
             if constexpr ((primitive_util::IsFloatingPointType(cst_type) ||
                            primitive_util::IsIntegralType(cst_type)) &&
