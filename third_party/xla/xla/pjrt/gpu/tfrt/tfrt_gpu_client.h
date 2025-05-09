@@ -387,6 +387,8 @@ class TfrtGpuClient final : public PjRtClient {
   bool IsDmaMapped(const void* data_start, int64_t transfer_size);
 
  private:
+  friend class TfrtGpuBuffer;
+
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
   // `options` in-place.
   struct ExecutableExtras {
