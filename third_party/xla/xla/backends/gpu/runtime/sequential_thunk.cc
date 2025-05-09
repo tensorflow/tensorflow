@@ -125,5 +125,18 @@ absl::StatusOr<ThunkProto> SequentialThunk::ToProto() const {
   return proto;
 }
 
+absl::StatusOr<std::unique_ptr<SequentialThunk>> SequentialThunk::FromProto(
+    ThunkInfo thunk_info, const SequentialThunkProto& thunk_proto,
+    const Deserializer& deserializer) {
+  ThunkSequence thunk_sequence;
+  for (const auto& sub_thunk_proto : thunk_proto.thunks()) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> sub_thunk,
+                        deserializer(sub_thunk_proto));
+    thunk_sequence.push_back(std::move(sub_thunk));
+  }
+
+  return std::make_unique<SequentialThunk>(std::move(thunk_info),
+                                           std::move(thunk_sequence));
+}
 }  // namespace gpu
 }  // namespace xla

@@ -1280,6 +1280,7 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
@@ -1295,6 +1296,8 @@ xla_cc_test(
         ":thunk_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1356,6 +1359,7 @@ cc_library(
         "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -1766,5 +1770,32 @@ tf_proto_library(
     ],
     protodeps = [
         "//xla/service:buffer_assignment_proto",
+    ],
+)
+
+cc_library(
+    name = "thunk_proto_deserialization",
+    srcs = ["thunk_proto_deserialization.cc"],
+    hdrs = ["thunk_proto_deserialization.h"],
+    deps = [
+        ":sequential_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "thunk_proto_deserialization_test",
+    srcs = ["thunk_proto_deserialization_test.cc"],
+    deps = [
+        ":sequential_thunk",
+        ":thunk",
+        ":thunk_proto_deserialization",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
