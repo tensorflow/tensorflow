@@ -163,8 +163,8 @@ cc_library(
     visibility = ["//xla/python/ifrt:users"],
     deps = [
         ":ifrt_ir_compile_options_proto_cc",
-        "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/python/ifrt",
         "//xla/python/ifrt:basic_device_list",
         "//xla/python/ifrt:serdes",
@@ -188,7 +188,7 @@ tf_proto_library(
 tf_proto_library(
     name = "ifrt_ir_compile_options_proto",
     srcs = ["ifrt_ir_compile_options.proto"],
-    protodeps = ["//xla/pjrt:compile_options_proto"],
+    protodeps = ["//xla/pjrt/proto:compile_options_proto"],
     visibility = ["//xla/python/ifrt:users"],
 )
 
