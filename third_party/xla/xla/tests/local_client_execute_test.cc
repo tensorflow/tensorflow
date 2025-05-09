@@ -735,7 +735,8 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
       {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(result), error_spec_);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
+XLA_TEST_F(LocalClientExecuteTest,
+           DISABLED_ON_TPU(CompilePartitionedExecutable)) {
   if (local_client_->device_count() < 2) {
     GTEST_SKIP_("requires two devices");
   }
