@@ -1910,6 +1910,161 @@ LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+
+  SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands))) {
+    return failure();
+  }
+
+  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  if (failed(shape_or)) return failure();
+  if (shape_or->IsTuple()) {
+    std::optional<xla::Layout> layout = std::nullopt;
+    if (shape_or->has_layout()) {
+      layout = shape_or->layout();
+    }
+    auto tuple = xla::AllToAllTuple(
+        operands, Convert_replica_groups(op.getReplicaGroups()), layout,
+        Convert_channel_handle(op.getChannelHandle()));
+    BuildGetTupleElementsForTupleResults(op, tuple, ctx);
+  } else {
+    std::optional<uint64_t> splitDimension = op.getSplitDimension();
+    std::optional<uint64_t> concatDimension = op.getConcatDimension();
+    std::optional<uint64_t> splitCount = op.getSplitCount();
+
+    // ArrayAllToAll always has exactly one operand (checked in the verifier).
+    value_map[op->getResults()[0]] = xla::AllToAll(
+        operands[0], *splitDimension, *concatDimension, *splitCount,
+        Convert_replica_groups(op.getReplicaGroups()),
+        /*layout=*/std::nullopt, Convert_channel_handle(op.getChannelHandle()));
+  }
+
+  return success();
+}
+
+LogicalResult ExportXlaOp(BatchNormGradOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+
+  xla::XlaOp operand, scale, mean, variance, grad_output;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  if (failed(GetXlaOp(op.getScale(), value_map, &scale, op))) return failure();
+  if (failed(GetXlaOp(op.getMean(), value_map, &mean, op))) return failure();
+  if (failed(GetXlaOp(op.getVariance(), value_map, &variance, op)))
+    return failure();
+  if (failed(GetXlaOp(op.getGradOutput(), value_map, &grad_output, op)))
+    return failure();
+
+  auto xla_result =
+      xla::BatchNormGrad(operand, scale, mean, variance, grad_output,
+                         ConvertAPFloat(op.getEpsilon()), op.getFeatureIndex());
+
+  BuildGetTupleElementsForTupleResults(op, xla_result, ctx);
+
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(BatchNormTrainingOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+
+  xla::XlaOp operand, scale, offset;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  if (failed(GetXlaOp(op.getScale(), value_map, &scale, op))) return failure();
+  if (failed(GetXlaOp(op.getOffset(), value_map, &offset, op)))
+    return failure();
+
+  auto xla_result = xla::BatchNormTraining(operand, scale, offset,
+                                           ConvertAPFloat(op.getEpsilon()),
+                                           op.getFeatureIndex());
+
+  BuildGetTupleElementsForTupleResults(op, xla_result, ctx);
+
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(BitcastConvertOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+
+  value_map[op] = xla::BitcastConvertType(
+      operand,
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+  return success();
+}
+
+LogicalResult ExportXlaOp(CollectiveBroadcastOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  value_map[op->getResult(0)] = xla::CollectiveBroadcast(
+      operand, Convert_replica_groups(op.getReplicaGroups()),
+      Convert_channel_handle(op.getChannelHandle()));
+
+  return success();
+}
+
+// Specialize CompareOp export to set broadcast_dimensions argument.
+mlir::LogicalResult ExportXlaOp(mlir::stablehlo::CompareOp op,
+                                OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.getLhs(), value_map, &lhs, op)))
+    return mlir::failure();
+  if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op)))
+    return mlir::failure();
+  auto dir = Convert_comparison_direction(
+      mlir::stablehlo::stringifyComparisonDirection(
+          op.getComparisonDirection()));
+  auto type_attr = op.getCompareTypeAttr();
+
+  xla::XlaOp xla_result;
+  if (type_attr &&
+      type_attr.getValue() != mlir::stablehlo::ComparisonType::NOTYPE) {
+    auto type = xla::StringToComparisonType(
+                    stringifyComparisonType(type_attr.getValue()).str())
+                    .value();
+    xla_result = xla::Compare(lhs, rhs, /*broadcast_dimensions=*/{}, dir, type);
+  } else {
+    xla_result = xla::Compare(lhs, rhs, dir);
+  }
+  value_map[op] = xla_result;
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
+  xla::XlaComputation comparator;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getComparator(),
+                                                     &comparator)))
+    return failure();
+
+  llvm::SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
+  auto sorted =
+      xla::Sort(operands, comparator, op.getDimension(), op.getIsStable());
+
+  auto& value_map = *ctx.values;
+  auto shape_or = sorted.builder()->GetShape(sorted);
+  if (!shape_or.ok()) {
+    return op.emitError(shape_or.status().ToString());
+  }
+
+  xla::Shape& shape = shape_or.value();
+  if (!shape.IsTuple()) {
+    value_map[op.getResult(0)] = sorted;
+    return success();
+  }
+
+  // MLIR's sort supports multiple returns, untuple all the results of XLA's.
+  BuildGetTupleElementsForTupleResults(op, sorted, ctx);
+  return success();
+}
+
 }  // namespace
 }  // namespace stablehlo
 
