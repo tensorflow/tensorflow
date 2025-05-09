@@ -175,4 +175,10 @@ absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(
   return shape;
 }
 
+absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+CpuRawBuffer::MakeAllocationReadyEvent() {
+  return tsl::MakeRef<CpuTrackedDeviceEvent>(
+      tsl::MakeAvailableAsyncValueRef<CpuEvent>());
+}
+
 }  // namespace xla

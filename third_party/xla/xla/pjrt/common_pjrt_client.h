@@ -90,6 +90,9 @@ class CommonPjRtClient : public PjRtClient {
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+      const Shape& shape, PjRtMemorySpace* memory_space) override;
+
   // Applies memory-space normalization logic on top of
   // GetTopologyDescription()->GetDefaultLayout() to select the default
   // device layout (if not provided).
