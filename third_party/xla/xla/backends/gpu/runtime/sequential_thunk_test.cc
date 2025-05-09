@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -36,9 +37,7 @@ Thunk::ThunkInfo GetExampleThunkInfo() {
 
 TEST(SequentialThunkTest, EmptySequentialThunkToProto) {
   SequentialThunk thunk{GetExampleThunkInfo(), {}};
-  ThunkProto proto;
-
-  TF_ASSERT_OK(thunk.ToProto(&proto));
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   ASSERT_TRUE(proto.has_sequential_thunk());
   EXPECT_EQ(proto.sequential_thunk().thunks_size(), 0);
 

@@ -107,15 +107,15 @@ absl::StatusOr<std::unique_ptr<se::Event>> CopyThunk::AsyncEvents::Extract(
   return absl::InternalError("Async copy event was not found!");
 }
 
-absl::Status CopyThunk::ToProto(ThunkProto* proto) const {
-  TF_RETURN_IF_ERROR(Thunk::ToProto(proto));
-  CopyThunkProto* copy_thunk_proto = proto->mutable_copy_thunk();
+absl::StatusOr<ThunkProto> CopyThunk::ToProto() const {
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  CopyThunkProto* copy_thunk_proto = proto.mutable_copy_thunk();
   TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
                       source().ToProto());
   TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
                       destination().ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
-  return absl::OkStatus();
+  return proto;
 }
 
 //===----------------------------------------------------------------------===//
@@ -156,17 +156,17 @@ absl::Status DeviceToHostCopyThunk::ExecuteOnStream(
   return async_events_->Emplace(executor, instr_, std::move(event));
 }
 
-absl::Status DeviceToHostCopyThunk::ToProto(ThunkProto* proto) const {
-  TF_RETURN_IF_ERROR(Thunk::ToProto(proto));
+absl::StatusOr<ThunkProto> DeviceToHostCopyThunk::ToProto() const {
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
   DeviceToHostCopyThunkProto* d2h_copy_thunk_proto =
-      proto->mutable_device_to_host_copy_thunk();
+      proto.mutable_device_to_host_copy_thunk();
   CopyThunkProto* copy_thunk_proto = d2h_copy_thunk_proto->mutable_copy_thunk();
   TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
                       source().ToProto());
   TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
                       destination().ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
-  return absl::OkStatus();
+  return proto;
 }
 
 //===----------------------------------------------------------------------===//
@@ -207,17 +207,17 @@ absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
   return async_events_->Emplace(executor, instr_, std::move(event));
 }
 
-absl::Status HostToDeviceCopyThunk::ToProto(ThunkProto* proto) const {
-  TF_RETURN_IF_ERROR(Thunk::ToProto(proto));
+absl::StatusOr<ThunkProto> HostToDeviceCopyThunk::ToProto() const {
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
   HostToDeviceCopyThunkProto* h2d_copy_thunk_proto =
-      proto->mutable_host_to_device_copy_thunk();
+      proto.mutable_host_to_device_copy_thunk();
   CopyThunkProto* copy_thunk_proto = h2d_copy_thunk_proto->mutable_copy_thunk();
   TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
                       source().ToProto());
   TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
                       destination().ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
-  return absl::OkStatus();
+  return proto;
 }
 
 //===----------------------------------------------------------------------===//

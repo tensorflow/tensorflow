@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -70,9 +71,7 @@ TEST(CopyThunkTest, ToProto) {
   auto dst_slice = BufferAllocation::Slice(&alloc1, 0, 256);
 
   CopyThunk thunk(SampleThunkInfo(), src_slice, dst_slice, mem_size);
-
-  ThunkProto proto;
-  TF_ASSERT_OK(thunk.ToProto(&proto));
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   ASSERT_TRUE(proto.has_copy_thunk());
   verify_thunk_proto(proto);
   verify_copy_thunk_proto(proto.copy_thunk(), src_slice, dst_slice, mem_size);
@@ -88,8 +87,7 @@ TEST(DeviceToHostCopyThunkProtoTest, ToProto) {
   DeviceToHostCopyThunk thunk(SampleThunkInfo(), src_slice, dst_slice, mem_size,
                               /*events=*/nullptr,
                               /*instr=*/nullptr);
-  ThunkProto proto;
-  TF_ASSERT_OK(thunk.ToProto(&proto));
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   verify_thunk_proto(proto);
   ASSERT_TRUE(proto.has_device_to_host_copy_thunk());
   ASSERT_TRUE(proto.device_to_host_copy_thunk().has_copy_thunk());
@@ -107,8 +105,7 @@ TEST(HostToDeviceCopyThunkProtoTest, ToProto) {
   HostToDeviceCopyThunk thunk(SampleThunkInfo(), src_slice, dst_slice, mem_size,
                               /*events=*/nullptr,
                               /*instr=*/nullptr);
-  ThunkProto proto;
-  TF_ASSERT_OK(thunk.ToProto(&proto));
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   verify_thunk_proto(proto);
   ASSERT_TRUE(proto.has_host_to_device_copy_thunk());
   ASSERT_TRUE(proto.host_to_device_copy_thunk().has_copy_thunk());

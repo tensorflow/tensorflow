@@ -127,6 +127,10 @@ class GpuCollectives : public Collectives {
 
   // Initializes the topology information for the collectives backend.
   virtual absl::Status InitializeTopology(Topology topology) = 0;
+
+  // Creates a single communicator.
+  virtual absl::StatusOr<std::unique_ptr<Communicator>>
+  CreateCommunicator() = 0;
 };
 
 }  // namespace xla::gpu

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -112,19 +113,17 @@ void SequentialThunk::ForAllThunks(
   }
 }
 
-absl::Status SequentialThunk::ToProto(ThunkProto* thunk_proto) const {
-  TF_RETURN_IF_ERROR(Thunk::ToProto(thunk_proto));
-
+absl::StatusOr<ThunkProto> SequentialThunk::ToProto() const {
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
   // This sets the oneof-type to the sequential thunk, even if the thunk list is
   // empty.
-  thunk_proto->mutable_sequential_thunk();
-
+  proto.mutable_sequential_thunk();
   for (const auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(
-        thunk->ToProto(thunk_proto->mutable_sequential_thunk()->add_thunks()));
+    TF_ASSIGN_OR_RETURN(*proto.mutable_sequential_thunk()->add_thunks(),
+                        thunk->ToProto());
   }
-
-  return absl::OkStatus();
+  return proto;
 }
+
 }  // namespace gpu
 }  // namespace xla
