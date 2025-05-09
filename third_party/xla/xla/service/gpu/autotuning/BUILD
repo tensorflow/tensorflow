@@ -434,7 +434,6 @@ cc_library(
     name = "redzone_buffers",
     srcs = ["redzone_buffers.cc"],
     hdrs = ["redzone_buffers.h"],
-    tags = ["gpu"],
     deps = [
         "//xla:executable_run_options",
         "//xla:shape_util",

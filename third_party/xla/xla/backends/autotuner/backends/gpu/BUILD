@@ -59,6 +59,67 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "cublaslt",
+    srcs = ["cublaslt.cc"],
+    hdrs = ["cublaslt.h"],
+    deps = [
+        ":gpu_codegen_backend",
+        "//xla:util",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiler",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu/autotuning:redzone_buffers",
+        "//xla/stream_executor:blas",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/stream_executor/gpu:gpu_blas_lt",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_test(
+    name = "cublaslt_test",
+    srcs = ["cublaslt_test.cc"],
+    backends = [
+        "gpu_a100",
+        "gpu_h100",
+        "gpu_b200",
+    ],
+    tags = [
+        "cuda-only",
+        "no_mac",
+    ],
+    deps = [
+        ":cublaslt",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiler",
+        "//xla/service:platform_util",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:nvptx_compiler_impl",
+        "//xla/stream_executor:blas",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_test(
     name = "cublas_test",
     srcs = ["cublas_test.cc"],
