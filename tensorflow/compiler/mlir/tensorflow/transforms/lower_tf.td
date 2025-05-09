@@ -465,16 +465,6 @@ class LowerInitializationOp<Op FromOp, int initial_val>
 def LowerZerosLikeOp : LowerInitializationOp<TF_ZerosLikeOp, 0>;
 def LowerOnesLikeOp : LowerInitializationOp<TF_OnesLikeOp, 1>;
 
-def LowerScatterNdOp :
-  Pat<(TF_ScatterNdOp $indices,
-       TensorOf<[AnyInteger, AnyFloat, AnyComplex]>:
-       $updates,
-       $shape,
-       $bad_indices_policy),
-      (TF_TensorScatterAddOp
-       (TF_FillOp $shape, (TF_ConstOp (GetScalarOfType<0> $updates))),
-       $indices, $updates, $bad_indices_policy)>;
-
 //===----------------------------------------------------------------------===//
 // Xdivy, Xlog1p and Xlogy op patterns.
 //===----------------------------------------------------------------------===//
