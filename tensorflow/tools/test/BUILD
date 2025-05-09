@@ -62,10 +62,9 @@ py_strict_library(
     deps = [
         ":gpu_info_lib",
         ":system_info_lib",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/util:test_log_proto_py_proto",
         "//tensorflow/python/platform:gfile",
         "@absl_py//absl/logging",
-        "@six_archive//:six",
     ],
 )
 
