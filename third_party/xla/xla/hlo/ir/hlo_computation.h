@@ -251,13 +251,11 @@ class HloComputation {
                                    std::unique_ptr<HloInstruction> instruction);
 
   // Remove the param_no'th parameter from the computation.
-  // Note this is only applicatable to the computation for the fusion
-  // instruction.
+  // Note this is only applicable to the computation for the fusion instruction.
   absl::Status RemoveParameter(int64_t param_no);
 
   // Remove unused parameters from the computation.
-  // Note this is only applicatable to the computation for the fusion
-  // instruction.
+  // Note this is only applicable to the computation for the fusion instruction.
   absl::Status RemoveUnusedParametersFromFusedComputation();
 
   // Remove unused parameters from the computation. Unlike
