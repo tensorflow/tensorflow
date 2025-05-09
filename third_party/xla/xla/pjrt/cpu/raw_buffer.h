@@ -123,6 +123,9 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
       const LiteralSlice& literal, const xla::Layout& layout,
       AsyncWorkRunner* async_work_runner);
 
+  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> MakeAllocationReadyEvent()
+      override;
+
  private:
   PjRtMemorySpace* const memory_space_;
   tsl::AsyncValueRef<CpuDeviceMemory> buffer_;

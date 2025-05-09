@@ -88,6 +88,10 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
 
   PjRtFuture<> CopyRawHostToDevice(const void* src, int64_t offset,
                                    int64_t transfer_size) override;
+
+  // Creates an event which signals when the allocation is complete.
+  virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+  MakeAllocationReadyEvent() = 0;
 };
 
 class RegisterRawBufferFactory {

@@ -954,20 +954,6 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(
       *device->default_memory_space());
 }
 
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-TfrtCpuClient::CreateUninitializedBuffer(const Shape& shape,
-                                         PjRtMemorySpace* memory_space) {
-  tsl::profiler::TraceMe traceme("TfrtCpuClient::CreateUninitializedBuffer");
-  VLOG(1) << "TfrtCpuClient::CreateUninitializedBuffer: shape: "
-          << shape.DebugString()
-          << " memory_space: " << memory_space->DebugString();
-  CHECK_EQ(memory_space->devices().size(), 1);
-  PjRtDevice* device = memory_space->devices().front();
-  return AllocateDestinationBuffer(
-      HostShapeToOnDeviceShape(shape), /*definition_events=*/{},
-      tensorflow::down_cast<TfrtCpuDevice*>(device), this);
-}
-
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 TfrtCpuClient::CreateBuffersForAsyncHostToDevice(
     absl::Span<const PjRtClient::ShapeSpec> shape_specs,
