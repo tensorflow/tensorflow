@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <system_error>  // NOLINT
 #include <utility>
 #include <variant>
 #include <vector>
