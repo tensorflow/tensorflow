@@ -426,7 +426,7 @@ constexpr bool IsMXType(PrimitiveType type) {
 constexpr bool IsF8Type(PrimitiveType type) {
   return type == F8E5M2 || type == F8E4M3 || type == F8E4M3FN ||
          type == F8E4M3B11FNUZ || type == F8E5M2FNUZ || type == F8E4M3FNUZ ||
-         type == F8E3M4;
+         type == F8E3M4 || type == F8E8M0FNU;
 }
 
 // Returns true if the given primitive type is a floating-point type.
