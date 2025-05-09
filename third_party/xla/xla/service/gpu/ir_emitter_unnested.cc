@@ -218,17 +218,6 @@ absl::Status IrEmitterUnnested::EmitConstant(
   return absl::OkStatus();
 }
 
-static ConditionalThunkConfig GetConditionalThunkConfig(
-    const HloInstruction* instr,
-    std::vector<std::unique_ptr<SequentialThunk>> branch_thunk_sequences) {
-  ConditionalThunkConfig config;
-  config.branch_index_is_bool =
-      instr->operand(0)->shape().element_type() == PRED;
-  config.branch_count = instr->branch_count();
-  config.branch_thunks = std::move(branch_thunk_sequences);
-  return config;
-}
-
 absl::Status IrEmitterUnnested::EmitConditional(const HloInstruction* instr) {
   std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
   branch_thunks.reserve(instr->branch_count());
@@ -244,14 +233,12 @@ absl::Status IrEmitterUnnested::EmitConditional(const HloInstruction* instr) {
         ir_emitter->ConsumeThunkSequence(branch_thunk_info));
   }
 
-  ConditionalThunkConfig config =
-      GetConditionalThunkConfig(instr, std::move(branch_thunks));
-
   TF_ASSIGN_OR_RETURN(auto slice,
                       GetAllocationSliceForHlo(instr->operand(0), {}));
-  AddThunkToThunkSequence(std::unique_ptr<Thunk>(
-      new ConditionalThunk(Thunk::ThunkInfo::WithProfileAnnotation(instr),
-                           std::move(config), slice)));
+  bool branch_index_is_bool = instr->operand(0)->shape().element_type() == PRED;
+  AddThunkToThunkSequence(std::unique_ptr<Thunk>(new ConditionalThunk(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), slice,
+      std::move(branch_thunks), branch_index_is_bool)));
   return absl::OkStatus();
 }
 
