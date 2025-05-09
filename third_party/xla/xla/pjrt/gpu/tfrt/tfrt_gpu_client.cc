@@ -130,6 +130,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/mem.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
@@ -2727,10 +2728,47 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   bool unpack_subbyte_types =
       client_->xla_client()->backend().transfer_manager()->PackSubbyteTypes();
 
+  xla::Layout literal_layout;
+  if (literal->shape().has_layout()) {
+    literal_layout = literal->shape().layout();
+  } else {
+    literal_layout =
+        LayoutUtil::MakeDescendingLayout(on_device_shape().dimensions().size());
+  }
+
+  std::shared_ptr<TransposePlan> transpose;
+  if (on_device_shape().layout() != literal_layout) {
+    absl::InlinedVector<int64_t, 4> byte_strides(
+        on_device_shape().dimensions().size());
+    absl::Status s =
+        ShapeUtil::ByteStrides(on_device_shape(), absl::MakeSpan(byte_strides));
+    if (!s.ok()) {
+      return PjRtFuture<>(s);
+    }
+    absl::Span<const int64_t> dims = on_device_shape().dimensions();
+    absl::InlinedVector<int64_t, 4> permutation(dims.size());
+    absl::c_reverse_copy(literal_layout.minor_to_major(), permutation.begin());
+    TransposePlan::Options options;
+    options.elem_size_in_bytes =
+        primitive_util::ByteWidth(on_device_shape().element_type());
+    options.dims = on_device_shape().dimensions();
+    options.permutation = permutation;
+    options.input_layout = TransposePlan::Striding{byte_strides};
+    {
+      absl::MutexLock lock(&client_->transpose_mu_);
+      absl::StatusOr<std::shared_ptr<TransposePlan>> t =
+          client_->transpose_cache_.GetOrCreate(options);
+      if (!t.ok()) {
+        return PjRtFuture<>(t.status());
+      }
+      transpose = *std::move(t);
+    }
+  }
+
   auto copy_to_host = [device(device_), device_buffer,
                        usage_event(std::move(usage_event)), literal, promise,
                        client = client_, on_device_shape{on_device_shape_},
-                       unpack_subbyte_types]() mutable {
+                       unpack_subbyte_types, transpose]() mutable {
     tsl::profiler::TraceMe traceme("D2H copy");
     if (device_buffer->definition_event().IsError()) {
       usage_event.SetStateConcrete();
@@ -2748,7 +2786,7 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
 
     HostMemoryAllocator::OwnedPtr staging_buffer;
     void* buffer_ptr;
-    if (should_unpack) {
+    if (should_unpack || transpose != nullptr) {
       staging_buffer = client->host_memory_allocator()->Allocate(byte_size);
       buffer_ptr = staging_buffer.get();
     } else {
@@ -2772,16 +2810,31 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
         return;
       }
     }
-    tsl::profiler::TraceMe traceme3("D2H staging copy");
+    int64_t unpacked_size = ShapeUtil::ElementsIn(on_device_shape);
+    void* buffer;
     if (should_unpack) {
-      int64_t unpacked_size = ShapeUtil::ElementsIn(on_device_shape);
+      tsl::profiler::TraceMe traceme("D2H staging copy");
+      if (transpose != nullptr) {
+        buffer = tsl::port::AlignedMalloc(unpacked_size,
+                                          tsl::Allocator::kAllocatorAlignment);
+      } else {
+        buffer = literal->untyped_data();
+      }
       primitive_util::UnpackIntN(
           on_device_shape.element_type(),
           absl::MakeConstSpan(static_cast<const char*>(buffer_ptr), byte_size),
-          absl::MakeSpan(static_cast<char*>(literal->untyped_data()),
-                         unpacked_size));
+          absl::MakeSpan(static_cast<char*>(buffer), unpacked_size));
+      VLOG(2) << "D2H staging copy done";
+    } else {
+      buffer = buffer_ptr;
     }
-    VLOG(2) << "D2H staging copy done";
+    if (transpose != nullptr) {
+      tsl::profiler::TraceMe traceme("Transpose");
+      transpose->Execute(buffer, static_cast<char*>(literal->untyped_data()));
+      if (should_unpack) {
+        tsl::port::AlignedFree(buffer);
+      }
+    }
     promise.Set(absl::OkStatus());
   };
   EnqueueWorkWhenReady(client_->blocking_thread_pool(),
