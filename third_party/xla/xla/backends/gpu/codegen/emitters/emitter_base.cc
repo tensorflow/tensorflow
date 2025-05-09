@@ -252,6 +252,17 @@ absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
 
 }  // namespace
 
+Value EmitterBase::EmitWorkgroupId(mlir::ImplicitLocOpBuilder& builder,
+                                   WorkgroupDimension dim) const {
+  const auto& counts = launch_dimensions().block_counts();
+  int64_t count = dim == WorkgroupDimension::x   ? counts.x
+                  : dim == WorkgroupDimension::y ? counts.y
+                                                 : counts.z;
+  auto block_id = builder.create<WorkgroupIdOp>(dim);
+  block_id->setAttr("xla.range", builder.getIndexArrayAttr({0, count - 1}));
+  return block_id;
+}
+
 Value EmitterBase::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
                                int dim) const {
   const auto& counts = launch_dimensions().block_counts();
@@ -277,6 +288,13 @@ llvm::SmallVector<Value> EmitterBase::EmitThreadAndBlockIds(
   auto& b = builder;
   return {EmitThreadId(b, 0), EmitThreadId(b, 1), EmitThreadId(b, 2),
           EmitBlockId(b, 0),  EmitBlockId(b, 1),  EmitBlockId(b, 2)};
+}
+
+llvm::SmallVector<mlir::Value> EmitterBase::EmitWorkgroupIds(
+    mlir::ImplicitLocOpBuilder& builder) const {
+  return {EmitWorkgroupId(builder, WorkgroupDimension::x),
+          EmitWorkgroupId(builder, WorkgroupDimension::y),
+          EmitWorkgroupId(builder, WorkgroupDimension::z)};
 }
 
 absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
@@ -600,6 +618,7 @@ void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm) {
 
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
                                  const se::DeviceDescription& device) {
+  pm.addNestedPass<FuncOp>(CreateLowerXlaSharedPass());
   pm.addNestedPass<FuncOp>(
       emitters::CreateLowerXlaToScfPass(device.threads_per_warp()));
   pm.addNestedPass<FuncOp>(CreateFuseLoopsPass());

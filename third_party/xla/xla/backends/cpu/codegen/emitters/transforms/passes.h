@@ -26,6 +26,7 @@ namespace xla::cpu {
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h.inc"
 
 std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass();
+std::unique_ptr<mlir::Pass> CreateLowerXlaSharedPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h.inc"

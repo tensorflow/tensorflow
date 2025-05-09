@@ -1126,6 +1126,162 @@ std::optional<xla::BackendKind> GetBackendKind(mlir::func::FuncOp fn) {
   return backend_attr.getValue();
 }
 
+void ForallOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {
+  for (auto result : getResults()) {
+    setNameFn(result, "xla_forall");
+  }
+}
+
+void ForallOp::build(
+    OpBuilder& builder, OperationState& result, mlir::ArrayAttr workgroup_size,
+    mlir::ValueRange output_args,
+    llvm::function_ref<void(mlir::OpBuilder&, mlir::Location, mlir::ValueRange,
+                            mlir::ValueRange)>
+        body_builder) {
+  OpBuilder::InsertionGuard guard(builder);
+
+  mlir::OperationName opname(ForallOp::getOperationName(),
+                             builder.getContext());
+  result.addAttribute(getWorkgroupDimsAttrName(opname), workgroup_size);
+  result.addOperands(output_args);
+  result.addTypes(output_args.getTypes());
+
+  Block* body_block = builder.createBlock(result.addRegion());
+  for (int idx = 0; idx < workgroup_size.size(); ++idx) {
+    body_block->addArgument(builder.getIndexType(), result.location);
+  }
+  for (mlir::Type type : output_args.getTypes()) {
+    body_block->addArgument(type, result.location);
+  }
+
+  if (body_builder) {
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(body_block);
+    body_builder(builder, result.location,
+                 body_block->getArguments().take_front(workgroup_size.size()),
+                 body_block->getArguments().take_back(output_args.size()));
+  }
+}
+
+void ForallOp::print(OpAsmPrinter& printer) {
+  printer << " (" << getInductionVars() << ") in (";
+  llvm::interleaveComma(getWorkgroupDims(), printer, [&](auto it) {
+    printer << mlir::dyn_cast<mlir::IntegerAttr>(it).getValue();
+  });
+  printer << ") with (";
+  llvm::interleaveComma(
+      llvm::zip(getRegionOutputArgs(), getOutputArgs()), printer,
+      [&](auto it) { printer << std::get<0>(it) << " = " << std::get<1>(it); });
+  printer << ")";
+
+  printer.printArrowTypeList(getResultTypes());
+  printer << " ";
+  printer.printRegion(getRegion(), /*printEntryBlockArgs=*/false,
+                      /*printBlockTerminators=*/true);
+  printer.printOptionalAttrDict((*this)->getAttrs(),
+                                /*elidedAttrs=*/{
+                                    getWorkgroupDimsAttrName(),
+                                });
+}
+
+ParseResult ForallOp::parse(OpAsmParser& parser, OperationState& result) {
+  SmallVector<OpAsmParser::Argument, 3> induction_variables;
+  auto* ctx = parser.getContext();
+  OpBuilder builder(ctx);
+
+  Type index_type = builder.getIndexType();
+
+  if (parser.parseArgumentList(induction_variables,
+                               OpAsmParser::Delimiter::Paren)) {
+    return failure();
+  }
+  for (OpAsmParser::Argument& arg : induction_variables) {
+    arg.type = index_type;
+  }
+
+  // Parse the ranges.
+  if (parser.parseKeyword("in")) {
+    return failure();
+  }
+  if (parser.parseLParen()) {
+    return failure();
+  }
+  SmallVector<mlir::Attribute> workgroup_size_attr;
+  do {
+    mlir::Attribute attr;
+    // Specify a type hint (e.g., IndexType) if desired, or leave it to
+    // OpFoldResult's default
+    if (parser.parseAttribute(attr, index_type)) {
+      return failure();
+    }
+    workgroup_size_attr.push_back(attr);
+  } while (succeeded(parser.parseOptionalComma()));
+  if (parser.parseRParen()) {
+    return failure();
+  }
+
+  mlir::OperationName opname(ForallOp::getOperationName(),
+                             builder.getContext());
+  result.addAttribute(ForallOp::getWorkgroupDimsAttrName(opname),
+                      builder.getArrayAttr(workgroup_size_attr));
+
+  // Parse the captures.
+  if (parser.parseKeyword("with")) {
+    return failure();
+  }
+  SmallVector<OpAsmParser::Argument> output_args;
+  SmallVector<OpAsmParser::UnresolvedOperand> output_operands;
+  if (parser.parseAssignmentList(output_args, output_operands)) {
+    return failure();
+  }
+
+  if (parser.parseArrowTypeList(result.types)) {
+    return failure();
+  }
+
+  if (parser.resolveOperands(output_operands, result.types, parser.getNameLoc(),
+                             result.operands)) {
+    return failure();
+  }
+
+  for (auto [arg, type] : llvm::zip(output_args, result.types)) {
+    arg.type = type;
+  }
+
+  // Parse the body region.
+  Region* body = result.addRegion();
+  std::vector<OpAsmParser::Argument> body_args;
+  body_args.insert(body_args.end(), induction_variables.begin(),
+                   induction_variables.end());
+  body_args.insert(body_args.end(), output_args.begin(), output_args.end());
+  if (parser.parseRegion(*body, body_args)) {
+    return failure();
+  }
+  LoopOp::ensureTerminator(*body, builder, result.location);
+
+  return success();
+}
+
+LogicalResult ForallOp::verify() {
+  if (getWorkgroupDimsAttr().size() > 3) {
+    return emitOpError() << "The number of workgroup dimensions must be less "
+                         << "than or equal to 3";
+  }
+
+  if (getOutputArgs().size() != getNumResults()) {
+    return emitOpError() << "The number of output arguments is not equal to "
+                            "the number of results";
+  }
+
+  if (getNumInductionVars() != getWorkgroupDimsAttr().size()) {
+    return emitOpError() << "The number of induction variables is not equal "
+                         << "to the number of workgroup dimensions";
+  }
+
+  return success();
+}
+
 }  // namespace xla
 
 #define GET_OP_CLASSES

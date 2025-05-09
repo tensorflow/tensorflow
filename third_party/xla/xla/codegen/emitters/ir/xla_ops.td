@@ -76,7 +76,7 @@ def XLA_AtomicRMWOp : XLA_Op<"atomic_rmw",
 }
 
 def XLA_YieldOp : XLA_Op<"yield", [
-    ParentOneOf<["::xla::AtomicRMWOp", "::xla::LoopOp"]>,
+    ParentOneOf<["::xla::AtomicRMWOp", "::xla::LoopOp", "::xla::ForallOp"]>,
     ReturnLike, Terminator]> {
   let summary = "Terminator for atomic_rmw ops.";
   let arguments = (ins Variadic<AnyType>:$result);
@@ -288,6 +288,61 @@ def LoopOp : XLA_Op<"loop", [
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
+}
+
+def ForallOp : XLA_Op<"forall", [
+    Pure,
+    DeclareOpInterfaceMethods<OpAsmOpInterface,
+      ["getAsmResultNames"]>,
+    SingleBlockImplicitTerminator<"xla::YieldOp">
+  ]> {
+  let description = [{
+    Example usage:
+    ```mlir
+      %forall_result = xla.forall (%i, %j) in (1024, 32) with (%input) -> (tensor<1024x32xf32>) {
+        %t = tensor.extract %input[%i, %j] : tensor<1024x32xf32>
+        %add = arith.addf %t, %t : f32
+        %result = tensor.insert %add into %input[%i, %j] : tensor<1024x32xf32>
+        xla.yield %result : tensor<1024x32xf32>
+      }
+    ```
+  }];
+
+  let arguments = (ins ArrayAttr:$workgroup_dims, Variadic<AnyType>:$output_args);
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$region);
+
+  let builders = [
+    OpBuilder<(ins "mlir::ArrayAttr":$workgroup_dims,
+                   "mlir::ValueRange":$output_args,
+                   "llvm::function_ref<void(mlir::OpBuilder&",
+                                            "mlir::Location",
+                                            "/*ivs=*/mlir::ValueRange",
+                                            "/*output_operands=*/mlir::ValueRange)>")>
+  ];
+
+  let extraClassDeclaration = [{
+    int64_t getNumInductionVars() {
+      return getBody()->getNumArguments() - getNumResults();
+    }
+    mlir::Block::BlockArgListType getInductionVars() {
+      return getBody()->getArguments().take_front(getNumInductionVars());
+    }
+    mlir::Block::BlockArgListType getRegionOutputArgs() {
+      return getBody()->getArguments().take_back(getNumResults());
+    }
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
+def WorkgroupIdOp : XLA_Op<"workgroup_id", [
+    Pure,
+  ]> {
+  let assemblyFormat = "$dimension attr-dict";
+  let arguments =(ins Workgroup_DimensionAttr:$dimension);
+  let results = (outs Index);
 }
 
 #endif // XLA_CODEGEN_EMITTERS_IR_XLA_OPS

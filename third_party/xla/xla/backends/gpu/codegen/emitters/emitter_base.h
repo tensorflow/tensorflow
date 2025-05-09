@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -104,9 +105,13 @@ class EmitterBase : public KernelFusionInterface {
       mlir::ValueRange output_indices,
       mlir::ImplicitLocOpBuilder& builder) const;
 
+  mlir::Value EmitWorkgroupId(mlir::ImplicitLocOpBuilder& builder,
+                              WorkgroupDimension dim) const;
   mlir::Value EmitBlockId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
   mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
   llvm::SmallVector<mlir::Value> EmitThreadAndBlockIds(
+      mlir::ImplicitLocOpBuilder& builder) const;
+  llvm::SmallVector<mlir::Value> EmitWorkgroupIds(
       mlir::ImplicitLocOpBuilder& builder) const;
 
  private:

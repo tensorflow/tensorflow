@@ -37,6 +37,7 @@ cc_library(
         "convert_float_nvidia.cc",
         "convert_index_type.cc",
         "fuse_loops.cc",
+        "lower_xla_shared.cc",
         "optimize_loops.cc",
         "peel_loops.cc",
     ],

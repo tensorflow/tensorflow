@@ -93,6 +93,7 @@ static void AddXlaOpsOptimizationPasses(mlir::OpPassManager& pm) {
 }
 
 static void AddLoopTransformationPasses(mlir::OpPassManager& pm) {
+  pm.addNestedPass<mlir::func::FuncOp>(CreateLowerXlaSharedPass());
   pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateLowerXlaToScfPass());
   pm.addPass(mlir::createInlinerPass({}, [&](mlir::OpPassManager& pm) {
     // CSE after inlining because inlining can introduce duplicates.
