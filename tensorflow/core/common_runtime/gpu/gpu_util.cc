@@ -363,11 +363,18 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
       dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(gpu_tensor));
   if (pjrt_tensor_buffer != nullptr) {
     VLOG(1) << "CopyGPUTensorToCPU using PjRtTensorBuffer";
-    xla::Shape shape = pjrt_tensor_buffer->pjrt_buffer()->on_device_shape();
-    *shape.mutable_layout() =
-        xla::LayoutUtil::MakeDescendingLayout(shape.dimensions().size());
-    auto literal = std::make_unique<xla::MutableBorrowingLiteral>(
-        cpu_tensor->tensor_data().data(), shape);
+    std::unique_ptr<xla::MutableBorrowingLiteral> literal;
+    if (pjrt_tensor_buffer->pjrt_buffer()->has_dynamic_dimensions()) {
+      literal = std::make_unique<xla::MutableBorrowingLiteral>();
+      auto status = tensorflow::HostTensorToMutableBorrowingLiteral(
+          cpu_tensor, literal.get());
+    } else {
+      xla::Shape shape = pjrt_tensor_buffer->pjrt_buffer()->on_device_shape();
+      *shape.mutable_layout() =
+          xla::LayoutUtil::MakeDescendingLayout(shape.dimensions().size());
+      literal = std::make_unique<xla::MutableBorrowingLiteral>(
+          cpu_tensor->tensor_data().data(), shape);
+    }
     xla::PjRtFuture<> future =
         pjrt_tensor_buffer->pjrt_buffer()->ToLiteral(literal.get());
     future.OnReady([literal = std::move(literal),
