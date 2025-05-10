@@ -669,40 +669,31 @@ absl::Status CheckInplaceCollectivePermute(
   const Shape& input_offset_shape = collective_permute->operand(2)->shape();
   const Shape& output_offset_shape = collective_permute->operand(3)->shape();
 
-  if (input_buffer_shape.IsArray() && output_buffer_shape.IsArray()) {
-    TF_RETURN_IF_ERROR(
-        CheckBufferOffset(input_buffer_shape, input_offset_shape));
-    TF_RETURN_IF_ERROR(
-        CheckBufferOffset(output_buffer_shape, output_offset_shape));
-  } else if (input_buffer_shape.IsTuple() && output_buffer_shape.IsTuple()) {
-    if (ShapeUtil::TupleElementCount(input_buffer_shape) !=
-        ShapeUtil::TupleElementCount(output_buffer_shape)) {
-      return Internal("Unmatching input buffers and output buffers.");
-    }
-    if (!input_offset_shape.IsTuple() ||
-        ShapeUtil::TupleElementCount(input_offset_shape) !=
-            ShapeUtil::TupleElementCount(input_buffer_shape)) {
-      return Internal("Unmatching input buffers and input offset.");
-    }
-
-    for (int i = 0; i < input_buffer_shape.tuple_shapes().size(); ++i) {
-      TF_RETURN_IF_ERROR(CheckBufferOffset(input_buffer_shape.tuple_shapes(i),
-                                           input_offset_shape.tuple_shapes(i)));
-    }
-    if (!output_offset_shape.IsTuple() ||
-        ShapeUtil::TupleElementCount(output_offset_shape) !=
-            ShapeUtil::TupleElementCount(output_buffer_shape)) {
-      return Internal("Unmatching output buffers and output offset.");
-    }
-    for (int i = 0; i < output_buffer_shape.tuple_shapes().size(); ++i) {
-      TF_RETURN_IF_ERROR(
-          CheckBufferOffset(output_buffer_shape.tuple_shapes(i),
-                            output_offset_shape.tuple_shapes(i)));
-    }
-  } else {
+  if (!ShapeUtil::Compatible(input_buffer_shape, output_buffer_shape)) {
     return Internal("Unmatching input buffers and output buffers.");
   }
-  return absl::OkStatus();
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
+      input_buffer_shape,
+      [&](const Shape& input_buffer_sub_shape, const ShapeIndex& shape_index) {
+        TF_ASSIGN_OR_RETURN(
+            const Shape* input_offset_sub_shape,
+            ShapeUtil::TryGetSubshape(input_offset_shape, shape_index));
+
+        return CheckBufferOffset(input_buffer_sub_shape,
+                                 *input_offset_sub_shape);
+      }));
+
+  return ShapeUtil::ForEachLeafShapeWithStatus(
+      output_buffer_shape,
+      [&](const Shape& output_buffer_sub_shape, const ShapeIndex& shape_index) {
+        TF_ASSIGN_OR_RETURN(
+            const Shape* output_offset_sub_shape,
+            ShapeUtil::TryGetSubshape(output_offset_shape, shape_index));
+
+        return CheckBufferOffset(output_buffer_sub_shape,
+                                 *output_offset_sub_shape);
+      });
 }
 
 absl::Status CheckDuplicatedSourceOrTarget(
