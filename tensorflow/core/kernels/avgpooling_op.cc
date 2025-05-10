@@ -553,6 +553,11 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in_shape = context->input(0);
+      OP_REQUIRES(
+      context,
+      tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
+      errors::InvalidArgument("orig_input_shape must be 1D with 4 elements. Got shape: ",
+                              tensor_in_shape.shape().DebugString()));
     const Tensor& out_backprop = context->input(1);
     // For avgpooling, tensor_in_shape should have 1 dimension, and 4 elements.
     OP_REQUIRES(
