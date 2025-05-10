@@ -879,7 +879,8 @@ absl::Status RunOptimizationPasses(
     ReshapeMoverOptions reshape_mover_options;
     reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
     pipeline.AddPass<ReshapeMover>(reshape_mover_options);
-    pipeline.AddPass<HloConstantFolding>();
+    pipeline.AddPass<HloConstantFolding>(
+        HloConstantFolding::Level::kAggressive);
     pipeline.AddPass<ConditionalSimplifier>();
     pipeline.AddPass<RealImagExpander>();
     pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
