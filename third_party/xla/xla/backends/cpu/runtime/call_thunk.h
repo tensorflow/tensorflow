@@ -17,7 +17,9 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_RUNTIME_CALL_THUNK_H_
 
 #include <memory>
+#include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
@@ -38,6 +40,9 @@ class CallThunk final : public Thunk {
   ResourceUses resource_uses() const final;
 
   const ThunkExecutor& called_executor() const { return called_executor_; }
+
+  absl::flat_hash_map<std::string, const ThunkSequence*>
+  get_named_nested_thunks() const final;
 
  private:
   CallThunk(Info info, ThunkExecutor called_executor);

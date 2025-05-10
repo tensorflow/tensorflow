@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/optimization.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
@@ -285,6 +286,16 @@ WhileThunk::ResourceUses WhileThunk::resource_uses() const {
   resource_uses.insert(resource_uses.end(), body_uses.begin(), body_uses.end());
 
   return resource_uses;
+}
+
+absl::flat_hash_map<std::string, const ThunkSequence*>
+WhileThunk::get_named_nested_thunks() const {
+  std::string maybe_trip_count_info =
+      trip_count_.has_value() ? absl::StrCat(" trip_count=", *trip_count_) : "";
+  return {{absl::StrCat(info().op_name, "-while-condition"),
+           &cond_executor_.thunk_sequence()},
+          {absl::StrCat(info().op_name, "-while-body", maybe_trip_count_info),
+           &body_executor_.thunk_sequence()}};
 }
 
 }  // namespace xla::cpu
