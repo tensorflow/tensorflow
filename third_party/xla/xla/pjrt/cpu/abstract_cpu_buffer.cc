@@ -613,134 +613,26 @@ AbstractCpuBuffer::AllocateTrackedDeviceBuffer(
   }
 }
 
-/*static*/ absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
-AbstractCpuBuffer::BufferFromHostBufferHelper(
+/*static*/ bool AbstractCpuBuffer::BufferFromHostBufferSupportsZeroCopy(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-    std::optional<absl::Span<int64_t const>> byte_strides,
-    PjRtClient::HostBufferSemantics host_buffer_semantics,
-    absl::AnyInvocable<void() &&> on_done_with_host_buffer, const Shape& shape,
-    AsyncWorkRunner* async_work_runner, absl::Mutex* transpose_mu,
-    TransposePlanCache* transpose_cache) {
-  bool has_default_layout =
-      !byte_strides || HasMajorToMinorLayout(type, dims, *byte_strides);
-  const int bit_width = primitive_util::BitWidth(type);
+    std::optional<absl::Span<int64_t const>> byte_strides, const Shape& shape) {
+  if (byte_strides && !HasMajorToMinorLayout(type, dims, *byte_strides)) {
+    return false;
+  }
   // Packed arrays are unpacked on host and packed on device.
-  bool is_packed = primitive_util::IsSubByteNonPredType(type);
+  if (primitive_util::IsSubByteNonPredType(type)) {
+    return false;
+  }
 
   // If the input buffer has a default layout and is sufficiently aligned, we
   // can simply point to the input array's data without any further copies. At
   // the time of writing we require a 16-byte alignment because XLA may generate
   // code which requires it.
-  bool is_aligned_data = ((absl::bit_cast<std::uintptr_t>(data) &
-                           (cpu_function_runtime::MinAlign() - 1)) == 0);
-
-  using HostBufferSemantics = PjRtClient::HostBufferSemantics;
-  bool immutable_zero_copy_semantics =
-      host_buffer_semantics == HostBufferSemantics::kImmutableZeroCopy;
-  bool mutable_zero_copy_semantics =
-      host_buffer_semantics == HostBufferSemantics::kMutableZeroCopy;
-
-  bool can_use_zero_copy =
-      has_default_layout && !is_packed && is_aligned_data &&
-      (immutable_zero_copy_semantics || mutable_zero_copy_semantics);
-
-  absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers;
-  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events;
-  size_t byte_size = ShapeUtil::ByteSizeOf(shape);
-  bool owns_buffers = true;
-
-  if (can_use_zero_copy && mutable_zero_copy_semantics) {
-    // For a mutable zero copy semantics we pass a no-op deleter because
-    // underlying buffer is owned by the caller and it will free it when
-    // PjRt will call `on_done_with_host_buffer` callback.
-    buffers.push_back(CpuDeviceMemory::CreateForeignMemory(
-        const_cast<void*>(data), byte_size,  // CONST_CAST_OK=flag controlled.
-        std::move(on_done_with_host_buffer)));
-  } else if (can_use_zero_copy && immutable_zero_copy_semantics) {
-    // For immutable zero-copy semantics we pass non-owning cpu memory.
-    owns_buffers = false;
-    buffers.push_back(CpuDeviceMemory::CreateForeignMemory(
-        const_cast<void*>(data), byte_size,  // CONST_CAST_OK=flag controlled.
-        std::move(on_done_with_host_buffer)));
-  } else {
-    size_t dst_byte_size =
-        is_packed ? CeilOfRatio<size_t>(byte_size, 8 / bit_width) : byte_size;
-    TF_ASSIGN_OR_RETURN(tsl::AsyncValueRef<CpuDeviceMemory> device_buffer,
-                        CpuDeviceMemory::Allocate(dst_byte_size));
-    auto dst_data_ptr = device_buffer->untyped_data();
-    buffers.push_back(device_buffer);
-    if (!has_default_layout || is_packed) {
-      // If the input array does not have a major-to-minor layout, transpose it
-      // into major-to-minor layout. Currently we choose to always do this
-      // synchronously.
-      // TODO(phawkins): consider performing the transpose asynchronously.
-      // TODO(phawkins): parallelize the transpose.
-      std::shared_ptr<TransposePlan> transpose;
-      {
-        absl::InlinedVector<int64_t, 4> permutation(dims.size());
-        absl::c_iota(permutation, 0);
-        TransposePlan::Options options;
-        options.elem_size_in_bytes = primitive_util::ByteWidth(type);
-        options.dims = dims;
-        options.permutation = permutation;
-        if (byte_strides) {
-          options.input_layout = TransposePlan::Striding{*byte_strides};
-        }
-        absl::MutexLock lock(transpose_mu);
-        TF_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
-      }
-      if (!is_packed) {
-        transpose->Execute(data, dst_data_ptr);
-      } else {
-        // First transpose the unpacked data into a new temporary buffer, then
-        // pack the data.
-        // TODO(reedwm): Fuse the transpose and packing by having TransposePlan
-        // support packing.
-        auto data_transposed = std::make_unique<char[]>(byte_size);
-        transpose->Execute(data, data_transposed.get());
-        absl::Span<const char> src_data_span(data_transposed.get(), byte_size);
-        absl::Span<char> dst_data_span(static_cast<char*>(dst_data_ptr),
-                                       dst_byte_size);
-        PackIntN(bit_width, src_data_span, dst_data_span);
-      }
-      if (on_done_with_host_buffer) {
-        std::move(on_done_with_host_buffer)();
-        on_done_with_host_buffer = nullptr;
-      }
-    } else {
-      bool should_sync_copy =
-          host_buffer_semantics ==
-              PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall ||
-          (byte_size < kSmallDataTransferByteSize);
-      if (should_sync_copy) {
-        std::memcpy(dst_data_ptr, data, byte_size);
-        if (on_done_with_host_buffer) {
-          std::move(on_done_with_host_buffer)();
-          on_done_with_host_buffer = nullptr;
-        }
-      } else {
-        tsl::AsyncValueRef<CpuEvent> copy_event =
-            tsl::MakeConstructedAsyncValueRef<CpuEvent>();
-        definition_events.push_back(copy_event.CopyRef());
-        async_work_runner->Schedule(
-            [device_buffer = std::move(device_buffer), dst_data_ptr, data,
-             byte_size, copy_event = std::move(copy_event),
-             on_done_with_host_buffer =
-                 std::move(on_done_with_host_buffer)]() mutable {
-              tsl::profiler::TraceMe traceme("H2D Dispatch");
-              std::memcpy(dst_data_ptr, data, byte_size);
-              if (on_done_with_host_buffer) {
-                std::move(on_done_with_host_buffer)();
-                on_done_with_host_buffer = nullptr;
-              }
-              // Signal copy is complete.
-              copy_event.SetStateConcrete();
-            });
-      }
-    }
+  if ((absl::bit_cast<std::uintptr_t>(data) &
+       (cpu_function_runtime::MinAlign() - 1)) != 0) {
+    return false;
   }
-  return std::make_unique<TrackedCpuDeviceBuffer>(
-      owns_buffers, std::move(buffers[0]), std::move(definition_events));
+  return true;
 }
 
 }  // namespace xla

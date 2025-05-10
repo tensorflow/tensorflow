@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/transpose.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -104,6 +105,11 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
   static absl::StatusOr<tsl::RCReference<CpuRawBuffer>> Allocate(
       PjRtMemorySpace* memory_space, size_t size_bytes);
 
+  // Imports foreign memory.
+  static absl::StatusOr<tsl::RCReference<CpuRawBuffer>> ImportForeignMemory(
+      void* data, absl::AnyInvocable<void() &&> on_delete_callback,
+      size_t on_device_bytes_count, PjRtMemorySpace* memory_space);
+
   size_t GetOnDeviceSizeInBytes() const override;
 
   void* GetHostPointer() const override;
@@ -125,6 +131,14 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
 
   absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> MakeAllocationReadyEvent()
       override;
+
+  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> CopyFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      PjRtClient::HostBufferSemantics host_buffer_semantics,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      const Shape& shape, AsyncWorkRunner* async_work_runner,
+      absl::Mutex* transpose_mu, TransposePlanCache* transpose_cache);
 
  private:
   PjRtMemorySpace* const memory_space_;

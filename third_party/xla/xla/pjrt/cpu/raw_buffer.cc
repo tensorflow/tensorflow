@@ -18,13 +18,21 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
+#include <optional>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/cpu_function_runtime.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -35,8 +43,11 @@ limitations under the License.
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/transpose.h"
+#include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
@@ -44,8 +55,11 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
+
+constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 
 void CpuTrackedDeviceEventPromise::Set(
     tsl::RCReference<PjRtDeviceEvent> event) {
@@ -90,6 +104,24 @@ void CpuTrackedDeviceEvent::AndThen(absl::AnyInvocable<void() &&> cb) {
 CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes) {
   TF_ASSIGN_OR_RETURN(auto memory, CpuDeviceMemory::Allocate(size_bytes));
   return tsl::MakeRef<CpuRawBuffer>(memory_space, std::move(memory));
+}
+
+/*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
+CpuRawBuffer::ImportForeignMemory(
+    void* data, absl::AnyInvocable<void() &&> on_delete_callback,
+    size_t on_device_bytes_count, PjRtMemorySpace* memory_space) {
+  if ((absl::bit_cast<std::uintptr_t>(data) &
+       (cpu_function_runtime::MinAlign() - 1)) != 0) {
+    return InvalidArgument(
+        "Can't create a view of buffer with unaligned data, ptr: %#x is not "
+        "aligned to %d bytes. ",
+        reinterpret_cast<std::uintptr_t>(data),
+        cpu_function_runtime::MinAlign());
+  }
+  return tsl::MakeRef<CpuRawBuffer>(
+      memory_space,
+      CpuDeviceMemory::CreateForeignMemory(data, on_device_bytes_count,
+                                           std::move(on_delete_callback)));
 }
 
 size_t CpuRawBuffer::GetOnDeviceSizeInBytes() const {
@@ -150,6 +182,101 @@ absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> CpuRawBuffer::CopyFromLiteral(
   });
   return tsl::MakeRef<CpuTrackedDeviceEvent>(std::move(event), "CpuRawBuffer",
                                              "CopyFromLiteral");
+}
+
+absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+CpuRawBuffer::CopyFromHostBuffer(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    PjRtClient::HostBufferSemantics host_buffer_semantics,
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer, const Shape& shape,
+    AsyncWorkRunner* async_work_runner, absl::Mutex* transpose_mu,
+    TransposePlanCache* transpose_cache) {
+  tsl::AsyncValueRef<CpuDeviceMemory> device_buffer = buffer_;
+  bool has_default_layout =
+      !byte_strides || HasMajorToMinorLayout(type, dims, *byte_strides);
+  const int bit_width = primitive_util::BitWidth(type);
+  // Packed arrays are unpacked on host and packed on device.
+  bool is_packed = primitive_util::IsSubByteNonPredType(type);
+
+  size_t byte_size = ShapeUtil::ByteSizeOf(shape);
+  size_t dst_byte_size = byte_size;
+  if (is_packed) {
+    byte_size *= 8 / bit_width;
+  }
+  auto dst_data_ptr = device_buffer->untyped_data();
+  if (!has_default_layout || is_packed) {
+    // If the input array does not have a major-to-minor layout, transpose it
+    // into major-to-minor layout. Currently we choose to always do this
+    // synchronously.
+    // TODO(phawkins): consider performing the transpose asynchronously.
+    // TODO(phawkins): parallelize the transpose.
+    std::shared_ptr<TransposePlan> transpose;
+    {
+      absl::InlinedVector<int64_t, 4> permutation(dims.size());
+      absl::c_iota(permutation, 0);
+      TransposePlan::Options options;
+      options.elem_size_in_bytes = primitive_util::ByteWidth(type);
+      options.dims = dims;
+      options.permutation = permutation;
+      if (byte_strides) {
+        options.input_layout = TransposePlan::Striding{*byte_strides};
+      }
+      absl::MutexLock lock(transpose_mu);
+      TF_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
+    }
+    if (!is_packed) {
+      transpose->Execute(data, dst_data_ptr);
+    } else {
+      // First transpose the unpacked data into a new temporary buffer, then
+      // pack the data.
+      // TODO(reedwm): Fuse the transpose and packing by having TransposePlan
+      // support packing.
+      auto data_transposed = std::make_unique<char[]>(byte_size);
+      transpose->Execute(data, data_transposed.get());
+      absl::Span<const char> src_data_span(data_transposed.get(), byte_size);
+      absl::Span<char> dst_data_span(static_cast<char*>(dst_data_ptr),
+                                     dst_byte_size);
+      PackIntN(bit_width, src_data_span, dst_data_span);
+    }
+    if (on_done_with_host_buffer) {
+      std::move(on_done_with_host_buffer)();
+      on_done_with_host_buffer = nullptr;
+    }
+  } else {
+    bool should_sync_copy =
+        host_buffer_semantics ==
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall ||
+        (byte_size < kSmallDataTransferByteSize);
+    if (should_sync_copy) {
+      std::memcpy(dst_data_ptr, data, byte_size);
+      if (on_done_with_host_buffer) {
+        std::move(on_done_with_host_buffer)();
+        on_done_with_host_buffer = nullptr;
+      }
+    } else {
+      tsl::AsyncValueRef<CpuEvent> copy_event =
+          tsl::MakeConstructedAsyncValueRef<CpuEvent>();
+      auto result = tsl::MakeRef<CpuTrackedDeviceEvent>(
+          copy_event.CopyRef(), "CpuRawBuffer", "CopyFromHostBuffer");
+      async_work_runner->Schedule([device_buffer, dst_data_ptr, data, byte_size,
+                                   copy_event = std::move(copy_event),
+                                   on_done_with_host_buffer = std::move(
+                                       on_done_with_host_buffer)]() mutable {
+        tsl::profiler::TraceMe traceme("H2D Dispatch");
+        std::memcpy(dst_data_ptr, data, byte_size);
+        if (on_done_with_host_buffer) {
+          std::move(on_done_with_host_buffer)();
+          on_done_with_host_buffer = nullptr;
+        }
+        // Signal copy is complete.
+        copy_event.SetStateConcrete();
+      });
+      return result;
+    }
+  }
+  return tsl::MakeRef<CpuTrackedDeviceEvent>(
+      tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
 absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(
