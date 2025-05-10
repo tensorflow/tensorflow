@@ -73,6 +73,10 @@ class ExecutionGraph {
     virtual ~Operation() = default;
 
     virtual absl::string_view name() const = 0;
+    // Optional function that allows grouping operations of the same kind. E.x.
+    // on XLA:CPU this is the id of the thunk kind, and is used for color coding
+    // graph visualization.
+    virtual int64_t op_type_id() const { return 0; };
     virtual absl::Span<const BufferUse> BufferUses() const = 0;
     virtual absl::Span<const ResourceUse> ResourceUses() const = 0;
 
@@ -162,6 +166,10 @@ class ExecutionGraph {
     return Create(ptrs);
   }
 
+  // Constructs an execution graph from a sequence of operations.
+  static absl::StatusOr<ExecutionGraph> Create(
+      absl::Span<const Operation* const> operations);
+
   // Returns execution graph nodes definitions.
   absl::Span<const NodeDef> nodes_defs() const { return nodes_defs_; }
 
@@ -202,10 +210,6 @@ class ExecutionGraph {
   bool is_sequential() const { return is_sequential_; }
 
  private:
-  // Constructs an execution graph from a sequence of operations.
-  static absl::StatusOr<ExecutionGraph> Create(
-      absl::Span<const Operation* const> operations);
-
   // We store all `in_edges` and `out_edges` referenced by the `NodeDef` inside
   // large vectors to optimize for data locality on a hot path.
   using NodesEdges = std::vector<NodeEdge>;

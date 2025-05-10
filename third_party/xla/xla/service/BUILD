@@ -5989,13 +5989,13 @@ cc_library(
     srcs = ["execution_graph_renderer.cc"],
     hdrs = ["execution_graph_renderer.h"],
     deps = [
-        "//xla/backends/cpu/runtime:thunk",
         "//xla/runtime:execution_graph",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
