@@ -15,12 +15,11 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
 
-#include <ctype.h>
-
 #include <cstddef>
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/util.h"
@@ -32,12 +31,12 @@ bool isValidCVariableName(absl::string_view name) {
     return false;
   }
 
-  if (!isalpha(name[0]) && name[0] != '_') {
+  if (!absl::ascii_isalpha(name[0]) && name[0] != '_') {
     return false;
   }
 
   for (size_t i = 1; i < name.size(); ++i) {
-    if (!isalnum(name[i]) && name[i] != '_') {
+    if (!absl::ascii_isalnum(name[i]) && name[i] != '_') {
       return false;
     }
   }
