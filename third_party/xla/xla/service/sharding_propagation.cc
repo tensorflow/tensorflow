@@ -3598,10 +3598,9 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       HloSharding param_sharding = params[0]->sharding();
       for (int64_t i = 0; i < params[0]->shape().tuple_shapes_size(); ++i) {
         if (allow_spmd_sharding_propagation_to_parameters_vector_[i] &&
-            !evenly_partitions(
-                ShapeUtil::GetSubshapeOneIndex(params[0]->shape(), i),
-                params[0]->sharding().GetSubSharding(params[0]->shape(),
-                                                     {i}))) {
+            !evenly_partitions(params[0]->shape().tuple_shapes(i),
+                               params[0]->sharding().GetSubSharding(
+                                   params[0]->shape(), {i}))) {
           param_sharding.tuple_elements()[i] = HloSharding::Replicate();
         }
       }
