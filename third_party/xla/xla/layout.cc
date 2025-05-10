@@ -250,7 +250,7 @@ LayoutProto Layout::ToProto() const {
 //   C: DIM_COMPRESSED
 //   S: DIM_SINGLETON
 //   H: DIM_LOOSE_COMPRESSED
-// Crashes if the DimLevelType is invalid.
+//   ?: the DimLevelType is invalid.
 static absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
   switch (dim_level_type) {
     case DIM_DENSE:
@@ -262,7 +262,7 @@ static absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
     case xla::DIM_LOOSE_COMPRESSED:
       return "H";
     default:
-      LOG(FATAL) << "Invalid DimLevelType value: " << dim_level_type;
+      return "?";
   }
 }
 
