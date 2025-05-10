@@ -289,7 +289,8 @@ ConvolutionDimensionNumbers GenNewConvDNums(
   }
   if (rhs_concat_dim != -1 && !windowed_at_contracting_dims &&
       !windowed_at_batch_dims) {
-    input_spatial_dimensions.push_back(dot_lhs->shape().dimensions_size() - 1);
+    input_spatial_dimensions.push_back(dot_lhs->shape().dimensions().size() -
+                                       1);
   }
   // Handle the RHS dimension numbers.
   int64_t kernel_input_feature_dimension =
@@ -315,7 +316,8 @@ ConvolutionDimensionNumbers GenNewConvDNums(
   }
   if (lhs_concat_dim != -1 && !windowed_at_contracting_dims &&
       !windowed_at_batch_dims) {
-    kernel_spatial_dimensions.push_back(dot_rhs->shape().dimensions_size() - 1);
+    kernel_spatial_dimensions.push_back(dot_rhs->shape().dimensions().size() -
+                                        1);
   }
   // Handle the Output dimension numbers.
   int64_t output_batch_dimension = dnums.output_batch_dimension();
@@ -340,7 +342,7 @@ ConvolutionDimensionNumbers GenNewConvDNums(
     }
     output_spatial_dimensions.push_back(output_slice_dim);
   } else {
-    output_spatial_dimensions.push_back(new_dot_shape.dimensions_size() - 1);
+    output_spatial_dimensions.push_back(new_dot_shape.dimensions().size() - 1);
   }
   // Construct the new dot dimension numbers.
   ConvolutionDimensionNumbers new_dnums;
@@ -1081,7 +1083,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
                            bool ccw) -> HloInstruction* {
         std::vector<int64_t> new_dims;
         const int64_t dimensions_size =
-            slice_operand->shape().dimensions_size();
+            slice_operand->shape().dimensions().size();
         new_dims.reserve(dimensions_size + 1);
         for (int64_t i = 0; i < dimensions_size; ++i) {
           if (i == slice_sharding_dim) {
@@ -1102,7 +1104,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
                       reshaped_slice_operand->shape().element_type())));
 
         std::vector<int64_t> padding(
-            reshaped_slice_operand->shape().dimensions_size());
+            reshaped_slice_operand->shape().dimensions().size());
         auto padded_slice_operand = reshaped_slice_operand;
         auto padded_shape = padded_slice_operand->shape();
         int64_t padding_dim = slice_sharding_dim;
@@ -1157,7 +1159,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
       // Reshape. The reshaped slice will not be used to produce the final
       // result, but used as a hint for the shape inference.
       std::vector<int64_t> reshaped_slice_dims;
-      const int64_t dim_size = slice->shape().dimensions_size();
+      const int64_t dim_size = slice->shape().dimensions().size();
       reshaped_slice_dims.reserve(dim_size);
       for (int64_t i = 0; i < dim_size; ++i) {
         auto dim_size = slice->shape().dimensions(i);
@@ -1314,15 +1316,17 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
                            ? indices_map.lhs_to_output_indices[lhs_concat_dim]
                            : indices_map.rhs_to_output_indices[rhs_concat_dim];
       slice_shape.set_dimensions(slice_dim, 1);
-      std::vector<int64_t> ccw_start_indices(dot->shape().dimensions_size(), 0);
-      std::vector<int64_t> cw_start_indices(dot->shape().dimensions_size(), 0);
+      std::vector<int64_t> ccw_start_indices(dot->shape().dimensions().size(),
+                                             0);
+      std::vector<int64_t> cw_start_indices(dot->shape().dimensions().size(),
+                                            0);
       cw_start_indices[slice_dim] = 1;
       auto ccw_dot = body_b.AddInstruction(HloInstruction::CreateSlice(
           slice_shape, dot, ccw_start_indices, slice_shape.dimensions(),
-          std::vector<int64_t>(dot->shape().dimensions_size(), 1)));
+          std::vector<int64_t>(dot->shape().dimensions().size(), 1)));
       auto cw_dot = body_b.AddInstruction(HloInstruction::CreateSlice(
           slice_shape, dot, cw_start_indices, dot->shape().dimensions(),
-          std::vector<int64_t>(dot->shape().dimensions_size(), 1)));
+          std::vector<int64_t>(dot->shape().dimensions().size(), 1)));
 
       std::vector<int64_t> reshaped_dims(
           original_sharded_dot_shape.dimensions().begin(),
@@ -1757,9 +1761,10 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
                              unpadded_result_buffer_shape)) {
     result = b->AddInstruction(HloInstruction::CreateSlice(
         unpadded_result_buffer_shape, result,
-        std::vector<int64_t>(padded_result_buffer_shape.dimensions_size(), 0),
+        std::vector<int64_t>(padded_result_buffer_shape.dimensions().size(), 0),
         unpadded_result_buffer_shape.dimensions(),
-        std::vector<int64_t>(padded_result_buffer_shape.dimensions_size(), 1)));
+        std::vector<int64_t>(padded_result_buffer_shape.dimensions().size(),
+                             1)));
   }
   return result;
 }
@@ -1810,8 +1815,9 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
     return nullptr;
   }
   DotDimensionIndexMapping indices_map = ComputeDimensionIndexMapping(
-      dims_mapping, lhs.base_shape().dimensions_size(),
-      rhs.base_shape().dimensions_size(), output_base_shape.dimensions_size());
+      dims_mapping, lhs.base_shape().dimensions().size(),
+      rhs.base_shape().dimensions().size(),
+      output_base_shape.dimensions().size());
   auto lhs_sharding_transposed_to_match_rhs =
       hlo_sharding_util::TransposeShardingWithCollapsedDims(
           lhs_sharding, indices_map.lhs_to_rhs_indices,
@@ -2144,13 +2150,13 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnBatchImpl(
   std::vector<int64_t> output_dims;
   auto lhs_sharding_dims_adjusted_to_output =
       lhs.sharding().IsReplicated()
-          ? std::vector<int64_t>(lhs.base_shape().dimensions_size(), 1)
+          ? std::vector<int64_t>(lhs.base_shape().dimensions().size(), 1)
           : std::vector<int64_t>(
                 lhs.sharding().tile_assignment().dimensions().begin(),
                 lhs.sharding().tile_assignment().dimensions().end());
   auto rhs_sharding_dims_adjusted_to_output =
       rhs.sharding().IsReplicated()
-          ? std::vector<int64_t>(rhs.base_shape().dimensions_size(), 1)
+          ? std::vector<int64_t>(rhs.base_shape().dimensions().size(), 1)
           : std::vector<int64_t>(
                 rhs.sharding().tile_assignment().dimensions().begin(),
                 rhs.sharding().tile_assignment().dimensions().end());
@@ -2288,7 +2294,7 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnBatchImpl(
           original_tiling.Reshape(*sharding_dims_adjusted_to_output);
       auto grouped =
           AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
-                              operand.base_shape().dimensions_size() <
+                              operand.base_shape().dimensions().size() <
                                       sharding_dims_adjusted_to_output->size()
                                   ? HloSharding::PartialTile(reshaped_tiling)
                                   : HloSharding::Tile(reshaped_tiling),
@@ -2589,7 +2595,7 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnNonContractingImpl(
 
   auto partially_replicated_other = other.hlo();
   if (other_grouped && other_grouped->group_dims.size() == 1 &&
-      other_grouped->group_dims[0] == other.base_shape().dimensions_size()) {
+      other_grouped->group_dims[0] == other.base_shape().dimensions().size()) {
     // Group on replication dim.
     other = other.Reshard(UngroupSharding(*other_grouped));
     partially_replicated_other = other.hlo();
@@ -2747,7 +2753,7 @@ GetDotGroupPartitionContractingOutputShardings(
   }
   if (output_replicate_dim_grouped) {
     *output_replicate_dim_grouped = absl::c_linear_search(
-        output_slice_dims, output_base_shape.dimensions_size());
+        output_slice_dims, output_base_shape.dimensions().size());
   }
   if (output_slice_dims_out) {
     if (output_sharding.ReplicateOnLastTileDim()) {
@@ -2755,7 +2761,7 @@ GetDotGroupPartitionContractingOutputShardings(
       output_slice_dims.erase(
           std::remove_if(output_slice_dims.begin(), output_slice_dims.end(),
                          [&](int64_t dim) {
-                           return dim == output_base_shape.dimensions_size();
+                           return dim == output_base_shape.dimensions().size();
                          }),
           output_slice_dims.end());
     }
@@ -2879,7 +2885,7 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnContractingImpl(
   Shape inner_output_base_shape = output_base_shape;
   auto get_non_slice_dims = [&] {
     std::vector<int64_t> non_group_dims;
-    for (int64_t i = 0; i < output_base_shape.dimensions_size(); ++i) {
+    for (int64_t i = 0; i < output_base_shape.dimensions().size(); ++i) {
       if (!absl::c_linear_search(output_slice_dims, i)) {
         non_group_dims.push_back(i);
       }
@@ -3074,8 +3080,9 @@ EstimateWindowedEinsumIterationsForNonContractingPartitioning(
     int64_t rhs_batch_partitions, const Window& conv_window,
     SpmdPartitioningVisitor* visitor) {
   const DotDimensionIndexMapping indices_map = ComputeDimensionIndexMapping(
-      dims_mapping, lhs.base_shape().dimensions_size(),
-      rhs.base_shape().dimensions_size(), output_base_shape.dimensions_size());
+      dims_mapping, lhs.base_shape().dimensions().size(),
+      rhs.base_shape().dimensions().size(),
+      output_base_shape.dimensions().size());
   auto subsequent_einsum_iterations_estimate =
       [&](bool assume_lhs_match) -> std::optional<int64_t> {
     const std::vector<DotConvolutionDimsInfo::DimNums>&
@@ -3310,7 +3317,7 @@ bool PrioritizeContractingDimensionsPartitioning(
   Shape inner_output_base_shape = output_base_shape;
   if (!output_slice_dims.empty()) {
     std::vector<int64_t> non_group_dims;
-    for (int64_t i = 0; i < output_base_shape.dimensions_size(); ++i) {
+    for (int64_t i = 0; i < output_base_shape.dimensions().size(); ++i) {
       if (!absl::c_linear_search(output_slice_dims, i)) {
         non_group_dims.push_back(i);
       }
@@ -3336,9 +3343,9 @@ bool PrioritizeContractingDimensionsPartitioning(
   }
 
   const DotDimensionIndexMapping indices_map = ComputeDimensionIndexMapping(
-      dims_mapping, lhs.base_shape().dimensions_size(),
-      rhs.base_shape().dimensions_size(),
-      inner_output_base_shape.dimensions_size());
+      dims_mapping, lhs.base_shape().dimensions().size(),
+      rhs.base_shape().dimensions().size(),
+      inner_output_base_shape.dimensions().size());
   std::optional<HloSharding> output_sharding_transposed_to_match_lhs =
       hlo_sharding_util::TransposeShardingWithCollapsedDims(
           inner_output_sharding, indices_map.output_to_lhs_indices,
@@ -3486,9 +3493,9 @@ bool LhsIsBestMatchForNonContractingPartitioning(
   if (may_group_on_lhs_non_contracting && may_group_on_rhs_non_contracting &&
       options.choose_faster_windowed_einsum_over_mem) {
     const DotDimensionIndexMapping indices_map = ComputeDimensionIndexMapping(
-        dims_mapping, lhs.base_shape().dimensions_size(),
-        rhs.base_shape().dimensions_size(),
-        output_base_shape.dimensions_size());
+        dims_mapping, lhs.base_shape().dimensions().size(),
+        rhs.base_shape().dimensions().size(),
+        output_base_shape.dimensions().size());
     std::optional<int64_t> lhs_matching_iterations;
     std::optional<int64_t> rhs_matching_iterations;
     std::tie(lhs_matching_iterations, rhs_matching_iterations) =
@@ -3687,9 +3694,9 @@ PartitionConvOnBatchOrFeatureGroupedDims(
       HloSharding aligned_output_sharding = HloSharding::Replicate();
       HloInstruction* sharded_conv = nullptr;
       DotDimensionIndexMapping indices_map = ComputeDimensionIndexMapping(
-          *new_dims_mapping, lhs.base_shape().dimensions_size(),
-          rhs.base_shape().dimensions_size(),
-          output_base_shape.dimensions_size());
+          *new_dims_mapping, lhs.base_shape().dimensions().size(),
+          rhs.base_shape().dimensions().size(),
+          output_base_shape.dimensions().size());
       if (max_batch_partitions == conv_lhs_batch_partitions) {
         resharded_lhs = resharded_lhs.Reshard(
             hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
@@ -4647,7 +4654,7 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
     Shape padded_out_shape = out->shape();
     int64_t operand_dim = 0;
     int64_t output_dim = 0;
-    while (output_dim < padded_out_shape.dimensions_size()) {
+    while (output_dim < padded_out_shape.dimensions().size()) {
       if (absl::c_linear_search(out->dimensions(), operand_dim)) {
         // Dimension colapsed.
         ++operand_dim;
@@ -4713,8 +4720,8 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
       motion_clusters.back().outside_to_inside[original_output] =
           dus->mutable_operand(1);
       motion_clusters.back().slice_offsets.reserve(
-          padded_shape.dimensions_size());
-      for (int64_t i = 0; i < padded_shape.dimensions_size(); ++i) {
+          padded_shape.dimensions().size());
+      for (int64_t i = 0; i < padded_shape.dimensions().size(); ++i) {
         motion_clusters.back().slice_offsets.push_back(
             motion_clusters.back().dus->mutable_operand(i + 2));
       }
@@ -4963,9 +4970,9 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
                                reduce_outputs[i]->shape())) {
       new_output = computation->AddInstruction(HloInstruction::CreateSlice(
           reduce_outputs[i]->shape(), new_output,
-          std::vector<int64_t>(new_output->shape().dimensions_size(), 0),
+          std::vector<int64_t>(new_output->shape().dimensions().size(), 0),
           reduce_outputs[i]->shape().dimensions(),
-          std::vector<int64_t>(new_output->shape().dimensions_size(), 1)));
+          std::vector<int64_t>(new_output->shape().dimensions().size(), 1)));
     }
     TF_RETURN_IF_ERROR(reduce_outputs[i]->ReplaceAllUsesWith(new_output));
     TF_RETURN_IF_ERROR(
