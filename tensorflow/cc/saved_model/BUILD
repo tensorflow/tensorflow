@@ -523,6 +523,7 @@ cc_library(
         "//learning/brain/contrib/tpu_modeling:__subpackages__",
         "//learning/metadata/artifactoid/cc:__subpackages__",
         "//learning/tfx/pipeline/util:__subpackages__",
+        "//tensorflow/core/tfrt:__subpackages__",
         "//tensorflow/python/saved_model:__subpackages__",
     ],
     deps = if_static([

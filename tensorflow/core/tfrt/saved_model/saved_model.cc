@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/cc/saved_model/fingerprinting.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/fingerprint.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
@@ -138,6 +140,12 @@ auto* saved_model_init_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
         "/tensorflow/tfrt/saved_model/init_time",
         "Record the initialization time for the savedmodel.", "model_name");
+
+auto* saved_model_unified_model_id =
+    tensorflow::monitoring::Gauge<std::string, 2>::New(
+        "/tensorflow/tfrt/saved_model/unified_model_id",
+        "Record the unified model id of the saved model.", "model_name",
+        "model_version");
 
 // TODO(b/279197040) clean up this retention after input spec validation is
 // enabled everywhere.
@@ -505,6 +513,27 @@ void UpdateCompileOptions(SavedModel::Options& options) {
       !options.graph_execution_options.enable_mlrt;
 }
 
+// TODO(b/416666698): When possible, call the reference implementation.
+void EmitSavedModelUnifiedModelId(absl::string_view saved_model_dir,
+                                  const SavedModel::Options& options) {
+  string saved_model_uuid = "(empty)";
+  absl::StatusOr<FingerprintDef> fingerprint_or =
+      saved_model::fingerprinting::ReadSavedModelFingerprint(saved_model_dir);
+  if (fingerprint_or.ok()) {
+    if (fingerprint_or.value().uuid().empty()) {
+      saved_model_uuid =
+          saved_model::fingerprinting::Singleprint(fingerprint_or.value());
+    } else {
+      saved_model_uuid = fingerprint_or.value().uuid();
+    }
+  }
+  saved_model_unified_model_id
+      ->GetCell(options.graph_execution_options.model_metadata.name(),
+                absl::StrCat(
+                    options.graph_execution_options.model_metadata.version()))
+      ->Set(saved_model_uuid);
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
@@ -520,6 +549,8 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
     Options options, tensorflow::MetaGraphDef meta_graph_def,
     absl::string_view saved_model_dir) {
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
+
+  EmitSavedModelUnifiedModelId(saved_model_dir, options);
 
   if (options.graph_execution_options.use_ifrt) {
     if (!options.graph_execution_options.enable_mlrt ||
