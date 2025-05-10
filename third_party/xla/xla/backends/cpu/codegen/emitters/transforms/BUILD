@@ -30,19 +30,27 @@ gentbl_cc_library(
 
 cc_library(
     name = "passes",
-    srcs = ["lower_to_llvm.cc"],
+    srcs = [
+        "lower_to_llvm.cc",
+        "lower_xla_shared.cc",
+    ],
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
         ":xla_cpu_rewrite_patterns",
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
+        "//xla/codegen/emitters/ir:xla",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:VectorDialect",
     ],
 )
 
