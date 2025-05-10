@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
@@ -133,19 +134,26 @@ PjRtFuture<> CpuRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> CpuRawBuffer::CopyFromLiteral(
     const LiteralSlice& literal, const xla::Layout& layout,
     AsyncWorkRunner* async_work_runner) {
-  const xla::Shape& shape = literal.shape();
-  if ((shape.has_layout() &&
-       !xla::LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) ||
-      !xla::LayoutUtil::IsMonotonicWithDim0Major(layout)) {
-    return absl::UnimplementedError(
-        "PjRt CPU's CopyFromLiteral does not support "
-        "non-major-to-minor layout");
-  }
   auto event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
-  async_work_runner->Schedule([literal, event, buffer = buffer_]() {
+  async_work_runner->Schedule([literal, layout, event, buffer = buffer_]() {
     CHECK(buffer.IsConcrete());
-    PackOrCopy(literal.shape().element_type(), literal, buffer->untyped_data(),
-               buffer->size_bytes());
+    const xla::Shape& shape = literal.shape();
+    if ((!shape.has_layout() &&
+         !xla::LayoutUtil::IsMonotonicWithDim0Major(layout)) ||
+        (shape.layout() != layout)) {
+      auto shape_copy = xla::ShapeUtil::MakeShape(
+          literal.shape().element_type(), literal.shape().dimensions());
+      shape_copy.mutable_layout()->mutable_minor_to_major()->assign(
+          layout.minor_to_major().begin(), layout.minor_to_major().end());
+
+      xla::Literal literal_copy(shape_copy);
+      CHECK_OK(literal_copy.CopyFrom(literal));
+      PackOrCopy(literal_copy.shape().element_type(), literal_copy,
+                 buffer->untyped_data(), buffer->size_bytes());
+    } else {
+      PackOrCopy(literal.shape().element_type(), literal,
+                 buffer->untyped_data(), buffer->size_bytes());
+    }
     event.SetStateConcrete();
   });
   return tsl::MakeRef<CpuTrackedDeviceEvent>(std::move(event), "CpuRawBuffer",
@@ -154,7 +162,12 @@ absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> CpuRawBuffer::CopyFromLiteral(
 
 absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(
     xla::Shape shape, const xla::Layout* layout) {
-  xla::LayoutUtil::SetToDefaultLayout(&shape);
+  if (layout) {
+    shape.mutable_layout()->mutable_minor_to_major()->assign(
+        layout->minor_to_major().begin(), layout->minor_to_major().end());
+  } else {
+    xla::LayoutUtil::SetToDefaultLayout(&shape);
+  }
   auto element_type = shape.element_type();
   if (primitive_util::IsSubByteNonPredType(element_type)) {
     shape.mutable_layout()->set_element_size_in_bits(
