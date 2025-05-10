@@ -1,5 +1,6 @@
 """Build rules for tf.distribute testing."""
 
+load("//tensorflow:py.default.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", _tpu_py_test = "tpu_py_test")
 
@@ -20,7 +21,7 @@ def distribute_py_test(
         disable_v3 = False,
         disable_mlir_bridge = True,
         disable_tpu_use_tfrt = None,
-        test_rule = native.py_test,
+        test_rule = py_test,
         **kwargs):
     """Generates py_test targets for CPU and GPU.
 

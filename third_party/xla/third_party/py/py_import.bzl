@@ -1,5 +1,7 @@
 """ Macros to unpack a wheel and use its content as a py_library. """
 
+load("@rules_python//python:defs.bzl", "py_library")
+
 def _unpacked_wheel_impl(ctx):
     output_dir = ctx.actions.declare_directory(ctx.label.name)
     wheel = ctx.file.wheel
@@ -52,7 +54,7 @@ def py_import(
         wheel = wheel,
         wheel_deps = wheel_deps,
     )
-    native.py_library(
+    py_library(
         name = name,
         data = [":" + unpacked_wheel_name],
         imports = [unpacked_wheel_name],

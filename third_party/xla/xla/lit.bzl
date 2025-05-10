@@ -1,6 +1,7 @@
 """Helper rules for writing LIT tests."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("@rules_python//python:defs.bzl", "py_binary")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl:tsl.bzl", "if_cuda_tools", "if_google", "if_oss")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
@@ -234,9 +235,11 @@ def lit_test(
     )
     lit_name = "//third_party/py/lit:lit"
 
+    _ = py_binary  # @unused
+
     # copybara:comment_begin(oss-only)
     lit_name = "lit_custom_" + name
-    native.py_binary(
+    py_binary(
         name = lit_name,
         main = "@llvm-project//llvm:utils/lit/lit.py",
         srcs = ["@llvm-project//llvm:utils/lit/lit.py"],

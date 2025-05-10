@@ -1443,10 +1443,11 @@ bzl_library(
     name = "lit_bzl",
     srcs = ["lit.bzl"],
     deps = [
+        # copybara:uncomment "@rules_python//python:defs_bzl",
+        "@bazel_skylib//lib:paths",
         "//xla/tsl:package_groups_bzl",
         "//xla/tsl:tsl_bzl",
         "//xla/tsl/platform/default:cuda_build_defs_bzl",
-        "@bazel_skylib//lib:paths",
     ],
 )
 
