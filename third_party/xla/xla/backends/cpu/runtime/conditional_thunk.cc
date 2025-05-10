@@ -15,14 +15,18 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/conditional_thunk.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
@@ -113,6 +117,17 @@ ConditionalThunk::ResourceUses ConditionalThunk::resource_uses() const {
     resource_uses.insert(resource_uses.end(), uses.begin(), uses.end());
   }
   return resource_uses;
+}
+
+absl::flat_hash_map<std::string, const ThunkSequence*>
+ConditionalThunk::get_named_nested_thunks() const {
+  absl::flat_hash_map<std::string, const ThunkSequence*> result;
+  size_t branch_idx = 0;
+  for (const auto& branch_executor : branch_executors_) {
+    result[absl::StrCat(info().op_name, "-branch_", branch_idx++)] =
+        &branch_executor.thunk_sequence();
+  }
+  return result;
 }
 
 }  // namespace xla::cpu

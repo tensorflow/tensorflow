@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
@@ -53,6 +54,9 @@ class WhileThunk final : public Thunk {
   const BufferAllocation::Slice& cond_buffer() const { return cond_buffer_; }
 
   std::optional<int64_t> trip_count() const { return trip_count_; }
+
+  absl::flat_hash_map<std::string, const ThunkSequence*>
+  get_named_nested_thunks() const final;
 
  private:
   WhileThunk(Info info, BufferAllocation::Slice cond_buffer,
