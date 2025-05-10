@@ -20,12 +20,14 @@ fusion {
 }
 
 // CHECK: func @main(
-// CHECK:   %[[L1:.*]], %[[L2:.*]] = xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
-// CHECK:     %[[SCALARS_0:.*]], %[[SCALARS_1:.*]] = xla.pure_call @fusion_d_1
-// CHECK:     %[[INSERTED_1:.*]] = tensor.insert %[[SCALARS_0]] into %{{.*}}[%[[RA]]]
-// CHECK:     %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS_1]] into %{{.*}}[%[[RA]]]
-// CHECK:     xla.yield %[[INSERTED_1]], %[[INSERTED_2]]
-// CHECK:   return %[[L1]], %[[L2]]
+// CHECK:   %[[FA1:.*]], %[[FA2:.*]] = xla.forall
+// CHECK:     %[[L1:.*]], %[[L2:.*]] = xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
+// CHECK:       %[[SCALARS_0:.*]], %[[SCALARS_1:.*]] = xla.pure_call @fusion_d_1
+// CHECK:       %[[INSERTED_1:.*]] = tensor.insert %[[SCALARS_0]] into %{{.*}}[%[[RA]]]
+// CHECK:       %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS_1]] into %{{.*}}[%[[RA]]]
+// CHECK:       xla.yield %[[INSERTED_1]], %[[INSERTED_2]]
+// CHECK:     xla.yield %[[L1]], %[[L2]]
+// CHECK:   return %[[FA1]], %[[FA2]]
 
 // CHECK: func private @fusion_d_1
 // CHECK:   %[[RET:.*]]:2 = func.call @add_t

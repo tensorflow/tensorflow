@@ -5,7 +5,7 @@ func.func @fn(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2xi32> {
 }
 
 func.func @kernel_prototype(%arg0: !xla_cpu.call_frame) -> !xla_cpu.error {
-  %thread_id = xla_cpu.thread_id %arg0 : index
+  %thread_id = xla_cpu.thread_id x in %arg0
   %0 = xla_cpu.load %arg0, 0 : tensor<2xi32>
   // Call a function so that its arguments are not optimized away.
   %1 = call @fn(%thread_id, %0) : (index, tensor<2xi32>) -> tensor<2xi32>
@@ -61,8 +61,19 @@ func.func @input_not_call_frame(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 // -----
 
 func.func @output_not_error(%arg0: !xla_cpu.call_frame) -> index {
-  %thread_id = xla_cpu.thread_id %arg0 : index
+  %thread_id = xla_cpu.thread_id x in %arg0
   return %thread_id : index
 }
 
 // CHECK: func.func @output_not_error(%arg0: !xla_cpu.call_frame) -> index {
+
+// -----
+
+func.func @get_z_thread_id(%arg0: !xla_cpu.call_frame) -> index {
+  %thread_id = xla_cpu.thread_id z in %arg0
+  return %thread_id : index
+}
+
+// CHECK [[TID_GEP:%.+]] = llvm.getelementptr
+// CHECK [[TID_PTR:%.+]] = llvm.load [[TID_GEP]]
+// CHECK [[TID_Z_GEP:%.+]] = llvm.getelementptr inbounds [[TID_PTR]][2]

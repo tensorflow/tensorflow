@@ -29,9 +29,9 @@ limitations under the License.
 #include "xla/codegen/emitters/type_util.h"
 
 // The order of these includes is important.
+#include "xla/codegen/emitters/ir/xla_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
 #include "xla/codegen/emitters/ir/xla_attrs.cc.inc"
-#include "xla/codegen/emitters/ir/xla_enums.cc.inc"
 
 namespace xla {
 namespace {

@@ -29,13 +29,14 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -107,7 +108,7 @@ absl::Status LoopFusion::EmitEntryFunction(
     const HloFusionInstruction& fusion) const {
   ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
-  auto thread_and_block_ids = EmitThreadAndBlockIds(builder);
+  auto workgroup_ids = EmitWorkgroupIds(builder);
 
   auto indexing =
       ComputeThreadIdToOutputIndexing(0, entry_function.getContext());
@@ -154,9 +155,30 @@ absl::Status LoopFusion::EmitEntryFunction(
     return result_tensors;
   };
 
+  const auto loop_builder = [&](mlir::OpBuilder& builder, mlir::Location loc,
+                                mlir::ValueRange threads,
+                                mlir::ValueRange output_tensors) {
+    ImplicitLocOpBuilder nested_b(loc, builder);
+    llvm::SmallVector<Value, 6> forall_idx_and_workgroup_ids;
+    forall_idx_and_workgroup_ids.insert(forall_idx_and_workgroup_ids.end(),
+                                        threads.begin(), threads.end());
+    forall_idx_and_workgroup_ids.insert(forall_idx_and_workgroup_ids.end(),
+                                        workgroup_ids.begin(),
+                                        workgroup_ids.end());
+    nested_b.create<YieldOp>(
+        emitters::EmitXlaLoopOp(nested_b, forall_idx_and_workgroup_ids,
+                                output_tensors, *indexing, body_builder));
+  };
+
+  const auto& counts = launch_dimensions().thread_counts_per_block();
   builder.create<mlir::func::ReturnOp>(
-      emitters::EmitXlaLoopOp(builder, thread_and_block_ids, output_tensor_args,
-                              *indexing, body_builder));
+      builder
+          .create<ForallOp>(
+              builder.getIndexArrayAttr({static_cast<int64_t>(counts.x),
+                                         static_cast<int64_t>(counts.y),
+                                         static_cast<int64_t>(counts.z)}),
+              output_tensor_args, loop_builder)
+          .getResults());
 
   return absl::OkStatus();
 }
