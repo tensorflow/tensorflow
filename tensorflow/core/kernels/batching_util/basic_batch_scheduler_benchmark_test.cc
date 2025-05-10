@@ -16,6 +16,8 @@ limitations under the License.
 // Benchmarks for performance (throughput and latency) of BasicBatchScheduler
 // under various rates of task injection.
 
+#include <memory>
+
 #include "tensorflow/core/kernels/batching_util/basic_batch_scheduler.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -226,7 +228,7 @@ void LatencyBenchmark::InjectLoad() {
   UniformLoadInjector injector;
   injector.InjectLoad(
       [this] {
-        auto task = std::unique_ptr<BenchmarkBatchTask>(new BenchmarkBatchTask);
+        auto task = std::make_unique<BenchmarkBatchTask>();
         TF_CHECK_OK(scheduler_->Schedule(&task));
       },
       kNumTasks, task_injection_interval_micros_);
@@ -298,7 +300,7 @@ void ThroughputBM(::testing::benchmark::State& state) {
     scheduler_options.batch_timeout_micros = state.range(0) * 1000;
     scheduler_options.num_batch_threads = state.range(1);
     scheduler_options.max_enqueued_batches = INT_MAX;  // Unbounded queue.
-    bm.reset(new ThroughputBenchmark(scheduler_options));
+    bm = std::make_unique<ThroughputBenchmark>(scheduler_options);
   }
 
   // Have each iteration issue a reasonably large number of tasks, to ensure our
@@ -308,7 +310,7 @@ void ThroughputBM(::testing::benchmark::State& state) {
   // Schedule 'num_iterations_*kNumTasksPerIteration' tasks.
   for (auto s : state) {
     for (int j = 0; j < kNumTasksPerIteration; ++j) {
-      auto task = std::unique_ptr<BenchmarkBatchTask>(new BenchmarkBatchTask);
+      auto task = std::make_unique<BenchmarkBatchTask>();
       TF_CHECK_OK(bm->GetScheduler()->Schedule(&task));
     }
   }
@@ -354,8 +356,8 @@ void LatencyBM(::testing::benchmark::State& state) {
                    << " duration: " << latency_benchmark_duration_secs
                    << " interval: " << kInjectionIntervalMicros;
     }
-    bm.reset(new LatencyBenchmark(scheduler_options, kInjectionIntervalMicros,
-                                  kBatchCpuCost));
+    bm = std::make_unique<LatencyBenchmark>(
+        scheduler_options, kInjectionIntervalMicros, kBatchCpuCost);
   }
 
   for (auto s : state) {

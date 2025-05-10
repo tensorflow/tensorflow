@@ -130,7 +130,7 @@ TEST(PeriodicFunctionTest, StartupDelayRace) {
     mutex_lock l(mu);
     EXPECT_EQ(1, counter);
     // A notification can only be notified once.
-    listener.reset(new Notification);
+    listener = std::make_unique<Notification>();
   }
   fake_clock_env.BlockUntilThreadsAsleep(1);
   fake_clock_env.AdvanceByMicroseconds(kPeriodMicros);
