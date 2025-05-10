@@ -375,8 +375,14 @@ cc_library(
 
 cc_library(
     name = "nvshmem_collectives",
-    srcs = ["nvshmem_collectives.cc"],
-    hdrs = ["nvshmem_collectives.h"],
+    srcs = [
+        "nvshmem_collectives.cc",
+        "nvshmem_communicator.cc",
+    ],
+    hdrs = [
+        "nvshmem_collectives.h",
+        "nvshmem_communicator.h",
+    ],
     tags = [
         "cuda-only",
         "gpu",
@@ -384,6 +390,8 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":gpu_collectives",
+        "//xla:shape_util",
+        "//xla:util",
         "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
@@ -391,9 +399,16 @@ cc_library(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/service:collective_ops_utils",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor/gpu:gpu_stream",
+        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -402,6 +417,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:numbers",
         "@nvshmem//:nvshmem_lib",
