@@ -664,7 +664,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kSort:
     case HloOpcode::kTopK:
-    case HloOpcode::kTriangularSolve:
       return true;
     default:
       return false;
