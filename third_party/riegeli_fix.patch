@@ -1,17 +1,30 @@
 Add patch to use tf build rules to prevent 'protobuf_python_genproto' error
 
 
-diff --git a/python/riegeli/records/BUILD b/python/riegeli/records/BUILD
-index cde6d546..7fe18a93 100644
---- a/python/riegeli/records/BUILD
-+++ b/python/riegeli/records/BUILD
+diff --git a/riegeli/records/BUILD b/riegeli/records/BUILD
+index 37db3e0..a1f42ef 100644
+--- a/riegeli/records/BUILD
++++ b/riegeli/records/BUILD
 @@ -1,5 +1,5 @@
--load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
-+load("@local_xla//xla/tsl/platform/default:build_config.bzl", "py_proto_library")
- load("//python/riegeli:py_extension.bzl", "py_extension")
-
+-load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+-load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
++load("@local_xla//xla/tsl/platform/default:build_config.bzl", "cc_proto_library")
++load("@local_xla//xla/tsl/platform/default:build_config.bzl", "tf_proto_library")
+ 
  package(
-     default_visibility = ["//python/riegeli:__subpackages__"],
---
-2.25.1
+     default_visibility = ["//visibility:public"],
+@@ -199,10 +199,11 @@ cc_library(
+     ],
+ )
+ 
+-proto_library(
++tf_proto_library(
+     name = "records_metadata_proto",
+     srcs = ["records_metadata.proto"],
+-    deps = ["@com_google_protobuf//:descriptor_proto"],
++    protodeps = [],
++    visibility = ["//visibility:public"],
+ )
+ 
+ cc_proto_library(
 
