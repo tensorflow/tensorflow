@@ -33,12 +33,14 @@ static mlir::ParseResult parseI64ArrayAttr(mlir::AsmParser& parser,
 
 Attribute TmaDescriptorAttr::parse(mlir::AsmParser& parser, mlir::Type) {
   int element_byte_size, swizzle_mode;
-  DenseI64ArrayAttr global_shape, block_shape;
+  DenseI64ArrayAttr global_shape, block_shape, layout;
 
   if (parser.parseLess() || parser.parseKeyword("global_shape") ||
       parser.parseEqual() || parseI64ArrayAttr(parser, global_shape) ||
       parser.parseComma() || parser.parseKeyword("block_shape") ||
       parser.parseEqual() || parseI64ArrayAttr(parser, block_shape) ||
+      parser.parseComma() || parser.parseKeyword("layout") ||
+      parser.parseEqual() || parseI64ArrayAttr(parser, layout) ||
       parser.parseComma() || parser.parseKeyword("element_byte_size") ||
       parser.parseEqual() || parser.parseInteger(element_byte_size) ||
       parser.parseComma() || parser.parseKeyword("swizzle_mode") ||
@@ -47,8 +49,8 @@ Attribute TmaDescriptorAttr::parse(mlir::AsmParser& parser, mlir::Type) {
     return {};
   }
   return TmaDescriptorAttr::get(parser.getContext(), global_shape.asArrayRef(),
-                                block_shape.asArrayRef(), element_byte_size,
-                                swizzle_mode);
+                                block_shape.asArrayRef(), layout.asArrayRef(),
+                                element_byte_size, swizzle_mode);
 }
 
 void TmaDescriptorAttr::print(mlir::AsmPrinter& printer) const {
@@ -56,6 +58,8 @@ void TmaDescriptorAttr::print(mlir::AsmPrinter& printer) const {
   llvm::interleaveComma(getGlobalShape(), printer);
   printer << "], block_shape = [";
   llvm::interleaveComma(getBlockShape(), printer);
+  printer << "], layout = [";
+  llvm::interleaveComma(getLayout(), printer);
   printer << "], element_byte_size = " << getElementByteSize()
           << ", swizzle_mode = " << getSwizzleMode() << ">";
 }

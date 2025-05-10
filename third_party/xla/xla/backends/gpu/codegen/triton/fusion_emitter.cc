@@ -1648,7 +1648,7 @@ absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
       TF_ASSIGN_OR_RETURN(
           auto tma_desc,
           Create2DTmaDescriptor(attr.getGlobalShape(), attr.getBlockShape(),
-                                attr.getElementByteSize()));
+                                attr.getLayout(), attr.getElementByteSize()));
       tma_metadata.arg_index_to_tma_info.insert({idx, tma_desc});
     }
   }
