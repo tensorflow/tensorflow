@@ -73,6 +73,10 @@ class ExecutionGraph {
     virtual ~Operation() = default;
 
     virtual absl::string_view name() const = 0;
+    // Optional function that allows grouping operations of the same kind. E.x.
+    // on XLA:CPU this is the id of the thunk kind, and is used for color coding
+    // graph visualization.
+    virtual int64_t op_type_id() const { return 0; };
     virtual absl::Span<const BufferUse> BufferUses() const = 0;
     virtual absl::Span<const ResourceUse> ResourceUses() const = 0;
 

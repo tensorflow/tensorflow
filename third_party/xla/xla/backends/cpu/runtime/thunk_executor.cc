@@ -77,10 +77,12 @@ class ThunkOperation : public ExecutionGraph::Operation {
   explicit ThunkOperation(Thunk* thunk)
       : name_(absl::StrFormat("op: %s (kind: %v)", thunk->info().op_name,
                               thunk->kind())),
+        op_type_id_(static_cast<int64_t>(thunk->kind())),
         buffer_uses_(thunk->buffer_uses()),
         resource_uses_(thunk->resource_uses()) {}
 
   absl::string_view name() const final { return name_; }
+  int64_t op_type_id() const final { return op_type_id_; }
   absl::Span<const BufferUse> BufferUses() const final { return buffer_uses_; }
   absl::Span<const ResourceUse> ResourceUses() const final {
     return resource_uses_;
@@ -88,6 +90,7 @@ class ThunkOperation : public ExecutionGraph::Operation {
 
  private:
   std::string name_;
+  int64_t op_type_id_;
   Thunk::BufferUses buffer_uses_;
   Thunk::ResourceUses resource_uses_;
 };
