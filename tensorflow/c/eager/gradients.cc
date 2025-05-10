@@ -103,14 +103,14 @@ class TapeVSpace
   // Consumes references to the tensors in the gradient_tensors list and returns
   // a tensor with the result.
   AbstractTensorHandle* AggregateGradients(
-      gtl::ArraySlice<AbstractTensorHandle*> gradient_tensors) const override;
+      absl::Span<AbstractTensorHandle* const> gradient_tensors) const override;
 
   // Calls the passed-in backward function.
   // op_type is the op's name provided in RecordOperation.
   absl::Status CallBackwardFunction(
       const string& op_type, GradientFunction* gradient_function,
       const std::vector<int64_t>& unneeded_gradients,
-      gtl::ArraySlice<AbstractTensorHandle*> output_gradients,
+      absl::Span<AbstractTensorHandle* const> output_gradients,
       absl::Span<AbstractTensorHandle*> result) const override;
 
   // Builds a tensor filled with ones with the same shape and dtype as `t`.
@@ -145,7 +145,7 @@ int64_t TapeVSpace::NumElements(AbstractTensorHandle* tensor) const {
 // Consumes references to the tensors in the gradient_tensors list and returns
 // a tensor with the result.
 AbstractTensorHandle* TapeVSpace::AggregateGradients(
-    gtl::ArraySlice<AbstractTensorHandle*> gradient_tensors) const {
+    absl::Span<AbstractTensorHandle* const> gradient_tensors) const {
   if (gradient_tensors.size() == 1) {
     return gradient_tensors[0];
   }
@@ -174,7 +174,7 @@ AbstractTensorHandle* TapeVSpace::AggregateGradients(
 absl::Status TapeVSpace::CallBackwardFunction(
     const string& op_type, GradientFunction* gradient_function,
     const std::vector<int64_t>& unneeded_gradients,
-    gtl::ArraySlice<AbstractTensorHandle*> output_gradients,
+    absl::Span<AbstractTensorHandle* const> output_gradients,
     absl::Span<AbstractTensorHandle*> result) const {
   if (gradient_function == nullptr) {
     return errors::InvalidArgument(
@@ -454,7 +454,7 @@ absl::Status SetAttrShapeList(AbstractOperation* op_, const char* attr_name,
     }
   }
   forward_op_->attrs.Set(
-      attr_name, gtl::ArraySlice<TensorShapeProto>(proto.get(), num_values));
+      attr_name, absl::Span<const TensorShapeProto>(proto.get(), num_values));
   return op_->SetAttrShapeList(attr_name, dims, num_dims, num_values);
 }
 absl::Status SetAttrFunctionList(AbstractOperation* op_, const char* attr_name,
