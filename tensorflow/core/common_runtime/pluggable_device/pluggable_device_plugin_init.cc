@@ -67,7 +67,6 @@ static absl::Status InitDeviceModule(stream_executor::SEInitPluginFn init_fn) {
   return absl::OkStatus();
 }
 
-typedef const PJRT_Api* (*PjrtApiInitFn)();
 static absl::Status InitNextPluggableDeviceModule(TFNPDInitPluginFn init_fn,
                                                   PjrtApiInitFn init_pjrt_fn) {
   if (init_fn == nullptr) {
@@ -122,7 +121,6 @@ static absl::Status InitNextPluggableDeviceModule(TFNPDInitPluginFn init_fn,
   return absl::OkStatus();
 }
 
-typedef void (*TFKernelInitFn)();
 static absl::Status InitKernelModule(TFKernelInitFn init_fn) {
   if (init_fn == nullptr) {
     VLOG(1) << "Kernel module init function not found.";
@@ -178,21 +176,24 @@ absl::Status RegisterPluggableDevicePlugin(void* dso_handle) {
 
   // Step 1 Find InitDevice functions.
   PluggableDeviceInit_Api api;
+  TF_RETURN_IF_ERROR(FindSymbol(dso_handle, "SE_InitPlugin",
+                                reinterpret_cast<void**>(&api.init_plugin_fn)));
   TF_RETURN_IF_ERROR(
-      FindSymbol(dso_handle, "SE_InitPlugin", &api.init_plugin_fn));
+      FindSymbol(dso_handle, "TFNPD_InitPlugin",
+                 reinterpret_cast<void**>(&api.init_np_plugin_fn)));
   TF_RETURN_IF_ERROR(
-      FindSymbol(dso_handle, "TFNPD_InitPlugin", &api.init_np_plugin_fn));
-  TF_RETURN_IF_ERROR(
-      FindSymbol(dso_handle, "GetPjrtApi", &api.get_pjrt_api_fn));
+      FindSymbol(dso_handle, "GetPjrtApi",
+                 reinterpret_cast<void**>(&api.get_pjrt_api_fn)));
   // Step 2 Find InitKernel function.
-  TF_RETURN_IF_ERROR(
-      FindSymbol(dso_handle, "TF_InitKernel", &api.init_kernel_fn));
+  TF_RETURN_IF_ERROR(FindSymbol(dso_handle, "TF_InitKernel",
+                                reinterpret_cast<void**>(&api.init_kernel_fn)));
   // Step 3 Find InitGraph function.
-  TF_RETURN_IF_ERROR(
-      FindSymbol(dso_handle, "TF_InitGraph", &api.init_graph_fn));
+  TF_RETURN_IF_ERROR(FindSymbol(dso_handle, "TF_InitGraph",
+                                reinterpret_cast<void**>(&api.init_graph_fn)));
   // Step 4 Find InitProfiler function.
   TF_RETURN_IF_ERROR(
-      FindSymbol(dso_handle, "TF_InitProfiler", &api.init_profiler_fn));
+      FindSymbol(dso_handle, "TF_InitProfiler",
+                 reinterpret_cast<void**>(&api.init_profiler_fn)));
   return RegisterPluggableDevicePlugin(&api);
 }
 
@@ -205,23 +206,18 @@ absl::Status RegisterPluggableDevicePlugin(const PluggableDeviceInit_Api* api) {
   // All modules are optional. Only return an error when a module is found but
   // has issues in loading / initializing.
   // Step 1 Init Device Module.
-  TF_RETURN_IF_ERROR(InitDeviceModule(
-      reinterpret_cast<stream_executor::SEInitPluginFn>(api->init_plugin_fn)));
-  TF_RETURN_IF_ERROR(InitNextPluggableDeviceModule(
-      reinterpret_cast<TFNPDInitPluginFn>(api->init_np_plugin_fn),
-      reinterpret_cast<PjrtApiInitFn>(api->get_pjrt_api_fn)));
+  TF_RETURN_IF_ERROR(InitDeviceModule(api->init_plugin_fn));
+  TF_RETURN_IF_ERROR(InitNextPluggableDeviceModule(api->init_np_plugin_fn,
+                                                   api->get_pjrt_api_fn));
 
   // Step 2 Init Kernel Module.
-  TF_RETURN_IF_ERROR(
-      InitKernelModule(reinterpret_cast<TFKernelInitFn>(api->init_kernel_fn)));
+  TF_RETURN_IF_ERROR(InitKernelModule(api->init_kernel_fn));
 
   // Step 3 Init Graph Module.
-  TF_RETURN_IF_ERROR(InitGraphModule(
-      reinterpret_cast<grappler::TFInitGraphPluginFn>(api->init_graph_fn)));
+  TF_RETURN_IF_ERROR(InitGraphModule(api->init_graph_fn));
 
   // Step 4 Init Profiler Module.
-  TF_RETURN_IF_ERROR(InitProfilerModule(
-      reinterpret_cast<profiler::TFInitProfilerFn>(api->init_profiler_fn)));
+  TF_RETURN_IF_ERROR(InitProfilerModule(api->init_profiler_fn));
 
   return absl::OkStatus();
 }

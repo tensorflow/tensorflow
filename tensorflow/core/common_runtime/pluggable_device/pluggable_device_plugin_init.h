@@ -18,15 +18,44 @@ limitations under the License.
 
 #include "tensorflow/core/platform/status.h"
 
+// Forward declarations to avoid dependency.
+struct PJRT_Api;
+struct SE_PlatformRegistrationParams;
+struct TFNPD_Api;
+struct TFNPD_PluginParams;
+struct TF_ProfilerRegistrationParams;
+struct TP_OptimizerRegistrationParams;
+struct TSL_Status;
+
+namespace stream_executor {
+using SEInitPluginFn = void (*)(SE_PlatformRegistrationParams* const,
+                                TSL_Status* const);
+}  // namespace stream_executor
+
 namespace tensorflow {
 
+namespace grappler {
+using TFInitGraphPluginFn = void (*)(TP_OptimizerRegistrationParams* const,
+                                     TSL_Status* const);
+}  // namespace grappler
+
+namespace profiler {
+using TFInitProfilerFn = void (*)(TF_ProfilerRegistrationParams* const,
+                                  TSL_Status* const);
+}  // namespace profiler
+
+using PjrtApiInitFn = const PJRT_Api* (*)();
+using TFKernelInitFn = void (*)();
+using TFNPDInitPluginFn = const TFNPD_Api* (*)(TFNPD_PluginParams*,
+                                               TSL_Status*);
+
 struct PluggableDeviceInit_Api {
-  void* init_plugin_fn = nullptr;
-  void* init_np_plugin_fn = nullptr;
-  void* get_pjrt_api_fn = nullptr;
-  void* init_kernel_fn = nullptr;
-  void* init_graph_fn = nullptr;
-  void* init_profiler_fn = nullptr;
+  ::stream_executor::SEInitPluginFn init_plugin_fn = nullptr;
+  TFNPDInitPluginFn init_np_plugin_fn = nullptr;
+  PjrtApiInitFn get_pjrt_api_fn = nullptr;
+  TFKernelInitFn init_kernel_fn = nullptr;
+  grappler::TFInitGraphPluginFn init_graph_fn = nullptr;
+  profiler::TFInitProfilerFn init_profiler_fn = nullptr;
 };
 
 absl::Status RegisterPluggableDevicePlugin(void* dso_handle);
