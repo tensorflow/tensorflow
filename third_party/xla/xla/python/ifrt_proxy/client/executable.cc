@@ -308,15 +308,19 @@ LoadedExecutable::LoadedExecutable(
         }
 
         auto parse_layouts =
-            [](const LoadedExecutableMetadataResponse::LayoutList& list) {
-              std::vector<std::shared_ptr<const xla::PjRtLayout>> layouts;
-              layouts.reserve(list.layouts_size());
-              for (const auto& layout : list.layouts()) {
-                layouts.push_back(std::make_shared<xla::PjRtLayout>(
-                    xla::Layout::CreateFromProto(layout)));
-              }
-              return layouts;
-            };
+            [](const LoadedExecutableMetadataResponse::LayoutList& list)
+            -> absl::StatusOr<
+                std::vector<std::shared_ptr<const xla::PjRtLayout>>> {
+          std::vector<std::shared_ptr<const xla::PjRtLayout>> layouts;
+          layouts.reserve(list.layouts_size());
+          for (const auto& layout_proto : list.layouts()) {
+            TF_ASSIGN_OR_RETURN(xla::Layout layout,
+                                xla::Layout::FromProto(layout_proto));
+            layouts.push_back(
+                std::make_shared<xla::PjRtLayout>(std::move(layout)));
+          }
+          return layouts;
+        };
 
         if (response.value()->has_parameter_layouts_list()) {
           info->parameter_layouts =
