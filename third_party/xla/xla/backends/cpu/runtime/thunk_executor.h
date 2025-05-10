@@ -67,6 +67,10 @@ class ThunkExecutor {
 
     // The type of a queue for ready thunks.
     ReadyQueueType ready_queue_type = ReadyQueueType::kFifo;
+
+    // Flag denoting whether to create a graphviz visualization of the execution
+    // graph.
+    bool maybe_publish_graph_visualization = false;
   };
 
   static absl::StatusOr<ThunkExecutor> Create(ThunkSequence thunk_sequence,

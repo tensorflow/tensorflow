@@ -139,7 +139,7 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
 
   VLOG(6) << "ThunkExecutor execution graph:\n" << ToString();
 
-  if (VLOG_IS_ON(8)) {
+  if (VLOG_IS_ON(8) && options.maybe_publish_graph_visualization) {
     ExecutionGraphRenderer* renderer = GetExecutionGraphRenderer();
 
     if (renderer == nullptr) {
