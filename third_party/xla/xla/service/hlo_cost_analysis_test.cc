@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/hlo_cost_analysis.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
@@ -568,6 +570,32 @@ TEST_F(HloCostAnalysisTest, ReduceWindowVariadic) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
+
+  /* The hlo text are below:
+  HloModule reduce_window_variadic.21,
+  entry_computation_layout={(f32[10,20]{1,0}, f32[10,20]{1,0})->(f32[2,4]{1,0},
+  f32[2,4]{1,0})}
+
+  reduce_window_variadic.12 {
+    x0.13 = f32[] parameter(0)
+    y0.15 = f32[] parameter(2)
+    minimum.17 = f32[] minimum(x0.13, y0.15)
+    x1.14 = f32[] parameter(1)
+    y1.16 = f32[] parameter(3)
+    minimum.18 = f32[] minimum(x1.14, y1.16)
+    ROOT tuple.19 = (f32[], f32[]) tuple(minimum.17, minimum.18)
+  }
+
+  ENTRY reduce_window_variadic.21 {
+    input1.9 = f32[10,20]{1,0} parameter(0)
+    input2.10 = f32[10,20]{1,0} parameter(1)
+    constant.11 = f32[] constant(0)
+    ROOT reduce-window.20 = (f32[2,4]{1,0}, f32[2,4]{1,0})
+  reduce-window(input1.9, input2.10, constant.11, constant.11), window={size=4x5
+  stride=4x5}, to_apply=reduce_window_variadic.12
+  }
+  */
+
   HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
@@ -575,12 +603,15 @@ TEST_F(HloCostAnalysisTest, ReduceWindowVariadic) {
   // Each of [2x4] output elements are generated from reducing [4x5] elements.
   EXPECT_EQ(analysis.flop_count(), 2 * 4 * 2 * (4 * 5 - 1));
 
-  EXPECT_EQ(analysis.bytes_accessed(), sizeof(float) * (10 * 20 * 2 + 2 * 3));
+  // 2 array input + 2 scalar input + + 2 array output
+  EXPECT_EQ(analysis.bytes_accessed(),
+            sizeof(float) * (10 * 20 * 2 + 2 + 2 * 4 * 2));
 
   HloInstruction* root = hlo_module->entry_computation()->root_instruction();
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(float) * 10 * 20);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * 10 * 20);
-  EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 4);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root, {0}), sizeof(float) * 2 * 4);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root, {1}), sizeof(float) * 2 * 4);
 }
 
 TEST_F(HloCostAnalysisTest, SelectAndScatter) {
@@ -1217,6 +1248,37 @@ ENTRY entry {
             sizeof(float) * 2 * 2 * 2);
   EXPECT_EQ(fusion_analysis.output_bytes_accessed(*fusion),
             sizeof(float) * 2 * 2 * 2);
+}
+
+TEST_F(FusionCostAnalysis, TupleOutputBytesAccessedCublasGemm) {
+  absl::string_view hlo_string = R"(
+HloModule gemm_fusion_dot.1, is_scheduled=true, entry_computation_layout={(bf16[1,32768,1,256]{3,2,1,0}, bf16[2048,6,256]{2,1,0})->bf16[32768,2048,6]{2,1,0}}
+
+ENTRY entry_computation {
+  multiply.14474 = bf16[2048,6,256]{2,1,0} parameter(1)
+  dynamic-slice.4202 = bf16[1,32768,1,256]{3,2,1,0} parameter(0)
+  bitcast.1 = bf16[256,12288]{0,1} bitcast(multiply.14474)
+  bitcast.0 = bf16[32768,256]{1,0} bitcast(dynamic-slice.4202)
+  custom-call.1 = (bf16[32768,12288]{1,0}, s8[23068672]{0}) custom-call(bitcast.0, bitcast.1), custom_call_target="__cublas$gemm"
+  get-tuple-element = bf16[32768,12288]{1,0} get-tuple-element(custom-call.1), index=0
+  bitcast.2 = bf16[1,1,1,32768,2048,6]{5,4,3,2,1,0} bitcast(get-tuple-element)
+  ROOT bitcast.3 = bf16[32768,2048,6]{2,1,0} bitcast(bitcast.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloCostAnalysis fusion_analysis;
+  ASSERT_IS_OK(module->entry_computation()->Accept(&fusion_analysis));
+
+  static constexpr int64_t kBf16Size = 2;
+  HloInstruction* instr =
+      module->entry_computation()->GetInstructionWithName("custom-call.1");
+  // Check the cublas gemm custom call output bytes accessed.
+  EXPECT_EQ(fusion_analysis.output_bytes_accessed(*instr, {0}),
+            32768 * 12288 * kBf16Size);
+  EXPECT_EQ(fusion_analysis.output_bytes_accessed(*instr, {1}),
+            23068672 * sizeof(int8_t));
 }
 
 TEST_F(FusionCostAnalysis, IgnoreUnusedParameterShape) {

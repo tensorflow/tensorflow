@@ -65,7 +65,7 @@ ENTRY entry {
   EXPECT_EQ(analysis_.operand_bytes_accessed(*conv1, 0), op0_size);
   EXPECT_EQ(analysis_.operand_bytes_accessed(*conv1, 1), op1_size);
   EXPECT_EQ(analysis_.operand_bytes_accessed(*conv1, 2), op2_size);
-  EXPECT_EQ(analysis_.output_bytes_accessed(*conv1), out_size);
+  EXPECT_EQ(analysis_.output_bytes_accessed(*conv1, {0}), out_size);
   EXPECT_EQ(analysis_.bytes_accessed(*conv1),
             op0_size + op1_size + op2_size + out_size);
   EXPECT_EQ(analysis_.flop_count(*conv1), 159694848);
