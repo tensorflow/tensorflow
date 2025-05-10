@@ -70,7 +70,7 @@ absl::StatusOr<Literal> PackedLiteralReader::Read(const Shape& shape,
   char* data = absl::bit_cast<char*>(field.data());
   uint64_t bytes = elements * sizeof(float);
   absl::string_view sp;
-  auto s = file_->Read(offset_, bytes, &sp, data);
+  auto s = file_->Read(offset_, sp, absl::MakeSpan(data, bytes));
   offset_ += sp.size();
   if (!s.ok()) {
     return s;
@@ -91,7 +91,8 @@ bool PackedLiteralReader::IsExhausted() const {
   // exhausted the data.
   char single_byte[1];
   absl::string_view sp;
-  auto s = file_->Read(offset_, sizeof(single_byte), &sp, single_byte);
+  auto s = file_->Read(offset_, sp,
+                       absl::MakeSpan(single_byte, sizeof(single_byte)));
   return !s.ok();
 }
 
