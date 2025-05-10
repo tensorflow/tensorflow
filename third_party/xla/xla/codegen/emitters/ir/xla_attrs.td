@@ -84,4 +84,16 @@ def XLA_ExtraBackendOptionsAttr
                 "mlir::StringAttr"> {
 }
 
+def Workgroup_Dimension : I32EnumAttr<"WorkgroupDimension",
+    "a dimension, either 'x', 'y', or 'z'",
+    [
+      I32EnumAttrCase<"x", 0>,
+      I32EnumAttrCase<"y", 1>,
+      I32EnumAttrCase<"z", 2>
+    ]>{
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::xla";
+}
+def Workgroup_DimensionAttr : EnumAttr<XlaDialect, Workgroup_Dimension, "dim">;
+
 #endif // XLA_CODEGEN_EMITTERS_IR_XLA_ATTRS

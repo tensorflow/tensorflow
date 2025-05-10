@@ -15,16 +15,20 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/emitters/transforms/xla_cpu_rewrite_patterns.h"
 
+#include <cstdint>
+
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_types.h"
 
@@ -117,9 +121,9 @@ struct LowerThreadId : public mlir::OpRewritePattern<ThreadIdOp> {
         mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto tid_ptr = b.create<mlir::LLVM::LoadOp>(ptr, tid_gep);
 
-    // Load 'x'.
+    int32_t dim = static_cast<int32_t>(op.getDimension());
     auto thread_x_get = b.create<mlir::LLVM::GEPOp>(
-        ptr, kernel_dim, tid_ptr, mlir::LLVM::GEPArg(0),
+        ptr, kernel_dim, tid_ptr, mlir::LLVM::GEPArg(dim),
         mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto thread_id = b.create<mlir::LLVM::LoadOp>(i64_ty, thread_x_get);
 
