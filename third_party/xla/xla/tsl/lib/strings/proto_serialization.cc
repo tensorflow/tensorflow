@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tsl/lib/strings/proto_serialization.h"
 
+#include <climits>
 #include <cstring>
 #include <memory>
 
@@ -60,7 +61,9 @@ class DeterministicSerializer {
 bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
                                     string* result) {
   const size_t size = msg.ByteSizeLong();
-  DCHECK_LE(size, static_cast<size_t>(INT_MAX));
+  if (size > static_cast<size_t>(INT_MAX)) {
+    return false;
+  }
   *result = string(size, '\0');
   return SerializeToBufferDeterministic(msg, const_cast<char*>(result->data()),
                                         result->size());
@@ -68,7 +71,12 @@ bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
 
 bool SerializeToBufferDeterministic(const protobuf::MessageLite& msg,
                                     char* buffer, size_t size) {
-  DCHECK(msg.ByteSizeLong() == size && size <= static_cast<size_t>(INT_MAX));
+  if (msg.ByteSizeLong() != size) {
+    return false;
+  }
+  if (size > static_cast<size_t>(INT_MAX)) {
+    return false;
+  }
   protobuf::io::ArrayOutputStream array_stream(buffer, size);
   protobuf::io::CodedOutputStream output_stream(&array_stream);
   output_stream.SetSerializationDeterministic(true);
