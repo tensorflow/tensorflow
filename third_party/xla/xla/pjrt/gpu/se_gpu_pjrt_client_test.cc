@@ -686,6 +686,30 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncWithDifferentMajorToMinor) {
             literal->Relayout(src_literal.shape().layout()).data<int32_t>());
 }
 
+TEST(StreamExecutorGpuClientTest, ToLiteralAsyncToken) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+
+  xla::Literal literal = xla::LiteralUtil::CreateToken();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostLiteral(
+          literal, client->addressable_devices()[0]->memory_spaces()[0]));
+  TF_ASSERT_OK(buffer->GetReadyFuture().Await());
+
+  absl::Notification n;
+
+  buffer->ToLiteral(&literal).OnReady([&](absl::Status s) {
+    TF_ASSERT_OK(s);
+    n.Notify();
+  });
+  buffer.reset();
+
+  n.WaitForNotification();
+}
+
 TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));

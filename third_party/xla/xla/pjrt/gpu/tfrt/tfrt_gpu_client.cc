@@ -2761,40 +2761,43 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   bool unpack_subbyte_types =
       client_->xla_client()->backend().transfer_manager()->PackSubbyteTypes();
 
-  xla::Layout literal_layout;
-  if (literal->shape().has_layout()) {
-    literal_layout = literal->shape().layout();
-  } else {
-    literal_layout =
-        LayoutUtil::MakeDescendingLayout(on_device_shape().dimensions().size());
-  }
-
   std::shared_ptr<TransposePlan> transpose;
-  if (on_device_shape().layout() != literal_layout) {
-    absl::InlinedVector<int64_t, 4> byte_strides(
-        on_device_shape().dimensions().size());
-    absl::Status s =
-        ShapeUtil::ByteStrides(on_device_shape(), absl::MakeSpan(byte_strides));
-    if (!s.ok()) {
-      return PjRtFuture<>(s);
+  if (on_device_shape().IsArray()) {
+    xla::Layout literal_layout;
+    if (literal->shape().has_layout()) {
+      literal_layout = literal->shape().layout();
+    } else {
+      literal_layout = LayoutUtil::MakeDescendingLayout(
+          on_device_shape().dimensions().size());
     }
-    absl::Span<const int64_t> dims = on_device_shape().dimensions();
-    absl::InlinedVector<int64_t, 4> permutation(dims.size());
-    absl::c_reverse_copy(literal_layout.minor_to_major(), permutation.begin());
-    TransposePlan::Options options;
-    options.elem_size_in_bytes =
-        primitive_util::ByteWidth(on_device_shape().element_type());
-    options.dims = on_device_shape().dimensions();
-    options.permutation = permutation;
-    options.input_layout = TransposePlan::Striding{byte_strides};
-    {
-      absl::MutexLock lock(&client_->transpose_mu_);
-      absl::StatusOr<std::shared_ptr<TransposePlan>> t =
-          client_->transpose_cache_.GetOrCreate(options);
-      if (!t.ok()) {
-        return PjRtFuture<>(t.status());
+
+    if (on_device_shape().layout() != literal_layout) {
+      absl::InlinedVector<int64_t, 4> byte_strides(
+          on_device_shape().dimensions().size());
+      absl::Status s = ShapeUtil::ByteStrides(on_device_shape(),
+                                              absl::MakeSpan(byte_strides));
+      if (!s.ok()) {
+        return PjRtFuture<>(s);
       }
-      transpose = *std::move(t);
+      absl::Span<const int64_t> dims = on_device_shape().dimensions();
+      absl::InlinedVector<int64_t, 4> permutation(dims.size());
+      absl::c_reverse_copy(literal_layout.minor_to_major(),
+                           permutation.begin());
+      TransposePlan::Options options;
+      options.elem_size_in_bytes =
+          primitive_util::ByteWidth(on_device_shape().element_type());
+      options.dims = on_device_shape().dimensions();
+      options.permutation = permutation;
+      options.input_layout = TransposePlan::Striding{byte_strides};
+      {
+        absl::MutexLock lock(&client_->transpose_mu_);
+        absl::StatusOr<std::shared_ptr<TransposePlan>> t =
+            client_->transpose_cache_.GetOrCreate(options);
+        if (!t.ok()) {
+          return PjRtFuture<>(t.status());
+        }
+        transpose = *std::move(t);
+      }
     }
   }
 
@@ -2843,10 +2846,10 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
         return;
       }
     }
-    int64_t unpacked_size = ShapeUtil::ElementsIn(on_device_shape);
     void* buffer;
     if (should_unpack) {
       tsl::profiler::TraceMe traceme("D2H staging copy");
+      int64_t unpacked_size = ShapeUtil::ElementsIn(on_device_shape);
       if (transpose != nullptr) {
         buffer = tsl::port::AlignedMalloc(unpacked_size,
                                           tsl::Allocator::kAllocatorAlignment);
