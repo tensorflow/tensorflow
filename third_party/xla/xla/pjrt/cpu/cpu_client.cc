@@ -248,9 +248,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
     devices.push_back(std::move(device));
   }
 
-  return std::unique_ptr<PjRtClient>(std::make_unique<TfrtCpuClient>(
+  return std::unique_ptr<PjRtClient>(new TfrtCpuClient(
       options.process_id, std::move(devices), std::move(options.collectives),
-      num_threads, options.asynchronous,
+      num_threads, options.asynchronous, options.legacy_memory_space_behavior,
       std::move(options.customize_hlo_module_config)));
 }
 
@@ -285,7 +285,7 @@ static std::vector<CpuTopology::CpuDevice> GetCpuDevices(
 TfrtCpuClient::TfrtCpuClient(
     int process_index, std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
     std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
-    bool asynchronous,
+    bool asynchronous, bool legacy_memory_space_behavior,
     std::function<void(HloModuleConfig&)> customize_hlo_module_config)
     : process_index_(process_index),
       owned_devices_(std::move(devices)),
@@ -328,17 +328,38 @@ TfrtCpuClient::TfrtCpuClient(
   for (int idx = 0; idx < addressable_devices_.size(); ++idx) {
     auto* const device = addressable_devices_[idx];
     CHECK(device != nullptr) << idx;
+    auto* cpu_device = tensorflow::down_cast<TfrtCpuDevice*>(device);
 
-    // Use the device id to construct a globally unique memory space id. We
-    // do not promise that memory space ids and device ids are the same.
+    // Use the device id to construct a globally unique memory space id.
     const int id = device->id();
-    auto memory_space = std::make_unique<UnpinnedHostMemorySpace>(id, device);
-    tensorflow::down_cast<TfrtCpuDevice*>(device)->AttachMemorySpace(
-        memory_space.get());
-    memory_spaces_.push_back(memory_space.get());
-    owned_memory_spaces_.push_back(std::move(memory_space));
-  }
 
+    if (legacy_memory_space_behavior) {
+      auto memory_space = std::make_unique<UnpinnedHostMemorySpace>(id, device);
+      cpu_device->AttachMemorySpace(memory_space.get());
+      memory_spaces_.push_back(memory_space.get());
+      owned_memory_spaces_.push_back(std::move(memory_space));
+    } else {
+      // The first attached memory space is returned as the default by
+      // TfrtCpuDevice, so attach the device memory space first.
+      auto cpu_device_memory_space =
+          std::make_unique<CpuDeviceMemorySpace>(id * 3 + 0, device);
+      cpu_device->AttachMemorySpace(cpu_device_memory_space.get());
+      memory_spaces_.push_back(cpu_device_memory_space.get());
+      owned_memory_spaces_.push_back(std::move(cpu_device_memory_space));
+
+      auto unpinned_memory_space =
+          std::make_unique<UnpinnedHostMemorySpace>(id * 3 + 1, device);
+      cpu_device->AttachMemorySpace(unpinned_memory_space.get());
+      memory_spaces_.push_back(unpinned_memory_space.get());
+      owned_memory_spaces_.push_back(std::move(unpinned_memory_space));
+
+      auto pinned_memory_space =
+          std::make_unique<PinnedHostMemorySpace>(id * 3 + 2, device);
+      cpu_device->AttachMemorySpace(pinned_memory_space.get());
+      memory_spaces_.push_back(pinned_memory_space.get());
+      owned_memory_spaces_.push_back(std::move(pinned_memory_space));
+    }
+  }
   VLOG(1) << "TfrtCpuClient created.";
 }
 
