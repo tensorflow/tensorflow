@@ -158,3 +158,28 @@ func.func @test_backend_kind(%arg0: f32) attributes { xla.backend_kind = #xla.ba
 }
 // CHECK:      @test_backend_kind
 // CHECK-SAME: #xla.backend_kind<tpu>
+
+// -----
+
+func.func @forall_op(%input: tensor<1024x32xf32>) -> (tensor<1024x32xf32>) {
+  %double_elem = xla.forall (%i, %j) in (1024, 32) with (%captured_input = %input) -> tensor<1024x32xf32> {
+    %t = tensor.extract %captured_input[%i, %j] : tensor<1024x32xf32>
+    %add = arith.addf %t, %t : f32
+    %result = tensor.insert %add into %captured_input[%i, %j] : tensor<1024x32xf32>
+    xla.yield %result : tensor<1024x32xf32>
+  }
+  func.return %double_elem : tensor<1024x32xf32>
+}
+// CHECK: [[FORALL:.*]] = xla.forall ([[IDX_0:.*]], [[IDX_1:.*]]) in (1024, 32) with ([[CAPTURED_OUTPUT:.*]] = [[CAPTURED_ARG:.*]]) -> tensor<1024x32xf32>
+
+// -----
+
+func.func @workgroup_id_op() -> (index, index, index) {
+  %workgroup_id_x = xla.workgroup_id x {xla.range = [0 : index, 1023 : index]}
+  %workgroup_id_y = xla.workgroup_id y
+  %workgroup_id_z = xla.workgroup_id z
+  func.return %workgroup_id_x, %workgroup_id_y, %workgroup_id_z : index, index, index
+}
+// CHECK: [[WORKGROUP_ID_X:.*]] = xla.workgroup_id x {xla.range = [0 : index, 1023 : index]}
+// CHECK: [[WORKGROUP_ID_Y:.*]] = xla.workgroup_id y
+// CHECK: [[WORKGROUP_ID_Z:.*]] = xla.workgroup_id z
