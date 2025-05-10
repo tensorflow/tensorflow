@@ -588,6 +588,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/service:call_graph",
         "//xla/service:collective_ops_utils",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:tuple_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
