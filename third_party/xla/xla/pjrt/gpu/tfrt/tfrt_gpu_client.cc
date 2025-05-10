@@ -472,10 +472,14 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
       TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
           stream, literal, shaped_buffer, transfer_metadata_ptr));
 
-      TF_CHECK_OK(stream->BlockHostUntilDone())
-          << "Failed to block host until done";
+      auto status = stream->DoHostCallback(
+          [buffer_index, on_done = std::move(on_done), this]() mutable {
+            CleanUp(buffer_index, true, std::move(on_done));
+          });
 
-      CleanUp(buffer_index, /*is_last_transfer=*/true, std::move(on_done));
+      if (!status.ok()) {
+        LOG(ERROR) << "Failed to do host callback for transfer_h2d";
+      }
     };
     // Enqueue the transfer to the h2d thread.
     h2d_thread_->Schedule(std::move(transfer_h2d));
@@ -548,6 +552,11 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
         [transfer_size, staging_buffer = std::move(staging_buffer), data,
          sub_buffer = std::move(sub_buffer), buffer_index, is_last_transfer,
          on_done = std::move(on_done), this]() mutable {
+          tsl::profiler::TraceMe traceme(
+              "TfrtGpuAsyncHostToDeviceTransferManager::"
+              "TransferRawDataToSubBuffer::"
+              "copy_to_gpu");
+
           if (transfer_size != 0) {
             if (staging_buffer != nullptr) {
               std::memcpy(staging_buffer.get(), data, transfer_size);
@@ -559,10 +568,19 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
                 &sub_buffer, staging_buffer ? staging_buffer.get() : data,
                 transfer_size))
                 << "Failed to copy data to GPU";
-            auto status = stream->BlockHostUntilDone();
-            TF_CHECK_OK(status) << "Failed to block host until done";
+
+            auto status = stream->DoHostCallback(
+                [buffer_index, is_last_transfer, on_done = std::move(on_done),
+                 this]() mutable {
+                  CleanUp(buffer_index, is_last_transfer, std::move(on_done));
+                });
+
+            if (!status.ok()) {
+              LOG(ERROR) << "Failed to do host callback for copy_to_gpu";
+            }
+          } else {
+            CleanUp(buffer_index, is_last_transfer, std::move(on_done));
           }
-          CleanUp(buffer_index, is_last_transfer, std::move(on_done));
         };
     // Enqueue the transfer to the h2d thread.
     h2d_thread_->Schedule(std::move(copy_to_gpu));
@@ -597,6 +615,9 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
   void CleanUp(int buffer_index, bool is_last_transfer,
                absl::AnyInvocable<void() &&> on_done) {
     {
+      tsl::profiler::TraceMe traceme(
+          "TfrtGpuAsyncHostToDeviceTransferManager::CleanUp");
+
       absl::MutexLock l(&mu_);
 
       CHECK_GT(transfers_in_flight_, 0);
