@@ -986,9 +986,8 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
                               std::numeric_limits<int>::max()),
       last_collective_launch_event_(
           tsl::MakeAvailableAsyncValueRef<GpuEvent>()),
-      description_(options.id, options.process_index, options.platform_version),
-      max_inflight_computations_semaphore_(
-          /*capacity=*/options.max_inflight_computations) {
+      description_(options.id, options.process_index,
+                   options.platform_version) {
   std::array<int, 1> coords = {local_device_id_.value()};
   description_.SetCoords(coords);
   std::vector<int64_t> v_coords(description_.coords().begin(),
@@ -1130,20 +1129,16 @@ se::DeviceMemoryAllocator* TfrtGpuDevice::allocator() const {
   return tensorflow::down_cast<TfrtGpuClient*>(client())->allocator();
 }
 
-void TfrtGpuDevice::SetLastCollectiveLaunchEvent(
+tsl::AsyncValueRef<GpuEvent> TfrtGpuDevice::SetLastCollectiveLaunchEvent(
     tsl::AsyncValueRef<GpuEvent> event) {
   absl::MutexLock lock(&mu_);
   VLOG(2) << "SetLastCollectiveLaunchEvent: IsAvailable: "
-          << event.IsAvailable() << "; pointer: " << event.GetAsyncValue();
-  last_collective_launch_event_ = std::move(event);
-}
-
-tsl::AsyncValueRef<GpuEvent> TfrtGpuDevice::GetLastCollectiveLaunchEvent() {
-  absl::MutexLock lock(&mu_);
-  VLOG(2) << "GetLastCollectiveLaunchEvent: IsAvailable: "
+          << event.IsAvailable() << "; pointer: " << event.GetAsyncValue()
+          << "Old Event: IsAvailable: "
           << last_collective_launch_event_.IsAvailable()
           << "; pointer: " << last_collective_launch_event_.GetAsyncValue();
-  return last_collective_launch_event_.CopyRef();
+  std::swap(last_collective_launch_event_, event);
+  return event;
 }
 
 namespace {
@@ -2377,7 +2372,6 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       options.id = device_proto.global_device_id();
       options.process_index = node.node_id();
       options.slice_index = device_proto.slice_index();
-      options.max_inflight_computations = 1;
       options.platform_version = device_proto.name();
       options.device_vendor = device_proto.vendor();
       options.compute_capability = device_proto.compute_capability();
@@ -3316,8 +3310,7 @@ TfrtGpuExecutable::TfrtGpuExecutable(
 
 absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
-    const RunId& run_id, const ExecuteOptions& options,
-    tsl::AsyncValueRef<GpuEvent> last_collective_launch_event, bool fill_future,
+    const RunId& run_id, const ExecuteOptions& options, bool fill_future,
     TfrtGpuDevice* device) {
   tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::ExecuteHelper",
                                           tsl::profiler::ContextType::kPjRt,
@@ -3472,14 +3465,17 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     }
   }
 
-  // Schedule only one collective at a time.
-  bool is_a_collective_launch = !!last_collective_launch_event;
-  if (is_a_collective_launch) {
-    VLOG(2) << "last_collective_launch_event: AsyncValue pointer: "
-            << last_collective_launch_event.GetAsyncValue()
-            << "; IsAvailable: " << last_collective_launch_event.IsAvailable();
-    input_deps.push_back(std::move(last_collective_launch_event));
-    device->SetLastCollectiveLaunchEvent(scheduled_event);
+  {
+    // Schedule only one collective at a time.
+    tsl::AsyncValueRef<GpuEvent> ordering_event =
+        tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+    tsl::AsyncValueRef<GpuEvent> last_collective_launch_event =
+        device->SetLastCollectiveLaunchEvent(scheduled_event);
+    // We don't use last_collective_launch_event directly because we don't
+    // want the previous failure to be propagated to the current execution.
+    last_collective_launch_event.AndThen(
+        [event = ordering_event.CopyRef()]() { event.SetStateConcrete(); });
+    input_deps.push_back(std::move(ordering_event));
   }
 
   std::vector<tsl::AsyncValueRef<MaybeOwningGpuMemory>> output_buffers;
@@ -3541,21 +3537,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     outputs.push_back(std::move(tfrt_output_buffer));
   }
 
-  // The choice of where we wait is arbitrary; the reason for the wait is
-  // pacing to avoid problems such as memory fragmentation and running ahead
-  // too far, not for correctness. Placing it before the executable launch
-  // allows the inputs for the next executable to be fetched even if the
-  // launch is delayed.
-  VLOG(1) << "Going to get compute reservation for " << name() << ": "
-          << options.launch_id << "; replica: " << replica;
-  std::unique_ptr<Semaphore::ScopedReservation> compute_reservation;
-  {
-    tsl::profiler::TraceMe t("waiting for compute reservation");
-    compute_reservation = std::make_unique<Semaphore::ScopedReservation>(
-        device->max_inflight_computations_semaphore().ScopedAcquire(1));
-  }
-  VLOG(1) << "Got compute reservation for " << name() << ": "
-          << options.launch_id << "; replica: " << replica;
   auto ffi_context =
       options.context != nullptr ? &options.context->ffi_context() : nullptr;
 
@@ -3572,7 +3553,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        output_buffers(output_buffers), complete_event(complete_event.CopyRef()),
        scheduled_event(scheduled_event.CopyRef()),
        untuple_result(untuple_result), result_is_tuple(result_is_tuple),
-       compute_reservation(std::move(compute_reservation)),
        donation_transactions(std::move(donation_transactions)),
        parameter_shapes(on_device_executable_parameter_shapes_[executable_idx]),
        gpu_executable(std::move(gpu_executable)),
@@ -3867,7 +3847,6 @@ TfrtGpuExecutable::Execute(
 
     auto statusor = ExecuteHelper(
         argument_handles[0], replica, partition, run_id, options,
-        /*last_collective_launch_event=*/tsl::AsyncValueRef<GpuEvent>(),
         returned_futures.has_value());
 
     if (!statusor.ok()) {
@@ -3912,7 +3891,6 @@ TfrtGpuExecutable::Execute(
            &failed, &first_failure_status] {
             auto statusor = ExecuteHelper(
                 argument_handles[i], replica, partition, run_id, options,
-                gpu_device->GetLastCollectiveLaunchEvent(),
                 returned_futures.has_value());
             if (statusor.ok()) {
               wrapped_results[i] = std::move(statusor->buffers);
@@ -3976,8 +3954,6 @@ TfrtGpuExecutable::ExecuteSharded(
           ExecuteHelper(
               argument_handles, addressable_device_logical_ids_[i].replica,
               addressable_device_logical_ids_[i].partition, run_id, options,
-              tsl::down_cast<TfrtGpuDevice*>(device)
-                  ->GetLastCollectiveLaunchEvent(),
               fill_future));
       returned_future = std::move(result.future);
       return std::move(result.buffers);
@@ -4018,7 +3994,6 @@ TfrtGpuExecutable::ExecutePortable(
           argument_handles,
           /*replica=*/0,
           /*partition=*/0, run_id, options,
-          /*last_collective_launch_event=*/tsl::AsyncValueRef<GpuEvent>(),
           fill_future, tsl::down_cast<TfrtGpuDevice*>(device)));
   returned_future = std::move(result.future);
   return std::move(result.buffers);
