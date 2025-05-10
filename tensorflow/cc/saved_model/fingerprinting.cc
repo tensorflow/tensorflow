@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/fingerprinting_utils.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/regularization/simple_delete.h"
 #include "tensorflow/core/graph/regularization/util.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "tsl/platform/random.h"
 // b/291933687, b/291001524
 #if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__)
-#include "tensorflow/cc/saved_model/fingerprinting_utils.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #endif
 #include "tsl/platform/errors.h"
@@ -184,7 +184,7 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDefPb(
   // Set fingerprint field #5.
   fingerprint_def.set_checkpoint_hash(HashCheckpointIndexFile(export_dir));
   // Assign a random UUID to the fingerprint.
-  fingerprint_def.set_uuid(absl::StrFormat("%016d", tsl::random::New64()));
+  fingerprint_def.set_uuid(fingerprinting::CreateRandomUUID());
   // Set version of the fingerprint.
   VersionDef* version = fingerprint_def.mutable_version();
   version->set_producer(kFingerprintProducer);

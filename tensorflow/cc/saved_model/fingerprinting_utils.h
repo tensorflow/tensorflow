@@ -124,6 +124,9 @@ absl::StatusOr<uint64_t> HashSavedObjectGraph(
 
 }  // namespace fingerprinting_utils_internal
 
+// Returns a random UUID (128 bits random) as a string.
+std::string CreateRandomUUID();
+
 // Returns the hash of the checkpoint .index file, 0 if there is none.
 uint64_t HashCheckpointIndexFile(absl::string_view model_dir);
 

@@ -492,6 +492,7 @@ cc_library(
     ],
     deps = [
         ":constants",
+        ":fingerprinting_utils",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/graph/regularization:simple_delete",
         "//tensorflow/core/graph/regularization:util",
@@ -509,7 +510,6 @@ cc_library(
     ]) + if_android([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_windows_or_mac([
-        ":fingerprinting_utils",
         "//tensorflow/tools/proto_splitter/cc:util",
     ]),
     alwayslink = True,
@@ -550,6 +550,7 @@ cc_library(
         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
         "//tensorflow/tools/proto_splitter:merge",
         "//tensorflow/tools/proto_splitter/cc:util",
+        "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -633,6 +634,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

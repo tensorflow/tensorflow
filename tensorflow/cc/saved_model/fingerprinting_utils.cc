@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -404,6 +405,20 @@ using fingerprinting_utils_internal::HashSignatureDef;
 using fingerprinting_utils_internal::PrunedSavedModel;
 using fingerprinting_utils_internal::SerializeProto;
 
+// UINT64MAX is 18'446'744'073'709'551'615 (20 digits)
+// UINT128MAX is 340'282'366'920'938'463'463'374'607'431'768'211'455 (39 dgts)
+// After sqrt(INT64MAX) = 4'294'967'296 (4B models), it's 50% likely to be
+// duplicates in the ID space. In comparison, sqrt(UINT128MAX) = UINT64MAX,
+// meaning that we can continue generating unique IDs for a lot longer time
+// if the UUID is generated from two random UINT64s. This can be replaced by
+// random::New128() if that becomes available.
+std::string CreateRandomUUID() {
+  absl::uint128 uuid_1 = tsl::random::New64();
+  absl::uint128 uuid_2 = tsl::random::New64();
+  absl::uint128 uuid_complete = (uuid_1 << 64) | uuid_2;
+  return absl::StrFormat("%020d", uuid_complete);
+}
+
 uint64_t HashCheckpointIndexFile(absl::string_view model_dir) {
   std::string meta_filename = MetaFilename(io::JoinPath(
       model_dir, kSavedModelVariablesDirectory, kSavedModelVariablesFilename));
@@ -475,7 +490,8 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDefCpb(
 
   fingerprint_def.set_checkpoint_hash(HashCheckpointIndexFile(export_dir));
 
-  fingerprint_def.set_uuid(absl::StrFormat("%016d", tsl::random::New64()));
+  // Assign a random UUID to the fingerprint.
+  fingerprint_def.set_uuid(fingerprinting::CreateRandomUUID());
   reader.Close();
 
   // Set version of the fingerprint.
