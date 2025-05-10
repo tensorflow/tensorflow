@@ -21,6 +21,8 @@ import subprocess
 import tempfile
 import time
 
+from absl import logging
+
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.platform import gfile
 from tensorflow.tools.test import gpu_info_lib
@@ -165,7 +167,10 @@ def run_and_gather_logs(name,
     # TestReporter::kTestReporterEnv.
     os.environ["TEST_REPORT_FILE_PREFIX"] = test_file_prefix
     start_time = time.time()
-    subprocess.check_call([test_executable] + test_args)
+    command_args = [test_executable] + test_args
+    logging.info("Running benchmark: %s", "\n".join(command_args))
+    subprocess.check_call(command_args)
+    logging.info("Finished running benchmark")
     if skip_processing_logs:
       return None, test_adjusted_name
     run_time = time.time() - start_time
