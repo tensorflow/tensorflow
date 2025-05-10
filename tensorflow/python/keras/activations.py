@@ -586,3 +586,23 @@ def get(identifier):
     raise TypeError(
         'Could not interpret activation function identifier: {}'.format(
             identifier))
+
+@dispatch.add_dispatch_support
+def asrelu(x, alpha=1.0):
+    """ASReLU activation function: Swish + alpha * ReLU.
+
+    Args:
+      x: Input tensor.
+      alpha: A scalar, the scaling factor for the ReLU component. Default is 1.0.
+
+    Returns:
+      Tensor, output of ASReLU activation function: Swish + alpha * ReLU.
+    """
+    # Swish = x * sigmoid(x)
+    swish = x * math_ops.sigmoid(x)
+
+    # ReLU = max(0, x)
+    relu = nn.relu(x)
+
+    # ASReLU = Swish + alpha * ReLU
+    return swish + alpha * relu
