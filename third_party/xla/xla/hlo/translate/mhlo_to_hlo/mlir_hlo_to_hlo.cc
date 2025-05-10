@@ -787,6 +787,29 @@ static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
   return xla::ConvertSharding(shardingAttr.getValue());
 }
 
+// Returns an OpSharding proto from the "sharding" attribute of the value. If
+// the op doesn't have a sharding attribute or the sharding attribute is
+// invalid, returns std::nullopt.
+static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
+    mlir::Value value) {
+  mlir::StringAttr sharding_attr;
+  if (auto block_arg = mlir::dyn_cast<mlir::BlockArgument>(value)) {
+    // Only FuncOp args should have sharding attributes.
+    if (auto func_op = mlir::dyn_cast<mlir::func::FuncOp>(
+            block_arg.getParentBlock()->getParentOp())) {
+      sharding_attr = func_op.getArgAttrOfType<mlir::StringAttr>(
+          block_arg.getArgNumber(), kMhloSharding);
+    }
+  } else {
+    sharding_attr =
+        value.getDefiningOp()->getAttrOfType<mlir::StringAttr>(kMhloSharding);
+  }
+  if (!sharding_attr) {
+    return std::nullopt;
+  }
+  return xla::ConvertSharding(sharding_attr.getValue());
+}
+
 // Returns a FrontendAttributes proto from the "frontend_attributes" attribute
 // of the op. An empty FrontendAttributes proto is returned if an op does not
 // have frontend attributes.
@@ -2908,11 +2931,7 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
     if (failed(GetXlaOps(op, implicit_operands, ctx, args))) return failure();
 
     llvm::SmallVector<std::optional<xla::OpSharding>> arg_shardings;
-    if (!ret_shardings.empty()) {
-      // We only add arg shardings if there are result shardings, otherwise it
-      // means sharding propagation hasn't been done yet.
-      arg_shardings = GetXlaOpShardings(args);
-    }
+    arg_shardings = GetXlaOpShardings(args);
 
     branch_operands[i] =
         CreateTupleIfMultipleOps(ctx.builder, args, arg_shardings);
@@ -4993,9 +5012,17 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
         for (auto [implicit_index, implicit_operand] :
              llvm::enumerate(implicit_operands)) {
           int64_t arg_index = block->getNumArguments() + implicit_index;
-          xla::XlaScopedShardingAssignment scoped_sharding(
-              builder,
-              arg_shardings.empty() ? std::nullopt : arg_shardings[arg_index]);
+          std::optional<xla::OpSharding> sharding;
+          if (!arg_shardings.empty() &&
+              mlir::isa<BlockArgument>(implicit_operand)) {
+            sharding = arg_shardings[arg_index];
+          } else {
+            // Some ops like CaseOp have implicit operands that are not block
+            // arguments. The HLO will have it a block argument at `arg_index`,
+            // but the sharding we need is the one from the defining op.
+            sharding = CreateOpShardingFromAttribute(implicit_operand);
+          }
+          xla::XlaScopedShardingAssignment scoped_sharding(builder, sharding);
           lowering[implicit_operand] = xla::GetTupleElement(tuple, arg_index);
         }
       } else if (args_size == 1) {
