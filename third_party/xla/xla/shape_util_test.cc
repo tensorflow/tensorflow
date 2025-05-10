@@ -1564,6 +1564,17 @@ TEST(ShapeUtilTest, FlattenTupleShape) {
   EXPECT_EQ(flattened_shapes[3]->ToString(), "f32[8,9]");
 }
 
+TEST(ShapeUtilTest, ShapeIndexProtoSerialization) {
+  ShapeIndex empty{};
+  EXPECT_EQ(empty, ShapeIndex::FromProto(empty.ToProto()));
+
+  ShapeIndex single_index{1};
+  EXPECT_EQ(single_index, ShapeIndex::FromProto(single_index.ToProto()));
+
+  ShapeIndex multi_index{1, 2, 42};
+  EXPECT_EQ(multi_index, ShapeIndex::FromProto(multi_index.ToProto()));
+}
+
 void BM_MakeShape(::testing::benchmark::State& state) {
   for (auto s : state) {
     ShapeUtil::MakeShape(F32, {2});
