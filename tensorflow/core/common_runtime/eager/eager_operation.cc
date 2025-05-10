@@ -208,7 +208,7 @@ absl::Status EagerOperation::SetAttrShapeList(const char* attr_name,
     }
   }
   MutableAttrs()->Set(
-      attr_name, gtl::ArraySlice<TensorShapeProto>(proto.get(), num_values));
+      attr_name, absl::Span<const TensorShapeProto>(proto.get(), num_values));
   return absl::OkStatus();
 }
 
