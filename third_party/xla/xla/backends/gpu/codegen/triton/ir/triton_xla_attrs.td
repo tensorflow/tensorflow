@@ -17,10 +17,28 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_ATTRS_TD_
 
 include "triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td"
+include "mlir/IR/EnumAttr.td"
 include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.td"
 
 class TTXLA_Attr<string name, list<Trait> traits = []> :
       AttrDef<XlaTritonDialect, name, traits> {
+}
+
+def XLAGPU_SwizzleMode :
+  I32EnumAttr<"SwizzleMode", "tensor map swizzle mode",
+    [
+      I32EnumAttrCase<"kNone", 0, "none">,
+      I32EnumAttrCase<"k32b", 1, "32b">,
+      I32EnumAttrCase<"k64b", 2, "64b">,
+      I32EnumAttrCase<"k128b", 3, "128b">,
+      I32EnumAttrCase<"kUnset", -1, "unset">
+    ]> {
+  let cppNamespace = "::mlir::triton::xla";
+  let genSpecializedAttr = 0;
+}
+
+def XLAGPU_SwizzleModeAttr : EnumAttr<XlaTritonDialect, XLAGPU_SwizzleMode, "swizzle_mode"> {
+  let assemblyFormat = "$value";
 }
 
 def XLA_TmaDescriptorAttr : TTXLA_Attr<"TmaDescriptor"> {
@@ -32,7 +50,7 @@ def XLA_TmaDescriptorAttr : TTXLA_Attr<"TmaDescriptor"> {
     "int":$element_byte_size,
     // Swizzle mode corresponds to the enum CUtensorMapSwizzle
     // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g0bc04417bd8ce2c64d204bc3cbc25b58
-    "unsigned":$swizzle_mode
+    AttrParameter<"SwizzleModeAttr", "swizzle mode">:$swizzle_mode
   );
   let hasCustomAssemblyFormat = 1;
   let builders = [
@@ -41,10 +59,9 @@ def XLA_TmaDescriptorAttr : TTXLA_Attr<"TmaDescriptor"> {
             "ArrayRef<int64_t>":$block_shape,
             "int":$element_byte_size), [{
             // Swizzle mode is decided later in the pipeline than these TMA
-            // descriptors are first created. Set it to a default 0 until it can
-            // be filled in correctly later.
+            // descriptors are first created. Initialize it to unset here.
             return $_get(context, global_shape, block_shape, element_byte_size,
-            /*swizzle_mode=*/0);
+              SwizzleModeAttr::get(context, SwizzleMode::kUnset));
       }]>
   ];
 }
