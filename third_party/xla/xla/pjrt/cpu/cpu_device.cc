@@ -68,7 +68,11 @@ absl::Span<PjRtMemorySpace* const> TfrtCpuDevice::memory_spaces() const {
 }
 
 absl::StatusOr<PjRtMemorySpace*> TfrtCpuDevice::default_memory_space() const {
-  return memory_space_by_kind_id(UnpinnedHostMemorySpace::kKindId);
+  if (memory_spaces_.empty()) {
+    return absl::FailedPreconditionError(
+        "TfrtCpuDevice::default_memory_space(): No memory space found.");
+  }
+  return memory_spaces_.front();
 }
 
 absl::StatusOr<PjRtMemorySpace*> TfrtCpuDevice::memory_space_by_kind(
