@@ -41,7 +41,7 @@ See all the [mailing lists](https://www.tensorflow.org/community/forums).
 
 ## Installation
 
-For detailed setup instructions, please visit the official TensorFlow docs at https://www.tensorflow.org/install
+For detailed setup instructions,  please visit the official TensorFlow docs at https://www.tensorflow.org/install
 
 See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
 [pip package](https://www.tensorflow.org/install/pip), to
