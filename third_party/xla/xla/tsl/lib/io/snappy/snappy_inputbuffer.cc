@@ -172,7 +172,8 @@ absl::Status SnappyInputBuffer::ReadFromFile() {
   }
   absl::string_view data;
   // Try to read enough data to fill up input_buffer_.
-  absl::Status s = file_->Read(file_pos_, bytes_to_read, &data, read_location);
+  absl::Status s = file_->Read(file_pos_, data,
+                               absl::MakeSpan(read_location, bytes_to_read));
   if (data.data() != read_location) {
     memmove(read_location, data.data(), data.size());
   }
