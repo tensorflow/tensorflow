@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <set>
@@ -85,6 +86,20 @@ void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
       }
     }
   }
+}
+
+absl::StatusOr<float> GetDefaultGpuSystemMemoryFraction() {
+  if (absl::string_view xla_client_mem_fraction =
+          absl::NullSafeStringView(std::getenv("XLA_CLIENT_MEM_FRACTION"));
+      !xla_client_mem_fraction.empty()) {
+    double mem_fraction;
+    if (absl::SimpleAtod(xla_client_mem_fraction, &mem_fraction)) {
+      return mem_fraction;
+    }
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to parse XLA_CLIENT_MEM_FRACTION: ", xla_client_mem_fraction));
+  }
+  return 0.75;
 }
 
 // Builds a BFCAllocator for all local GPUs.

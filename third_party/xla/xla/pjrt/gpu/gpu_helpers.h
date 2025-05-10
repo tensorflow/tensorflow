@@ -44,6 +44,9 @@ void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors);
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
     se::StreamExecutor* executor);
 
+// Returns the default GPU system memory fraction.
+absl::StatusOr<float> GetDefaultGpuSystemMemoryFraction();
+
 // Builds a BFCAllocator for all local GPUs.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction, bool preallocate,
