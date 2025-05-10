@@ -1521,6 +1521,30 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
   }
 }
 
+#ifndef EIGEN_TFLITE
+inline void AddElementwise(int size, const ArithmeticParams& params,
+                           const Eigen::half* input1_data,
+                           const Eigen::half* input2_data,
+                           Eigen::half* output_data) {
+  for (int i = 0; i < size; ++i) {
+    auto x = input1_data[i] + input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(
+        x, params.Eigen_half_activation_min, params.Eigen_half_activation_max);
+  }
+}
+
+inline void AddElementwise(int size, const ArithmeticParams& params,
+                           const Eigen::bfloat16* input1_data,
+                           const Eigen::bfloat16* input2_data,
+                           Eigen::bfloat16* output_data) {
+  for (int i = 0; i < size; ++i) {
+    auto x = input1_data[i] + input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(x, params.bf16_activation_min,
+                                                  params.bf16_activation_max);
+  }
+}
+#endif
+
 inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const float* input1_data,
                 const RuntimeShape& input2_shape, const float* input2_data,
@@ -1530,6 +1554,33 @@ inline void Add(const ArithmeticParams& params,
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
   AddElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
+
+#ifndef EIGEN_TFLITE
+inline void Add(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape,
+                const Eigen::half* input1_data,
+                const RuntimeShape& input2_shape,
+                const Eigen::half* input2_data,
+                const RuntimeShape& output_shape, Eigen::half* output_data) {
+  ruy::profiler::ScopeLabel label("Add");
+  const int flat_size =
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
+  AddElementwise(flat_size, params, input1_data, input2_data, output_data);
+}
+
+inline void Add(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape,
+                const Eigen::bfloat16* input1_data,
+                const RuntimeShape& input2_shape,
+                const Eigen::bfloat16* input2_data,
+                const RuntimeShape& output_shape,
+                Eigen::bfloat16* output_data) {
+  ruy::profiler::ScopeLabel label("Add");
+  const int flat_size =
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
+  AddElementwise(flat_size, params, input1_data, input2_data, output_data);
+}
+#endif
 
 // Element-wise add that can often be used for inner loop of broadcast add as
 // well as the non-broadcast add.
@@ -1758,6 +1809,30 @@ inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
   }
 }
 
+#ifndef EIGEN_TFLITE
+inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
+                               Eigen::half broadcast_value,
+                               const Eigen::half* input2_data,
+                               Eigen::half* output_data) {
+  for (int i = 0; i < size; ++i) {
+    auto x = broadcast_value + input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(
+        x, params.Eigen_half_activation_min, params.Eigen_half_activation_max);
+  }
+}
+
+inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
+                               Eigen::bfloat16 broadcast_value,
+                               const Eigen::bfloat16* input2_data,
+                               Eigen::bfloat16* output_data) {
+  for (int i = 0; i < size; ++i) {
+    auto x = broadcast_value + input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(x, params.bf16_activation_min,
+                                                  params.bf16_activation_max);
+  }
+}
+#endif
+
 inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const uint8_t* input1_data,
                 const RuntimeShape& input2_shape, const uint8_t* input2_data,
@@ -1947,6 +2022,36 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
   }
 }
 
+#ifndef EIGEN_TFLITE
+inline void MulElementwise(int size, const ArithmeticParams& params,
+                           const Eigen::half* input1_data,
+                           const Eigen::half* input2_data,
+                           Eigen::half* output_data) {
+  const Eigen::half output_activation_min = params.Eigen_half_activation_min;
+  const Eigen::half output_activation_max = params.Eigen_half_activation_max;
+
+  for (int i=0; i < size; ++i) {
+    auto x = input1_data[i] * input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(x, output_activation_min,
+                                                  output_activation_max);
+  }
+}
+
+inline void MulElementwise(int size, const ArithmeticParams& params,
+                           const Eigen::bfloat16* input1_data,
+                           const Eigen::bfloat16* input2_data,
+                           Eigen::bfloat16* output_data) {
+  const Eigen::bfloat16 output_activation_min = params.bf16_activation_min;
+  const Eigen::bfloat16 output_activation_max = params.bf16_activation_max;
+
+  for (int i=0; i < size; ++i) {
+    auto x = input1_data[i] * input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax<Eigen::bfloat16>(
+        x, output_activation_min, output_activation_max);
+  }
+}
+#endif
+
 inline void MulElementwise(int32_t n, const ArithmeticParams& params,
                            const int32_t* __restrict lhs,
                            const int32_t* __restrict rhs,
@@ -2003,11 +2108,11 @@ inline void MulElementwise(int32_t n, const ArithmeticParams& params,
                                           activation_max_val);
   }
 }
-
+template <typename T>
 inline void Mul(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const float* input1_data,
-                const RuntimeShape& input2_shape, const float* input2_data,
-                const RuntimeShape& output_shape, float* output_data) {
+                const RuntimeShape& input1_shape, const T* input1_data,
+                const RuntimeShape& input2_shape, const T* input2_data,
+                const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Mul");
 
   const int flat_size =
@@ -2284,6 +2389,30 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
         x, params.float_activation_min, params.float_activation_max);
   }
 }
+
+#ifndef EIGEN_TFLITE
+inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
+                               const Eigen::half broadcast_value,
+                               const Eigen::half* input2_data,
+                               Eigen::half* output_data) {
+  for (int i=0 ; i < size; ++i) {
+    Eigen::half x = broadcast_value * input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(
+        x, params.Eigen_half_activation_min, params.Eigen_half_activation_max);
+  }
+}
+
+inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
+                               const Eigen::bfloat16 broadcast_value,
+                               const Eigen::bfloat16* input2_data,
+                               Eigen::bfloat16* output_data) {
+  for (int i = 0 ; i < size; ++i) {
+    Eigen::bfloat16 x = broadcast_value * input2_data[i];
+    output_data[i] = ActivationFunctionWithMinMax(x, params.bf16_activation_min,
+                                                  params.bf16_activation_max);
+  }
+}
+#endif
 
 inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const uint8_t* input1_data,
@@ -4233,8 +4362,9 @@ inline void Floor(const RuntimeShape& input_shape, const T* input_data,
   output_map.array() = Eigen::floor(input_map.array());
 }
 
-inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Ceil(const RuntimeShape& input_shape, const T* input_data,
+                 const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Ceil");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);

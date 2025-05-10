@@ -261,6 +261,22 @@ inline void BroadcastMul4DSlow(
                             input2_data, output_shape, output_data);
 }
 
+#ifndef EIGEN_TFLITE
+inline void SetActivationMinMax(const ArithmeticParams& params,
+                                Eigen::half* activation_min,
+                                Eigen::half* activation_max) {
+  *activation_min = params.Eigen_half_activation_min;
+  *activation_max = params.Eigen_half_activation_max;
+}
+
+inline void SetActivationMinMax(const ArithmeticParams& params,
+                                Eigen::bfloat16* activation_min,
+                                Eigen::bfloat16* activation_max) {
+  *activation_min = params.bf16_activation_min;
+  *activation_max = params.bf16_activation_max;
+}
+#endif
+
 }  // namespace reference_ops
 }  // namespace tflite
 

@@ -14,6 +14,7 @@
 
 #include <cmath>
 
+#include "Eigen/Core"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -39,10 +40,9 @@ TfLiteStatus PointwiseUnaryOpPrepare(TfLiteContext* context, TfLiteNode* node) {
 
 // Applies the operator Op pointwise to data of type T.
 template <typename Op, typename T>
-TfLiteStatus PointwiseUnaryOpDoEval(
-    TfLiteContext* context,
-    const TfLiteTensor* input,
-    TfLiteTensor* output) {
+TfLiteStatus PointwiseUnaryOpDoEval(TfLiteContext* context,
+                                    const TfLiteTensor* input,
+                                    TfLiteTensor* output) {
   const T* data = tflite::GetTensorData<T>(input);
   T* data_output = tflite::GetTensorData<T>(output);
 
@@ -64,16 +64,30 @@ TfLiteStatus PointwiseUnaryOpEval(TfLiteContext* context, TfLiteNode* node) {
   switch (output->type) {
     case kTfLiteFloat32:
       TF_LITE_ENSURE_OK(
-          context,
-          (PointwiseUnaryOpDoEval<Op, float>(context, input, output)));
+          context, (PointwiseUnaryOpDoEval<Op, float>(context, input, output)));
       break;
     case kTfLiteFloat64:
-      TF_LITE_ENSURE_OK(
-          context,
-          (PointwiseUnaryOpDoEval<Op, double>(context, input, output)));
+      TF_LITE_ENSURE_OK(context, (PointwiseUnaryOpDoEval<Op, double>(
+                                     context, input, output)));
       break;
     case kTfLiteInt32:
       TF_LITE_ENSURE_OK(context, (PointwiseUnaryOpDoEval<Op, int32_t>(
+                                     context, input, output)));
+      break;
+    case kTfLiteInt16:
+      TF_LITE_ENSURE_OK(context, (PointwiseUnaryOpDoEval<Op, int16_t>(
+                                     context, input, output)));
+      break;
+    case kTfLiteInt8:
+      TF_LITE_ENSURE_OK(context, (PointwiseUnaryOpDoEval<Op, int8_t>(
+                                     context, input, output)));
+      break;
+    case kTfLiteFloat16:
+      TF_LITE_ENSURE_OK(context, (PointwiseUnaryOpDoEval<Op, Eigen::half>(
+                                     context, input, output)));
+      break;
+    case kTfLiteBFloat16:
+      TF_LITE_ENSURE_OK(context, (PointwiseUnaryOpDoEval<Op, Eigen::bfloat16>(
                                      context, input, output)));
       break;
     default: {
@@ -91,12 +105,12 @@ struct Sign {
   template <typename T>
   static T Eval(T x) {
     if (x > 0) {
-      return 1;
+      return static_cast<T>(1);
     }
     if (x < 0) {
-      return -1;
+      return static_cast<T>(-1);
     }
-    return 0;
+    return static_cast<T>(0);
   }
 };
 
