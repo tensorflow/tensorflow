@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <set>
 #include <string>

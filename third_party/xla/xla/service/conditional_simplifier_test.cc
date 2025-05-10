@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/service/conditional_simplifier.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
