@@ -480,9 +480,6 @@ def tf_library(
                       gen_benchmark=True.
     The output header is called <name>.h.
 
-    Deprecated:
-      tfcompile is deprecated (b/389018081). As an alternative, consider using
-      XLA:CPU's AOT capabilities directly.
     Args:
       name: The name of the build rule.
       graph: The TensorFlow GraphDef to compile.  If the file ends in '.pbtxt'
