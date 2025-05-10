@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -336,7 +337,8 @@ absl::Status HloControlFlowFlattening::RemoveOutfeed(
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           outfeed_hlo->shape(), outfeed_hlo->operands(),
-          kNopReturnTokenCustomCallTarget));
+          kNopReturnTokenCustomCallTarget, "",
+          CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
   Cast<HloCustomCallInstruction>(custom_call)
       ->set_custom_call_has_side_effect(true);
   // For SPMD graphs, partitioner requires that side-effecting custom calls have
@@ -374,7 +376,8 @@ HloControlFlowFlattening::RemoveSendAndSendDone(
   HloInstruction* custom_call_send_done =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           send_done->shape(), send_done->operands(),
-          kNopReturnTokenCustomCallTarget));
+          kNopReturnTokenCustomCallTarget, "",
+          CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
   std::string original_send_done_name(send_done->name());
   Cast<HloCustomCallInstruction>(custom_call_send_done)
       ->set_custom_call_has_side_effect(true);
