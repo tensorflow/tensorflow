@@ -1,6 +1,7 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "tf_cc_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")

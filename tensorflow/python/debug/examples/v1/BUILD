@@ -1,3 +1,4 @@
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
 
 package(

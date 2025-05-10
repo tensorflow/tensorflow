@@ -13,6 +13,13 @@ http_archive(
     url = "https://github.com/bazelbuild/rules_java/releases/download/5.3.5/rules_java-5.3.5.tar.gz",
 )
 
+http_archive(
+    name = "rules_shell",
+    sha256 = "bc61ef94facc78e20a645726f64756e5e285a045037c7a61f65af2941f4c25e1",
+    strip_prefix = "rules_shell-0.4.1",
+    url = "https://github.com/bazelbuild/rules_shell/releases/download/v0.4.1/rules_shell-v0.4.1.tar.gz",
+)
+
 # Initialize the TensorFlow repository and all dependencies.
 #
 # The cascade of load() statements and tf_workspace?() calls works around the
@@ -22,6 +29,12 @@ http_archive(
 load("@//tensorflow:workspace3.bzl", "tf_workspace3")
 
 tf_workspace3()
+
+load("@rules_shell//shell:repositories.bzl", "rules_shell_dependencies", "rules_shell_toolchains")
+
+rules_shell_dependencies()
+
+rules_shell_toolchains()
 
 # Initialize hermetic Python
 load("@local_xla//third_party/py:python_init_rules.bzl", "python_init_rules")

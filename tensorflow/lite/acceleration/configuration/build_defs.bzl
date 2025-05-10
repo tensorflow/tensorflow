@@ -15,6 +15,7 @@
 """Build macros for checking ABI compatibility."""
 
 load("@flatbuffers//:build_defs.bzl", "flatc_path")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 def flatbuffer_schema_compat_test(name, ref_schema, schema):
     """Generates a test for schema binary compatibility.
@@ -35,8 +36,7 @@ def flatbuffer_schema_compat_test(name, ref_schema, schema):
         cmd = ("echo $(rootpath {}) --conform $(rootpath {}) $(rootpath {}) > $@"
             .format(flatc_path, ref_schema, schema)),
     )
-
-    native.sh_test(
+    sh_test(
         name = name,
         srcs = [name + "_test.sh"],
         data = [flatc_path, ref_schema, schema],
