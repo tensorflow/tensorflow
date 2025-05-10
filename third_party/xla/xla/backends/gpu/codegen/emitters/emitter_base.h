@@ -108,6 +108,8 @@ class EmitterBase : public KernelFusionInterface {
   mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
   llvm::SmallVector<mlir::Value> EmitThreadAndBlockIds(
       mlir::ImplicitLocOpBuilder& builder) const;
+  llvm::SmallVector<mlir::Value> EmitBlockIds(
+      mlir::ImplicitLocOpBuilder& builder) const;
 
  private:
   // Emits MLIR for the given fusion. The entry function has one tensor argument

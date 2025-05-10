@@ -279,6 +279,12 @@ llvm::SmallVector<Value> EmitterBase::EmitThreadAndBlockIds(
           EmitBlockId(b, 0),  EmitBlockId(b, 1),  EmitBlockId(b, 2)};
 }
 
+llvm::SmallVector<mlir::Value> EmitterBase::EmitBlockIds(
+    mlir::ImplicitLocOpBuilder& builder) const {
+  return {EmitBlockId(builder, 0), EmitBlockId(builder, 1),
+          EmitBlockId(builder, 2)};
+}
+
 absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
@@ -600,6 +606,7 @@ void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm) {
 
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
                                  const se::DeviceDescription& device) {
+  pm.addNestedPass<FuncOp>(CreateLowerXlaSharedPass());
   pm.addNestedPass<FuncOp>(
       emitters::CreateLowerXlaToScfPass(device.threads_per_warp()));
   pm.addNestedPass<FuncOp>(CreateFuseLoopsPass());
