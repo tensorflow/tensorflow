@@ -41,7 +41,7 @@ using ::tensorflow::profiler::pywrap::ProfilerSessionWrapper;
 ToolOptions ToolOptionsFromPythonDict(const py::dict& dictionary) {
   ToolOptions map;
   for (const auto& item : dictionary) {
-    std::variant<int, std::string> value;
+    std::variant<bool, int, std::string> value;
     try {
       value = item.second.cast<int>();
     } catch (...) {

@@ -20,6 +20,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_split.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/profiler/lib/profiler_session.h"
@@ -73,8 +74,8 @@ void AddServiceAddresses(absl::string_view service_addresses,
 // RemoteProfilerSessionManagerOptions.
 RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
     absl::string_view logdir,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        opts) {
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& opts) {
   RemoteProfilerSessionManagerOptions options;
   *options.mutable_profiler_options() = tsl::ProfilerSession::DefaultOptions();
   // Store a timestamp of when this session was created. This will be the basis
@@ -120,8 +121,8 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
     absl::string_view service_addresses, absl::string_view logdir,
     absl::string_view worker_list, bool include_dataset_ops,
     int32_t duration_ms,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        opts,
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& opts,
     bool* is_cloud_tpu_session) {
   auto options = GetRemoteSessionManagerOptionsLocked(logdir, opts);
 
