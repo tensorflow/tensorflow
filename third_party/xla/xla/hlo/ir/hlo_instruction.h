@@ -47,6 +47,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/compact_string.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/collective_device_list.h"
@@ -2626,7 +2627,7 @@ class HloInstruction {
   BackendConfigWrapper backend_config_;
 
   // String identifier for instruction.
-  std::string name_;
+  CompactString name_;
 
   // Original value this instruction corresponds to in the unoptimized HLO
   // graph.

@@ -2862,7 +2862,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape, operands_, context);
   if (suffix.empty()) {
-    clone->name_.assign(name().begin(), name().end());
+    clone->name_ = name();
   } else {
     clone->AddSuffixToInstructionName(suffix);
   }
@@ -5473,7 +5473,7 @@ HloModule* HloInstruction::GetModule() const {
 }
 
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
-  name_ = name_uniquer->GetUniqueName(name_);
+  name_ = name_uniquer->GetUniqueName(name());
 }
 
 void HloInstruction::UniquifyName(HloModule* module) {
