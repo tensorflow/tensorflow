@@ -757,7 +757,7 @@ TEST(TfrtGpuClientTest, ToLiteralAsyncWithNonCompactLayout) {
             literal->Relayout(src_literal.shape().layout()).data<int32_t>());
 }
 
-TEST(StreamExecutorGpuClientTest, ToLiteralAsyncWithDifferentMajorToMinor) {
+TEST(TfrtGpuClientTest, ToLiteralAsyncWithDifferentMajorToMinor) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetTfrtGpuClient(GpuClientOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
@@ -799,6 +799,30 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncWithDifferentMajorToMinor) {
   ASSERT_TRUE(ShapeUtil::Compatible(src_literal.shape(), literal->shape()));
   ASSERT_EQ(src_literal.data<int32_t>(),
             literal->Relayout(src_literal.shape().layout()).data<int32_t>());
+}
+
+TEST(TfrtGpuClientTest, ToLiteralAsyncToken) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetTfrtGpuClient(GpuClientOptions()));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+
+  xla::Literal literal = xla::LiteralUtil::CreateToken();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostLiteral(
+          literal, client->addressable_devices()[0]->memory_spaces()[0]));
+  TF_ASSERT_OK(buffer->GetReadyFuture().Await());
+
+  absl::Notification n;
+
+  buffer->ToLiteral(&literal).OnReady([&](absl::Status s) {
+    TF_ASSERT_OK(s);
+    n.Notify();
+  });
+  buffer.reset();
+
+  n.WaitForNotification();
 }
 
 TEST(TfrtGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
