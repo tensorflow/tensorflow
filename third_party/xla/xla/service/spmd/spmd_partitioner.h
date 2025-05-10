@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/custom_call_sharding_helper.h"
@@ -730,6 +731,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   std::vector<ReplicaGroup> CreateReplicaGroups(
       std::vector<std::vector<int64_t>>& groups);
 
+  std::vector<ReplicaGroup> CreateReplicaGroups(
+      const hlo_sharding_util::DeviceGroupTileAssignment& groups);
+
   const CallGraph& call_graph() { return call_graph_; }
   int64_t num_partitions() const { return num_partitions_; }
   int64_t num_replicas() const { return num_replicas_; }
@@ -803,7 +807,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   std::optional<SPMDCollectiveOpsCreator> visiting_collective_ops_creator_;
   std::optional<HloInstruction*> visiting_partition_id_;
   std::vector<PartitionedHlo::PartitioningState> visiting_state_;
-  std::vector<std::vector<int64_t>> device_groups_;
+  std::optional<hlo_sharding_util::DeviceGroupTileAssignment> device_groups_;
   const CallGraph& call_graph_;
 };
 

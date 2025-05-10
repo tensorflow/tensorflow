@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/utils/hlo_sharding_util.h"
 
+#include <grp.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -50,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/utils/hlo_container_util.h"
+#include "xla/layout.h"
 #include "xla/literal_util.h"
 #include "xla/map_util.h"
 #include "xla/protobuf_util.h"
@@ -2379,10 +2382,8 @@ std::string GroupedSharding::ToString() const {
   absl::StrAppend(&result, "data rank: ", data_rank, "\n");
   absl::StrAppend(&result, "subgroup manual: ", subgroup_manual, "\n");
   absl::StrAppend(&result, "inner sharding: ", sharding.ToString(), "\n");
-  absl::StrAppend(&result, "device groups:", "\n");
-  for (auto& device_group : device_groups) {
-    absl::StrAppend(&result, "\t", absl::StrJoin(device_group, ","), "\n");
-  }
+  absl::StrAppend(&result, "device groups:", "\n", device_groups.ToString(),
+                  "\n");
   return result;
 }
 
@@ -2464,22 +2465,16 @@ GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
     perm.insert(perm.begin() + i, index);
   }
 
-  auto grouped_array = sharding.tile_assignment()
-                           .Reshape(reshape_dimensions)
-                           .Transpose(perm)
-                           .array();
+  auto grouped_tile_assignment =
+      sharding.tile_assignment().Reshape(reshape_dimensions).Transpose(perm);
 
   const int64_t num_device_groups = Product(group_dim_sizes);
   const int64_t num_devices = sharding.tile_assignment().num_elements();
   CHECK_EQ(num_devices % num_device_groups, 0);
   const int64_t device_group_size = num_devices / num_device_groups;
-  std::vector<std::vector<int64_t>> device_groups(
-      num_device_groups, std::vector<int64_t>(device_group_size));
-  for (int64_t i = 0; i < num_device_groups; ++i) {
-    device_groups[i].assign(
-        grouped_array.begin() + i * device_group_size,
-        grouped_array.begin() + (i + 1) * device_group_size);
-  }
+
+  DeviceGroupTileAssignment device_groups = DeviceGroupTileAssignment(
+      grouped_tile_assignment.Reshape({num_device_groups, device_group_size}));
 
   auto grouped = GroupedSharding(
       std::move(device_groups),
@@ -2614,13 +2609,7 @@ GroupedSharding GetGroupedReplicatedSharding(const int64_t num_groups,
                                              const int64_t data_rank) {
   CHECK_EQ(num_tiles % num_groups, 0);
   const int64_t group_size = num_tiles / num_groups;
-  std::vector<std::vector<int64_t>> device_groups(
-      num_groups, std::vector<int64_t>(group_size));
-  int64_t device_id = 0;
-  for (auto& device_group : device_groups) {
-    absl::c_iota(device_group, device_id);
-    device_id = device_group.back() + 1;
-  }
+  DeviceGroupTileAssignment device_groups(num_groups, group_size);
   return GroupedSharding(std::move(device_groups), {data_rank}, {num_groups},
                          data_rank, HloSharding::Replicate(),
                          /*subgroup_manual=*/false);
@@ -2656,9 +2645,10 @@ GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding) {
 std::optional<GroupedSharding>
 PartialReplicatedGroupShardingWithAssignedDeviceGroups(
     const HloSharding& sharding, int64_t num_shards,
-    const std::vector<std::vector<int64_t>>& device_groups) {
+    const DeviceGroupTileAssignment& device_groups) {
   if (!sharding.ReplicateOnLastTileDim() ||
-      sharding.tile_assignment().dimensions().back() % device_groups.size() !=
+      sharding.tile_assignment().dimensions().back() %
+              device_groups.num_groups() !=
           0) {
     VLOG(5) << "Failed because not partial replicated or not divisible";
     return std::nullopt;
@@ -2673,31 +2663,34 @@ PartialReplicatedGroupShardingWithAssignedDeviceGroups(
   DimensionVector grouped_tiling_dims(
       sharding.tile_assignment().dimensions().begin(),
       sharding.tile_assignment().dimensions().end());
-  grouped_tiling_dims.back() /= device_groups.size();
+  grouped_tiling_dims.back() /= device_groups.num_groups();
   std::optional<HloSharding> final_sharding;
   const int64_t shard_size_on_replicated_dim =
       sharding.tile_assignment().dimensions().back() / num_shards;
-  for (int64_t group_idx = 0; group_idx < device_groups.size(); ++group_idx) {
+  // TODO(b/365830796): Make the processing here utilize the fact that device
+  // groups could potentially be an IotaTileAssignment.
+  for (int64_t group_idx = 0; group_idx < device_groups.num_groups();
+       ++group_idx) {
     HloSharding group_sharding = HloSharding::Replicate();
     Array<int64_t> grouped_tiling(grouped_tiling_dims);
     Array<int64_t> stacked_pos(
         absl::MakeConstSpan(grouped_tiling_dims.data(),
                             grouped_tiling_dims.size() - 1),
         0);
-    for (int64_t device_idx = 0; device_idx < device_groups[group_idx].size();
-         ++device_idx) {
+    for (int64_t device_idx = 0;
+         device_idx < device_groups.num_devices_per_group(); ++device_idx) {
       VLOG(5) << "Device idx: " << device_idx;
-      const int64_t device = device_groups[group_idx][device_idx];
+      const int64_t device = device_groups(group_idx, device_idx);
       const auto& indices = device_to_index[device];
       absl::Span<const int64_t> stacked_pos_idx =
           absl::MakeConstSpan(indices.data(), indices.size() - 1);
       int64_t& position = stacked_pos(stacked_pos_idx);
       if (position == num_shards) {
         VLOG(5) << "Fail because stacked position overflow " << position
-                << " device_groups " << device_groups.size() << " ["
+                << " device_groups " << device_groups.num_groups() << " ["
                 << absl::StrJoin(indices, ",") << "]";
         VLOG(5) << "Device: " << device << " "
-                << device_groups[group_idx][device_idx];
+                << device_groups(group_idx, device_idx);
         VLOG(5) << "Indices: " << absl::StrJoin(indices, ",");
         VLOG(5) << "Grouped tiling: " << grouped_tiling.ToString();
         return std::nullopt;
@@ -2733,11 +2726,12 @@ HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
   auto grouped_tiling = grouped_sharding.sharding.tile_assignment();
   if (grouped_sharding.sharding.IsTileMaximal()) {
     tiling_dims = DimensionVector(grouped_sharding.data_rank, 1);
-    if (grouped_sharding.device_groups[0].size() != 1 ||
+    if (grouped_sharding.device_groups.num_devices_per_group() != 1 ||
         absl::c_linear_search(grouped_sharding.group_dims,
                               tiling_dims.size())) {
       // This is partial sharding.
-      tiling_dims.push_back(grouped_sharding.device_groups[0].size());
+      tiling_dims.push_back(
+          grouped_sharding.device_groups.num_devices_per_group());
       partial_sharding = true;
     }
     grouped_tiling = TileAssignment(tiling_dims);
@@ -2783,8 +2777,6 @@ HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
   group_dim_sizes_and_tiling_dims.insert(group_dim_sizes_and_tiling_dims.end(),
                                          tiling_dims.begin(),
                                          tiling_dims.end());
-  Array<int64_t> tiling(group_dim_sizes_and_tiling_dims);
-
   DimensionVector sorted_group_dims(grouped_sharding.group_dims.size());
   std::partial_sort_copy(grouped_sharding.group_dims.begin(),
                          grouped_sharding.group_dims.end(),
@@ -2807,59 +2799,84 @@ HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
     }
   }
 
-  std::vector<int64_t> flattened_device_groups;
-  flattened_device_groups.reserve(grouped_sharding.device_groups.size() *
-                                  grouped_sharding.device_groups[0].size());
-  bool same_length =
-      grouped_tiling.num_elements() == grouped_sharding.device_groups[0].size();
-  for (auto const& v : grouped_sharding.device_groups) {
-    if (same_length) {
-      // Reorder the device_groups based on the grouped_tiling.array()
-      for (int64_t i = 0; i < v.size(); ++i) {
-        flattened_device_groups.push_back(
-            v[*(grouped_tiling.array().begin() + i)]);
-      }
-    } else {
-      flattened_device_groups.insert(flattened_device_groups.end(), v.begin(),
-                                     v.end());
+  CHECK_EQ(grouped_tiling.num_elements(),
+           grouped_sharding.device_groups.num_devices_per_group());
+  TileAssignment flattened_tile_assignment;
+  if (grouped_tiling.iota().has_value()) {
+    LOG(ERROR) << "Attempting to flatten grouped sharding internal!";
+    LOG(ERROR) << "Grouped sharding: " << grouped_sharding.ToString();
+    std::vector<int64_t> reshape_dims(
+        grouped_tiling.iota()->reshape_dims().begin(),
+        grouped_tiling.iota()->reshape_dims().end());
+    std::vector<int> perm(grouped_tiling.iota()->transpose_perm().begin(),
+                          grouped_tiling.iota()->transpose_perm().end());
+    reshape_dims.insert(reshape_dims.begin(),
+                        grouped_sharding.device_groups.num_groups());
+    for (int i = 0; i < perm.size(); i++) {
+      perm[i] = perm[i] + 1;
     }
+    perm.insert(perm.begin(), 0);
+    flattened_tile_assignment =
+        grouped_sharding.device_groups.Reshape(reshape_dims)
+            .Transpose(perm)
+            .Reshape(group_dim_sizes_and_tiling_dims);
+  } else {
+    Array<int64_t> tiling(group_dim_sizes_and_tiling_dims);
+    std::vector<int64_t> flattened_device_groups;
+    auto device_groups = grouped_sharding.device_groups;
+    flattened_device_groups.reserve(device_groups.num_devices_total());
+
+    for (int64_t i = 0; i < device_groups.num_groups(); ++i) {
+      // Reorder the device_groups based on the grouped_tiling.array()
+      for (int64_t j = 0; j < device_groups.num_devices_per_group(); ++j) {
+        flattened_device_groups.push_back(
+            device_groups(i, *(grouped_tiling.array().begin() + j)));
+      }
+    }
+    tiling.SetValues(flattened_device_groups);
+    flattened_tile_assignment = TileAssignment(
+        std::make_shared<const Array<int64_t>>(std::move(tiling)));
   }
-  tiling.SetValues(flattened_device_groups);
-  TileAssignment tile_assignment(
-      std::make_shared<const Array<int64_t>>(std::move(tiling)));
 
   for (int64_t i = 0; i < grouped_sharding.group_dims.size(); ++i) {
     int64_t dim = grouped_sharding.group_dims[i];
     tiling_dims[dim] *= grouped_sharding.group_dim_sizes[i];
   }
-  tile_assignment = tile_assignment.Transpose(perm).Reshape(tiling_dims);
-
+  flattened_tile_assignment =
+      flattened_tile_assignment.Transpose(perm).Reshape(tiling_dims);
   if (grouped_sharding.subgroup_manual) {
-    return HloSharding::Subgroup(tile_assignment, subgroup_types,
+    return HloSharding::Subgroup(flattened_tile_assignment, subgroup_types,
                                  grouped_sharding.sharding.metadata());
   }
-  return partial_sharding ? HloSharding::PartialTile(tile_assignment)
-                          : HloSharding::Tile(tile_assignment);
+  return partial_sharding ? HloSharding::PartialTile(flattened_tile_assignment)
+                          : HloSharding::Tile(flattened_tile_assignment);
 }
 
 bool DeviceGroupsAreMatch(GroupedSharding& lhs, GroupedSharding& rhs,
                           bool ignore_group_order) {
-  if (lhs.device_groups.size() != rhs.device_groups.size()) {
+  if (lhs.device_groups.num_groups() != rhs.device_groups.num_groups()) {
     return false;
   }
 
-  bool matching_groups = true;
-  std::vector<int64_t> device_to_ref_group(lhs.device_groups.size() *
-                                           lhs.device_groups[0].size());
-  for (int64_t g = 0; g < lhs.device_groups.size(); ++g) {
-    for (int64_t device : lhs.device_groups[g]) {
-      device_to_ref_group[device] = g;
-    }
+  // If both the device groups are in iota format, we can compare the iota
+  // representation directly as this is quite fast.
+  if (lhs.device_groups.has_iota() && rhs.device_groups.has_iota() &&
+      lhs.device_groups == rhs.device_groups) {
+    return true;
   }
-  auto unique_ref_dev_group =
-      [&](absl::Span<const int64_t> devices) -> int64_t {
+
+  bool matching_groups = true;
+  std::vector<int64_t> device_to_ref_group(
+      lhs.device_groups.num_devices_total());
+  lhs.device_groups.array().Each(
+      [&](absl::Span<const int64_t> indices, int64_t device) {
+        device_to_ref_group[device] = indices[0];
+      });
+  auto unique_ref_dev_group = [&](int64_t group) -> int64_t {
     int64_t ref_g = -1;
-    for (int64_t device : devices) {
+    for (int64_t device_idx = 0;
+         device_idx < rhs.device_groups.num_devices_per_group(); ++device_idx) {
+      const int64_t device = rhs.device_groups(group, device_idx);
       if (ref_g == -1) {
         ref_g = device_to_ref_group[device];
       } else if (ref_g != device_to_ref_group[device]) {
@@ -2868,8 +2885,8 @@ bool DeviceGroupsAreMatch(GroupedSharding& lhs, GroupedSharding& rhs,
     }
     return ref_g;
   };
-  for (int64_t g = 0; g < rhs.device_groups.size(); ++g) {
-    int64_t ref_g = unique_ref_dev_group(rhs.device_groups[g]);
+  for (int64_t g = 0; g < rhs.device_groups.num_groups(); ++g) {
+    int64_t ref_g = unique_ref_dev_group(g);
     if (ref_g < 0 || (!ignore_group_order && g != ref_g)) {
       matching_groups = false;
       break;

@@ -466,18 +466,20 @@ Shape GetPerGroupBaseShape(
 // Returns the partition id within a group.
 HloInstruction* GetInGroupPartitionId(
     HloInstruction* partition_id,
-    const std::vector<std::vector<int64_t>>& device_groups, SpmdBuilder* b);
+    const hlo_sharding_util::DeviceGroupTileAssignment& device_groups,
+    SpmdBuilder* b);
 
 // Creates the nested partitioner state for in-group partitioning.
 PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
     const PartitionedHlo::PartitioningState& state,
-    const std::vector<std::vector<int64_t>>& device_groups, SpmdBuilder* b);
+    const hlo_sharding_util::DeviceGroupTileAssignment& device_groups,
+    SpmdBuilder* b);
 
 // Partially shards a replicated HLO into groups along the group dimensions, and
 // within each group data is still replicated.
 HloInstruction* PerGroupSliceFromReplicated(
     HloInstruction* replicated, HloInstruction* partition_id,
-    const std::vector<std::vector<int64_t>>& device_groups,
+    const hlo_sharding_util::DeviceGroupTileAssignment& device_groups,
     absl::Span<const int64_t> group_dims,
     absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b);
 
@@ -518,7 +520,7 @@ std::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
 // specified device groups. Group order and dimension order are ignored.
 std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
     const HloSharding& sharding,
-    const std::vector<std::vector<int64_t>>& device_groups);
+    const hlo_sharding_util::DeviceGroupTileAssignment& device_groups);
 
 // Create a sharding that matches the provided source sharding on the
 // specified dimensions. 'target_dims' and 'source_dims' represent the

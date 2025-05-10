@@ -2358,7 +2358,7 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnBatchImpl(
       PartitionDot(per_group_lhs, per_group_rhs,
                    GetPerGroupBaseShape(output_grouped, output_base_shape),
                    output_grouped.sharding, dims_mapping,
-                   num_partitions / output_grouped.device_groups.size(),
+                   num_partitions / output_grouped.device_groups.num_groups(),
                    create_sharded_dot, conv_window, module, original_hlo,
                    options, b, windowed_dot_general_loops, visitor));
   dot->set_sharding(UngroupSharding(output_grouped));
@@ -2628,13 +2628,13 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnNonContractingImpl(
 
   auto other_p = PartitionedHlo(partially_replicated_other, other.base_shape(),
                                 per_group_partitioner_state);
-  return PartitionDot(lhs_matching ? matching_p : other_p,
-                      lhs_matching ? other_p : matching_p,
-                      GetPerGroupBaseShape(output_grouped, output_base_shape),
-                      output_grouped.sharding, dims_mapping,
-                      num_partitions / matching_grouped.device_groups.size(),
-                      create_sharded_dot, conv_window, module, original_hlo,
-                      options, b, windowed_dot_general_loops, visitor);
+  return PartitionDot(
+      lhs_matching ? matching_p : other_p, lhs_matching ? other_p : matching_p,
+      GetPerGroupBaseShape(output_grouped, output_base_shape),
+      output_grouped.sharding, dims_mapping,
+      num_partitions / matching_grouped.device_groups.num_groups(),
+      create_sharded_dot, conv_window, module, original_hlo, options, b,
+      windowed_dot_general_loops, visitor);
 }
 
 std::pair<HloSharding, HloSharding>
