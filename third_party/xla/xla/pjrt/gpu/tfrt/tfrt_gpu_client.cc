@@ -986,8 +986,9 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
                               std::numeric_limits<int>::max()),
       last_collective_launch_event_(
           tsl::MakeAvailableAsyncValueRef<GpuEvent>()),
-      description_(options.id, options.process_index,
-                   options.platform_version) {
+      description_(options.id, options.process_index, options.platform_version),
+      max_inflight_computations_semaphore_(
+          /*capacity=*/options.max_inflight_computations) {
   std::array<int, 1> coords = {local_device_id_.value()};
   description_.SetCoords(coords);
   std::vector<int64_t> v_coords(description_.coords().begin(),
@@ -2372,6 +2373,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       options.id = device_proto.global_device_id();
       options.process_index = node.node_id();
       options.slice_index = device_proto.slice_index();
+      options.max_inflight_computations = 32;
       options.platform_version = device_proto.name();
       options.device_vendor = device_proto.vendor();
       options.compute_capability = device_proto.compute_capability();
@@ -3338,6 +3340,20 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   }
   CHECK_EQ(device->process_index(), client_->process_index());
 
+  // The choice of where we wait is arbitrary; the reason for the wait is
+  // pacing to avoid problems such as memory fragmentation and running ahead
+  // too far, not for correctness. Placing it before the executable launch
+  // allows the inputs for the next executable to be fetched even if the
+  // launch is delayed.
+  std::unique_ptr<Semaphore::ScopedReservation> compute_reservation;
+  {
+    tsl::profiler::TraceMe traceme_compute_reservation(
+        "TfrtGpuExecutable::ExecuteHelper::acquire_sempahore");
+
+    compute_reservation = std::make_unique<Semaphore::ScopedReservation>(
+        device->max_inflight_computations_semaphore().ScopedAcquire(1));
+  }
+
   if (VLOG_IS_ON(2)) {
     LOG(INFO) << "ExecuteHelper " << name() << ": " << options.launch_id
               << "; replica: " << replica << "; partition: " << partition
@@ -3564,6 +3580,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        execution_profile(options.execution_profile),
        send_device_memory(std::move(send_device_memory)),
        recv_device_memory(std::move(recv_device_memory)),
+       compute_reservation(std::move(compute_reservation)),
        client = client_](std::vector<ExecutionInput> execution_inputs) mutable {
         VLOG(1) << "execute_fn for " << executable_name << ": " << launch_id
                 << "; replica: " << replica;
