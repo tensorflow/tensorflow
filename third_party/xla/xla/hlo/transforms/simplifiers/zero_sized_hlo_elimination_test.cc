@@ -16,8 +16,9 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
 
 #include <memory>
-#include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
