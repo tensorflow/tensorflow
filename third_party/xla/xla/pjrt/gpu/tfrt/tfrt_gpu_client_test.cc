@@ -476,11 +476,11 @@ TEST(TfrtGpuClientTest, AcquireDonation) {
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      MaybeOwningGpuMemory::AllocateShared(device->allocator(),
-                                           device->local_device_id().value(),
-                                           size_in_bytes));
+      GpuDeviceMemory::Allocate(device->allocator(),
+                                device->local_device_id().value(),
+                                size_in_bytes));
   auto buffer_async_value_ref =
-      tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
+      tsl::MakeAvailableAsyncValueRef<GpuDeviceMemory>(
           std::move(device_buffer));
   auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
       std::move(buffer_async_value_ref),

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <type_traits>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
@@ -37,38 +38,22 @@ limitations under the License.
 namespace xla {
 // TODO(b/400541410): Refactor and Merge this with MaybeOwningDeviceMemory.
 
-// MaybeOwningGpuMemory represents either an owned or unowned GPU memory. It
+// GpuDeviceMemory represents either an owned or unowned GPU memory. It
 // owns GPU memory if an allocator is provided. When the object goes output of
 // scope, it will free the underlying memory if it owns it.
-class MaybeOwningGpuMemory {
+class GpuDeviceMemory {
  public:
-  MaybeOwningGpuMemory() = default;
+  GpuDeviceMemory() = default;
+  GpuDeviceMemory(GpuDeviceMemory&& other) = default;
+  GpuDeviceMemory& operator=(GpuDeviceMemory&& other) = default;
 
-  // Non-owning underlying GPU memory `buffer`.
-  explicit MaybeOwningGpuMemory(stream_executor::DeviceMemoryBase buffer)
+  // Creates non-owning GPU device memory from a raw data pointer.
+  explicit GpuDeviceMemory(stream_executor::DeviceMemoryBase buffer)
       : buffer_(buffer) {}
 
-  // Owning underlying GPU memory `buffer`. When the object goes out of scope,
-  // it will free the underlying memory.
-  explicit MaybeOwningGpuMemory(stream_executor::OwningDeviceMemory buffer)
+  // Creates owning GPU device memory from an owned data pointer.
+  explicit GpuDeviceMemory(stream_executor::OwningDeviceMemory buffer)
       : owning_buffer_(std::move(buffer)), buffer_(*owning_buffer_) {}
-
-  MaybeOwningGpuMemory(const MaybeOwningGpuMemory&) = delete;
-  MaybeOwningGpuMemory& operator=(const MaybeOwningGpuMemory&) = delete;
-
-  // Move-only.
-  MaybeOwningGpuMemory(MaybeOwningGpuMemory&& other) {
-    owning_buffer_ = std::move(other.owning_buffer_);
-    buffer_ = other.buffer_;
-    other.buffer_ = se::DeviceMemoryBase();
-  }
-
-  MaybeOwningGpuMemory& operator=(MaybeOwningGpuMemory&& other) {
-    owning_buffer_ = std::move(other.owning_buffer_);
-    buffer_ = other.buffer_;
-    other.buffer_ = se::DeviceMemoryBase();
-    return *this;
-  }
 
   ShapedBuffer AsShapedBuffer(const Shape& on_device_shape,
                               const PjRtDevice* device) const;
@@ -76,16 +61,16 @@ class MaybeOwningGpuMemory {
   // Change ownership from owning to non-owning. Used for buffer donation.
   void SetUnOwned();
 
-  // Owning.
-  static absl::StatusOr<MaybeOwningGpuMemory> AllocateShared(
+  // Allocates raw owning memory.
+  static absl::StatusOr<GpuDeviceMemory> Allocate(
       se::DeviceMemoryAllocator* allocator, int device_ordinal, size_t size);
 
-  static absl::StatusOr<MaybeOwningGpuMemory> AllocateShared(
+  static absl::StatusOr<GpuDeviceMemory> Allocate(
       se::DeviceMemoryAllocator* allocator, int device_ordinal, size_t size,
       int64_t memory_space);
 
   stream_executor::DeviceMemoryBase buffer() const { return buffer_; }
-  size_t size() const { return buffer_.size(); }
+  size_t size_bytes() const { return buffer_.size(); }
   bool owns_data() const { return !owning_buffer_.is_null(); }
 
  private:
@@ -99,25 +84,20 @@ class MaybeOwningGpuMemory {
 class TrackedGpuDeviceBuffer {
  public:
   TrackedGpuDeviceBuffer(
-      tsl::AsyncValueRef<MaybeOwningGpuMemory> buffer,
+      tsl::AsyncValueRef<GpuDeviceMemory> buffer,
       absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
       std::function<void()> on_delete_callback = nullptr);
 
-  TrackedGpuDeviceBuffer(tsl::AsyncValueRef<MaybeOwningGpuMemory> buffer,
+  TrackedGpuDeviceBuffer(tsl::AsyncValueRef<GpuDeviceMemory> buffer,
                          tsl::AsyncValueRef<GpuEvent> definition_event,
                          std::function<void()> on_delete_callback = nullptr);
 
-  // Move-only.
   TrackedGpuDeviceBuffer(TrackedGpuDeviceBuffer&&) = default;
   TrackedGpuDeviceBuffer& operator=(TrackedGpuDeviceBuffer&&) = default;
-  TrackedGpuDeviceBuffer(const TrackedGpuDeviceBuffer&) = delete;
-  TrackedGpuDeviceBuffer& operator=(const TrackedGpuDeviceBuffer&) = delete;
 
   ~TrackedGpuDeviceBuffer();
 
-  const tsl::AsyncValueRef<MaybeOwningGpuMemory>& buffer() const {
-    return buffer_;
-  }
+  const tsl::AsyncValueRef<GpuDeviceMemory>& buffer() const { return buffer_; }
 
   const tsl::AsyncValueRef<GpuEvent>& definition_event() const {
     return definition_event_;
@@ -144,14 +124,14 @@ class TrackedGpuDeviceBuffer {
   // buffer is passed to a computation that aliases its inputs to outputs.
   void ReleaseDeviceMemory();
 
-  // Change ownership of underlying MaybeOwningGpuMemory from owning to
+  // Change ownership of underlying GpuDeviceMemory from owning to
   // non-owning. Used for buffer donation.
   void SetUnOwned();
 
   friend class TfrtGpuBuffer;
 
  private:
-  tsl::AsyncValueRef<MaybeOwningGpuMemory> buffer_;
+  tsl::AsyncValueRef<GpuDeviceMemory> buffer_;
 
   // The definition event are associated with GPU operations that write to the
   // buffers.
@@ -169,6 +149,7 @@ class TrackedGpuDeviceBuffer {
   // destroyed.
   std::function<void()> on_delete_callback_;
 };
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_GPU_TFRT_TRACKED_GPU_DEVICE_BUFFER_H_
