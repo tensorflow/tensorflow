@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/module_spec.h"
 #include "tsl/platform/test.h"
