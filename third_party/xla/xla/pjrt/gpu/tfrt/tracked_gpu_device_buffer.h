@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_GPU_TFRT_TRACKED_TFRT_GPU_DEVICE_BUFFER_H_
-#define XLA_PJRT_GPU_TFRT_TRACKED_TFRT_GPU_DEVICE_BUFFER_H_
+#ifndef XLA_PJRT_GPU_TFRT_TRACKED_GPU_DEVICE_BUFFER_H_
+#define XLA_PJRT_GPU_TFRT_TRACKED_GPU_DEVICE_BUFFER_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -96,26 +96,24 @@ class MaybeOwningGpuMemory {
 // Class that represents a GPU buffer. It optionally owns the buffer. It also
 // tracks the definition and usage of the memory to allow for synchronized usage
 // and deletion of GPU memory. This class is thread-compatible.
-class TrackedTfrtGpuDeviceBuffer {
+class TrackedGpuDeviceBuffer {
  public:
-  TrackedTfrtGpuDeviceBuffer(
+  TrackedGpuDeviceBuffer(
       tsl::AsyncValueRef<MaybeOwningGpuMemory> buffer,
       absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
       std::function<void()> on_delete_callback = nullptr);
 
-  TrackedTfrtGpuDeviceBuffer(
-      tsl::AsyncValueRef<MaybeOwningGpuMemory> buffer,
-      tsl::AsyncValueRef<GpuEvent> definition_event,
-      std::function<void()> on_delete_callback = nullptr);
+  TrackedGpuDeviceBuffer(tsl::AsyncValueRef<MaybeOwningGpuMemory> buffer,
+                         tsl::AsyncValueRef<GpuEvent> definition_event,
+                         std::function<void()> on_delete_callback = nullptr);
 
   // Move-only.
-  TrackedTfrtGpuDeviceBuffer(TrackedTfrtGpuDeviceBuffer&&) = default;
-  TrackedTfrtGpuDeviceBuffer& operator=(TrackedTfrtGpuDeviceBuffer&&) = default;
-  TrackedTfrtGpuDeviceBuffer(const TrackedTfrtGpuDeviceBuffer&) = delete;
-  TrackedTfrtGpuDeviceBuffer& operator=(const TrackedTfrtGpuDeviceBuffer&) =
-      delete;
+  TrackedGpuDeviceBuffer(TrackedGpuDeviceBuffer&&) = default;
+  TrackedGpuDeviceBuffer& operator=(TrackedGpuDeviceBuffer&&) = default;
+  TrackedGpuDeviceBuffer(const TrackedGpuDeviceBuffer&) = delete;
+  TrackedGpuDeviceBuffer& operator=(const TrackedGpuDeviceBuffer&) = delete;
 
-  ~TrackedTfrtGpuDeviceBuffer();
+  ~TrackedGpuDeviceBuffer();
 
   const tsl::AsyncValueRef<MaybeOwningGpuMemory>& buffer() const {
     return buffer_;
@@ -167,10 +165,10 @@ class TrackedTfrtGpuDeviceBuffer {
   // deallocations in program order.
   tsl::AsyncValueRef<GpuEvent> deallocation_event_;
 
-  // A callback to call when the TrackedTfrtGpuDeviceBuffer is about to be
+  // A callback to call when the TrackedGpuDeviceBuffer is about to be
   // destroyed.
   std::function<void()> on_delete_callback_;
 };
 }  // namespace xla
 
-#endif  // XLA_PJRT_GPU_TFRT_TRACKED_TFRT_GPU_DEVICE_BUFFER_H_
+#endif  // XLA_PJRT_GPU_TFRT_TRACKED_GPU_DEVICE_BUFFER_H_

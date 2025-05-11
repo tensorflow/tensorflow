@@ -52,7 +52,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
-#include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
+#include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -493,11 +493,10 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
 
 class TfrtGpuBuffer final : public PjRtBuffer {
  public:
-  TfrtGpuBuffer(
-      Shape on_device_shape,
-      std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer,
-      TfrtGpuClient* client, TfrtGpuDevice* device,
-      PjRtMemorySpace* memory_space);
+  TfrtGpuBuffer(Shape on_device_shape,
+                std::unique_ptr<TrackedGpuDeviceBuffer> tracked_device_buffer,
+                TfrtGpuClient* client, TfrtGpuDevice* device,
+                PjRtMemorySpace* memory_space);
   ~TfrtGpuBuffer() override;
 
   TfrtGpuBuffer(const TfrtGpuBuffer&) = delete;
@@ -563,7 +562,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   // serialized after all the usage events added through this method. Returns
   // nullptr if the buffer is already donated or there is outstanding external
   // references.
-  TrackedTfrtGpuDeviceBuffer* AcquireUsage(
+  TrackedGpuDeviceBuffer* AcquireUsage(
       tsl::AsyncValueRef<GpuEvent> usage_event);
 
   // A helper class for managing a pending donation. It should be committed upon
@@ -572,7 +571,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
    public:
     explicit DonationTransaction(
         tsl::AsyncValueRef<bool> donation_event,
-        std::unique_ptr<TrackedTfrtGpuDeviceBuffer> device_buffer)
+        std::unique_ptr<TrackedGpuDeviceBuffer> device_buffer)
         : donation_event_(donation_event),
           device_buffer_(std::move(device_buffer)) {
       VLOG(3) << "DonationTransaction::DonationTransaction";
@@ -598,7 +597,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
       device_buffer_.reset();
     }
 
-    TrackedTfrtGpuDeviceBuffer* device_buffer() const {
+    TrackedGpuDeviceBuffer* device_buffer() const {
       return device_buffer_.get();
     }
 
@@ -615,7 +614,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
     }
 
     tsl::AsyncValueRef<bool> donation_event_;
-    std::unique_ptr<TrackedTfrtGpuDeviceBuffer> device_buffer_;
+    std::unique_ptr<TrackedGpuDeviceBuffer> device_buffer_;
   };
 
   // Acquires the device buffer for exclusive donation. The caller of this
@@ -635,7 +634,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
 
   // Similar to Delete, drops the buffer's reference to its associated device
   // memory, leaving the buffer in an invalid state, but returns the
-  // TrackedTfrtGpuDeviceBuffer rather than freeing the device memory, so that
+  // TrackedGpuDeviceBuffer rather than freeing the device memory, so that
   // another framework can take ownership of it. The buffer returned from
   // Release may be safely dropped at any time even if it still has pending
   // async operations. The client should call Await before calling Release with
@@ -647,11 +646,11 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   // If the buffer was shared via an external reference it is the client's
   // responsibility that accesses via that reference do not interfere with
   // accesses via the buffer returned from Release.
-  absl::StatusOr<std::unique_ptr<TrackedTfrtGpuDeviceBuffer>> Release(
+  absl::StatusOr<std::unique_ptr<TrackedGpuDeviceBuffer>> Release(
       bool wait_for_operations_to_complete);
 
   // Releases the device buffer by returning a unique_ptr of it.
-  std::unique_ptr<TrackedTfrtGpuDeviceBuffer> ReleaseBufferLocked()
+  std::unique_ptr<TrackedGpuDeviceBuffer> ReleaseBufferLocked()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   TfrtGpuClient* client_;
@@ -660,7 +659,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   PjRtMemorySpace* const memory_space_;
 
   mutable absl::Mutex mu_;
-  std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer_
+  std::unique_ptr<TrackedGpuDeviceBuffer> tracked_device_buffer_
       ABSL_GUARDED_BY(mu_);
   // Count of external references on the buffer.
   int external_reference_counter_ ABSL_GUARDED_BY(mu_) = 0;

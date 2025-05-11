@@ -23,7 +23,7 @@ cc_library(
     deps = [
         ":gpu_event",
         ":host_memory_allocator",
-        ":tracked_tfrt_gpu_device_buffer",
+        ":tracked_gpu_device_buffer",
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
         "//xla:literal",
@@ -146,7 +146,7 @@ xla_cc_test(
     deps = [
         ":gpu_event",
         ":tfrt_gpu_client",
-        ":tracked_tfrt_gpu_device_buffer",
+        ":tracked_gpu_device_buffer",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -232,9 +232,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "tracked_tfrt_gpu_device_buffer",
-    srcs = ["tracked_tfrt_gpu_device_buffer.cc"],
-    hdrs = ["tracked_tfrt_gpu_device_buffer.h"],
+    name = "tracked_gpu_device_buffer",
+    srcs = ["tracked_gpu_device_buffer.cc"],
+    hdrs = ["tracked_gpu_device_buffer.h"],
     deps = [
         ":gpu_event",
         "//xla:shape_tree",
@@ -257,8 +257,8 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "tracked_tfrt_gpu_device_buffer_test",
-    srcs = ["tracked_tfrt_gpu_device_buffer_test.cc"],
+    name = "tracked_gpu_device_buffer_test",
+    srcs = ["tracked_gpu_device_buffer_test.cc"],
     tags = [
         "gpu",
         "no_oss",
@@ -268,7 +268,7 @@ xla_cc_test(
     ],
     deps = [
         ":gpu_event",
-        ":tracked_tfrt_gpu_device_buffer",
+        ":tracked_gpu_device_buffer",
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -309,7 +309,7 @@ xla_cc_test(
     deps = [
         ":gpu_event",
         ":tfrt_gpu_client",
-        ":tracked_tfrt_gpu_device_buffer",
+        ":tracked_gpu_device_buffer",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_client",
