@@ -39,8 +39,8 @@ limitations under the License.
 
 namespace xla {
 
-ShapedBuffer MaybeOwningGpuMemory::AsShapedBuffer(
-    const Shape& on_device_shape, const PjRtDevice* device) const {
+ShapedBuffer GpuDeviceMemory::AsShapedBuffer(const Shape& on_device_shape,
+                                             const PjRtDevice* device) const {
   ShapedBuffer shaped_buffer(on_device_shape, device->local_device_id().value(),
                              device->local_hardware_id().value());
   ShapeTree<se::DeviceMemoryBase>::iterator iterator =
@@ -52,33 +52,33 @@ ShapedBuffer MaybeOwningGpuMemory::AsShapedBuffer(
   return shaped_buffer;
 }
 
-void MaybeOwningGpuMemory::SetUnOwned() {
+void GpuDeviceMemory::SetUnOwned() {
   CHECK(owns_data())
-      << "SetUnOwned can only be called on an owning MaybeOwningGpuMemory.";
+      << "SetUnOwned can only be called on an owning GpuDeviceMemory.";
   owning_buffer_.Release();
 }
 
-absl::StatusOr<MaybeOwningGpuMemory> MaybeOwningGpuMemory::AllocateShared(
+absl::StatusOr<GpuDeviceMemory> GpuDeviceMemory::Allocate(
     se::DeviceMemoryAllocator* allocator, int device_ordinal, size_t size) {
-  return AllocateShared(allocator, device_ordinal, size,
-                        static_cast<int>(se::MemoryType::kDevice));
+  return Allocate(allocator, device_ordinal, size,
+                  static_cast<int>(se::MemoryType::kDevice));
 }
 
-absl::StatusOr<MaybeOwningGpuMemory> MaybeOwningGpuMemory::AllocateShared(
+absl::StatusOr<GpuDeviceMemory> GpuDeviceMemory::Allocate(
     se::DeviceMemoryAllocator* allocator, int device_ordinal, size_t size,
     int64_t memory_space) {
   if (size == 0) {
-    return MaybeOwningGpuMemory(se::DeviceMemoryBase());
+    return GpuDeviceMemory(se::DeviceMemoryBase());
   }
   TF_ASSIGN_OR_RETURN(
       stream_executor::OwningDeviceMemory memory,
       allocator->Allocate(device_ordinal, size, /*retry_on_failure=*/true,
                           memory_space));
-  return MaybeOwningGpuMemory(std::move(memory));
+  return GpuDeviceMemory(std::move(memory));
 }
 
 TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer(
-    tsl::AsyncValueRef<MaybeOwningGpuMemory> buffer,
+    tsl::AsyncValueRef<GpuDeviceMemory> buffer,
     absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
     std::function<void()> on_delete_callback)
     : TrackedGpuDeviceBuffer(std::move(buffer), AfterAll(definition_events),
@@ -90,7 +90,7 @@ TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer(
 }
 
 TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer(
-    tsl::AsyncValueRef<MaybeOwningGpuMemory> buffer,
+    tsl::AsyncValueRef<GpuDeviceMemory> buffer,
     tsl::AsyncValueRef<GpuEvent> definition_event,
     std::function<void()> on_delete_callback)
     : buffer_(std::move(buffer)),
