@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/logging.h"
 
-#include <iostream>
+#include <vector>
 
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
