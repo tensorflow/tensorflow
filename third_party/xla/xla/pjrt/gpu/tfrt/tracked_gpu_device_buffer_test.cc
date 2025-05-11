@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
+#include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 
 #include <stdlib.h>
 
@@ -151,7 +151,7 @@ TEST(MaybeOwningGpuMemoryTest, AsShapeBuffer) {
   EXPECT_EQ(result_shaped_buffer.root_buffer().size(), byte_size);
 }
 
-TEST(TrackedTfrtGpuDeviceBufferTest, TrackedDeviceBufferUsageEndToEnd) {
+TEST(TrackedGpuDeviceBufferTest, TrackedDeviceBufferUsageEndToEnd) {
   auto usage_event = MakeConstructedAsyncValueRef<GpuEvent>();
 
   TestAllocator allocator;
@@ -166,8 +166,8 @@ TEST(TrackedTfrtGpuDeviceBufferTest, TrackedDeviceBufferUsageEndToEnd) {
                                       "tracked_buffer_test",
                                       /*num_threads=*/4);
 
-  TrackedTfrtGpuDeviceBuffer tracked_buffer(test_buffer, definition_event,
-                                            /*on_delete_callback_=*/nullptr);
+  TrackedGpuDeviceBuffer tracked_buffer(test_buffer, definition_event,
+                                        /*on_delete_callback_=*/nullptr);
   tracked_buffer.SetUnOwned();
   {
     MarkGpuEventReadyOnExit ready_on_exit(usage_event);
