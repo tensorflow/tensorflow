@@ -775,8 +775,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
     }
 
     // Delete chunk once the memcpy operation completes.
-    auto* chunk_ptr = std::make_unique<PjRtChunk>(std::move(chunk)).release();
-    auto deleted = stream_->DoHostCallback([chunk_ptr]() { delete chunk_ptr; });
+    auto deleted = stream_->DoHostCallback([chunk = std::move(chunk)]() {});
     if (!deleted.ok()) {
       done_.SetError(deleted);
       return PjRtFuture<>(done_.GetError());
@@ -1005,6 +1004,17 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
 
   description_.SetDebugString(absl::StrCat("TFRT_GPU_", id_));
   description_.SetToString(absl::StrCat("GpuDevice(id=", id_, ")"));
+}
+
+TfrtGpuDevice::~TfrtGpuDevice() {
+  // Block the host until all pending work on the stream is done. This is to
+  // avoid user-after-free errors in host callbacks.
+  if (stream_ != nullptr) {
+    absl::Status status = stream_->BlockHostUntilDone();
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to wait for stream to finish: " << status;
+    }
+  }
 }
 
 void TfrtGpuDevice::SetClient(PjRtClient* client) {
@@ -1257,14 +1267,19 @@ TfrtGpuClient::TfrtGpuClient(
       allocator_(std::move(allocator)),
       host_memory_allocator_(std::make_unique<HostMemoryAllocator>(
           std::move(host_memory_allocator))),
-      owned_devices_(std::move(devices)),
-      devices_(InitializeDevices(this, owned_devices_)),
-      id_to_device_(GetIdToDeviceMap(owned_devices_)),
-      addressable_devices_(GetAddressableDevicePointers(owned_devices_)),
+      devices_(InitializeDevices(this, devices)),
+      id_to_device_(GetIdToDeviceMap(devices)),
+      addressable_devices_(GetAddressableDevicePointers(devices)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
       owned_memory_spaces_(
-          InitializeMemorySpaces(owned_devices_.size(), addressable_devices_)),
+          InitializeMemorySpaces(devices.size(), addressable_devices_)),
       memory_spaces_(GetMemorySpacePointers(owned_memory_spaces_)),
+      gpu_run_options_(std::move(gpu_run_options)),
+      transpose_cache_(1024),
+      topology_(GetTopology(platform_name_, std::move(gpu_topology),
+                            addressable_devices_)),
+      kv_store_(std::move(kv_store)),
+      owned_devices_(std::move(devices)),
       compile_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
           tsl::Env::Default(), tsl::ThreadOptions(),
           "TfrtGpuClient_compile_thread_pool",
@@ -1279,12 +1294,7 @@ TfrtGpuClient::TfrtGpuClient(
           tsl::Env::Default(), tsl::ThreadOptions(),
           "TfrtGpuClient_non_blocking_thread_pool",
           std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()),
-          true)),
-      gpu_run_options_(std::move(gpu_run_options)),
-      transpose_cache_(1024),
-      topology_(GetTopology(platform_name_, std::move(gpu_topology),
-                            addressable_devices_)),
-      kv_store_(std::move(kv_store)) {
+          true)) {
   LOG(INFO) << "TfrtGpuClient created.";
 }
 
@@ -3700,13 +3710,17 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         // has completed, so that the next execute_fn can start.
         scheduled_event.SetStateConcrete();
 
-        auto status = stream->DoHostCallback(
-            [complete_event(complete_event.CopyRef()), run_id(run_id),
-             executable_name(executable_name)]() mutable {
-              VLOG(1) << "Device execution done for " << executable_name
-                      << ", run_id: " << run_id.ToInt();
-              complete_event.SetStateConcrete();
-            });
+        absl::Status status = stream->BlockHostUntilDone();
+        if (!status.ok()) {
+          LOG(ERROR) << "BlockHostUntilDone failed for executable "
+                     << executable_name << " on device "
+                     << device->DebugString() << ", status = " << status;
+          complete_event.SetError(status);
+        } else {
+          VLOG(1) << "Device execution done for " << executable_name
+                  << ", run_id: " << run_id.ToInt();
+          complete_event.SetStateConcrete();
+        }
 
         VLOG(1) << "execute_fn done with status " << status;
       };
