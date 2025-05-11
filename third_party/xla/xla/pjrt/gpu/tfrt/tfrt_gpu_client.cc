@@ -74,7 +74,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
-#include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
+#include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/layout_mode.h"
@@ -204,8 +204,8 @@ absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
           std::move(device_buffer));
   return std::make_unique<TfrtGpuBuffer>(
       on_device_shape,
-      std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-          buffer_async_value_ref, std::move(definition_events)),
+      std::make_unique<TrackedGpuDeviceBuffer>(buffer_async_value_ref,
+                                               std::move(definition_events)),
       client, device, memory_space);
 }
 
@@ -265,7 +265,7 @@ std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
 // on device for the compiled program.
 absl::Status CheckBufferCompatibilities(
     absl::Span<int64_t const> input_buffer_sizes_in_bytes,
-    absl::Span<TrackedTfrtGpuDeviceBuffer* const> input_buffers) {
+    absl::Span<TrackedGpuDeviceBuffer* const> input_buffers) {
   if (input_buffers.size() != input_buffer_sizes_in_bytes.size()) {
     return InvalidArgument(
         "Execution supplied %lld buffers but compiled program expected %lld "
@@ -1509,7 +1509,7 @@ TfrtGpuClient::CreateViewOfDeviceBuffer(
   auto buffer_async_value_ref =
       tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
           std::move(non_owning_buffer));
-  auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+  auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
       std::move(buffer_async_value_ref),
       /*definition_event=*/tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
       std::move(on_delete_callback));
@@ -1732,7 +1732,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
   }
 
   auto buffer_async_value_ref = tsl::MakeErrorAsyncValueRef(error);
-  auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+  auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
       std::move(buffer_async_value_ref),
       /*definition_event=*/tsl::MakeErrorAsyncValueRef(std::move(error)));
   return std::make_unique<TfrtGpuBuffer>(
@@ -1943,7 +1943,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
                           device_shape, {dst_definition_event.CopyRef()},
                           device, this, memory_space, packed_size));
   auto copy_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  TrackedTfrtGpuDeviceBuffer* allocated_dst_buffer =
+  TrackedGpuDeviceBuffer* allocated_dst_buffer =
       output_buffer->AcquireUsage(copy_event);
   CHECK(allocated_dst_buffer != nullptr);
   auto gpu_buffer = allocated_dst_buffer->buffer();
@@ -2485,7 +2485,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
 
 TfrtGpuBuffer::TfrtGpuBuffer(
     Shape on_device_shape,
-    std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer,
+    std::unique_ptr<TrackedGpuDeviceBuffer> tracked_device_buffer,
     TfrtGpuClient* client, TfrtGpuDevice* device, PjRtMemorySpace* memory_space)
     : client_(client),
       on_device_shape_(std::move(on_device_shape)),
@@ -2502,7 +2502,7 @@ absl::StatusOr<size_t> TfrtGpuBuffer::GetOnDeviceSizeInBytes() const {
   return ShapeUtil::ByteSizeOf(on_device_shape_);
 }
 
-TrackedTfrtGpuDeviceBuffer* TfrtGpuBuffer::AcquireUsage(
+TrackedGpuDeviceBuffer* TfrtGpuBuffer::AcquireUsage(
     tsl::AsyncValueRef<GpuEvent> usage_event) {
   absl::MutexLock lock(&mu_);
   if (!tracked_device_buffer_) {
@@ -2616,7 +2616,7 @@ TfrtGpuBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
   // Acquire donation hold.
   TF_ASSIGN_OR_RETURN(auto donation_transaction, AcquireDonation());
 
-  TrackedTfrtGpuDeviceBuffer* original_tracked_buffer =
+  TrackedGpuDeviceBuffer* original_tracked_buffer =
       donation_transaction.device_buffer();
 
   // Check if the original buffer is valid.
@@ -2641,7 +2641,7 @@ TfrtGpuBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
   // original buffer.
   absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> new_definition_events{
       donation_event.CopyRef(), original_def_event.CopyRef()};
-  auto new_tracked_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+  auto new_tracked_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
       std::move(buffer_data_av), new_definition_events,
       std::move(original_tracked_buffer->on_delete_callback_));
 
@@ -2728,7 +2728,7 @@ class TrackedGpuDeviceBufferExternalReference
     : public PjRtBuffer::ExternalReference {
  public:
   explicit TrackedGpuDeviceBufferExternalReference(
-      std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer)
+      std::unique_ptr<TrackedGpuDeviceBuffer> tracked_device_buffer)
       : tracked_device_buffer_(std::move(tracked_device_buffer)) {
     data_ptr_ = tracked_device_buffer_->buffer()->buffer().opaque();
   }
@@ -2736,7 +2736,7 @@ class TrackedGpuDeviceBufferExternalReference
   ~TrackedGpuDeviceBufferExternalReference() override = default;
 
  private:
-  std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer_;
+  std::unique_ptr<TrackedGpuDeviceBuffer> tracked_device_buffer_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
@@ -2747,7 +2747,7 @@ TfrtGpuBuffer::ReleaseDeviceMemoryOwnership(
         "ReleaseDeviceMemoryOwnership allowed only for non-tuple");
   }
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer,
+      std::unique_ptr<TrackedGpuDeviceBuffer> tracked_device_buffer,
       Release(wait_for_operations_to_complete));
 
   std::unique_ptr<PjRtBuffer::ExternalReference> ref;
@@ -3022,7 +3022,7 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
 void TfrtGpuBuffer::Delete() {
   tsl::profiler::TraceMe traceme("Gpu buffer delete");
   VLOG(2) << " TfrtGpuBuffer::Delete";
-  std::unique_ptr<TrackedTfrtGpuDeviceBuffer> device_buffer;
+  std::unique_ptr<TrackedGpuDeviceBuffer> device_buffer;
   tsl::AsyncValueRef<GpuEvent> external_references_dropped_event;
   {
     absl::MutexLock lock(&mu_);
@@ -3099,7 +3099,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
 
   // Copy each leaf buffer to a destination buffer.
   auto src_usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  TrackedTfrtGpuDeviceBuffer* src_device_buffer = AcquireUsage(src_usage_event);
+  TrackedGpuDeviceBuffer* src_device_buffer = AcquireUsage(src_usage_event);
   if (src_device_buffer == nullptr) {
     return InvalidArgument(
         "CopyToMemorySpace called on deleted or donated buffer");
@@ -3115,7 +3115,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
                           on_device_shape_, {dst_definition_event.CopyRef()},
                           gpu_dst_device, client_, dst_memory_space));
   auto dst_usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  TrackedTfrtGpuDeviceBuffer* allocated_dst_device_buffer =
+  TrackedGpuDeviceBuffer* allocated_dst_device_buffer =
       output_buffer->AcquireUsage(dst_usage_event);
   CHECK(allocated_dst_device_buffer != nullptr);
   auto allocated_dst_buffer = allocated_dst_device_buffer->buffer();
@@ -3177,11 +3177,11 @@ void TfrtGpuBuffer::DropExternalReference() {
   }
 }
 
-absl::StatusOr<std::unique_ptr<TrackedTfrtGpuDeviceBuffer>>
-TfrtGpuBuffer::Release(bool wait_for_operations_to_complete) {
+absl::StatusOr<std::unique_ptr<TrackedGpuDeviceBuffer>> TfrtGpuBuffer::Release(
+    bool wait_for_operations_to_complete) {
   auto donation_event = GetDonationEvent();
   tsl::BlockUntilReady(donation_event);
-  std::unique_ptr<TrackedTfrtGpuDeviceBuffer> device_buffer;
+  std::unique_ptr<TrackedGpuDeviceBuffer> device_buffer;
   {
     absl::MutexLock lock(&mu_);
     device_buffer = ReleaseBufferLocked();
@@ -3212,8 +3212,7 @@ TfrtGpuBuffer::Release(bool wait_for_operations_to_complete) {
   return device_buffer;
 }
 
-std::unique_ptr<TrackedTfrtGpuDeviceBuffer>
-TfrtGpuBuffer::ReleaseBufferLocked() {
+std::unique_ptr<TrackedGpuDeviceBuffer> TfrtGpuBuffer::ReleaseBufferLocked() {
   tsl::profiler::TraceMe traceme("TfrtGpuBuffer::ReleaseBufferLocked");
   return std::move(tracked_device_buffer_);
 }
@@ -3399,7 +3398,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   absl::InlinedVector<TfrtGpuBuffer::DonationTransaction, 4>
       donation_transactions;
 
-  absl::InlinedVector<TrackedTfrtGpuDeviceBuffer*, 4> tracked_buffers;
+  absl::InlinedVector<TrackedGpuDeviceBuffer*, 4> tracked_buffers;
   absl::InlinedVector<bool, 4> buffer_is_donated;
   tracked_buffers.reserve(argument_handles.size());
   buffer_is_donated.reserve(argument_handles.size());
@@ -3436,9 +3435,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         options.non_donatable_input_indices.contains(i);
     bool must_donate = donate_it != donated_params.end() && *donate_it == i &&
                        !donation_denied_at_runtime;
-    auto tracked_buffer_or =
-        [&]() -> absl::StatusOr<TrackedTfrtGpuDeviceBuffer*> {
-      TrackedTfrtGpuDeviceBuffer* tracked_buffer = nullptr;
+    auto tracked_buffer_or = [&]() -> absl::StatusOr<TrackedGpuDeviceBuffer*> {
+      TrackedGpuDeviceBuffer* tracked_buffer = nullptr;
       if (must_donate) {
         VLOG(2) << "Buffer for argument_handles[" << i << "] is donated";
 
@@ -3477,7 +3475,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       LOG(ERROR) << "Failed to get tracked buffer: "
                  << tracked_buffer_or.status();
     } else {
-      TrackedTfrtGpuDeviceBuffer* tracked_buffer = tracked_buffer_or.value();
+      TrackedGpuDeviceBuffer* tracked_buffer = tracked_buffer_or.value();
       tracked_buffers.push_back(tracked_buffer);
       prepare_input_deps.push_back(tracked_buffer->buffer().CopyRCRef());
 
@@ -3523,7 +3521,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       // Program execution writes to output buffers so it's a definition
       // event.
       auto leaf_tracked_device_buffer =
-          std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+          std::make_unique<TrackedGpuDeviceBuffer>(
               output_buffers.back().CopyRef(), scheduled_event.CopyRef());
       VLOG(4) << "created leaf_tracked_device_buffer: "
               << leaf_tracked_device_buffer.get();
@@ -3546,7 +3544,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     output_buffers.push_back(
         tsl::MakeUnconstructedAsyncValueRef<MaybeOwningGpuMemory>());
     // Program execution writes to output buffers so it's a definition event.
-    auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+    auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
         output_buffers.back().CopyRef(),
         /*definition_event=*/scheduled_event.CopyRef());
     VLOG(4) << "created tracked_device_buffer: " << tracked_device_buffer.get();
