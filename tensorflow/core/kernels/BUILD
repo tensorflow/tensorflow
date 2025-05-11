@@ -8220,3 +8220,14 @@ tf_kernel_library(
         "//tensorflow/core:lib",
     ],
 )
+
+
+cc_library(
+    name = "cwise_op_truncate_div_complex",
+    srcs = ["cwise_op_truncate_div_complex.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
