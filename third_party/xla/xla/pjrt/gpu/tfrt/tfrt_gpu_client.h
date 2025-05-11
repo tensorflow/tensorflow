@@ -138,6 +138,8 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   explicit TfrtGpuDevice(Options&& options);
 
+  ~TfrtGpuDevice() override;
+
   void SetClient(PjRtClient* client);
 
   const PjRtStreamExecutorDeviceDescription& description() const override {
@@ -445,8 +447,6 @@ class TfrtGpuClient final : public PjRtClient {
   // Allocator to be used for staging memory transfers to devices.
   std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
 
-  // Includes all devices, including non-local devices on multi-host platforms.
-  std::vector<std::unique_ptr<TfrtGpuDevice>> owned_devices_;
   // Pointers to `owned_devices_`.
   std::vector<PjRtDevice*> devices_;
   // Maps Device::id() to the corresponding Device. Includes all devices.
@@ -459,10 +459,6 @@ class TfrtGpuClient final : public PjRtClient {
   std::vector<std::unique_ptr<PjRtMemorySpace>> owned_memory_spaces_;
   // Pointers to `owned_memory_spaces_`.
   std::vector<PjRtMemorySpace*> memory_spaces_;
-
-  std::unique_ptr<tsl::thread::ThreadPool> compile_thread_pool_;
-  std::unique_ptr<tsl::thread::ThreadPool> blocking_thread_pool_;
-  std::unique_ptr<tsl::thread::ThreadPool> non_blocking_thread_pool_;
 
   const std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 
@@ -479,6 +475,17 @@ class TfrtGpuClient final : public PjRtClient {
   // Maps dma mapped start pointers to their sizes.
   absl::btree_map<const void*, size_t, std::greater<const void*>> dma_maps_
       ABSL_GUARDED_BY(dma_maps_mutex_);
+
+  // Includes all devices, including non-local devices on multi-host platforms.
+  // Destructed after the thread pools, to ensure that all kernels in the
+  // streams are finished.
+  std::vector<std::unique_ptr<TfrtGpuDevice>> owned_devices_;
+
+  // Thread pools must be destructed first, to make all the pending tasks are
+  // completed before the client is destructed.
+  std::unique_ptr<tsl::thread::ThreadPool> compile_thread_pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> blocking_thread_pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> non_blocking_thread_pool_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
