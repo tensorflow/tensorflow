@@ -723,7 +723,7 @@ absl::Status CheckDuplicatedSourceOrTarget(
   absl::flat_hash_map<int64_t, std::vector<int64_t>> seen_source_to_targets;
   absl::flat_hash_map<int64_t, std::vector<int64_t>> seen_target_to_sources;
   int allowed_seen_count = 1;
-  if (collective_permute->operand_count() == 4) {
+  if (collective_permute->inplace()) {
     if (collective_permute->operand(0)->shape().IsArray()) {
       allowed_seen_count =
           collective_permute->operand(2)->shape().tuple_shapes().size();

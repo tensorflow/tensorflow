@@ -1995,6 +1995,23 @@ TEST_F(HloVerifierTest, CollectivePermuteSameTargetTwice) {
               HasSubstr("Target 2 appears more than once"));
 }
 
+TEST_F(HloVerifierTest, CollectivePermuteMultipeOperands) {
+  absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    p1 = f32[128] parameter(1)
+    p2 = f32[128] parameter(2)
+    p3 = f32[128] parameter(3)
+    ROOT permute = (f32[128], f32[128], f32[128], f32[128]) collective-permute(
+      p0, p1, p2, p3), source_target_pairs={{0,1}, {1,2}, {2,0}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  TF_EXPECT_OK(verifier().Run(module.get()).status());
+}
+
 TEST_F(HloVerifierTest, CollectivePermuteSameSourceTooManyTimes) {
   const char* const kModuleStr = R"(
   HloModule test
