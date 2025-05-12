@@ -559,29 +559,6 @@ void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
   }
 }
 
-// The buffer's memory should have been allocated before calling this function.
-void AbstractCpuBuffer::CopyFromLiteral(
-    const LiteralSlice& literal, const Shape& shape,
-    absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
-    AsyncWorkRunner* async_work_runner) {
-  auto usage_event = tsl::MakeAvailableAsyncValueRef<CpuEvent>();
-  auto* device_buffer = AcquireUsage(std::move(usage_event));
-  CHECK(device_buffer);
-  CHECK(!shape.IsTuple());
-  // It is OK to capture `buffer` pointer because the `output_buffer` can't be
-  // deleted until all the usage holds have gone away.
-  async_work_runner->Schedule(
-      [literal, av = (*avs)[0].CopyRef(), device_buffer, shape]() mutable {
-        tsl::profiler::TraceMe traceme("H2D Dispatch");
-        const tsl::AsyncValueRef<CpuDeviceMemory>& b = device_buffer->buffer();
-        CHECK(b.IsConcrete());
-        PackOrCopy(shape.element_type(), literal, b->untyped_data(),
-                   b->size_bytes());
-        // Signal copy is complete.
-        av->SetStateConcrete();
-      });
-}
-
 /*static*/ absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
 AbstractCpuBuffer::AllocateTrackedDeviceBuffer(
     const Shape& on_device_shape,
