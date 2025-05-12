@@ -36,21 +36,21 @@ using ::stream_executor::gpu::TmaDescriptor;
 // @triton/third_party/nvidia/backend/cuda_utils.cc
 absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
     llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> block_shape,
-    int element_byte_size) {
+    llvm::ArrayRef<int64_t> layout, int element_byte_size) {
   if (global_shape.size() != 2) {
     return absl::InvalidArgumentError("expected 2D global shape");
   }
   if (block_shape.size() != 2) {
     return absl::InvalidArgumentError("expected 2D block shape");
   }
-  // TODO(b/413351367): Figure out if we need (and how) to handle non-normalized
-  // layouts.
+
   SmallVector<uint64_t, 2> global_dims = {
-      static_cast<uint64_t>(global_shape[1]),
-      static_cast<uint64_t>(global_shape[0])};
+      static_cast<uint64_t>(global_shape[layout[0]]),
+      static_cast<uint64_t>(global_shape[layout[1]])};
   auto global_strides = {global_dims[0] * element_byte_size};
-  SmallVector<uint32_t, 2> box_dims = {static_cast<uint32_t>(block_shape[1]),
-                                       static_cast<uint32_t>(block_shape[0])};
+  SmallVector<uint32_t, 2> box_dims = {
+      static_cast<uint32_t>(block_shape[layout[0]]),
+      static_cast<uint32_t>(block_shape[layout[1]])};
   SmallVector<uint32_t, 2> element_strides = {1, 1};
   TmaDescriptor::TmaSwizzle swizzle;
   uint32_t contig_dim_size_in_byte = element_byte_size * box_dims[0];
