@@ -42,7 +42,7 @@ class ConvolutionNodeNameTest(xla_test.XLATestCase):
         input_tensor = array_ops.placeholder(np.float32, shape=input_sizes)
 
         if use_xla:
-          with self.test_scope():
+          with self.device_scope():
             # pylint: disable=protected-access
             graph = ops.get_default_graph()
             graph._set_control_flow_context(
