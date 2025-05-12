@@ -1290,6 +1290,28 @@ cc_library(
     deps = ["@com_google_absl//absl/functional:any_invocable"],
 )
 
+cc_library(
+    name = "compact_string",
+    srcs = ["compact_string.cc"],
+    hdrs = ["compact_string.h"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:coding",
+    ],
+)
+
+xla_cc_test(
+    name = "compact_string_test",
+    srcs = ["compact_string_test.cc"],
+    deps = [
+        ":compact_string",
+        "//xla/hlo/testlib:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 tf_proto_library(
     name = "autotune_results_proto",
     srcs = ["autotune_results.proto"],
