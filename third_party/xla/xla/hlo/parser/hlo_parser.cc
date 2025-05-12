@@ -6261,11 +6261,25 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
 
 // shape ::= shape_val_
 // shape ::= '(' tuple_elements ')'
+// shape ::= 'b(' shape ')'
 // tuple_elements
 //   ::= /*empty*/
 //   ::= shape (',' shape)*
 bool HloParserImpl::ParseShape(Shape* result,
                                bool allow_fallback_to_default_layout) {
+  if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "b" &&
+      lexer_.LookAhead() == TokKind::kLparen) {  // Buffer shape
+    lexer_.Lex();
+    lexer_.Lex();
+    Shape shape;
+    if (!ParseShape(&shape, allow_fallback_to_default_layout)) {
+      return false;
+    }
+    *result = Shape::MakeBufferShape(shape);
+    return ParseToken(TokKind::kRparen,
+                      "expects ')' at the end of buffer shape.");
+  }
+
   if (EatIfPresent(TokKind::kLparen)) {  // Tuple
     std::vector<Shape> shapes;
     if (lexer_.GetKind() == TokKind::kRparen) {
@@ -6359,7 +6373,9 @@ bool HloParserImpl::CanBeShape() {
   // A non-tuple shape starts with a kPrimitiveType token; a tuple shape starts
   // with '('.
   return lexer_.GetKind() == TokKind::kPrimitiveType ||
-         lexer_.GetKind() == TokKind::kLparen;
+         lexer_.GetKind() == TokKind::kLparen ||
+         (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "b" &&
+          lexer_.LookAhead() == TokKind::kLparen);
 }
 
 bool HloParserImpl::ParseName(std::string* result) {
