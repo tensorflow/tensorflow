@@ -492,6 +492,7 @@ cc_library(
     ],
     deps = [
         ":constants",
+        ":fingerprinting_x_platform_utils",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/graph/regularization:simple_delete",
         "//tensorflow/core/graph/regularization:util",
@@ -545,6 +546,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":constants",
+        ":fingerprinting_x_platform_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:naming",
@@ -559,6 +561,17 @@ cc_library(
         "@riegeli//riegeli/records:record_reader",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "fingerprinting_x_platform_utils",
+    srcs = ["fingerprinting_x_platform_utils.cc"],
+    hdrs = ["fingerprinting_x_platform_utils.h"],
+    deps = [
+        "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:random",
+    ],
 )
 
 tf_cc_test(
@@ -634,6 +647,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
