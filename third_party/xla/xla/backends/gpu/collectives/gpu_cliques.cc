@@ -572,9 +572,13 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
 
   // We enable resource sharing between parent and split communicators by
   // default because that's the only reason why we use comm splitting.
+  //
+  // TODO(mwhittaker): Make some of these flags.
   GpuCollectives::Config config;
   config.split_share = true;
   config.max_nchannels = max_nchannels;
+  config.blocking_communicators = true;
+  config.async_execution = false;
 
   if (enable_nccl_comm_splitting) {
     for (auto& [acquired_clique_key, acquired_clique] : acquired_cliques) {

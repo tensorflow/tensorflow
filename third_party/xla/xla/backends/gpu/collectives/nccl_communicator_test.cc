@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/nccl_communicator.h"
 
 #include <cstddef>
+#include <memory>
 #include <optional>
 
 #include <gmock/gmock.h>
@@ -50,108 +51,121 @@ namespace xla::gpu {
 namespace {
 
 using ::testing::HasSubstr;
+using ::tsl::testing::IsOk;
 using ::tsl::testing::StatusIs;
 
 constexpr absl::string_view kCudaError = "unhandled cuda error";
 
+void AssertAborted(absl::Status s) {
+  ASSERT_THAT(
+      s, StatusIs(absl::StatusCode::kFailedPrecondition, HasSubstr("aborted")));
+};
+
+void AssertEventAborted(tsl::AsyncValueRef<Communicator::Event> event) {
+  tsl::BlockUntilReady(event);
+  ASSERT_TRUE(event.IsError());
+  ASSERT_THAT(event.GetError(), StatusIs(absl::StatusCode::kFailedPrecondition,
+                                         HasSubstr("aborted")));
+};
+
 // Creates a non-blocking NCCL communicator.
-absl::StatusOr<NcclCommunicator> CreateNonBlockingCommunicator() {
-  // Create a unique NCCL Id.
-  ncclUniqueId id;
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclGetUniqueId(&id)));
+absl::StatusOr<std::unique_ptr<NcclCommunicator>> CreateCommunicator(
+    bool blocking) {
+  auto f = [blocking]() -> absl::StatusOr<ncclComm_t> {
+    // Create a unique NCCL Id.
+    ncclUniqueId id;
+    TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclGetUniqueId(&id)));
 
-  // Initialize a communicator.
-  ncclConfig_t config = NCCL_CONFIG_INITIALIZER;
-  config.blocking = 0;  // non-blocking
-  ncclComm_t comm;
-  ncclResult_t r =
-      ncclCommInitRankConfig(&comm, /*nranks=*/1, id, /*rank=*/0, &config);
-  if (r == ncclUnhandledCudaError) {
-    // If this test runs on a machine without any CUDA-capable devices
-    // available, we get a ncclUnhandledCudaError. We return a specific error
-    // and skip the test.
-    LOG(ERROR) << XLA_NCCL_STATUS(r);
-    return absl::FailedPreconditionError(kCudaError);
-  }
-  if (r != ncclSuccess && r != ncclInProgress) {
-    return XLA_NCCL_STATUS(r);
-  }
+    // Initialize a communicator.
+    ncclConfig_t config = NCCL_CONFIG_INITIALIZER;
+    config.blocking = blocking ? 1 : 0;
+    ncclComm_t comm;
+    ncclResult_t r =
+        ncclCommInitRankConfig(&comm, /*nranks=*/1, id, /*rank=*/0, &config);
+    if (r == ncclUnhandledCudaError) {
+      // If this test runs on a machine without any CUDA-capable devices
+      // available, we get a ncclUnhandledCudaError. We return a specific error
+      // and skip the test.
+      LOG(ERROR) << XLA_NCCL_STATUS(r);
+      return absl::FailedPreconditionError(kCudaError);
+    }
+    if (r != ncclSuccess && r != ncclInProgress) {
+      return XLA_NCCL_STATUS(r);
+    }
 
-  // Wait for the communicator to finish initializing.
-  ncclResult_t state = ncclInProgress;
-  while (state == ncclInProgress) {
-    TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclCommGetAsyncError(comm, &state)));
-  }
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(state));
-
-  // Wrap and return the communicator.
-  return absl::StatusOr<NcclCommunicator>(absl::in_place_t(), comm);
+    // Wait for the communicator to finish initializing.
+    ncclResult_t state = ncclInProgress;
+    while (state == ncclInProgress) {
+      TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclCommGetAsyncError(comm, &state)));
+    }
+    TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(state));
+    return comm;
+  };
+  bool is_async = !blocking;
+  return NcclCommunicator::Create(f, is_async);
 }
 
 TEST(NcclCommunicator, AbortSucceeds) {
-  absl::StatusOr<NcclCommunicator> comm = CreateNonBlockingCommunicator();
-  if (comm.status().message() == kCudaError) {
-    GTEST_SKIP() << "unhandled cuda error";
+  for (const bool blocking : {true, false}) {
+    absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
+        CreateCommunicator(blocking);
+    if (comm.status().message() == kCudaError) {
+      GTEST_SKIP() << "unhandled cuda error";
+    }
+    ASSERT_THAT(comm, IsOk());
+    ASSERT_THAT((*comm)->Abort(), IsOk());
   }
-  TF_ASSERT_OK(comm.status());
-  TF_ASSERT_OK(comm->Abort());
 }
 
 TEST(NcclCommunicator, DoubleAbortFails) {
-  absl::StatusOr<NcclCommunicator> comm = CreateNonBlockingCommunicator();
-  if (comm.status().message() == kCudaError) {
-    GTEST_SKIP() << "unhandled cuda error";
+  for (const bool blocking : {true, false}) {
+    absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
+        CreateCommunicator(blocking);
+    if (comm.status().message() == kCudaError) {
+      GTEST_SKIP() << "unhandled cuda error";
+    }
+    ASSERT_THAT(comm.status(), IsOk());
+    ASSERT_THAT((*comm)->Abort(), IsOk());
+    ASSERT_THAT(
+        (*comm)->Abort(),
+        StatusIs(absl::StatusCode::kFailedPrecondition, HasSubstr("aborted")));
   }
-  TF_ASSERT_OK(comm.status());
-  TF_ASSERT_OK(comm->Abort());
-  ASSERT_THAT(comm->Abort(), StatusIs(absl::StatusCode::kFailedPrecondition,
-                                      HasSubstr("aborted")));
 }
 
 TEST(NcclCommunicator, OperationsFailAfterAbort) {
-  auto assert_aborted = [](absl::Status s) {
-    ASSERT_THAT(s, StatusIs(absl::StatusCode::kFailedPrecondition,
-                            HasSubstr("aborted")));
-  };
+  for (const bool blocking : {true, false}) {
+    // Declare placeholder variables to make the operations below compile.
+    se::DeviceMemoryBase buf;
+    PrimitiveType dtype = PrimitiveType::U64;
+    size_t count = 0;
+    ReductionKind rk = ReductionKind::SUM;
+    GpuCollectives::Executor executor(nullptr);
 
-  auto assert_event_aborted =
-      [](tsl::AsyncValueRef<Communicator::Event> event) {
-        tsl::BlockUntilReady(event);
-        ASSERT_TRUE(event.IsError());
-        ASSERT_THAT(event.GetError(),
-                    StatusIs(absl::StatusCode::kFailedPrecondition,
-                             HasSubstr("aborted")));
-      };
-
-  // Declare placeholder variables to make the operations below compile.
-  se::DeviceMemoryBase buf;
-  PrimitiveType dtype = PrimitiveType::U64;
-  size_t count = 0;
-  ReductionKind rk = ReductionKind::SUM;
-  GpuCollectives::Executor executor(nullptr);
-
-  // Execute NcclCommunicator operations. They should all immediately fail
-  // because the communicator has been aborted.
-  absl::StatusOr<NcclCommunicator> comm = CreateNonBlockingCommunicator();
-  if (comm.status().message() == kCudaError) {
-    GTEST_SKIP() << "unhandled cuda error";
+    // Execute NcclCommunicator operations. They should all immediately fail
+    // because the communicator has been aborted.
+    absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
+        CreateCommunicator(blocking);
+    if (comm.status().message() == kCudaError) {
+      GTEST_SKIP() << "unhandled cuda error";
+    }
+    ASSERT_THAT(comm.status(), IsOk());
+    ASSERT_THAT((*comm)->Abort(), IsOk());
+    AssertAborted((*comm)->HealthCheck());
+    AssertAborted((*comm)->NumRanks().status());
+    AssertAborted((*comm)->RegisterBuffer(buf).status());
+    AssertEventAborted(
+        (*comm)->AllReduce(buf, buf, dtype, count, rk, executor));
+    AssertEventAborted(
+        (*comm)->Broadcast(buf, buf, dtype, count, RankId(0), executor));
+    AssertEventAborted(
+        (*comm)->ReduceScatter(buf, buf, dtype, count, rk, executor));
+    AssertEventAborted((*comm)->AllGather(buf, buf, dtype, count, executor));
+    AssertEventAborted((*comm)->AllToAll({}, {}, dtype, count, executor));
+    AssertEventAborted(
+        (*comm)->CollectivePermute(buf, buf, dtype, count, {}, {}, executor));
+    AssertEventAborted((*comm)->Send(buf, dtype, count, RankId(0), executor));
+    AssertEventAborted((*comm)->Recv(buf, dtype, count, RankId(0), executor));
   }
-  TF_ASSERT_OK(comm.status());
-  TF_ASSERT_OK(comm->Abort());
-  assert_aborted(comm->HealthCheck());
-  assert_aborted(comm->NumRanks().status());
-  assert_aborted(comm->RegisterBuffer(buf).status());
-  assert_event_aborted(comm->AllReduce(buf, buf, dtype, count, rk, executor));
-  assert_event_aborted(
-      comm->Broadcast(buf, buf, dtype, count, RankId(0), executor));
-  assert_event_aborted(
-      comm->ReduceScatter(buf, buf, dtype, count, rk, executor));
-  assert_event_aborted(comm->AllGather(buf, buf, dtype, count, executor));
-  assert_event_aborted(comm->AllToAll({}, {}, dtype, count, executor));
-  assert_event_aborted(
-      comm->CollectivePermute(buf, buf, dtype, count, {}, {}, executor));
-  assert_event_aborted(comm->Send(buf, dtype, count, RankId(0), executor));
-  assert_event_aborted(comm->Recv(buf, dtype, count, RankId(0), executor));
 }
 
 }  // namespace
