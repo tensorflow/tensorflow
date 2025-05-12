@@ -2867,6 +2867,41 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(AllDevicesToTest())),
     TritonSupportTestTwoTypesAndDeviceToString);
 
+using TopKTest = TritonSupportTestWithTypeAndDeviceAndBoolParam;
+
+std::string ParamToStringTopK(
+    const ::testing::TestParamInfo<TopKTest::ParamType>& info) {
+  auto [data_type, cc, largest] = info.param;
+  return absl::StrCat(PrimitiveType_Name(data_type), "_",
+                      ComputeCapabilityToString(cc), "_",
+                      largest ? "largest" : "smallest");
+}
+
+TEST_P(TopKTest, TopK) {
+  auto [data_type, cc, largest] = GetParam();
+  const std::string kHloTestTemplate = absl::Substitute(
+      R"(
+ENTRY triton_computation {
+  operand = $$0[11,33,77] parameter(0)
+  ROOT topk_op = ($$0[11,33,10], s32[11,33,10]) topk(operand), k=10, largest=$0
+})",
+      largest);
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                          ParseTemplateAndGetInstruction(
+                              kHloTestTemplate, data_type, HloOpcode::kTopK));
+  RunSupportTestMultipleOutputTiles(
+      std::move(ti),
+      /*output_tile_sizes=*/{{2, 2, 1}, {2, 2, 1}}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TopKSuite, TopKTest,
+    ::testing::Combine(
+        ::testing::ValuesIn(AllOpSupportedTypes(HloOpcode::kTopK)),
+        ::testing::ValuesIn(AllDevicesToTest()),
+        ::testing::Bool()),  // largest?
+    ParamToStringTopK);
+
 constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
@@ -2886,7 +2921,6 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kSendDone,
     HloOpcode::kSetDimensionSize,
     HloOpcode::kSort,
-    HloOpcode::kTopK,
     HloOpcode::kTriangularSolve,
     // go/keep-sorted end
     // clang-format on
@@ -2940,6 +2974,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kInfeed);
   ret.emplace(HloOpcode::kOutfeed);
   ret.emplace(HloOpcode::kStochasticConvert);
+  ret.emplace(HloOpcode::kTopK);
   ret.insert(kUnsupportedOps.begin(), kUnsupportedOps.end());
 
   return ret;
