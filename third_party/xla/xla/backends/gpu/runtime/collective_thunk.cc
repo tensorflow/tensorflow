@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -445,6 +446,7 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
   int64_t async_stream_idx = static_cast<int64_t>(stream_kind);
 
+  bool is_first_rendezvous_needed = false;
   if (IsAsync()) {
     // Launch collective operation on an async stream.
     se::Stream& async_stream =
@@ -453,7 +455,8 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Wait for main compute stream to make sure all buffers are ready.
     TF_RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
 
-    TF_RETURN_IF_ERROR(RunCollective(params, async_stream, comm_handle));
+    TF_ASSIGN_OR_RETURN(is_first_rendezvous_needed,
+                        RunCollective(params, async_stream, comm_handle));
 
     // Record collective operation completion.
     TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
@@ -461,48 +464,60 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   } else {
     // Launch collective operation on a main stream.
-    TF_RETURN_IF_ERROR(RunCollective(params, *params.stream, comm_handle));
+    TF_ASSIGN_OR_RETURN(is_first_rendezvous_needed,
+                        RunCollective(params, *params.stream, comm_handle));
   }
 
-  // After a first execution of this instance of collective operation do a
-  // rendezvous with other participants to make sure that all of them allocated
-  // required state (internal to NCCL) and ready to continue. Going too far
-  // ahead on one rank leads to deadlocks in NCCL.
-  if (NeedFirstCallRendzevous() && !first_call_rendezvous_flag_.IsCompleted()) {
-    GpuCliqueKey clique_key = comm_handle.clique_key;
-    size_t num_local_participants = clique_key.num_local_participants();
-
-    auto global_device_id = params.collective_params->global_device_id;
-    RankId rank = clique_key.rank(global_device_id).value_or(RankId(-1));
-    VLOG(1) << "Do a rendezvous after a first call to "
-            << Thunk::KindToString(kind())
-            << "; run_id=" << params.collective_params->run_id.ToInt()
-            << "; op_id=" << config().op_id
-            << "; num_local_participants=" << num_local_participants
-            << "; rank=" << rank.value()
-            << "; clique_key=" << clique_key.ToString();
-
-    auto rendezvous_key = FirstCallRendezvousKey{std::move(clique_key)};
-    auto rendezvous_name = absl::StrFormat(
-        "first call to collective operation %d; run_id=%d", config().op_id,
-        params.collective_params->run_id.ToInt());
-
-    const xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
-
-    TF_RETURN_IF_ERROR(Rendezvous(
-        first_call_rendezvous_flag_, rendezvous_name, rendezvous_key,
-        num_local_participants,
-        /*warn_stuck_timeout=*/
-        absl::Seconds(
-            debug_options
-                .xla_gpu_first_collective_call_warn_stuck_timeout_seconds()),
-        /*terminate_timeout=*/
-        absl::Seconds(
-            debug_options
-                .xla_gpu_first_collective_call_terminate_timeout_seconds())
-
-            ));
+  if (is_first_rendezvous_needed) {
+    return DoFirstCallRendezvousIfNeeded(params, comm_handle);
   }
+
+  return absl::OkStatus();
+}
+
+// After a first execution of the collective operation with a unique set of
+// participants do a rendezvous with other participants to make sure that all
+// of them allocated required state (internal to NCCL) and ready to continue.
+// Going too far ahead on one rank leads to deadlocks in NCCL.
+absl::Status CollectiveThunk::DoFirstCallRendezvousIfNeeded(
+    const ExecuteParams& params, const CommunicatorHandle& comm_handle) {
+  GpuCliqueKey clique_key = comm_handle.clique_key;
+  std::shared_ptr<RendezvousFlag> first_clique_usage_rendezvous_flag =
+      GetRendezvousFlagForClique(clique_key);
+  if (first_clique_usage_rendezvous_flag->IsCompleted()) {
+    return absl::OkStatus();
+  }
+
+  size_t num_local_participants = clique_key.num_local_participants();
+
+  auto global_device_id = params.collective_params->global_device_id;
+  RankId rank = clique_key.rank(global_device_id).value_or(RankId(-1));
+  VLOG(1) << "Do a rendezvous after a first call to "
+          << Thunk::KindToString(kind())
+          << "; run_id=" << params.collective_params->run_id.ToInt()
+          << "; op_id=" << config().op_id
+          << "; num_local_participants=" << num_local_participants
+          << "; rank=" << rank.value()
+          << "; clique_key=" << clique_key.ToString();
+
+  auto rendezvous_key = FirstCallRendezvousKey{std::move(clique_key)};
+  auto rendezvous_name =
+      absl::StrFormat("first call to collective operation %d; run_id=%d",
+                      config().op_id, params.collective_params->run_id.ToInt());
+
+  const xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+
+  TF_RETURN_IF_ERROR(Rendezvous(
+      *first_clique_usage_rendezvous_flag, rendezvous_name, rendezvous_key,
+      num_local_participants,
+      /*warn_stuck_timeout=*/
+      absl::Seconds(
+          debug_options
+              .xla_gpu_first_collective_call_warn_stuck_timeout_seconds()),
+      /*terminate_timeout=*/
+      absl::Seconds(
+          debug_options
+              .xla_gpu_first_collective_call_terminate_timeout_seconds())));
 
   return absl::OkStatus();
 }

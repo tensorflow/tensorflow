@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/lockable.h"
+#include "xla/service/rendezvous.h"
 
 namespace xla::gpu {
 
@@ -81,6 +82,8 @@ class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
   absl::Status HealthCheck() const;
 };
 
+std::shared_ptr<RendezvousFlag> GetRendezvousFlagForClique(
+    const GpuCliqueKey& clique_key);
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_H_

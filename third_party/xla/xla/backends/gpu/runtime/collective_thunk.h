@@ -181,12 +181,8 @@ class CollectiveThunk : public Thunk {
   }
 
  protected:
-  virtual absl::Status RunCollective(const ExecuteParams& params,
-                                     se::Stream& stream,
-                                     CommunicatorHandle comm) = 0;
-  virtual const CollectiveConfig& config() const = 0;
-  virtual AsyncStreamKind GetAsyncStreamKind() const { return stream_kind_; }
-
+  // Run collective operation on a given stream and return if the first call
+  // rendezvous with other participants is needed.
   // A collective thunk is normally an independent operation in a sense that
   // different instances of the same collective thunk communicate each other.
   // The only exception are SendThunk and RecvThunk. Assume two devices are
@@ -195,23 +191,20 @@ class CollectiveThunk : public Thunk {
   // rendezvous on the SendThunk would cause a runtime deadlock.
   //  Send(src_target={0,1})
   //  Recv(src_target={0,1})
-  virtual bool NeedFirstCallRendzevous() const { return true; }
+  virtual absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                             se::Stream& stream,
+                                             CommunicatorHandle comm) = 0;
+  virtual const CollectiveConfig& config() const = 0;
+  virtual AsyncStreamKind GetAsyncStreamKind() const { return stream_kind_; }
 
  private:
+  absl::Status DoFirstCallRendezvousIfNeeded(
+      const ExecuteParams& params, const CommunicatorHandle& comm_handle);
+
   const AsyncStreamKind stream_kind_;
 
   bool IsAsync() const { return async_events_ != nullptr; }
   std::shared_ptr<AsyncEvents> async_events_;
-
-  // After a first call to this particular instance of a collective thunk we do
-  // a round of rendezvous to make sure that all participants successfully
-  // allocated on-device state required for executing collective operation. This
-  // is required to avoid deadlocks when one device goes too far ahead and
-  // causes a deadlock in CUDA driver (root cause is mysterious).
-  //
-  // TODO(ezhulenev): Try to move this flag to NCCL clique as we need to make
-  // sure that all NCCL resources are allocated just once.
-  RendezvousFlag first_call_rendezvous_flag_;
 };
 
 //===----------------------------------------------------------------------===//
