@@ -31,8 +31,30 @@ static mlir::ParseResult parseI64ArrayAttr(mlir::AsmParser& parser,
   return mlir::success();
 }
 
+ParseResult ParseOptionalSwizzleMode(mlir::AsmParser& parser,
+                                     SwizzleModeAttr& swizzle_mode) {
+  if (parser.parseOptionalComma()) {
+    // If there is no comma, we don't have a swizzle mode, but it's still valid.
+    swizzle_mode = nullptr;
+    return mlir::success();
+  }
+  StringAttr swizzle_mode_str;
+  if (parser.parseKeyword("swizzle_mode") || parser.parseEqual() ||
+      parser.parseAttribute(swizzle_mode_str)) {
+    return mlir::failure();
+  }
+  auto maybe_swizzle_mode = symbolizeSwizzleMode(swizzle_mode_str);
+  if (!maybe_swizzle_mode.has_value()) {
+    return mlir::failure();
+  }
+  swizzle_mode =
+      SwizzleModeAttr::get(parser.getContext(), maybe_swizzle_mode.value());
+  return mlir::success();
+}
+
 Attribute TmaDescriptorAttr::parse(mlir::AsmParser& parser, mlir::Type) {
-  int element_byte_size, swizzle_mode;
+  int element_byte_size;
+  SwizzleModeAttr swizzle_mode = nullptr;
   DenseI64ArrayAttr global_shape, block_shape;
 
   if (parser.parseLess() || parser.parseKeyword("global_shape") ||
@@ -41,11 +63,10 @@ Attribute TmaDescriptorAttr::parse(mlir::AsmParser& parser, mlir::Type) {
       parser.parseEqual() || parseI64ArrayAttr(parser, block_shape) ||
       parser.parseComma() || parser.parseKeyword("element_byte_size") ||
       parser.parseEqual() || parser.parseInteger(element_byte_size) ||
-      parser.parseComma() || parser.parseKeyword("swizzle_mode") ||
-      parser.parseEqual() || parser.parseInteger(swizzle_mode) ||
-      parser.parseGreater()) {
+      ParseOptionalSwizzleMode(parser, swizzle_mode) || parser.parseGreater()) {
     return {};
   }
+
   return TmaDescriptorAttr::get(parser.getContext(), global_shape.asArrayRef(),
                                 block_shape.asArrayRef(), element_byte_size,
                                 swizzle_mode);
@@ -56,8 +77,12 @@ void TmaDescriptorAttr::print(mlir::AsmPrinter& printer) const {
   llvm::interleaveComma(getGlobalShape(), printer);
   printer << "], block_shape = [";
   llvm::interleaveComma(getBlockShape(), printer);
-  printer << "], element_byte_size = " << getElementByteSize()
-          << ", swizzle_mode = " << getSwizzleMode() << ">";
+  printer << "], element_byte_size = " << getElementByteSize();
+  if (getSwizzleMode()) {
+    printer << ", swizzle_mode = \""
+            << stringifySwizzleMode(getSwizzleMode().getValue()) << "\"";
+  }
+  printer << ">";
 }
 
 }  // namespace mlir::triton::xla

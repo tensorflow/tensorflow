@@ -58,6 +58,8 @@ gentbl_cc_library(
     name = "triton_xla_attrs_inc_gen",
     strip_include_prefix = ".",
     tbl_outs = {
+        "triton_xla_enums.h.inc": ["-gen-enum-decls"],
+        "triton_xla_enums.cc.inc": ["-gen-enum-defs"],
         "triton_xla_attrs.h.inc": [
             "-gen-attrdef-decls",
             "-attrdefs-dialect=triton_xla",

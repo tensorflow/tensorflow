@@ -127,6 +127,10 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   }
   pm->addPass(mlir::createCanonicalizerPass());
 
+  // Corresponds to "mod.get_tensordesc_metadata()"
+  // in @triton//:third_party/nvidia/backend/compiler.py
+  pm->addPass(mt_xla::CreateExtractTmaInfoPass());
+
   // Based on make_llir() in
   // @triton//:third_party/nvidia/backend/compiler.py
   // This pass reduces Hopper compile time extensively: b/344841434.
