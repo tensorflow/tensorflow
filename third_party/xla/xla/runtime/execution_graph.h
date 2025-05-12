@@ -166,6 +166,10 @@ class ExecutionGraph {
     return Create(ptrs);
   }
 
+  // Constructs an execution graph from a sequence of operations.
+  static absl::StatusOr<ExecutionGraph> Create(
+      absl::Span<const Operation* const> operations);
+
   // Returns execution graph nodes definitions.
   absl::Span<const NodeDef> nodes_defs() const { return nodes_defs_; }
 
@@ -206,10 +210,6 @@ class ExecutionGraph {
   bool is_sequential() const { return is_sequential_; }
 
  private:
-  // Constructs an execution graph from a sequence of operations.
-  static absl::StatusOr<ExecutionGraph> Create(
-      absl::Span<const Operation* const> operations);
-
   // We store all `in_edges` and `out_edges` referenced by the `NodeDef` inside
   // large vectors to optimize for data locality on a hot path.
   using NodesEdges = std::vector<NodeEdge>;

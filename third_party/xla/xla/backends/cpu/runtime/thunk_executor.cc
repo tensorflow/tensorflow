@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -147,8 +148,14 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
     if (renderer == nullptr) {
       VLOG(8) << "No execution graph renderer registered.";
     } else {
-      auto graph_as_string =
-          renderer->GenerateGraphAsString(execution_graph_, thunk_sequence_);
+      auto operations = CreateThunkOperations(thunk_sequence_);
+      absl::InlinedVector<const ExecutionGraph::Operation*, 32>
+          operations_as_ptr;
+      operations_as_ptr.reserve(operations.size());
+      for (const auto& operation : operations) {
+        operations_as_ptr.push_back(&operation);
+      }
+      auto graph_as_string = renderer->GenerateGraphAsString(operations_as_ptr);
       absl::StatusOr<std::string> url = renderer->PublishGraph(graph_as_string);
       if (url.ok()) {
         VLOG(8) << "Execution graph visualization URL: " << *url;
