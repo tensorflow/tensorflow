@@ -331,6 +331,7 @@ cc_library(
     deps = [
         ":executable",
         ":rpc_helper",
+        "//xla:debug_options_flags",
         "//xla/pjrt:host_callback",
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes",
@@ -339,6 +340,7 @@ cc_library(
         "//xla/python/pjrt_ifrt",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

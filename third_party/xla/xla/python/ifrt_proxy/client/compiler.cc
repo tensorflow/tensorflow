@@ -25,6 +25,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
+#include "xla/debug_options_flags.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
@@ -42,6 +43,7 @@
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -99,6 +101,21 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
     }
 
     loaded_host_callbacks.swap(xla_options->loaded_host_callbacks);
+
+#if defined(PLATFORM_GOOGLE)
+    // Capture XLA flags.
+    // This is disabled for OSS because, if not, it creates a difference in
+    // behavior between OSS XLA_FLAGS and XLA TPU flags. XLA_FLAGS would be
+    // captured here and propagated to the server, but XLA TPU flags would not.
+    //
+    // With the current implementation both XLA_FLAGS and XLA TPU flags should
+    // be set at the proxy server in OSS/Cloud. For google internal usecases,
+    // both should be set at the proxy client.
+    auto& build_options = xla_options->compile_options.executable_build_options;
+    *build_options.mutable_debug_options() = xla::GetDebugOptionsFromFlags();
+    TF_RETURN_IF_ERROR(
+        build_options.mutable_comp_envs()->InitializeAllKnownEnvs());
+#endif
   }
 
   TF_ASSIGN_OR_RETURN(*request->mutable_compile_options(),
