@@ -147,7 +147,11 @@ enum PrimitiveType {
   // primitive type will have empty dimensions and tuple_shapes fields.
   TOKEN = 17;
 
-  // Next = 34
+  // A buffer type. A shape of this primitive type has empty dimensions and
+  // its underlying primitive type is in the tuple_shapes field.
+  BUFFER = 34;
+
+  // Next = 35
 }
 // LINT.ThenChange(
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc

@@ -112,6 +112,13 @@ void PrintTupleShapes(Printer* printer, absl::Span<const Shape> tuple_shapes) {
   printer->Append(")");
 }
 
+template <bool kPrintLayout>
+void PrintBufferShape(Printer* printer, const Shape& shape) {
+  printer->Append("b(");
+  PrintShape<kPrintLayout>(printer, shape.buffer_shape());
+  printer->Append(")");
+}
+
 // Constructs and returns the new shape with the given minor_to_major order in
 // its Layout.
 absl::StatusOr<Shape> MakeShapeWithLayoutInternal(
@@ -276,6 +283,11 @@ static std::vector<bool> MakeDynamicDimensions(
     const std::vector<bool>& dynamic_dimensions) {
   return MakeValidatedShape(element_type, dimensions, dynamic_dimensions)
       .value();
+}
+
+/* static */ Shape ShapeUtil::MakeBufferShape(
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
+  return Shape::MakeBufferShape(MakeShape(element_type, dimensions));
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithStaticDimensions(
@@ -701,6 +713,10 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     PrintTupleShapes</*kPrintLayout=*/false>(printer, shape.tuple_shapes());
     return;
   }
+  if (shape.IsBuffer()) {
+    PrintBufferShape</*kPrintLayout=*/false>(printer, shape);
+    return;
+  }
   printer->Append(
       primitive_util::LowercasePrimitiveTypeName(shape.element_type()));
   if (!shape.IsArray() || shape.dimensions().empty()) {
@@ -733,6 +749,10 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
                                                         const Shape& shape) {
   if (shape.IsTuple()) {
     PrintTupleShapes</*kPrintLayout=*/true>(printer, shape.tuple_shapes());
+    return;
+  }
+  if (shape.IsBuffer()) {
+    PrintBufferShape</*kPrintLayout=*/true>(printer, shape);
     return;
   }
   PrintHumanString(printer, shape);
