@@ -55,8 +55,8 @@ TEST_F(GpuLdgTest, LdgForParamRead) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   CompileAndOptionallyVerifyPtx(std::move(hlo_module), R"(
-    CHECK-NOT: ld.global.f32
-    CHECK: ld.global.nc.f32
+    CHECK-NOT: ld.global.b32
+    CHECK: ld.global.nc.b32
   )");
 }
 
@@ -86,8 +86,8 @@ TEST_F(GpuLdgTest, LdgForNonParamRead) {
 
   CompileAndOptionallyVerifyPtx(std::move(hlo_module), R"(
     CHECK: {
-    CHECK-NOT: ld.global.f32
-    CHECK: ld.global.nc.f32
+    CHECK-NOT: ld.global.b32
+    CHECK: ld.global.nc.b32
     CHECK: }
   )");
 }
@@ -146,8 +146,8 @@ TEST_F(GpuLdgTest, NoLdgWhenSharingBuffer) {
   CompileAndOptionallyVerifyPtx(std::move(hlo_module), R"(
     CHECK-LABEL: .entry wrapped_add
     CHECK: {
-    CHECK-NOT: ld.global.nc.f32
-    CHECK: ld.global.f32
+    CHECK-NOT: ld.global.nc.b32
+    CHECK: ld.global.b32
     CHECK: }
   )");
 }
