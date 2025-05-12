@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/execution_graph.h"
 #include "xla/runtime/resource_use.h"
-#include "xla/service/execution_graph_renderer.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
@@ -142,8 +141,9 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
       execution_graph_.sink().size(), is_sequential_, small_buffers);
 
   VLOG(6) << "ThunkExecutor execution graph:\n" << ToString();
+
   if (VLOG_IS_ON(8) && !options.is_nested_executor) {
-    ExecutionGraphRenderer* renderer = GetExecutionGraphRenderer();
+    ExecutionGraph::Renderer* renderer = ExecutionGraph::GetRenderer();
 
     if (renderer == nullptr) {
       VLOG(8) << "No execution graph renderer registered.";
