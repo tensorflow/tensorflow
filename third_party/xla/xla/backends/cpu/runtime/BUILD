@@ -1280,6 +1280,7 @@ xla_cc_test(
         ":sort_thunk",
         ":thunk",
         ":thunk_executor",
+        ":thunk_proto_cc",
         ":thunk_proto_serdes",
         ":thunk_testlib",
         ":topk_thunk",
