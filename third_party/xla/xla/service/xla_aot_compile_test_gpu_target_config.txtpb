@@ -32,6 +32,7 @@ gpu_device_info {
   memory_bandwidth: 732160000000
   l2_cache_size: 4194304
   clock_rate_ghz: 1.4805
+  device_memory_size: 17071734784
 }
 platform_name: "CUDA"
 dnn_version_info {
