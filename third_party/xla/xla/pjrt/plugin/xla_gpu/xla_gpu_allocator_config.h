@@ -33,11 +33,12 @@ struct GpuAllocatorConfig {
   Kind kind = Kind::kDefault;
 
   // Only used if kind == kBFC. The maximum fraction of available memory to
-  // allocate. This is the default value of XLA_CLIENT_MEM_FRACTION.
+  // allocate. If unset, the default value is taken from either an environment
+  // variable `XLA_CLIENT_MEM_FRACTION` or a hardcoded value.
   //
   // If `gpu_system_memory_size` is set, it determines memory allocation.
   // `memory_fraction` won't be used in this case.
-  double memory_fraction = 0.75;
+  std::optional<double> memory_fraction;
 
   // Only used if kind == kBFC. The absolute size of reserved memory space for
   // GPU system in bytes.

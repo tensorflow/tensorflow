@@ -1005,6 +1005,13 @@ GetStreamExecutorGpuDeviceAllocator(
     se::Platform* platform, const GpuAllocatorConfig& allocator_config,
     const std::map<int, std::unique_ptr<LocalDeviceState>>&
         addressable_devices) {
+  float memory_fraction;
+  if (allocator_config.memory_fraction.has_value()) {
+    memory_fraction = *allocator_config.memory_fraction;
+  } else {
+    TF_ASSIGN_OR_RETURN(memory_fraction, GetDefaultGpuSystemMemoryFraction());
+  }
+
   std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
   switch (allocator_config.kind) {
     case GpuAllocatorConfig::Kind::kCudaAsync: {
@@ -1012,7 +1019,7 @@ GetStreamExecutorGpuDeviceAllocator(
         TF_ASSIGN_OR_RETURN(
             auto async_allocator,
             CreateCudaAsyncAllocator(
-                *(ordinal_and_device.second), allocator_config.memory_fraction,
+                *(ordinal_and_device.second), memory_fraction,
                 allocator_config.preallocate, false, false, true));
         allocators.emplace_back(std::move(async_allocator),
                                 ordinal_and_device.second->compute_stream(),
@@ -1028,8 +1035,7 @@ GetStreamExecutorGpuDeviceAllocator(
         TF_ASSIGN_OR_RETURN(
             auto bfc_allocator,
             CreateBFCAllocator(ordinal_and_device.second->executor(),
-                               allocator_config.memory_fraction,
-                               allocator_config.preallocate,
+                               memory_fraction, allocator_config.preallocate,
                                allocator_config.gpu_system_memory_size));
         allocators.emplace_back(std::move(bfc_allocator),
                                 ordinal_and_device.second->compute_stream(),
@@ -1054,10 +1060,9 @@ GetStreamExecutorGpuDeviceAllocator(
   for (const auto& ordinal_and_device : addressable_devices) {
     TF_ASSIGN_OR_RETURN(
         auto collective_bfc_allocator,
-        CreateCollectiveBFCAllocator(
-            ordinal_and_device.second->executor(),
-            /*memory_fraction=*/1.0 - allocator_config.memory_fraction,
-            allocator_config.collective_memory_size));
+        CreateCollectiveBFCAllocator(ordinal_and_device.second->executor(),
+                                     /*memory_fraction=*/1.0 - memory_fraction,
+                                     allocator_config.collective_memory_size));
     allocators.emplace_back(std::move(collective_bfc_allocator),
                             ordinal_and_device.second->compute_stream(),
                             /*memory_space=*/1);
