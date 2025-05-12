@@ -46,7 +46,7 @@ absl::StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
   std::string json_output;
   tsl::protobuf::util::JsonPrintOptions json_options;
   json_options.add_whitespace = true;
-  json_options.always_print_primitive_fields = true;
+  json_options.always_print_fields_with_no_presence = true;
   auto status = tsl::protobuf::util::MessageToJsonString(message, &json_output,
                                                          json_options);
   if (!status.ok()) {

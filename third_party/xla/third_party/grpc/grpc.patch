@@ -1,0 +1,54 @@
+diff --git a/bazel/python_rules.bzl b/bazel/python_rules.bzl
+--- a/bazel/python_rules.bzl	(revision 78456a56e17c3cbf3b195720934ca3ca460811fa)
++++ b/bazel/python_rules.bzl	(date 1746228699541)
+@@ -192,9 +192,9 @@
+     out_dir = get_out_dir(protos, context)
+     if out_dir.import_path:
+         # is virtual imports
+-        out_path = out_dir.path
++        out_path = get_include_directory(out_files[0])
+     else:
+-        out_path = context.genfiles_dir.path
++         out_path = out_dir.path
+     arguments += get_plugin_args(
+         context.executable._grpc_plugin,
+         plugin_flags,
+diff --git a/bazel/cc_grpc_library.bzl b/bazel/cc_grpc_library.bzl
+--- a/bazel/cc_grpc_library.bzl	(revision 78456a56e17c3cbf3b195720934ca3ca460811fa)
++++ b/bazel/cc_grpc_library.bzl	(date 1744843015674)
+@@ -26,6 +26,7 @@
+         generate_mocks = False,
+         use_external = False,
+         grpc_only = False,
++        plugin_flags = [],
+         **kwargs):
+     """Generates C++ grpc classes for services defined in a proto file.
+
+@@ -105,6 +106,7 @@
+             plugin = "@com_github_grpc_grpc//src/compiler:grpc_cpp_plugin",
+             well_known_protos = well_known_protos,
+             generate_mocks = generate_mocks,
++            flags = plugin_flags,
+             **kwargs
+         )
+
+diff --git a/src/core/lib/promise/party.h b/src/core/lib/promise/party.h
+--- a/src/core/lib/promise/party.h	(revision 78456a56e17c3cbf3b195720934ca3ca460811fa)
++++ b/src/core/lib/promise/party.h	(date 1745732370669)
+@@ -21,6 +21,7 @@
+ #include <stdint.h>
+ 
+ #include <atomic>
++#include <cinttypes>
+ #include <string>
+ #include <utility>
+ 
+@@ -393,7 +394,7 @@
+       DebugLocation loc = {}) {
+     GRPC_TRACE_LOG(party_state, INFO).AtLocation(loc.file(), loc.line())
+         << this << " " << op << " "
+-        << absl::StrFormat("%016" PRIx64 " -> %016" PRIx64, prev_state,
++        << absl::StrFormat("%016lx -> %016lx", prev_state,
+                            new_state);
+   }
+ 

@@ -1,8 +1,3 @@
-From 372124e6af36a540e74a2ec31d79d7297a831f98 Mon Sep 17 00:00:00 2001
-From: =?UTF-8?q?Fr=C3=A9d=C3=A9ric=20Bastien?= <frederic.bastien@gmail.com>
-Date: Thu, 1 Aug 2024 12:38:52 -0700
-Subject: [PATCH] PR #1732: Fix build on NVIDIA Jetson board. Fix #1665
-
 Imported from GitHub PR https://github.com/abseil/abseil-cpp/pull/1732
 
 Fix build on NVIDIA Jetson board. Fix #1665
@@ -13,18 +8,10 @@ Merge 7db2d2ab9fbed1f0fabad10a6ec73533ba71bfff into 6b8ebb35c0414ef5a2b6fd4a0f59
 
 Merging this change closes #1732
 
-COPYBARA_INTEGRATE_REVIEW=https://github.com/abseil/abseil-cpp/pull/1732 from nouiz:fix_neon_on_jetson 7db2d2ab9fbed1f0fabad10a6ec73533ba71bfff
-PiperOrigin-RevId: 658501520
-Change-Id: If502ede4efc8c877fb3fed227eca6dc7622dd181
----
- absl/base/config.h | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
-
 diff --git a/absl/base/config.h b/absl/base/config.h
-index 97c9a22a109..ab1e9860a91 100644
---- a/absl/base/config.h
-+++ b/absl/base/config.h
-@@ -926,7 +926,7 @@ static_assert(ABSL_INTERNAL_INLINE_NAMESPACE_STR[0] != 'h' ||
+--- a/absl/base/config.h	(revision 54fac219c4ef0bc379dfffb0b8098725d77ac81b)
++++ b/absl/base/config.h	(date 1744736470656)
+@@ -966,7 +966,7 @@
  // https://llvm.org/docs/CompileCudaWithLLVM.html#detecting-clang-vs-nvcc-from-code
  #ifdef ABSL_INTERNAL_HAVE_ARM_NEON
  #error ABSL_INTERNAL_HAVE_ARM_NEON cannot be directly set

@@ -16,7 +16,6 @@ load(
 )
 load(
     "//xla/tsl/platform:build_config_root.bzl",
-    "if_static",
     "tf_exec_properties",
 )
 load("//xla/tsl/platform/default:build_config.bzl", "strict_cc_test")
@@ -36,7 +35,7 @@ def xla_py_test_deps():
 # `framework_shared_object` in the bazelrc all of this should be able to go
 # away. The problem is making sure that all these impl deps are `if_static`'d
 # appropriately throughout XLA.
-_XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
+_XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
     Label("//xla:autotune_results_proto_cc_impl"),
     Label("//xla:autotuning_proto_cc_impl"),
     Label("//xla:xla_data_proto_cc_impl"),
@@ -62,7 +61,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc_impl",
     "//xla/tsl/profiler/utils:time_utils_impl",
     "//xla/tsl/protobuf:protos_all_cc_impl",
-]) + if_rocm_is_configured([
+] + if_rocm_is_configured([
     "//xla/tsl/util:determinism",
 ])
 

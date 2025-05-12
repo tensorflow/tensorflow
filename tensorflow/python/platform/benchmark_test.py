@@ -44,7 +44,7 @@ class BenchmarkTest(test.TestCase, benchmark.TensorFlowBenchmark):
 
       actual_result = json_format.MessageToDict(
           benchmark_entries, preserving_proto_field_name=True,
-          including_default_value_fields=True)['entry'][0]
+          always_print_fields_with_no_presence=True)['entry'][0]
     os.remove(proto_file_path)
 
     expected_result = {

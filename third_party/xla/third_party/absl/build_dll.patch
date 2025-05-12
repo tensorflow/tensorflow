@@ -1,6 +1,22 @@
+diff --git a/absl/container/internal/btree.h b/absl/container/internal/btree.h
+--- a/absl/container/internal/btree.h	(revision 54fac219c4ef0bc379dfffb0b8098725d77ac81b)
++++ b/absl/container/internal/btree.h	(date 1746583783829)
+@@ -1123,10 +1123,8 @@
+   using slot_type = typename params_type::slot_type;
+ 
+   // In sets, all iterators are const.
+-  using iterator = absl::conditional_t<
+-      is_map_container::value,
+-      btree_iterator<normal_node, normal_reference, normal_pointer>,
+-      btree_iterator<normal_node, const_reference, const_pointer>>;
++  using iterator =
++     btree_iterator<normal_node, normal_reference, normal_pointer>;
+   using const_iterator =
+       btree_iterator<const_node, const_reference, const_pointer>;
+ 
 diff --git a/absl/BUILD.bazel b/absl/BUILD.bazel
---- a/absl/BUILD.bazel	(revision fb3621f4f897824c0dbe0615fa94543df6192f30)
-+++ b/absl/BUILD.bazel	(date 1741994158088)
+--- a/absl/BUILD.bazel	(revision 54fac219c4ef0bc379dfffb0b8098725d77ac81b)
++++ b/absl/BUILD.bazel	(date 1745478588431)
 @@ -15,11 +15,26 @@
  #
 
@@ -18,7 +34,7 @@ diff --git a/absl/BUILD.bazel b/absl/BUILD.bazel
 +)
 +
 +config_setting(
-+    name = "enable_use_dlls",
++    name = "config_use_dlls",
 +    flag_values = {
 +        ":use_dlls": "True",
 +    },
@@ -29,14 +45,14 @@ diff --git a/absl/BUILD.bazel b/absl/BUILD.bazel
      name = "clang_compiler",
      flag_values = {
 diff --git a/absl/copts/configure_copts.bzl b/absl/copts/configure_copts.bzl
---- a/absl/copts/configure_copts.bzl	(revision fb3621f4f897824c0dbe0615fa94543df6192f30)
-+++ b/absl/copts/configure_copts.bzl	(date 1741994109164)
+--- a/absl/copts/configure_copts.bzl	(revision 54fac219c4ef0bc379dfffb0b8098725d77ac81b)
++++ b/absl/copts/configure_copts.bzl	(date 1745478685734)
 @@ -27,6 +27,9 @@
      "//absl:clang_compiler": ABSL_LLVM_FLAGS,
      "//absl:gcc_compiler": ABSL_GCC_FLAGS,
      "//conditions:default": ABSL_GCC_FLAGS,
 +}) + select({
-+    "//absl:enable_use_dlls": ["/DABSL_BUILD_DLL"],
++    "//absl:config_use_dlls": ["/DABSL_BUILD_DLL"],
 +    "//conditions:default": []
  })
 

@@ -17,11 +17,6 @@
 
 # Placeholder: load proto_library
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library")
-
-# copybara:comment_begin(oss-only)
-load("@local_xla//xla/tsl/platform/default:build_config.bzl", "tf_proto_library_py")
-# copybara:comment_end
-
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist", "tflite_portable_test_suite")
@@ -75,13 +70,6 @@ cc_proto_library(
     name = "configuration_cc_proto",
     deps = [":configuration_proto"],
 )
-
-# copybara:comment_begin(oss-only)
-tf_proto_library_py(
-    name = "configuration_proto_external",
-    srcs = ["configuration.proto"],
-)
-# copybara:comment_end
 
 flatbuffer_cc_library(
     name = "configuration_fbs",

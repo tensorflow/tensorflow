@@ -21,6 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "fuzztest/fuzztest.h"
+#include "absl/strings/string_view.h"
+#include "google/protobuf/io/tokenizer.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/public/session.h"
 
@@ -114,12 +116,8 @@ class EmptyErrorCollector : public protobuf::io::ErrorCollector {
  public:
   EmptyErrorCollector() {}
   ~EmptyErrorCollector() override {}
-  void AddError(int line, int column, const std::string& message) override {
-    // log error
-  }
-  void AddWarning(int line, int column, const std::string& message) override {
-    // log warning
-  }
+  void RecordError(int line, protobuf::io::ColumnNumber column,
+                   absl::string_view message) override {}
 };
 
 std::vector<std::string> ops = {

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -57,7 +58,8 @@ namespace {
 // Error collector that simply ignores errors reported.
 class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
  public:
-  void AddError(int line, int column, const std::string& message) override {}
+  void RecordError(int line, tsl::protobuf::io::ColumnNumber column,
+                   absl::string_view message) override {}
 };
 
 absl::StatusOr<xla::HloProto> LoadHloProto(const std::string& contents) {

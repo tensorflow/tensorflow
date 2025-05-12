@@ -17,3 +17,8 @@ cc_library(
     ]),
     hdrs = ["zstd.h"],
 )
+
+alias(
+    name = "zstd",
+    actual = ":zstdlib",
+)
