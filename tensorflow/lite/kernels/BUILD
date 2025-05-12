@@ -660,6 +660,7 @@ BUILTIN_KERNEL_SRCS = [
     "fully_connected.cc",
     "gather.cc",
     "gather_nd.cc",
+    "hadamard_rotation.cc",
     "hashtable.cc",
     "hashtable_find.cc",
     "hashtable_import.cc",
@@ -3380,6 +3381,21 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "hadamard_rotation_test",
+    size = "small",
+    srcs = ["hadamard_rotation_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 
