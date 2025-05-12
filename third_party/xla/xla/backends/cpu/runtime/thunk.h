@@ -26,9 +26,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
@@ -50,6 +50,7 @@ struct ThreadPoolDevice;
 namespace xla::cpu {
 
 // Forward declare.
+class ThunkSequence;
 class ThunkExecutor;
 
 // Thunk is the basic unit of execution for the XLA CPU runtime.
@@ -147,12 +148,17 @@ class Thunk {
   using ResourceUses = absl::InlinedVector<ResourceUse, 4>;
   virtual ResourceUses resource_uses() const { return {}; }
 
+  virtual absl::flat_hash_map<std::string, const ThunkSequence*>
+  get_named_nested_thunks() const {
+    return {};
+  }
+
   //===--------------------------------------------------------------------===//
   // CollectiveExecuteParams
   //===--------------------------------------------------------------------===//
 
-  // Parameters capturing all the details required for collective execution of
-  // XLA executables (multiple partitions and replicas).
+  // Parameters capturing all the details required for collective execution
+  // of XLA executables (multiple partitions and replicas).
   struct CollectiveExecuteParams {
     static absl::StatusOr<CollectiveExecuteParams> Create(
         const ExecutableRunOptions* run_options);

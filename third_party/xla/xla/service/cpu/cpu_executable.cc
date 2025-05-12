@@ -76,7 +76,6 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<FunctionLibrary> function_library,
     std::unique_ptr<const BufferAssignment> assignment,
@@ -120,8 +119,11 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
       std::move(hlo_profile_index_map), std::move(assignment)));
   executable->function_library_ = std::move(function_library);
 
-  TF_ASSIGN_OR_RETURN(executable->thunks_,
-                      ThunkExecutor::Create(std::move(thunks)));
+  ThunkExecutor::Options thunk_executor_options;
+  thunk_executor_options.maybe_publish_graph_visualization = true;
+  TF_ASSIGN_OR_RETURN(
+      executable->thunks_,
+      ThunkExecutor::Create(std::move(thunks), thunk_executor_options));
 
   // Re-index constants by their allocation index to allow efficient lookup.
   for (auto& constant : constants) {

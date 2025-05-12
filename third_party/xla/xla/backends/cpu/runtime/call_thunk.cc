@@ -16,10 +16,13 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/call_thunk.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -50,6 +53,12 @@ CallThunk::BufferUses CallThunk::buffer_uses() const {
 
 CallThunk::ResourceUses CallThunk::resource_uses() const {
   return called_executor_.resource_uses();
+}
+
+absl::flat_hash_map<std::string, const ThunkSequence*>
+CallThunk::get_named_nested_thunks() const {
+  return {{absl::StrCat(info().op_name, "-called_thunk"),
+           &called_executor_.thunk_sequence()}};
 }
 
 }  // namespace xla::cpu
