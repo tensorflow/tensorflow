@@ -27,7 +27,7 @@ namespace xla::gpu {
 // Returns a TmaDescriptor for a 2D tensor to be emitted in Triton.
 absl::StatusOr<stream_executor::gpu::TmaDescriptor> Create2DTmaDescriptor(
     llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> block_shape,
-    int element_byte_size);
+    llvm::ArrayRef<int64_t> layout, int element_byte_size);
 
 }  // namespace xla::gpu
 
