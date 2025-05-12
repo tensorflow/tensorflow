@@ -320,7 +320,9 @@ cuda_py_strict_test(
     size = "small",
     srcs = ["context_cross_platform_gpu_test.py"],
     tags = [
+        "no_gpu",  # TODO(b/417285186): Re-enable once the test is fixed.
         "no_oss",
+        "no_pip",  # TODO(b/417285186): Re-enable once the test is fixed.
     ],
     tpu_ops_enabled = True,
     xla_enabled = True,
