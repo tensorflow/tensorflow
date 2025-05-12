@@ -75,12 +75,24 @@ HloInstructionIndexing CreateUnknownIndexing(int64_t count = 1) {
   return indexing;
 }
 
+// HLORTVar represents the origin operation and possible values for a runtime
+// variable in an indexing map.
+//
+// For example, in HLO
+//
+// data = f32[100] ...
+// idx = s32[10,1] ...
+// ROOT result = gather(data, idx), <...>
+//
+// in the indexing map of `data`: `(d0, d1){rt0} -> (d1 + rt0)` we have `rt0`
+// with HLORTVar:
+// - `feasible_values` in [0, 99],
+// - `hlo` pointing to `idx`,
+// - `map` of `(d0, d1) -> (d0, 0)` from the output of `gather` (not `data`)
+//   into `idx`.
 struct HLORTVar {
   Interval feasible_values;
   const HloInstruction* hlo;
-  // This is a map from the iteration space of the corresponding indexing map to
-  // the iteration space of `hlo`. It shows what element of `hlo` we need to
-  // extract to get the runtime value for the RTVar.
   mlir::AffineMap map;
 };
 
@@ -556,13 +568,13 @@ HloInstructionIndexing ComputeOutputToInputDynamicUpdateSliceOpIndexing(
                      mlir_context),
       output_shape.dimensions(), {});
 
-  // start_indices: (d0, ... d_{N-1}) -> ()
+  // start_indices: (d0, ... d{N-1}) -> ()
   AffineMap empty_results_affine_map = AffineMap::get(
       /*dimCount=*/rank, /*symbolCount=*/0, /*results=*/{}, mlir_context);
   IndexingMap start_indices_map = IndexingMap::FromTensorSizes(
       empty_results_affine_map, output_shape.dimensions(), {});
 
-  // update: (d_0 - s_0, ..., d_{N-1} - s_{N-1})
+  // update: (d0 - rt0, ..., d{N-1} - rt{N-1})
   std::vector<AffineExpr> exprs;
   exprs.reserve(rank);
   std::vector<HLORTVar> rt_vars;
@@ -602,8 +614,8 @@ HloInstructionIndexing ComputeOutputToInputGatherOpIndexing(
   int64_t output_rank = output_shape.dimensions().size();
 
   // A map for the `indices` operand of gather. It is always
-  // (d_0, ... d_{rank - 1}) -> (d_0, s_0),
-  // where 0 <= s_0 <= indices_shape[1] - 1.
+  // (d0, ... d{rank - 1}) -> (d0, s0),
+  // where 0 <= s0 <= indices_shape[1] - 1.
   AffineExpr indices_id_dim = getAffineDimExpr(0, mlir_context);
   std::vector<IndexingMap::Variable> dim_vars =
       DimVarsFromTensorSizes(output_shape.dimensions());
@@ -616,8 +628,8 @@ HloInstructionIndexing ComputeOutputToInputGatherOpIndexing(
       /*rt_vars=*/{}};
 
   // A map for the `operand` operand of gather, from which we extract slices.
-  // (d_0, ... d_{rank - 1}) -> (d_1 + s0, d_2 + s_1, ...),
-  // where s_i are RTVars that extract indices from the `indices` operand.
+  // (d0, ... d{rank - 1}) -> (d1 + rt0, d2 + rt1, ...),
+  // where rt{i} are RTVars that extract indices from the `indices` operand.
   std::vector<HLORTVar> rt_vars;
   std::vector<AffineExpr> exprs;
   exprs.reserve(operand_shape.dimensions().size());
@@ -626,7 +638,9 @@ HloInstructionIndexing ComputeOutputToInputGatherOpIndexing(
     int64_t output_dim_id = dimension_numbers.offset_dims(operand_dim_id);
     exprs.push_back(getAffineDimExpr(output_dim_id, mlir_context));
 
-    if (operand_dim_id >= index_vector_length) continue;
+    if (operand_dim_id >= index_vector_length) {
+      continue;
+    }
 
     rt_vars.push_back(HLORTVar{
         Interval{0, operand_shape.dimensions(operand_dim_id) - slice_size},
