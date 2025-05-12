@@ -19,6 +19,7 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.td"
 include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_types.td"
+include "xla/codegen/emitters/ir/xla_attrs.td"
 
 class XLACPU_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaCpuDialect, mnemonic, traits> {
@@ -79,10 +80,10 @@ def XLACPU_StoreOp : XLACPU_Op<"store"> {
 //===----------------------------------------------------------------------===//
 
 def XLACPU_ThreadIdOp : XLACPU_Op<"thread_id"> {
-  let summary = "Extracts thread_id from the call frame";
-  let arguments = (ins XLACPU_CallFrame:$call_frame);
-  let results = (outs Index:$result);
-  let assemblyFormat = [{ $call_frame  attr-dict `:` type($result) }];
+  let summary = "Extracts thread_id from the call frame for the given dimension";
+  let arguments = (ins XLACPU_CallFrame:$call_frame, Workgroup_DimensionAttr:$dimension);
+  let results = (outs Index);
+  let assemblyFormat = [{ $dimension `in` $call_frame attr-dict }];
 }
 
 //===----------------------------------------------------------------------===//

@@ -12,8 +12,9 @@ ENTRY main {
 }
 
 // CHECK: func.func @main(%[[ARG0:.*]]: tensor<3x31xi4>
+// CHECK: xla.forall {{.*}} with (%[[FORALL_ARG0:.*]] = %[[ARG0]])
 // CHECK:   xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]], %[[RB:.*]]) in
-// CHECK-SAME: iter_args(%[[ITER:.*]] = %[[ARG0]])
+// CHECK-SAME: iter_args(%[[ITER:.*]] = %[[FORALL_ARG0]])
 // CHECK:     %[[CST:.*]] = arith.constant dense<[-2, -3, -4]>
 // CHECK:     %[[EXTRACTED:.*]] = tensor.extract %[[CST]][%[[RA]]]
 // CHECK:     %[[INSERTED:.*]] = tensor.insert %[[EXTRACTED]] into %[[ITER]][%[[RA]], %[[RB]]]

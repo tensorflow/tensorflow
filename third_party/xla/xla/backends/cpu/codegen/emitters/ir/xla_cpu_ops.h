@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_types.h"  // IWYU pragma: keep
+#include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
 
 #define GET_OP_CLASSES
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h.inc"

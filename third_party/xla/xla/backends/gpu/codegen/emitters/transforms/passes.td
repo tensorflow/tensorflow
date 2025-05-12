@@ -121,4 +121,21 @@ def OptimizeLoopsPass :
   let constructor = "CreateOptimizeLoopsPass()";
 }
 
+
+def LowerXlaSharedPass :
+   Pass<"xla-gpu-lower-xla-shared", "mlir::func::FuncOp"> {
+  let summary = "Lowers XLA shared dialect ops to XLA gpu ops.";
+
+  let description = [{
+    Lowers XLA shared dialect ops to XLA gpu ops.
+  }];
+
+  let dependentDialects = [
+    "xla::XlaDialect",
+    "mlir::gpu::GPUDialect",
+  ];
+
+  let constructor = "CreateLowerXlaSharedPass()";
+}
+
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_TD_
