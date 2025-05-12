@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/cpu/runtime/thunk.h"
+#include "absl/types/span.h"
 #include "xla/runtime/execution_graph.h"
 
 namespace xla {
@@ -31,11 +31,10 @@ class ExecutionGraphRenderer {
   ExecutionGraphRenderer() = default;
   virtual ~ExecutionGraphRenderer() = default;
 
-  // Generates a string representation for the given execution graph and thunk
-  // sequence which can be published to a URL using `PublishGraph`.
+  // Generates a string representation for the given execution graph operations
+  // which can be published to a URL using `PublishGraph`.
   virtual std::string GenerateGraphAsString(
-      const ExecutionGraph& execution_graph,
-      const cpu::ThunkSequence& thunk_sequence) = 0;
+      absl::Span<const ExecutionGraph::Operation* const> operations) = 0;
 
   // Publishes the generated graph.
   virtual absl::StatusOr<std::string> PublishGraph(
