@@ -476,6 +476,7 @@ cc_library(
     deps = [
         ":permutation_util",
         ":printer",
+        ":shape_util_proto_cc",
         ":status_macros",
         ":types",
         ":util",
@@ -503,6 +504,11 @@ cc_library(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:platform_port",
     ],
+)
+
+tf_proto_library(
+    name = "shape_util_proto",
+    srcs = ["shape_util.proto"],
 )
 
 cc_library(
