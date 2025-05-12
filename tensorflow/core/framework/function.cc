@@ -217,7 +217,16 @@ class FunctionInstantiationHelper {
       } else {
         gnode->set_op(FunctionLibraryDefinition::kArgOp);
       }
-      DataType dtype = arg_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
+      DataType dtype;
+      if (arg_def.is_ref()) {
+        if (IsRefType(dtypes[i])) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Cannot make a ref type for a ref type ", dtypes[i]));
+        }
+        dtype = MakeRefType(dtypes[i]);
+      } else {
+        dtype = dtypes[i];
+      }
       AddAttr("T", dtype, gnode);
       AddAttr("index", arg_index, gnode);
       if (resource_arg_unique_id >= 0) {
