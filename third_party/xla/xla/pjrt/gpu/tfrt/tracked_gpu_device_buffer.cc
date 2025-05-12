@@ -83,10 +83,8 @@ TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer(
     std::function<void()> on_delete_callback)
     : TrackedGpuDeviceBuffer(std::move(buffer), AfterAll(definition_events),
                              std::move(on_delete_callback)) {
-  if (VLOG_IS_ON(4)) {
-    LOG(INFO) << "TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer: " << this
-              << "\n " << tsl::CurrentStackTrace();
-  }
+  VLOG(4) << "TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer: " << this << "\n "
+          << tsl::CurrentStackTrace();
 }
 
 TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer(
@@ -97,19 +95,15 @@ TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer(
       definition_event_(std::move(definition_event)),
       deallocation_event_(tsl::MakeConstructedAsyncValueRef<GpuEvent>()),
       on_delete_callback_(std::move(on_delete_callback)) {
-  if (VLOG_IS_ON(4)) {
-    LOG(INFO) << "TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer: " << this
-              << "\n " << tsl::CurrentStackTrace();
-  }
+  VLOG(4) << "TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer: " << this << "\n "
+          << tsl::CurrentStackTrace();
   DCHECK(definition_event_);
 }
 
 TrackedGpuDeviceBuffer::~TrackedGpuDeviceBuffer() {
-  if (VLOG_IS_ON(4)) {
-    LOG(INFO) << "TrackedGpuDeviceBuffer::~TrackedGpuDeviceBuffer: " << this
-              << " opaque: " << buffer_->buffer().opaque() << "\n "
-              << tsl::CurrentStackTrace();
-  }
+  VLOG(4) << "TrackedGpuDeviceBuffer::~TrackedGpuDeviceBuffer: " << this
+          << " opaque: " << buffer_->buffer().opaque() << "\n "
+          << tsl::CurrentStackTrace();
 
   ReleaseDeviceMemory();
   if (on_delete_callback_) {

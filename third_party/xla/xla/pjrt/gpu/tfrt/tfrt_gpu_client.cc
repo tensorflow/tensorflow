@@ -1520,11 +1520,9 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 TfrtGpuClient::CreateUninitializedBuffer(const Shape& shape,
                                          PjRtMemorySpace* memory_space) {
   tsl::profiler::TraceMe traceme("TfrtGpuClient::CreateUninitializedBuffer");
-  if (VLOG_IS_ON(1)) {
-    LOG(INFO) << "TfrtGpuClient::CreateUninitializedBuffer: shape: "
-              << shape.DebugString()
-              << " memory_space: " << memory_space->DebugString();
-  }
+  VLOG(1) << "TfrtGpuClient::CreateUninitializedBuffer: shape: "
+          << shape.DebugString()
+          << " memory_space: " << memory_space->DebugString();
   TransferManager* transfer_manager =
       xla_client()->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(Shape compact_shape,
@@ -1724,10 +1722,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
 
   TfrtGpuDevice* device =
       tensorflow::down_cast<TfrtGpuDevice*>(memory_space->devices().front());
-  if (VLOG_IS_ON(1)) {
-    LOG(INFO) << "TfrtGpuClient::CreateErrorBuffer: shape: " << shape.ToString()
-              << " device: " << device->DebugString() << " error: " << error;
-  }
+  VLOG(1) << "TfrtGpuClient::CreateErrorBuffer: shape: " << shape.ToString()
+          << " device: " << device->DebugString() << " error: " << error;
 
   auto buffer_async_value_ref = tsl::MakeErrorAsyncValueRef(error);
   auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
@@ -1881,11 +1877,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
 
   tsl::profiler::TraceMe traceme("TfrtGpuClient::BufferFromHostBuffer");
   Shape device_shape = ShapeUtil::MakeShape(type, dims);
-  if (VLOG_IS_ON(2)) {
-    LOG(INFO) << "TfrtGpuClient::BufferFromHostBuffer: shape: "
-              << device_shape.ToString()
-              << " device: " << device->DebugString();
-  }
+  VLOG(2) << "TfrtGpuClient::BufferFromHostBuffer: shape: "
+          << device_shape.ToString() << " device: " << device->DebugString();
   absl::InlinedVector<int64_t, 4> tmp_strides;
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
@@ -2079,11 +2072,9 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   }
   PjRtDevice* device = memory_space->devices()[0];
   tsl::profiler::TraceMe traceme("TfrtGpuClient::BufferFromHostLiteral");
-  if (VLOG_IS_ON(1)) {
-    LOG(INFO) << "TfrtGpuClient::BufferFromHostLiteral: shape: "
-              << literal.shape().DebugString()
-              << " device: " << device->DebugString();
-  }
+  VLOG(1) << "TfrtGpuClient::BufferFromHostLiteral: shape: "
+          << literal.shape().DebugString()
+          << " device: " << device->DebugString();
   const Shape& shape = literal.shape();
 
   // Add a placeholder definition event for each leaf buffer when creating the
@@ -3290,10 +3281,8 @@ TfrtGpuExecutable::TfrtGpuExecutable(
     CHECK(addressable_devices_.empty());
   } else {
     // This must go after `executables_` is initialized.
-    if (VLOG_IS_ON(3)) {
       VLOG(3) << "TfrtGpuExecutable device_assignment:\n"
               << device_assignment_->ToString();
-    }
     CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
 
     if ((device_assignment_->replica_count() > 1 ||
@@ -3364,11 +3353,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         device->max_inflight_computations_semaphore().ScopedAcquire(1));
   }
 
-  if (VLOG_IS_ON(2)) {
-    LOG(INFO) << "ExecuteHelper " << name() << ": " << options.launch_id
-              << "; replica: " << replica << "; partition: " << partition
-              << "; mapped to device ordinal for execution: " << device->id();
-  }
+  VLOG(2) << "ExecuteHelper " << name() << ": " << options.launch_id
+          << "; replica: " << replica << "; partition: " << partition
+          << "; mapped to device ordinal for execution: " << device->id();
 
   // Handle inputs.
   if (options.arguments_are_tupled) {
@@ -3659,20 +3646,16 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           std::move(donation_transaction).Commit();
         }
 
-        if (VLOG_IS_ON(1)) {
-          VLOG(1) << "Start calling RunAsync for executable " << executable_name
-                  << " on device " << device->DebugString();
-        }
+        VLOG(1) << "Start calling RunAsync for executable " << executable_name
+                << " on device " << device->DebugString();
 
         absl::StatusOr<ExecutionOutput> result_buffer_or_status =
             gpu_executable->RunAsync(std::move(execution_inputs), run_options);
 
-        if (VLOG_IS_ON(1)) {
           VLOG(1) << "Finish calling RunAsync for executable "
                   << executable_name << " on device " << device->DebugString()
                   << ", replica " << replica << ", partition " << partition
                   << ", status=" << result_buffer_or_status.status();
-        }
 
         if (!result_buffer_or_status.ok()) {
           LOG(ERROR) << "Calling RunAsync failed for executable "
