@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -99,7 +100,8 @@ bool TmaIsEnabledForDevice(
 bool CanUseTMA(::xla::EmitterLocOpBuilder& builder, bool tma_enabled,
                const stream_executor::DeviceDescription& device_description,
                const ArrayRef<int64_t>& tile_shape,
-               const TypedValue<RankedTensorType>& tensor) {
+               const TypedValue<RankedTensorType>& tensor,
+               const ArrayRef<int64_t>& layout) {
   if (!tma_enabled) {
     return false;
   }
@@ -107,6 +109,7 @@ bool CanUseTMA(::xla::EmitterLocOpBuilder& builder, bool tma_enabled,
     return false;
   }
   // Currently only 2D tensors are supported.
+  // TODO(b/417039624): Support more dimensions.
   if (tile_shape.size() != 2) {
     return false;
   }
@@ -127,9 +130,7 @@ bool CanUseTMA(::xla::EmitterLocOpBuilder& builder, bool tma_enabled,
   // - The block size must be less than 256 in every dimension.
   // See source:
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html
-  // TODO(b/413351367): Figure out if we need (and how) to handle non-normalized
-  // layouts.
-  if (tensor.getType().getShape()[1] % 16 != 0) {
+  if (tensor.getType().getShape()[layout[0]] % 16 != 0) {
     return false;
   }
   return llvm::none_of(tile_shape, [](int64_t dim) { return dim > 256; });
@@ -230,7 +231,8 @@ Value ComputeLinearOffset(::xla::EmitterLocOpBuilder& builder,
 // Add TMA attributes to the corresponding argument in the function.
 void AddTmaAttributes(::xla::EmitterLocOpBuilder& builder,
                       const TypedValue<RankedTensorType>& tensor,
-                      const ArrayRef<int64_t>& tile_shape) {
+                      const ArrayRef<int64_t>& tile_shape,
+                      const ArrayRef<int64_t>& layout) {
   auto block_arg = mlir::dyn_cast<BlockArgument>(tensor);
   auto func_op =
       mlir::dyn_cast<func::FuncOp>(block_arg.getOwner()->getParentOp());
@@ -242,8 +244,42 @@ void AddTmaAttributes(::xla::EmitterLocOpBuilder& builder,
   func_op.setArgAttr(
       block_arg.getArgNumber(), "tt.tma_descriptor",
       builder.getAttr<TmaDescriptorAttr>(
-          tensor.getType().getShape(), tile_shape,
+          tensor.getType().getShape(), tile_shape, layout,
           tensor.getType().getElementType().getIntOrFloatBitWidth() / 8));
+}
+
+// Normalized layout is in the form of [N-1, N-2, ... 1, 0]. It is identical
+// to HLO's layout.
+bool IsNormalizedLayout(ArrayRef<int64_t> layout) {
+  for (auto&& [idx, layout_entry] : llvm::enumerate(layout)) {
+    if (layout_entry != layout.size() - 1 - idx) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Permutes the given array based on the given layout.
+template <typename T>
+SmallVector<T> NormalizeImpl(ArrayRef<T> values, ArrayRef<int64_t> layout) {
+  if (IsNormalizedLayout(layout)) {
+    return llvm::to_vector(values);
+  }
+
+  auto reversed_layout = llvm::to_vector(layout);
+  std::reverse(reversed_layout.begin(), reversed_layout.end());
+  std::vector<T> normalized_values = ::xla::Permute(values, reversed_layout);
+  return SmallVector<T>(normalized_values.begin(), normalized_values.end());
+}
+
+SmallVector<Value> Normalize(ValueRange values, ArrayRef<int64_t> layout) {
+  SmallVector<Value> values_vec = llvm::to_vector(values);
+  return NormalizeImpl<Value>(values_vec, layout);
+}
+
+SmallVector<int64_t> Normalize(ArrayRef<int64_t> values,
+                               ArrayRef<int64_t> layout) {
+  return NormalizeImpl<int64_t>(values, layout);
 }
 
 Value CreateAddPtrOp(::xla::EmitterLocOpBuilder& builder,
@@ -317,10 +353,15 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
 
       mlir::UnrealizedConversionCastOp cast_to_orig_type;
       if (auto attr = op.getArgAttr(index, "tt.tma_descriptor")) {
-        auto block_shape = mlir::cast<TmaDescriptorAttr>(attr).getBlockShape();
+        auto tma_descriptor = mlir::cast<TmaDescriptorAttr>(attr);
+        auto layout = tma_descriptor.getLayout();
+        auto block_shape = tma_descriptor.getBlockShape();
+        SmallVector<int64_t> normalized_block_shape =
+            Normalize(block_shape, layout);
+
         operand_type = TensorDescType::get(
             builder.getContext(),
-            RankedTensorType::get(block_shape, element_type));
+            RankedTensorType::get(normalized_block_shape, element_type));
         // !tt.tensordesc<tensor<block_shape x element_type>> -> tensor
         cast_to_orig_type = builder.create<mlir::UnrealizedConversionCastOp>(
             operand_type, func_arg);
@@ -399,6 +440,9 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
   // With TMA:
   // tt.descriptor_load.
   // Offsets are resolved in tt.descriptor_load.
+  // If the layout is not normalized, we insert a transpose to ensure that
+  // the tile loaded in both TMA and non-TMA cases is the same:
+  // tt.descriptor_load + tt.transpose.
   mlir::LogicalResult matchAndRewrite(
       ExtractOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
@@ -409,20 +453,40 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
 
     auto offsets = op.getOffsetsAsValues(builder);
     if (CanUseTMA(builder, tma_enabled_, *device_description_, tile_shape,
-                  op.getSrc())) {
-      AddTmaAttributes(builder, op.getSrc(), tile_shape);
+                  op.getSrc(), op.getLayout())) {
+      AddTmaAttributes(builder, op.getSrc(), tile_shape, op.getLayout());
+
+      SmallVector<int64_t> normalized_tile_shape =
+          Normalize(tile_shape, op.getLayout());
+      auto normalized_tile_type = RankedTensorType::get(
+          normalized_tile_shape, tile_type.getElementType());
+      auto normalized_offsets = Normalize(offsets, op.getLayout());
 
       // tensor -> !tt.tensordesc<tile_type>
       auto cast_to_tensor_desc =
           builder
               .create<mlir::UnrealizedConversionCastOp>(
-                  TensorDescType::get(builder.getContext(), tile_type),
+                  TensorDescType::get(builder.getContext(),
+                                      normalized_tile_type),
                   op.getSrc())
               .getResult(0);
 
       auto descriptor_load = builder.create<DescriptorLoadOp>(
-          op.getResultType(), cast_to_tensor_desc,
-          IndexCastUI(builder, builder.getI32Type(), offsets));
+          normalized_tile_type, cast_to_tensor_desc,
+          IndexCastUI(builder, builder.getI32Type(), normalized_offsets));
+
+      // Insert a transpose if the layout is not normalized.
+      // TODO(b/417039624): This needs to be generalized beyond 2D tensors. We
+      // would need to figure out what dim_order should be used and pass it to
+      // the transpose op.
+      if (!IsNormalizedLayout(op.getLayout())) {
+        auto dim_order = llvm::to_vector_of<int32_t>(op.getLayout());
+        std::reverse(dim_order.begin(), dim_order.end());
+        auto transpose = builder.create<TransOp>(op.getResultType(),
+                                                 descriptor_load, dim_order);
+        rewriter.replaceOp(op, transpose);
+        return mlir::success();
+      }
 
       rewriter.replaceOp(op, descriptor_load);
       return mlir::success();
@@ -467,6 +531,9 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
   // With TMA:
   // tt.descriptor_store.
   // Offsets are resolved in tt.descriptor_store.
+  // If the layout is not normalized, we insert a transpose to to be compatible
+  // with TMA's physical restrictions.
+  // tt.transpose + tt.descriptor_store.
   mlir::LogicalResult matchAndRewrite(
       InsertOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
@@ -477,20 +544,38 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
 
     auto offsets = op.getOffsetsAsValues(builder);
     if (CanUseTMA(builder, tma_enabled_, *device_description_, tile_shape,
-                  op.getDst())) {
-      AddTmaAttributes(builder, op.getDst(), tile_shape);
+                  op.getDst(), op.getLayout())) {
+      AddTmaAttributes(builder, op.getDst(), tile_shape, op.getLayout());
+
+      SmallVector<int64_t> normalized_tile_shape =
+          Normalize(tile_shape, op.getLayout());
+      auto normalized_tile_type = RankedTensorType::get(
+          normalized_tile_shape, tile_type.getElementType());
+      auto normalized_offsets = Normalize(offsets, op.getLayout());
 
       // tensor -> !tt.tensordesc<tile_type>
       auto cast_to_tensor_desc =
           builder
               .create<mlir::UnrealizedConversionCastOp>(
-                  TensorDescType::get(builder.getContext(), tile_type),
+                  TensorDescType::get(builder.getContext(),
+                                      normalized_tile_type),
                   op.getDst())
               .getResult(0);
 
+      // Insert a transpose if the layout is not normalized.
+      // TODO(b/417039624): This needs to be generalized beyond 2D tensors. We
+      // would need to figure out what dim_order should be used and pass it to
+      // the transpose op.
+      auto src = op.getSrc();
+      if (!IsNormalizedLayout(op.getLayout())) {
+        auto dim_order = llvm::to_vector_of<int32_t>(op.getLayout());
+        std::reverse(dim_order.begin(), dim_order.end());
+        src = builder.create<TransOp>(normalized_tile_type, op.getSrc(),
+                                      dim_order);
+      }
       builder.create<DescriptorStoreOp>(
-          cast_to_tensor_desc, op.getSrc(),
-          IndexCastUI(builder, builder.getI32Type(), offsets));
+          cast_to_tensor_desc, src,
+          IndexCastUI(builder, builder.getI32Type(), normalized_offsets));
     } else {
       auto ptr = CreateAddPtrOp(builder, op.getDst(), offsets, op.getLayout());
       auto strides = op.getStridesAsValues(builder);
@@ -582,9 +667,8 @@ class TritonXLAExtractInsertToTritonPass
 
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<RewriteExtract,
-                 RewriteInsert
-                >(mlir_context, &device_description_, is_tma_enabled_);
+    patterns.add<RewriteExtract, RewriteInsert>(
+        mlir_context, &device_description_, is_tma_enabled_);
     patterns.add<RewriteScalarExtract, RewriteScalarInsert>(mlir_context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {

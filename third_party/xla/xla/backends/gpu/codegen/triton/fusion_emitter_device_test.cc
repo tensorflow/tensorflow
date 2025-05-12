@@ -1297,24 +1297,108 @@ CHECK: tt.reshape
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
-TEST_F(TritonEmitterTest, BitcastNormalizedLayoutsIsLoweredCorrectly) {
+TEST_P(TmaParameterizedTritonEmitterTest,
+       SimpleBitcastNormalizedLayoutIsLoweredCorrectly) {
   constexpr absl::string_view kHloText = R"(
 triton_computation {
-  p = s8[5,42] parameter(0)
-  ROOT bitcast = s8[5,6,7] bitcast(p)
+  p = s16[16,64]{1,0} parameter(0)
+  ROOT bitcast = s16[16,64] bitcast(p)
 }
 
 ENTRY entry_computation {
-  p = s8[5,42] parameter(0)
-  ROOT fusion = s8[5,6,7] fusion(p), kind=kCustom, calls=triton_computation,
+  p = s16[16,64]{1,0} parameter(0)
+  ROOT fusion = s16[16,64] fusion(p), kind=kCustom, calls=triton_computation,
     backend_config={
-      "fusion_backend_config":{
-        "kind":"__triton",
-        "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["2","4","1"]}],
-          "num_warps":"1",
-          "num_ctas":"1",
-          "num_stages":"1"}}}
+    "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["16","32"]}],
+      "num_warps":"1",
+      "num_ctas":"1",
+      "num_stages":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+// Parameterized the test to make sure that non-canonical layouts are handled
+// correctly when TMA is enabled.
+TEST_P(TmaParameterizedTritonEmitterTest,
+       SimpleBitcastNonNormalizedInputLayoutIsLoweredCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+triton_computation {
+  p = s32[64,16]{0,1} parameter(0)
+  ROOT bitcast = s32[16,64] bitcast(p)
+}
+
+ENTRY entry_computation {
+  p = s32[64,16]{0,1} parameter(0)
+  ROOT fusion = s32[16,64] fusion(p), kind=kCustom, calls=triton_computation,
+    backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16","32"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+// Parameterized the test to make sure that non-canonical layouts are handled
+// correctly when TMA is enabled.
+TEST_P(TmaParameterizedTritonEmitterTest,
+       SimpleBitcastNonNormalizedOutputLayoutIsLoweredCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+triton_computation {
+p = s32[64,16] parameter(0)
+ROOT bitcast = s32[16,64]{0,1} bitcast(p)
+}
+
+ENTRY entry_computation {
+p = s32[64,16] parameter(0)
+ROOT fusion = s32[16,64]{0,1} fusion(p), kind=kCustom, calls=triton_computation,
+backend_config={
+"fusion_backend_config":{
+ "kind":"__triton",
+ "block_level_fusion_config":{
+   "output_tiles":[{"sizes":["16","32"]}],
+   "num_warps":"1",
+   "num_ctas":"1",
+   "num_stages":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+// Parameterized to provide coverage for strided access with TMA.
+TEST_P(TmaParameterizedTritonEmitterTest,
+       BitcastNormalizedLayoutsIsLoweredCorrectly) {
+  bool tma_enabled = GetParam();
+  if (tma_enabled) {
+    GTEST_SKIP() << "TODO(b/417021441): Skipping TMA due to: "
+                    "CUDA_ERROR_ILLEGAL_INSTRUCTION. "
+                    "Potentially due to incorrect strides handling.";
+  }
+  constexpr absl::string_view kHloText = R"(
+triton_computation {
+  p = f32[8,48]{1,0} parameter(0)
+  ROOT bitcast = f32[8,16,3] bitcast(p)
+}
+
+ENTRY entry_computation {
+  p = f32[8,48]{1,0} parameter(0)
+  ROOT fusion = f32[8,16,3] fusion(p), kind=kCustom, calls=triton_computation,
+    backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["2","8","1"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
 })";
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
@@ -1328,30 +1412,30 @@ CHECK:     triton_xla.insert
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
-// Parameterized the test to also make sure that non-canonical layouts are
-// handled correctly when TMA is enabled.
+// Parameterized to provide coverage for both strided access and non-canonical
+// layouts with TMA.
 TEST_P(TmaParameterizedTritonEmitterTest,
        BitcastNonNormalizedInputLayoutIsLoweredCorrectly) {
   bool tma_enabled = GetParam();
   if (tma_enabled) {
-    GTEST_SKIP() << "TODO(b/413351367): Skipping TMA due to: Potentially "
-                    "incorrect handling of non-normalized layouts. "
-                    "Investigate, fix, and enable.";
+    GTEST_SKIP() << "TODO(b/417021441): Skipping TMA due to: "
+                    "CUDA_ERROR_ILLEGAL_INSTRUCTION. "
+                    "Potentially due to incorrect strides handling.";
   }
   constexpr absl::string_view kHloText = R"(
 triton_computation {
-  p = s8[42,16]{0,1} parameter(0)
-  ROOT bitcast = s8[16,6,7] bitcast(p)
+  p = s32[48,16]{0,1} parameter(0)
+  ROOT bitcast = s32[16,16,3] bitcast(p)
 }
 
 ENTRY entry_computation {
-  p = s8[42,16]{0,1} parameter(0)
-  ROOT fusion = s8[16,6,7] fusion(p), kind=kCustom, calls=triton_computation,
+  p = s32[48,16]{0,1} parameter(0)
+  ROOT fusion = s32[16,16,3] fusion(p), kind=kCustom, calls=triton_computation,
     backend_config={
       "fusion_backend_config":{
       "kind":"__triton",
       "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["2","4","1"]}],
+        "output_tiles":[{"sizes":["2","8","1"]}],
         "num_warps":"1",
         "num_ctas":"1",
         "num_stages":"1"}}}
@@ -1363,7 +1447,7 @@ CHECK:     tt.trans
 CHECK:     tt.reshape
 CHECK-NOT: tt.trans
 CHECK:     triton_xla.insert
-)"));
+  )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
