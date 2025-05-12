@@ -261,7 +261,7 @@ void setManualAxesForOpsInBody(
 }
 
 void setNonEmptyManualAxes(Operation* op, ManualAxesAttr manualAxesAttr) {
-  if (!manualAxesAttr.getValue().empty()) {
+  if (!manualAxesAttr.empty()) {
     op->setAttr(kManualAxes, manualAxesAttr);
   }
 }
