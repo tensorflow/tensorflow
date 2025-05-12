@@ -84,10 +84,10 @@ void AddTFToStablehloPasses(
   pm.addPass(mlir::stablehlo::CreateLegalizeTFXlaCallModuleToStablehloPass());
 
   // Preprocesses TPU-targeting StableHLO module for support in TF Quantizer.
-  pm.addPass(mlir::tf_quant::CreateTFConvertTpuModelToCpuPass());
+  pm.addPass(mlir::tf_quant::CreateConvertTpuModelToCpuPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::tf_quant::CreateTFCastBf16OpsToF32Pass());
+  pm.addPass(mlir::tf_quant::CreateCastBf16OpsToF32Pass());
 
   // Optimizes the graph via cleanups, merges, rewrites, constant folding,
   // and edge case handling where possible.
@@ -156,7 +156,7 @@ absl::Status PreprocessAndFreezeGraph(
 
   // The AddQuantizationUnitLocPass should be added before any other passes.
   pm_before_freezing_variables.addNestedPass<mlir::func::FuncOp>(
-      mlir::tf_quant::CreateTFAddQuantizationUnitLocPass());
+      mlir::tf_quant::CreateAddQuantizationUnitLocPass());
   pm_before_freezing_variables.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
 
@@ -167,9 +167,8 @@ absl::Status PreprocessAndFreezeGraph(
   // Makes certain functions immune to the `InlinerPass`. Used to preserve
   // aliased functions.
   pm_after_freezing_variables.addNestedPass<mlir::func::FuncOp>(
-      mlir::tf_quant::CreateTFMarkFunctionsNoinlinePass(
-          std::vector<std::string>(noinline_functions.begin(),
-                                   noinline_functions.end())));
+      mlir::tf_quant::CreateMarkFunctionsNoinlinePass(std::vector<std::string>(
+          noinline_functions.begin(), noinline_functions.end())));
   if (is_inliner_run) {
     pm_after_freezing_variables.addPass(mlir::createInlinerPass());
   }
