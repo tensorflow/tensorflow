@@ -141,8 +141,7 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
       execution_graph_.sink().size(), is_sequential_, small_buffers);
 
   VLOG(6) << "ThunkExecutor execution graph:\n" << ToString();
-
-  if (VLOG_IS_ON(8)) {
+  if (VLOG_IS_ON(8) && !options.is_nested_executor) {
     ExecutionGraphRenderer* renderer = GetExecutionGraphRenderer();
 
     if (renderer == nullptr) {
