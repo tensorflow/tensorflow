@@ -3098,6 +3098,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
         "CopyToMemorySpace called on deleted or donated buffer");
   }
 
+  TfrtGpuDevice* gpu_src_device = tsl::down_cast<TfrtGpuDevice*>(device());
   TfrtGpuDevice* gpu_dst_device = tsl::down_cast<TfrtGpuDevice*>(dst_device);
   tsl::AsyncValueRef<GpuDeviceMemory> src_buffer = src_device_buffer->buffer();
 
@@ -3117,7 +3118,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
        allocated_dst_buffer(allocated_dst_buffer.CopyRef()),
        dst_definition_event(dst_definition_event.CopyRef()),
        src_definition_event(src_device_buffer->definition_event().CopyRef()),
-       dst_device(gpu_dst_device), src_usage_event(src_usage_event.CopyRef()),
+       src_device(gpu_src_device), src_usage_event(src_usage_event.CopyRef()),
        dst_usage_event(dst_usage_event.CopyRef())]() {
         tsl::profiler::TraceMe traceme("D2D copy");
 
@@ -3138,7 +3139,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
           return;
         }
 
-        auto stream = dst_device->stream();
+        // TODO: Use the destination device stream for D2D copies.
+        auto stream = src_device->stream();
         se::DeviceMemoryBase dst(allocated_dst_buffer->buffer());
         absl::Status status = stream->Memcpy(&dst, src_buffer->buffer(),
                                              src_buffer->buffer().size());
