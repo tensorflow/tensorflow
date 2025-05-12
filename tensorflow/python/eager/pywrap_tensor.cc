@@ -134,7 +134,6 @@ TFE_Context* GetContextHandle(PyObject* py_context) {
   return ctx;
 }
 
-
 // Helper function to convert `v` to a tensorflow::DataType and store it in
 // `*out`. Returns true on success, false otherwise.
 // Note that we assume that v is a python int (not long) representing a
@@ -590,8 +589,10 @@ static PyObject* EagerTensor_datatype_enum(EagerTensor* self) {
 // Getter for `_shape_tuple`.
 static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   auto handle = self->handle;
-  int n = TFE_TensorHandleNumDims(handle, &self->status);
-  TF_Code code = TF_GetCode(&self->status);
+  int n;
+  Py_BEGIN_ALLOW_THREADS;
+  n = TFE_TensorHandleNumDims(handle, &self->status);
+  Py_END_ALLOW_THREADS TF_Code code = TF_GetCode(&self->status);
   if (code != TF_OK) {
     RaiseExceptionTypeFromTFStatus(&self->status);
     // Cleanup self->status before returning.
@@ -601,7 +602,10 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   PyObject* shape = PyTuple_New(n);
   if (PyErr_Occurred()) return nullptr;
   for (int i = 0; i < n; ++i) {
-    int64_t dim_c_value = TFE_TensorHandleDim(handle, i, &self->status);
+    int64_t dim_c_value;
+    Py_BEGIN_ALLOW_THREADS;
+    dim_c_value = TFE_TensorHandleDim(handle, i, &self->status);
+    Py_END_ALLOW_THREADS;
     PyObject* dim;
     // The C++ convention is -1 for unknown/variable axis lengths. Translate
     // that to the Python "None" convention. Unknown axis lengths are unusual
@@ -632,7 +636,10 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
 
 // Getter for `_rank`.
 static PyObject* EagerTensor_rank(EagerTensor* self) {
-  int num_dims = TFE_TensorHandleNumDims(self->handle, &self->status);
+  int num_dims;
+  Py_BEGIN_ALLOW_THREADS;
+  num_dims = TFE_TensorHandleNumDims(self->handle, &self->status);
+  Py_END_ALLOW_THREADS;
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     // Cleanup self->status before returning.
     self->status.status = absl::OkStatus();
@@ -648,7 +655,10 @@ static PyObject* EagerTensor_rank(EagerTensor* self) {
 // Getter for `_num_elements`.
 static PyObject* EagerTensor_num_elements(EagerTensor* self) {
   auto handle = self->handle;
-  int n = TFE_TensorHandleNumElements(handle, &self->status);
+  int n;
+  Py_BEGIN_ALLOW_THREADS;
+  n = TFE_TensorHandleNumElements(handle, &self->status);
+  Py_END_ALLOW_THREADS;
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     // Cleanup self->status before returning.
     self->status.status = absl::OkStatus();
@@ -966,12 +976,12 @@ static PyTypeObject _EagerTensorType = {
     // clang-format off
     PyVarObject_HEAD_INIT(nullptr, 0)
     // clang-format on
-    "EagerTensor",                      /* tp_name */
-    sizeof(EagerTensor),                /* tp_basicsize */
-    0,                                  /* tp_itemsize */
-    (destructor)EagerTensor_dealloc,    /* tp_dealloc */
+    "EagerTensor",                   /* tp_name */
+    sizeof(EagerTensor),             /* tp_basicsize */
+    0,                               /* tp_itemsize */
+    (destructor)EagerTensor_dealloc, /* tp_dealloc */
 #if PY_VERSION_HEX < 0x03080000
-    nullptr,                            /* tp_print */
+    nullptr, /* tp_print */
 #else
     0, /* tp_vectorcall_offset */
 #endif
