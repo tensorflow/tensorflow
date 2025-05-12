@@ -285,11 +285,6 @@ static std::vector<bool> MakeDynamicDimensions(
       .value();
 }
 
-/* static */ Shape ShapeUtil::MakeBufferShape(
-    PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
-  return Shape::MakeBufferShape(MakeShape(element_type, dimensions));
-}
-
 /* static */ Shape ShapeUtil::MakeShapeWithStaticDimensions(
     const Shape& shape) {
   Shape output = shape;
