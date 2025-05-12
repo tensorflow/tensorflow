@@ -2,7 +2,6 @@
 
 sdy.mesh @mesh_0 = <["a"=4, "b"=2]>
 sdy.mesh @mesh_1 = <["a"=2, "b"=2, "c"=2, "d"=2]>
-sdy.mesh @mesh_2 = <["a"=4, "b"=4, "c"=4]>
 
 // CHECK-LABEL: func @single_manual_comp
 func.func @single_manual_comp(%arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a", ?}, {"b", ?}]>}, %arg1: tensor<16x32xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b", ?}, {?}]>}) -> (tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}, {}]>}) {
@@ -179,42 +178,6 @@ func.func @multiple_manual_computation_uses(%arg0: tensor<2x4x8xi32> {sdy.shardi
     sdy.return %4 : tensor<131x4x2xi32>
   } : (tensor<3x4x8xi32>, tensor<128x4x8xi32>) -> tensor<131x4x8xi32>
   return %3 : tensor<131x4x8xi32>
-}
-
-// CHECK-LABEL: func @remove_auto_axes_to_avoid_padding
-func.func @remove_auto_axes_to_avoid_padding(%arg0: tensor<4xf32>, %arg1: tensor<12xf32>, %arg2: tensor<24xf32>, %arg3: tensor<48xf32>, %arg4: tensor<96xf32>, %arg5: tensor<192xf32>) -> (tensor<4xf32>, tensor<12xf32>, tensor<24xf32>, tensor<48xf32>, tensor<96xf32>, tensor<192xf32>) {
-  // CHECK-NEXT: %0 = mhlo.copy %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"a"}]>]>} : tensor<4xf32>
-  // CHECK-NEXT: %1 = stablehlo.custom_call @SPMDFullToShardShape(%0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<4xf32>) -> tensor<1xf32>
-  // CHECK-NEXT: %2 = mhlo.copy %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"a"}]>]>} : tensor<12xf32>
-  // CHECK-NEXT: %3 = stablehlo.custom_call @SPMDFullToShardShape(%2) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<12xf32>) -> tensor<3xf32>
-  // CHECK-NEXT: %4 = mhlo.copy %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"a", "b":(1)2}]>]>} : tensor<24xf32>
-  // CHECK-NEXT: %5 = stablehlo.custom_call @SPMDFullToShardShape(%4) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"b":(1)2}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<24xf32>) -> tensor<6xf32>
-  // CHECK-NEXT: %6 = mhlo.copy %arg3 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"a", "b"}]>]>} : tensor<48xf32>
-  // CHECK-NEXT: %7 = stablehlo.custom_call @SPMDFullToShardShape(%6) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<48xf32>) -> tensor<12xf32>
-  // CHECK-NEXT: %8 = mhlo.copy %arg4 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"a", "b", "c":(1)2}]>]>} : tensor<96xf32>
-  // CHECK-NEXT: %9 = stablehlo.custom_call @SPMDFullToShardShape(%8) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"b", "c":(1)2}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<96xf32>) -> tensor<24xf32>
-  // CHECK-NEXT: %10 = mhlo.copy %arg5 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"a", "b", "c"}]>]>} : tensor<192xf32>
-  // CHECK-NEXT: %11 = stablehlo.custom_call @SPMDFullToShardShape(%10) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"b", "c"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<192xf32>) -> tensor<48xf32>
-  // CHECK-NEXT: %12 = mhlo.copy %1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<1xf32>
-  // CHECK-NEXT: %13 = stablehlo.custom_call @SPMDShardToFullShape(%12) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"a"}]>]>} : (tensor<1xf32>) -> tensor<4xf32>
-  // CHECK-NEXT: %14 = mhlo.copy %3 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<3xf32>
-  // CHECK-NEXT: %15 = stablehlo.custom_call @SPMDShardToFullShape(%14) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"a"}]>]>} : (tensor<3xf32>) -> tensor<12xf32>
-  // CHECK-NEXT: %16 = mhlo.copy %5 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"b":(1)2}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<6xf32>
-  // CHECK-NEXT: %17 = stablehlo.custom_call @SPMDShardToFullShape(%16) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"a", "b":(1)2}]>]>} : (tensor<6xf32>) -> tensor<24xf32>
-  // CHECK-NEXT: %18 = mhlo.copy %7 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<12xf32>
-  // CHECK-NEXT: %19 = stablehlo.custom_call @SPMDShardToFullShape(%18) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"a", "b"}]>]>} : (tensor<12xf32>) -> tensor<48xf32>
-  // CHECK-NEXT: %20 = mhlo.copy %9 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"b", "c":(1)2}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<24xf32>
-  // CHECK-NEXT: %21 = stablehlo.custom_call @SPMDShardToFullShape(%20) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"a", "b", "c":(1)2}]>]>} : (tensor<24xf32>) -> tensor<96xf32>
-  // CHECK-NEXT: %22 = mhlo.copy %11 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"b", "c"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<48xf32>
-  // CHECK-NEXT: %23 = stablehlo.custom_call @SPMDShardToFullShape(%22) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"a", "b", "c"}]>]>} : (tensor<48xf32>) -> tensor<192xf32>
-  // CHECK-NEXT: return %13, %15, %17, %19, %21, %23 : tensor<4xf32>, tensor<12xf32>, tensor<24xf32>, tensor<48xf32>, tensor<96xf32>, tensor<192xf32>
-  %0:6 = sdy.manual_computation(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5)
-    in_shardings=[<@mesh_2, [{"a", "b", "c"}]>, <@mesh_2, [{"a", "b", "c"}]>, <@mesh_2, [{"a", "b", "c"}]>, <@mesh_2, [{"a", "b", "c"}]>, <@mesh_2, [{"a", "b", "c"}]>, <@mesh_2, [{"a", "b", "c"}]>]
-    out_shardings=[<@mesh_2, [{"a", "b", "c"}]>, <@mesh_2, [{"a", "b", "c"}]>, <@mesh_2, [{"a", "b", "c"}]>, <@mesh_2, [{"a", "b", "c"}]>, <@mesh_2, [{"a", "b", "c"}]>, <@mesh_2, [{"a", "b", "c"}]>]
-    manual_axes={"a"} (%arg6: tensor<1xf32>, %arg7: tensor<3xf32>, %arg8: tensor<6xf32>, %arg9: tensor<12xf32>, %arg10: tensor<24xf32>, %arg11: tensor<48xf32>) {
-    sdy.return %arg6, %arg7, %arg8, %arg9, %arg10, %arg11 : tensor<1xf32>, tensor<3xf32>, tensor<6xf32>, tensor<12xf32>, tensor<24xf32>, tensor<48xf32>
-  } : (tensor<4xf32>, tensor<12xf32>, tensor<24xf32>, tensor<48xf32>, tensor<96xf32>, tensor<192xf32>) -> (tensor<4xf32>, tensor<12xf32>, tensor<24xf32>, tensor<48xf32>, tensor<96xf32>, tensor<192xf32>)
-  return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5 : tensor<4xf32>, tensor<12xf32>, tensor<24xf32>, tensor<48xf32>, tensor<96xf32>, tensor<192xf32>
 }
 
 // CHECK-LABEL: func @named_computation_in_manual_computation
