@@ -131,7 +131,16 @@ using FloatTypes = ::testing::Types<float, half, bfloat16, tsl::float4_e2m1fn,
                                     tsl::float8_e4m3fnuz, tsl::float8_e5m2,
                                     tsl::float8_e5m2fnuz, tsl::float8_e8m0fnu>;
 
-TYPED_TEST_SUITE(LiteralUtilFloatTest, FloatTypes);
+class FloatTypeNames {
+ public:
+  template <typename T>
+  static std::string GetName(int) {
+    PrimitiveType type = primitive_util::NativeToPrimitiveType<T>();
+    return primitive_util::LowercasePrimitiveTypeName(type);
+  }
+};
+
+TYPED_TEST_SUITE(LiteralUtilFloatTest, FloatTypes, FloatTypeNames);
 
 TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto true_lit = LiteralUtil::CreateR0<bool>(true);
@@ -1858,26 +1867,26 @@ TYPED_TEST(LiteralUtilFloatTest, ConvertIfTypesMatchF8) {
     GTEST_SKIP() << "Skipping test for non F8 types";
   }
   auto s8 = LiteralUtil::CreateR2WithLayout<int8_t>(
-      {{0, 1}, {2, 3}}, LiteralUtilTest::layout_r2_dim0major_);
+      {{1, 2}, {4, 8}}, LiteralUtilTest::layout_r2_dim0major_);
   auto bf16 = LiteralUtil::CreateR2WithLayout<bfloat16>(
-      {{bfloat16(0.), bfloat16(1.)}, {bfloat16(2.), bfloat16(3.)}},
+      {{bfloat16(1.), bfloat16(2.)}, {bfloat16(4.), bfloat16(8.)}},
       LiteralUtilTest::layout_r2_dim0major_);
   auto f32 = LiteralUtil::CreateR2WithLayout<float>(
-      {{0., 1.}, {2., 3.}}, LiteralUtilTest::layout_r2_dim0major_);
+      {{1., 2.}, {4., 8.}}, LiteralUtilTest::layout_r2_dim0major_);
   auto c128 = LiteralUtil::CreateR2WithLayout<complex128>(
-      {{0., 1.}, {2., 3.}}, LiteralUtilTest::layout_r2_dim0major_);
+      {{1., 2.}, {4., 8.}}, LiteralUtilTest::layout_r2_dim0major_);
   // Let's also use a couple of popular F8 types as sources for conversion
   using f8e5m2_t = tsl::float8_e5m2;
   auto f8e5m2 = LiteralUtil::CreateR2WithLayout<f8e5m2_t>(
-      {{f8e5m2_t{0.}, f8e5m2_t{1.}}, {f8e5m2_t{2.}, f8e5m2_t{3.}}},
+      {{f8e5m2_t{1.}, f8e5m2_t{2.}}, {f8e5m2_t{4.}, f8e5m2_t{8.}}},
       LiteralUtilTest::layout_r2_dim0major_);
   using e4m3fn_t = tsl::float8_e4m3fn;
   auto f8e4m3fn = LiteralUtil::CreateR2WithLayout<e4m3fn_t>(
-      {{e4m3fn_t{0.}, e4m3fn_t{1.}}, {e4m3fn_t{2.}, e4m3fn_t{3.}}},
+      {{e4m3fn_t{1.}, e4m3fn_t{2.}}, {e4m3fn_t{4.}, e4m3fn_t{8.}}},
       LiteralUtilTest::layout_r2_dim0major_);
 
   auto f8 = LiteralUtil::CreateR2WithLayout<TypeParam>(
-      {{TypeParam{0.}, TypeParam{1.}}, {TypeParam{2.}, TypeParam{3.}}},
+      {{TypeParam{1.}, TypeParam{2.}}, {TypeParam{4.}, TypeParam{8.}}},
       LiteralUtilTest::layout_r2_dim0major_);
 
   Literal conv;
