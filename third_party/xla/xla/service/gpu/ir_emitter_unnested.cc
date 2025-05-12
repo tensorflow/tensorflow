@@ -591,7 +591,7 @@ absl::Status IrEmitterUnnested::EmitConvolutionThunk(
   // always the result and the scratch buffer. It may have auxiliary results in
   // addition to the main result.
   std::vector<BufferAllocation::Slice> result_slices;
-  for (int i = 0; i < instr->shape().tuple_shapes_size() - 1; i++) {
+  for (int i = 0; i < instr->shape().tuple_shapes().size() - 1; i++) {
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
                         GetAllocationSliceForHlo(instr, {i}));
     result_slices.push_back(result_slice);
@@ -700,9 +700,10 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
 
   std::optional<BufferAllocation::Slice> workspace_buffer;
   if (instr->shape().IsTuple() &&
-      (instr->shape().tuple_shapes_size() - has_aux_output - 1)) {
-    TF_RET_CHECK((has_aux_output && instr->shape().tuple_shapes_size() == 3) ||
-                 (!has_aux_output && instr->shape().tuple_shapes_size() == 2));
+      (instr->shape().tuple_shapes().size() - has_aux_output - 1)) {
+    TF_RET_CHECK(
+        (has_aux_output && instr->shape().tuple_shapes().size() == 3) ||
+        (!has_aux_output && instr->shape().tuple_shapes().size() == 2));
     TF_ASSIGN_OR_RETURN(workspace_buffer,
                         GetAllocationSliceForHlo(
                             instr, {instr->shape().tuple_shapes_size() - 1}));
@@ -805,7 +806,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   BufferAllocation::Slice aux;  // Not used.
   TF_RET_CHECK(!has_aux_output);
   std::optional<BufferAllocation::Slice> workspace_buffer;
-  if (instr->shape().tuple_shapes_size() - config.damax_output() == 2) {
+  if (instr->shape().tuple_shapes().size() - config.damax_output() == 2) {
     TF_ASSIGN_OR_RETURN(workspace_buffer,
                         GetAllocationSliceForHlo(
                             instr, {instr->shape().tuple_shapes_size() - 1}));
@@ -1257,7 +1258,7 @@ absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
   TF_RET_CHECK(instr->operand_count() == 2);
   auto operands = instr->operands();
   TF_RET_CHECK(instr->shape().IsTuple() &&
-               instr->shape().tuple_shapes_size() == 2);
+               instr->shape().tuple_shapes().size() == 2);
 
   // We expect Fortran layout for everything other than the temp buffer (the
   // last operand).  Fortran layout is not XLA default layout with elements 0
@@ -1338,7 +1339,7 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
       << "Expect only 1 operand for TopK custom call.";
   TF_RET_CHECK(shape.IsTuple())
       << "Expect TopK custom call to have tuple shape.";
-  TF_RET_CHECK(shape.tuple_shapes_size() == 2)
+  TF_RET_CHECK(shape.tuple_shapes().size() == 2)
       << "Expect TopK custom call shape to have exactly 2 sub-shapes.";
 
   auto data_shape = operands[0]->shape();
@@ -1859,7 +1860,7 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
     const HloCollectivePermuteInstruction* instr) {
   // First output is aliased.
   TF_RET_CHECK(
-      instr->shape().IsTuple() && instr->shape().tuple_shapes_size() == 2 &&
+      instr->shape().IsTuple() && instr->shape().tuple_shapes().size() == 2 &&
       Shape::Equal().IgnoreMemorySpaceInLayout()(
           instr->shape().tuple_shapes(0), instr->shape().tuple_shapes(1)));
 
@@ -2168,7 +2169,7 @@ static const HloInstruction* FindCanonicalSendRecvStartOp(
 
   // Extract canonical start op from while loop's init.
   CHECK(while_op != nullptr);
-  CHECK(0 <= i && i < while_op->shape().tuple_shapes_size());
+  CHECK(0 <= i && i < while_op->shape().tuple_shapes().size());
   const HloInstruction* init = while_op->operand(0);
   const HloInstruction* canonical_start_op = init->operand(i);
   CHECK(canonical_start_op->opcode() == HloOpcode::kSend ||
