@@ -2471,6 +2471,7 @@ tf_cc_tests(
     create_named_test_suite = True,
     data = [
         "testdata/simplify_ici_dummy_variables_pass_before.pbtxt",
+        "testdata/simplify_ici_dummy_variables_pass_updatevars_before.pbtxt",
     ],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
