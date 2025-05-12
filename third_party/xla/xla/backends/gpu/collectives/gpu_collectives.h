@@ -78,6 +78,21 @@ class GpuCollectives : public Collectives {
   struct Config : public Collectives::Config {
     bool split_share = false;
     int64_t max_nchannels = 0;
+
+    // There are two types of NCCL communicators: blocking and non-blocking.
+    // When a collective operation is called on a blocking communicator, the
+    // communicator blocks until the operation has been scheduled on the GPU. A
+    // non-blocking communicator, on the other hand, returns immediately.
+    //
+    // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/types.html#c.blocking
+    bool blocking_communicators = true;
+
+    // If true, Communicator methods (e.g., AllReduce) return AsyncValueRefs
+    // that are filled in asynchronously. If false, Communicator methods return
+    // AsyncValueRefs that are already filled in.
+    //
+    // If blocking_communicators is false, then async_execution must be true.
+    bool async_execution = false;
   };
 
   // Returns true if GPU collectives are implemented.
