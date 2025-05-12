@@ -2124,7 +2124,9 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
                 auto stream = device->stream();
 
                 const auto& buffer = device_buffer->buffer();
-                CHECK_EQ(literal.size_bytes(), buffer->size_bytes());
+                if (literal.shape().IsArray()) {
+                  CHECK_EQ(literal.size_bytes(), buffer->size_bytes());
+                }
 
                 ShapedBuffer shaped_buffer =
                     buffer->AsShapedBuffer(shape, device);
@@ -2834,8 +2836,11 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
     if (should_unpack || transpose != nullptr) {
       staging_buffer = client->host_memory_allocator()->Allocate(byte_size);
       buffer_ptr = staging_buffer.get();
-    } else {
+    } else if (on_device_shape.IsArray()) {
       buffer_ptr = literal->untyped_data();
+    } else {
+      CHECK_EQ(byte_size, 0);
+      buffer_ptr = nullptr;
     }
 
     {
