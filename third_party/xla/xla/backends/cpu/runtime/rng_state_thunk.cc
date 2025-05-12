@@ -16,17 +16,14 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/rng_state_thunk.h"
 
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <utility>
 
-#include "absl/base/config.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
