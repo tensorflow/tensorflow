@@ -318,6 +318,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -337,6 +338,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
