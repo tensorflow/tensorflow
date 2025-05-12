@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <vector>
@@ -154,6 +156,27 @@ class ExecutionGraph {
     // unlock more nodes for execution.
     int64_t priority = 0;
   };
+
+  class Renderer {
+   public:
+    Renderer() = default;
+    virtual ~Renderer() = default;
+
+    // Generates a string representation for the given execution graph
+    // operations which can be published to a URL using `PublishGraph`.
+    virtual std::string GenerateGraphAsString(
+        absl::Span<const ExecutionGraph::Operation* const> operations) = 0;
+
+    // Publishes the generated graph.
+    virtual absl::StatusOr<std::string> PublishGraph(
+        absl::string_view graph_as_string) = 0;
+  };
+
+  // Returns the registered renderer for execution graphs.
+  static Renderer* GetRenderer();
+
+  // Registers a renderer for execution graphs.
+  static void RegisterRenderer(std::unique_ptr<Renderer> renderer);
 
   // Constructs an execution graph from a sequence of operations.
   template <typename Op,
