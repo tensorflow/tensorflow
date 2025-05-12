@@ -67,6 +67,9 @@ class ThunkExecutor {
 
     // The type of a queue for ready thunks.
     ReadyQueueType ready_queue_type = ReadyQueueType::kFifo;
+
+    // Flag denoting whether the executor is nested within another executor.
+    bool is_nested_executor = true;
   };
 
   static absl::StatusOr<ThunkExecutor> Create(ThunkSequence thunk_sequence,
