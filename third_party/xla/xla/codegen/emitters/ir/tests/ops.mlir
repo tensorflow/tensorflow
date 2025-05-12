@@ -158,3 +158,16 @@ func.func @test_backend_kind(%arg0: f32) attributes { xla.backend_kind = #xla.ba
 }
 // CHECK:      @test_backend_kind
 // CHECK-SAME: #xla.backend_kind<tpu>
+
+// -----
+
+func.func @forall_op(%input: tensor<1024x32xf32>) -> (tensor<1024x32xf32>) {
+  %double_elem = xla.forall (%i, %j) in (1024, 32) with (%captured_input = %input) -> tensor<1024x32xf32> {
+    %t = tensor.extract %captured_input[%i, %j] : tensor<1024x32xf32>
+    %add = arith.addf %t, %t : f32
+    %result = tensor.insert %add into %captured_input[%i, %j] : tensor<1024x32xf32>
+    xla.yield %result : tensor<1024x32xf32>
+  }
+  func.return %double_elem : tensor<1024x32xf32>
+}
+// CHECK: [[FORALL:.*]] = xla.forall ([[IDX_0:.*]], [[IDX_1:.*]]) in (1024, 32) with ([[CAPTURED_OUTPUT:.*]] = [[CAPTURED_ARG:.*]]) -> tensor<1024x32xf32>
