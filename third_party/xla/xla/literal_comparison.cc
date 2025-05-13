@@ -938,14 +938,15 @@ absl::Status EmitLiteralsInErrorMessage(const absl::Status& result,
 
 }  // namespace
 
-absl::Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
+absl::Status Equal(const LiteralSlice& expected, const LiteralSlice& actual,
+                   const MiscompareCallback& miscompare_callback) {
   if (VLOG_IS_ON(1)) {
     LOG(INFO) << "expected:";
     XLA_LOG_LINES(INFO, expected.ToString());
     LOG(INFO) << "actual:";
     XLA_LOG_LINES(INFO, actual.ToString());
   }
-  absl::Status result = EqualHelper(expected, actual, {}, nullptr);
+  absl::Status result = EqualHelper(expected, actual, {}, miscompare_callback);
   return EmitLiteralsInErrorMessage(result, expected, actual);
 }
 
