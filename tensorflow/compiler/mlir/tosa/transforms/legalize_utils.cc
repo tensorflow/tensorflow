@@ -953,7 +953,7 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
                                   int64_t val, int rank) {
   assert(rank >= 0);
-  assert(type.isa<IntegerType>());
+  assert(mlir::isa<IntegerType>(type));
   mlir::RankedTensorType const_type;
   mlir::DenseElementsAttr const_attr;
   auto bit_width = type.getIntOrFloatBitWidth();
