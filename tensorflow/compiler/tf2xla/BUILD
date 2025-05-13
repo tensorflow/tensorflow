@@ -409,7 +409,57 @@ cc_library(
         "@local_xla//xla:executable_run_options",
         "@local_xla//xla/service/cpu:buffer_desc",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
     ],
+)
+
+cc_library(
+    name = "xla_compiled_cpu_function_thunks",
+    srcs = ["xla_compiled_cpu_function_thunks.cc"],
+    hdrs = ["xla_compiled_cpu_function_thunks.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_compiled_cpu_function",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla:executable_run_options",
+        "@local_xla//xla/backends/cpu/codegen:aot_compiled_function_library",
+        "@local_xla//xla/backends/cpu/nanort:nanort_executable",
+        "@local_xla//xla/backends/cpu/runtime:function_library",
+        "@local_xla//xla/service:executable",  # buildcleaner: keep (b/404179184)
+        "@local_xla//xla/service/cpu:cpu_aot_compilation_result",
+        "@local_xla//xla/service/cpu:executable_proto_cc",
+        "@local_xla//xla/tsl/concurrency:async_value",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:status",
+    ],
+)
+
+cc_library(
+    name = "xla_compiled_cpu_function_factory",
+    srcs = ["xla_compiled_cpu_function_factory.cc"],
+    hdrs = ["xla_compiled_cpu_function_factory.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "xla_compiled_cpu_function_thunk_factory_registerer",
+    srcs = ["xla_compiled_cpu_function_thunk_factory_registerer.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_compiled_cpu_function_factory",
+        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function_thunks",
+    ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -432,20 +482,27 @@ cc_library(
         ":tf2xla",
         ":tf2xla_proto_cc",
         ":xla_compiled_cpu_function",
+        ":xla_compiled_cpu_function_thunks",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:casts",
         "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/backends/cpu/codegen:compiled_function_library",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:executable_build_options",
         "@local_xla//xla/client:local_client",
         "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/service:platform_util",
+        "@local_xla//xla/service/cpu:cpu_aot_compilation_result",
+        "@local_xla//xla/service/cpu:executable_proto_cc",
         "@local_xla//xla/stream_executor:platform",
     ] + if_libtpu(
         if_false = [
@@ -982,7 +1039,7 @@ tf_cc_test(
     srcs = ["xla_jit_compiled_cpu_function_test.cc"],
     deps = [
         ":tf2xla_proto_cc",
-        ":xla_compiled_cpu_function",
+        ":xla_compiled_cpu_function_thunks",
         ":xla_jit_compiled_cpu_function",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -992,6 +1049,7 @@ tf_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:casts",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:xla_data_proto_cc",
@@ -1000,6 +1058,7 @@ tf_cc_test(
         "@local_xla//xla/hlo/testlib:test",
         "@local_xla//xla/service:compiler",
         "@local_xla//xla/service:platform_util",
+        "@local_xla//xla/service/cpu:cpu_executable",
         "@local_xla//xla/stream_executor:platform",
         "@local_xla//xla/stream_executor:platform_manager",
     ],
