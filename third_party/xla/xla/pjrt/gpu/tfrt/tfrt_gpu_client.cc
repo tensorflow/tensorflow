@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -1293,7 +1294,8 @@ TfrtGpuClient::TfrtGpuClient(
           "TfrtGpuClient_non_blocking_thread_pool",
           std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()),
           true)) {
-  LOG(INFO) << "TfrtGpuClient created.";
+  LOG(INFO) << "TfrtGpuClient created with " << addressable_devices_.size()
+            << " / " << devices_.size() << " addressable devices.";
 }
 
 TfrtGpuClient::~TfrtGpuClient() { LOG(INFO) << "TfrtGpuClient destroyed."; }
@@ -1360,6 +1362,12 @@ absl::StatusOr<DeviceAssignment> TfrtGpuClient::GetDefaultDeviceAssignment(
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
+  return Compile(computation, options, /*lookup_addressable_devices=*/false);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
+    const XlaComputation& computation, CompileOptions options,
+    bool lookup_addressable_devices) {
   std::vector<const Shape*> argument_layout_pointers;
   const ExecutableBuildOptions& build_options =
       options.executable_build_options;
@@ -1381,7 +1389,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
       &argument_layout_pointers));
   return CompileInternal(computation, argument_layout_pointers,
                          /* layout_canonicalization_callback = */ nullptr,
-                         options);
+                         options, lookup_addressable_devices);
 
   // TODO: b/382117736 - Record free gpu memory.
   // Ref:
@@ -1392,7 +1400,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::CompileInternal(
     const XlaComputation& computation,
     const std::vector<const Shape*>& argument_layout_pointers,
     LayoutCanonicalizationCallback layout_canonicalization_callback,
-    CompileOptions options) {
+    CompileOptions options, bool lookup_addressable_devices) {
   tsl::profiler::TraceMe traceme("TfrtGpuClient::CompileInternal");
   VLOG(1) << "TfrtGpuClient::CompileInternal";
   if (key_value_store().has_value() &&
@@ -1402,7 +1410,8 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::CompileInternal(
   auto input_options = options;
 
   TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
-  TF_RETURN_IF_ERROR(UpdateCompileOptions(&options));
+  TF_RETURN_IF_ERROR(
+      UpdateCompileOptions(&options, lookup_addressable_devices));
 
   // It is important to set the canonicalization callback after creating
   // a copy of the options so that the executable's options remain without
@@ -1423,6 +1432,12 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::CompileInternal(
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
     mlir::ModuleOp module, CompileOptions options) {
+  return Compile(module, options, /*lookup_addressable_devices=*/false);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
+    mlir::ModuleOp module, CompileOptions options,
+    bool lookup_addressable_devices) {
   XlaComputation xla_computation;
   const ExecutableBuildOptions& exec_build_options =
       options.executable_build_options;
@@ -1434,7 +1449,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
   // If the compile options specify argument layout, then let's
   // fall back to using the options to determine layouts.
   if (options.argument_layouts) {
-    return Compile(xla_computation, options);
+    return Compile(xla_computation, options, lookup_addressable_devices);
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
@@ -1476,21 +1491,23 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
                           },
                           options.executable_build_options));
   return CompileInternal(xla_computation, arg_layouts_and_pointers.second,
-                         layout_callback, options);
+                         layout_callback, options, lookup_addressable_devices);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 TfrtGpuClient::CompileAndLoad(const XlaComputation& computation,
                               CompileOptions options) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                      Compile(computation, options));
+                      Compile(computation, options,
+                              /*lookup_addressable_devices=*/true));
   return Load(std::move(executable), LoadOptions());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                      Compile(module, options));
+                      Compile(module, options,
+                              /*lookup_addressable_devices=*/true));
   return Load(std::move(executable), LoadOptions());
 }
 
@@ -1734,22 +1751,25 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
       tsl::down_cast<TfrtGpuDevice*>(device), memory_space);
 }
 
-absl::Status TfrtGpuClient::UpdateCompileOptions(CompileOptions* options) {
-  return UpdateCompileOptionsInternal(options, /*returned_extras=*/nullptr);
+absl::Status TfrtGpuClient::UpdateCompileOptions(
+    CompileOptions* options, bool lookup_addressable_devices) {
+  return UpdateCompileOptionsInternal(options, /*returned_extras=*/nullptr,
+                                      lookup_addressable_devices);
 }
 
 absl::StatusOr<TfrtGpuClient::ExecutableExtras>
 TfrtGpuClient::UpdateCompileOptionsAndGetExecutableExtras(
     CompileOptions* options) {
   ExecutableExtras extras;
-  TF_RETURN_IF_ERROR(UpdateCompileOptionsInternal(options, &extras));
+  TF_RETURN_IF_ERROR(UpdateCompileOptionsInternal(
+      options, &extras, /*lookup_addressable_devices=*/true));
   return extras;
 }
 
 absl::Status TfrtGpuClient::UpdateCompileOptionsInternal(
-    CompileOptions* options, ExecutableExtras* returned_extras) {
+    CompileOptions* options, ExecutableExtras* returned_extras,
+    bool lookup_addressable_devices) {
   ExecutableBuildOptions& build_options = options->executable_build_options;
-  const int original_device_ordinal = build_options.device_ordinal();
   if (!build_options.compile_thread_pool()) {
     build_options.set_compile_thread_pool(compile_thread_pool_.get());
   }
@@ -1787,18 +1807,17 @@ absl::Status TfrtGpuClient::UpdateCompileOptionsInternal(
 
   build_options.set_layout_canonicalization_callback(layout_callback);
 
-  if (build_options.device_ordinal() < 0) {
-    build_options.set_device_ordinal(0);
-  }
-
-  // We need the information of device assignment for
-  //   1) XLA GPU shard autotuning, as the process count and the current process
-  //   index are needed;
-  //   2) getting executable extras, as the addressable devices are needed.
+  // We don't look up devices when it is not required. It could fail if
+  // we look up a device ID on a client with a different topology.
+  // Note that we always look up devices for XLA GPU shard autotuning, as it
+  // needs to know the number of processes and the current process index.
   const bool use_xla_gpu_shard_autotuning =
       build_options.has_debug_options() &&
       build_options.debug_options().xla_gpu_shard_autotuning();
-  if (!use_xla_gpu_shard_autotuning && returned_extras == nullptr) {
+  if (!lookup_addressable_devices && !use_xla_gpu_shard_autotuning) {
+    if (build_options.device_ordinal() < 0) {
+      build_options.set_device_ordinal(0);
+    }
     return absl::OkStatus();
   }
 
@@ -1847,18 +1866,17 @@ absl::Status TfrtGpuClient::UpdateCompileOptionsInternal(
       }
     }
     if (addressable_devices.empty()) {
-      return InvalidArgument(
-          "Device assignment (%s) does not have any local devices.",
-          device_assignment->ToString());
+      if (build_options.device_ordinal() < 0) {
+        build_options.set_device_ordinal(0);
+      }
+    } else {
+      if (build_options.device_ordinal() < 0) {
+        build_options.set_device_ordinal(
+            addressable_devices.front()->local_hardware_id().value());
+      }
+      build_options.set_process_index(*this_process_index);
+      build_options.set_process_count(all_process_indices.size());
     }
-
-    if (original_device_ordinal < 0) {
-      build_options.set_device_ordinal(
-          addressable_devices.front()->local_hardware_id().value());
-    }
-
-    build_options.set_process_index(*this_process_index);
-    build_options.set_process_count(all_process_indices.size());
   }
   if (returned_extras != nullptr) {
     *returned_extras = std::move(extras);
@@ -3281,7 +3299,8 @@ TfrtGpuExecutable::TfrtGpuExecutable(
 
     fingerprint = tsl::FingerprintCat128(
         fingerprint,
-        tsl::Fingerprint128(executable->executable()->module().ToString()));
+        tsl::Fingerprint128(executable->executable()->module().ToString(
+            HloPrintOptions::ModuleFingerprint())));
     executables_.emplace_back(std::move(executable));
   }
   fingerprint_ = absl::StrCat(fingerprint.low64, fingerprint.high64);
@@ -3294,9 +3313,8 @@ TfrtGpuExecutable::TfrtGpuExecutable(
     CHECK(addressable_devices_.empty());
   } else {
     // This must go after `executables_` is initialized.
-      VLOG(3) << "TfrtGpuExecutable device_assignment:\n"
-              << device_assignment_->ToString();
-    CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
+    VLOG(3) << "TfrtGpuExecutable device_assignment:\n"
+            << device_assignment_->ToString();
 
     if ((device_assignment_->replica_count() > 1 ||
          device_assignment_->computation_count() > 1) &&
