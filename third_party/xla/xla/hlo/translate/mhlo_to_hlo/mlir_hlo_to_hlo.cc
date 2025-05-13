@@ -729,6 +729,41 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(
 }
 
 static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
+    mlir::stablehlo::ScatterDimensionNumbersAttr input) {
+  xla::ScatterDimensionNumbers output;
+
+  auto update_window_dims = input.getUpdateWindowDims();
+  std::copy(update_window_dims.begin(), update_window_dims.end(),
+            tsl::protobuf::RepeatedFieldBackInserter(
+                output.mutable_update_window_dims()));
+
+  auto inserted_window_dims = input.getInsertedWindowDims();
+  std::copy(inserted_window_dims.begin(), inserted_window_dims.end(),
+            tsl::protobuf::RepeatedFieldBackInserter(
+                output.mutable_inserted_window_dims()));
+
+  auto input_batching_dims = input.getInputBatchingDims();
+  std::copy(input_batching_dims.begin(), input_batching_dims.end(),
+            tsl::protobuf::RepeatedFieldBackInserter(
+                output.mutable_input_batching_dims()));
+
+  auto scatter_indices_batching_dims = input.getScatterIndicesBatchingDims();
+  std::copy(scatter_indices_batching_dims.begin(),
+            scatter_indices_batching_dims.end(),
+            tsl::protobuf::RepeatedFieldBackInserter(
+                output.mutable_scatter_indices_batching_dims()));
+
+  auto scatter_dims_to_operand_dims = input.getScatterDimsToOperandDims();
+  std::copy(scatter_dims_to_operand_dims.begin(),
+            scatter_dims_to_operand_dims.end(),
+            tsl::protobuf::RepeatedFieldBackInserter(
+                output.mutable_scatter_dims_to_operand_dims()));
+
+  output.set_index_vector_dim(input.getIndexVectorDim());
+  return output;
+}
+
+static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
     mlir::mhlo::ScatterDimensionNumbersAttr input) {
   xla::ScatterDimensionNumbers output;
 
@@ -2659,6 +2694,238 @@ LogicalResult ExportXlaOp(ReshapeOp op, OpLoweringContext ctx) {
   value_map[op] =
       xla::Reshape(operand, xla::TypeToShape(op.getType()).dimensions());
   return success();
+}
+
+LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Iota(ctx.builder, xla::TypeToShape(op.getType()),
+                            op.getIotaDimension());
+  return success();
+}
+
+LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::PaddingConfig padding_config;
+  auto edge_padding_low = op.getEdgePaddingLow();
+  auto edge_padding_high = op.getEdgePaddingHigh();
+  auto interior_padding = op.getInteriorPadding();
+  for (int64_t i = 0, end = edge_padding_low.size(); i < end; ++i) {
+    auto* dims = padding_config.add_dimensions();
+    dims->set_edge_padding_low(edge_padding_low[i]);
+    dims->set_edge_padding_high(edge_padding_high[i]);
+    dims->set_interior_padding(interior_padding[i]);
+  }
+  xla::XlaOp operand, padding_value;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  if (failed(GetXlaOp(op.getPaddingValue(), value_map, &padding_value, op)))
+    return failure();
+
+  value_map[op] = xla::Pad(operand, padding_value, padding_config);
+  return success();
+}
+
+LogicalResult ExportXlaOp(PartitionIdOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::Shape shape = xla::TypeToShape(op.getResult().getType());
+  value_map[op] =
+      xla::internal::XlaBuilderFriend::BuildPartitionId(ctx.builder, shape);
+  return success();
+}
+
+LogicalResult ExportXlaOp(RealDynamicSliceOp op, OpLoweringContext ctx) {
+  // TODO(b/264240901): Implement MHLO export for RealDynamicSliceOp.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  TensorType operand_type = mlir::cast<TensorType>(op.getOperand().getType());
+  TensorType result_type = op.getType();
+  if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
+    return failure();
+  auto scatter_dim = op.getScatterDimension();
+  int64_t shard_count = operand_type.getDimSize(scatter_dim) /
+                        result_type.getDimSize(scatter_dim);
+
+  xla::XlaComputation computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getComputation(),
+                                                     &computation))) {
+    return failure();
+  }
+
+  value_map[op] = xla::ReduceScatter(
+      operand, computation, scatter_dim, shard_count,
+      Convert_replica_groups(op.getReplicaGroups()),
+      Convert_channel_handle(op.getChannelHandle()), std::nullopt,
+      Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaComputation body;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), &body))) {
+    return failure();
+  }
+  llvm::SmallVector<xla::XlaOp> operands, init_values;
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands)) ||
+      failed(GetTuple(op, op.getInitValues(), ctx, init_values))) {
+    return failure();
+  }
+
+  xla::XlaOp result = xla::ReduceWindowWithGeneralPadding(
+      operands, init_values, body, op.getWindowDimensions(),
+      op.getWindowStrides().value(), op.getBaseDilations().value(),
+      op.getWindowDilations().value(), Convert_padding(op.getPadding()));
+
+  if (op.getNumResults() == 1) {
+    value_map[op.getResult(0)] = result;
+  } else {
+    BuildGetTupleElementsForTupleResults(op, result, ctx);
+  }
+  return success();
+}
+
+LogicalResult ExportXlaOp(RngOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp a, b;
+  if (failed(GetXlaOp(op.getA(), value_map, &a, op))) return failure();
+  if (failed(GetXlaOp(op.getB(), value_map, &b, op))) return failure();
+
+  if (op.getRngDistribution() == RngDistribution::UNIFORM) {
+    value_map[op] = xla::RngUniform(a, b, xla::TypeToShape(op.getType()));
+    return success();
+  }
+
+  if (op.getRngDistribution() == RngDistribution::NORMAL) {
+    value_map[op] = xla::RngNormal(a, b, xla::TypeToShape(op.getType()));
+    return success();
+  }
+  return failure();
+}
+
+LogicalResult ExportXlaOp(RngBitGeneratorOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto results = op.getResults();
+  auto xla_arg_1 = value_map[*op.getODSOperands(0).begin()];
+  auto xla_result = xla::RngBitGenerator(
+      static_cast<xla::RandomAlgorithm>(op.getRngAlgorithm()),
+      Unwrap(xla_arg_1), xla::TypeToShape(results[1].getType()));
+
+  BuildGetTupleElementsForTupleResults(op, xla_result, ctx);
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaComputation update_computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getUpdateComputation(),
+                                                     &update_computation))) {
+    return failure();
+  }
+  xla::ScatterDimensionNumbers dimension_numbers =
+      Convert_scatter_dimension_numbers(op.getScatterDimensionNumbers());
+
+  llvm::SmallVector<xla::XlaOp> operands;
+  llvm::SmallVector<xla::XlaOp> updates;
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.getUpdates(), ctx, updates))) return failure();
+
+  xla::XlaOp scatter_indices;
+  if (failed(GetXlaOp(op.getScatterIndices(), value_map, &scatter_indices, op)))
+    return failure();
+
+  auto scatter_op = xla::Scatter(
+      operands, scatter_indices, updates, update_computation, dimension_numbers,
+      op.getIndicesAreSorted(), op.getUniqueIndices());
+  if (op->getNumResults() == 1) {
+    value_map[op.getResult(0)] = scatter_op;
+    return success();
+  }
+
+  // mhlo.ScatterOp supports multiple returns, untuple all the results of XLA's.
+  BuildGetTupleElementsForTupleResults(op, scatter_op, ctx);
+
+  return success();
+}
+
+LogicalResult ExportXlaOp(SelectAndScatterOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaComputation select;
+  xla::XlaComputation scatter;
+  if (failed(
+          ctx.converter->LowerRegionAsComputation(&op.getSelect(), &select)) ||
+      failed(ctx.converter->LowerRegionAsComputation(&op.getScatter(),
+                                                     &scatter))) {
+    return failure();
+  }
+  xla::XlaOp operand, source, init_value;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  if (failed(GetXlaOp(op.getSource(), value_map, &source, op)))
+    return failure();
+  if (failed(GetXlaOp(op.getInitValue(), value_map, &init_value, op)))
+    return failure();
+
+  value_map[op] = xla::SelectAndScatterWithGeneralPadding(
+      operand, select, op.getWindowDimensions().value(),
+      op.getWindowStrides().value(), Convert_padding(op.getPadding()), source,
+      init_value, scatter);
+  return success();
+}
+
+// TODO(b/298671312): The semantics of xla::SetDimensionSize have changed so
+// that it always returns a dynamic shape.  The old semantics are still
+// available through xla::RemoveDynamicDimension, so to avoid changing MHLO
+// semantics we explicitly check for that case here.  However, we should
+// consider adding a RemoveDynamicDimensionOp to HLO and MHLO.
+mlir::LogicalResult ExportXlaOp(mlir::stablehlo::SetDimensionSizeOp op,
+                                OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp array;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &array, op)))
+    return mlir::failure();
+  auto dimension = Convertuint64_t(op.getDimension());
+  auto shape_or = ctx.builder->GetShapePtr(array);
+  if (!shape_or.ok()) {
+    return op.emitError(shape_or.status().ToString());
+  }
+  xla::XlaOp xla_result;
+  if (auto constant = llvm::dyn_cast_or_null<mlir::mhlo::ConstantOp>(
+          op.getSize().getDefiningOp());
+      constant != nullptr) {
+    auto value = constant.getValue();
+    auto values = value.getValues<mlir::IntegerAttr>();
+    if ((*values.begin()).getValue().getSExtValue() ==
+        shape_or.value()->dimensions(dimension)) {
+      xla_result = xla::RemoveDynamicDimension(array, dimension);
+    }
+  }
+  if (!xla_result.valid()) {
+    xla::XlaOp dynamic_size;
+    if (failed(GetXlaOp(op.getSize(), value_map, &dynamic_size, op)))
+      return mlir::failure();
+    xla_result = xla::SetDimensionSize(array, dynamic_size, dimension);
+  }
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(UniformQuantizeOp op, OpLoweringContext ctx) {
+  // Currently, it doesn't have an XLA builder equivalent.
+  // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
+  // Currently, it doesn't have an XLA builder equivalent.
+  // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
+  return failure();
 }
 
 }  // namespace
@@ -5304,7 +5571,7 @@ LogicalResult ConvertToHloModule::Lower(
     }
     // For infeed ops stemming back to InfeedDequeueTuple, respect the
     // layout attribute, and create the corresponding layout in hlo.
-    if (isa<mhlo::InfeedOp>(inst)) {
+    if (isa<mhlo::InfeedOp, stablehlo::InfeedOp>(inst)) {
       return LowerInfeed(inst, builder, value_lowering);
     }
     return success();
