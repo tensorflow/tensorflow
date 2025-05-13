@@ -1696,9 +1696,9 @@ LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
 
   llvm::SmallVector<std::optional<xla::OpSharding>> true_arg_shardings,
       false_arg_shardings;
-  if (!ret_shardings.empty()) {
-    // We only add arg shardings if there are result shardings, otherwise it
-    // means sharding propagation hasn't been done yet.
+  if (!ret_shardings.empty() || op->getNumResults() == 0) {
+    // We only add arg shardings if there are result shardings or no results,
+    // otherwise it means sharding propagation hasn't been done yet.
     true_arg_shardings = GetXlaOpShardings(true_args);
     false_arg_shardings = GetXlaOpShardings(false_args);
   }
@@ -3504,9 +3504,9 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
     if (failed(GetXlaOps(op, implicit_operands, ctx, args))) return failure();
 
     llvm::SmallVector<std::optional<xla::OpSharding>> arg_shardings;
-    if (!ret_shardings.empty()) {
-      // We only add arg shardings if there are result shardings, otherwise it
-      // means sharding propagation hasn't been done yet.
+    if (!ret_shardings.empty() || op->getNumResults() == 0) {
+      // We only add arg shardings if there are result shardings or no results,
+      // otherwise it means sharding propagation hasn't been done yet.
       arg_shardings = GetXlaOpShardings(args);
     }
 
