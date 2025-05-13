@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "third_party/nvshmem/nvshmem.h"   // IWYU pragma: keep
 #include "third_party/nvshmem/nvshmemx.h"  // IWYU pragma: keep
+#include "xla/backends/gpu/collectives/nvshmem_communicator.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -157,6 +158,12 @@ absl::Status NvshmemCollectives::Deallocate(void* buffer) {
                                 buffer);
   nvshmem_free(buffer);
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<Communicator>>
+NvshmemCollectives::CreateCommunicator() {
+  auto comm = std::make_unique<NvshmemCommunicator>(this);
+  return comm;
 }
 
 }  // namespace xla::gpu
