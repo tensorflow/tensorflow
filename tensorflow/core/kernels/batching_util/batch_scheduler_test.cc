@@ -388,7 +388,7 @@ TEST(BatchTest, Basic) {
 
 TEST(BatchTest, WaitUntilClosed) {
   Batch<FakeTask> batch;
-  batch.AddTask(std::unique_ptr<FakeTask>(new FakeTask(3)));
+  batch.AddTask(std::make_unique<FakeTask>(3));
   EXPECT_FALSE(batch.IsClosed());
 
   std::unique_ptr<Thread> close_thread(
@@ -402,7 +402,7 @@ TEST(BatchTest, WaitUntilClosed) {
 
 TEST(BatchTest, DeletionBlocksUntilClosed) {
   Batch<FakeTask>* batch = new Batch<FakeTask>;
-  batch->AddTask(std::unique_ptr<FakeTask>(new FakeTask(3)));
+  batch->AddTask(std::make_unique<FakeTask>(3));
   EXPECT_FALSE(batch->IsClosed());
 
   Notification do_delete, deleted;
