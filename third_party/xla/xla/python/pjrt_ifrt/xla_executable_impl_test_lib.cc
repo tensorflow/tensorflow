@@ -111,8 +111,8 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
   }
   auto xla_compile_options = std::make_unique<XlaCompileOptions>(
       compile_options, std::move(device_list));
-  return compiler->Compile(std::make_unique<HloProgram>(*module),
-                           std::move(xla_compile_options));
+  return compiler->CompileAndLoad(std::make_unique<HloProgram>(*module),
+                                  std::move(xla_compile_options));
 }
 
 TEST(LoadedExecutableImplTest, GetDonatableInputIndices) {
