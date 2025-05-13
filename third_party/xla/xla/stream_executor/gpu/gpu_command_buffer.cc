@@ -300,15 +300,8 @@ absl::Status GpuCommandBuffer::UpdateDnnGraphCommand(
     const Command* command, dnn::DnnGraph& dnn_graph, Stream& stream,
     absl::Span<DeviceMemoryBase> operands) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
-
-  auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> nested,
-                      stream.parent()->CreateCommandBuffer(Mode::kNested));
-  GpuCommandBuffer& nested_gpu =
-      tensorflow::down_cast<GpuCommandBuffer&>(*nested);
-  TF_RETURN_IF_ERROR(nested_gpu.UpdateDnnGraphNode(dnn_graph, stream, operands,
-                                                   gpu_command->handle));
-  return UpdateChildNode(gpu_command->handle, *nested);
+  return UpdateDnnGraphNode(dnn_graph, stream, operands,
+                            tsl::down_cast<const GpuCommand*>(command)->handle);
 }
 
 //----------------------------------------------------------------------------//
