@@ -477,10 +477,26 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
   auto precision_config = std::make_unique<xla::PrecisionConfig>();
   for (auto attr : optional_precision_config_attr.value()) {
     xla::PrecisionConfig::Precision p;
-    auto operand_precision =
-        mlir::mhlo::stringifyPrecision(
-            mlir::cast<mlir::mhlo::PrecisionAttr>(attr).getValue())
-            .str();
+    std::string operand_precision;
+
+    if (auto stablehloAttr =
+            llvm::dyn_cast<mlir::stablehlo::PrecisionAttr>(attr)) {
+      operand_precision =
+          mlir::stablehlo::stringifyPrecision(
+              mlir::cast<mlir::stablehlo::PrecisionAttr>(attr).getValue())
+              .str();
+    } else if (auto mhloAttr =
+                   llvm::dyn_cast<mlir::mhlo::PrecisionAttr>(attr)) {
+      operand_precision =
+          mlir::mhlo::stringifyPrecision(
+              mlir::cast<mlir::mhlo::PrecisionAttr>(attr).getValue())
+              .str();
+    } else {
+      mlir::emitError(mlir::UnknownLoc::get(attr.getContext()))
+          << "Could not cast attribute to `PrecisionAttr`.";
+      return nullptr;
+    }
+
     // TODO(jpienaar): Update this to ensure this is captured by verify.
     if (xla::PrecisionConfig::Precision_Parse(operand_precision, &p)) {
       precision_config->add_operand_precision(p);
@@ -1349,7 +1365,7 @@ LogicalResult ExportXlaOp(mlir::stablehlo::ConvolutionOp op,
       xla::ConvertConvDimensionNumbers(op.getDimensionNumbers()),
       Convertuint64_t(op.getFeatureGroupCount()),
       Convertuint64_t(op.getBatchGroupCount()),
-      Unwrap(Convert_precision_config(op.getPrecisionConfig())),
+      Unwrap(Convert_precision_config_stablehlo(op.getPrecisionConfig())),
       preferred_element_type, op.getWindowReversal());
   value_map[op] = xla_result;
   return mlir::success();
@@ -2607,7 +2623,8 @@ LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
       xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
 
   // Precision Config / Algorithm
-  auto precision_config = Convert_precision_config(op.getPrecisionConfig());
+  auto precision_config =
+      Convert_precision_config_stablehlo(op.getPrecisionConfig());
   if (op.getAlgorithmAttr()) {
     absl::StatusOr<xla::PrecisionConfig::Algorithm> algorithm =
         xla::ConvertDotAlgorithm(op.getAlgorithmAttr());
@@ -4888,8 +4905,8 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
     return failure();
 
   // We need to append the shardings of the implicit values to the result
-  // shardings, since the HLO While will have those implcit values as additional
-  // operands and results.
+  // shardings, since the HLO While will have those implicit values as
+  // additional operands and results.
   llvm::SmallVector<std::optional<xla::OpSharding>> implicit_shardings;
   if (!implicit_args.empty() && !res_shardings.empty()) {
     // We only add implicit arg shardings if there are result shardings,
