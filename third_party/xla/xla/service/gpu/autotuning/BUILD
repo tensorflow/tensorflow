@@ -271,6 +271,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:device_description",
         "//xla/tsl/lib/core:bits",
