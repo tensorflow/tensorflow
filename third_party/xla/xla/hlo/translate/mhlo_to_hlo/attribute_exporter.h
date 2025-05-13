@@ -47,6 +47,9 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
 absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
     mlir::mhlo::DotAlgorithmAttr attr);
 
+absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
+    mlir::stablehlo::DotAlgorithmAttr attr);
+
 absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
     mlir::DenseIntElementsAttr input);
 
@@ -63,6 +66,9 @@ absl::StatusOr<xla::CustomCallSchedule> ConvertCustomCallSchedule(
 
 absl::StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
     mlir::mhlo::CustomCallApiVersion api_version);
+
+absl::StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
+    mlir::stablehlo::CustomCallApiVersion api_version);
 
 absl::StatusOr<
     std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
