@@ -20,10 +20,7 @@ limitations under the License.
 #define XLA_SHAPE_UTIL_H_
 
 #include <cstdint>
-#include <functional>
 #include <initializer_list>
-#include <iterator>
-#include <numeric>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -44,6 +41,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
+#include "xla/shape_util.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/macros.h"
@@ -88,6 +86,17 @@ struct ShapeIndex : public absl::InlinedVector<int64_t, 2> {
   void pop_front() { erase(begin()); }
 
   std::string ToString() const;
+
+  static ShapeIndex FromProto(const ShapeIndexProto& proto) {
+    auto indexes = proto.indexes();
+    return ShapeIndex{indexes.begin(), indexes.end()};
+  }
+
+  ShapeIndexProto ToProto() const {
+    ShapeIndexProto proto;
+    proto.mutable_indexes()->Assign(begin(), end());
+    return proto;
+  }
 };
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
