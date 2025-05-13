@@ -137,6 +137,7 @@ cc_library(
         "@riegeli//riegeli/base:initializer",
         "@riegeli//riegeli/base:types",
         "@riegeli//riegeli/bytes:fd_reader",
+        "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/records:record_reader",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",

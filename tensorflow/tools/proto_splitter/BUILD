@@ -174,6 +174,7 @@ cc_library(
         "@local_tsl//tsl/platform:protobuf",
         "@riegeli//riegeli/base:object",
         "@riegeli//riegeli/bytes:fd_reader",
+        "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/records:record_reader",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",
@@ -242,6 +243,7 @@ tf_cc_test(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:env",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",
     ]),
