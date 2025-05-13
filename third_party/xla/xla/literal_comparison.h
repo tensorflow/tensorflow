@@ -43,11 +43,6 @@ absl::Status EqualShapes(const Shape& expected, const Shape& actual);
 absl::Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
                                              const LiteralSlice& actual);
 
-// Returns ok if the expected and actual literals are (bitwise) equal for all
-// elements in the literal. Also, asserts that the rank, dimensions sizes, and
-// primitive type are equal.
-absl::Status Equal(const LiteralSlice& expected, const LiteralSlice& actual);
-
 // Structure that contains the distribution of absolute and relative errors,
 // bucketized into five buckets: [0.0001, 0.001, 0.01, 0.1, 1].
 // Useful to understand the distribution of errors and set the permissible
@@ -66,6 +61,12 @@ using MiscompareCallback = std::function<void(
     const LiteralSlice& expected, const LiteralSlice& actual,
     const LiteralSlice& mismatches, const ShapeIndex& shape_index,
     const ErrorBuckets& error_buckets)>;
+
+// Returns ok if the expected and actual literals are (bitwise) equal for all
+// elements in the literal. Also, asserts that the rank, dimensions sizes, and
+// primitive type are equal.
+absl::Status Equal(const LiteralSlice& expected, const LiteralSlice& actual,
+                   const MiscompareCallback& miscompare_callback = nullptr);
 
 // Inspects whether the expected and actual literals are within the given error
 // bound for all elements. Also, inspects whether the rank, dimensions sizes,
