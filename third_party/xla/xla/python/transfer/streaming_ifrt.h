@@ -56,6 +56,11 @@ struct DmaCopyChunk {
   size_t offset;
   size_t size;
 
+  static DmaCopyChunk Make(xla::ifrt::ArrayRef arr, xla::PjRtBuffer* buffer,
+                           size_t buffer_id, size_t offset, size_t size) {
+    return DmaCopyChunk{std::move(arr), buffer, buffer_id, offset, size};
+  }
+
   // Divides an IFRT array up evenly for copying.
   static absl::StatusOr<std::vector<DmaCopyChunk>> DivideBufferCopiesEvenly(
       xla::ifrt::ArrayRef arr, size_t xfer_size, size_t buffer_id);
