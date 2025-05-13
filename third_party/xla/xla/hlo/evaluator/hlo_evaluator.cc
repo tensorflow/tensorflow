@@ -4755,6 +4755,13 @@ absl::Status HloEvaluator::HandleCustomCall(const HloInstruction* custom_call) {
   return absl::OkStatus();
 }
 
+absl::Status HloEvaluator::HandleOptimizationBarrier(
+    const HloInstruction* hlo) {
+  Literal result = GetEvaluatedLiteralFor(hlo->operand(0)).Clone();
+  SetEvaluatedLiteralFor(hlo, std::move(result));
+  return absl::OkStatus();
+}
+
 absl::Status HloEvaluator::Preprocess(const HloInstruction* hlo) {
   VLOG(3) << "About to visit HLO: " << hlo->ToString();
   if (!enable_partial_evaluation_) {
