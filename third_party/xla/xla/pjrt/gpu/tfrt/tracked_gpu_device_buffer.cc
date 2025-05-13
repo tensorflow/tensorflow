@@ -93,7 +93,6 @@ TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer(
     std::function<void()> on_delete_callback)
     : buffer_(std::move(buffer)),
       definition_event_(std::move(definition_event)),
-      deallocation_event_(tsl::MakeConstructedAsyncValueRef<GpuEvent>()),
       on_delete_callback_(std::move(on_delete_callback)) {
   VLOG(4) << "TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer: " << this << "\n "
           << tsl::CurrentStackTrace();
@@ -102,8 +101,8 @@ TrackedGpuDeviceBuffer::TrackedGpuDeviceBuffer(
 
 TrackedGpuDeviceBuffer::~TrackedGpuDeviceBuffer() {
   VLOG(4) << "TrackedGpuDeviceBuffer::~TrackedGpuDeviceBuffer: " << this
-          << " opaque: " << buffer_->buffer().opaque() << "\n "
-          << tsl::CurrentStackTrace();
+          << " opaque: " << (buffer_ ? buffer_->buffer().opaque() : "null")
+          << "\n " << tsl::CurrentStackTrace();
 
   ReleaseDeviceMemory();
   if (on_delete_callback_) {
@@ -138,7 +137,6 @@ void TrackedGpuDeviceBuffer::ReleaseDeviceMemory() {
   buffer_.reset();
   definition_event_.reset();
   usage_events_.Clear();
-  deallocation_event_.SetStateConcrete();
 }
 
 void TrackedGpuDeviceBuffer::SetUnOwned() {

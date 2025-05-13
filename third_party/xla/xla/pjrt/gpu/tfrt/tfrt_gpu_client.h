@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/maybe_owning.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
@@ -501,8 +502,25 @@ class TfrtGpuClient final : public PjRtClient {
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
     const GpuClientOptions& options);
 
-class TfrtGpuBuffer final : public PjRtBuffer {
+class TfrtGpuBuffer final : public CommonPjRtBuffer {
  public:
+  class ScopedHold : public CommonPjRtBuffer::ScopedHold {
+   public:
+    TrackedGpuDeviceBuffer* buffer() const {
+      return static_cast<TrackedGpuDeviceBuffer*>(
+          CommonPjRtBuffer::ScopedHold::buffer());
+    }
+    TrackedGpuDeviceBuffer* operator->() const { return buffer(); }
+    const TrackedGpuDeviceBuffer& operator*() const { return *buffer(); }
+    TfrtGpuBuffer* parent() const {
+      return static_cast<TfrtGpuBuffer*>(
+          CommonPjRtBuffer::ScopedHold::parent());
+    }
+
+   private:
+    using CommonPjRtBuffer::ScopedHold::ScopedHold;
+    friend class TfrtGpuBuffer;
+  };
   TfrtGpuBuffer(Shape on_device_shape,
                 std::unique_ptr<TrackedGpuDeviceBuffer> tracked_device_buffer,
                 TfrtGpuClient* client, TfrtGpuDevice* device,
@@ -546,8 +564,6 @@ class TfrtGpuBuffer final : public PjRtBuffer {
 
   void Delete() override;
 
-  bool IsDeleted() override;
-
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
 
@@ -566,7 +582,17 @@ class TfrtGpuBuffer final : public PjRtBuffer {
 
   const tsl::AsyncValueRef<GpuDeviceMemory>& GetBufferPtr() const;
 
+  // Returns a hold on the TrackedTfrtTpuDeviceBuffer holding the device
+  // buffers. See comment on ScopedHold.
+  ScopedHold GetBufferWithHold(ScopedHold::Type type);
+
  private:
+  TrackedGpuDeviceBuffer* device_buffer() const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return static_cast<TrackedGpuDeviceBuffer*>(
+        CommonPjRtBuffer::device_buffer());
+  }
+
   // Acquires the device buffer for shared read-only usages, and it also adds
   // the `usage_event` to it. Any donation event in the future is expected to be
   // serialized after all the usage events added through this method. Returns
@@ -575,72 +601,12 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   TrackedGpuDeviceBuffer* AcquireUsage(
       tsl::AsyncValueRef<GpuEvent> usage_event);
 
-  // A helper class for managing a pending donation. It should be committed upon
-  // success. Otherwise, the donated buffer is returned to the TfrtGpuBuffer.
-  class DonationTransaction {
-   public:
-    explicit DonationTransaction(
-        tsl::AsyncValueRef<bool> donation_event,
-        std::unique_ptr<TrackedGpuDeviceBuffer> device_buffer)
-        : donation_event_(donation_event),
-          device_buffer_(std::move(device_buffer)) {
-      VLOG(3) << "DonationTransaction::DonationTransaction";
-    }
-    DonationTransaction(const DonationTransaction&) = delete;
-    DonationTransaction& operator=(const DonationTransaction&) = delete;
-    DonationTransaction(DonationTransaction&&) = default;
-    DonationTransaction& operator=(DonationTransaction&& other) {
-      Abort();
-
-      donation_event_ = other.donation_event_;
-      device_buffer_ = std::move(other.device_buffer_);
-      return *this;
-    }
-
-    ~DonationTransaction() { Abort(); }
-
-    // Commit the donation. The rvalue ref qualifier is used to ensure the
-    // semantic that it can be committed at most once.
-    void Commit() && {
-      donation_event_.emplace(true);
-      device_buffer_->SetUnOwned();
-      device_buffer_.reset();
-    }
-
-    TrackedGpuDeviceBuffer* device_buffer() const {
-      return device_buffer_.get();
-    }
-
-   private:
-    void Abort() {
-      if (device_buffer_) {
-        VLOG(0) << "DonationTransaction::Abort is going to "
-                   "abort donation: "
-                << device_buffer_.get();
-        donation_event_.emplace(false);
-        device_buffer_.reset();  // TODO(b/382117736): We should put this back
-                                 // into the TfrtGpuBuffer instead.
-      }
-    }
-
-    tsl::AsyncValueRef<bool> donation_event_;
-    std::unique_ptr<TrackedGpuDeviceBuffer> device_buffer_;
-  };
-
   // Acquires the device buffer for exclusive donation. The caller of this
   // method is expected to use the usage events and definition events to
   // serialize this donation with previous usages. After this method is called,
   // calls to AcquireUsage() will fail. Returns error status if the buffer is
   // already donated or there is outstanding external references.
-  absl::StatusOr<DonationTransaction> AcquireDonation()
-      ABSL_LOCKS_EXCLUDED(mu_);
-
-  tsl::AsyncValueRef<bool> GetDonationEvent() {
-    absl::MutexLock lock(&mu_);
-    return donation_event_;
-  }
-
-  void DropExternalReference();
+  ScopedHold AcquireDonation() ABSL_LOCKS_EXCLUDED(mu_);
 
   // Similar to Delete, drops the buffer's reference to its associated device
   // memory, leaving the buffer in an invalid state, but returns the
@@ -659,35 +625,12 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   absl::StatusOr<std::unique_ptr<TrackedGpuDeviceBuffer>> Release(
       bool wait_for_operations_to_complete);
 
-  // Releases the device buffer by returning a unique_ptr of it.
-  std::unique_ptr<TrackedGpuDeviceBuffer> ReleaseBufferLocked()
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
   TfrtGpuClient* client_;
   const Shape on_device_shape_;
   TfrtGpuDevice* const device_;
   PjRtMemorySpace* const memory_space_;
 
-  mutable absl::Mutex mu_;
-  std::unique_ptr<TrackedGpuDeviceBuffer> tracked_device_buffer_
-      ABSL_GUARDED_BY(mu_);
-  // Count of external references on the buffer.
-  int external_reference_counter_ ABSL_GUARDED_BY(mu_) = 0;
-
-  // `pending_donation_` indicates whether a donation is pending. The destructor
-  // of the TfrtGpuBuffer will wait for a pending donation, as the donation
-  // might fail. Note that concurrent calls to AcquireUsage() and
-  // AcquireDonation() might fail even if the pending donation is aborted later.
-  tsl::AsyncValueRef<bool> donation_event_ ABSL_GUARDED_BY(mu_);
   PjRtFuture<>::Promise definition_promise_ ABSL_GUARDED_BY(mu_);
-
-  // This event is triggered when the last external reference is released.
-  // It is used to make sure that the buffer is not deleted before all external
-  // references are dropped.
-  // Notice that this event won't be triggered if there is never an external
-  // reference.
-  tsl::AsyncValueRef<GpuEvent> external_references_dropped_event_
-      ABSL_GUARDED_BY(mu_);
 
   friend class TfrtGpuClient;
   friend class TfrtGpuExecutable;
