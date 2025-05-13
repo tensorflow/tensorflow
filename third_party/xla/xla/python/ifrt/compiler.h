@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/base/macros.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -54,13 +54,12 @@ struct CompileOptions : llvm::RTTIExtends<CompileOptions, Serializable> {
 // deserialization.
 class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
  public:
-  // Compiles `mlir_module` and returns a `LoadedExecutable`.
   // TODO(hyeontaek): Move executable loading to `Client`.
-  ABSL_DEPRECATE_AND_INLINE()
-  absl::StatusOr<LoadedExecutableRef> Compile(
+  absl::StatusOr<ExecutableRef> Compile(
       std::unique_ptr<Program> program,
       std::unique_ptr<CompileOptions> options) {
-    return CompileAndLoad(std::move(program), std::move(options));
+    return absl::UnimplementedError(
+        "Compile returning ExecutableRef is not implemented.");
   }
 
   virtual absl::StatusOr<ExecutableRef> Compile(
