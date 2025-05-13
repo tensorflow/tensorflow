@@ -202,7 +202,7 @@ def xla_test(
         backend_tags = {},
         backend_args = {},
         backend_kwargs = {},
-        linkstatic = False,
+        linkstatic = None,
         fail_if_no_test_linked = True,
         **kwargs):
     """Generates strict_cc_test targets for the given XLA backends.
@@ -276,7 +276,8 @@ def xla_test(
       backend_kwargs: A dict mapping backend name to list of additional keyword
         arguments to pass to strict_cc_test. Only use for kwargs that don't have a
         dedicated argument, like setting per-backend flaky or timeout attributes.
-      linkstatic: Whether to link the test statically.
+      linkstatic: Whether to link the test statically. Can be set to None to use
+        the default value decided by strict_cc_test.
       fail_if_no_test_linked: Whether to fail if no test case is linked into the test.
       **kwargs: Additional keyword arguments to pass to strict_cc_test.
     """
