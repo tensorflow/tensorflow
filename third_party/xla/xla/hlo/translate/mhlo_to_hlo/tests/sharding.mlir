@@ -264,6 +264,54 @@ func.func @main(%arg0: tensor<i32>,
   func.return %0#0, %0#1 : tensor<4xf32>, tensor<4xf32>
 }
 
+// -----
+
+// Test export mhlo::CaseOp with no results and captured variables that have
+// shardings.
+
+// CHECK-LABEL: HloModule main
+
+// CHECK:      %[[EMPTY_BRANCH:.*]] ({{.*}}: ()) -> () {
+// CHECK-NEXT:   %[[ARG:.*]] = () parameter(0)
+// CHECK-NEXT:   ROOT %{{.*}} = () tuple()
+// CHECK-NEXT: }
+
+// CHECK:      %[[CALLBACK_BRANCH:.*]] ({{.*}}: (s32[], s64[8])) -> () {
+// CHECK-NEXT:   %[[ARG:.*]] = (s32[], s64[8]) parameter(0)
+// CHECK-NEXT:   %[[ELEMENT_0:.*]] = s32[] get-tuple-element(%[[ARG]]), index=0, sharding={manual}
+// CHECK-NEXT:   %[[ELEMENT_1:.*]] = s64[8] get-tuple-element(%[[ARG]]), index=1, sharding={manual}
+// CHECK-NEXT:   %{{.*}} = () custom-call(%[[ELEMENT_0]], %[[ELEMENT_1]]),
+// CHECK-SAME{LITERAL}: custom_call_target="xla_ffi_python_cpu_callback", sharding={{manual}}
+// CHECK-NEXT:   ROOT %{{.*}} = () tuple()
+// CHECK-NEXT: }
+
+// CHECK: ENTRY {{.*}} ({{.*}}: s32[], {{.*}}: s64[8], {{.*}}: pred[]) -> () {
+// CHECK-NEXT:    %[[ARG_2:.*]] = pred[] parameter(2)
+// CHECK-NEXT:    %[[CONVERT:.*]] = s32[] convert(%[[ARG_2]]), sharding={manual}
+// CHECK-NEXT:    %[[EMPTY_TUPLE:.*]] = () tuple()
+// CHECK-NEXT:    %[[ARG_0:.*]] = s32[] parameter(0)
+// CHECK-NEXT:    %[[FULL_TO_SHARD:.*]] = s32[] custom-call(%[[ARG_0]]), custom_call_target="SPMDFullToShardShape", sharding={manual}
+// CHECK-NEXT:    %[[ARG_1:.*]] = s64[8] parameter(1), sharding={manual}
+// CHECK-NEXT:    %[[ARG_TUPLE:.*]] = (s32[], s64[8]) tuple(%[[FULL_TO_SHARD]], %[[ARG_1]]),
+// CHECK-SAME{LITERAL}: sharding={{manual}, {manual}}
+// CHECK-NEXT:    %{{.*}} = () conditional(%[[CONVERT]], %[[EMPTY_TUPLE]], %[[ARG_TUPLE]]), branch_computations={%[[EMPTY_BRANCH]], %[[CALLBACK_BRANCH]]},
+// CHECK-SAME{LITERAL}: sharding={{replicated}}
+// CHECK-NEXT:    ROOT %{{.*}} = () tuple()
+// CHECK-NEXT: }
+
+
+
+func.func @main(%arg0: tensor<i32>, %arg1: tensor<8xi64> {mhlo.sharding = "{manual}"}, %arg3: tensor<i1>) {
+  %0 = mhlo.custom_call @SPMDFullToShardShape(%arg0) {mhlo.sharding = "{manual}"} : (tensor<i32>) -> tensor<i32>
+  %1 = mhlo.convert %arg3 {mhlo.sharding = "{manual}"} : (tensor<i1>) -> tensor<i32>
+  "mhlo.case"(%1) ({
+    mhlo.return
+  }, {
+    mhlo.custom_call @xla_ffi_python_cpu_callback(%0, %arg1) {mhlo.sharding = "{manual}"} : (tensor<i32>, tensor<8xi64>) -> ()
+    mhlo.return
+  }) {mhlo.sharding = "{replicated}"} : (tensor<i32>) -> ()
+  return
+}
 
 // -----
 
