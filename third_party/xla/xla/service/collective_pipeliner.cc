@@ -339,7 +339,7 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
     if (i->HasControlDependencies() || !acceptable_formatting(i)) {
       return false;
     }
-    if (i->opcode() == HloOpcode::kReduce &&
+    if (i->opcode() == HloOpcode::kReduce && i->shape().IsArray() &&
         (ShapeUtil::ElementsIn(i->shape()) ==
              ShapeUtil::ElementsIn(instr->operand(0)->shape()) ||
          ShapeUtil::ElementsIn(instr->operand(0)->shape()) < 1024)) {
