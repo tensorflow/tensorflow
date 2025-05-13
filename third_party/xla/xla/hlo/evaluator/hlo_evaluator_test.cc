@@ -5254,6 +5254,22 @@ TEST_F(HloEvaluatorTest, ConvertC128ToC64) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, OptimizationBarrier) {
+  const absl::string_view hlo_text = R"(
+  HloModule m
+
+  ENTRY main {
+    cst = f32[2] constant({1, 2})
+    ROOT res = f32[2] opt-barrier(cst)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR1<float>({1.f, 2.f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 // Tests that HloEvaluator can evaluate an instruction even when its operands
 // are not constant.
 TEST_F(HloEvaluatorTest, RecursivelyEvaluateNonConstantOperands) {
