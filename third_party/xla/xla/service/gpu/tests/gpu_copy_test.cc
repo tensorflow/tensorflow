@@ -204,7 +204,9 @@ TEST_F(GpuCopyTest, DoNotUseMemcpyForDynamicSlice) {
 
 TEST_F(GpuCopyTest, DoNotUseMemcpyWithLayoutChange) {
   // By changing the layout of the result, the slice is no longer contiguous and
-  // cannot be emitted with a memcpy.
+  // cannot be emitted with a memcpy. Technically, this means the input program
+  // is incorrect, since the __dynamic_memcpy fusion kind should not have been
+  // set. We still verify that we correctly fall back to codegen.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(absl::StrReplaceAll(
                               kSliceMemcpyModule, {{"{2,1,0}", "{0,2,1}"}})));
@@ -393,6 +395,107 @@ TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSliceWithBitcasts) {
                      /*run_optimization_passes=*/false);
   EXPECT_TRUE(RunAndCompareNoHloPasses(kDynamicUpdateSliceWithBitcastModule,
                                        ErrorSpec{0, 0}));
+}
+
+constexpr char kSliceMemcpyModuleUnfused[] = R"(
+    body {
+      p0 = (s32[], s32[4,8,1000000], s32[1,1,1000000]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = s32[4,8,1000000] get-tuple-element(p0), index=1
+
+      ivar_copy = s32[] copy(ivar)
+      c1 = s32[] constant(1)
+      slice = s32[1,1,1000000] dynamic-slice(input, ivar_copy, c1, c1),
+          dynamic_slice_sizes={1,1,1000000}
+
+      next_ivar = s32[] add(ivar_copy, c1)
+      ROOT result = (s32[], s32[4,8,1000000], s32[1,1,1000000])
+          tuple(next_ivar, input, slice)
+    }
+
+    compare {
+      p0 = s32[] parameter(0)
+      c6 = s32[] constant(6)
+      ROOT cmp = pred[] compare(p0, c6), direction=LT
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8,1000000], s32[1,1,1000000]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c6 = s32[] constant(6)
+      ROOT cmp = pred[] compare(ivar, c6), direction=LT
+    }
+
+    ENTRY main {
+      p0 = s32[4,8,1000000] parameter(0)
+      p1 = s32[1,1,1000000] parameter(1)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,8,1000000], s32[1,1,1000000]) tuple(c0, p0, p1)
+      ROOT while = (s32[], s32[4,8,1000000], s32[1,1,1000000]) while(tuple),
+          condition=condition, body=body
+    })";
+
+TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
+  auto compute_capability = backend()
+                                .default_stream_executor()
+                                ->GetDeviceDescription()
+                                .gpu_compute_capability();
+  if (auto cc = std::get_if<stream_executor::CudaComputeCapability>(
+          &compute_capability);
+      !cc || !cc->IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Test requires at least Ampere.";
+  }
+
+  // This is an integration test to verify that the pipeline for replacing
+  // dynamic-slices that depend on while loop iteration variables with memcpy
+  // works as a whole.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kSliceMemcpyModuleUnfused));
+
+  // Check that there are exactly two fusions:
+  // 1. A `compare` fusion for the loop condition.
+  // 2. An `add` fusion for the next ivar.
+  // If the dynamic memcpy optimization does not trigger, there will be a third
+  // fusion for the dynamic-slice.
+  CompileAndVerifyIr(std::move(hlo_module), R"(
+                       CHECK-NOT: void @
+
+                       CHECK: void @
+                       CHECK-NEXT: load
+                       CHECK-NEXT: icmp
+                       CHECK-NEXT: zext
+                       CHECK-NEXT: store
+                       CHECK-NEXT: ret
+
+                       CHECK-NOT: void @
+                       CHECK: void @
+                       CHECK-NEXT: load
+                       CHECK-NEXT: add
+                       CHECK-NEXT: store
+                       CHECK-NEXT: ret
+
+                       CHECK-NOT: void @)",
+                     /*match_optimized_ir=*/false,
+                     /*run_optimization_passes=*/true);
+}
+
+TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTestControl) {
+  // Control for UseDynamicMemcpyIntegrationTest. Verify that without
+  // fusion-dynamic-memcpy-rewriter, we have a third fusion.
+  HloModuleConfig config;
+  DebugOptions options;
+  options.add_xla_disable_hlo_passes("fusion-dynamic-memcpy-rewriter");
+  config.set_debug_options(options);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kSliceMemcpyModuleUnfused, config));
+  CompileAndVerifyIr(std::move(hlo_module), R"(
+                       CHECK-COUNT-3: void @
+                       CHECK-NOT: void @)",
+                     /*match_optimized_ir=*/false,
+                     /*run_optimization_passes=*/true);
 }
 
 }  // namespace gpu
