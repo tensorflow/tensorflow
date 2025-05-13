@@ -20,23 +20,25 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/memory_allocation.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -188,6 +190,30 @@ std::string WhileThunk::ToString(int indent) const {
   absl::StrAppend(&result, indent_str, "body:\n");
   absl::StrAppend(&result, body_thunk_sequence_->ToString(indent + 1));
   return result;
+}
+
+absl::StatusOr<ThunkProto> WhileThunk::ToProto() const {
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  auto* while_proto = proto.mutable_while_thunk();
+  TF_ASSIGN_OR_RETURN(*while_proto->mutable_condition_result_buffer_index(),
+                      condition_result_buffer_index_.ToProto());
+
+  if (condition_thunk_sequence_) {
+    TF_ASSIGN_OR_RETURN(
+        *while_proto->mutable_condition_thunk_sequence()->add_thunks(),
+        condition_thunk_sequence_->ToProto());
+  }
+
+  if (body_thunk_sequence_) {
+    TF_ASSIGN_OR_RETURN(
+        *while_proto->mutable_body_thunk_sequence()->add_thunks(),
+        body_thunk_sequence_->ToProto());
+  }
+
+  if (trip_count_.has_value()) {
+    while_proto->set_trip_count(*trip_count_);
+  }
+  return proto;
 }
 
 }  // namespace gpu
