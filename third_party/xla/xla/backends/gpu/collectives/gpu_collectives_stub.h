@@ -72,6 +72,10 @@ class GpuCollectivesStub : public GpuCollectives {
     return UnimplementedError();
   }
 
+  absl::StatusOr<std::unique_ptr<Communicator>> CreateCommunicator() final {
+    return UnimplementedError();
+  }
+
  protected:
   static absl::Status UnimplementedError() {
     return Unimplemented("XLA compiled without GPU collectives support");
