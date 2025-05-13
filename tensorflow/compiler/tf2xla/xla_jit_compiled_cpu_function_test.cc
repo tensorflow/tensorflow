@@ -241,7 +241,9 @@ TEST(XlaJitCompiledCpuFunction, Sum) {
   using xla::ShapeUtil;
   const xla::Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
   ASSERT_TRUE(function.ProgramShape() != nullptr);
-  const xla::ProgramShape program_shape(*function.ProgramShape());
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::ProgramShape program_shape,
+      xla::ProgramShape::FromProto(*function.ProgramShape()));
   ASSERT_EQ(program_shape.parameters_size(), 2);
   EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(0), s32));
   EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(1), s32));
@@ -299,7 +301,9 @@ TEST(XlaJitCompiledCpuFunction, SumVariable) {
   const xla::Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
   const xla::Shape s32_1 = ShapeUtil::MakeShape(xla::S32, {1});
   ASSERT_TRUE(function.ProgramShape() != nullptr);
-  const xla::ProgramShape program_shape(*function.ProgramShape());
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::ProgramShape program_shape,
+      xla::ProgramShape::FromProto(*function.ProgramShape()));
   ASSERT_EQ(program_shape.parameters_size(), 2);
   EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(0), s32));
   EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(1), s32_1));
