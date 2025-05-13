@@ -565,6 +565,7 @@ LegalizeSchedulingAnnotations::Config SchedulingAnnotationsConfig() {
 absl::Status RunLatencyHidingSchedulerPasses(
     HloModule* module, int pointer_size, absl::string_view fingerprint,
     uint64_t memory_limit, const se::DeviceDescription& gpu_device_info) {
+  tsl::profiler::TraceMe traceme("RunLatencyHidingSchedulerPasses");
   HloPassPipeline pipeline("latency-hiding-scheduler");
   const DebugOptions& options = module->config().debug_options();
   pipeline.AddPass<LegalizeSchedulingAnnotations>(
