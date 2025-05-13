@@ -448,36 +448,33 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     return TransposeDescription{&hero, dimensions, permutation,
                                 shmem_usage_bytes};
   }
+  int64_t num_elements_after_transposed_dims = 1;
+  std::pair<int64_t, int64_t> transposed_dims;
   if (permutation.back() == dimensions.size() - 1) {
-    operand_most_minor_dim =
-        hero.operand(0)->shape().dimensions(dimensions.size() - 2);
-    if (bit_width * dimensions.back() <= kMaxBitsInMostMinorDimension &&
-        bit_width * dimensions.back() *
-                std::min(operand_most_minor_dim,
-                         dimensions[dimensions.size() - 2]) >=
-            8 * kMinDimensionToTransposeTiled) {
-      // Tile size for transposition.
-      int64_t shmem_usage_bytes =
-          CeilOfRatio(kNumShmemBanks * (kNumShmemBanks + 1LL) * bit_width *
-                          dimensions.back(),
-                      8LL);
-      return TransposeDescription{&hero, dimensions, permutation,
-                                  shmem_usage_bytes};
+    if (bit_width * dimensions.back() > kMaxBitsInMostMinorDimension) {
+      return std::nullopt;
     }
-  } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
-              dimensions.back() >= kMinDimensionToTransposeTiled) ||
-             (operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
-              dimensions.back() >= kMinDimensionToTransposeTiled2 &&
-              operand_most_minor_dim * dimensions.back() >=
-                  kMinTotalDimensionsToTransposeTiled)) {
+    num_elements_after_transposed_dims = dimensions.back();
+    transposed_dims = {
+        hero.operand(0)->shape().dimensions(dimensions.size() - 2),
+        dimensions[dimensions.size() - 2]};
+  } else {
     // TODO(b/415741994): TransposeEmitter is regressing for S4 when the last
     // dimension is being transposed. The issue seems to be related to bank
     // conflicts but a proper investigation is needed.
     if (bit_width == 4) {
       return std::nullopt;
     }
+    transposed_dims = {operand_most_minor_dim, dimensions.back()};
+  }
+  if ((std::min(transposed_dims.first, transposed_dims.second) >=
+       kMinDimensionToTransposeTiled) &&
+      (transposed_dims.first * transposed_dims.second >=
+       kMinTotalDimensionsToTransposeTiled)) {
     int64_t shmem_usage_bytes =
-        CeilOfRatio(kNumShmemBanks * (kNumShmemBanks + 1LL) * bit_width, 8LL);
+        CeilOfRatio(kNumShmemBanks * (kNumShmemBanks + 1LL) * bit_width *
+                        num_elements_after_transposed_dims,
+                    8LL);
     return TransposeDescription{&hero, dimensions, permutation,
                                 shmem_usage_bytes};
   }
