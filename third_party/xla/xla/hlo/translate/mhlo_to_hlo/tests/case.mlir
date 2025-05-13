@@ -93,7 +93,7 @@ func.func @main() -> (tensor<f32>, tensor<f32>) {
 // CHECK: ROOT %[[RESULT:.*]] = (f32[], f32[]) tuple(%[[RES_1]], %[[RES_2]])
 
 // -----
-// Test export mhlo::CaseOp with diffrent number of block-arguments (even 0).
+// Test export mhlo::CaseOp with different number of block-arguments (even 0).
 
 func.func @main() -> (tensor<f32>, tensor<f32>) {
   %cst = arith.constant dense<1> : tensor<i32>
