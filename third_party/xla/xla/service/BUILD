@@ -5755,6 +5755,7 @@ cc_library(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
     ],
+    alwayslink = 1,
 )
 
 xla_cc_test(
