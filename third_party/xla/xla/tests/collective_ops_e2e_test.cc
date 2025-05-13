@@ -3217,7 +3217,7 @@ class AllReduceTest
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
 
-    opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(
+    opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(
         std::get<1>(GetParam()));
 
     return opts;
