@@ -561,9 +561,6 @@ class ShapeUtil {
   // invalid.
   static const Shape& GetSubshape(const Shape& shape, ShapeIndexView index);
 
-  // Faster version for one index.
-  static const Shape& GetSubshapeOneIndex(const Shape& shape, int64_t index);
-
   static absl::StatusOr<const Shape*> TryGetSubshape(const Shape& shape,
                                                      ShapeIndexView index);
   static Shape* GetMutableSubshape(Shape* shape, ShapeIndexView index);

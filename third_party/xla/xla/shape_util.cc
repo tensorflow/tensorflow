@@ -1122,15 +1122,6 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
   return *return_shape;
 }
 
-/* static */ const Shape& ShapeUtil::GetSubshapeOneIndex(const Shape& shape,
-                                                         int64_t index) {
-  const Shape* return_shape = &shape;
-  CHECK(return_shape->IsTuple())
-      << "Invalid index " << index << " for shape " << shape;
-  return_shape = &return_shape->tuple_shapes(index);
-  return *return_shape;
-}
-
 /* static */ absl::StatusOr<const Shape*> ShapeUtil::TryGetSubshape(
     const Shape& shape, ShapeIndexView index) {
   const Shape* return_shape = &shape;
