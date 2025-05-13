@@ -192,6 +192,7 @@ cc_library(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -427,6 +428,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -453,6 +455,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
