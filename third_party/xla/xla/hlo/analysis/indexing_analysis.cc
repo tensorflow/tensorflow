@@ -1654,6 +1654,9 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   if (auto transpose = DynCast<HloTransposeInstruction>(instr)) {
     return ComputeOutputToInputTransposeOpIndexing(transpose, ctx);
   }
+  if (auto parameter = DynCast<HloParameterInstruction>(instr)) {
+    return HloInstructionIndexing{};
+  }
   LOG(ERROR) << "ComputeOutputToInputIndexing is not implemented for opcode "
              << instr->opcode();
   // If we cannot compute output-to-input indexing, we return std::nullopt for

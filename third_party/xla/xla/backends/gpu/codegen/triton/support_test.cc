@@ -1351,15 +1351,22 @@ using ParameterTest = TritonSupportTestWithTypeAndDeviceParam;
 
 TEST_P(ParameterTest, Parameter) {
   auto [data_type, cc] = GetParam();
-  const std::string kHloTestTemplate = R"(
+  std::string hlo_test_template =
+      R"(
+ENTRY triton_computation {
+  ROOT root = $0[35,131] parameter(0)
+})";
+  if (data_type == S4) {  // S4 is not a valid output, convert it to S8.
+    hlo_test_template = R"(
 ENTRY triton_computation {
   input = $0[35,131] parameter(0)
-  // TODO(b/363961478) remove the line below once parameters can be ROOT.
-  ROOT noop = $0[35,131] convert(input)
+  ROOT noop = s8[35,131] convert(input)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
-                                                    kHloTestTemplate, data_type,
-                                                    HloOpcode::kParameter));
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(hlo_test_template, data_type,
+                                     HloOpcode::kParameter));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32}, cc);
 }
 
