@@ -65,6 +65,7 @@ cc_library(
     name = "semaphore",
     srcs = ["semaphore.cc"],
     hdrs = ["semaphore.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:types",
         "@com_google_absl//absl/synchronization",
