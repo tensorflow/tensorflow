@@ -343,14 +343,15 @@ absl::Status CreateHloModules(
   auto debug_options = xla::DebugOptions();
   debug_options.set_xla_step_marker_location(metadata.step_marker_location());
   TF_ASSIGN_OR_RETURN(
+      auto program_shape,
+      xla::ProgramShape::FromProto(
+          compilation_result.computation->proto().host_program_shape()));
+  TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::HloModuleConfig> module_config,
-      CreateModuleConfig(
-          xla::ProgramShape(
-              compilation_result.computation->proto().host_program_shape()),
-          compilation_result.xla_input_shapes,
-          compilation_result.xla_output_shape, device_assignment,
-          metadata.num_replicas(), metadata.num_cores_per_replica(),
-          &debug_options));
+      CreateModuleConfig(program_shape, compilation_result.xla_input_shapes,
+                         compilation_result.xla_output_shape, device_assignment,
+                         metadata.num_replicas(),
+                         metadata.num_cores_per_replica(), &debug_options));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::HloModule> hlo_module,
