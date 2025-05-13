@@ -90,6 +90,7 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kImag:
     case HloOpcode::kLogistic:
     case HloOpcode::kCholesky:
+    case HloOpcode::kTriangularSolve:
       return pu::IsFloatingPointType(type) || pu::IsComplexType(type);
     case HloOpcode::kCbrt:
     case HloOpcode::kErf:
@@ -2627,6 +2628,79 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(AllDevicesToTest()), ::testing::Bool()),
     CholeskyTestName);
 
+class TriangularSolveParamTest
+    : public TritonSupportTest,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, se::GpuComputeCapability, bool /*lower*/,
+                     bool /*unit_diagonal*/,
+                     TriangularSolveOptions::Transpose /*transpose_a*/>> {
+ public:
+  static std::string ParamToString(
+      const ::testing::TestParamInfo<ParamType>& info) {
+    auto [data_type, cc, lower, unit_diagonal, transpose_a] = info.param;
+    return absl::StrCat(primitive_util::LowercasePrimitiveTypeName(data_type),
+                        "_", ComputeCapabilityToString(cc), "_lower", lower,
+                        "_unitdiag", unit_diagonal, "_",
+                        TriangularSolveOptions::Transpose_Name(transpose_a));
+  }
+};
+
+TEST_P(TriangularSolveParamTest, TriangularSolveLeftSideTrue) {
+  auto [data_type, cc, lower, unit_diagonal, transpose_a] = GetParam();
+
+  const std::string hlo_text = absl::Substitute(
+      R"(
+ENTRY triton_computation {
+  a = $0[2,4,4] parameter(0)
+  b = $0[2,4,2] parameter(1)
+  ROOT result = $0[2,4,2] triangular-solve(a, b),
+    left_side=true, lower=$1, unit_diagonal=$2, transpose_a=$3
+})",
+      primitive_util::LowercasePrimitiveTypeName(data_type),
+      lower ? "true" : "false", unit_diagonal ? "true" : "false",
+      TriangularSolveOptions::Transpose_Name(transpose_a));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(hlo_text, data_type,
+                                     HloOpcode::kTriangularSolve));
+  RunSupportTest(std::move(ti), {1, 2, 1}, cc);
+}
+
+TEST_P(TriangularSolveParamTest, TriangularSolveLeftSideFalse) {
+  auto [data_type, cc, lower, unit_diagonal, transpose_a] = GetParam();
+
+  const std::string hlo_text = absl::Substitute(
+      R"(
+ENTRY triton_computation {
+  a = $0[2,4,4] parameter(0)
+  b = $0[2,2,4] parameter(1)
+  ROOT result = $0[2,2,4] triangular-solve(a, b),
+    left_side=false, lower=$1, unit_diagonal=$2, transpose_a=$3
+})",
+      primitive_util::LowercasePrimitiveTypeName(data_type),
+      lower ? "true" : "false", unit_diagonal ? "true" : "false",
+      TriangularSolveOptions::Transpose_Name(transpose_a));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(hlo_text, data_type,
+                                     HloOpcode::kTriangularSolve));
+  RunSupportTest(std::move(ti), {1, 1, 2}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TriangularSolveSuite, TriangularSolveParamTest,
+    ::testing::Combine(
+        ::testing::ValuesIn(AllOpSupportedTypes(HloOpcode::kTriangularSolve)),
+        ::testing::ValuesIn(AllDevicesToTest()),
+        ::testing::Bool(),  // lower
+        ::testing::Bool(),  // unit_diagonal
+        ::testing::ValuesIn({TriangularSolveOptions::NO_TRANSPOSE,
+                             TriangularSolveOptions::TRANSPOSE,
+                             TriangularSolveOptions::ADJOINT})),
+    TriangularSolveParamTest::ParamToString);
+
 class FftTest : public TritonSupportTest,
                 public ::testing::WithParamInterface<
                     std::tuple<PrimitiveType, se::GpuComputeCapability>> {};
@@ -2921,7 +2995,6 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kSendDone,
     HloOpcode::kSetDimensionSize,
     HloOpcode::kSort,
-    HloOpcode::kTriangularSolve,
     // go/keep-sorted end
     // clang-format on
 };
@@ -2975,6 +3048,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kOutfeed);
   ret.emplace(HloOpcode::kStochasticConvert);
   ret.emplace(HloOpcode::kTopK);
+  ret.emplace(HloOpcode::kTriangularSolve);
   ret.insert(kUnsupportedOps.begin(), kUnsupportedOps.end());
 
   return ret;
