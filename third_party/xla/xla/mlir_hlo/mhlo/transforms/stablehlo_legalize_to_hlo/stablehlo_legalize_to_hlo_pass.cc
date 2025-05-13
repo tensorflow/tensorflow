@@ -72,8 +72,11 @@ void legalDirectStablehloToHloConversionOps(ConversionTarget& target) {
       stablehlo::MapOp, stablehlo::ReturnOp, stablehlo::AllToAllOp,
       stablehlo::BatchNormGradOp, stablehlo::BatchNormTrainingOp,
       stablehlo::BitcastConvertOp, stablehlo::ClampOp,
-      stablehlo::CollectiveBroadcastOp, stablehlo::CompareOp,
-      stablehlo::SortOp>();
+      stablehlo::CollectiveBroadcastOp, stablehlo::CompareOp, stablehlo::SortOp,
+      stablehlo::CompositeOp, stablehlo::CustomCallOp, stablehlo::DotGeneralOp,
+      stablehlo::DotOp, stablehlo::DynamicConvOp, stablehlo::DynamicGatherOp,
+      stablehlo::DynamicPadOp, stablehlo::DynamicReshapeOp,
+      stablehlo::DynamicIotaOp, stablehlo::ReshapeOp>();
 }
 
 struct StablehloLegalizeToHloPass
