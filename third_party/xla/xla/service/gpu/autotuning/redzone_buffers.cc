@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -47,6 +48,7 @@ absl::StatusOr<RedzoneBuffers> RedzoneBuffers::FromInstruction(
     se::Stream* stream, BuffersToCreate buffers_to_create,
     bool should_init_buffers, bool should_check_correctness,
     int redzone_padding_bytes) {
+  tsl::profiler::TraceMe traceme("create redzone buffers");
   RedzoneBuffers buffers;
   buffers.redzone_allocator_ = std::make_unique<se::RedzoneAllocator>(
       stream, allocator,
@@ -70,6 +72,7 @@ absl::StatusOr<RedzoneBuffers> RedzoneBuffers::FromInstruction(
 absl::Status RedzoneBuffers::CreateInputs(const HloInstruction& instruction,
                                           bool should_init_buffers,
                                           int64_t& rng_state) {
+  tsl::profiler::TraceMe traceme("create inputs");
   for (const auto* operand : instruction.operands()) {
     TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buf,
                         redzone_allocator_->CreateBuffer(
@@ -84,6 +87,7 @@ absl::Status RedzoneBuffers::CreateOutputs(const HloInstruction& instruction,
                                            BuffersToCreate buffers_to_create,
                                            bool should_init_buffers,
                                            int64_t& rng_state) {
+  tsl::profiler::TraceMe traceme("create outputs");
   if (!instruction.shape().IsTuple()) {
     TF_ASSIGN_OR_RETURN(
         se::DeviceMemoryBase buf,

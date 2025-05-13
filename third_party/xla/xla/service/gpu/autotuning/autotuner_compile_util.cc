@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -104,6 +105,7 @@ AutotunerCompileUtil::ProfileExecutable(
     Executable* executable, se::Stream* stream,
     absl::Span<se::DeviceMemoryBase const> input_buffers,
     absl::Span<Shape const> input_shapes) {
+  tsl::profiler::TraceMe traceme("ProfileExecutable");
   {
     std::vector<ExecutionInput> execution_inputs =
         ExecutionInputsFromBuffers(input_buffers, input_shapes);
@@ -129,6 +131,7 @@ AutotunerCompileUtil::ProfileExecutable(
 
 absl::StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
     GenerateModuleFn extractor) {
+  tsl::profiler::TraceMe traceme("AutotunerCompile");
   absl::StatusOr<std::unique_ptr<HloModule>> new_hlo_module = extractor(opts_);
   if (new_hlo_module.status().GetPayload(kUncompilableFusion).has_value()) {
     // Incompatible value of split-k is an example of an expected failure.
@@ -158,6 +161,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> AutotunerCompileUtil::ExtractModule(
 
 /*static*/ absl::StatusOr<AutotunerCompileUtil> AutotunerCompileUtil::Create(
     const AutotuneConfig& config, const DebugOptions& opts) {
+  tsl::profiler::TraceMe traceme("AutotunerCreate");
   if (config.IsDeviceless()) {
     return absl::InvalidArgumentError(
         "Deviceless autotuning is not supported.");
@@ -174,6 +178,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> AutotunerCompileUtil::ExtractModule(
 absl::StatusOr<ExecutionOutput> AutotunerCompileUtil::Execute(
     Executable& executable, std::vector<ExecutionInput> arguments,
     ExecutionProfile* profile) {
+  tsl::profiler::TraceMe traceme("AutotunerExecute");
   // Require exclusive GPU lock to prevent other runs during autotuning.
   GpuExecutableRunOptions gpu_opts;
   gpu_opts.set_requires_exclusive_lock_on_gpu();
@@ -191,7 +196,6 @@ absl::StatusOr<ExecutionOutput> AutotunerCompileUtil::Execute(
 
   return std::move(output);
 }
-
 
 }  // namespace gpu
 }  // namespace xla
