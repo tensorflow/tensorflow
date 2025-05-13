@@ -1312,11 +1312,17 @@ class LatencyHidingScheduler : public HloModulePass {
   // Returns some printable statistics about the latency hiding for
   // operations that can run in parallel to help evaluating the performance of
   // the scheduler and improve it.
+  // Optionally the caller can pass in the alias analysis and module pressure
+  // state to save the time to construct them within the function. This is
+  // useful when we repeatedly call this function across computations within the
+  // same module.
   static SchedulerStatistics LatencyHidingStatistics(
       const HloComputation* computation,
       const LatencyEstimator* latency_estimator,
       const AsyncTracker* async_tracker,
-      const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes);
+      const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes,
+      const HloAliasAnalysis* alias_analysis = nullptr,
+      ModulePressureState* pressure_state = nullptr);
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
