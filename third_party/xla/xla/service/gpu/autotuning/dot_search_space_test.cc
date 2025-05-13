@@ -218,6 +218,40 @@ TEST_F(DotSearchSpaceTest, RestrictsOutputToSquareishTiles) {
       WhenFilteredBy(BlockMIs(Eq(64)), BlockNIs(AllOf(Ge(32), Le(128)))));
 }
 
+TEST_F(DotSearchSpaceTest, AllowsLargerRhsForExpensiveLhs) {
+  constexpr const char* kModuleText = R"(
+ENTRY e {
+  p0 = f16[4096,4096] parameter(0)
+  e0 = f16[4096,4096] exponential(p0)
+  p1 = f16[4096,4096] parameter(1)
+  ROOT r = f16[4096,4096] dot(e0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleText));
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(search_space.GenerateConfigs(),
+              Contains(AllOf(BlockMIs(Eq(32)), BlockNIs(Ge(128)))));
+}
+
+TEST_F(DotSearchSpaceTest, AllowsLargerLhsForExpensiveRhs) {
+  constexpr const char* kModuleText = R"(
+ENTRY e {
+  p0 = f16[4096,4096] parameter(0)
+  p1 = f16[4096,4096] parameter(1)
+  e1 = f16[4096,4096] exponential(p1)
+  ROOT r = f16[4096,4096] dot(p0, e1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleText));
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(search_space.GenerateConfigs(),
+              Contains(AllOf(BlockMIs(Ge(128)), BlockNIs(Eq(32)))));
+}
+
 TEST_F(DotSearchSpaceTest, FindsGoodDataReuseTilesForLowOccupancyProblem) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,

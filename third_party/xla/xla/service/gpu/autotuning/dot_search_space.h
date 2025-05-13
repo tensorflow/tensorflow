@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/stream_executor/device_description.h"
@@ -107,6 +108,8 @@ class TritonDotFusionSearchSpace {
   // the updated list of configs is non-empty.
   void ExtendConfigs(std::vector<ConfigWithNotes>& configs,
                      ExtendConfigCallback extend_config) const;
+
+  bool HasExpensiveTransitiveParent(const HloInstruction* operand) const;
 
   // Computes the maximum number of total warps we should have to sufficiently
   // saturate the GPU.
@@ -213,6 +216,8 @@ class TritonDotFusionSearchSpace {
   int64_t rhs_parallel_size_;
   int operand_bitwidth_;
   int compute_bitwidth_;
+  bool lhs_has_expensive_op_;
+  bool rhs_has_expensive_op_;
   int desired_total_warps_;
   OutputTile max_out_tile_;
   bool should_optimize_for_occupancy_;
