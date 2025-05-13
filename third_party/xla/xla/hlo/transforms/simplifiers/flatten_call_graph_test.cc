@@ -19,15 +19,16 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/status/statusor.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -307,6 +308,89 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
             FindInstruction(module.get(), "call-start.1")
                 ->async_wrapped_instruction()
                 ->called_computations()[0]);
+}
+
+TEST_F(FlattenCallGraphTest, WhileInCall) {
+  std::string hlo_string = R"(
+HloModule WhileInCall
+
+  %while_cond {
+    %p.cond = (f32[4096]{0}) parameter(0)
+    ROOT %eq = pred[] constant(false)
+  }
+
+  %while_body {
+    ROOT %p = (f32[4096]{0}) parameter(0)
+  }
+
+  %called_computation(arg: f32[4096]) -> f32[4096] {
+    %arg = f32[4096]{0} parameter(0)
+    %while_init = (f32[4096]{0}) tuple(%arg)
+    %while = (f32[4096]{0}) while(%while_init), condition=%while_cond, body=%while_body
+    ROOT %get-tuple-element = f32[4096]{0} get-tuple-element(%while), index=0
+  }
+
+  ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+    %a = f32[4096]{0} parameter(0)
+    %b = f32[4096]{0} parameter(1)
+    %call0 = f32[4096]{0} call(%a), to_apply=%called_computation
+    %call1 = f32[4096]{0} call(%b), to_apply=%called_computation
+    ROOT %multiply = f32[4096]{0} multiply(%call0, %call1)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_EQ(module->computation_count(), 4);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(module->computation_count(), 7);
+}
+
+TEST_F(FlattenCallGraphTest, CallInWhileInCall) {
+  std::string hlo_string = R"(
+HloModule CallInWhileInCall
+
+  %called_computation_internal(arg: f32[4096]) -> f32[4096] {
+    ROOT %arg.internal = f32[4096]{0} parameter(0)
+  }
+
+  %while_cond {
+    %p.cond = (f32[4096]{0}) parameter(0)
+    ROOT %eq = pred[] constant(false)
+  }
+
+  %while_body {
+    %p.body = (f32[4096]{0}) parameter(0)
+    %gte = f32[4096]{0} get-tuple-element(%p.body), index=0
+    %call.internal = f32[4096]{0} call(%gte), to_apply=%called_computation_internal
+    ROOT %tuple.body = (f32[4096]{0}) tuple(%call.internal)
+  }
+
+  %called_computation_external(arg: f32[4096]) -> f32[4096] {
+    %arg.external = f32[4096]{0} parameter(0)
+    %while.init = (f32[4096]{0}) tuple(%arg.external)
+    %while = (f32[4096]{0}) while(%while.init), condition=%while_cond, body=%while_body
+    ROOT %get-tuple-element = f32[4096]{0} get-tuple-element(%while), index=0
+  }
+
+  ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+    %a = f32[4096]{0} parameter(0)
+    %b = f32[4096]{0} parameter(1)
+    %call0 = f32[4096]{0} call(%a), to_apply=%called_computation_external
+    %call1 = f32[4096]{0} call(%b), to_apply=%called_computation_external
+    ROOT %multiply = f32[4096]{0} multiply(%call0, %call1)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_EQ(module->computation_count(), 5);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(module->computation_count(), 9);
 }
 
 }  // namespace
