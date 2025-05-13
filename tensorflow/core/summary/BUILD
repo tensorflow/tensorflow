@@ -54,6 +54,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@local_xla//xla/tsl/protobuf:histogram_proto_cc",
     ],
