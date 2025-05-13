@@ -268,5 +268,7 @@ TEST_P(XnnThreadPoolTest, Dot) {
 INSTANTIATE_TEST_SUITE_P(XnnThreadPool, XnnThreadPoolTest, testing::Bool(),
                          testing::PrintToStringParamName());
 
+TEST(Dummy, Test) { ASSERT_TRUE(true); }
+
 }  // namespace
 }  // namespace xla::cpu
