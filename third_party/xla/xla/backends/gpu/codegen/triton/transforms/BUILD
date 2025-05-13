@@ -29,6 +29,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "extract_tma_info_pass.cc",
         "generalize_kernel_signature.cc",
         "int4_passes.cc",
         "prevent_mmav3_loop_unrolling_pass.cc",
@@ -64,5 +65,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@triton//:TritonDialects",
+        "@triton//:TritonGPUTransforms",
     ],
 )

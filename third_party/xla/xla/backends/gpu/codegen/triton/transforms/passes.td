@@ -60,6 +60,17 @@ def PreventMmaV3LoopUnrollingPass
   let constructor = "CreatePreventMmaV3LoopUnrollingPass()";
 }
 
+def ExtractTmaInfoPass
+    : Pass<"extract-tma-info", "mlir::ModuleOp"> {
+  let summary = "Extract TMA info during Triton lowering.";
+  let description = [{
+    Some information needed from TMA is created mid-pipeline by Triton. This
+    pass extracts the information while it still exists and copies it into XLA's
+    tma_descriptor attribute to be read at the LLVM IR level.
+  }];
+  let constructor = "CreateExtractTmaInfoPass()";
+}
+
 def LoadInt4RewritePass
     : Pass<"int4-to-packed-int4-rewrite", "mlir::ModuleOp"> {
   let summary = "Converts ops with int4 tensors to the ops with int4 packed to int8 tensors.";
