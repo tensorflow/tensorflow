@@ -1549,3 +1549,14 @@ message ShardingConfigProto {
   // Configuration for each HLO instruction.
   repeated NodeShardingConfigProto nodes = 1;
 }
+
+// Message that captures schedule configuration of an HLO module.
+message ScheduleConfigProto {
+  message Instruction {
+    // Instruction name.
+    string name = 1;
+  }
+
+  // The schedule of the HLO module.
+  repeated Instruction sequence = 1;
+}
