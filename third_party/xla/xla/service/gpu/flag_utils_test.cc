@@ -55,20 +55,27 @@ TEST(FlagUtilsTest, IsPassEnabledAtOptimizationEffort) {
 }
 
 TEST(FlagUtilsTest, IsPassEnabledAtOptimizationLevel) {
+  HloModule module("test_module", {});
+
+  for (ExecutionOptions::EffortLevel level :
+       {ExecutionOptions::EFFORT_O1, ExecutionOptions::EFFORT_O2,
+        ExecutionOptions::EFFORT_O3}) {
+    HloModuleConfig config;
+    config.set_optimization_level(level);
+    module.set_config(config);
+
+    // Collective optimization passes.
+    EXPECT_TRUE(IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(module));
+    EXPECT_TRUE(
+        IsPassEnabledAtOptimizationEffort<DoubleBufferLoopUnrolling>(module));
+    EXPECT_TRUE(
+        IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module));
+
+    // Other passes.
+    EXPECT_TRUE(IsPassEnabledAtOptimizationEffort<HloDCE>(module));
+  }
+
   HloModuleConfig config;
-  config.set_optimization_level(ExecutionOptions::EFFORT_O1);
-  HloModule module("test_module", config);
-
-  // Collective optimization passes.
-  EXPECT_TRUE(IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(module));
-  EXPECT_TRUE(
-      IsPassEnabledAtOptimizationEffort<DoubleBufferLoopUnrolling>(module));
-  EXPECT_TRUE(
-      IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module));
-
-  // Other passes.
-  EXPECT_TRUE(IsPassEnabledAtOptimizationEffort<HloDCE>(module));
-
   config.set_optimization_level(ExecutionOptions::EFFORT_O0);
   module.set_config(config);
 
