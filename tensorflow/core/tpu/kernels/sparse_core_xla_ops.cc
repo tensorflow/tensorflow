@@ -1200,12 +1200,12 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
     // Get the shape of the gradient.
     OP_REQUIRES_VALUE(xla::Shape activation_shape, ctx,
                       ctx->InputXlaShape("activation_gradients"));
-    OP_REQUIRES(
-        ctx,
-        activation_shape.is_static() && activation_shape.dimensions_size() == 2,
-        absl::InvalidArgumentError(absl::StrCat(
-            "activations input has non static or non-rank 2 shape: ",
-            activation_shape.ToString())));
+    OP_REQUIRES(ctx,
+                activation_shape.is_static() &&
+                    activation_shape.dimensions().size() == 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "activations input has non static or non-rank 2 shape: ",
+                    activation_shape.ToString())));
     OP_REQUIRES_VALUE(int64_t num_sparsecores_per_device, ctx,
                       GetSparseCoresPerLogicalDevice());
     int64_t num_samples_per_chip = activation_shape.dimensions(0);
