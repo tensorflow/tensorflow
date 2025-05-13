@@ -1424,7 +1424,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     }
 
     TF_ASSIGN_OR_RETURN(auto executable,
-                        client_->GetDefaultCompiler()->Compile(
+                        client_->GetDefaultCompiler()->CompileAndLoad(
                             std::move(program), std::move(options)));
 
     std::unique_ptr<IfrtResponse> ifrt_resp =
