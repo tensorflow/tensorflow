@@ -39,6 +39,12 @@ message HostToDeviceCopyThunkProto {
   CopyThunkProto copy_thunk = 1;
 }
 
+message ConditionalThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto branch_index_buffer = 1;
+  repeated SequentialThunkProto branch_thunks = 2;
+  bool branch_index_is_bool = 3;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -47,6 +53,7 @@ message ThunkProto {
     CopyThunkProto copy_thunk = 3;
     DeviceToHostCopyThunkProto device_to_host_copy_thunk = 4;
     HostToDeviceCopyThunkProto host_to_device_copy_thunk = 5;
+    ConditionalThunkProto conditional_thunk = 6;
   }
 }
 
