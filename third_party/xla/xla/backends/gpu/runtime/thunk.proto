@@ -45,6 +45,14 @@ message ConditionalThunkProto {
   bool branch_index_is_bool = 3;
 }
 
+message WhileThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto
+      condition_result_buffer_index = 1;
+  SequentialThunkProto condition_thunk_sequence = 2;
+  SequentialThunkProto body_thunk_sequence = 3;
+  optional int64 trip_count = 4;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -54,6 +62,7 @@ message ThunkProto {
     DeviceToHostCopyThunkProto device_to_host_copy_thunk = 4;
     HostToDeviceCopyThunkProto host_to_device_copy_thunk = 5;
     ConditionalThunkProto conditional_thunk = 6;
+    WhileThunkProto while_thunk = 7;
   }
 }
 
