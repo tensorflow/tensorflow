@@ -522,6 +522,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     // Run some IR cleanup passes before running the SPMD partitioning
     // passes.
     AddHloVerifier(&spmd_pipeline);
+    spmd_pipeline.AddPass<FlattenCallGraph>();
     spmd_pipeline.AddPass<CallInliner>();
     spmd_pipeline.AddPass<ZeroSizedHloElimination>();
     spmd_pipeline.AddPass<ConditionalCanonicalizer>();
