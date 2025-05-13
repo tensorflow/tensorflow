@@ -39,12 +39,12 @@ iopddl::Cost ConvertCost(const double cost) {
 }
 
 iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request) {
-  CHECK(request.node_groups().empty());  // Contest files don't support groups.
   iopddl::Problem problem = {.name = request.request_name()};
   std::vector<iopddl::Interval> node_intervals;
+  // Process all nodes, taking intervals if provided.
   for (int64_t node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     iopddl::Interval node_interval = {kInfinityInt, -1};
-    if (request.live().empty()) {
+    if (request.live().empty()) {  // No live matrices, so use intervals.
       CHECK_LT(node_idx, request.node_intervals_size());
       const auto& interval = request.node_intervals(node_idx);
       if (interval.first() <= interval.second()) {
@@ -53,11 +53,54 @@ iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request) {
     }
     node_intervals.push_back(node_interval);
   }
+  // Process live matrices for nodes, if provided.
   for (LivenessIdx t = 0; t < request.live_size(); ++t) {
     for (int64_t node_idx : request.live(t).nodes()) {
+      if (node_idx >= request.num_nodes()) {
+        continue;  // This is a group.
+      }
       node_intervals[node_idx] = {
           std::min(node_intervals[node_idx].first, t),
           std::max(node_intervals[node_idx].second, t + 1)};
+    }
+  }
+  // Process all groups (if present), taking intervals if provided.
+  std::vector<iopddl::Interval> group_intervals;
+  for (int64_t group_idx = 0; group_idx < request.node_groups_size();
+       ++group_idx) {
+    iopddl::Interval group_interval = {kInfinityInt, -1};
+    if (request.live().empty()) {  // No live matrices, so use intervals.
+      int64_t interval_idx = request.num_nodes() + group_idx;
+      CHECK_LT(interval_idx, request.node_intervals_size());
+      const auto& interval = request.node_intervals(interval_idx);
+      if (interval.first() <= interval.second()) {
+        group_interval = {interval.first(), interval.second() + 1};
+      }
+    }
+    group_intervals.push_back(group_interval);
+  }
+  // Process live matrices for groups, if provided.
+  for (LivenessIdx t = 0; t < request.live_size(); ++t) {
+    for (int64_t node_idx : request.live(t).nodes()) {
+      if (node_idx < request.num_nodes()) {
+        continue;  // This is not a group.
+      }
+      int64_t group_idx = node_idx - request.num_nodes();
+      group_intervals[group_idx] = {
+          std::min(node_intervals[group_idx].first, t),
+          std::max(node_intervals[group_idx].second, t + 1)};
+    }
+  }
+  // Propagate any group intervals to the nodes in that group.
+  for (int64_t group_idx = 0; group_idx < request.node_groups_size();
+       ++group_idx) {
+    const auto& group = request.node_groups(group_idx);
+    const auto& group_interval = group_intervals[group_idx];
+    for (const auto& node_idx : group.prims()) {
+      node_intervals[node_idx].first =
+          std::min(node_intervals[node_idx].first, group_interval.first);
+      node_intervals[node_idx].second =
+          std::max(node_intervals[node_idx].second, group_interval.second);
     }
   }
   for (int64_t node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
