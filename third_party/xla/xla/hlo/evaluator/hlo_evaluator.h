@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 #define XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 
+#include "absl/log/log.h"
 #define _USE_MATH_DEFINES
 
 #include <complex>
