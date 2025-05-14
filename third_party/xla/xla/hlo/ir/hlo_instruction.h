@@ -1871,8 +1871,7 @@ class HloInstruction {
   }
 
   // Adds or overrides a single attribute in the HloInstruction.
-  void set_frontend_attribute(const std::string& key,
-                              const std::string& value) {
+  void set_frontend_attribute(absl::string_view key, absl::string_view value) {
     (*mutable_rare()->frontend_attributes.mutable_map())[key] = value;
   }
 
@@ -1885,7 +1884,7 @@ class HloInstruction {
   }
 
   std::optional<std::string> get_frontend_attribute(
-      const std::string& key) const {
+      absl::string_view key) const {
     auto it = rare()->frontend_attributes.map().find(key);
     if (it == rare()->frontend_attributes.map().end()) {
       return std::nullopt;
