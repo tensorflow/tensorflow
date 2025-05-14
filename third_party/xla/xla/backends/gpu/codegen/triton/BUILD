@@ -608,14 +608,6 @@ xla_test(
     name = "fusion_emitter_legacy_int4_device_test",
     size = "large",
     srcs = if_gpu_is_configured(["fusion_emitter_legacy_int4_device_test.cc"]),
-    # TODO(b/372714955): Fix the memory leak!
-    backend_args = if_google(
-        {
-            "gpu_h100": ["--heap_check="],
-            "gpu_a100": ["--heap_check="],
-        },
-        {},
-    ),
     backends = [
         "gpu_a100",
         "gpu_h100",
