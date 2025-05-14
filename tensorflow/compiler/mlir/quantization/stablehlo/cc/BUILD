@@ -643,6 +643,42 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_weight_only_ptq",
+    srcs = ["tf_weight_only_ptq.cc"],
+    hdrs = ["tf_weight_only_ptq.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":component",
+        ":config",
+        ":context",
+        ":tf_pass_pipeline",
+        ":tf_saved_model_export",
+        ":tf_saved_model_import",
+        ":types",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/instrumentations:tf_save_report",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:die_if_null",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "weight_only_ptq",
     srcs = ["weight_only_ptq.cc"],
     hdrs = ["weight_only_ptq.h"],
