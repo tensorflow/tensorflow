@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/lower_case_op.h"
 
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
