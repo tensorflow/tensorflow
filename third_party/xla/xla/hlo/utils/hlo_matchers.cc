@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 
 #include <cstdint>
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -231,6 +232,28 @@ void HloShardingMatcher::DescribeTo(std::ostream* os) const {
   } else {
     *os << "<no-sharding>";
   }
+}
+
+bool HloFrontendAttributeMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (std::optional<std::string> value =
+          instruction->get_frontend_attribute(key_)) {
+    if (*value == value_) {
+      return true;
+    }
+    *listener << instruction->ToString() << " has incorrect value for '" << key_
+              << "' frontend attribute (expected: " << value_ << ")";
+    return false;
+  }
+
+  *listener << instruction->ToString() << " has no '" << key_
+            << "' frontend attribute (expected: " << value_ << ")";
+  return false;
+}
+
+void HloFrontendAttributeMatcher::DescribeTo(std::ostream* os) const {
+  *os << key_ << " = \"" << value_ << "\"";
 }
 
 bool HloDotWithContractingDimsMatcher::MatchAndExplain(

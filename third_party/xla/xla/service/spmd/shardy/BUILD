@@ -92,6 +92,16 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    deps = [
+        ":utils",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 cc_library(
     name = "constants",
     hdrs = ["constants.h"],

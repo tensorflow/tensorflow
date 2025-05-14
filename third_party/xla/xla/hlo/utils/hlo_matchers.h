@@ -154,6 +154,23 @@ class HloShardingMatcher
   std::optional<HloSharding> sharding_;
 };
 
+// Verify the frontend attribute with the provided key of an instruction against
+// the provided value.
+class HloFrontendAttributeMatcher
+    : public ::testing::MatcherInterface<const HloInstruction*> {
+ public:
+  explicit HloFrontendAttributeMatcher(absl::string_view key,
+                                       absl::string_view value)
+      : key_(key), value_(value) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  std::string key_, value_;
+};
+
 // Matches a Dot HLO instruction with specific LHS and RHS contracting
 // dimensions.
 class HloDotWithContractingDimsMatcher : public HloMatcher {
@@ -509,6 +526,14 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
 inline ::testing::Matcher<const ::xla::HloInstruction*> NoSharding() {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloShardingMatcher(std::nullopt));
+}
+
+// Verifies that the frontend attribute with the given key is present and
+// matches the given value.
+inline ::testing::Matcher<const ::xla::HloInstruction*> FrontendAttribute(
+    absl::string_view key, absl::string_view value) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloFrontendAttributeMatcher(key, value));
 }
 
 inline ::testing::Matcher<const ::xla::HloInstruction*> Dot() {
