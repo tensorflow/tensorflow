@@ -1301,6 +1301,7 @@ xla_test(
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
+        ":cuda_compute_capability",
         ":cudnn_plugin",
         "//xla/service:platform_util",
         "//xla/stream_executor:command_buffer",
