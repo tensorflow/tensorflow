@@ -720,7 +720,7 @@ absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
   return attrs;
 }
 
-class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
+class TfrtGpuCopyToDeviceStream final : public CopyToDeviceStream {
  public:
   TfrtGpuCopyToDeviceStream(int64_t channel_id, se::Stream* stream,
                             se::DeviceMemoryBase dst,
