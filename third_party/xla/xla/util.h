@@ -765,7 +765,7 @@ std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
 // and `b` with the same product, i.e. `(i, j)` so
 // • a = {a[0 = i_0], ..., a[i_1 - 1], a[i_1], ... , a[i_2 - 1], ...}
 // • b = {b[0 = j_0], ..., b[j_1 - 1], b[j_1], ... , b[j_2 - 1], ...}
-// • ∀ k . 0 <= k < CommonFactors(a, b).size - 1 =>
+// • ∀ k . 0 <= k < CommonFactors(a, b).size =>
 //         a[i_k] × a[i_k + 1] × ... × a[i_(k+1) - 1] =
 //         b[j_k] × b[j_k + 1] × ... × b[j_(k+1) - 1]
 // where `CommonFactors(a, b)[CommonFactors(a, b).size - 1] = (a.size, b.size)`
