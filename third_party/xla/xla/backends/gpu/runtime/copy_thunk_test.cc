@@ -15,102 +15,105 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 
-#include <cstdint>
-
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
 namespace {
 
-constexpr ExecutionStreamId kExecutionStreamId{123};
-constexpr absl::string_view kProfileAnnotation = "profile_annotation";
-
-Thunk::ThunkInfo SampleThunkInfo() {
-  Thunk::ThunkInfo thunk_info;
-  thunk_info.execution_stream_id = kExecutionStreamId;
-  thunk_info.profile_annotation = kProfileAnnotation;
-  return thunk_info;
-}
-
-void verify_thunk_proto(const ThunkProto& proto) {
-  ASSERT_TRUE(proto.has_thunk_info());
-  EXPECT_EQ(proto.thunk_info().execution_stream_id(), kExecutionStreamId);
-  EXPECT_EQ(proto.thunk_info().profile_annotation(), kProfileAnnotation);
-}
-
-void verify_copy_thunk_proto(const CopyThunkProto& copy_thunk_proto,
-                             const BufferAllocation::Slice& src_slice,
-                             const BufferAllocation::Slice& dst_slice,
-                             const uint64_t mem_size) {
-  ASSERT_TRUE(copy_thunk_proto.has_source_buffer());
-  EXPECT_EQ(copy_thunk_proto.source_buffer().offset(), src_slice.offset());
-  EXPECT_EQ(copy_thunk_proto.source_buffer().size(), src_slice.size());
-  EXPECT_EQ(copy_thunk_proto.source_buffer().buffer_allocation_index(),
-            src_slice.index());
-
-  ASSERT_TRUE(copy_thunk_proto.has_destination_buffer());
-  EXPECT_EQ(copy_thunk_proto.destination_buffer().offset(), dst_slice.offset());
-  EXPECT_EQ(copy_thunk_proto.destination_buffer().size(), dst_slice.size());
-  EXPECT_EQ(copy_thunk_proto.destination_buffer().buffer_allocation_index(),
-            dst_slice.index());
-
-  EXPECT_EQ(copy_thunk_proto.mem_size(), mem_size);
-}
+using ::tsl::proto_testing::EqualsProto;
 
 TEST(CopyThunkTest, ToProto) {
-  const uint64_t mem_size = 256;
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.execution_stream_id = 123;
+
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
-  auto src_slice = BufferAllocation::Slice(&alloc0, 128, 384);
-  auto dst_slice = BufferAllocation::Slice(&alloc1, 0, 256);
+  auto src_slice =
+      BufferAllocation::Slice(&alloc0, /*offset=*/128, /*size=*/384);
+  auto dst_slice = BufferAllocation::Slice(&alloc1, /*offset=*/0, /*size=*/256);
 
-  CopyThunk thunk(SampleThunkInfo(), src_slice, dst_slice, mem_size);
+  CopyThunk thunk(thunk_info, src_slice, dst_slice, /*mem_size=*/256);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
-  ASSERT_TRUE(proto.has_copy_thunk());
-  verify_thunk_proto(proto);
-  verify_copy_thunk_proto(proto.copy_thunk(), src_slice, dst_slice, mem_size);
+  EXPECT_THAT(proto, EqualsProto(R"pb(
+                thunk_info {
+                  profile_annotation: "profile_annotation"
+                  execution_stream_id: 123
+                }
+                copy_thunk {
+                  source_buffer { offset: 128 size: 384 }
+                  destination_buffer { size: 256 buffer_allocation_index: 1 }
+                  mem_size: 256
+                }
+              )pb"));
 }
 
 TEST(DeviceToHostCopyThunkProtoTest, ToProto) {
-  const uint64_t mem_size = 256;
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.execution_stream_id = 123;
+
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
-  auto src_slice = BufferAllocation::Slice(&alloc0, 128, 384);
-  auto dst_slice = BufferAllocation::Slice(&alloc1, 0, 256);
+  auto src_slice =
+      BufferAllocation::Slice(&alloc0, /*offset=*/128, /*size=*/384);
+  auto dst_slice = BufferAllocation::Slice(&alloc1, /*offset=*/0, /*size=*/256);
 
-  DeviceToHostCopyThunk thunk(SampleThunkInfo(), src_slice, dst_slice, mem_size,
+  DeviceToHostCopyThunk thunk(thunk_info, src_slice, dst_slice,
+                              /*mem_size=*/256,
                               /*events=*/nullptr,
                               /*instr=*/nullptr);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
-  verify_thunk_proto(proto);
-  ASSERT_TRUE(proto.has_device_to_host_copy_thunk());
-  ASSERT_TRUE(proto.device_to_host_copy_thunk().has_copy_thunk());
-  verify_copy_thunk_proto(proto.device_to_host_copy_thunk().copy_thunk(),
-                          src_slice, dst_slice, mem_size);
+  EXPECT_THAT(proto, EqualsProto(R"pb(
+                thunk_info {
+                  profile_annotation: "profile_annotation"
+                  execution_stream_id: 123
+                }
+                device_to_host_copy_thunk {
+                  copy_thunk {
+                    source_buffer { offset: 128 size: 384 }
+                    destination_buffer { size: 256 buffer_allocation_index: 1 }
+                    mem_size: 256
+                  }
+                }
+              )pb"));
 }
 
 TEST(HostToDeviceCopyThunkProtoTest, ToProto) {
-  const uint64_t mem_size = 256;
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.execution_stream_id = 123;
+
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
-  auto src_slice = BufferAllocation::Slice(&alloc0, 128, 384);
-  auto dst_slice = BufferAllocation::Slice(&alloc1, 0, 256);
+  auto src_slice =
+      BufferAllocation::Slice(&alloc0, /*offset=*/128, /*size=*/384);
+  auto dst_slice = BufferAllocation::Slice(&alloc1, /*offset=*/0, /*size=*/256);
 
-  HostToDeviceCopyThunk thunk(SampleThunkInfo(), src_slice, dst_slice, mem_size,
+  HostToDeviceCopyThunk thunk(thunk_info, src_slice, dst_slice,
+                              /*mem_size=*/256,
                               /*events=*/nullptr,
                               /*instr=*/nullptr);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
-  verify_thunk_proto(proto);
-  ASSERT_TRUE(proto.has_host_to_device_copy_thunk());
-  ASSERT_TRUE(proto.host_to_device_copy_thunk().has_copy_thunk());
-  verify_copy_thunk_proto(proto.host_to_device_copy_thunk().copy_thunk(),
-                          src_slice, dst_slice, mem_size);
+  EXPECT_THAT(proto, EqualsProto(R"pb(
+                thunk_info {
+                  profile_annotation: "profile_annotation"
+                  execution_stream_id: 123
+                }
+                host_to_device_copy_thunk {
+                  copy_thunk {
+                    source_buffer { offset: 128 size: 384 }
+                    destination_buffer { size: 256 buffer_allocation_index: 1 }
+                    mem_size: 256
+                  }
+                }
+              )pb"));
 }
 
 }  // namespace
