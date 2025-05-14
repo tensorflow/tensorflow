@@ -16,8 +16,8 @@ limitations under the License.
 include "xla/mlir_hlo/mhlo/IR/hlo_ops.td"
 include "stablehlo/dialect/StablehloOps.td"
 
-// List of StableHLO ops that are allowed to be directly converted to HLO
-// without intermediate MHLO step.
+// List of All StableHLO ops. Any new StableHLO op should be added here and
+// if applicable at the CustomHloConverterOps.
 defvar HloConversionAllowedOps = [
   StableHLO_AbsOp,
   StableHLO_AddOp,
@@ -129,7 +129,7 @@ defvar HloConversionAllowedOps = [
   StableHLO_TransposeOp,
   StableHLO_TriangularSolveOp,
   StableHLO_TupleOp,
-  // StableHLO_UnaryEinsumOp,  // not supported in MHLO, no need to lower to HLO.
+  StableHLO_UnaryEinsumOp,
   StableHLO_UniformDequantizeOp,
   StableHLO_UniformQuantizeOp,
   StableHLO_WhileOp,
@@ -189,6 +189,7 @@ defvar CustomHloConverterOps = [
   StableHLO_SortOp,
   StableHLO_SubtractOp,
   StableHLO_TanOp,
+  StableHLO_UnaryEinsumOp,
   StableHLO_UniformDequantizeOp,
   StableHLO_UniformQuantizeOp,
   StableHLO_WhileOp,
