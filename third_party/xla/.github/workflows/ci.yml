@@ -55,6 +55,12 @@ jobs:
             repo: "openxla/xla",
           },
           {
+            pool: "linux-x86-a4-224-b200-1gpu",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            name: "XLA Linux x86 GPU B200",
+            repo: "openxla/xla",
+          },
+          {
             pool: "linux-arm64-c4a-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
             name: "XLA Linux ARM64 CPU",
