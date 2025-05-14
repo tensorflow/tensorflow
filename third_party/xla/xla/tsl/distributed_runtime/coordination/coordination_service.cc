@@ -1359,6 +1359,18 @@ CoordinationService::CoordinatedTaskSet CoordinationService::AliveTasks(
   return alive_tasks;
 }
 
+std::vector<uint64_t> CoordinationService::IncarnationIds(
+    absl::Span<const CoordinatedTask> tasks) const {
+  std::vector<uint64_t> incarnations;
+  for (const CoordinatedTask& task : tasks) {
+    auto it = cluster_state_.find(GetTaskName(task));
+    CHECK(it != cluster_state_.end())
+        << "Task " << GetTaskName(task) << " not found";
+    incarnations.push_back(it->second->GetTaskIncarnation());
+  }
+  return incarnations;
+}
+
 void CoordinationService::RefreshAliveness() {
   // Try to finish every pending GetAliveTasks call.
   auto it = aliveness_states_.begin();
@@ -1369,7 +1381,7 @@ void CoordinationService::RefreshAliveness() {
       // the same set of alive tasks (alive_tasks) to every task in the barrier.
       std::vector<CoordinatedTask> v{alive_tasks.begin(), alive_tasks.end()};
       for (const GetAliveTasksCallback& done : it->dones) {
-        done(absl::OkStatus(), v);
+        done(absl::OkStatus(), v, IncarnationIds(v));
       }
 
       // Remove the pending GetAliveTasks call because it is no longer pending.
@@ -1395,7 +1407,7 @@ void CoordinationService::GetAliveTasksAsync(
     absl::Status err = absl::InvalidArgumentError(absl::StrCat(
         "Requesting task ", GetTaskName(requesting_task),
         " is not one of the tasks specified in a GetAliveTasks request."));
-    done(err, {});
+    done(err, {}, {});
     return;
   }
 
@@ -1419,7 +1431,7 @@ void CoordinationService::GetAliveTasksAsync(
   if (TaskSetSubset(alive_tasks, it->in_barrier)) {
     std::vector<CoordinatedTask> v{alive_tasks.begin(), alive_tasks.end()};
     for (const GetAliveTasksCallback& done : it->dones) {
-      done(absl::OkStatus(), v);
+      done(absl::OkStatus(), v, IncarnationIds(v));
     }
     aliveness_states_.erase(it);
   }
