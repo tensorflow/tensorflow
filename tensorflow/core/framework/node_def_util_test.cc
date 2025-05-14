@@ -63,7 +63,7 @@ void ExpectFailure(const NodeDef& bad, const OpDef& op_def,
                             << "; OpDef: " << SummarizeOpDef(op_def);
   if (status.ok()) return;
 
-  EXPECT_TRUE(errors::IsInvalidArgument(status))
+  EXPECT_TRUE(absl::IsInvalidArgument(status))
       << status << "; NodeDef: " << SummarizeNodeDef(bad)
       << "; OpDef: " << SummarizeOpDef(op_def);
 
@@ -327,7 +327,7 @@ void ExpectInvalidSyntax(const NodeDef& bad, const string& message) {
 
   ASSERT_FALSE(status.ok()) << "NodeDef: " << SummarizeNodeDef(bad);
 
-  EXPECT_TRUE(errors::IsInvalidArgument(status))
+  EXPECT_TRUE(absl::IsInvalidArgument(status))
       << status << "; NodeDef: " << SummarizeNodeDef(bad);
 
   EXPECT_TRUE(absl::StrContains(absl::string_view(status.ToString()), message))

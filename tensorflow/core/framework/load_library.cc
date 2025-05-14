@@ -62,7 +62,7 @@ absl::Status LoadDynamicLibrary(const char* library_filename, void** result,
       TF_RETURN_IF_ERROR(OpRegistry::Global()->SetWatcher(
           [&library, &seen_op_names](const absl::Status& s,
                                      const OpDef& opdef) -> absl::Status {
-            if (errors::IsAlreadyExists(s)) {
+            if (absl::IsAlreadyExists(s)) {
               if (seen_op_names.find(opdef.name()) == seen_op_names.end()) {
                 // Over writing a registration of an op not in this custom op
                 // library. Treat this as not an error.
