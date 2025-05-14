@@ -209,6 +209,49 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "tf_saved_model_import",
+    srcs = ["tf_saved_model_import.cc"],
+    hdrs = ["tf_saved_model_import.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":types",
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/cc/saved_model:reader",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quantize_preprocess",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
+        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_saved_model_import_test",
+    srcs = ["tf_saved_model_import_test.cc"],
+    deps = [
+        ":tf_saved_model_import",
+        ":types",
+        "//tensorflow/compiler/mlir/quantization/common:tf_test_base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "saved_model_import",
     srcs = ["saved_model_import.cc"],
     hdrs = ["saved_model_import.h"],
