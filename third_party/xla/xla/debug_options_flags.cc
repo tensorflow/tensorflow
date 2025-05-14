@@ -263,7 +263,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_operand_bytes_threshold_for_windowed_einsum(-1);
 
   opts.set_xla_gpu_enable_triton_hopper(false);
-  opts.set_xla_gpu_experimental_enable_dynamic_dot_search_space(false);
+  opts.set_xla_gpu_experimental_enable_dynamic_dot_search_space(true);
   opts.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(false);
 
   opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
