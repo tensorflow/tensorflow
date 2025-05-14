@@ -251,36 +251,23 @@ std::vector<IndexingMap::Variable> ConvertHLORTVarsToRTVars(
 IndexingMap FoldRTVarsAndConstructIndexingMap(
     AffineMap affine_map, std::vector<IndexingMap::Variable> dim_vars,
     std::vector<HLORTVar> hlo_rt_vars) {
-  if (hlo_rt_vars.empty()) {
-    return IndexingMap(affine_map, std::move(dim_vars), /*range_vars=*/{},
-                       ConvertHLORTVarsToRTVars(hlo_rt_vars));
-  }
-
   auto* ctx = affine_map.getContext();
-
-  for (auto symbol_index = 0; symbol_index < hlo_rt_vars.size();
-       ++symbol_index) {
-    auto& rt_var = hlo_rt_vars[symbol_index];
-
-    // range_vars and rt_vars share the symbol space, with the rt_vars coming
-    // after the range_vars.
-    auto rt_var_symbol = getAffineSymbolExpr(symbol_index, ctx);
-
-    RTVarOptimizationResult result = OptimizeRTVar(rt_var, symbol_index, ctx);
-
+  // Range and runtime variables share the symbol space in the affine map but
+  // currently we never have range variables here.
+  CHECK_EQ(affine_map.getNumSymbols(), hlo_rt_vars.size());
+  for (auto idx = 0; idx < affine_map.getNumSymbols(); ++idx) {
+    auto& rt_var = hlo_rt_vars[idx];
+    auto rt_var_symbol = getAffineSymbolExpr(idx, ctx);
+    RTVarOptimizationResult result = OptimizeRTVar(rt_var, idx, ctx);
     if (result.remapped_symbol != rt_var_symbol) {
       affine_map = affine_map.replace({{rt_var_symbol, result.remapped_symbol}},
                                       affine_map.getNumDims(),
                                       affine_map.getNumSymbols());
-
-      llvm::DenseMap<AffineExpr, AffineExpr> replacements;
     }
-
-    if (result.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
-      // If we still depend on the rt_var, then we update it.
-      if (rt_var != result.rt_var) {
-        rt_var = std::move(result.rt_var);
-      }
+    // If we still depend on the rt_var, then update it.
+    if (result.remapped_symbol.isFunctionOfSymbol(idx) &&
+        rt_var != result.rt_var) {
+      rt_var = std::move(result.rt_var);
     }
   }
   return IndexingMap(affine_map, std::move(dim_vars), /*range_vars=*/{},
