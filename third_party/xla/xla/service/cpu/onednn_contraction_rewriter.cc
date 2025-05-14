@@ -938,7 +938,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       fusions_config->add_ops(OneDnnFusionConfig::LINEAR);
       // Casting to int32 because of issues in proto config for decimal types
       // handling.
-      fusions_config->set_alpha_typecast(
+      fusions_config->add_alpha_typecast(
           *(reinterpret_cast<int32_t*>(&constant_value.value())));
       TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
       HloInstruction* new_instr;

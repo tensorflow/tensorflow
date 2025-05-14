@@ -1691,6 +1691,36 @@ TEST_F(MatmulTest, BroadcastedAddAfterFusion) {
   )");
 }
 
+TEST_F(MatmulTest, MulTanhMul) {
+  const char* matmul_module_str = R"(
+  ENTRY matmul.multanhmul.test.f32 {
+    arg.0 = f32[16,400,500] parameter(0)
+    arg.1 = f32[16,500,3] parameter(1)
+    dot.0 = f32[16,400,3] dot(arg.0, arg.1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+    constant.0 = f32[] constant(0.02)
+    broadcast.0 = f32[16,400,3] broadcast(constant.0), dimensions={}
+    multiply.0 = f32[16,400,3] multiply(dot.0, broadcast.0)
+    tanh.0 = f32[16,400,3] tanh(multiply.0)
+    constant.1 = f32[] constant(50)
+    broadcast.1 = f32[16,400,3] broadcast(constant.1), dimensions={}
+    ROOT multiply.1 = f32[16,400,3] multiply(tanh.0, broadcast.1)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec(1e-4, 1e-4)));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK:     custom_call_target="__onednn$matmul",
+  ; CHECK:       backend_config={
+  ; CHECK-DAG:     "outer_dimension_partitions":[],
+  ; CHECK-DAG:     "onednn_matmul_config":{
+  ; CHECK-DAG:       "fusions":{
+  ; CHECK-DAG:         "ops":["LINEAR","TANH","LINEAR"]
+  ; CHECK-DAG:     }
+  ; CHECK-DAG:   }
+  ; CHECK:     }
+  )");
+}
+
 }  // namespace cpu
 }  // namespace xla
 
