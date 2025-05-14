@@ -935,6 +935,29 @@ INSTANTIATE_TEST_SUITE_P(SliceTestSuite, SliceTest,
                          AllTestCombinationsForOpcodes(kTestedOpsSlice),
                          TritonSupportTestTypeAndOpcodeAndDeviceToString);
 
+using DynamicSliceTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
+
+TEST_P(DynamicSliceTest, DynamicSlice) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  operand = $0[2,2,258] parameter(0)
+  p1 = s32[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+ROOT dynamic-slice = $0[2,2,258] dynamic-slice(operand, p1, p2, p3), dynamic_slice_sizes={2,2,258}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 1, 1}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DynamicSliceSuite, DynamicSliceTest,
+    AllTestCombinationsForOpcodes({HloOpcode::kDynamicSlice}),
+    TritonSupportTestTypeAndOpcodeAndDeviceToString);
+
 class TritonSupportTestWithDeviceParam
     : public TritonSupportTest,
       public ::testing::WithParamInterface<se::GpuComputeCapability> {};
@@ -2988,7 +3011,6 @@ constexpr std::array kUnsupportedOps = {
     // go/keep-sorted start
     HloOpcode::kConvolution,
     HloOpcode::kDynamicReshape,
-    HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
     HloOpcode::kGather,
     HloOpcode::kPad,
@@ -3041,6 +3063,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kCustomCall);
   ret.emplace(HloOpcode::kDomain);
   ret.emplace(HloOpcode::kDot);
+  ret.emplace(HloOpcode::kDynamicSlice);
   ret.emplace(HloOpcode::kFft);
   ret.emplace(HloOpcode::kGetDimensionSize);
   ret.emplace(HloOpcode::kGetTupleElement);
