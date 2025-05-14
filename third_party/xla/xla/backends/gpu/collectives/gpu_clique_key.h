@@ -59,7 +59,8 @@ class GpuCliqueKey : public CliqueKey {
       CollectiveStreamId stream_id = CollectiveStreamId(0),
       AsyncStreamKind stream_kind = AsyncStreamKind::kCollective,
       std::vector<std::vector<GlobalDeviceId>> participant_groups = {},
-      GlobalDeviceId root_device = GlobalDeviceId(-1));
+      GlobalDeviceId root_device = GlobalDeviceId(-1),
+      std::vector<uint64_t> incarnations = {});
 
   GpuCliqueKey(const GpuCliqueKey&) = default;
   GpuCliqueKey& operator=(const GpuCliqueKey&) = default;
@@ -130,6 +131,8 @@ class GpuCliqueKey : public CliqueKey {
   std::vector<std::vector<GlobalDeviceId>> participant_groups_;
 
   GlobalDeviceId root_device_;
+
+  std::vector<uint64_t> incarnations_;
 };
 
 bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b);

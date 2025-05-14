@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -132,6 +133,14 @@ Thunk::CollectiveExecuteParams::Create(
                                  ? &gpu_options->clique_id_callback()
                                  : nullptr;
 
+  auto distributed_client =
+      gpu_options ? gpu_options->distributed_client() : nullptr;
+
+  absl::flat_hash_map<GlobalDeviceId, int> device_to_process_index;
+  if (gpu_options) {
+    device_to_process_index = gpu_options->device_to_process_index();
+  }
+
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       GetGlobalDeviceId(device_id_map, local_device_ordinal));
 
@@ -139,8 +148,8 @@ Thunk::CollectiveExecuteParams::Create(
       collectives, run_options.stream()->parent(),
       run_options.run_options().run_id(), async_streams, local_device_ordinal,
       global_device_id, run_options.run_options().device_assignment(),
-      device_id_map, clique_id_callback, collective_max_nchannels,
-      p2p_max_nchannels);
+      device_id_map, clique_id_callback, distributed_client,
+      device_to_process_index, collective_max_nchannels, p2p_max_nchannels);
 }
 
 Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
@@ -149,6 +158,8 @@ Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
     GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
     const GlobalDeviceIdMap* global_device_id_map,
     const CliqueIdCallback* nccl_clique_id_callback,
+    std::shared_ptr<DistributedRuntimeClient> distributed_client,
+    absl::flat_hash_map<GlobalDeviceId, int> device_to_process_index,
     int64_t collective_max_nchannels, int64_t p2p_max_nchannels)
     : collectives(collectives),
       executor(executor),
@@ -159,6 +170,8 @@ Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
       device_assn(device_assn),
       global_device_id_map(global_device_id_map),
       nccl_clique_id_callback(nccl_clique_id_callback),
+      distributed_client(distributed_client),
+      device_to_process_index(std::move(device_to_process_index)),
       collective_max_nchannels(collective_max_nchannels),
       p2p_max_nchannels(p2p_max_nchannels) {}
 

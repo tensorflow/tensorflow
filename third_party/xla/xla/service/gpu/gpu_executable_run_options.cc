@@ -16,11 +16,13 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 
 #include <map>
+#include <memory>
 #include <optional>
 #include <utility>
 
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/executable_run_options.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/service/global_device_id.h"
 
 namespace xla::gpu {
@@ -54,6 +56,28 @@ GpuExecutableRunOptions& GpuExecutableRunOptions::set_collectives(
 
 GpuCollectives* GpuExecutableRunOptions::collectives() const {
   return collectives_;
+}
+
+GpuExecutableRunOptions& GpuExecutableRunOptions::set_distributed_client(
+    std::shared_ptr<DistributedRuntimeClient> client) {
+  distributed_runtime_client_ = client;
+  return *this;
+}
+
+std::shared_ptr<DistributedRuntimeClient>
+GpuExecutableRunOptions::distributed_client() const {
+  return distributed_runtime_client_;
+}
+
+GpuExecutableRunOptions& GpuExecutableRunOptions::set_device_to_process_index(
+    absl::flat_hash_map<GlobalDeviceId, int> device_to_process_index) {
+  device_to_process_index_ = std::move(device_to_process_index);
+  return *this;
+}
+
+const absl::flat_hash_map<GlobalDeviceId, int>&
+GpuExecutableRunOptions::device_to_process_index() const {
+  return device_to_process_index_;
 }
 
 }  // namespace xla::gpu

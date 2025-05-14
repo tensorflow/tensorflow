@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -280,21 +281,23 @@ class Thunk {
     const DeviceAssignment* device_assn;
     const GlobalDeviceIdMap* global_device_id_map;
     const CliqueIdCallback* nccl_clique_id_callback;
+    std::shared_ptr<DistributedRuntimeClient> distributed_client;
+    absl::flat_hash_map<GlobalDeviceId, int> device_to_process_index;
 
     int64_t collective_max_nchannels;
     int64_t p2p_max_nchannels;
 
    private:
-    CollectiveExecuteParams(GpuCollectives* collectives,
-                            se::StreamExecutor* executor, RunId run_id,
-                            absl::Span<se::Stream* const> async_streams,
-                            int64_t local_device_ordinal,
-                            GlobalDeviceId global_device_id,
-                            const DeviceAssignment* device_assn,
-                            const GlobalDeviceIdMap* global_device_id_map,
-                            const CliqueIdCallback* nccl_clique_id_callback,
-                            int64_t collective_max_nchannels,
-                            int64_t p2p_max_nchannels);
+    CollectiveExecuteParams(
+        GpuCollectives* collectives, se::StreamExecutor* executor, RunId run_id,
+        absl::Span<se::Stream* const> async_streams,
+        int64_t local_device_ordinal, GlobalDeviceId global_device_id,
+        const DeviceAssignment* device_assn,
+        const GlobalDeviceIdMap* global_device_id_map,
+        const CliqueIdCallback* nccl_clique_id_callback,
+        std::shared_ptr<DistributedRuntimeClient> distributed_client,
+        absl::flat_hash_map<GlobalDeviceId, int> device_to_process_index,
+        int64_t collective_max_nchannels, int64_t p2p_max_nchannels);
   };
 
   //===--------------------------------------------------------------------===//
