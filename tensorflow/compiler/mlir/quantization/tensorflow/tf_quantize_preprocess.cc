@@ -37,9 +37,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
+#include "tensorflow/compiler/mlir/stablehlo/transforms/fold_broadcast_pass.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
+#include "tensorflow/compiler/mlir/stablehlo/transforms/mhlo_passes/tf_fuse_convolution_pass.h"
+#include "tensorflow/compiler/mlir/stablehlo/transforms/mhlo_passes/unfuse_batch_norm_pass.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/rename_entrypoint_to_main.h"
-#include "tensorflow/compiler/mlir/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/tf_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
@@ -63,7 +65,8 @@ void AddUnfuseMhloOpsPasses(mlir::PassManager& pm) {
   // Unfuse mhlo BatchNorm to primitive ops.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createUnfuseBatchNormPass());
   // Fuse Conv + Mul to Conv.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createFuseConvolutionPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::odml::tf_quant::createFuseConvolutionPass());
   // Fold broadcast_in_dim + Mul.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createFoldBroadcastPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -84,10 +87,10 @@ void AddTFToStablehloPasses(
   pm.addPass(mlir::stablehlo::CreateLegalizeTFXlaCallModuleToStablehloPass());
 
   // Preprocesses TPU-targeting StableHLO module for support in TF Quantizer.
-  pm.addPass(mlir::tf_quant::CreateTFConvertTpuModelToCpuPass());
+  pm.addPass(mlir::tf_quant::CreateConvertTpuModelToCpuPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::tf_quant::CreateTFCastBf16OpsToF32Pass());
+  pm.addPass(mlir::tf_quant::CreateCastBf16OpsToF32Pass());
 
   // Optimizes the graph via cleanups, merges, rewrites, constant folding,
   // and edge case handling where possible.
@@ -156,7 +159,7 @@ absl::Status PreprocessAndFreezeGraph(
 
   // The AddQuantizationUnitLocPass should be added before any other passes.
   pm_before_freezing_variables.addNestedPass<mlir::func::FuncOp>(
-      mlir::tf_quant::CreateTFAddQuantizationUnitLocPass());
+      mlir::tf_quant::CreateAddQuantizationUnitLocPass());
   pm_before_freezing_variables.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
 
@@ -167,9 +170,8 @@ absl::Status PreprocessAndFreezeGraph(
   // Makes certain functions immune to the `InlinerPass`. Used to preserve
   // aliased functions.
   pm_after_freezing_variables.addNestedPass<mlir::func::FuncOp>(
-      mlir::tf_quant::CreateTFMarkFunctionsNoinlinePass(
-          std::vector<std::string>(noinline_functions.begin(),
-                                   noinline_functions.end())));
+      mlir::tf_quant::CreateMarkFunctionsNoinlinePass(std::vector<std::string>(
+          noinline_functions.begin(), noinline_functions.end())));
   if (is_inliner_run) {
     pm_after_freezing_variables.addPass(mlir::createInlinerPass());
   }
