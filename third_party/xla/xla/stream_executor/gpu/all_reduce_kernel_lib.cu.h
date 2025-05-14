@@ -18,33 +18,81 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 
+#include "third_party/gpus/cuda/include/cuda_bf16.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 
 namespace stream_executor::gpu {
+
+constexpr int64_t kNumElementsPerThread = 4;
+
+template <typename T>
+union Vec;
+
+template <>
+union alignas(16) Vec<float> {
+  using PackedType = int4;
+
+  float data[4];
+  PackedType packed;
+};
+
+template <>
+union alignas(8) Vec<__nv_bfloat16> {
+  using PackedType = int2;
+
+  __nv_bfloat16 data[4];
+  PackedType packed;
+};
+
+template <typename T>
+__device__ __forceinline__ Vec<T> VecLoad(T* addr) {
+  Vec<T> vec;
+  vec.packed = *(reinterpret_cast<typename Vec<T>::PackedType*>(addr));
+  return vec;
+}
+
+template <typename T>
+__device__ __forceinline__ void VecStore(T* addr, const Vec<T>& vec) {
+  *(reinterpret_cast<typename Vec<T>::PackedType*>(addr)) = vec.packed;
+}
+
+template <typename T>
+__device__ __forceinline__ void VecAdd(Vec<T>& res, const Vec<T>& vec) {
+  res.data[0] += vec.data[0];
+  res.data[1] += vec.data[1];
+  res.data[2] += vec.data[2];
+  res.data[3] += vec.data[3];
+}
 
 template <typename T>
 __global__ void AllReduceKernelImpl(
     std::array<void* __restrict__, kMaxNumAllReduceInputPtrs> input_ptrs,
     T* __restrict__ output_ptr, int64_t num_inputs, int64_t num_elements) {
-  int64_t offset = blockIdx.x * blockDim.x + threadIdx.x;
-  int64_t stride = blockDim.x * gridDim.x;
+  int64_t offset =
+      kNumElementsPerThread * (blockIdx.x * blockDim.x + threadIdx.x);
+  int64_t stride = kNumElementsPerThread * blockDim.x * gridDim.x;
 
   for (int i = offset; i < num_elements; i += stride) {
-    T sum = 0;
+    Vec<T> sum;
+    sum.data[0] = 0;
+    sum.data[1] = 0;
+    sum.data[2] = 0;
+    sum.data[3] = 0;
 
 #pragma unroll
     for (int j = 0; j < kMaxNumAllReduceInputPtrs; ++j) {
       if (j >= num_inputs) break;
 
-      // TODO(b/383125489): Add vectorization.
       T* input_ptr =
           reinterpret_cast<  // REINTERPRET_CAST_OK=tsl::safe_reinterpret_cast
-                             // doesn't work with __restrict__.
+                             // doesn't work in CUDA device functions.
               T* __restrict__>(input_ptrs[j]);
-      sum += input_ptr[i];
+
+      Vec<T> input_vec = VecLoad(input_ptr + i);
+      VecAdd(sum, input_vec);
     }
 
-    output_ptr[i] = sum;
+    VecStore(output_ptr + i, sum);
   }
 }
 
