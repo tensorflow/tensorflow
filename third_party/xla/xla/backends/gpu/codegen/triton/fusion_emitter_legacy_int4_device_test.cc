@@ -71,11 +71,10 @@ class TritonTest : public GpuCodegenTest {
             GpuComputeComp())) {
       return stream_executor::GpuComputeCapability{
           device_desc().rocm_compute_capability()};
-    } else {
-      return stream_executor::GpuComputeCapability{
-          stream_executor::CudaComputeCapability{
-              stream_executor::CudaComputeCapability::kAmpere, 0}};
     }
+    return stream_executor::GpuComputeCapability{
+        stream_executor::CudaComputeCapability{
+            stream_executor::CudaComputeCapability::kAmpere, 0}};
   }
 
  protected:

@@ -757,6 +757,43 @@ CHECK: {{.*}} = pred[122,5]{0,1} bitcast({{.*}})
       IsOkAndHolds(true));
 }
 
+TEST_F(NestGemmFusionTest, CheckDimensionsOfBroadcastAfterBitcastIsHoisted) {
+  absl::string_view hlo = R"(
+dot {
+  p0 = bf16[1,8] parameter(0)
+  broadcast0 = bf16[1,8,8] broadcast(p0), dimensions={0,2}
+  lhs = bf16[1,2,4,8] bitcast(broadcast0)
+
+  p1 = bf16[1,8] parameter(1)
+  broadcast1 = bf16[1,8,8] broadcast(p1), dimensions={0,2}
+  rhs = bf16[1,2,4,8] bitcast(broadcast1)
+
+  ROOT dot = bf16[2,1,4,4] dot(lhs, rhs),
+    lhs_contracting_dims={3}, lhs_batch_dims={1,0},
+    rhs_contracting_dims={3}, rhs_batch_dims={1,0}
+}
+
+ENTRY entry {
+  p0 = bf16[1,8] parameter(0)
+  ROOT fusion = bf16[2,1,4,4] fusion(p0, p0), kind=kCustom, calls=dot,
+    backend_config={"fusion_backend_config":{kind:"__triton_gemm",
+    triton_gemm_config: {"block_m":32,"block_n":16,"block_k":32,
+    "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK: bf16[1,2,4,8]{{.*}} broadcast({{.*}}), dimensions={0,3}
+CHECK: bf16[1,2,4,8]{{.*}} broadcast({{.*}}), dimensions={0,3}
+)"),
+      IsOkAndHolds(true));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

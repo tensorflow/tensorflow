@@ -453,7 +453,7 @@ absl::StatusOr<ReshapeBroadcastOutputParams> CalculateBroadcastOutputReshape(
     }
     // Update the expected operand shape.
     for (int64_t j = target_from; j < target_to; ++j) {
-      result.new_broadcast_dim_map.push_back(new_operand_dims.size());
+      result.new_broadcast_dim_map.push_back(j);
       new_operand_dims.push_back(target_dims[j]);
     }
   }
