@@ -1,0 +1,13 @@
+diff --git a/shardy/dialect/sdy/transforms/import/manual_axes_cleanup.cc b/shardy/dialect/sdy/transforms/import/manual_axes_cleanup.cc
+index 0811026..83ae1ee 100644
+--- a/shardy/dialect/sdy/transforms/import/manual_axes_cleanup.cc
++++ b/shardy/dialect/sdy/transforms/import/manual_axes_cleanup.cc
+@@ -77,7 +77,7 @@ addUnusedManualAxesToReplicatedAxes(
+     SmallVector<AxisRefAttr> newReplicatedAxes =
+         llvm::to_vector(sharding.getReplicatedAxes());
+     llvm::transform(unusedManualAxes, std::back_inserter(newReplicatedAxes),
+-                    [&](StringRef axis) {
++                    [sharding = sharding](StringRef axis) {
+                       return AxisRefAttr::get(sharding.getContext(), axis);
+                     });
+     llvm::sort(newReplicatedAxes, meshComparator);
