@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/raw_buffer.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
@@ -50,15 +51,21 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
 // An structure which represents a single copy of a chunk out of a buffer
 // with an assigned 'buffer_id'.
 struct DmaCopyChunk {
-  xla::ifrt::ArrayRef arr;
-  xla::PjRtBuffer* buffer;
+  absl::AnyInvocable<xla::PjRtFuture<>(void* dst, int64_t offset,
+                                       int64_t transfer_size)>
+      copy_fn;
   size_t buffer_id;
   size_t offset;
   size_t size;
 
   static DmaCopyChunk Make(xla::ifrt::ArrayRef arr, xla::PjRtBuffer* buffer,
                            size_t buffer_id, size_t offset, size_t size) {
-    return DmaCopyChunk{std::move(arr), buffer, buffer_id, offset, size};
+    return DmaCopyChunk{
+        [arr, buffer](void* dst, int64_t offset,
+                      int64_t transfer_size) -> xla::PjRtFuture<> {
+          return buffer->CopyRawToHost(dst, offset, transfer_size);
+        },
+        buffer_id, offset, size};
   }
 
   // Divides an IFRT array up evenly for copying.
@@ -86,7 +93,7 @@ class PremappedCopierState {
   // future. Since on_done can be called from the TPU thread, avoid doing any
   // serious work (or even calling ReturnBuffer).
   void ScheduleCopy(
-      const DmaCopyChunk& blob,
+      DmaCopyChunk blob,
       absl::AnyInvocable<void(PremappedCopierState* state, void* buf,
                               const DmaCopyChunk& chunk) &&>
           on_done);
@@ -109,6 +116,54 @@ class PremappedCopierState {
   size_t xfer_size_;
   size_t max_copies_;
   std::vector<void*> available_copy_offsets_ ABSL_GUARDED_BY(mu_);
+};
+
+// A PullTable::Entry impl for a list of raw_buffer + ready_future.
+class RawBufferEntry : public PullTable::Entry {
+ public:
+  struct BufferRef {
+    // TODO(parkers): Technically this should be a use-ref instead of a
+    // ready_future + buffer, but there is no PJRT api for this.
+    xla::PjRtFuture<> ready_future;
+    tsl::RCReference<xla::PjRtRawBuffer> buffer;
+    size_t buf_size;
+  };
+
+  explicit RawBufferEntry(std::vector<BufferRef> arrs,
+                          std::shared_ptr<PremappedCopierState> state,
+                          size_t xfer_size);
+  bool Handle(tsl::RCReference<ConnectionState> state,
+              const SocketTransferPullRequest& req,
+              size_t base_req_id) override;
+
+ private:
+  absl::Mutex mu_;
+  size_t num_consumed_bufs_ = 0;
+  std::vector<BufferRef> arrs_;
+  std::shared_ptr<PremappedCopierState> state_;
+  size_t xfer_size_;
+};
+
+// A PullTable::Entry impl for a list of pjrt buffers.
+class PjRtBufferEntry : public PullTable::Entry {
+ public:
+  struct BufferRef {
+    std::shared_ptr<xla::PjRtBuffer> buffer;
+    size_t buf_size;
+  };
+  explicit PjRtBufferEntry(std::vector<BufferRef> arrs,
+                           std::shared_ptr<PremappedCopierState> state,
+                           size_t xfer_size);
+  bool Handle(tsl::RCReference<ConnectionState> state,
+              const SocketTransferPullRequest& req,
+              size_t base_req_id) override;
+
+ private:
+  absl::Mutex mu_;
+  size_t num_consumed_bufs_ = 0;
+  std::vector<BufferRef> arrs_;
+  std::shared_ptr<PremappedCopierState> state_;
+  size_t xfer_size_;
 };
 
 // Creates a ChunkDestination for a buffer_index of an
