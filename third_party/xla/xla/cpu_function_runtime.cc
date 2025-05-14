@@ -15,41 +15,18 @@ limitations under the License.
 
 #include "xla/cpu_function_runtime.h"
 
+#include <cstddef>
+#include <cstdint>
+
 #include "absl/base/dynamic_annotations.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace {
-// Inline memory allocation routines here, because depending on 'base' brings
-// in libraries which use c++ streams, which adds considerable code size on
-// android.
-void* aligned_malloc(size_t size, int minimum_alignment) {
-#if defined(__ANDROID__) || defined(OS_ANDROID) || defined(OS_CYGWIN)
-  return memalign(minimum_alignment, size);
-#elif defined(_WIN32)
-  return _aligned_malloc(size, minimum_alignment);
-#else  // !__ANDROID__ && !OS_ANDROID && !OS_CYGWIN
-  void* ptr = nullptr;
-  // posix_memalign requires that the requested alignment be at least
-  // sizeof(void*). In this case, fall back on malloc which should return memory
-  // aligned to at least the size of a pointer.
-  const int required_alignment = sizeof(void*);
-  if (minimum_alignment < required_alignment) return malloc(size);
-  if (posix_memalign(&ptr, minimum_alignment, size) != 0)
-    return nullptr;
-  else
-    return ptr;
-#endif
-}
 
-void aligned_free(void* aligned_memory) {
-#if defined(_WIN32)
-  _aligned_free(aligned_memory);
-#else
-  free(aligned_memory);
-#endif
-}
+xla::FreeDeleter freeDeleter;
 
-size_t align_to(size_t n, size_t align) {
+constexpr size_t align_to(size_t n, size_t align) {
   return (((n - 1) / align) + 1) * align;
 }
 }  // namespace
@@ -77,7 +54,7 @@ void* MallocContiguousBuffers(const BufferInfo* buffer_infos, size_t n,
       AlignedBufferBytes(buffer_infos, n, allocate_entry_params);
   void* contiguous = nullptr;
   if (total > 0) {
-    contiguous = aligned_malloc(total, Align());
+    contiguous = xla::AlignedAlloc(Align(), total).release();
     if (annotate_initialized) {
       // Since the memory for temp buffers is written to by JITed code, msan has
       // no way of knowing the memory was initialized, so explicitly mark it.
@@ -101,7 +78,7 @@ void* MallocContiguousBuffers(const BufferInfo* buffer_infos, size_t n,
 
 void FreeContiguous(void* contiguous) {
   if (contiguous != nullptr) {
-    aligned_free(contiguous);
+    freeDeleter(contiguous);
   }
 }
 }  // namespace cpu_function_runtime
