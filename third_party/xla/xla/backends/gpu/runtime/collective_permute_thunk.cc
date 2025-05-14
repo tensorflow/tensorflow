@@ -240,7 +240,7 @@ bool operator==(const CallRendezvousKey& a, const CallRendezvousKey& b) {
   return a.run_id == b.run_id;
 }
 
-absl::Status CollectivePermuteStartThunk::RunCollective(
+absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
@@ -300,9 +300,9 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
     }
   }
 
-  auto status = ::xla::gpu::RunCollectivePermute(
+  TF_RETURN_IF_ERROR(::xla::gpu::RunCollectivePermute(
       collectives, source_target, device_buffers, stream, comm_handle.comm,
-      device_string, current_id, use_memcpy, recv_ptr_map_);
+      device_string, current_id, use_memcpy, recv_ptr_map_));
 
   if (use_memcpy) {
     std::optional<int64_t> source_id = source_target.source;
@@ -341,7 +341,7 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
     }
   }
 
-  return status;
+  return !use_memcpy;
 }
 
 absl::Status RunCollectivePermute(

@@ -97,6 +97,8 @@ namespace {
 struct ProcessGpuCliques {
   absl::Mutex mu;
   absl::node_hash_map<GpuCliqueKey, LockableGpuClique> map ABSL_GUARDED_BY(mu);
+  absl::node_hash_map<GpuCliqueKey, std::shared_ptr<RendezvousFlag>>
+      clique_to_initialization_rendezvous_flag ABSL_GUARDED_BY(mu);
 };
 }  // namespace
 
@@ -594,6 +596,20 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
   return InitializeGpuClique(collectives, device, run_id, clique_key,
                              clique_id_callback, num_local_participants, rank,
                              config);
+}
+
+std::shared_ptr<RendezvousFlag> GetRendezvousFlagForClique(
+    const GpuCliqueKey& clique_key) {
+  ProcessGpuCliques& cliques = GetProcessGpuCliques();
+  absl::MutexLock lock(&cliques.mu);
+
+  auto it = cliques.clique_to_initialization_rendezvous_flag.find(clique_key);
+  if (it == cliques.clique_to_initialization_rendezvous_flag.end()) {
+    cliques.clique_to_initialization_rendezvous_flag.emplace(
+        clique_key, std::make_shared<RendezvousFlag>());
+  }
+
+  return cliques.clique_to_initialization_rendezvous_flag[clique_key];
 }
 
 }  // namespace xla::gpu

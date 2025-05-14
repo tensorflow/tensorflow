@@ -91,7 +91,7 @@ AllGatherStartThunk::AllGatherStartThunk(ThunkInfo thunk_info,
   return impl::GetAllGatherConfig(inst).config.group_mode;
 }
 
-absl::Status AllGatherStartThunk::RunCollective(
+absl::StatusOr<bool> AllGatherStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
@@ -99,8 +99,9 @@ absl::Status AllGatherStartThunk::RunCollective(
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
-  return xla::gpu::RunAllGather(collectives, device_buffers, stream,
-                                comm_handle.comm);
+  TF_RETURN_IF_ERROR(xla::gpu::RunAllGather(collectives, device_buffers, stream,
+                                            comm_handle.comm));
+  return true;
 }
 
 absl::Status RunAllGather(GpuCollectives* collectives,
