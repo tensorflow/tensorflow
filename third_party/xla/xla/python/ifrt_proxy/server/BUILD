@@ -266,6 +266,7 @@ cc_library(
         "//xla/python/pjrt_ifrt:xla_host_callback_proto_cc",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/status",
