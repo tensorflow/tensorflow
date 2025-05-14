@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -64,7 +65,7 @@ CublasBackend::GetSupportedConfigs(
 
   std::unique_ptr<se::DeviceMemoryAllocator> allocator =
       std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
-  TF_ASSIGN_OR_RETURN(absl::StatusOr<se::Stream*> stream,
+  TF_ASSIGN_OR_RETURN(se::Stream * stream,
                       allocator->GetStream(stream_executor->device_ordinal()));
 
   // We use GemmConfig::For with GemmBackendConfig as a fallback because
@@ -79,28 +80,27 @@ CublasBackend::GetSupportedConfigs(
           &instr, backend_config,
           target_config().device_description.gpu_compute_capability()));
 
-  // Get dummy buffers for the GEMM instruction.
-  const HloInstruction* lhs_operand = instr.operand(0);
-  se::DeviceMemoryBase lhs_buffer = se::DeviceMemoryBase(
-      nullptr, xla::ShapeUtil::ByteSizeOf(lhs_operand->shape()));
-  const HloInstruction* rhs_operand = instr.operand(1);
-  se::DeviceMemoryBase rhs_buffer = se::DeviceMemoryBase(
-      nullptr, xla::ShapeUtil::ByteSizeOf(rhs_operand->shape()));
-  // For custom call, the output buffer is the first tuple element.
-  const Shape& output_shape = instr.shape().tuple_shapes(0);
-  se::DeviceMemoryBase output_buffer =
-      se::DeviceMemoryBase(nullptr, xla::ShapeUtil::ByteSizeOf(output_shape));
+  TF_ASSIGN_OR_RETURN(RedzoneBuffers rz_buffers,
+                      RedzoneBuffers::FromInstruction(
+                          instr, allocator.get(), stream,
+                          RedzoneBuffers::kAllInputsAllOutputs, true, true,
+                          instr.GetModule()
+                              ->config()
+                              .debug_options()
+                              .xla_gpu_redzone_padding_bytes()));
 
   TF_ASSIGN_OR_RETURN(
       GemmConfig::DescriptorsTuple desc,
-      gemm_config.GetMatrixDescriptors(lhs_buffer, rhs_buffer, output_buffer));
+      gemm_config.GetMatrixDescriptors(rz_buffers.input_buffers().at(0),
+                                       rz_buffers.input_buffers().at(1),
+                                       rz_buffers.output_buffers().at(0)));
 
   se::blas::BlasSupport* blas = stream_executor->AsBlas();
   if (blas == nullptr) {
     return absl::InternalError("Failed to getBlas support.");
   }
   std::vector<se::blas::AlgorithmType> algorithms;
-  blas->GetBlasGemmAlgorithms(*stream, desc.lhs, desc.rhs, &desc.output,
+  blas->GetBlasGemmAlgorithms(stream, desc.lhs, desc.rhs, &desc.output,
                               &gemm_config.alpha, &gemm_config.beta,
                               &algorithms);
 
