@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 
+#include <cstdint>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "third_party/protobuf/message.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {

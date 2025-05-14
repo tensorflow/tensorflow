@@ -17,8 +17,15 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <cstdlib>
+#include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
