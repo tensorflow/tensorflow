@@ -90,6 +90,11 @@ message DebugOptions {
     PGLE_STRICTNESS_LEVEL_ERROR = 2;
   }
 
+  enum DistributedPlatformName {
+    DISTRIBUTED_PLATFORM_NAME_UNKNOWN = 0;
+    DISTRIBUTED_PLATFORM_NAME_A3_PLUS = 1;
+  }
+
   enum ShapeChecks {
     // Do not insert any shape checks for dynamically shaped operations; output
     // buffers might contain garbage data if shapes don't match.
@@ -235,6 +240,9 @@ message DebugOptions {
   // clang-format on
 
   reserved 160;  // Was xla_gpu_enable_cudnn_frontend
+
+  // Name of the distributed platform.
+  DistributedPlatformName xla_gpu_experimental_distributed_platform_name = 389;
 
   PipelineParallelismOptLevel
       xla_gpu_experimental_pipeline_parallelism_opt_level = 351;
@@ -1208,7 +1216,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 389
+  // Next id: 390
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

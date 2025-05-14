@@ -36,6 +36,8 @@ using ::testing::Combine;
 using ::testing::TestWithParam;
 using ::testing::ValuesIn;
 
+constexpr float kEpsilon = 0.01;
+
 enum class InterpolatorType {
   NN = 0,
   Complement = 1,
@@ -180,6 +182,48 @@ INSTANTIATE_TEST_SUITE_P(
       return absl::StrCat(std::get<1>(info.param).test_name, "x",
                           std::get<0>(info.param));
     });
+
+TEST(EuclideanWeightedAverage2DInterpolatorTest, ReturnsWeightedAverage) {
+  auto interpolator = std::make_unique<EuclideanWeightedAverageInterpolator<2>>(
+      /*next_context=*/std::array<int64_t, 2>{-1, -1},
+      /*next_power_context=*/std::array<int64_t, 2>{1, 1},
+      /*max_context=*/std::array<int64_t, 2>{16, 16},
+      /*min_context=*/std::array<int64_t, 2>{8, 8});
+  std::array<int64_t, 2> p1 = {8, 16};
+  std::array<int64_t, 2> p2 = {8, 8};
+  std::array<int64_t, 2> p3 = {16, 8};
+  std::array<int64_t, 2> p4 = {16, 16};
+
+  std::vector<std::pair<std::array<int64_t, 2>, int>> plane;
+  plane.push_back({p1, 1});
+  plane.push_back({p2, 2});
+  plane.push_back({p3, 3});
+  plane.push_back({p4, 4});
+
+  for (const auto& point : plane) {
+    std::array<int64_t, 2> plane_point = point.first;
+    int val = point.second;
+    interpolator->Add(plane_point, val);
+  }
+  // Near the first point.
+  std::array<int64_t, 2> p = {7, 9};
+  EXPECT_NEAR(interpolator->Eval(p), 1.94, kEpsilon);
+  // Near the second point.
+  p = {15, 17};
+  EXPECT_NEAR(interpolator->Eval(p), 3.83, kEpsilon);
+  // Nearer only for first dim.
+  p = {13, 8};
+  EXPECT_NEAR(interpolator->Eval(p), 2.72, kEpsilon);
+  // Extrapolate first point.
+  p = {7, 7};
+  EXPECT_NEAR(interpolator->Eval(p), 2.0, kEpsilon);
+  // Extrapolate second point.
+  p = {17, 9};
+  EXPECT_NEAR(interpolator->Eval(p), 3.05, kEpsilon);
+  // Exact point.
+  p = {8, 16};
+  EXPECT_NEAR(interpolator->Eval(p), 1.00, kEpsilon);
+}
 
 }  // namespace
 }  // namespace xla::gpu

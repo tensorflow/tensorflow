@@ -19,8 +19,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <tuple>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -32,8 +35,30 @@ namespace xla::gpu {
 
 class MatmulInterpolator {
  public:
+  // A key for `interpolators_` map, which represents the data type of a matrix
+  // multiplication.
+  struct MatmulDTypeKey {
+    std::string lhs_dtype;
+    std::string rhs_dtype;
+    std::string out_dtype;
+
+    bool operator==(const MatmulDTypeKey& other) const {
+      return std::tie(lhs_dtype, rhs_dtype, out_dtype) ==
+             std::tie(other.lhs_dtype, other.rhs_dtype, other.out_dtype);
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const MatmulDTypeKey& key) {
+      return H::combine(std::move(h), key.lhs_dtype, key.rhs_dtype,
+                        key.out_dtype);
+    }
+  };
+
   static absl::StatusOr<std::unique_ptr<MatmulInterpolator>> Create(
       const HloInstructionProfileList& profiles,
+      const se::DeviceDescription& device_info);
+
+  static absl::StatusOr<std::unique_ptr<MatmulInterpolator>> Create(
       const se::DeviceDescription& device_info);
 
   // Returns the estimated runtime for a supported `collective`.
@@ -41,13 +66,26 @@ class MatmulInterpolator {
       const HloInstruction& instr) const;
 
  private:
-  // Uses `EuclideanNNInterpolator` to figure get the closest neighbour from
-  // profiles.
   explicit MatmulInterpolator(
       std::unique_ptr<EuclideanNNInterpolator<int64_t, 4>> interpolator)
-      : interpolator_(std::move(interpolator)) {}
+      : nn_interpolator_(std::move(interpolator)) {}
 
-  std::unique_ptr<EuclideanNNInterpolator<int64_t, 4>> interpolator_;
+  explicit MatmulInterpolator(
+      std::unique_ptr<EuclideanWeightedAverageInterpolator<4>>
+          fallback_interpolator,
+      std::unique_ptr<absl::flat_hash_map<
+          MatmulDTypeKey,
+          std::unique_ptr<EuclideanWeightedAverageInterpolator<4>>>>
+          interpolators)
+      : fallback_interpolator_(std::move(fallback_interpolator)),
+        interpolators_(std::move(interpolators)) {}
+
+  std::unique_ptr<EuclideanWeightedAverageInterpolator<4>>
+      fallback_interpolator_;
+  std::unique_ptr<absl::flat_hash_map<
+      MatmulDTypeKey, std::unique_ptr<EuclideanWeightedAverageInterpolator<4>>>>
+      interpolators_;
+  std::unique_ptr<EuclideanNNInterpolator<int64_t, 4>> nn_interpolator_;
 };
 
 }  // namespace xla::gpu

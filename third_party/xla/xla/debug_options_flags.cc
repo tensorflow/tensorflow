@@ -802,6 +802,26 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         return true;
       };
 
+  // Custom "sub-parser" lambda for
+  // `xla_gpu_experimental_distributed_platform_name`.
+  auto setter_for_xla_gpu_experimental_distributed_platform_name =
+      [debug_options](const std::string& value) {
+        DebugOptions::DistributedPlatformName platform_name;
+        if (!DebugOptions::DistributedPlatformName_Parse(
+                absl::AsciiStrToUpper(value), &platform_name)) {
+          // Try with the prefix if the direct parse fails, for consistency
+          // with how enums are sometimes specified.
+          if (!DebugOptions::DistributedPlatformName_Parse(
+                  "DISTRIBUTED_PLATFORM_NAME_" + absl::AsciiStrToUpper(value),
+                  &platform_name)) {
+            return false;
+          }
+        }
+        debug_options->set_xla_gpu_experimental_distributed_platform_name(
+            platform_name);
+        return true;
+      };
+
   // Don't use an initializer list for initializing the vector; this would
   // create a temporary copy, and exceeds the stack space when compiling with
   // certain configurations.
@@ -2365,6 +2385,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_experimental_enable_triton_tma),
       debug_options->xla_gpu_experimental_enable_triton_tma(),
       "Enable Triton's TMA loads/stores for arguments where applicable."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_distributed_platform_name",
+      setter_for_xla_gpu_experimental_distributed_platform_name,
+      DebugOptions::DistributedPlatformName_Name(
+          debug_options->xla_gpu_experimental_distributed_platform_name()),
+      "Name of the distributed platform."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

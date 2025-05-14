@@ -2470,13 +2470,13 @@ SpmdPartitioningVisitor::MakePartitioningState() {
   state.next_channel_id = next_channel_id_;
   state.reshard_cache = &reshard_cache_;
   state.partitioner = partitioner_;
-  if (!device_groups_.empty()) {
+  if (device_groups_.has_value()) {
     // Use the original collective creator and partition_id to call
     // CreatePerGroupPartitioningState(). Current collective_ops_creator_ and
     // partition_id_ have been rewritten to be subgrouped.
     state.collective_ops_creator = *visiting_collective_ops_creator_;
     state.partition_id = *visiting_partition_id_;
-    return CreatePerGroupPartitioningState(state, device_groups_, &b_);
+    return CreatePerGroupPartitioningState(state, *device_groups_, &b_);
   } else {
     state.collective_ops_creator = collective_ops_creator_;
     state.partition_id = partition_id_;
@@ -2493,6 +2493,22 @@ std::vector<ReplicaGroup> SpmdPartitioningVisitor::CreateReplicaGroups(
       device_groups.emplace_back();
       for (int64_t id : group) {
         device_groups.back().add_replica_ids(i * num_partitions_ + id);
+      }
+    }
+  }
+  return device_groups;
+}
+
+std::vector<ReplicaGroup> SpmdPartitioningVisitor::CreateReplicaGroups(
+    const hlo_sharding_util::DeviceGroupTileAssignment& groups) {
+  std::vector<ReplicaGroup> device_groups;
+  device_groups.reserve(groups.num_groups() * num_replicas_);
+  for (int64_t i = 0; i < num_replicas_; ++i) {
+    for (int64_t g = 0; g < groups.num_groups(); ++g) {
+      device_groups.emplace_back();
+      for (int64_t d = 0; d < groups.num_devices_per_group(); ++d) {
+        device_groups.back().add_replica_ids(i * num_partitions_ +
+                                             groups(g, d));
       }
     }
   }
@@ -2699,7 +2715,8 @@ absl::Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
     // uses them.
     device_groups_ = group_sharding.device_groups;
     visiting_num_partitions_ = num_partitions_;
-    num_partitions_ = num_partitions_ / group_sharding.device_groups.size();
+    num_partitions_ =
+        num_partitions_ / group_sharding.device_groups.num_groups();
     visiting_partition_id_ = partition_id_;
     visiting_collective_ops_creator_ = std::move(collective_ops_creator_);
     auto grouped_state = MakePartitioningState();
@@ -2752,8 +2769,8 @@ absl::Status SpmdPartitioningVisitor::Postprocess(HloInstruction* hlo) {
     visiting_hlo_operand_shardings_.clear();
   }
 
-  if (!device_groups_.empty()) {
-    device_groups_.clear();
+  if (device_groups_.has_value()) {
+    device_groups_.reset();
     num_partitions_ = *visiting_num_partitions_;
     visiting_num_partitions_.reset();
     collective_ops_creator_ = *visiting_collective_ops_creator_;

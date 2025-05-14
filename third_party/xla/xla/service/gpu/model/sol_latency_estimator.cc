@@ -21,12 +21,14 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,12 +37,14 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/model/collective_interpolator.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
+#include "xla/service/gpu/model/matmul_interpolator.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -54,6 +58,17 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
+bool IsTritonGemm(const HloInstruction& instr) {
+  if (instr.called_computations().size() != 1) {
+    return false;
+  }
+  if (!IsTritonFusedComputation(*instr.called_computations()[0])) {
+    return false;
+  }
+  auto fused_range = instr.fused_instructions();
+  return absl::c_count_if(fused_range, HloPredicateIsOp<HloOpcode::kDot>) == 1;
+}
 
 absl::StatusOr<HloInstructionProfileList> ReadProfiles(
     const std::string& perf_table_path,
@@ -189,6 +204,18 @@ std::optional<absl::Duration> DispatchEstimation(
   }
 }
 
+std::optional<absl::Duration> MatmulPerfTableDuration(
+    const HloInstruction& instr, const MatmulInterpolator& interpolator) {
+  if (!IsCublasGemm(instr) && IsTritonGemm(instr)) {
+    return std::nullopt;
+  }
+  std::optional<absl::Duration> val = interpolator.EstimatedRuntime(instr);
+  if (!val.has_value()) {
+    return std::nullopt;
+  }
+  return *val;
+}
+
 }  // namespace
 
 /*static*/ absl::Duration SolLatencyEstimator::ComputeCollectiveTime(
@@ -266,6 +293,12 @@ LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
     return kLowCost;
   }
 
+  if (std::optional<absl::Duration> matmul_duration =
+          MatmulPerfTableDuration(*instr, *matmul_interpolator_);
+      matmul_duration.has_value()) {
+    return absl::ToDoubleMicroseconds(*matmul_duration);
+  }
+
   absl::Duration total_estimated_time =
       gpu_performance_model_
           .EstimateRunTimeForInstruction(instr, &*cost_analysis_)
@@ -282,7 +315,7 @@ SolLatencyEstimator::SolLatencyEstimator(
     std::unique_ptr<LatencyEstimator> latency_estimator,
     const se::DeviceDescription& gpu_info,
     HloCostAnalysis::ShapeSizeFunction shape_size_function,
-    HloComputation* computation)
+    const HloComputation* computation)
     : config_(config),
       gpu_info_(gpu_info),
       gpu_performance_model_(gpu_info),
@@ -322,6 +355,23 @@ SolLatencyEstimator::SolLatencyEstimator(
   }
   if (collective_interpolator.ok()) {
     collective_interpolator_ = *std::move(collective_interpolator);
+  }
+
+  absl::StatusOr<std::unique_ptr<MatmulInterpolator>> matmul_interpolator;
+  absl::StatusOr<HloInstructionProfileList> matmul_profiles =
+      ReadProfiles(computation->parent()
+                       ->config()
+                       .debug_options()
+                       .xla_gpu_experimental_matmul_perf_table_path(),
+                   gpu_info);
+  if (matmul_profiles.ok()) {
+    matmul_interpolator =
+        MatmulInterpolator::Create(*matmul_profiles, gpu_info);
+  } else {
+    matmul_interpolator = MatmulInterpolator::Create(gpu_info);
+  }
+  if (matmul_interpolator.ok()) {
+    matmul_interpolator_ = *std::move(matmul_interpolator);
   }
 }
 
