@@ -183,11 +183,11 @@ int64_t RecursiveElementCount(const Shape& shape) {
       total += RecursiveElementCount(ShapeUtil::GetTupleElementShape(shape, i));
     }
     return total;
-  } else if (shape.IsArray()) {
-    return ShapeUtil::ElementsIn(shape);
-  } else {
-    return 0;
   }
+  if (shape.IsArray()) {
+    return ShapeUtil::ElementsIn(shape);
+  }
+  return 0;
 }
 
 // Returns whether the given value is infinity.
@@ -693,7 +693,8 @@ absl::Status EqualHelper(const LiteralSlice& expected,
   absl::Status result;
   if (expected.shape().IsTuple()) {
     ShapeIndex next_index = shape_index;
-    for (int i = 0; i < ShapeUtil::TupleElementCount(expected.shape()); ++i) {
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(expected.shape());
+         ++i) {
       next_index.push_back(i);
       absl::Status tuple_result =
           EqualHelper(LiteralSlice(expected, {i}), LiteralSlice(actual, {i}),
@@ -781,6 +782,7 @@ absl::Status NearHelper(const LiteralSlice& expected,
           return_status = AppendStatus(return_status, element_result.message());
         }
       }
+      element_index.pop_back();
     }
     if (!return_status.ok() && shape_index.empty()) {
       // Emit a top-level error message containing the top-level shape in case
