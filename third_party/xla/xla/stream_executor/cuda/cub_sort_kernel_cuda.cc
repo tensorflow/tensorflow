@@ -23,6 +23,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_fp16.h"  // IWYU pragma: keep
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"  // IWYU pragma: keep
+#include "xla/stream_executor/cuda/cuda_status.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -34,16 +35,16 @@ absl::Status CubSortKeysExecute(
     xla::ffi::Result<xla::ffi::AnyBuffer> d_keys_out, size_t num_items,
     bool descending, size_t batch_size, CUstream stream) {
   size_t temp_bytes = d_temp_storage.size_bytes();
-  return CubSortKeys<KeyT>(d_temp_storage.untyped_data(), temp_bytes,
-                           d_keys_in.untyped_data(), d_keys_out->untyped_data(),
-                           num_items, descending, batch_size, stream);
+  return ToStatus(CubSortKeys<KeyT>(
+      d_temp_storage.untyped_data(), temp_bytes, d_keys_in.untyped_data(),
+      d_keys_out->untyped_data(), num_items, descending, batch_size, stream));
 }
 
 template <typename KeyT>
 absl::Status CubSortKeysGetScratchSize(size_t* temp_bytes, size_t num_items,
                                        size_t batch_size) {
-  return CubSortKeys<KeyT>(nullptr, *temp_bytes, nullptr, nullptr, num_items,
-                           false, batch_size, nullptr);
+  return ToStatus(CubSortKeys<KeyT>(nullptr, *temp_bytes, nullptr, nullptr,
+                                    num_items, false, batch_size, nullptr));
 }
 
 template <typename KeyT, typename ValT>
@@ -54,18 +55,18 @@ absl::Status CubSortPairsExecute(
     xla::ffi::Result<xla::ffi::AnyBuffer> d_values_out, size_t num_items,
     bool descending, size_t batch_size, CUstream stream) {
   size_t temp_bytes = d_temp_storage.size_bytes();
-  return CubSortPairs<KeyT, ValT>(
+  return ToStatus(CubSortPairs<KeyT, ValT>(
       d_temp_storage.untyped_data(), temp_bytes, d_keys_in.untyped_data(),
       d_keys_out->untyped_data(), d_values_in.untyped_data(),
-      d_values_out->untyped_data(), num_items, descending, batch_size, stream);
+      d_values_out->untyped_data(), num_items, descending, batch_size, stream));
 }
 
 template <typename KeyT, typename ValT>
 absl::Status CubSortPairsGetScratchSize(size_t* temp_bytes, size_t num_items,
                                         size_t batch_size) {
-  return CubSortPairs<KeyT, ValT>(nullptr, *temp_bytes, nullptr, nullptr,
-                                  nullptr, nullptr, num_items, false,
-                                  batch_size, nullptr);
+  return ToStatus(CubSortPairs<KeyT, ValT>(nullptr, *temp_bytes, nullptr,
+                                           nullptr, nullptr, nullptr, num_items,
+                                           false, batch_size, nullptr));
 }
 
 }  // namespace
