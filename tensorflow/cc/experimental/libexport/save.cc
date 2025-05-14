@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/cc/experimental/libexport/save.h"
 
+#include <string>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
