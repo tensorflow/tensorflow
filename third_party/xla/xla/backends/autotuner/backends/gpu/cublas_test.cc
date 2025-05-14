@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
