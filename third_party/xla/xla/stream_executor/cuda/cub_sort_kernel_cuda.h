@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <cstddef>
 
-#include "absl/status/status.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 
 namespace stream_executor::cuda {
 
@@ -32,17 +32,17 @@ namespace stream_executor::cuda {
 // units.
 
 template <typename KeyT>
-absl::Status CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
-                         const void* d_keys_in, void* d_keys_out,
-                         size_t num_items, bool descending, size_t batch_size,
-                         CUstream stream);
+cudaError_t CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
+                        const void* d_keys_in, void* d_keys_out,
+                        size_t num_items, bool descending, size_t batch_size,
+                        CUstream stream);
 
 template <typename KeyT, typename ValT>
-absl::Status CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
-                          const void* d_keys_in, void* d_keys_out,
-                          const void* d_values_in, void* d_values_out,
-                          size_t num_items, bool descending, size_t batch_size,
-                          CUstream stream);
+cudaError_t CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
+                         const void* d_keys_in, void* d_keys_out,
+                         const void* d_values_in, void* d_values_out,
+                         size_t num_items, bool descending, size_t batch_size,
+                         CUstream stream);
 
 }  // namespace stream_executor::cuda
 
