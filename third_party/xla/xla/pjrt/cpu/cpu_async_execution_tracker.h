@@ -44,7 +44,7 @@ class CpuScopedAsyncExecution {
 
   CpuScopedAsyncExecution(CpuAsyncExecutionTracker* tracker, int32_t launch_id,
                           Key key);
-  CpuScopedAsyncExecution(CpuScopedAsyncExecution&& other);
+  CpuScopedAsyncExecution(CpuScopedAsyncExecution&& other) noexcept;
   ~CpuScopedAsyncExecution();
 
   CpuScopedAsyncExecution(const CpuScopedAsyncExecution&) = delete;
