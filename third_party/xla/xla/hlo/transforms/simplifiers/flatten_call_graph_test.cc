@@ -172,11 +172,12 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
   }
 
   HloComputation* entry_computation;
+  HloInstruction* while_op;
   {
     HloComputation::Builder builder(TestName() + ".entry");
     HloInstruction* false_constant = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
-    builder.AddInstruction(HloInstruction::CreateWhile(
+    while_op = builder.AddInstruction(HloInstruction::CreateWhile(
         ShapeUtil::MakeShape(PRED, {}), cond_computation, cond_computation,
         false_constant));
     entry_computation = module->AddEntryComputation(builder.Build());
@@ -191,9 +192,10 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
   {
     TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
     EXPECT_TRUE(result);
+    EXPECT_NE(while_op->while_body(), while_op->while_condition());
     std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
     const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
-    EXPECT_EQ(1, cond_node.caller_callsites().size());
+    EXPECT_EQ(0, cond_node.caller_callsites().size());
   }
 }
 
@@ -244,7 +246,7 @@ TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(56.0f)));
   auto constant2 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(12.0f)));
-  builder.AddInstruction(HloInstruction::CreateConditional(
+  auto cond = builder.AddInstruction(HloInstruction::CreateConditional(
       kScalarShape, pred, constant1, sub_computation, constant2,
       sub_computation));
   module->AddEntryComputation(builder.Build());
@@ -254,10 +256,12 @@ TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
   EXPECT_TRUE(result);
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   // The true and false computations must now be different.
-  EXPECT_EQ(3, module->computation_count());
+  EXPECT_EQ(4, module->computation_count());
+  EXPECT_NE(cond->branch_computation(0), cond->branch_computation(1));
 
+  //  The original computation is no longer used.
   const CallGraphNode& sub_node = call_graph->GetNode(sub_computation);
-  EXPECT_EQ(1, sub_node.caller_callsites().size());
+  EXPECT_EQ(0, sub_node.caller_callsites().size());
 }
 
 TEST_F(FlattenCallGraphTest, AsyncCall) {

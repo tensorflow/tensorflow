@@ -35,51 +35,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Helper to replace the called computation at a while, call, conditional or
-// async instruction. This function replaces exactly one instance of
-// 'computation' with 'new_computation' even if 'instruction' calls
-// 'computation' more than once.
-void ReplaceCalledComputation(HloInstruction* instruction,
-                              HloComputation* computation,
-                              HloComputation* new_computation) {
-  switch (instruction->opcode()) {
-    case HloOpcode::kWhile: {
-      if (computation == instruction->while_condition()) {
-        instruction->set_while_condition(new_computation);
-      } else {
-        CHECK_EQ(computation, instruction->while_body());
-        instruction->set_while_body(new_computation);
-      }
-      break;
-    }
-    case HloOpcode::kCall: {
-      CHECK_EQ(instruction->to_apply(), computation);
-      instruction->set_to_apply(new_computation);
-      break;
-    }
-    case HloOpcode::kConditional: {
-      for (int b = 0; b < instruction->branch_count(); ++b) {
-        if (b == instruction->branch_count() - 1) {
-          CHECK_EQ(computation, instruction->branch_computation(b));
-        }
-        if (computation == instruction->branch_computation(b)) {
-          instruction->set_branch_computation(b, new_computation);
-          break;
-        }
-      }
-      break;
-    }
-    case HloOpcode::kAsyncStart: {
-      CHECK(computation->IsAsyncComputation());
-      instruction->ReplaceCalledComputations(
-          [&](HloComputation*) { return new_computation; });
-      break;
-    }
-    default:
-      LOG(FATAL) << "unexpected opcode: " << instruction->opcode();
-  }
-}
-
 // Flatten a single call graph node. Expects to visit nodes in postorder.
 absl::Status FlattenNode(const CallGraphNode& node) {
   HloComputation* computation = node.computation();
@@ -99,13 +54,20 @@ absl::Status FlattenNode(const CallGraphNode& node) {
       continue;
     }
 
-    // Clone computation for the remaining sequential context call sites.
-    HloComputation* clone =
-        module->AddEmbeddedComputation(computation->Clone());
-    ReplaceCalledComputation(call_site.instruction(), computation, clone);
-    // Clone the sub-tree of all computations called from this node.
     std::vector<HloComputation*> worklist;
-    worklist.push_back(clone);
+    // Clone computation for the remaining sequential context call sites.
+    call_site.instruction()->ReplaceCalledComputations(
+        [&](HloComputation* callee) {
+          if (callee == computation) {
+            HloComputation* clone =
+                module->AddEmbeddedComputation(callee->Clone());
+            worklist.push_back(clone);
+            return clone;
+          }
+          return callee;
+        });
+
+    // Clone the sub-tree of all computations called from this node.
     while (!worklist.empty()) {
       auto current = worklist.back();
       worklist.pop_back();
@@ -114,10 +76,11 @@ absl::Status FlattenNode(const CallGraphNode& node) {
             CallContext::kControlFlow) {
           continue;
         }
-        for (auto callee : instruction->called_computations()) {
-          HloComputation* callee_clone =
-              module->AddEmbeddedComputation(callee->Clone());
-          ReplaceCalledComputation(instruction, callee, callee_clone);
+
+        instruction->ReplaceCalledComputations([&](HloComputation* callee) {
+          return module->AddEmbeddedComputation(callee->Clone());
+        });
+        for (auto* callee_clone : instruction->called_computations()) {
           worklist.push_back(callee_clone);
         }
       }
