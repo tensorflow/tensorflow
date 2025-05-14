@@ -1176,7 +1176,7 @@ absl::Status HloComputation::AcceptOrdered(
   for (const HloInstruction* instruction : order) {
     VLOG(3) << "Visiting ordered: " << instruction->ToString();
     TF_RET_CHECK(!visited.contains(instruction))
-        << "Instruction " << instruction->name()
+        << "Instruction " << instruction->name().view()
         << " appears more than once in order";
     HloInstruction* mutable_instruction =
         const_cast<HloInstruction*>(instruction);
