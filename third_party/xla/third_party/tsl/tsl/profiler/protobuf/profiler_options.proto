@@ -32,10 +32,10 @@ message ProfileOptions {
 
   // Levels of host tracing: (version >= 1)
   // - Level 0 is used to disable host traces.
-  // - Level 1 enables tracing of only user instrumented (or default) TraceMe.
+  // - Level 1 enables tracing of only user instrumented (or default) TraceMe,
+  //           this is the default.
   // - Level 2 enables tracing of all level 1 TraceMe(s) and instrumented high
   //           level program execution details (expensive TF ops, XLA ops, etc).
-  //           This is the default.
   // - Level 3 enables tracing of all level 2 TraceMe(s) and more verbose
   //           (low-level) program execution details (cheap TF ops, etc).
   uint32 host_tracer_level = 2;
