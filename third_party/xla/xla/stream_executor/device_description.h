@@ -153,8 +153,8 @@ class RocmComputeCapability {
   static constexpr absl::string_view kSupportedGfxVersions[]{
       "gfx900",
       "gfx906",
-      "gfx908"
-      "gfx90a"
+      "gfx908",
+      "gfx90a",
       "gfx942",
       "gfx950",
       "gfx1030",
