@@ -161,7 +161,19 @@ CreateOneDnnPrimDesc<dnnl::convolution_forward::primitive_desc>(
 
   std::vector<memory::desc> fused_mds;
   for (const Shape& shape : fused_shapes) {
-    fused_mds.push_back(ShapeToMemDesc(shape));
+    memory::desc mem_desc = ShapeToMemDesc(shape);
+    // The post-op argument must be oriented consistently with the output memory
+    // descriptor.
+    // Bias inputs are one-dimensional, as required by oneDNN. The broadcast
+    // dimensions of all binary post-op inputs are expanded in the rewriter.
+    // Hence, this condition should hold for all non-bias inputs.
+    if (mem_desc.get_ndims() == new_out_md.get_ndims()) {
+      mem_desc = mem_desc.permute_axes(ComputePermutations(
+          conv_config.dims(), conv_config.output().data().batch_dim(),
+          conv_config.output().data().feature_dim(),
+          conv_config.output().data().spatial_dims()));
+    }
+    fused_mds.push_back(mem_desc);
   }
 
   memory::desc bias_md = memory::desc();
@@ -346,6 +358,8 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
     XLA_LIGHTWEIGHT_CHECK(scratch != nullptr);
     MemrefInfo scratch_minfo(scratch);
     memory::desc scratchpad_md = conv_pd->scratchpad_desc();
+    XLA_LIGHTWEIGHT_CHECK(scratchpad_md.get_size() <=
+                          scratch_minfo.GetOneDnnDims()[0]);
     memory scratch_mem =
         memory(scratchpad_md, cpu_engine, scratch_minfo.Data());
     conv_args.insert({DNNL_ARG_SCRATCHPAD, scratch_mem});
