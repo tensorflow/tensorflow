@@ -102,14 +102,16 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   // array becomes unusable afterwards.
   static void Destruct(RpcHelper* rpc_helper, ArrayHandle handle);
 
-  Array(xla::ifrt::Client* const client, std::shared_ptr<RpcHelper> rpc_helper,
-        DType dtype, Shape shape, ShardingRef sharding, ArrayHandle handle)
+  Array(xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+        DType dtype, Shape shape, ShardingRef sharding, ArrayHandle arr_handle,
+        std::shared_ptr<const xla::PjRtLayout> layout)
       : client_(client),
         rpc_helper_(std::move(rpc_helper)),
         dtype_(dtype),
         shape_(std::move(shape)),
         sharding_(std::move(sharding)),
-        handle_(handle) {}
+        custom_layout_(std::move(layout)),
+        handle_(arr_handle) {}
 
   ~Array() override { Destruct(rpc_helper_.get(), handle_); }
 
@@ -139,6 +141,10 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
     return handle_;
   }
 
+  std::shared_ptr<const xla::PjRtLayout> custom_layout() const {
+    return custom_layout_;
+  }
+
   xla::ifrt::Client* client() const override;
   Future<> GetReadyFuture() const override;
   Future<> Delete() override;
@@ -149,10 +155,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   const Shape& shape() const override { return shape_; }
   const Sharding& sharding() const override { return *sharding_; }
   ShardingRef shared_ptr_sharding() const override { return sharding_; }
-  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override {
-    return absl::UnimplementedError(
-        "Array::layout() not implemented for IFRT proxy");
-  };
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override;
 
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
   DisassembleIntoSingleDeviceArrays(
@@ -187,6 +190,11 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   const DType dtype_;
   const Shape shape_;
   const ShardingRef sharding_;
+
+  // This is layout explicitly supplied at creation time. we explicitly
+  // distinguish it from default layouts since some functions
+  // behaves differently depending on where the layout came from.
+  const std::shared_ptr<const xla::PjRtLayout> custom_layout_;
 
   const ArrayHandle handle_
       ABSL_DEPRECATED("Use GetHandle() function instead.");

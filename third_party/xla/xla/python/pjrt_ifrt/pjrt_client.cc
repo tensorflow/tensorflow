@@ -1243,6 +1243,10 @@ PjRtClient::GetDefaultLayout(DType dtype, absl::Span<const int64_t> dims,
         LayoutUtil::MakeDescendingLayout(dims.size()));
   }
   TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
+  if (element_type == PrimitiveType::TOKEN) {
+    return std::make_shared<PjRtLayout>(
+        LayoutUtil::MakeDescendingLayout(dims.size()));
+  }
   TF_ASSIGN_OR_RETURN(xla::Layout layout,
                       pjrt_client_->GetDefaultLayout(element_type, dims));
   return std::make_shared<xla::PjRtLayout>(std::move(layout));
