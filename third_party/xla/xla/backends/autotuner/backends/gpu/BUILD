@@ -39,6 +39,7 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu/autotuning:redzone_buffers",
         "//xla/service/gpu/transforms:dot_algorithm_rewriter",
         "//xla/service/gpu/transforms:gemm_rewriter",
         "//xla/service/gpu/transforms:priority_fusion",
