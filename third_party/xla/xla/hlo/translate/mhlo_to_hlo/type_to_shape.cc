@@ -177,13 +177,6 @@ Shape TypeToShape(mlir::Type type) {
       // added to xla
       if (sparse.getPosWidth() != 32 || sparse.getCrdWidth() != 32) return {};
 
-      llvm::SmallVector<DimLevelType, 3> lvl_types;
-      for (auto lt : sparse.getLvlTypes()) {
-        auto new_lt = ConvertDimLevelType(lt);
-        if (!new_lt) return {};
-        lvl_types.push_back(*new_lt);
-      }
-
       std::vector<int64_t> ordering(rank);
       std::iota(ordering.rbegin(), ordering.rend(), 0);
       // Uses an identity map for dim ordering as the default value.
@@ -194,7 +187,7 @@ Shape TypeToShape(mlir::Type type) {
       auto final_ordering = mlir::applyPermutationMap(
           dimToLvl, llvm::ArrayRef<int64_t>(ordering));
       auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithSparseLayout(
-          primitive_type, shape, final_ordering, lvl_types);
+          primitive_type, shape, final_ordering);
       return sparse_shape;
     }
 

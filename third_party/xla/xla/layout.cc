@@ -86,11 +86,6 @@ std::string SplitConfig::ToString() const {
                       ")");
 }
 
-Layout::Layout(absl::Span<const int64_t> minor_to_major)
-    : index_primitive_type_(PRIMITIVE_TYPE_INVALID),
-      pointer_primitive_type_(PRIMITIVE_TYPE_INVALID),
-      minor_to_major_(minor_to_major.begin(), minor_to_major.end()) {}
-
 Layout::Layout(absl::Span<const int64_t> minor_to_major,
                absl::Span<const Tile> tiles, int64_t element_size_in_bits)
     : index_primitive_type_(PRIMITIVE_TYPE_INVALID),
@@ -100,11 +95,9 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
       tiles_(tiles.begin(), tiles.end()) {}
 
 Layout::Layout(absl::Span<const int64_t> minor_to_major,
-               absl::Span<const DimLevelType> dim_level_types,
-               absl::Span<const Tile> tiles,
-               int64_t tail_padding_alignment_in_elements,
-               PrimitiveType index_primitive_type,
+               absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
                PrimitiveType element_primitive_type,
+               int64_t tail_padding_alignment_in_elements,
                int64_t element_size_in_bits, int64_t memory_space,
                absl::Span<const SplitConfig> split_configs,
                std::unique_ptr<Shape> physical_shape,
@@ -120,21 +113,11 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
       physical_shape_(std::move(physical_shape)),
       dynamic_shape_metadata_prefix_bytes_(
           dynamic_shape_metadata_prefix_bytes) {
-  // Grow dim_attributes_ to the length of "dim_level_types",
-  // and then initialize the attributes that should exist.
-  n_dim_level_types_ = dim_level_types.size();
-  const int n_attributes = n_dim_level_types_;
-  dim_attributes_.resize(n_attributes);
-  for (int i = 0; i < n_attributes; i++) {
-    if (i < n_dim_level_types_)
-      dim_attributes_[i].dim_level_type = dim_level_types[i];
-  }
+  CHECK_GE(tail_padding_alignment_in_elements, 1);
 }
 
 Layout::Layout(const Layout& other)
-    : dim_attributes_(other.dim_attributes_),
-      n_dim_level_types_(other.n_dim_level_types_),
-      index_primitive_type_(other.index_primitive_type_),
+    : index_primitive_type_(other.index_primitive_type_),
       pointer_primitive_type_(other.pointer_primitive_type_),
       memory_space_(other.memory_space_),
       element_size_in_bits_(other.element_size_in_bits_),
@@ -155,8 +138,6 @@ Layout::~Layout() = default;
 
 Layout& Layout::operator=(const Layout& other) {
   if (this != &other) {
-    dim_attributes_ = other.dim_attributes_;
-    n_dim_level_types_ = other.n_dim_level_types_;
     minor_to_major_ = other.minor_to_major_;
     tiles_ = other.tiles_;
     tail_padding_alignment_in_elements_ =
@@ -182,9 +163,6 @@ Layout& Layout::operator=(Layout&& other) = default;
 /* static */ absl::StatusOr<Layout> Layout::FromProto(
     const LayoutProto& proto) {
   Layout layout;
-  for (int dim_level_type : proto.dim_level_types()) {
-    layout.add_dim_level_type(static_cast<DimLevelType>(dim_level_type));
-  }
   layout.minor_to_major_.reserve(proto.minor_to_major_size());
   for (const int64_t dimension : proto.minor_to_major()) {
     layout.add_minor_to_major(dimension);
@@ -218,9 +196,6 @@ Layout& Layout::operator=(Layout&& other) = default;
 LayoutProto Layout::ToProto() const {
   LayoutProto proto;
   proto.Clear();
-  for (int i = 0; i < n_dim_level_types_; i++) {
-    proto.add_dim_level_types(dim_level_type(i));
-  }
   proto.mutable_minor_to_major()->Reserve(minor_to_major_size());
   for (const int64_t dimension : minor_to_major()) {
     proto.add_minor_to_major(dimension);
@@ -277,23 +252,6 @@ void Layout::Print(Printer* printer) const {
       colon_printed = true;
     }
   };
-
-  // Print the dimension attributes as D(...) only if the layout is sparse.
-  // By default, all dimensions are dense, so there's no need to print the
-  // attributes when this layout is dense.
-  if (LayoutUtil::IsSparse(*this)) {
-    auto print_one = [&](int i) {
-      printer->Append(DimLevelTypeAbbrev(dim_level_type(i)));
-    };
-    print_colon_if_have_not();
-    printer->Append("D(");
-    print_one(0);
-    for (int i = 1; i < n_dim_level_types_; ++i) {
-      printer->Append(",");
-      print_one(i);
-    }
-    printer->Append(")");
-  }
 
   // Print the tiles as T(...)...(...).
   if (!tiles().empty()) {
@@ -396,17 +354,6 @@ std::string Layout::ToString() const {
 }
 
 bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
-  if (!LayoutUtil::IsDense(lhs) || !LayoutUtil::IsDense(rhs)) {
-    // dim_level_types
-    if (lhs.dim_level_types_size() != rhs.dim_level_types_size()) {
-      return false;
-    }
-    for (int i = 0; i < lhs.dim_level_types_size(); i++) {
-      if (lhs.dim_level_type(i) != rhs.dim_level_type(i)) {
-        return false;
-      }
-    }
-  }
   if (lhs.minor_to_major() != rhs.minor_to_major()) {
     return false;
   }
@@ -484,13 +431,6 @@ Layout& Layout::DeleteDimension(int dim_to_delete) {
       minor_to_major_[i] -= 1;
     }
     ++i;
-  }
-  // Delete the corresponding dim level types.
-  if (dim_to_delete < n_dim_level_types_) {
-    n_dim_level_types_--;
-  }
-  if (dim_to_delete < dim_attributes_.size()) {
-    dim_attributes_.erase(dim_attributes_.begin() + dim_to_delete);
   }
   return *this;
 }

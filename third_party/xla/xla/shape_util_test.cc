@@ -1214,7 +1214,6 @@ TEST(ShapeUtilTest, B_250640044) {
              dimensions: 137438953472
              layout {
                minor_to_major: 0
-               dim_level_types: DIM_COMPRESSED
                physical_shape {
                  element_type: TUPLE
                  tuple_shapes {}

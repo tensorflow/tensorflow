@@ -81,9 +81,7 @@ bool ShouldUseMultiThreadedEigen(const HloModuleConfig& config) {
 // Return whether the given shape is rank 2.
 bool IsRank2(const Shape& shape) { return shape.dimensions().size() == 2; }
 
-bool IsSimpleLayout(const Layout& layout) {
-  return layout.tiles().empty() && LayoutUtil::IsDense(layout);
-}
+bool IsSimpleLayout(const Layout& layout) { return layout.tiles().empty(); }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
 // are valid for the operation.
