@@ -175,9 +175,6 @@ int64_t HloCostAnalysis::GetShapeSize(const Shape& shape) const {
   if (!LayoutUtil::HasLayout(shape)) {
     return 0;
   }
-  if (LayoutUtil::IsSparseArray(shape)) {
-    return 0;
-  }
   return options_.shape_size(shape);
 }
 

@@ -2691,104 +2691,6 @@ ENTRY test {
   ROOT root = f32[10,10]{1,0} sqrt(broadcast.anon)
 })"
 },
-
-{
-"SparseShape",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)})->f32[10,10]{1,0:D(D,C)}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
-})",
-},
-
-{
-"SparseShapeWithIndexPrimitiveType",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)#(u32)} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)#(u32)})->f32[10,10]{1,0:D(D,C)#(u32)}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)#(u32)} parameter(0)
-})",
-},
-
-{
-"SparseShapeWithPointerPrimitiveType",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)*(u32)} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)*(u32)})->f32[10,10]{1,0:D(D,C)*(u32)}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)*(u32)} parameter(0)
-})",
-},
-
-{
-"SparseShapeWithPhysicalShape",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))})->f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
-})",
-},
-
-{
-"SparseShapeFull",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))})->f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
-})",
-},
-
-{
-"SparseCOO",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C,S)})->f32[10,10]{1,0:D(C,S)}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
-})",
-},
-
-{
-"SparseCOOUnordered",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C,S)})->f32[10,10]{1,0:D(C,S)}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
-})",
-},
 });
   // clang-format on
 }
@@ -5205,31 +5107,6 @@ ENTRY test {
               tsl::testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("expected a DimLevelType abbreviation")));
-}
-
-TEST_F(HloParserTest, InvalidDimLevelTypeCount) {
-  const std::string original = R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C)} parameter(0)
-})";
-  EXPECT_THAT(
-      ParseAndReturnUnverifiedModule(original).status(),
-      tsl::testing::StatusIs(
-          tsl::error::INVALID_ARGUMENT,
-          HasSubstr("Dimensions size is 2, but dim level types size is 1")));
-}
-
-TEST_F(HloParserTest, RejectSparseTiles) {
-  const std::string original = R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)T(128,8)} parameter(0)
-})";
-  EXPECT_THAT(ParseAndReturnUnverifiedModule(original).status(),
-              tsl::testing::StatusIs(
-                  tsl::error::INVALID_ARGUMENT,
-                  HasSubstr("Layout has tiles, but is for a sparse array")));
 }
 
 TEST_F(HloParserTest, RejectDensePhysicalShape) {
