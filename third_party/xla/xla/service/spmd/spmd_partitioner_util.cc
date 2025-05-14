@@ -33,8 +33,10 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
@@ -60,6 +63,7 @@ namespace xla {
 namespace spmd {
 
 namespace {
+using hlo_sharding_util::DeviceGroupTileAssignment;
 using hlo_sharding_util::GroupedSharding;
 }  // namespace
 
@@ -238,12 +242,11 @@ Shape GetPaddedShapeForUnevenPartitioning(const Shape& base_shape,
 
 HloInstruction* GetInGroupPartitionId(
     HloInstruction* partition_id,
-    const std::vector<std::vector<int64_t>>& device_groups, SpmdBuilder* b) {
-  int64_t total_devices = device_groups.size() * device_groups[0].size();
-  std::vector<uint32_t> in_group_ids(total_devices);
-  for (uint32_t i = 0; i < device_groups.size(); ++i) {
-    for (uint32_t j = 0; j < device_groups[i].size(); ++j) {
-      in_group_ids[device_groups[i][j]] = j;
+    const DeviceGroupTileAssignment& device_groups, SpmdBuilder* b) {
+  std::vector<uint32_t> in_group_ids(device_groups.num_total_devices());
+  for (uint32_t i = 0; i < device_groups.num_groups(); ++i) {
+    for (uint32_t j = 0; j < device_groups.num_devices_per_group(); ++j) {
+      in_group_ids[device_groups(i, j)] = j;
     }
   }
   return TableLookup<uint32_t>(in_group_ids, U32, partition_id, b);
@@ -251,25 +254,35 @@ HloInstruction* GetInGroupPartitionId(
 
 namespace {
 
-bool IsIota(absl::Span<const int64_t> x) {
-  for (int64_t i = 0; i < x.size(); ++i) {
-    if (x[i] != i) {
+bool IsIota(const Array<int64_t>& x) {
+  for (int64_t i = 0; i < x.num_elements(); ++i) {
+    if (x(0, i) != i) {
       return false;
     }
   }
   return true;
 }
 
+// TODO(b/365830796): Make per group collective op creator create ReplicaGroupV2
+// collectives.
 SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
     const SPMDCollectiveOpsCreator& creator,
-    const std::vector<std::vector<int64_t>>& device_groups) {
-  if (device_groups.size() == 1 && IsIota(device_groups[0])) {
-    return creator;
+    const DeviceGroupTileAssignment& device_groups) {
+  if (device_groups.num_groups() == 1) {
+    // If the device_groups has an IotaTileAssignment and has a naive reshape
+    // dim of size 1, it is an iota device group.
+    if (device_groups.has_iota() &&
+        device_groups.iota()->reshape_dims().size() == 1) {
+      return creator;
+    }
+    if (IsIota(device_groups.array())) {
+      return creator;
+    }
   }
 
   SPMDCollectiveOpsCreator result;
   auto device_groups_ptr =
-      std::make_shared<const std::vector<std::vector<int64_t>>>(device_groups);
+      std::make_shared<const DeviceGroupTileAssignment>(device_groups);
   result.create_partition_id = [creator, device_groups_ptr](SpmdBuilder* b) {
     return GetInGroupPartitionId(creator.create_partition_id(b),
                                  *device_groups_ptr, b);
@@ -279,17 +292,17 @@ SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
           const std::vector<std::vector<int64_t>>& partition_subgroups) {
         auto& device_groups = *device_groups_ptr;
         if (partition_subgroups.empty()) {
-          return device_groups;
+          return device_groups.flattened_device_groups();
         }
-        std::vector<std::vector<int64_t>> result(partition_subgroups.size() *
-                                                 device_groups.size());
-        for (int64_t g = 0; g < device_groups.size(); ++g) {
+        std::vector<std::vector<int64_t>> result(
+            partition_subgroups.size() * device_groups_ptr->num_groups());
+        for (int64_t g = 0; g < device_groups_ptr->num_groups(); ++g) {
           for (int64_t i = 0; i < partition_subgroups.size(); ++i) {
             result[g * partition_subgroups.size() + i].resize(
                 partition_subgroups[i].size());
             for (int64_t j = 0; j < partition_subgroups[i].size(); ++j) {
               result[g * partition_subgroups.size() + i][j] =
-                  device_groups[g][partition_subgroups[i][j]];
+                  device_groups(g, partition_subgroups[i][j]);
             }
           }
         }
@@ -309,15 +322,14 @@ SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
           SpmdBuilder* b, HloInstruction* operand,
           std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs,
           int64_t next_channel_id) {
-        auto& device_groups = *device_groups_ptr;
         std::vector<std::pair<int64_t, int64_t>> expanded_pairs(
-            src_dst_pairs.size() * device_groups.size());
-        for (int64_t g = 0; g < device_groups.size(); ++g) {
+            src_dst_pairs.size() * device_groups_ptr->num_groups());
+        for (int64_t g = 0; g < device_groups_ptr->num_groups(); ++g) {
           for (int64_t i = 0; i < src_dst_pairs.size(); ++i) {
             expanded_pairs[g * src_dst_pairs.size() + i] =
                 std::pair<int64_t, int64_t>{
-                    device_groups[g][src_dst_pairs[i].first],
-                    device_groups[g][src_dst_pairs[i].second]};
+                    device_groups_ptr->array()(g, src_dst_pairs[i].first),
+                    device_groups_ptr->array()(g, src_dst_pairs[i].second)};
           }
         }
         return creator.create_cross_partition_collective_permute(
@@ -1873,35 +1885,51 @@ bool CanReshardWithCollectivePermute(const HloSharding& source,
 std::optional<GroupedSharding> AlignGroupsWithInternal(
     GroupedSharding grouped_sharding, const GroupedSharding& reference,
     bool requires_compatibility, bool ignore_group_order) {
+  CHECK_EQ(grouped_sharding.device_groups.num_groups(),
+           reference.device_groups.num_groups());
+  CHECK_EQ(grouped_sharding.device_groups.num_devices_per_group(),
+           reference.device_groups.num_devices_per_group());
+  // If the device groups are both in iota, and the iota is the same, return the
+  // grouped sharding.
+  if (grouped_sharding.device_groups.has_iota() &&
+      reference.device_groups.has_iota() &&
+      grouped_sharding.device_groups.iota() == reference.device_groups.iota()) {
+    return grouped_sharding;
+  }
   // Returns src -> dst index mapping.
-  auto get_permutation = [](absl::Span<const int64_t> src,
-                            absl::Span<const int64_t> dst) {
-    CHECK_EQ(src.size(), dst.size());
-    absl::flat_hash_map<int64_t, int64_t> dst_reverse_map(dst.size());
-    for (int64_t i = 0; i < dst.size(); ++i) {
-      dst_reverse_map[dst[i]] = i;
+  auto get_permutation = [&](int64_t base_group_idx,
+                             int64_t reference_group_idx) {
+    int64_t num_devices_per_group =
+        grouped_sharding.device_groups.num_devices_per_group();
+    absl::flat_hash_map<int64_t, int64_t> dst_reverse_map(
+        num_devices_per_group);
+
+    for (int64_t i = 0; i < num_devices_per_group; ++i) {
+      dst_reverse_map[reference.device_groups(reference_group_idx, i)] = i;
     }
-    std::vector<int64_t> permutation(src.size());
-    for (int64_t i = 0; i < src.size(); ++i) {
-      auto it = dst_reverse_map.find(src[i]);
+    std::vector<int64_t> permutation(num_devices_per_group);
+    for (int64_t i = 0; i < num_devices_per_group; ++i) {
+      auto it = dst_reverse_map.find(
+          grouped_sharding.device_groups(base_group_idx, i));
       CHECK(it != dst_reverse_map.end());
       permutation[i] = it->second;
     }
     return permutation;
   };
-  CHECK_EQ(grouped_sharding.device_groups.size(),
-           reference.device_groups.size());
-  std::vector<int64_t> device_to_ref_group(reference.device_groups.size() *
-                                           reference.device_groups[0].size());
-  for (int64_t g = 0; g < reference.device_groups.size(); ++g) {
-    for (int64_t device : reference.device_groups[g]) {
-      device_to_ref_group[device] = g;
+  std::vector<int64_t> device_to_ref_group(
+      reference.device_groups.num_total_devices());
+  for (int64_t g = 0; g < reference.device_groups.num_groups(); ++g) {
+    for (int64_t d = 0; d < reference.device_groups.num_devices_per_group();
+         ++d) {
+      device_to_ref_group[reference.device_groups(g, d)] = g;
     }
   }
-  auto unique_ref_dev_group =
-      [&](absl::Span<const int64_t> devices) -> int64_t {
+  auto unique_ref_dev_group = [&](int64_t group) -> int64_t {
     int64_t ref_g = -1;
-    for (int64_t device : devices) {
+    for (int64_t device_idx = 0;
+         device_idx < grouped_sharding.device_groups.num_devices_per_group();
+         ++device_idx) {
+      int64_t device = grouped_sharding.device_groups(group, device_idx);
       if (ref_g == -1) {
         ref_g = device_to_ref_group[device];
       } else if (ref_g != device_to_ref_group[device]) {
@@ -1912,8 +1940,8 @@ std::optional<GroupedSharding> AlignGroupsWithInternal(
   };
   bool matching_groups = true;
   std::vector<int64_t> original_src_to_ref_permutation;
-  for (int64_t g = 0; g < grouped_sharding.device_groups.size(); ++g) {
-    int64_t ref_g = unique_ref_dev_group(grouped_sharding.device_groups[g]);
+  for (int64_t g = 0; g < grouped_sharding.device_groups.num_groups(); ++g) {
+    int64_t ref_g = unique_ref_dev_group(g);
     if (ref_g < 0 || (!ignore_group_order && g != ref_g)) {
       if (requires_compatibility) {
         return std::nullopt;
@@ -1922,12 +1950,9 @@ std::optional<GroupedSharding> AlignGroupsWithInternal(
       break;
     }
     if (g == 0) {
-      original_src_to_ref_permutation = get_permutation(
-          grouped_sharding.device_groups[g], reference.device_groups[ref_g]);
+      original_src_to_ref_permutation = get_permutation(g, ref_g);
     } else if (requires_compatibility) {
-      if (original_src_to_ref_permutation !=
-          get_permutation(grouped_sharding.device_groups[g],
-                          reference.device_groups[ref_g])) {
+      if (original_src_to_ref_permutation != get_permutation(g, ref_g)) {
         return std::nullopt;
       }
     }
@@ -1993,19 +2018,28 @@ Shape GetPerGroupBaseShape(const GroupedSharding& grouped_sharding,
 
 PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
     const PartitionedHlo::PartitioningState& state,
-    const std::vector<std::vector<int64_t>>& device_groups, SpmdBuilder* b) {
+    const DeviceGroupTileAssignment& device_groups, SpmdBuilder* b) {
   auto result = state;
   result.collective_ops_creator = GetPerGroupCollectiveOpsCreator(
       state.collective_ops_creator, device_groups);
   result.partition_id =
       GetInGroupPartitionId(state.partition_id, device_groups, b);
-  // Create a string key for the groups.
-  std::vector<std::string> per_group_strings(device_groups.size());
-  for (int64_t i = 0; i < per_group_strings.size(); ++i) {
-    per_group_strings[i] = absl::StrJoin(device_groups[i], ",");
+
+  std::string key;
+  // If the device groups are an iota, use the iota string as the key.
+  if (device_groups.has_iota()) {
+    key = device_groups.iota()->ToString();
+  } else {
+    // Create a string key for the groups.
+    std::vector<std::string> per_group_strings(device_groups.num_groups());
+    for (int64_t i = 0; i < per_group_strings.size(); ++i) {
+      for (int64_t j = 0; j < device_groups.num_devices_per_group(); ++j) {
+        absl::StrAppend(&per_group_strings[i], device_groups(i, j), ",");
+      }
+    }
+    key = absl::StrJoin(per_group_strings, ";");
   }
-  auto& grouped_cache =
-      state.reshard_cache->groupd_caches[absl::StrJoin(per_group_strings, ";")];
+  auto& grouped_cache = state.reshard_cache->groupd_caches[key];
   if (!grouped_cache) {
     grouped_cache = std::make_unique<PartitionedHlo::ReshardCache>();
   }
@@ -2015,14 +2049,13 @@ PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
 
 HloInstruction* PerGroupSliceFromReplicated(
     HloInstruction* replicated, HloInstruction* partition_id,
-    const std::vector<std::vector<int64_t>>& device_groups,
+    const DeviceGroupTileAssignment& device_groups,
     absl::Span<const int64_t> group_dims,
     absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b) {
-  std::vector<uint32_t> group_ids(device_groups.size() *
-                                  device_groups[0].size());
-  for (int64_t g = 0; g < device_groups.size(); ++g) {
-    for (int64_t device : device_groups[g]) {
-      group_ids[device] = g;
+  std::vector<uint32_t> group_ids(device_groups.num_total_devices());
+  for (int64_t g = 0; g < device_groups.num_groups(); ++g) {
+    for (int64_t d = 0; d < device_groups.num_devices_per_group(); ++d) {
+      group_ids[device_groups(g, d)] = g;
     }
   }
   auto group_id = TableLookup<uint32_t>(group_ids, U32, partition_id, b);
@@ -2060,16 +2093,16 @@ HloInstruction* PerGroupSliceFromReplicated(
 
 std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
     const HloSharding& sharding,
-    const std::vector<std::vector<int64_t>>& device_groups) {
-  if (sharding.IsTileMaximal() || device_groups.size() < 2) {
+    const DeviceGroupTileAssignment& device_groups) {
+  if (sharding.IsTileMaximal() || device_groups.num_groups() < 2) {
     return std::nullopt;
   }
   const int64_t num_devices = sharding.tile_assignment().num_elements();
-  if (num_devices != device_groups.size() * device_groups[0].size()) {
+  if (num_devices != device_groups.num_elements()) {
     return std::nullopt;
   }
   std::vector<int64_t> dims;
-  if (device_groups[0].size() < 2) {
+  if (device_groups.num_devices_per_group() < 2) {
     // Trivial case: single member groups
     for (int64_t i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
       if (sharding.tile_assignment().dim(i) > 1) {
@@ -2088,20 +2121,21 @@ std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
       });
   int64_t group_count = 1;
   for (int64_t i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
-    if (device_to_index[device_groups[0][0]][i] ==
-        device_to_index[device_groups[0][1]][i]) {
+    if (device_to_index[device_groups(0, 0)][i] ==
+        device_to_index[device_groups(0, 1)][i]) {
       dims.push_back(i);
       group_count *= sharding.tile_assignment().dim(i);
     }
   }
-  if (group_count != device_groups.size()) {
+  if (group_count != device_groups.num_groups()) {
     return std::nullopt;
   }
-  for (const auto& group : device_groups) {
-    for (int64_t i = 1; i < group.size(); ++i) {
+  for (int64_t g = 0; g < device_groups.num_groups(); ++g) {
+    for (int64_t device = 1; device < device_groups.num_devices_per_group();
+         ++device) {
       if (absl::c_any_of(dims, [&](const int64_t dim) {
-            return device_to_index[group[i]][dim] !=
-                   device_to_index[group[0]][dim];
+            return device_to_index[device_groups(g, device)][dim] !=
+                   device_to_index[device_groups(g, 0)][dim];
           })) {
         return std::nullopt;
       }
