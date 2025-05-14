@@ -22,6 +22,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -168,8 +169,6 @@ class SplitConfig {
   absl::InlinedVector<int64_t, 1> split_indices_;
 };
 
-// TODO: Rename the `dim_level_types` field to `lvl_types`, so that it
-// matches `mlir::sparse_tensor::SparseTensorEncodingAttr`.
 class Layout {
  public:
   Layout();
@@ -177,24 +176,20 @@ class Layout {
   Layout(Layout&& other);
   ~Layout();
 
-  // Constructs a dense layout with the given minor-to-major order.
-  explicit Layout(absl::Span<const int64_t> minor_to_major);
-
   Layout(absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
          int64_t element_size_in_bits);
 
-  // Constructs a dense tiled layout with the given minor-to-major order, dim
-  // level types, and tiles.
-  Layout(absl::Span<const int64_t> minor_to_major,
-         absl::Span<const DimLevelType> dim_level_types,
-         absl::Span<const Tile> tiles,
-         int64_t tail_padding_alignment_in_elements = 1,
-         PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
-         PrimitiveType element_primitive_type = PRIMITIVE_TYPE_INVALID,
-         int64_t element_size_in_bits = 0, int64_t memory_space = 0,
-         absl::Span<const SplitConfig> split_configs = {},
-         std::unique_ptr<Shape> physical_shape = nullptr,
-         int64_t dynamic_shape_metadata_prefix_bytes = 0);
+  // Constructs a dense tiled layout with the given minor-to-major order and
+  // tiles.
+  explicit Layout(absl::Span<const int64_t> minor_to_major,
+                  absl::Span<const Tile> tiles = {},
+                  PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
+                  PrimitiveType element_primitive_type = PRIMITIVE_TYPE_INVALID,
+                  int64_t tail_padding_alignment_in_elements = 1,
+                  int64_t element_size_in_bits = 0, int64_t memory_space = 0,
+                  absl::Span<const SplitConfig> split_configs = {},
+                  std::unique_ptr<Shape> physical_shape = nullptr,
+                  int64_t dynamic_shape_metadata_prefix_bytes = 0);
 
   Layout& operator=(const Layout& other);
   Layout& operator=(Layout&& other);
@@ -338,28 +333,6 @@ class Layout {
   // TODO(b/29771030): Replace or augment these methods with a more ergonomic
   // interface.
 
-  // Methods for accessing the DimLevelType array.
-  int dim_level_types_size() const { return n_dim_level_types_; }
-  DimLevelType dim_level_type(int index) const {
-    return dim_attributes_[index].dim_level_type;
-  }
-  Layout& set_dim_level_type(int index, DimLevelType dim_level_type) {
-    dim_attributes_[index].dim_level_type = dim_level_type;
-    return *this;
-  }
-  Layout& add_dim_level_type(DimLevelType dim_level_type) {
-    while (n_dim_level_types_ >= dim_attributes_.size()) {
-      dim_attributes_.push_back(DimInfo());
-    }
-    dim_attributes_[n_dim_level_types_].dim_level_type = dim_level_type;
-    n_dim_level_types_++;
-    return *this;
-  }
-  Layout& clear_dim_level_types() {
-    n_dim_level_types_ = 0;
-    return *this;
-  }
-
   // Methods for accessing the minor-to-major array.
   ABSL_DEPRECATE_AND_INLINE()
   int minor_to_major_size() const { return minor_to_major().size(); }
@@ -381,8 +354,7 @@ class Layout {
   DimensionVector* mutable_minor_to_major() { return &minor_to_major_; }
 
   // Removes the given dimension from 'minor_to_major_', and adjusts the other
-  // dimensions accordingly. Also adjusts 'dim_level_types_'
-  // in case it is a sparse layout.
+  // dimensions accordingly.
   //
   // Precondition: dim_to_delete is in the range [0, minor_to_major_size()).
   Layout& DeleteDimension(int dim_to_delete);
@@ -490,20 +462,6 @@ class Layout {
   }
 
  private:
-  // We store a single inlined vector to hold
-  struct DimInfo {
-    DimInfo()
-        : dim_level_type(DIM_DENSE), dim_unique(true), dim_ordered(true) {}
-
-    DimLevelType dim_level_type : 6;
-    bool dim_unique : 1;
-    bool dim_ordered : 1;
-  };
-
-  absl::InlinedVector<DimInfo, InlineRank()> dim_attributes_;
-
-  uint8_t n_dim_level_types_ = 0;
-
   // The primitive type to use for sparse array indices and pointers.  Each of
   // these must either be INVALID, or an unsigned integer type.
   PrimitiveType index_primitive_type_ : 8;
