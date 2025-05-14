@@ -318,6 +318,15 @@ class CoordinationServiceAgent {
   absl::StatusOr<std::vector<tensorflow::CoordinatedTask>> GetAliveTasks(
       const std::vector<tensorflow::CoordinatedTask>& tasks);
 
+  // Returns the latest known set of incarnation ids for all alive tasks, in
+  // sorted order. Incarnation ids can be refreshed by calling GetAliveTasks.
+  //
+  // When a task starts executing, it generates a random 64 bit incarnation id.
+  // If a task fails and restarts, for example, it will have a different
+  // incarnation id before and after it fails. This allows us to distinguish
+  // different executions of the same task.
+  std::vector<uint64_t> Incarnations() const;
+
   // Registers a JobStateCallback that will be invoked when the state of the job
   // changes. Multiple changes to the job state may be coalesced into a single
   // call to the provided callback. Callback invocations may also be delayed.
@@ -389,6 +398,10 @@ class CoordinationServiceAgent {
       ABSL_GUARDED_BY(job_state_watcher_mu_);
   std::unique_ptr<Thread> job_state_watcher_thread_
       ABSL_GUARDED_BY(job_state_watcher_mu_);
+
+  // The latest known set of incarnation ids for all alive tasks.
+  mutable absl::Mutex incarnations_mu_;
+  std::vector<uint64_t> incarnations_ ABSL_GUARDED_BY(incarnations_mu_);
 
   // Must outlive coordination client which may need to access it within
   // GetKeyValueAsync() callbacks.
