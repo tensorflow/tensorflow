@@ -1337,12 +1337,7 @@ absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupAddressableDevice(
 
 absl::StatusOr<Layout> TfrtGpuClient::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) {
-  Shape shape = ShapeUtil::MakeShape(element_type, dims);
-  TF_ASSIGN_OR_RETURN(
-      shape,
-      xla_client_->backend().transfer_manager()->ChooseCompactLayoutForShape(
-          shape));
-  return shape.layout();
+  return topology_.GetDefaultLayout(element_type, dims);
 }
 
 absl::StatusOr<std::unique_ptr<HloCostAnalysis>>

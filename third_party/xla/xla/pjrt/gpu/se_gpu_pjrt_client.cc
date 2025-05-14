@@ -865,6 +865,11 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawDeviceToHost(
       });
 }
 
+absl::StatusOr<Layout> StreamExecutorGpuClient::GetDefaultLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dims) {
+  return topology_.GetDefaultLayout(element_type, dims);
+}
+
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 StreamExecutorGpuClient::CompileAndLoad(mlir::ModuleOp module,
                                         CompileOptions options) {

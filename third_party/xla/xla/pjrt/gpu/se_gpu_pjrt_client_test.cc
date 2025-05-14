@@ -2184,9 +2184,17 @@ TEST(StreamExecutorGpuClientTest, GetDefaultLayout) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
   auto shape = ShapeUtil::MakeShape(S4, {2, 2});
+
   TF_ASSERT_OK_AND_ASSIGN(
       auto layout,
       client->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+  EXPECT_EQ(layout.element_size_in_bits(), 4);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto* const topology,
+                          client->GetTopologyDescription());
+  TF_ASSERT_OK_AND_ASSIGN(
+      layout,
+      topology->GetDefaultLayout(shape.element_type(), shape.dimensions()));
   EXPECT_EQ(layout.element_size_in_bits(), 4);
 }
 
