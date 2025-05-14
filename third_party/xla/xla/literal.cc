@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/index_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/maybe_owning.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
@@ -149,6 +150,23 @@ const Shape* TryInternShape(const Shape& shape) {
   return nullptr;
 }
 
+// Make a copy of Shape that has no internal sharing.
+std::unique_ptr<Shape> MakeUnsharedShape(const Shape& s) {
+  auto result = std::make_unique<Shape>(s);
+  result->RemoveSharingForLiteral();
+  return result;
+}
+
+// Clone a MaybeOwned<Shape>, removing all internal sharing unless
+// it will be an unowned (interned) shape (e.g., NilShape).
+MaybeOwning<Shape> CloneUnshared(const MaybeOwning<Shape>& s) {
+  MaybeOwning<Shape> clone = s.Clone();
+  if (clone.OwnsPtr()) {
+    clone.get_mutable()->RemoveSharingForLiteral();
+  }
+  return clone;
+}
+
 // Utility structure which is used to create the optimal configuration for
 // a ShapeUtil::ForEachIndex() scan across two literals.
 struct StrideConfig {
@@ -226,7 +244,7 @@ std::ostream& operator<<(std::ostream& out, const Literal& literal) {
 Shape* MutableLiteralBase::mutable_shape_do_not_use() {
   const Shape* const_shape = shape_.get();
   if (!shape_.OwnsPtr()) {
-    shape_ = MaybeOwningShapePtr(std::make_unique<Shape>(*shape_));
+    shape_ = MaybeOwningShapePtr(MakeUnsharedShape(*shape_));
   }
   Shape* shape = shape_.get_mutable();
 
@@ -256,7 +274,7 @@ void Literal::SetShape(const Shape& shape) {
     shape_ = intered_shape_ptr;
     return;
   }
-  auto owning_shape_ptr = std::make_unique<Shape>(shape);
+  auto owning_shape_ptr = MakeUnsharedShape(shape);
   if (!LayoutUtil::HasLayout(*owning_shape_ptr)) {
     ShapeUtil::ForEachMutableLeafShape(
         owning_shape_ptr.get(), [](Shape* subshape, const ShapeIndex& index) {
@@ -2771,7 +2789,7 @@ MutableLiteralBase::~MutableLiteralBase() = default;
 
 MutableBorrowingLiteral::MutableBorrowingLiteral(
     const MutableBorrowingLiteral& literal) {
-  shape_ = literal.shape_.Clone();
+  shape_ = CloneUnshared(literal.shape_);
   CHECK(LayoutUtil::HasLayout(*shape_));
 
   root_piece_ = new Piece();
@@ -2782,7 +2800,7 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(
 
 MutableBorrowingLiteral& MutableBorrowingLiteral::operator=(
     const MutableBorrowingLiteral& literal) {
-  shape_ = literal.shape_.Clone();
+  shape_ = CloneUnshared(literal.shape_);
   CHECK(LayoutUtil::HasLayout(*shape_));
 
   root_piece_ = new Piece();
@@ -2794,7 +2812,7 @@ MutableBorrowingLiteral& MutableBorrowingLiteral::operator=(
 }
 
 MutableBorrowingLiteral::MutableBorrowingLiteral(MutableLiteralBase* literal) {
-  shape_ = literal->shape_.Clone();
+  shape_ = CloneUnshared(literal->shape_);
   CHECK(LayoutUtil::HasLayout(*shape_));
 
   root_piece_ = new Piece();
@@ -2805,7 +2823,7 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(MutableLiteralBase* literal) {
 
 MutableBorrowingLiteral::MutableBorrowingLiteral(
     MutableBorrowingLiteral literal, const ShapeIndex& view_root) {
-  shape_ = std::make_unique<Shape>(literal.piece(view_root).subshape());
+  shape_ = MakeUnsharedShape(literal.piece(view_root).subshape());
   CHECK(LayoutUtil::HasLayout(*shape_));
 
   root_piece_ = new Piece();
@@ -2816,7 +2834,7 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(
 
 MutableBorrowingLiteral::MutableBorrowingLiteral(const char* src_buf_ptr,
                                                  const Shape& shape) {
-  shape_ = std::make_unique<Shape>(shape);
+  shape_ = MakeUnsharedShape(shape);
   CHECK(LayoutUtil::HasLayout(*shape_));
   CHECK(!shape_->IsTuple());
 
@@ -2827,7 +2845,7 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(const char* src_buf_ptr,
 
 MutableBorrowingLiteral::MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs,
                                                  const Shape& shape) {
-  shape_ = std::make_unique<Shape>(shape);
+  shape_ = MakeUnsharedShape(shape);
   if (!shape_->IsTuple()) {
     CHECK_EQ(src_buf_ptrs.size(), 1);
     root_piece_ = new Piece();
@@ -2852,7 +2870,7 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs,
 
 MutableBorrowingLiteral::MutableBorrowingLiteral(
     ShapeTree<char*> src_buf_ptrs) {
-  shape_ = std::make_unique<Shape>(src_buf_ptrs.shape());
+  shape_ = MakeUnsharedShape(src_buf_ptrs.shape());
 
   root_piece_ = new Piece();
   root_piece_->set_subshape(shape_.get());

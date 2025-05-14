@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/cord_buffer.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "highwayhash/hh_types.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace xla {
@@ -79,5 +80,16 @@ absl::Cord CordPrinter::ToCord() && {
   if (buffer_.length() > 0) result_.Append(std::move(buffer_));
   return std::move(result_);
 }
+
+// Generated using openssl rand.
+static constexpr highwayhash::HHKey kDefaultHighwayKey = {
+    0x9e0433b546e065d2ull,
+    0x0e7ecad49e703760ull,
+    0x83d29f20dae229b0ull,
+    0x40c1ce3ff9d19a42ull,
+};
+
+HighwayHashPrinter::HighwayHashPrinter()
+    : Printer(/*is_hasher=*/true), hasher_(kDefaultHighwayKey) {}
 
 }  // namespace xla

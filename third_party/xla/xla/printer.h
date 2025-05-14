@@ -25,6 +25,10 @@ limitations under the License.
 #include "absl/strings/cord_buffer.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "highwayhash/arch_specific.h"
+#include "highwayhash/hh_types.h"
+#include "highwayhash/highwayhash.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace xla {
 
@@ -36,7 +40,11 @@ namespace xla {
 // implement "streamed printing" if needed.
 class Printer {
  public:
+  Printer() : is_hasher_(false) {}
+  explicit Printer(bool is_hasher) : is_hasher_(is_hasher) {}
   virtual ~Printer() = default;
+
+  bool is_hasher() const { return is_hasher_; }
 
   // Appends the given string to the printer.
   virtual void Append(const absl::AlphaNum& a) = 0;
@@ -47,6 +55,9 @@ class Printer {
   // May be overridden in some Printer implementations.
   virtual void AppendInt64List(absl::Span<const int64_t> list,
                                bool leading_comma);
+
+ private:
+  bool is_hasher_;
 };
 
 // A printer implementation that accumulates printed strings into `std::string`.
@@ -75,6 +86,35 @@ class CordPrinter : public Printer {
   absl::Cord result_;
 };
 
+// HighwayHashPrinter is a Printer that computes the fingerprint of the added
+// data using a HighwayHash hasher.
+class HighwayHashPrinter : public Printer {
+ public:
+  HighwayHashPrinter();
+
+  void Append(const absl::AlphaNum& a) override {
+    hasher_.Append(a.data(), a.size());
+  }
+
+  void AppendInt64List(absl::Span<const int64_t> list,
+                       bool _ /*leading_comma*/) override {
+    // Instead of separators, prefix with the length. This is fine since
+    // there's no way for the caller to distinguish between the two.
+    const uint64_t num = list.size();
+    hasher_.Append(tsl::safe_reinterpret_cast<const char*>(&num), sizeof(num));
+    hasher_.Append(tsl::safe_reinterpret_cast<const char*>(list.data()),
+                   list.size() * sizeof(list[0]));
+  }
+
+  uint64_t ToFingerprint() {
+    highwayhash::HHResult64 result;
+    hasher_.Finalize(&result);
+    return result;
+  }
+
+ private:
+  highwayhash::HighwayHashCatT<HH_TARGET_PREFERRED> hasher_;
+};
 // Utility functions that appends a list of elements to a Printer as if by
 // calling printer->Append(absl::StrJoin(...)), but does it in-place.
 template <typename Range, typename PrintFunc>
@@ -87,7 +127,9 @@ void AppendJoin(Printer* printer, const Range& range,
 template <typename Iterator, typename PrintFunc>
 void AppendJoin(Printer* printer, Iterator start, Iterator end,
                 absl::string_view separator, PrintFunc&& print) {
-  if (ABSL_PREDICT_FALSE(start == end)) return;
+  if (ABSL_PREDICT_FALSE(start == end)) {
+    return;
+  }
   print(printer, *start);
   std::advance(start, 1);
   while (start != end) {
