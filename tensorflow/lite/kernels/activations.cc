@@ -1596,6 +1596,13 @@ TfLiteStatus GeluPrepare(TfLiteContext* context, TfLiteNode* node) {
                              ? reference_ops::GeluTransformApproximate
                              : reference_ops::GeluTransform,
                          data->lut_uint8);
+  } else if (input->type == kTfLiteInt16) {
+    LUTPopulate<int16_t>(input->params.scale, input->params.zero_point,
+                         output->params.scale, output->params.zero_point,
+                         params->approximate
+                             ? reference_ops::GeluTransformApproximate
+                             : reference_ops::GeluTransform,
+                         data->lut_int16);
   }
   return GenericPrepare(context, node);
 }
@@ -1625,6 +1632,12 @@ TfLiteStatus GeluEval(TfLiteContext* context, TfLiteNode* node) {
           GetTensorData<int8_t>(input),
           MatchingFlatSize(GetTensorShape(input), GetTensorShape(output)),
           data->lut_int8, GetTensorData<int8_t>(output));
+      return kTfLiteOk;
+    case kTfLiteInt16:
+      reference_ops::LookupTableInt16(
+          GetTensorData<int16_t>(input),
+          MatchingFlatSize(GetTensorShape(input), GetTensorShape(output)),
+          data->lut_int16, GetTensorData<int16_t>(output));
       return kTfLiteOk;
     default:
       TF_LITE_KERNEL_LOG(
