@@ -70,8 +70,8 @@ func.func @op_dynamic_reshape(%arg0: tensor<16xf32>, %arg1: tensor<2xindex>) -> 
 
 // -----
 
-func.func @op_unary_einsum_deprecated(%arg0: tensor<8x16xf32>) -> tensor<8xf32> {
-  // CHECK: UnaryEinsumOp is deprecated and not supported in MHLO
+func.func @op_unary_einsum(%arg0: tensor<8x16xf32>) -> tensor<8xf32> {
+  // CHECK: op can't be translated to XLA HLO
   %0 = "stablehlo.unary_einsum"(%arg0) {
     einsum_config = "ab->a"
   } : (tensor<8x16xf32>) -> tensor<8xf32>

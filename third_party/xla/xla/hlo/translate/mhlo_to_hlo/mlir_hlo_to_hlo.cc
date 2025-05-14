@@ -2647,6 +2647,10 @@ LogicalResult ExportXlaOp(DynamicPadOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(UnaryEinsumOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
 LogicalResult ExportXlaOp(DynamicReshapeOp op, OpLoweringContext ctx) {
   auto resultType = mlir::dyn_cast<RankedTensorType>(op.getResult().getType());
   if (!resultType) return op->emitOpError() << "expected ranked result";
