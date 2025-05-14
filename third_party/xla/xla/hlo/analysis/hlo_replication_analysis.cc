@@ -491,12 +491,10 @@ absl::Status HloReplicationAnalysis::ComputeHloReplication() {
     ShapeTree<HloReplication> shape_tree(param->shape(),
                                          HloReplication::UniqueOnAllDevices());
 
-    std::unique_ptr<ShapeTree<HloSharding>> sharding_tree = nullptr;
-    if (cross_partition_spmd_ && param->has_sharding()) {
-      TF_ASSIGN_OR_RETURN(auto result,
+    std::optional<ShapeTree<HloSharding>> sharding_tree;
+    if (param->has_sharding()) {
+      TF_ASSIGN_OR_RETURN(sharding_tree,
                           param->sharding().AsShapeTree(param->shape()));
-      sharding_tree =
-          std::make_unique<ShapeTree<HloSharding>>(std::move(result));
     }
 
     const auto& replication = param->parameter_replicated_at_leaf_buffers();
@@ -517,13 +515,17 @@ absl::Status HloReplicationAnalysis::ComputeHloReplication() {
           if (replication) {
             // If parameter replication status has been set explicitly, use that
             // instead.
-            if (!cross_partition_spmd_ && (*replication)[leaf_index]) {
+            bool parameter_replicated =
+                (*replication)[leaf_index] ||
+                (param->has_sharding() &&
+                 sharding_tree->element(index).IsReplicated());
+            if (!cross_partition_spmd_ && parameter_replicated) {
               // Setting parameter replication status for replicas in
               // non cross-partition spmd mode.
               *shape_tree.mutable_element(index) =
                   HloReplication::ReplicatedOnAllDevices();
             }
-            if (cross_partition_spmd_ && !(*replication)[leaf_index]) {
+            if (cross_partition_spmd_ && !parameter_replicated) {
               // Setting paramemter replication status for partitions in
               // cross-partition spmd mode.
               *shape_tree.mutable_element(index) =
