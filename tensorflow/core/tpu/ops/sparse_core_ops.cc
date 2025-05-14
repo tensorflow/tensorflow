@@ -141,6 +141,40 @@ REGISTER_OP("XlaSparseDenseMatmulWithCsrInput")
       return absl::OkStatus();
     });
 
+REGISTER_OP("XlaSparseDenseMatmulIntWithCsrInput")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_gains: float32")
+    .Input("embedding_table: int32")
+    .Input("num_minibatches_per_physical_sparse_core: int32")
+    .Output("activations: int32")
+    .Attr("input_size: int >= 0")
+    .Attr("quantization_config_low: float")
+    .Attr("quantization_config_high: float")
+    .Attr("quantization_config_num_buckets: int >= 0")
+    .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      int input_size;
+      TF_RETURN_IF_ERROR(c->GetAttr("input_size", &input_size));
+      shape_inference::ShapeHandle rank;
+      for (int i = 0; i < 4; ++i) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &rank));
+      }
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 2, &rank));
+      for (int i = 2; i < 4; ++i) {
+        shape_inference::ShapeHandle merged;
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i), c->input(1), &merged));
+      }
+      shape_inference::ShapeHandle output_shape;
+      TF_RETURN_IF_ERROR(
+          c->ReplaceDim(c->input(4), 0, c->MakeDim(input_size), &output_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &rank));
+      c->set_output(0, output_shape);
+      return absl::OkStatus();
+    });
+
 REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput")
     .Input("row_pointers: int32")
     .Input("sorted_sample_ids: int32")
@@ -923,4 +957,27 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput")
       return absl::OkStatus();
     });
 
+REGISTER_OP("XlaSparseDenseMatmulIntGradWithCsrInput")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_gains: float32")
+    .Input("activation_gradients: float32")
+    .Input("tables: N * int32")
+    .Input("hyperparameters: M * float32")
+    .Input("num_minibatches_per_physical_sparse_core: int32")
+    .Output("updated_tables: N * int32")
+    .Attr("N: int >= 1")
+    .Attr("M: int >= 1")
+    .Attr("custom_computation: func")
+    .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      int num_tables;
+      TF_RETURN_IF_ERROR(c->GetAttr("N", &num_tables));
+      for (int i = 0; i < num_tables; ++i) {
+        c->set_output(i, c->input(5));
+      }
+      return absl::OkStatus();
+    });
 }  // namespace tensorflow
