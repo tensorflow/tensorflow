@@ -2010,9 +2010,6 @@ cuda_library(
         "gpu",
     ],
     deps = [
-        "//xla/stream_executor/cuda:cuda_status",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/status",
         "@local_config_cuda//cuda:cub_headers",
         "@local_config_cuda//cuda:cuda_headers",
     ],
@@ -2034,6 +2031,7 @@ cuda_library(
         ":cub_sort_kernel_cuda_impl_{}".format(typename),
         "//xla/ffi",
         "//xla/ffi:ffi_api",
+        "//xla/stream_executor/cuda:cuda_status",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@local_config_cuda//cuda:cuda_headers",
