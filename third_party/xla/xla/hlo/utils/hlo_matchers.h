@@ -171,6 +171,20 @@ class HloFrontendAttributeMatcher
   std::string key_, value_;
 };
 
+class HloUsedByMatcher
+    : public ::testing::MatcherInterface<const HloInstruction*> {
+ public:
+  explicit HloUsedByMatcher(::testing::Matcher<const HloInstruction*> used_by)
+      : used_by_(std::move(used_by)) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  ::testing::Matcher<const HloInstruction*> used_by_;
+};
+
 // Matches a Dot HLO instruction with specific LHS and RHS contracting
 // dimensions.
 class HloDotWithContractingDimsMatcher : public HloMatcher {
@@ -534,6 +548,11 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> FrontendAttribute(
     absl::string_view key, absl::string_view value) {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloFrontendAttributeMatcher(key, value));
+}
+
+inline ::testing::Matcher<const ::xla::HloInstruction*> UsedBy(
+    ::testing::Matcher<const HloInstruction*> used_by) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloUsedByMatcher(used_by));
 }
 
 inline ::testing::Matcher<const ::xla::HloInstruction*> Dot() {
