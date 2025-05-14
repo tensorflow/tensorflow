@@ -103,6 +103,8 @@ cc_library(
     deps = [
         ":streaming",
         "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_future",
+        "//xla/pjrt:raw_buffer",
         "//xla/python/ifrt",
         "//xla/python/pjrt_ifrt",
         "//xla/tsl/concurrency:ref_count",

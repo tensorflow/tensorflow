@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
@@ -102,7 +103,11 @@ DmaCopyChunk::DivideBufferCopiesEvenly(xla::ifrt::ArrayRef arr,
   work_units.reserve(total_num_copies);
   for (size_t i = 0; i < total_num_copies; ++i) {
     work_units.push_back(
-        DmaCopyChunk{arr, buffer, buffer_id, i * xfer_size,
+        DmaCopyChunk{[arr, buffer](void* dst, int64_t offset,
+                                   int64_t transfer_size) -> xla::PjRtFuture<> {
+                       return buffer->CopyRawToHost(dst, offset, transfer_size);
+                     },
+                     buffer_id, i* xfer_size,
                      std::min(copy_size - i * xfer_size, xfer_size)});
   }
   return work_units;
@@ -124,14 +129,14 @@ PremappedCopierState::PremappedCopierState(
 }
 
 void PremappedCopierState::ScheduleCopy(
-    const DmaCopyChunk& blob,
+    DmaCopyChunk blob,
     absl::AnyInvocable<void(PremappedCopierState* state, void* buf,
                             const DmaCopyChunk& chunk) &&>
         on_done) {
   WorkList work_list;
   {
     absl::MutexLock l(&mu_);
-    work_queue_.push_back(WorkQueueItem{blob, nullptr,
+    work_queue_.push_back(WorkQueueItem{std::move(blob), nullptr,
                                         base_seq_id_ + work_queue_.size(),
                                         false, std::move(on_done)});
     work_list = FindWorkLocked();
@@ -166,8 +171,8 @@ PremappedCopierState::WorkList PremappedCopierState::FindWorkLocked() {
 
 void PremappedCopierState::StartWorkUnlocked(const WorkList& work_list) {
   for (WorkQueueItem* work_item : work_list) {
-    const auto& wu = work_item->work;
-    wu.buffer->CopyRawToHost(work_item->dest_buffer, wu.offset, wu.size)
+    auto& wu = work_item->work;
+    wu.copy_fn(work_item->dest_buffer, wu.offset, wu.size)
         .OnReady([this, work_item](absl::Status s) {
           CHECK_OK(s);
           WorkList work_list2;
@@ -226,6 +231,84 @@ tsl::RCReference<ChunkDestination> MakeDmaDestination(
     std::shared_ptr<xla::PjRtClient::AsyncHostToDeviceTransferManager> atm,
     int buffer_index, size_t transfer_size) {
   return tsl::MakeRef<DmaDestination>(atm, buffer_index, transfer_size);
+}
+
+RawBufferEntry::RawBufferEntry(std::vector<BufferRef> arrs,
+                               std::shared_ptr<PremappedCopierState> state,
+                               size_t xfer_size)
+    : arrs_(std::move(arrs)), state_(state), xfer_size_(xfer_size) {}
+bool RawBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
+                            const SocketTransferPullRequest& req,
+                            size_t base_req_id) {
+  for (uint64_t bid : req.buffer_ids()) {
+    auto req_id = base_req_id;
+    ++base_req_id;
+    arrs_[bid].ready_future.OnReady(
+        [state, copier_state = state_, xfer_size = xfer_size_,
+         buf_size = arrs_[bid].buf_size, req_id, bid,
+         buffer = std::move(arrs_[bid].buffer)](absl::Status s) {
+          for (size_t i = 0; i * xfer_size < buf_size; ++i) {
+            DmaCopyChunk blob;
+            blob.copy_fn = [buffer](
+                               void* dst, int64_t offset,
+                               int64_t transfer_size) -> xla::PjRtFuture<> {
+              return buffer->CopyRawDeviceToHost(dst, offset, transfer_size);
+            };
+            blob.buffer_id = bid;
+            blob.offset = i * xfer_size;
+            blob.size = std::min(xfer_size, buf_size - blob.offset);
+            bool is_largest = blob.size + blob.offset == buf_size;
+            copier_state->ScheduleCopy(
+                std::move(blob), [req_id, state, copier_state, is_largest](
+                                     PremappedCopierState* copier_state_ptr,
+                                     void* buf, const DmaCopyChunk& chunk) {
+                  state->Send(req_id, buf, chunk.offset, chunk.size, is_largest,
+                              [copier_state, buf]() {
+                                copier_state->ReturnBuffer(buf);
+                              });
+                });
+          }
+        });
+  }
+
+  num_consumed_bufs_ += req.buffer_ids().size();
+  return num_consumed_bufs_ == arrs_.size();
+}
+
+PjRtBufferEntry::PjRtBufferEntry(std::vector<BufferRef> arrs,
+                                 std::shared_ptr<PremappedCopierState> state,
+                                 size_t xfer_size)
+    : arrs_(std::move(arrs)), state_(state), xfer_size_(xfer_size) {}
+bool PjRtBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
+                             const SocketTransferPullRequest& req,
+                             size_t base_req_id) {
+  for (uint64_t bid : req.buffer_ids()) {
+    auto req_id = base_req_id;
+    ++base_req_id;
+    for (size_t i = 0; i * xfer_size_ < arrs_[bid].buf_size; ++i) {
+      DmaCopyChunk blob;
+      blob.copy_fn = [buffer = std::move(arrs_[bid].buffer)](
+                         void* dst, int64_t offset,
+                         int64_t transfer_size) -> xla::PjRtFuture<> {
+        return buffer->CopyRawToHost(dst, offset, transfer_size);
+      };
+      blob.buffer_id = bid;
+      blob.offset = i * xfer_size_;
+      blob.size = std::min(xfer_size_, arrs_[bid].buf_size - blob.offset);
+      bool is_largest = blob.size + blob.offset == arrs_[bid].buf_size;
+      state_->ScheduleCopy(
+          std::move(blob), [req_id, state, copier_state = state_, is_largest](
+                               PremappedCopierState* copier_state_ptr,
+                               void* buf, const DmaCopyChunk& chunk) {
+            state->Send(
+                req_id, buf, chunk.offset, chunk.size, is_largest,
+                [copier_state, buf]() { copier_state->ReturnBuffer(buf); });
+          });
+    }
+  }
+
+  num_consumed_bufs_ += req.buffer_ids().size();
+  return num_consumed_bufs_ == arrs_.size();
 }
 
 }  // namespace aux
