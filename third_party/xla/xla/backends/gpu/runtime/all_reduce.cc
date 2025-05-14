@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -42,7 +43,7 @@ template <typename T>
 absl::Status LaunchTypedKernel(
     se::Stream* stream, se::StreamExecutor* executor,
     const se::ThreadDim& thread_dims, const se::BlockDim& block_dims,
-    const std::array<void*, stream_executor::gpu::kMaxNumAllReduceInputPtrs>&
+    const std::array<T*, stream_executor::gpu::kMaxNumAllReduceInputPtrs>&
         input_ptrs,
     se::DeviceMemoryBase output_buffer, int64_t num_inputs,
     int64_t num_elements) {
@@ -89,13 +90,15 @@ absl::Status RunAllReduceKernel(
   se::ThreadDim thread_dims(kThreads, 1, 1);
   se::BlockDim block_dims(kBlocks, 1, 1);
 
-  std::array<void*, stream_executor::gpu::kMaxNumAllReduceInputPtrs> input_ptrs;
-  absl::c_transform(
-      input_buffers, input_ptrs.begin(),
-      [](se::DeviceMemoryBase buffer) { return buffer.opaque(); });
-
   auto launch_kernel = [&](auto type) -> absl::Status {
     using T = decltype(type);
+
+    std::array<T*, stream_executor::gpu::kMaxNumAllReduceInputPtrs> input_ptrs;
+    absl::c_transform(input_buffers, input_ptrs.begin(),
+                      [](se::DeviceMemoryBase buffer) {
+                        return tsl::safe_reinterpret_cast<T*>(buffer.opaque());
+                      });
+
     return LaunchTypedKernel<T>(stream, executor, thread_dims, block_dims,
                                 input_ptrs, output_buffer, num_inputs,
                                 num_elements);

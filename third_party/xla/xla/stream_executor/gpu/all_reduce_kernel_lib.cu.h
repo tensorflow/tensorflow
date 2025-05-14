@@ -66,7 +66,7 @@ __device__ __forceinline__ void VecAdd(Vec<T>& res, const Vec<T>& vec) {
 
 template <typename T>
 __global__ void AllReduceKernelImpl(
-    std::array<void* __restrict__, kMaxNumAllReduceInputPtrs> input_ptrs,
+    std::array<T* __restrict__, kMaxNumAllReduceInputPtrs> input_ptrs,
     T* __restrict__ output_ptr, int64_t num_inputs, int64_t num_elements) {
   int64_t offset =
       kNumElementsPerThread * (blockIdx.x * blockDim.x + threadIdx.x);
@@ -83,12 +83,7 @@ __global__ void AllReduceKernelImpl(
     for (int j = 0; j < kMaxNumAllReduceInputPtrs; ++j) {
       if (j >= num_inputs) break;
 
-      T* input_ptr =
-          reinterpret_cast<  // REINTERPRET_CAST_OK=tsl::safe_reinterpret_cast
-                             // doesn't work in CUDA device functions.
-              T* __restrict__>(input_ptrs[j]);
-
-      Vec<T> input_vec = VecLoad(input_ptr + i);
+      Vec<T> input_vec = VecLoad(input_ptrs[j] + i);
       VecAdd(sum, input_vec);
     }
 
