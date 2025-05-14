@@ -238,6 +238,44 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
     return %2 : tensor<16x32xf32>
   }
 
+  // CHECK-NOT: func @local_xla.sdy.manual_computation_body(
+  func.func @local_xla.sdy.manual_computation_body(%arg0: tensor<16x8xf32>, %arg1: tensor<16x8xf32>) -> tensor<16x8xf32> {
+    %0 = stablehlo.add %arg0, %arg1 : tensor<16x8xf32>
+    return %0 : tensor<16x8xf32>
+  }
+
+  // CHECK-LABEL: func @manual_computation_nested_tuples
+  func.func @manual_computation_nested_tuples(%arg0: tensor<8xi64>, %arg1: tensor<8xi32>) -> tensor<8xi32> {
+    // CHECK-NEXT: %[[SPLIT_LOW:.*]] = stablehlo.custom_call @X64SplitLow(%arg0)
+    // CHECK-NEXT: %[[SPLIT_HIGH:.*]] = stablehlo.custom_call @X64SplitHigh(%arg0)
+    // CHECK-NEXT: %[[MAN_COMP:.*]] = sdy.manual_computation(%[[SPLIT_LOW]], %[[SPLIT_HIGH]], %arg1)
+    // CHECK-SAME:     in_shardings=[<@mesh, [{"a"}]>, <@mesh, [{"a"}]>, <@mesh, [{"a"}]>]
+    // CHECK-SAME:     out_shardings=[<@mesh, [{"a"}]>] manual_axes={"a"}
+    // CHECK-SAME:     (%arg2: tensor<1xui32>, %arg3: tensor<1xui32>, %arg4: tensor<1xi32>) {
+    // CHECK-NEXT:   %[[CONVERT:.*]] = stablehlo.convert %arg2
+    // CHECK-NEXT:   %[[SUB:.*]] = stablehlo.subtract %[[CONVERT]], %arg4
+    // CHECK-NEXT:   sdy.return %[[SUB]]
+    // CHECK-NEXT: }
+    // CHECK-NEXT: return %[[MAN_COMP]]
+    %0 = stablehlo.custom_call @X64SplitLow(%arg0) : (tensor<8xi64>) -> tensor<8xui32>
+    %1 = stablehlo.custom_call @X64SplitHigh(%arg0) : (tensor<8xi64>) -> tensor<8xui32>
+    %2 = stablehlo.tuple %0, %1 : tuple<tensor<8xui32>, tensor<8xui32>>
+    %3 = stablehlo.custom_call @local_xla.sdy.GlobalToLocalShape(%2, %arg1) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.in_shardings = "#sdy.sharding_per_value<[<@mesh, [{\"a\"}]>, <@mesh, [{\"a\"}]>, <@mesh, [{\"a\"}]>]>", xla.sdy.manual_axes = "#sdy<manual_axes{\"a\"}>"}} : (tuple<tensor<8xui32>, tensor<8xui32>>, tensor<8xi32>) -> tuple<tuple<tensor<1xui32>, tensor<1xui32>>, tensor<1xi32>>
+    %4 = stablehlo.get_tuple_element %3[0] : (tuple<tuple<tensor<1xui32>, tensor<1xui32>>, tensor<1xi32>>) -> tuple<tensor<1xui32>, tensor<1xui32>>
+    %5 = stablehlo.get_tuple_element %3[1] : (tuple<tuple<tensor<1xui32>, tensor<1xui32>>, tensor<1xi32>>) -> tensor<1xi32>
+    %6 = stablehlo.get_tuple_element %4[0] : (tuple<tensor<1xui32>, tensor<1xui32>>) -> tensor<1xui32>
+    %7 = stablehlo.get_tuple_element %4[1] : (tuple<tensor<1xui32>, tensor<1xui32>>) -> tensor<1xui32>
+    %8 = call @local_xla.sdy.manual_computation_body.1(%6, %7, %5) : (tensor<1xui32>, tensor<1xui32>, tensor<1xi32>) -> tensor<1xi32>
+    %9 = stablehlo.custom_call @local_xla.sdy.LocalToGlobalShape(%8) {mhlo.frontend_attributes = {xla.sdy.manual_axes = "#sdy<manual_axes{\"a\"}>", xla.sdy.out_shardings = "#sdy.sharding_per_value<[<@mesh, [{\"a\"}]>]>"}} : (tensor<1xi32>) -> tensor<8xi32>
+    return %9 : tensor<8xi32>
+  }
+
+  func.func private @local_xla.sdy.manual_computation_body.1(%arg0: tensor<1xui32>, %arg1: tensor<1xui32>, %arg2: tensor<1xi32>) -> tensor<1xi32> {
+    %0 = stablehlo.convert %arg0 : (tensor<1xui32>) -> tensor<1xi32>
+    %1 = stablehlo.subtract %0, %arg2 : tensor<1xi32>
+    return %1 : tensor<1xi32>
+  }
+
   // CHECK-LABEL: func @frontend_attr_not_sharding
   // CHECK-SAME:    %arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh2, [{"b"}, {?}]>},
   // CHECK-SAME:    %arg1: tensor<16x8xf32> {mhlo.frontend_attributes = {baz = 1 : i32, foo = "bar"}},
@@ -262,12 +300,6 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
     } : (!stablehlo.token) -> (tensor<16x8xf32>, !stablehlo.token)
     %2 = stablehlo.add %1#0, %arg1 : tensor<16x8xf32>
     return %2 : tensor<16x8xf32>
-  }
-
-  // CHECK-NOT: func @local_xla.sdy.manual_computation_body(
-  func.func @local_xla.sdy.manual_computation_body(%arg0: tensor<16x8xf32>, %arg1: tensor<16x8xf32>) -> tensor<16x8xf32> {
-    %0 = stablehlo.add %arg0, %arg1 : tensor<16x8xf32>
-    return %0 : tensor<16x8xf32>
   }
 }
 
