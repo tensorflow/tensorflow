@@ -119,7 +119,7 @@ TEST(PremappedCopierState, RoundTrip) {
 
   for (size_t i = 0; i < src_work_units.size(); ++i) {
     cstate->ScheduleCopy(
-        src_work_units[i],
+        std::move(src_work_units[i]),
         [&mu, &local_queue](PremappedCopierState* state, void* buf,
                             const DmaCopyChunk& chunk) {
           absl::MutexLock l(&mu);
