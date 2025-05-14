@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/debug_options_flags.h"
 #include "xla/ffi/ffi.h"
@@ -23,9 +24,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
