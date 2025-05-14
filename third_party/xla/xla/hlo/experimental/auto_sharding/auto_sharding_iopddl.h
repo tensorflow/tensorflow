@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_IOPDDL_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/iopddl.h"
@@ -32,6 +33,12 @@ iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request);
 
 AutoShardingSolverRequest ConvertToSolverRequest(
     const iopddl::Problem& problem);
+
+std::vector<int64_t> GetFollowers(const iopddl::Problem& problem);
+
+std::vector<iopddl::Edge> GetAliases(const iopddl::Problem& problem);
+
+std::vector<iopddl::Edge> GetDeduplicatedEdges(const iopddl::Problem& problem);
 
 void RandomizeCosts(iopddl::Problem& problem);
 
