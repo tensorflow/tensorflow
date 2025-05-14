@@ -326,7 +326,7 @@ struct RewriteVectorTransferRead : OpRewritePattern<mv::TransferReadOp> {
     if (vector_type.getRank() != 1) {
       return rewriter.notifyMatchFailure(op, "the vector should be 1D");
     }
-    auto tensor = op.getSource();
+    auto tensor = op.getBase();
     auto tensor_type = tensor.getType();
     if (tensor_type.getRank() < 2) {
       return rewriter.notifyMatchFailure(op,
