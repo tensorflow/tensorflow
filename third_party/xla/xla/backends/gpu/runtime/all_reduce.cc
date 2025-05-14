@@ -28,12 +28,11 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
-#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -59,7 +58,7 @@ absl::Status LaunchTypedKernel(
 bool IsAllReduceKernelSupported(int64_t num_inputs,
                                 PrimitiveType element_type) {
   return num_inputs <= stream_executor::gpu::kMaxNumAllReduceInputPtrs &&
-         element_type == F32;
+         (element_type == BF16 || element_type == F32);
 }
 
 absl::Status RunAllReduceKernel(
@@ -94,6 +93,8 @@ absl::Status RunAllReduceKernel(
   };
 
   switch (element_type) {
+    case BF16:
+      return launch_kernel(xla::bfloat16{});
     case F32:
       return launch_kernel(float{});
     default:
