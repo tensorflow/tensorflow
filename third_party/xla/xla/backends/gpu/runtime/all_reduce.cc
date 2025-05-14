@@ -55,10 +55,19 @@ absl::Status LaunchTypedKernel(
 }
 }  // namespace
 
-bool IsAllReduceKernelSupported(int64_t num_inputs,
+bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
                                 PrimitiveType element_type) {
-  return num_inputs <= stream_executor::gpu::kMaxNumAllReduceInputPtrs &&
-         (element_type == BF16 || element_type == F32);
+  // The kernel always vectorizes to 4 elements per thread.
+  if (num_elements % 4 != 0) {
+    return false;
+  }
+
+  // The kernel is only supported for up to 8 devices.
+  if (num_inputs > stream_executor::gpu::kMaxNumAllReduceInputPtrs) {
+    return false;
+  }
+
+  return element_type == BF16 || element_type == F32;
 }
 
 absl::Status RunAllReduceKernel(

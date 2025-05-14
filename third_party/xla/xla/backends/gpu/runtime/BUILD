@@ -1660,6 +1660,7 @@ xla_test(
     deps = [
         ":all_reduce",
         "//xla:shape_util",
+        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_handle",
