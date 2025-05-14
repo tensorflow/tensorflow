@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/mlir/stablehlo/transforms/mhlo_passes/tf_fuse_convolution_pass.h"
+
 #include <iterator>
 #include <memory>
 #include <utility>
@@ -190,7 +192,7 @@ class FuseMhloConvolutionPass
   }
 };
 
-std::unique_ptr<Pass> CreateFuseConvolutionPass() {
+std::unique_ptr<Pass> createFuseConvolutionPass() {
   return std::make_unique<FuseMhloConvolutionPass>();
 }
 

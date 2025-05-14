@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_TF_STABLEHLO_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_TF_STABLEHLO_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_FOLD_BROADCAST_PASS_H_
+#define TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_FOLD_BROADCAST_PASS_H_
 
 #include <memory>
 
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
-namespace odml::tf_quant {
+namespace odml {
 
-// Fuses MHLO binary element-wise ops and convolution op.
-std::unique_ptr<Pass> CreateTfFuseConvolutionPass();
+// Constant folds broadcast_in_dim op conditionally.
+std::unique_ptr<Pass> createFoldBroadcastPass();
 
-}  // namespace odml::tf_quant
+}  // namespace odml
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_TF_STABLEHLO_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_STABLEHLO_TRANSFORMS_FOLD_BROADCAST_PASS_H_

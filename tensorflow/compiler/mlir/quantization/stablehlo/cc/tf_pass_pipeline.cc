@@ -46,11 +46,11 @@ void AddPreCalibrationPasses(OpPassManager& pm,
   pm.addPass(CreateLiftQuantizableSpotsAsFunctionsPass(quantization_specs));
   if (debugger_config.debugger_type() !=
       DebuggerConfig::DEBUGGER_TYPE_UNSPECIFIED) {
-    pm.addPass(CreateTFAddDumpTensorOpPass(debugger_config.debugger_type(),
-                                           debugger_config.log_dir_path()));
+    pm.addPass(CreateAddDumpTensorOpPass(debugger_config.debugger_type(),
+                                         debugger_config.log_dir_path()));
   }
   pm.addNestedPass<func::FuncOp>(
-      CreateTFInsertCustomAggregationOpsPass(calibration_options));
+      CreateInsertCustomAggregationOpsPass(calibration_options));
 }
 
 void AddPostCalibrationPasses(OpPassManager& pm,
@@ -68,7 +68,7 @@ void AddPostCalibrationPasses(OpPassManager& pm,
 
   AddShapeLegalizationPasses(pm);
   pm.addNestedPass<func::FuncOp>(
-      CreateTFConvertCustomAggregationOpToQuantStatsPass());
+      CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(createQuantizeCompositeFunctionsPass(options));
   // Add an inliner pass to inline quantized StableHLO functions.
   pm.addPass(createInlinerPass());
@@ -92,8 +92,8 @@ void AddWeightOnlyQuantizationPasses(
   pm.addPass(CreateLiftQuantizableSpotsAsFunctionsPass(quantization_specs));
   if (debugger_config.debugger_type() !=
       DebuggerConfig::DEBUGGER_TYPE_UNSPECIFIED) {
-    pm.addPass(CreateTFAddDumpTensorOpPass(debugger_config.debugger_type(),
-                                           debugger_config.log_dir_path()));
+    pm.addPass(CreateAddDumpTensorOpPass(debugger_config.debugger_type(),
+                                         debugger_config.log_dir_path()));
   }
   AddShapeLegalizationPasses(pm);
   QuantizeCompositeFunctionsPassOptions options;
