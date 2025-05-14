@@ -256,6 +256,25 @@ void HloFrontendAttributeMatcher::DescribeTo(std::ostream* os) const {
   *os << key_ << " = \"" << value_ << "\"";
 }
 
+bool HloUsedByMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  for (const HloInstruction* user : instruction->users()) {
+    if (used_by_.MatchAndExplain(user, listener)) {
+      return true;
+    }
+  }
+  *listener << instruction->ToString()
+            << " has no users that match expected:\n\t";
+  used_by_.DescribeTo(listener->stream());
+  return false;
+}
+
+void HloUsedByMatcher::DescribeTo(std::ostream* os) const {
+  *os << "used by ";
+  used_by_.DescribeTo(os);
+}
+
 bool HloDotWithContractingDimsMatcher::MatchAndExplain(
     const HloInstruction* instruction,
     ::testing::MatchResultListener* listener) const {
