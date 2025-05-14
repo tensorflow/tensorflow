@@ -4051,6 +4051,7 @@ cc_library(
         ":computation_layout",
         ":computation_placer",
         ":hlo_proto_cc",
+        ":schedule_config",
         ":sharding_config",
         "//xla:debug_options_flags",
         "//xla:shape_layout",
