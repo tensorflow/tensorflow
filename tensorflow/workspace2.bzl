@@ -902,17 +902,18 @@ def _tf_repositories():
     # third_party/py/riegeli) that are used in TF.
     tf_http_archive(
         name = "riegeli",
-        sha256 = "1d216d5c97fa60632143d209a1bb48c2a83788efdb876902e7bbc06396d5ee1f",
-        strip_prefix = "riegeli-5d75119232cd4f6db8dfa69a1503289f050e9643",
-        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/5d75119232cd4f6db8dfa69a1503289f050e9643.zip"),
+        sha256 = "0bcf7cdc1b6ce4231088db774e5dedce663f8bfa8cb96ffebdf10fcd9f84f3de",
+        patch_file = ["//third_party:riegeli_fix.patch"],
+        strip_prefix = "riegeli-bcae1d3b1f6da547e77119c463bcab67d7f785d3",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/bcae1d3b1f6da547e77119c463bcab67d7f785d3.zip"),
     )
 
     tf_http_archive(
         name = "riegeli_py",
-        sha256 = "1d216d5c97fa60632143d209a1bb48c2a83788efdb876902e7bbc06396d5ee1f",
-        patch_file = ["//third_party:riegeli_fix.patch"],
-        strip_prefix = "riegeli-5d75119232cd4f6db8dfa69a1503289f050e9643",
-        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/5d75119232cd4f6db8dfa69a1503289f050e9643.zip"),
+        sha256 = "0bcf7cdc1b6ce4231088db774e5dedce663f8bfa8cb96ffebdf10fcd9f84f3de",
+        patch_file = ["//third_party:riegeli_py_fix.patch"],
+        strip_prefix = "riegeli-bcae1d3b1f6da547e77119c463bcab67d7f785d3",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/bcae1d3b1f6da547e77119c463bcab67d7f785d3.zip"),
     )
 
     # Required by riegeli.

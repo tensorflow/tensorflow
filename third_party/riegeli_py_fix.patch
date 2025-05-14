@@ -1,0 +1,30 @@
+Add patch to use tf build rules to prevent 'protobuf_python_genproto' error
+
+
+diff --git a/python/riegeli/records/BUILD b/python/riegeli/records/BUILD
+index 45b05ba..e7bcb46 100644
+--- a/python/riegeli/records/BUILD
++++ b/python/riegeli/records/BUILD
+@@ -1,5 +1,5 @@
+-load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+-load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
++load("@local_xla//xla/tsl/platform/default:build_config.bzl", "tf_proto_library")
++load("@local_xla//xla/tsl/platform/default:build_config.bzl", "py_proto_library")
+ load("@rules_python//python:defs.bzl", "py_library")
+ load("//python/riegeli:py_extension.bzl", "py_extension")
+ 
+@@ -91,10 +91,11 @@ py_library(
+     srcs = ["skipped_region.py"],
+ )
+ 
+-proto_library(
++tf_proto_library(
+     name = "records_metadata_proto",
+     srcs = ["records_metadata.proto"],
+-    deps = ["@com_google_protobuf//:descriptor_proto"],
++    protodeps = [],
++    visibility = ["//python/riegeli:__subpackages__"],
+ )
+ 
+ py_proto_library(
+
