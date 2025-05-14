@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <atomic>
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -25,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
