@@ -34,7 +34,7 @@ func.func @main(%arg0: tensor<4x4xf32>) -> (tensor<4x4xf32> {mhlo.sharding = "\0
   // CHECK-NEXT: [[RESHAPE_0:%.*]] = f32[4,4] reshape(%Arg_0.1), sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
   // CHECK-NEXT: [[RESHAPE_1:%.*]] = f32[4,4] reshape(%Arg_0.1)
   // CHECK-NOT:  sharding
-  // CHECK-NEXT: ROOT {{%.*}} = (f32[4,4], f32[4,4]) tuple([[RESHAPE_0]], [[RESHAPE_1]])
+  // CHECK-NEXT: ROOT {{%.*}} = (f32[4,4], f32[4,4]) tuple(%Arg_0.1, %Arg_0.1)
   // CHECK-SAME: sharding={{\{}}{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}, {replicated}}
   return %arg0, %arg0 : tensor<4x4xf32>, tensor<4x4xf32>
 }
@@ -74,7 +74,7 @@ func.func @main(%arg0: tensor<2xui64>) -> (tensor<2xui64> {mhlo.sharding = "{dev
   // CHECK-NEXT: %reshape.6 = u64[2] reshape(%add.5)
   // CHECK-NEXT: %get-tuple-element.4 = u32[512,4] get-tuple-element(%rng-bit-generator.2), index=1, sharding={devices=[8,4]<=[32]}
   // CHECK-NEXT: %reshape.7 = u32[512,4] reshape(%get-tuple-element.4)
-  // CHECK-NEXT: ROOT %tuple.8 = (u64[2], u32[512,4]) tuple(%reshape.6, %reshape.7), sharding={{\{}}{devices=[2,16]<=[32] last_tile_dim_replicate}, {devices=[4,8]<=[32]}}
+  // CHECK-NEXT: ROOT %tuple.8 = (u64[2], u32[512,4]) tuple(%add.5, %get-tuple-element.4), sharding={{\{}}{devices=[2,16]<=[32] last_tile_dim_replicate}, {devices=[4,8]<=[32]}}
   %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<DEFAULT>}> {mhlo.sharding = "{{replicated}, {devices=[8,4]<=[32]}}"} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<512x4xui32>)
   %0 = mhlo.add %output_state, %output_state : tensor<2xui64>
   return %0, %output : tensor<2xui64>, tensor<512x4xui32>
