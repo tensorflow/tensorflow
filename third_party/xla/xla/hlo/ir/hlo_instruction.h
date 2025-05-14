@@ -2751,7 +2751,6 @@ bool HloPredicateIsNotOp(const HloInstruction* instruction) {
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
-    case HloOpcode::kTopK:
     case HloOpcode::kCustomCall:
       return true;
     default:
