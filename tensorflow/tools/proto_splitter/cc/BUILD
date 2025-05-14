@@ -210,20 +210,18 @@ cc_library(
 
 cc_library(
     name = "repeated_field_splitter",
-    srcs = ["repeated_field_splitter.cc"],
     hdrs = ["repeated_field_splitter.h"],
     deps = [
         ":composable_splitter",
         ":max_size",
         ":size_splitter",
-        ":split",
         ":util",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
