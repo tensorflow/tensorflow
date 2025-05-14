@@ -5512,7 +5512,18 @@ LogicalResult ConvertToHloModule::LowerReturn(
                 /*fast_mem=*/false);
         if (!reshape.ok())
           return inst->emitError() << reshape.status().message();
-        returns[index] = reshape.value();
+
+        absl::StatusOr<xla::Shape> old_shape =
+            builder->GetShape(returns[index]);
+        absl::StatusOr<xla::Shape> new_shape =
+            builder->GetShape(reshape.value());
+        if (!old_shape.ok() || !new_shape.ok()) {
+          return inst->emitError() << "Failed to get shape.";
+        }
+        if (!xla::ShapeUtil::Equal(*old_shape, *new_shape)) {
+          returns[index] = reshape.value();
+        }
+        // TODO(b/417428036). Remove the dead reshapes.
       }
     }
 
