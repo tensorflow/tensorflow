@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/mlir/stablehlo/transforms/mhlo_passes/fuse_convolution_pass.h"
+
 #include <iterator>
 #include <memory>
 #include <utility>
