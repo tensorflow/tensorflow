@@ -47,6 +47,7 @@ dnnl::post_ops PopulateOneDnnPostOps(
     FusedOperandsRef* fused_operands_ref, dnnl::memory::desc* bias_md) {
   dnnl::post_ops post_ops;
   int fused_operand_idx = 0;
+  int linear_scale_idx = 0;
   for (auto& fused_op : fusion_config->ops()) {
     switch (fused_op) {
       case OneDnnFusionConfig::RELU:
@@ -99,9 +100,10 @@ dnnl::post_ops PopulateOneDnnPostOps(
       case OneDnnFusionConfig::LINEAR: {
         float const_float;
         *(reinterpret_cast<int32_t*>(&const_float)) =
-            fusion_config->alpha_typecast();
+            fusion_config->alpha_typecast()[linear_scale_idx];
         post_ops.append_eltwise(dnnl::algorithm::eltwise_linear, const_float,
                                 0.f);
+        linear_scale_idx++;
       } break;
       default:
         LOG(FATAL) << __FILE__ << ":" << __LINE__
