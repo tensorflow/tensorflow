@@ -5936,6 +5936,25 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "schedule_config",
+    srcs = ["schedule_config.cc"],
+    hdrs = ["schedule_config.h"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+    ],
+)
+
+xla_cc_test(
+    name = "schedule_config_test",
+    srcs = ["schedule_config_test.cc"],
+    deps = [
+        ":schedule_config",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "sharding_config",
     srcs = ["sharding_config.cc"],
     hdrs = ["sharding_config.h"],
