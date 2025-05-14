@@ -270,17 +270,17 @@ absl::Status ExportToTensorBoard(const XSpace& xspace,
   return absl::OkStatus();
 }
 
-absl::Status CaptureRemoteTrace(
+absl::Status CaptureRemoteTraceWithBoolOpts(
     const char* service_addr, const char* logdir, const char* worker_list,
     bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options) {
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& options) {
   // TPU capture is true if the user sets worker_list.
   bool is_cloud_tpu_session = false;
   RemoteProfilerSessionManagerOptions opts =
-      GetRemoteSessionManagerOptionsLocked(service_addr, logdir, worker_list,
-                                           include_dataset_ops, duration_ms,
-                                           options, &is_cloud_tpu_session);
+      GetRemoteSessionManagerOptionsLockedWithBoolOpts(
+          service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
+          options, &is_cloud_tpu_session);
   TF_RETURN_IF_ERROR(ValidateRemoteProfilerSessionManagerOptions(opts));
 
   {
@@ -288,6 +288,24 @@ absl::Status CaptureRemoteTrace(
                                           is_cloud_tpu_session));
   }
   return absl::OkStatus();
+}
+
+absl::Status CaptureRemoteTrace(
+    const char* service_addr, const char* logdir, const char* worker_list,
+    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
+    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
+        options) {
+  absl::flat_hash_map<std::string, std::variant<bool, int, std::string>>
+      converted_options;
+  for (const auto& [key, value] : options) {
+    converted_options[key] = std::visit(
+        [](auto&& arg) -> std::variant<bool, int, std::string> { return arg; },
+        value);
+  }
+
+  return CaptureRemoteTraceWithBoolOpts(
+      service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
+      num_tracing_attempts, converted_options);
 }
 
 }  // namespace profiler
