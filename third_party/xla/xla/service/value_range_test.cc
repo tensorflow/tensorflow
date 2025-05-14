@@ -512,5 +512,47 @@ ENTRY entry {
   EXPECT_FALSE(range.IsLinear());
 }
 
+TEST_F(ValueRangeTest, MultipleCallSites) {
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+call_computation {
+  param0.call = s32[] parameter(0)
+  ROOT add.call = s32[] add(param0.call, param0.call)
+}
+
+ENTRY main {
+  c0 = s32[] constant(120)
+  c1 = s32[] constant(53)
+  call0 = s32[] call(c0), to_apply=call_computation
+  call1 = s32[] call(c1), to_apply=call_computation
+  ROOT add = s32[] add(call0, call1)
+}
+)";
+  auto module =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig{}).value();
+  HloComputation* call_computation =
+      module->GetComputationWithName("call_computation");
+  HloComputation* entry_computation = module->entry_computation();
+
+  HloInstruction* c0 = entry_computation->GetInstructionWithName("c0");
+  HloInstruction* c1 = entry_computation->GetInstructionWithName("c1");
+  HloInstruction* add_call =
+      call_computation->GetInstructionWithName("add.call");
+
+  absl::flat_hash_map<const HloInstruction*, Range> fs;
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow_analysis,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+
+  auto c0_range = RecursivelyIdentifyRange(c0, fs);
+  auto c1_range = RecursivelyIdentifyRange(c1, fs);
+  auto add_call_range =
+      RecursivelyIdentifyRange(add_call, fs, dataflow_analysis.get());
+
+  EXPECT_TRUE(c0_range.IsSingleValue());
+  EXPECT_TRUE(c1_range.IsSingleValue());
+  EXPECT_FALSE(add_call_range.IsSingleValue());
+}
+
 }  // namespace
 }  // namespace xla

@@ -106,8 +106,11 @@ Range RecursivelyIdentifyRange(
     return it->second;
   } else if (dataflow_analysis != nullptr) {
     auto value_set = dataflow_analysis->GetFlattenedValueSet(instr);
-    for (const auto& value : value_set.values()) {
-      for (const HloPosition& position : value->positions()) {
+    // We could be smarter here by merging the ranges, but it's likely not worth
+    // the complexity at this point.
+    const std::vector<const HloValue*>& values = value_set.values();
+    if (values.size() == 1) {
+      for (const HloPosition& position : values.at(0)->positions()) {
         auto it = known_ranges.find(position.instruction);
         if (it != known_ranges.end()) {
           VLOG(5) << "Found range in defining instruction: "

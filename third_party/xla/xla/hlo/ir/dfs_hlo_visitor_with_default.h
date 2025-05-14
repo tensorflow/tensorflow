@@ -381,6 +381,7 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
 
   // Mark the computation as having changed.
   void MarkAsChanged() { changed_ = true; }
+  void MarkAsUnchanged() { changed_ = false; }
   void MarkAsMaybeChanged(bool changed) { changed_ |= changed; }
 
  private:
