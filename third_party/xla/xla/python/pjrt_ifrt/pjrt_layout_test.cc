@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <tuple>
