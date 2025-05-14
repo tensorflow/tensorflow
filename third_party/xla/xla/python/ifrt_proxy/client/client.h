@@ -24,13 +24,16 @@
 #include <string>
 #include <vector>
 
-#include "absl/base/nullability.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
@@ -156,6 +159,27 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   static char ID;  // NOLINT
 
  private:
+  struct LayoutKey {
+    xla::ifrt::DType dtype;
+    std::vector<int64_t> dims;
+    xla::ifrt::MemoryKind memory_kind;
+    std::string device_summary;
+
+    bool operator==(const LayoutKey& other) const {
+      return dtype == other.dtype && dims == other.dims &&
+             memory_kind == other.memory_kind &&
+             device_summary == other.device_summary;
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const LayoutKey& key) {
+      h = H::combine(std::move(h), key.dtype, key.memory_kind,
+                     key.device_summary);
+      h = H::combine_contiguous(std::move(h), key.dims.data(), key.dims.size());
+      return h;
+    }
+  };
+
   Client(std::shared_ptr<RpcHelper> rpc_helper, uint64_t session_id,
          std::string platform_name, std::string platform_version,
          uint64_t platform_id, uint64_t process_index, std::string runtime_type,
@@ -186,6 +210,10 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   const absl::flat_hash_map<int, std::unique_ptr<Memory>> memories_;
 
   Compiler default_compiler_;
+
+  mutable absl::Mutex mu_;
+  mutable absl::flat_hash_map<LayoutKey, std::shared_ptr<const xla::PjRtLayout>>
+      layout_cache_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace proxy
