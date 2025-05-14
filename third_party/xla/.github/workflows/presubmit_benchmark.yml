@@ -32,11 +32,17 @@ on:
   pull_request:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
 
 # Cancel in-progress runs for the same PR if a new commit is pushed
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true 
+  cancel-in-progress: true
 
 jobs:
   # ================================================================
@@ -44,6 +50,10 @@ jobs:
   # ================================================================
   generate_matrix:
     name: Generate Presubmit Matrix
+    # Add a condition here to only run if the PR has the label or it's a manual dispatch
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'blocking_presubmit')
     uses: ./.github/workflows/generate_benchmark_matrix.yml
     with:
       workflow_type: 'presubmit'
@@ -69,7 +79,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        # working-directory: ${{ github.workspace }} 
+        # working-directory: ${{ github.workspace }}
 
     timeout-minutes: 60
 
