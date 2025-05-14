@@ -28,8 +28,9 @@ limitations under the License.
 namespace xla::gpu {
 
 // Returns true if the all-reduce kernel is supported for the given number of
-// inputs and element type.
-bool IsAllReduceKernelSupported(int64_t num_inputs, PrimitiveType element_type);
+// inputs, elements and element type.
+bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
+                                PrimitiveType element_type);
 
 // Performs element-wise addition of all input buffers and stores the result in
 // the output buffer.

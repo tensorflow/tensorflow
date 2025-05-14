@@ -327,6 +327,7 @@ absl::StatusOr<bool> AllReduceStartThunk::ShouldUseOneShotAllReduceKernel(
   }
 
   return IsAllReduceKernelSupported(clique_key.num_local_participants(),
+                                    num_elements,
                                     config().operand_element_type[0]);
 }
 

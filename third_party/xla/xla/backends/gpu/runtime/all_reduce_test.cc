@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <numeric>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -44,10 +46,29 @@ se::StreamExecutor* GetGpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-using AllReduceKernelTest = ::testing::Test;
+template <typename T>
+class AllReduceKernelTest : public ::testing::Test {};
 
-TEST_F(AllReduceKernelTest, SimpleKernelTest) {
-  using T = float;
+using AllReduceKernelTestTypes = ::testing::Types<float, bfloat16>;
+
+class AllReduceKernelTestNameGenerator {
+ public:
+  template <typename T>
+  static std::string GetName(int) {
+    if constexpr (std::is_same_v<T, float>) {
+      return "f32";
+    }
+    if constexpr (std::is_same_v<T, bfloat16>) {
+      return "bf16";
+    }
+  }
+};
+
+TYPED_TEST_SUITE(AllReduceKernelTest, AllReduceKernelTestTypes,
+                 AllReduceKernelTestNameGenerator);
+
+TYPED_TEST(AllReduceKernelTest, SimpleKernelTest) {
+  using T = TypeParam;
 
   auto* executor = GetGpuExecutor();
   auto stream = executor->CreateStream().value();
@@ -69,7 +90,7 @@ TEST_F(AllReduceKernelTest, SimpleKernelTest) {
   std::vector<T> output_data(num_elements);
   for (int i = 0; i < num_inputs; ++i) {
     std::vector<T> input_data(num_elements);
-    std::iota(input_data.begin(), input_data.end(), 0);
+    std::iota(input_data.begin(), input_data.end(), static_cast<T>(0));
 
     TF_ASSERT_OK(stream->Memcpy(input_buffers[i].memory_ptr(),
                                 input_data.data(), num_elements * sizeof(T)));
@@ -77,6 +98,8 @@ TEST_F(AllReduceKernelTest, SimpleKernelTest) {
     std::transform(input_data.begin(), input_data.end(), output_data.begin(),
                    output_data.begin(), std::plus<T>());
   }
+
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   std::vector<se::DeviceMemoryBase> input_buffers_span;
   for (auto& input_buffer : input_buffers) {
@@ -86,6 +109,8 @@ TEST_F(AllReduceKernelTest, SimpleKernelTest) {
   TF_ASSERT_OK(RunAllReduceKernel(
       stream.get(), primitive_util::NativeToPrimitiveType<T>(),
       input_buffers_span, output_buffer.memory(), num_inputs, num_elements));
+
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   std::vector<T> output_results(num_elements);
   TF_ASSERT_OK(stream->Memcpy(output_results.data(), output_buffer.memory(),
