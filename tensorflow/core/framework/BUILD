@@ -849,6 +849,7 @@ tf_cuda_library(
     ],
     visibility = [
         "//learning/gemini/gemax/core/models/gemini3/vision/vision_decoder:__pkg__",
+        "//learning/gemini/gemax/core/models/lsp_inference_staging/vision/vision_decoder:__pkg__",
         "//learning/infra/runtime/experimental/mixed_engine:__subpackages__",
         "//tensorflow:__pkg__",
         "//tensorflow/core:__pkg__",
