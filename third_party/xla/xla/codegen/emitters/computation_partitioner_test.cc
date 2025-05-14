@@ -100,7 +100,7 @@ TEST_F(ComputationPartitionerTest, PartitionDiamonds) {
         %slice0.2 = f32[5]{0} slice(%param), slice={[1:6]}
         ROOT %add0 = f32[5]{0} add(%slice0.1, %slice0.2)
       }
-      SUBGRAPH fused_computation_param {
+      SUBGRAPH fused_computation_param no_compute {
         ROOT %param = f32[6]{0} parameter(0)
       })";
   EXPECT_EQ(computation.ToString(6), kExpected);
@@ -251,6 +251,35 @@ TEST_F(ComputationPartitionerTest, TransposeAsRoot) {
   ASSERT_THAT(computation.subgraphs(), SizeIs(2));
   EXPECT_THAT(computation.GetRootSubgraph().roots, SizeIs(1));
   EXPECT_THAT(computation.GetRootSubgraph().instructions, SizeIs(2));
+}
+
+TEST_F(ComputationPartitionerTest, TransposeReverse) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    fused_computation {
+      %p0 = f32[64, 32] parameter(0)
+      %reverse = f32[64, 32] reverse(%p0), dimensions={0}
+      %transpose = f32[32, 64] transpose(%reverse), dimensions={1, 0}
+      ROOT %root = f32[32, 64] tanh(%transpose)
+    })")
+                    .value();
+
+  auto* fusion = module->GetComputationWithName("fused_computation");
+  ASSERT_NE(fusion, nullptr);
+  PartitionedComputation computation(
+      fusion, &mlir_context_, [](const HloInstruction* instr) {
+        return instr->opcode() == HloOpcode::kTranspose;
+      });
+  constexpr auto kExpected = R"(PartitionedComputation fused_computation:
+      SUBGRAPH fused_computation_root {
+        ROOT %root = f32[32,64]{1,0} tanh(%transpose)
+      }
+      SUBGRAPH fused_computation_transpose no_compute {
+        %p0 = f32[64,32]{1,0} parameter(0)
+        %reverse = f32[64,32]{1,0} reverse(%p0), dimensions={0}
+        ROOT %transpose = f32[32,64]{1,0} transpose(%reverse), dimensions={1,0}
+      })";
+  EXPECT_EQ(computation.ToString(6), kExpected);
 }
 
 TEST_F(ComputationPartitionerTest, PartiallyMergable) {
