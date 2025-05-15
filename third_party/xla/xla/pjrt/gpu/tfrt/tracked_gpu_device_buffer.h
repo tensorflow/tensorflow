@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/shaped_buffer.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/framework/allocator.h"
 
 namespace xla {
 // TODO(b/400541410): Refactor and Merge this with MaybeOwningDeviceMemory.
@@ -81,7 +81,7 @@ class GpuDeviceMemory {
 // Class that represents a GPU buffer. It optionally owns the buffer. It also
 // tracks the definition and usage of the memory to allow for synchronized usage
 // and deletion of GPU memory. This class is thread-compatible.
-class TrackedGpuDeviceBuffer {
+class TrackedGpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
  public:
   TrackedGpuDeviceBuffer(
       tsl::AsyncValueRef<GpuDeviceMemory> buffer,
@@ -103,10 +103,6 @@ class TrackedGpuDeviceBuffer {
     return definition_event_;
   }
 
-  const tsl::AsyncValueRef<GpuEvent>& deallocation_event() const {
-    return deallocation_event_;
-  }
-
   // Adds usage events to the buffer. This usage events could be any device
   // buffer related events, e.g. D2H/D2D
   void AddUsageEvents(absl::Span<tsl::AsyncValueRef<GpuEvent>> events);
@@ -120,10 +116,6 @@ class TrackedGpuDeviceBuffer {
   // LockUseAndTransferUsageEvents is called, it is illegal to AddUsageEvent.
   tsl::AsyncValueRef<GpuEvent> LockUseAndTransferUsageEvents();
 
-  // Relinquishes ownership of the buffer's device memory, e.g., after the
-  // buffer is passed to a computation that aliases its inputs to outputs.
-  void ReleaseDeviceMemory();
-
   // Change ownership of underlying GpuDeviceMemory from owning to
   // non-owning. Used for buffer donation.
   void SetUnOwned();
@@ -131,6 +123,12 @@ class TrackedGpuDeviceBuffer {
   friend class TfrtGpuBuffer;
 
  private:
+  // Relinquishes ownership of the buffer's device memory, e.g., after the
+  // buffer is passed to a computation that aliases its inputs to outputs.
+  void ReleaseDeviceMemory();
+
+  void ConfirmDonation() override { ReleaseDeviceMemory(); }
+
   tsl::AsyncValueRef<GpuDeviceMemory> buffer_;
 
   // The definition event are associated with GPU operations that write to the
@@ -139,11 +137,6 @@ class TrackedGpuDeviceBuffer {
 
   // Usage events are associated with GPU operations that read from the buffers.
   TfrtEventSet usage_events_;
-
-  // An event triggered after this buffer is freed or donated. This event is
-  // used to make sure that allocations are sequenced with respect to
-  // deallocations in program order.
-  tsl::AsyncValueRef<GpuEvent> deallocation_event_;
 
   // A callback to call when the TrackedGpuDeviceBuffer is about to be
   // destroyed.

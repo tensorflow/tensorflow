@@ -95,12 +95,8 @@ namespace xla {
 
 class DonationTransactionPeer {
  public:
-  static absl::StatusOr<TfrtGpuBuffer::DonationTransaction> AcquireDonation(
-      TfrtGpuBuffer* tfrt_buffer) {
+  static TfrtGpuBuffer::ScopedHold AcquireDonation(TfrtGpuBuffer* tfrt_buffer) {
     return tfrt_buffer->AcquireDonation();
-  }
-  static tsl::AsyncValueRef<bool> GetDonationEvent(TfrtGpuBuffer* tfrt_buffer) {
-    return tfrt_buffer->GetDonationEvent();
   }
 };
 
@@ -491,13 +487,10 @@ TEST(TfrtGpuClientTest, AcquireDonation) {
       tensorflow::down_cast<TfrtGpuClient*>(client.get()), device,
       memory_space);
 
-  auto donation_transaction =
+  TfrtGpuBuffer::ScopedHold donation_transaction =
       DonationTransactionPeer::AcquireDonation(tfrt_buffer.get());
   EXPECT_TRUE(donation_transaction.ok());
-  std::move(*donation_transaction).Commit();
-  EXPECT_EQ(donation_transaction->device_buffer(), nullptr);
-  EXPECT_TRUE(
-      DonationTransactionPeer::GetDonationEvent(tfrt_buffer.get()).get());
+  std::move(donation_transaction).ConfirmDonation();
 }
 
 TEST(TfrtGpuClientTest, DonateWithControlDependency) {
