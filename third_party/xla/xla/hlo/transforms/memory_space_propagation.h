@@ -39,6 +39,9 @@ class MemorySpacePropagation : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+  void set_propagate_from_parameters(bool propagate_from_parameters) {
+    propagate_from_parameters_ = propagate_from_parameters;
+  }
 
  private:
   // Given the shape index (operand or output) and its corresponding instruction
@@ -47,6 +50,11 @@ class MemorySpacePropagation : public HloModulePass {
   // module is modified.
   bool Propagate(ShapeIndexView index, const HloInstruction* callee_instruction,
                  const Shape& src_shape) const;
+
+  // If true, the memory space propagation will propagate from the
+  // fusion parameters instead of the operands. This is useful for the cases
+  // where only the memory space of the fusion parameters is known.
+  bool propagate_from_parameters_ = false;
 
   std::unique_ptr<HloDataflowAnalysis> dataflow_analysis_;
 };
