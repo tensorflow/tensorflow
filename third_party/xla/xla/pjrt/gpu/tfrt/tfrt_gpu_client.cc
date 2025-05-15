@@ -140,6 +140,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "xla/service/gpu/model/gpu_collective_performance_model.h"
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
@@ -2265,6 +2266,57 @@ absl::StatusOr<MaybeOwning<se::DeviceMemoryAllocator>> CreateDeviceAllocator(
                                                std::move(allocators)));
 }
 
+#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 12040
+absl::StatusOr<std::string> GetDeviceFabricInfo(const int device_ordinal) {
+  if (!gpu::GpuPerformanceWithCollectiveModel::InitNvml()) {
+    return absl::InternalError("Failed to initialize NVML library.");
+  }
+
+  // NVML library is not a part of the CUDA toolkit, so there might be a
+  // situation when user is using CUDA 12.4 an higher, but the host NVML
+  // version doen't have the required functions.
+  if (xla_nvmlDeviceGetHandleByPciBusId_v2 == nullptr ||
+      xla_nvmlDeviceGetGpuFabricInfoV == nullptr) {
+    return absl::InternalError("NVML library doesn't have required functions.");
+  }
+
+  char pciBusId[] = "00000000:00:00.0";
+  cudaDeviceGetPCIBusId(pciBusId, sizeof(pciBusId), device_ordinal);
+  nvmlDevice_t device;
+  auto get_bus_id_status =
+      xla_nvmlDeviceGetHandleByPciBusId_v2(pciBusId, &device);
+  CHECK_EQ(get_bus_id_status, NVML_SUCCESS);
+
+  nvmlGpuFabricInfoV_t fabricInfo = {
+      .version = nvmlGpuFabricInfo_v2,
+      .state = NVML_GPU_FABRIC_STATE_NOT_SUPPORTED};
+  auto get_fabric_info_status =
+      xla_nvmlDeviceGetGpuFabricInfoV(device, &fabricInfo);
+  CHECK_EQ(get_fabric_info_status, NVML_SUCCESS);
+
+  if (fabricInfo.state == NVML_GPU_FABRIC_STATE_NOT_SUPPORTED) {
+    std::string error_message =
+        "NVML doesn't support extracting fabric info or NVLink is not used by "
+        "the device.";
+    VLOG(2) << error_message;
+    return absl::InternalError(error_message);
+  }
+
+  CHECK_EQ(sizeof(fabricInfo.clusterUuid), 16);
+  std::string uuid_str = absl::StrFormat(
+      "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+      fabricInfo.clusterUuid[0], fabricInfo.clusterUuid[1],
+      fabricInfo.clusterUuid[2], fabricInfo.clusterUuid[3],
+      fabricInfo.clusterUuid[4], fabricInfo.clusterUuid[5],
+      fabricInfo.clusterUuid[6], fabricInfo.clusterUuid[7],
+      fabricInfo.clusterUuid[8], fabricInfo.clusterUuid[9],
+      fabricInfo.clusterUuid[10], fabricInfo.clusterUuid[11],
+      fabricInfo.clusterUuid[12], fabricInfo.clusterUuid[13],
+      fabricInfo.clusterUuid[14], fabricInfo.clusterUuid[15]);
+  return absl::StrCat(uuid_str, "/", std::to_string(fabricInfo.cliqueId));
+}
+#endif  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 12040
+
 using DeviceTopologyPair =
     std::pair<std::vector<std::unique_ptr<TfrtGpuDevice>>, GpuTopologyProto>;
 
@@ -2302,18 +2354,18 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
         MakeComputeCapabilityString(desc.get()));
     device_proto->set_core_count(desc->core_count());
 
-    // TODO: hhb
-    // const se::GpuComputeCapability& compute_capability =
-    //     desc->gpu_compute_capability();
-    // if (std::holds_alternative<se::CudaComputeCapability>(compute_capability)
-    // &&
-    //     std::get<se::CudaComputeCapability>(compute_capability).major >= 9) {
-    //   auto fabric_info = GetDeviceFabricInfo(executor->device_ordinal());
-    //   if (fabric_info.ok()) {
-    //     device_proto->set_fabric_uuid(*fabric_info);
-    //   }
-    // }
+#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 12040
+    const se::GpuComputeCapability& compute_capability =
+        desc->gpu_compute_capability();
+    if (std::holds_alternative<se::CudaComputeCapability>(compute_capability) &&
+        std::get<se::CudaComputeCapability>(compute_capability).major >= 9) {
+      auto fabric_info = GetDeviceFabricInfo(executor->device_ordinal());
+      if (fabric_info.ok()) {
+        device_proto->set_fabric_uuid(*fabric_info);
+      }
+    }
   }
+#endif  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 12040
 
   GlobalTopologyProto global_topology;
   if (enable_mock_nccl) {
