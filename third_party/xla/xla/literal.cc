@@ -679,8 +679,8 @@ void LiteralBase::Piece::CopyElementsWithDynamicBound(
 
 absl::Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
                                           bool only_dynamic_bound) {
-  CHECK(subshape_ != nullptr);
-  CHECK(src.subshape_ != nullptr);
+  CHECK_NOTNULL(subshape_);
+  CHECK_NOTNULL(src.subshape_);
   CHECK(LayoutUtil::IsDenseArray(subshape()))
       << __func__ << " is only supported for dense arrays: " << subshape();
   CHECK(LayoutUtil::IsDenseArray(src.subshape()))
