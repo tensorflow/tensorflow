@@ -268,12 +268,12 @@ GpuAsyncTrackerBase::GpuAsyncTrackerBase(const SchedulerConfig& config,
                                          GetCanonicalAsyncOpFunc func)
     : AsyncTracker(config, func) {}
 
-bool GpuAsyncTrackerBase::IsSupportedAsyncDone(
+bool GpuAsyncTrackerBase::IsSupportedAsyncDoneImpl(
     const HloInstruction& hlo) const {
   return IsGpuAsyncDone(hlo);
 }
 
-bool GpuAsyncTrackerBase::IsSupportedAsyncStart(
+bool GpuAsyncTrackerBase::IsSupportedAsyncStartImpl(
     const HloInstruction& hlo) const {
   return IsGpuAsyncStart(hlo);
 }

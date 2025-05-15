@@ -216,11 +216,29 @@ class AsyncTracker {
  public:
   virtual ~AsyncTracker() = default;
 
+  bool IsSupportedAsyncDone(const HloInstruction& hlo) const {
+    if (is_supported_async_done_cache_.contains(&hlo)) {
+      return is_supported_async_done_cache_.at(&hlo);
+    }
+    bool result = IsSupportedAsyncDoneImpl(hlo);
+    is_supported_async_done_cache_.insert({&hlo, result});
+    return result;
+  }
+
+  bool IsSupportedAsyncStart(const HloInstruction& hlo) const {
+    if (is_supported_async_start_cache_.contains(&hlo)) {
+      return is_supported_async_start_cache_.at(&hlo);
+    }
+    bool result = IsSupportedAsyncStartImpl(hlo);
+    is_supported_async_start_cache_.insert({&hlo, result});
+    return result;
+  }
+
   // Returns if this is an Async op done that the scheduler supports.
-  virtual bool IsSupportedAsyncDone(const HloInstruction& hlo) const;
+  virtual bool IsSupportedAsyncDoneImpl(const HloInstruction& hlo) const;
 
   // Returns if this is an Async op start that the scheduler supports.
-  virtual bool IsSupportedAsyncStart(const HloInstruction& hlo) const;
+  virtual bool IsSupportedAsyncStartImpl(const HloInstruction& hlo) const;
 
   // Returns resources used (i.e., occupied or released) by this instruction
   virtual ResourcesVector GetResourcesFromInstructionImpl(
@@ -328,6 +346,10 @@ class AsyncTracker {
   const SchedulerConfig config_;
   mutable absl::flat_hash_map<const HloInstruction*, ResourcesVector>
       resources_cache_;
+  mutable absl::flat_hash_map<const HloInstruction*, bool>
+      is_supported_async_done_cache_;
+  mutable absl::flat_hash_map<const HloInstruction*, bool>
+      is_supported_async_start_cache_;
 };
 
 // Base class for the core scheduling algorithm.

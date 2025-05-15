@@ -78,10 +78,10 @@ class GpuAsyncTrackerBase : public AsyncTracker {
       GetCanonicalAsyncOpFunc func = GpuGetCanonicalAsyncOp);
 
   // Returns if this is an Async op done that the scheduler supports.
-  bool IsSupportedAsyncDone(const HloInstruction& hlo) const override;
+  bool IsSupportedAsyncDoneImpl(const HloInstruction& hlo) const override;
 
   // Returns if this is an Async op start that the scheduler supports.
-  bool IsSupportedAsyncStart(const HloInstruction& hlo) const override;
+  bool IsSupportedAsyncStartImpl(const HloInstruction& hlo) const override;
 
   // Post processing the scheduling graph.
   void PostProcessScheduleGraph(
