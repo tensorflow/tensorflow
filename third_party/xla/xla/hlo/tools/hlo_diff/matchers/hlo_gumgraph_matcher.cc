@@ -36,6 +36,7 @@
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_bfs.h"
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_dfs.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
+#include "xla/hlo/tools/hlo_diff/matchers/similarity.h"
 #include "xla/service/hlo_value.h"
 
 namespace xla {
@@ -43,11 +44,7 @@ namespace hlo_diff {
 namespace {
 
 constexpr double kOperandsMatchScore = 0.75;
-constexpr double kFingerprintMatchScore = 0.5;
 constexpr double kOperandsFingerprintsMatchScore = 0.5;
-constexpr double kMetadataOpNameMatchScore = 0.1;
-constexpr double kMetadataSourceFileMatchScore = 0.1;
-constexpr double kMetadataSourceLineMatchScore = 0.1;
 
 constexpr int kProgressBarWidth = 60;
 constexpr char kProgressBarBlock = '|';
@@ -201,79 +198,6 @@ double DiceSimLimitedSubgraph(const HloInstructionNode* absl_nonnull left,
 
   return 2 * static_cast<double>(common) /
          static_cast<double>((left_nodes.size() + right_nodes.size()));
-}
-
-// A heuristic score based on the node attributes. Calculated by comparing the
-// fingerprint, name and generation of the nodes. This set of parameters
-// together with min_similarity threshold = 0.75 works the best so far, and
-// might need to be tuned later.
-double NodeAttributesSimilarity(const HloInstructionNode* absl_nonnull left,
-                                const HloInstructionNode* absl_nonnull right) {
-  double sim_score = 0.0;
-
-  if (right->props.fingerprint == left->props.fingerprint) {
-    sim_score += kFingerprintMatchScore;
-  }
-
-  if (!left->instruction->metadata().op_name().empty() &&
-      left->instruction->metadata().op_name() ==
-          right->instruction->metadata().op_name()) {
-    sim_score += kMetadataOpNameMatchScore;
-    if (!left->instruction->metadata().source_file().empty() &&
-        left->instruction->metadata().source_file() ==
-            right->instruction->metadata().source_file()) {
-      sim_score += kMetadataSourceFileMatchScore;
-      if (left->instruction->metadata().source_line() != 0 &&
-          left->instruction->metadata().source_line() ==
-              right->instruction->metadata().source_line()) {
-        sim_score += kMetadataSourceLineMatchScore;
-      }
-    }
-  }
-
-  return sim_score;
-}
-
-// A heuristic score based on the ancestor subgraphs of the given nodes.
-// Calculated by comparing the fingerprints of the ancestors of the nodes.
-double AncestorSubGraphSimilarity(const HloInstructionNode* left,
-                                  const HloInstructionNode* right,
-                                  const int candidate_traversal_limit,
-                                  const int min_bfs_distance,
-                                  int left_graph_size, int right_graph_size) {
-  absl::flat_hash_map<uint64_t, int> left_ancestor_fingerprints,
-      right_ancestor_fingerprints;
-  int left_traversal_count = 0;
-  HloGumgraphBfs(
-      *left,
-      [&](const HloInstructionNode& node, int distance) {
-        ++left_ancestor_fingerprints[node.props.fingerprint];
-        ++left_traversal_count;
-        return distance <= min_bfs_distance ||
-               left_traversal_count < candidate_traversal_limit;
-      },
-      BfsTraversalDirection::kReverse, left_graph_size);
-  int right_traversal_count = 0;
-  HloGumgraphBfs(
-      *right,
-      [&](const HloInstructionNode& node, int distance) {
-        ++right_ancestor_fingerprints[node.props.fingerprint];
-        ++right_traversal_count;
-        return distance <= min_bfs_distance ||
-               right_traversal_count < candidate_traversal_limit;
-      },
-      BfsTraversalDirection::kReverse, right_graph_size);
-
-  int matching_ancestors = 0;
-  for (const auto& [fingerprint, count] : left_ancestor_fingerprints) {
-    if (right_ancestor_fingerprints.contains(fingerprint)) {
-      matching_ancestors +=
-          std::min(count, right_ancestor_fingerprints[fingerprint]);
-    }
-  }
-
-  return 2.0 * static_cast<double>(matching_ancestors) /
-         static_cast<double>(left_traversal_count + right_traversal_count);
 }
 
 // Returns all HloValues used by the given instruction.
