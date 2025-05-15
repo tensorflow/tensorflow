@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
-#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -159,9 +159,9 @@ void IndirectAsyncValue::ForwardTo(RCReference<AsyncValue> value) {
 void BlockUntilReady(AsyncValue* async_value) {
   if (ABSL_PREDICT_TRUE(async_value->IsAvailable())) return;
 
-  absl::BlockingCounter cnt(1);
-  async_value->AndThen([&] { cnt.DecrementCount(); });
-  cnt.Wait();
+  absl::Notification notification;
+  async_value->AndThen([&notification] { notification.Notify(); });
+  notification.WaitForNotification();
 }
 
 void RunWhenReady(absl::Span<AsyncValue* const> values,
