@@ -1290,6 +1290,13 @@ void BuildGetTupleElementsForTupleResults(mlir::Operation* op, xla::XlaOp tuple,
 
 namespace mlir {
 
+// Direct StableHLO to HLO lowering is now available. We will still continue to
+// maintain MHLO to HLO lowering next two months until the new lowering is
+// well tested in prod. b/417563027 will clean up the MHLO to HLO lowering.
+// Note: if making changes to MHLO to HLO path is non-trivial,
+// it is ok to skip them and change only StableHLO to HLO lowering.
+
+// LINT.IfChange(STABLEHLO_TO_HLO)
 namespace stablehlo {
 namespace {
 
@@ -2647,10 +2654,6 @@ LogicalResult ExportXlaOp(DynamicPadOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(UnaryEinsumOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
 LogicalResult ExportXlaOp(DynamicReshapeOp op, OpLoweringContext ctx) {
   auto resultType = mlir::dyn_cast<RankedTensorType>(op.getResult().getType());
   if (!resultType) return op->emitOpError() << "expected ranked result";
@@ -2934,7 +2937,9 @@ LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
 
 }  // namespace
 }  // namespace stablehlo
+// LINT.ThenChange(:MHLO_TO_HLO)
 
+// LINT.IfChange(MHLO_TO_HLO)
 namespace mhlo {
 namespace {
 LogicalResult ExportXlaOp(CollectiveBroadcastOp op, OpLoweringContext ctx) {
@@ -5047,6 +5052,7 @@ LogicalResult ExportXlaOp(MinimumBroadcastShapesOp op, OpLoweringContext ctx) {
 
 }  // namespace
 }  // namespace mhlo
+// LINT.ThenChange(:STABLEHLO_TO_HLO)
 }  // namespace mlir
 
 #include "xla/hlo/translate/mhlo_to_hlo/hlo_op_writer.inc"
