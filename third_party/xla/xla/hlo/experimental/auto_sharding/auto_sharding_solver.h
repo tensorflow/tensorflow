@@ -128,9 +128,9 @@ bool CheckDominance(const AutoShardingSolverRequest& request,
                     const std::vector<AliasIdx>& dst_aliases, NodeIdx node_idx,
                     NodeStrategyIdx first, NodeStrategyIdx second);
 
-class StrategyShaver {
+class StrategyShaverForRequest {
  public:
-  explicit StrategyShaver(const AutoShardingSolverRequest& request);
+  explicit StrategyShaverForRequest(const AutoShardingSolverRequest& request);
 
   // For every node, examine each sharding strategy to see if it is dominated by
   // another.

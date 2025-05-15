@@ -652,7 +652,7 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
   // objective value so large that other solution choices do not matter anymore.
   // Also eliminate strategies that are known to be dominated by others.
   const NodeStrategies shaved_strategies =
-      StrategyShaver(request).FindShavedStrategies();
+      StrategyShaverForRequest(request).FindShavedStrategies();
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     if (s[node_idx].empty() || request.s_follow(node_idx) >= 0) continue;
     bool all_infinity = true;

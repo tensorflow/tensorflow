@@ -38,10 +38,11 @@ double EvaluateMakespan(const AutoShardingSolverRequest& request,
   return 0.0;  // TODO(moffitt): Implement this.
 }
 
-StrategyShaver::StrategyShaver(const AutoShardingSolverRequest& request)
+StrategyShaverForRequest::StrategyShaverForRequest(
+    const AutoShardingSolverRequest& request)
     : request_(request) {}
 
-NodeStrategies StrategyShaver::FindShavedStrategies() const {
+NodeStrategies StrategyShaverForRequest::FindShavedStrategies() const {
   return {};  // TODO(moffitt): Implement this.
 }
 
