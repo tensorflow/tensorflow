@@ -80,20 +80,16 @@ absl::StatusOr<const HloFusionInstruction*> AsTritonFusion(
   return nullptr;
 }
 
-// Extracts the fusion, disables Triton, and re-runs the fusion pass in order
-// to make sure that the fusions are suitable for the MLIR emitters and will be
+// Extracts the fusion computation and re-runs the fusion pass in order to make
+// sure that the fusions are suitable for the MLIR emitters and will be
 // reasonably fast. Without this the generated code can be extremely slow (e.g.
 // days instead of milliseconds).
-absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleWithoutTritonFromFusion(
+absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleFromFusionComputation(
     const HloFusionInstruction& fusion, const DebugOptions& debug_opts,
     const se::DeviceDescription& gpu_device_info) {
   std::unique_ptr<HloModule> new_module =
       ExtractComputationIntoNewModule(*fusion.fused_instructions_computation());
   new_module->mutable_config().set_debug_options(debug_opts);
-  new_module->mutable_config()
-      .mutable_debug_options()
-      .add_xla_disable_hlo_passes("triton-softmax-rewriter");
-
   TreeReductionRewriter tree_reduction_rewriter(gpu_device_info);
   TF_RETURN_IF_ERROR(tree_reduction_rewriter.Run(new_module.get()).status());
 
@@ -128,7 +124,7 @@ absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       util.Compile([&](const DebugOptions& opts) {
-        return disable_triton ? NewHloModuleWithoutTritonFromFusion(
+        return disable_triton ? NewHloModuleFromFusionComputation(
                                     fusion, opts, config.GetDeviceDescription())
                               : NewHloModuleWithTritonFromFusion(fusion, opts);
       }));
