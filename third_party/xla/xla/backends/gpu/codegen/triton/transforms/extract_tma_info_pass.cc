@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
@@ -34,6 +35,32 @@ namespace {
 
 struct ExtractTmaInfoPass
     : public impl::ExtractTmaInfoPassBase<ExtractTmaInfoPass> {
+  std::optional<SwizzleMode> GetSwizzleMode(TensorDescType type) {
+    auto swizzle_mode = nvidia_gpu::getTMASwizzleMode(
+        /*op=*/nullptr, type);
+    if (!swizzle_mode.has_value()) {
+      return std::nullopt;
+    }
+    SwizzleMode swizzle_mode_enum;
+    switch (swizzle_mode.value()) {
+      case 0:
+        swizzle_mode_enum = SwizzleMode::kNone;
+        break;
+      case 1:
+        swizzle_mode_enum = SwizzleMode::k32b;
+        break;
+      case 2:
+        swizzle_mode_enum = SwizzleMode::k64b;
+        break;
+      case 3:
+        swizzle_mode_enum = SwizzleMode::k128b;
+        break;
+      default:
+        return std::nullopt;
+    }
+    return swizzle_mode_enum;
+  }
+
   void runOnOperation() override {
     mlir::ModuleOp mod = getOperation();
     mod.walk([&](mlir::triton::FuncOp func_op) -> void {
@@ -52,24 +79,24 @@ struct ExtractTmaInfoPass
           return;
         }
 
-        auto swizzle_mode = nvidia_gpu::getTMASwizzleMode(
-            /*op=*/nullptr, mlir::cast<TensorDescType>(arg.getType()));
+        auto swizzle_mode =
+            GetSwizzleMode(mlir::cast<TensorDescType>(arg.getType()));
         if (!swizzle_mode.has_value()) {
-          emitError(
-              arg.getLoc(),
-              "Unable to determine swizzle mode from tt.tensordesc's layout");
+          emitError(arg.getLoc(),
+                    "Unable to determine swizzle mode from TensorDescType");
           signalPassFailure();
           return;
         }
 
         IRRewriter rewriter(&getContext());
-        func_op.setArgAttr(arg.getArgNumber(), "tt.tma_descriptor",
-                           rewriter.getAttr<TmaDescriptorAttr>(
-                               tma_descriptor_attr.getGlobalShape(),
-                               tma_descriptor_attr.getBlockShape(),
-                               tma_descriptor_attr.getLayout(),
-                               tma_descriptor_attr.getElementByteSize(),
-                               swizzle_mode.value()));
+        func_op.setArgAttr(
+            arg.getArgNumber(), "tt.tma_descriptor",
+            rewriter.getAttr<TmaDescriptorAttr>(
+                tma_descriptor_attr.getGlobalShape(),
+                tma_descriptor_attr.getBlockShape(),
+                tma_descriptor_attr.getLayout(),
+                tma_descriptor_attr.getElementByteSize(),
+                SwizzleModeAttr::get(&getContext(), swizzle_mode.value())));
       }
     });
   }

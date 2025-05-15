@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.h.inc"  // IWYU pragma: keep
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_enums.h.inc"
 #include "triton/Dialect/Triton/IR/Dialect.h"       // IWYU pragma: keep
 #include "triton/Dialect/Triton/IR/OpInterfaces.h"  // IWYU pragma: keep
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"    // IWYU pragma: keep

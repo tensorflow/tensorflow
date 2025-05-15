@@ -13,13 +13,12 @@ tt.func @extract_tma_info_no_tma_descriptor(
 // -----
 
 #blocked = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [1, 1], order = [1, 0]}>
-// expected-error @+1 {{Unable to determine swizzle mode from tt.tensordesc's layout}}
+// expected-error @+1 {{Unable to determine swizzle mode from TensorDescType}}
 tt.func @extract_tma_info_invalid_tma_layout(%arg0: !tt.tensordesc<tensor<16x32xf32, #blocked>>
   {tt.nv_tma_desc = 1 : i32,
    tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [32, 256],
                                                   block_shape = [16, 32],
                                                   layout = [1, 0],
-                                                  element_byte_size = 4,
-                                                  swizzle_mode = 0>}) {
+                                                  element_byte_size = 4>}) {
   tt.return
 }

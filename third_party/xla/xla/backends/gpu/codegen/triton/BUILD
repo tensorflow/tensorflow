@@ -1014,16 +1014,12 @@ cc_library(
     srcs = ["tma_utils.cc"],
     hdrs = ["tma_utils.h"],
     deps = [
-        "//xla:shape_util",
-        "//xla/codegen:emitter_loc_op_builder",
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@triton//:TritonDialects",
     ],
 )
 
