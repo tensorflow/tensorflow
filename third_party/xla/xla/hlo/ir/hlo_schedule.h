@@ -45,6 +45,7 @@ class HloInstructionSequence {
   HloInstructionSequence() = default;
   explicit HloInstructionSequence(
       absl::Span<HloInstruction* const> instructions) {
+    reserve(instructions.size());
     for (HloInstruction* instruction : instructions) {
       push_back(instruction);
     }
