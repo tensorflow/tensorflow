@@ -14,15 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/api_def/update_api_def.h"
 
-#include <ctype.h>
-
-#include <algorithm>
+#include <cstddef>
+#include <iostream>
+#include <ostream>
+#include <set>
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/strings/ascii.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/api_def/excluded_ops.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/core/status.h"
