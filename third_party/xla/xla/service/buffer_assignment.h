@@ -221,7 +221,7 @@ class BufferAllocation {
 
     static absl::StatusOr<BufferAllocation::Slice> FromProto(
         const xla::buffer_assignment::BufferAllocationSliceProto& proto,
-        const std::vector<BufferAllocation>& buffer_allocations);
+        absl::Span<const BufferAllocation> buffer_allocations);
 
    private:
     const BufferAllocation* allocation_ = nullptr;

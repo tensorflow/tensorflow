@@ -249,7 +249,7 @@ BufferAllocation::Slice::ToProto() const {
 
 absl::StatusOr<BufferAllocation::Slice> BufferAllocation::Slice::FromProto(
     const xla::buffer_assignment::BufferAllocationSliceProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
+    absl::Span<const BufferAllocation> buffer_allocations) {
   if (proto.buffer_allocation_index() < 0 ||
       proto.buffer_allocation_index() >= buffer_allocations.size()) {
     return absl::OutOfRangeError(absl::StrCat("Buffer allocation index ",
