@@ -659,9 +659,9 @@ class ProgramShape {
   ProgramShape();
   ~ProgramShape();
   ProgramShape(const ProgramShape&);
-  ProgramShape(ProgramShape&&);
+  ProgramShape(ProgramShape&&) noexcept;
   ProgramShape& operator=(const ProgramShape&);
-  ProgramShape& operator=(ProgramShape&&);
+  ProgramShape& operator=(ProgramShape&&) noexcept;
 
   ABSL_DEPRECATED("Use FromProto instead.")
   explicit ProgramShape(const ProgramShapeProto& program_shape_proto);
