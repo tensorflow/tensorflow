@@ -247,21 +247,21 @@ TEST_F(TritonTest, DISABLED_FuseSubchannelDequantization) {
     HloModule FuseSubchannelDequantization
 
     ENTRY main {
-      w = s4[16,2048,4096] parameter(0)
-      w.s8 = s8[16,2048,4096] convert(w)
-      w.b16 = bf16[16,2048,4096] convert(w.s8)
-      w.b16.reshaped = bf16[16,8,256,4096] reshape(w.b16)
+      w = s4[16,2048,32] parameter(0)
+      w.s8 = s8[16,2048,32] convert(w)
+      w.b16 = bf16[16,2048,32] convert(w.s8)
+      w.b16.reshaped = bf16[16,8,256,32] reshape(w.b16)
 
-      s = bf16[16,8,1,4096] parameter(1)
-      s.reshaped = bf16[16,8,4096] reshape(s)
-      s.broadcasted = bf16[16,8,256,4096] broadcast(s.reshaped),
+      s = bf16[16,8,1,32] parameter(1)
+      s.reshaped = bf16[16,8,32] reshape(s)
+      s.broadcasted = bf16[16,8,256,32] broadcast(s.reshaped),
           dimensions={0,1,3}
-      w.scaled = bf16[16,8,256,4096] multiply(w.b16.reshaped, s.broadcasted)
-      w.scaled.reshaped = bf16[16,2048,4096] reshape(w.scaled)
+      w.scaled = bf16[16,8,256,32] multiply(w.b16.reshaped, s.broadcasted)
+      w.scaled.reshaped = bf16[16,2048,32] reshape(w.scaled)
 
       a = bf16[2,16,1,2048] parameter(2)
       a.reshaped = bf16[2,16,2048] reshape(a)
-      ROOT dot = f32[16,4096,2] dot(w.scaled.reshaped, a.reshaped),
+      ROOT dot = f32[16,32,2] dot(w.scaled.reshaped, a.reshaped),
           lhs_batch_dims={0}, lhs_contracting_dims={1},
           rhs_batch_dims={1}, rhs_contracting_dims={2}
     }
@@ -314,29 +314,29 @@ TEST_F(TritonTest, DISABLED_FuseSubchannelDequantizationFused) {
     HloModule FuseSubchannelDequantizationFused
 
     fusion {
-      w.s4 = s4[16,2048,4096]{2,1,0:E(4)} parameter(0)
-      w.s8 = s8[16,2048,4096] convert(w.s4)
-      w.s8.bitcast = s8[16,8,256,4096] bitcast(w.s8)
-      w.bf16 = bf16[16,8,256,4096] convert(w.s8.bitcast)
+      w.s4 = s4[16,2048,32]{2,1,0:E(4)} parameter(0)
+      w.s8 = s8[16,2048,32] convert(w.s4)
+      w.s8.bitcast = s8[16,8,256,32] bitcast(w.s8)
+      w.bf16 = bf16[16,8,256,32] convert(w.s8.bitcast)
 
-      s.bf16 = bf16[16,8,1,4096] parameter(1)
-      s.bf16.bitcast = bf16[16,8,4096] bitcast(s.bf16)
-      s.bf16.broadcast = bf16[16,8,256,4096] broadcast(s.bf16.bitcast), dimensions={0,1,3}
-      w = bf16[16,8,256,4096] multiply(w.bf16, s.bf16.broadcast)
-      w.bitcast = bf16[16,2048,4096] bitcast(w)
+      s.bf16 = bf16[16,8,1,32] parameter(1)
+      s.bf16.bitcast = bf16[16,8,32] bitcast(s.bf16)
+      s.bf16.broadcast = bf16[16,8,256,32] broadcast(s.bf16.bitcast), dimensions={0,1,3}
+      w = bf16[16,8,256,32] multiply(w.bf16, s.bf16.broadcast)
+      w.bitcast = bf16[16,2048,32] bitcast(w)
 
       a = bf16[2,16,1,2048] parameter(2)
       a.bitcast = bf16[2,16,2048] bitcast(a)
-      ROOT dot = f32[16,4096,2] dot(w.bitcast, a.bitcast),
+      ROOT dot = f32[16,32,2] dot(w.bitcast, a.bitcast),
           lhs_batch_dims={0}, lhs_contracting_dims={1},
           rhs_batch_dims={1}, rhs_contracting_dims={2}
     } // fusion
 
     ENTRY main {
-      w.s4 = s4[16,2048,4096]{2,1,0:E(4)} parameter(0)
-      s.bf16 = bf16[16,8,1,4096] parameter(1)
+      w.s4 = s4[16,2048,32]{2,1,0:E(4)} parameter(0)
+      s.bf16 = bf16[16,8,1,32] parameter(1)
       a.bf16 = bf16[2,16,1,2048] parameter(2)
-      ROOT fusion = f32[16,4096,2] fusion(w.s4, s.bf16, a.bf16),
+      ROOT fusion = f32[16,32,2] fusion(w.s4, s.bf16, a.bf16),
         kind=kCustom,
         calls=fusion,
         backend_config={
@@ -372,29 +372,29 @@ TEST_F(TritonTest,
     HloModule FuseSubchannelDequantizationFusedWithSmallBlockKSize
 
     fusion {
-      w.s4 = s4[16,2048,4096]{2,1,0:E(4)} parameter(0)
-      w.s8 = s8[16,2048,4096] convert(w.s4)
-      w.s8.bitcast = s8[16,8,256,4096] bitcast(w.s8)
-      w.bf16 = bf16[16,8,256,4096] convert(w.s8.bitcast)
+      w.s4 = s4[16,2048,32]{2,1,0:E(4)} parameter(0)
+      w.s8 = s8[16,2048,32] convert(w.s4)
+      w.s8.bitcast = s8[16,8,256,32] bitcast(w.s8)
+      w.bf16 = bf16[16,8,256,32] convert(w.s8.bitcast)
 
-      s.bf16 = bf16[16,8,1,4096] parameter(1)
-      s.bf16.bitcast = bf16[16,8,4096] bitcast(s.bf16)
-      s.bf16.broadcast = bf16[16,8,256,4096] broadcast(s.bf16.bitcast), dimensions={0,1,3}
-      w = bf16[16,8,256,4096] multiply(w.bf16, s.bf16.broadcast)
-      w.bitcast = bf16[16,2048,4096] bitcast(w)
+      s.bf16 = bf16[16,8,1,32] parameter(1)
+      s.bf16.bitcast = bf16[16,8,32] bitcast(s.bf16)
+      s.bf16.broadcast = bf16[16,8,256,32] broadcast(s.bf16.bitcast), dimensions={0,1,3}
+      w = bf16[16,8,256,32] multiply(w.bf16, s.bf16.broadcast)
+      w.bitcast = bf16[16,2048,32] bitcast(w)
 
       a = bf16[2,16,1,2048] parameter(2)
       a.bitcast = bf16[2,16,2048] bitcast(a)
-      ROOT dot = f32[16,4096,2] dot(w.bitcast, a.bitcast), 
+      ROOT dot = f32[16,32,2] dot(w.bitcast, a.bitcast), 
           lhs_batch_dims={0}, lhs_contracting_dims={1},
           rhs_batch_dims={1}, rhs_contracting_dims={2}
     } // fusion
 
     ENTRY main {
-      w.s4 = s4[16,2048,4096]{2,1,0:E(4)} parameter(0)
-      s.bf16 = bf16[16,8,1,4096] parameter(1)
+      w.s4 = s4[16,2048,32]{2,1,0:E(4)} parameter(0)
+      s.bf16 = bf16[16,8,1,32] parameter(1)
       a.bf16 = bf16[2,16,1,2048] parameter(2)
-      ROOT fusion = f32[16,4096,2] fusion(w.s4, s.bf16, a.bf16),
+      ROOT fusion = f32[16,32,2] fusion(w.s4, s.bf16, a.bf16),
         kind=kCustom,
         calls=fusion,
         backend_config={
