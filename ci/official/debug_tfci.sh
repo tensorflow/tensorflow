@@ -22,3 +22,4 @@ echo "==TFCI== env outside of tfrun:"
 env
 echo "==TFCI== env inside of tfrun:"
 tfrun env
+echo "==TFCI== env end"
