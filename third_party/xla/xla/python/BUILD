@@ -5,6 +5,7 @@ load(
     "xla_cc_test",
     "xla_py_test_deps",
 )
+load("//xla/python:package_groups.bzl", "XLA_PYTHON_XLA_CLIENT_USERS", "XLA_PYTHON_XLA_EXTENSION_USERS")
 load("//xla/python:pywrap.bzl", "nanobind_pywrap_extension")
 load(
     "//xla/tsl:tsl.bzl",
@@ -43,7 +44,7 @@ exports_files(
 pytype_strict_library(
     name = "xla_client",
     srcs = ["xla_client.py"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(XLA_PYTHON_XLA_CLIENT_USERS),
     deps = if_google([
         ":_hlo_pass",
         ":_ops",
@@ -58,7 +59,7 @@ pytype_strict_library(
 pytype_strict_library(
     name = "xla_extension",
     srcs = ["xla_extension.py"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(XLA_PYTHON_XLA_EXTENSION_USERS),
     deps = if_google(["//third_party/py/jax/jaxlib:_jax"]),
 )
 
