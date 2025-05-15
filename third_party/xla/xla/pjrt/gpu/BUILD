@@ -444,6 +444,7 @@ cc_library(
     ]) + if_rocm([
         ":se_gpu_pjrt_compiler_rocm_registration",
     ]),
+    alwayslink = True,
 )
 
 cc_library(
