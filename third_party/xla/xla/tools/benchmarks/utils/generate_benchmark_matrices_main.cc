@@ -23,6 +23,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "json/json.h"
+#include "xla/tools/benchmarks/proto/benchmark_config.pb.h"
 #include "xla/tools/benchmarks/utils/generate_benchmark_matrices.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/util/command_line_flags.h"
