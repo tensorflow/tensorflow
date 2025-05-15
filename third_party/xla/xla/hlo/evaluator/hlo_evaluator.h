@@ -362,7 +362,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   absl::Status HandleReduceWindow(const HloInstruction* hlo) override;
   absl::Status HandleMap(const HloInstruction* map) override;
   absl::Status HandleCustomCall(const HloInstruction* custom_call) override;
-  absl::Status HandleOptimizationBarrier(const HloInstruction* hlo) override;
 
   // Unsupported HLOs, note some of them (such as BatchNorm*) are typically
   // expanded in a semantic-preserving way into other HLOs by adding expansion
