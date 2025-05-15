@@ -19,6 +19,7 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -39,10 +40,14 @@ tf_cc_binary(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",  # Ops need to be registered for import.
+        "//tensorflow/core/framework:graph_debug_info_proto_cc",
+        "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/ir/importexport:graphdef_export",
         "//tensorflow/core/ir/importexport:graphdef_import",
         "//tensorflow/core/ir/importexport:load_proto",
         "//tensorflow/core/transforms/consolidate_attrs:Pass",
+        "//third_party/protobuf/util:differencer",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
