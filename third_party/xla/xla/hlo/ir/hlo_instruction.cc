@@ -4333,7 +4333,7 @@ HloInstructionProto HloInstruction::ToProto() const {
       << "This instruction does not have a valid id. Please make sure the "
          "instruction is inside a module before dumping it.";
   proto.set_id(unique_id_);
-  proto.set_name(std::string(name_));
+  proto.set_name(std::string(name_.view()));
   *proto.mutable_opcode() = std::string(HloOpcodeString(opcode_));
   *proto.mutable_shape() = shape_.ToProto();
   for (const HloInstruction* operand : operands_) {
