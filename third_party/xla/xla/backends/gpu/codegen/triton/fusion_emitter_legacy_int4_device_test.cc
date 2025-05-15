@@ -180,19 +180,16 @@ TEST_F(TritonTest, FuseSubchannelDequantizationWithTranspose) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
-                          GetOptimizedModule(std::move(module)));
-  EXPECT_TRUE(*RunFileCheck(optimized_module->ToString(), R"(
+                          GetOptimizedModule(kHloText));
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     CHECK:    %[[bitcast:.*]] = bf16[2,8,64]{2,1,0} bitcast({{.*}})
     CHECK:    %[[transpose:.*]] = bf16[2,64,8]{2,1,0} transpose(%[[bitcast]]), dimensions={0,2,1}
     CHECK:    %[[broadcast:.*]] = bf16[2,64,8,256]{3,2,1,0} broadcast(%[[transpose]]), dimensions={0,1,2}
     CHECK:    %[[multiply:.*]] = bf16[2,64,8,256]{3,2,1,0} multiply({{.*}}, %[[broadcast]])
   )"));
-  EXPECT_TRUE(
-      *RunFileCheck(optimized_module->ToString(), "CHECK: __triton_gemm"));
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), "CHECK: __triton_gemm"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
-      std::move(optimized_module), ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+      std::move(module), ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
 TEST_F(TritonTest, FuseSubchannelDequantization) {
@@ -223,15 +220,10 @@ TEST_F(TritonTest, FuseSubchannelDequantization) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
-  // TODO(b/401515387): Remove this once emitter handles non-standard layouts.
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(false);
-  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
-                          GetOptimizedModule(std::move(module)));
+                          GetOptimizedModule(kHloText));
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), "CHECK: __triton_gemm"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
-      std::move(optimized_module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+      std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonTest, FuseChannelDequantization) {
@@ -260,13 +252,10 @@ TEST_F(TritonTest, FuseChannelDequantization) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
-  // TODO(b/401515387): Remove this once emitter handles non-standard layouts.
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(false);
-  EXPECT_TRUE(RunAndCompare(std::move(module),
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+                          GetOptimizedModule(kHloText));
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), "CHECK: __triton_gemm"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonTest, FuseSubchannelDequantizationFused) {
@@ -404,8 +393,8 @@ TEST_F(TritonTest, FuseBroadcastInPrologue) {
     CHECK:    %[[dot:.*]] = f32[16,1024,512]{2,1,0} dot
     CHECK:    ENTRY %main
   )"));
-  EXPECT_TRUE(RunAndCompare(std::move(module),
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonTest, FuseBroadcastBitcastInPrologue) {
@@ -431,8 +420,8 @@ TEST_F(TritonTest, FuseBroadcastBitcastInPrologue) {
     CHECK:    ROOT %[[dot:.*]] = f32[1024,512]{1,0} dot
     CHECK:    ENTRY %main
   )"));
-  EXPECT_TRUE(RunAndCompare(std::move(module),
-                            ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
 TEST_F(TritonTest, FuseBroadcastBitcastMultiplyInPrologue) {
@@ -456,23 +445,16 @@ TEST_F(TritonTest, FuseBroadcastBitcastMultiplyInPrologue) {
         lhs_contracting_dims={0}, rhs_contracting_dims={0}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
-  // TODO(b/401515387): Remove this once emitter handles non-standard layouts.
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(false);
-  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
-                          GetOptimizedModule(std::move(module)));
-  EXPECT_TRUE(*RunFileCheck(optimized_module->ToString(), R"(
-    CHECK:    %[[broadcast:.*]] = bf16[2,128,1024]{2,1,0} broadcast
-    CHECK:    %[[bitcast:.*]] = bf16[256,1024]{1,0} bitcast
-    CHECK:    %[[multiply:.*]] = [[type:.*]][256,1024]{1,0} multiply
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    CHECK:    %[[broadcast:.*]] = bf16[{{.*}}]{2,1,0} broadcast
+    CHECK:    %[[bitcast:.*]] = bf16[{{.*}}]{1,0} bitcast
+    CHECK:    %[[multiply:.*]] = [[type:.*]][{{.*}}]{1,0} multiply
     CHECK:    %[[dot:.*]] = f32[1024,512]{1,0} dot
     CHECK:    ENTRY %main
   )"));
-  EXPECT_TRUE(RunAndCompare(std::move(optimized_module),
-                            ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
 TEST_F(TritonTest, DotWithI4WeightsOnLhsWithBitcastTo3dTensor) {
@@ -599,16 +581,10 @@ TEST_F(TritonTest, FuseMultiplyInPrologue) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
-  // TODO(b/401515387): Remove this once emitter handles non-standard layouts.
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(false);
-  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
-                          GetOptimizedModule(std::move(module)));
+                          GetOptimizedModule(kHloText));
   // On Ampere the multiply result type is f32, on Hopper it is bf16.
-  EXPECT_TRUE(*RunFileCheck(optimized_module->ToString(), R"(
-    CHECK:    %[[multiply:.*]] = [[type:.*]][32,64,128]{2,1,0} multiply
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    CHECK:    %[[multiply:.*]] = [[type:.*]][{{.*}}]{{.*}} multiply({{.*}}, {{.*}})
     CHECK:    %[[dot:.*]] = f32[32,128,256]{2,1,0} dot
     CHECK:    ENTRY %main
   )"));
@@ -651,7 +627,8 @@ TEST_F(TritonTest, NonstandardLayoutInt4) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 using ::testing::TestParamInfo;
@@ -834,7 +811,8 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-2}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-2}));
 }
 
 TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
@@ -851,7 +829,8 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonTest, NegatePlusConvertHLO) {
@@ -889,8 +868,7 @@ TEST_F(TritonTest, RejectTritonFusionForWithMinorBatchDim) {
   const std::string pattern =
       R"(CHECK-NOT: "kind":"__triton_gemm","triton_gemm_config")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
-  EXPECT_TRUE(ok);
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), pattern));
 }
 
 TEST_F(TritonTest, LHSWithMinorDimEqualTo1) {
