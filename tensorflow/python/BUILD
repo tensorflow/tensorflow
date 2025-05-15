@@ -1710,6 +1710,7 @@ alias(
         "//tensorflow:macos": ":pywrap_tensorflow_framework",
         "//tensorflow:windows": ":pywrap_tensorflow_common",
     }),
+    visibility = ["//visibility:public"],
 )
 
 pywrap_binaries(

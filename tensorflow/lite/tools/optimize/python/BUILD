@@ -54,6 +54,11 @@ py_strict_library(
 pybind_extension(
     name = "_pywrap_modify_model_interface",
     srcs = ["modify_model_interface.cc"],
+    # copybara:comment_begin(oss-only)
+    common_lib_packages = [
+        "third_party/tensorflow/lite/python",
+    ],
+    # copybara:comment_end
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_modify_model_interface.pyi",
