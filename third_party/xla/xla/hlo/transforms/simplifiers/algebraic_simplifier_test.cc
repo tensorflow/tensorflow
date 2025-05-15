@@ -11420,7 +11420,7 @@ TEST_F(AlgebraicSimplifierTest, DynamicSliceShapeLayout) {
   const Shape& slice_shape =
       m->entry_computation()->root_instruction()->operand(0)->shape();
   EXPECT_TRUE(slice_shape.has_layout());
-  EXPECT_EQ(slice_shape.layout().tiles_size(), 1);
+  EXPECT_EQ(slice_shape.layout().tiles().size(), 1);
 }
 
 // Fold a sequence of copy bitcast copy
