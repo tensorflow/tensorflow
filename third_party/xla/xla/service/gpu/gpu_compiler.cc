@@ -184,7 +184,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/algorithm_checker.h"
 #include "xla/service/gpu/transforms/async_wrapper.h"
 #include "xla/service/gpu/transforms/collective_permute_cycle_decomposer.h"
-#include "xla/service/gpu/transforms/collective_select_folder.h"
 #include "xla/service/gpu/transforms/collectives/all_gather_combiner.h"
 #include "xla/service/gpu/transforms/collectives/all_gather_dynamic_slice_simplifier.h"
 #include "xla/service/gpu/transforms/collectives/all_gather_optimizer.h"

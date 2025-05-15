@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/transforms/collective_select_folder.h"
+#include "xla/service/gpu/transforms/collectives/collective_select_folder.h"
 
 #include <initializer_list>
 #include <memory>
