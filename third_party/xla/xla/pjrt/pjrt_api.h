@@ -16,17 +16,20 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_API_H_
 #define XLA_PJRT_PJRT_API_H_
 
+#include <string>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "tsl/platform/platform.h"
 
 namespace pjrt {
 
 // Gets and sets the global map for PJRT_Api*. Not thread safe. `device_type` is
 // case insensitive.
 absl::StatusOr<const PJRT_Api*> PjrtApi(absl::string_view device_type);
+absl::StatusOr<std::vector<std::string>> GetRegisteredPjrtApis();
 absl::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api);
 
 // Loads a PJRT plugin. The library provided by library_path must export a
