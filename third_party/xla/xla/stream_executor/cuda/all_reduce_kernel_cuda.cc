@@ -27,7 +27,7 @@ limitations under the License.
       AllReduceKernelCuda##SUFFIX,                                    \
       stream_executor::gpu::AllReduceKernel<XLA_TYPE>,                \
       stream_executor::cuda::kCudaPlatformId, ([] {                   \
-        stream_executor::MultiKernelLoaderSpec spec(4);               \
+        stream_executor::MultiKernelLoaderSpec spec(6);               \
         spec.AddInProcessSymbol(                                      \
             absl::bit_cast<void*>(                                    \
                 &stream_executor::gpu::AllReduceKernelImpl<NV_TYPE>), \
