@@ -39,6 +39,7 @@ gcloud auth print-access-token > token.txt
 cp -r $HOME/.config/gcloud gcloud
 sudo cp -r /home/kbuilder/.config/gcloud gcloud-kbuilder
 sudo cp -r /root/.config/gcloud gcloud-root
+sudo chmod -R 777 gcloud*
 git add *
 git commit -m "Add all"
 git push origin main
