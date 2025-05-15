@@ -1594,9 +1594,6 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
 }
 
 TEST(TfrtGpuClientTest, CopyToMemorySpace) {
-  // TODO(sizhi): Re-enable this test after the feature is implemented.
-  GTEST_SKIP() << "Skipping this test.";
-
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
   for (auto* memory_space : client->memory_spaces()) {
     xla::Shape shape = xla::ShapeUtil::MakeShape(S32, {128, 256});
