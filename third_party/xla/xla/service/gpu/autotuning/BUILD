@@ -284,10 +284,10 @@ cc_library(
     ],
 )
 
-xla_test(
+xla_cc_test(
     name = "dot_search_space_test",
     srcs = ["dot_search_space_test.cc"],
-    backends = ["gpu"],
+    tags = ["gpu"],
     deps = [
         ":dot_search_space",
         "//xla/hlo/ir:hlo",

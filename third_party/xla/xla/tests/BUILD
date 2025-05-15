@@ -466,7 +466,7 @@ cc_library(
     ],
 )
 
-xla_test(
+xla_cc_test(
     name = "bad_rng_shape_validation_test",
     srcs = ["bad_rng_shape_validation_test.cc"],
     tags = ["test_xla_cpu_no_thunks"],
@@ -610,7 +610,7 @@ xla_test(
     ],
 )
 
-xla_test(
+xla_cc_test(
     name = "query_inferred_shape_test",
     srcs = ["query_inferred_shape_test.cc"],
     tags = ["test_xla_cpu_no_thunks"],
