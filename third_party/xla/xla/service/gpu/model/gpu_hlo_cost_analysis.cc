@@ -318,25 +318,15 @@ absl::Status GpuHloCostAnalysis::HandleCustomCall(
     // possible", and if we were to include temp memory in here, we'd
     // essentially be *rewarding* convs that use additional temp memory!
     if (custom_call->shape().IsTuple()) {
-      int64_t output_0_size =
+      float output_size =
           options_.shape_size(custom_call->shape().tuple_shapes(0));
-      int64_t total_output_size = 0;
-      ShapeUtil::ForEachLeafShape(
-          custom_call->shape(),
-          [&](const Shape& sub_shape, const ShapeIndex& index) {
-            int64_t bytes_written = GetShapeSize(sub_shape);
-            total_output_size += bytes_written;
-            if (index != ShapeIndex{0}) {
-              // reset to 0 on output bytes accessed for non-first output.
-              current_properties_.set_output_bytes_accessed(index, 0);
-            }
-          });
-
       // 'Bytes accessed' are estimated in HloCostAnalysis::Preprocess() as
       // input + output. As the output size is being adjusted here it has
       // to propagate to the total bytes accessed.
       current_properties_[kBytesAccessedKey] -=
-          static_cast<float>(total_output_size - output_0_size);
+          current_properties_.output_bytes_accessed();
+      current_properties_[kBytesAccessedKey] += output_size;
+      current_properties_.set_output_bytes_accessed(output_size);
     }
     return absl::OkStatus();
   }
