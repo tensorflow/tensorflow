@@ -16,6 +16,7 @@
 # This script dumps some information about the environment. It's most useful
 # for verifying changes to the TFCI scripts system, and most users won't need
 # to interact with it at all.
+echo "Pre Setup occured"
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
 
 echo "==TFCI== env outside of tfrun:"
