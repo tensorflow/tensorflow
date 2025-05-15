@@ -135,6 +135,36 @@ TEST_P(TritonFusionNumericsVerifierTest, VerifyExactSoftmaxFusionNumerics) {
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
+TEST_P(TritonFusionNumericsVerifierTest, VerifyMultiOutputFusionNumerics) {
+  constexpr absl::string_view kMultiOutputFusionHloText = R"(
+HloModule m
+fusion_computation {
+  param_0 = $0[127,125]{1,0} parameter(0)
+  exponential = $0[127,125]{1,0} exponential(param_0)
+  negate = $0[127,125]{1,0} negate(exponential)
+  ROOT res = ($0[127,125]{1,0}, $0[127,125]{1,0}) tuple(exponential, negate)
+}
+
+ENTRY main{
+  p = $0[127,125] parameter(0)
+  ROOT result = ($0[127,125], $0[127,125]) fusion(p), kind=kCustom,
+    calls=fusion_computation, backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1","125"]}, {"sizes":["1","125"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+})";
+  auto module = Module(kMultiOutputFusionHloText,
+                       primitive_util::LowercasePrimitiveTypeName(GetParam()));
+
+  EXPECT_NE(TritonFusion(*module), nullptr);
+  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+}
+
 TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
   // This test intentionally compares two different Triton modules to each
   // other. This is to test that the verifier functions correctly catch and

@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tools/hlo_decomposer.h"
@@ -156,16 +157,22 @@ absl::Status CompareBuffers(const ScopedShapedBuffer& current,
                             const ScopedShapedBuffer& expected,
                             const Shape& shape, const HloModuleConfig& config,
                             se::Stream* stream) {
-  BufferComparator comparator(
-      shape, config.debug_options().xla_gpu_autotune_gemm_rtol());
-  TF_ASSIGN_OR_RETURN(bool outputs_match,
-                      comparator.CompareEqual(stream, current.root_buffer(),
-                                              expected.root_buffer()));
+  return ShapeUtil::ForEachLeafShapeWithStatus(
+      shape,
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+        BufferComparator comparator(
+            subshape, config.debug_options().xla_gpu_autotune_gemm_rtol());
+        TF_ASSIGN_OR_RETURN(
+            bool outputs_match,
+            comparator.CompareEqual(stream, current.buffer(index),
+                                    expected.buffer(index)));
 
-  if (!outputs_match) {
-    return Internal("Triton fusion output does not match emitters output.");
-  }
-  return absl::OkStatus();
+        if (!outputs_match) {
+          return Internal(
+              "Triton fusion output does not match emitters output.");
+        }
+        return absl::OkStatus();
+      });
 }
 
 absl::Status ForAllTritonFusions(
