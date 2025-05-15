@@ -2862,7 +2862,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape, operands_, context);
   if (suffix.empty()) {
-    clone->name_.assign(name().begin(), name().end());
+    clone->name_ = name();
   } else {
     clone->AddSuffixToInstructionName(suffix);
   }
@@ -4333,7 +4333,7 @@ HloInstructionProto HloInstruction::ToProto() const {
       << "This instruction does not have a valid id. Please make sure the "
          "instruction is inside a module before dumping it.";
   proto.set_id(unique_id_);
-  proto.set_name(name_);
+  proto.set_name(std::string(name_));
   *proto.mutable_opcode() = std::string(HloOpcodeString(opcode_));
   *proto.mutable_shape() = shape_.ToProto();
   for (const HloInstruction* operand : operands_) {
@@ -5472,7 +5472,7 @@ HloModule* HloInstruction::GetModule() const {
 }
 
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
-  name_ = name_uniquer->GetUniqueName(name_);
+  name_ = name_uniquer->GetUniqueName(name());
 }
 
 void HloInstruction::UniquifyName(HloModule* module) {
