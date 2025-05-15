@@ -202,14 +202,21 @@ absl::Status CheckGapBetweenAnnotatedInstructions(
         for (const PtrVec<HloInstruction*>& users :
              {instr->users(), instr->control_successors()}) {
           for (HloInstruction* user : users) {
+            const auto log_inst = [&](HloInstruction* inst) {
+              LOG(INFO) << "PATH: " << inst->name() << ", annotation: "
+                        << GetSchedulingAnnotation(inst)
+                               ->value_or(Annotation{})
+                               .ToString();
+            };
+
             if (instruction_to_annotation.contains(user) &&
                 instruction_to_annotation.at(user) == annotation) {
-              LOG(INFO) << "PATH: " << user->name();
+              log_inst(user);
               HloInstruction* current = instr;
-              LOG(INFO) << "PATH: " << current->name();
+              log_inst(current);
               while (parent.contains(current)) {
                 current = parent[current];
-                LOG(INFO) << "PATH: " << current->name();
+                log_inst(current);
               }
               return absl::UnimplementedError(absl::StrCat(
                   "Support for annotation groups with gaps doesn't "
