@@ -68,7 +68,7 @@ tf_proto_library(
 tf_proto_library(
     name = "xla_compiler_proto",
     srcs = ["xla_compiler.proto"],
-    protodeps = ["//xla/pjrt:compile_options_proto"],
+    protodeps = ["//xla/pjrt/proto:compile_options_proto"],
 )
 
 tf_proto_library(
