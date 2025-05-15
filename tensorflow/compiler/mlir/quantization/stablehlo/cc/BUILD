@@ -643,6 +643,40 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_static_range_ptq",
+    srcs = ["tf_static_range_ptq.cc"],
+    hdrs = ["tf_static_range_ptq.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":component",
+        ":context",
+        ":tf_post_calibration",
+        ":tf_pre_calibration",
+        ":tf_saved_model_export",
+        ":tf_saved_model_import",
+        ":types",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:tf_component",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@local_xla//xla/tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "tf_weight_only_ptq",
     srcs = ["tf_weight_only_ptq.cc"],
     hdrs = ["tf_weight_only_ptq.h"],
