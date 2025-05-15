@@ -1353,10 +1353,7 @@ absl::Status RunDynamicSliceFusionPasses(
 absl::Status GpuCompiler::RunCollectiveScheduleLinearizerPasses(
     HloModule* hlo_module, se::StreamExecutor* stream_exec) {
   HloPassPipeline pipeline("collective-schedule-linearizer");
-  pipeline.AddPass<CollectivesScheduleLinearizer>(
-      [this, stream_exec](const HloModule* module) {
-        return RequiresCollectiveScheduleLinearizer(module, stream_exec);
-      });
+  pipeline.AddPass<CollectivesScheduleLinearizer>();
   return pipeline.Run(hlo_module).status();
 }
 
@@ -1712,9 +1709,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   pipeline.AddPass<HostOffloader>();
 
-  TF_RETURN_IF_ERROR(
-      AddConvAndGemmAutotuningPasses(&pipeline, gpu_version, options,
-                                     hlo_module, autotune_config, thread_pool));
+  TF_RETURN_IF_ERROR(AddGemmAutotuningPasses(&pipeline, gpu_version, options,
+                                             hlo_module, autotune_config));
 
   // The GEMM fusion autotuner can insert new bf16 reductions that need to be
   // normalized again.
