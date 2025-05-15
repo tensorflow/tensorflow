@@ -34,12 +34,14 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla {
 namespace gpu {
 
-using CublasBackendConfig = AutotuneResult::GemmKey;
+using CustomKernelBackendConfig = AutotuneResult::CustomKernelFusionKey;
 
+using ::tsl::proto_testing::EqualsProto;
 using tsl::testing::IsOk;
 using tsl::testing::StatusIs;
 
@@ -58,7 +60,39 @@ ENTRY region_198.14436 {
   p.1 = f32[19,17]{1,0} parameter(1)
   ROOT cutlass_gemm = f32[15,17]{1,0} fusion(p.0, p.1), kind=kCustom,
   calls=cutlass_gemm,
-  backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"cutlass_gemm","kernel_index":-1}},"force_earliest_schedule":false}
+  backend_config={
+    "fusion_backend_config":{
+      "kind":"__custom_fusion",
+      "custom_fusion_config":{
+        "name":"cutlass_gemm",
+        "kernel_index":-1
+      }
+    }
+  }
+})";
+
+const char kTritonFusionHlo[] = R"(
+HloModule module
+
+computation {
+  p0 = bf16[1024,1024]{1,0} parameter(0)
+  convert0 = f32[1024,1024]{1,0} convert(p0)
+  p1 = bf16[1024,1024]{1,0} parameter(1)
+  convert1 = f32[1024,1024]{1,0} convert(p1)
+  ROOT dot = f32[1024,1024]{1,0} dot(convert0, convert1),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  p0 = bf16[1024,1024]{1,0} parameter(0)
+  p1 = bf16[1024,1024]{1,0} parameter(1)
+  ROOT fusion = f32[1024,1024]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=computation,
+    backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm"
+      }
+    }
 })";
 
 class CustomKernelBackendTest : public HloHardwareIndependentTestBase {
@@ -76,6 +110,12 @@ class CustomKernelBackendTest : public HloHardwareIndependentTestBase {
           return Compiler::TargetConfig(target_config_proto);
         }()),
         backend_(&target_config_, &debug_options_, &compiler_) {}
+
+  CustomKernelBackendConfig ExpectedDefaultAlgorithm() {
+    auto config = AutotuneResult::CustomKernelFusionKey();
+    config.set_kernel_index(0);
+    return config;
+  }
 };
 
 TEST_F(CustomKernelBackendTest, CanCreateCublasBackend) {
@@ -94,13 +134,38 @@ TEST_F(CustomKernelBackendTest, GetSupportedConfigsFromCustomKernelFusion) {
   EXPECT_FALSE(configs.value().empty());
 }
 
-TEST_F(CustomKernelBackendTest, GetDefaultConfigFails) {
+TEST_F(CustomKernelBackendTest,
+       GetSupportedConfigsFailsForNonCustomFusionInstruction) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kTritonFusionHlo));
+  se::StreamExecutor* stream_executor =
+      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_.GetSupportedConfigs(
+          (*module->entry_computation()->root_instruction()), stream_executor);
+  EXPECT_THAT(configs, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(CustomKernelBackendTest, ReturnsDefaultConfig) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kCustomKernelFusionHlo));
 
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
-          (*module->entry_computation()->root_instruction()->operand(0)));
+          (*module->entry_computation()->root_instruction()));
+  EXPECT_THAT(config, IsOk());
+  EXPECT_THAT(static_cast<const CustomKernelBackendConfig&>(*config.value()),
+              EqualsProto(ExpectedDefaultAlgorithm()));
+}
+
+TEST_F(CustomKernelBackendTest,
+       FailsReturningDefaultConfigForNonCustomFusionInstruction) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kTritonFusionHlo));
+
+  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
+      backend_.GetDefaultConfig(
+          (*module->entry_computation()->root_instruction()));
   EXPECT_THAT(config, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 

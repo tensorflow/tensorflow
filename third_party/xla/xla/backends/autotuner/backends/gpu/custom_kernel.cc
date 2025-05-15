@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -42,6 +43,23 @@ namespace gpu {
 namespace se = ::stream_executor;
 
 using CustomKernelBackendConfig = AutotuneResult::CustomKernelFusionKey;
+
+bool IsSupported(const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kFusion) {
+    LOG(ERROR)
+        << "CustomKernelBackend doesn't support non-fusion instructions.";
+    return false;
+  }
+
+  if (instr.backend_config<GpuBackendConfig>()
+          ->fusion_backend_config()
+          .kind() != kCustomFusionKind) {
+    LOG(ERROR) << "CustomKernelBackend expected a custom fusion.";
+    return false;
+  }
+
+  return true;
+}
 
 absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
     const HloInstruction* fusion_instruction,
@@ -75,11 +93,10 @@ absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 CustomKernelBackend::GetSupportedConfigs(
     const HloInstruction& instr,
     stream_executor::StreamExecutor* stream_executor) {
-  if (instr.opcode() != HloOpcode::kFusion) {
+  if (!IsSupported(instr)) {
     return absl::InvalidArgumentError(
-        "CustomKernelBackend doesn't support non-fusion instructions.");
+        "CustomKernelBackend does not support this instruction.");
   }
-
   TF_ASSIGN_OR_RETURN(
       std::vector<CustomKernel> kernels,
       LoadKernels(&instr, stream_executor->GetDeviceDescription()));
@@ -97,10 +114,14 @@ CustomKernelBackend::GetSupportedConfigs(
 
 absl::StatusOr<std::unique_ptr<BackendConfig>>
 CustomKernelBackend::GetDefaultConfig(const HloInstruction& instr) {
-  // CustomKernels need a device description to load the kernels, so we can't
-  // return a default config.
-  return absl::InvalidArgumentError(
-      "CustomKernelBackend doesn't support getting a default config.");
+  if (!IsSupported(instr)) {
+    return absl::InvalidArgumentError(
+        "CustomKernelBackend does not support this instruction.");
+  }
+
+  auto config = std::make_unique<CustomKernelBackendConfig>();
+  config->set_kernel_index(0);
+  return config;
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> CustomKernelBackend::WrapInModule(

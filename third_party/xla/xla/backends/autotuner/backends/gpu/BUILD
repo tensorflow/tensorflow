@@ -177,6 +177,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/kernels:custom_kernel_fusion",
         "//xla/stream_executor:device_description",
