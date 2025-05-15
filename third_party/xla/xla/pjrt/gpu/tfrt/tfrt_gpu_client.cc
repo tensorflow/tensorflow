@@ -1533,7 +1533,7 @@ TfrtGpuClient::CreateUninitializedBuffer(const Shape& shape,
                                          PjRtMemorySpace* memory_space) {
   tsl::profiler::TraceMe traceme("TfrtGpuClient::CreateUninitializedBuffer");
   VLOG(1) << "TfrtGpuClient::CreateUninitializedBuffer: shape: "
-          << shape.DebugString()
+          << shape.ToString()
           << " memory_space: " << memory_space->DebugString();
   TransferManager* transfer_manager =
       xla_client()->backend().transfer_manager();
@@ -2085,8 +2085,7 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   PjRtDevice* device = memory_space->devices()[0];
   tsl::profiler::TraceMe traceme("TfrtGpuClient::BufferFromHostLiteral");
   VLOG(3) << "TfrtGpuClient::BufferFromHostLiteral: shape: "
-          << literal.shape().DebugString()
-          << " device: " << device->DebugString();
+          << literal.shape().ToString() << " device: " << device->DebugString();
   const Shape& shape = literal.shape();
 
   // Add a placeholder definition event for each leaf buffer when creating the

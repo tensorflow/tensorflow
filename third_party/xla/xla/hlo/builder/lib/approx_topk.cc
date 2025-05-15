@@ -55,12 +55,12 @@ absl::StatusOr<std::vector<PrimitiveType>> GetOperandTypes(
     if (!ShapeUtil::CompatibleIgnoringElementType(operands_shapes[0],
                                                   op_shape)) {
       return InvalidArgument("operands shape mismatch: %s vs %s",
-                             operands_shapes[0].DebugString(),
-                             op_shape.DebugString());
+                             operands_shapes[0].ToString(),
+                             op_shape.ToString());
     }
     if (op_shape.element_type() != init_shape.element_type()) {
       return InvalidArgument("operands type mismatch: %s vs %s",
-                             op_shape.DebugString(), init_shape.DebugString());
+                             op_shape.ToString(), init_shape.ToString());
     }
     op_types.push_back(op_shape.element_type());
   }

@@ -89,11 +89,11 @@ bool AreGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
                    const Shape& output_shape,
                    const TargetMachineFeatures& target_machine_features) {
   CHECK(!lhs_shape.has_layout() || IsSimpleLayout(lhs_shape.layout()))
-      << lhs_shape.DebugString();
+      << lhs_shape.ToString();
   CHECK(!rhs_shape.has_layout() || IsSimpleLayout(rhs_shape.layout()))
-      << rhs_shape.DebugString();
+      << rhs_shape.ToString();
   CHECK(!output_shape.has_layout() || IsSimpleLayout(output_shape.layout()))
-      << output_shape.DebugString();
+      << output_shape.ToString();
 
   switch (output_shape.element_type()) {
     case F16:

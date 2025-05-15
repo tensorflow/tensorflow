@@ -78,7 +78,7 @@ inline absl::Status ShapeError(const Shape& shape, absl::string_view message) {
       PrimitiveType_IsValid(shape.element_type())
           ? primitive_util::LowercasePrimitiveTypeName(shape.element_type())
           : absl::StrCat(static_cast<int>(shape.element_type())),
-      shape.DebugString()));
+      shape.ToString()));
 }
 
 template <bool kPrintLayout>
@@ -1127,7 +1127,7 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
         i >= return_shape->tuple_shapes().size()) {
       return InvalidArgument(
           "Shape index %s not a valid subshape index for tuple with shape %s",
-          ShapeIndex(index).ToString(), shape.DebugString());
+          ShapeIndex(index).ToString(), shape.ToString());
     }
     return_shape = &return_shape->tuple_shapes(i);
   }

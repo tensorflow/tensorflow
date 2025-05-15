@@ -68,8 +68,8 @@ class AddNOp : public XlaOpKernel {
               ctx, sum_shape.dimensions() == operand_shape.dimensions(),
               errors::InvalidArgument(
                   "TensorList arguments to AddN must all have the same ",
-                  "shape.\n", "Expected: ", sum_shape.DebugString(), "\n",
-                  "Found: ", operand_shape.DebugString()));
+                  "shape.\n", "Expected: ", sum_shape.ToString(), "\n",
+                  "Found: ", operand_shape.ToString()));
           sum = xla::Add(sum, operand);
         }
         xla::XlaOp push_index;
