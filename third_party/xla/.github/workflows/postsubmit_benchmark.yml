@@ -46,7 +46,7 @@ jobs:
     # Condition: Run if manually dispatched OR if it's a push event to the main branch.
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.ref == 'refs/heads/main')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     uses: ./.github/workflows/generate_benchmark_matrix.yml
     with:
       workflow_type: 'POSTSUBMIT'
