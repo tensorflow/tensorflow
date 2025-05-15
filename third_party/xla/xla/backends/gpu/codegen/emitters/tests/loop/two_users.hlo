@@ -14,7 +14,8 @@ fusion {
 }
 
 // CHECK: func.func @main
-// CHECK-NEXT: gpu.thread_id
+// CHECK-NEXT: gpu.block_id
+// CHECK:      scf.forall
 // CHECK:      pure_call @fusion_atan2
 // CHECK-NEXT: tensor.insert
 // CHECK:      return

@@ -9,7 +9,8 @@ bcast {
 // CHECK: func.func @main(%[[ARG0:.*]]: tensor<24x2048x2048x3x4096xbf16>
 // CHECK:   gpu.block_id  x {xla.range = [0 : index, 1207959551 : index]}
 // CHECK:   gpu.block_id  y {xla.range = [0 : index, 1 : index]}
+// CHECK:   scf.forall {{.*}} shared_outs(%[[FORALL_ARG0:.*]] = %[[ARG0]])
 // CHECK:   xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]], %[[RB:.*]], %[[RC:.*]], %[[RD:.*]], %[[RE:.*]]) in
-// CHECK-SAME: iter_args(%[[ITER:.*]] = %[[ARG0]])
+// CHECK-SAME: iter_args(%[[ITER:.*]] = %[[FORALL_ARG0]])
 // CHECK:     %[[CST:.*]] = arith.constant 1.000
 // CHECK:     %[[INSERTED:.*]] = tensor.insert %[[CST]] into %[[ITER]][%[[RA]], %[[RB]], %[[RC]], %[[RD]], %[[RE]]]
