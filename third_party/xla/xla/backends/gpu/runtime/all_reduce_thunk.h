@@ -88,8 +88,9 @@ class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
   absl::Status Initialize(const InitializeParams& params) override;
 
  protected:
-  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
-                             CommunicatorHandle comm_handle) override;
+  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     se::Stream& stream,
+                                     CommunicatorHandle comm) override;
 
  private:
   bool one_shot_kernel_enabled_ = false;
@@ -132,8 +133,9 @@ class ReduceScatterStartThunk : public AllReduceReduceScatterThunkBase {
       const HloReduceScatterInstruction* inst);
 
  protected:
-  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
-                             CommunicatorHandle comm_handle) override;
+  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     se::Stream& stream,
+                                     CommunicatorHandle comm) override;
 };
 
 // -----------------------------------------------------------------------------

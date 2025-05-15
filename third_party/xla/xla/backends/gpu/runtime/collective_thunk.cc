@@ -445,6 +445,7 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
   int64_t async_stream_idx = static_cast<int64_t>(stream_kind);
 
+  bool is_first_rendezvous_needed = false;
   if (IsAsync()) {
     // Launch collective operation on an async stream.
     se::Stream& async_stream =
@@ -453,7 +454,8 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Wait for main compute stream to make sure all buffers are ready.
     TF_RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
 
-    TF_RETURN_IF_ERROR(RunCollective(params, async_stream, comm_handle));
+    TF_ASSIGN_OR_RETURN(is_first_rendezvous_needed,
+                        RunCollective(params, async_stream, comm_handle));
 
     // Record collective operation completion.
     TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
@@ -461,14 +463,16 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   } else {
     // Launch collective operation on a main stream.
-    TF_RETURN_IF_ERROR(RunCollective(params, *params.stream, comm_handle));
+    TF_ASSIGN_OR_RETURN(is_first_rendezvous_needed,
+                        RunCollective(params, *params.stream, comm_handle));
   }
 
   // After a first execution of this instance of collective operation do a
   // rendezvous with other participants to make sure that all of them allocated
   // required state (internal to NCCL) and ready to continue. Going too far
   // ahead on one rank leads to deadlocks in NCCL.
-  if (NeedFirstCallRendzevous() && !first_call_rendezvous_flag_.IsCompleted()) {
+  if (is_first_rendezvous_needed &&
+      !first_call_rendezvous_flag_.IsCompleted()) {
     GpuCliqueKey clique_key = comm_handle.clique_key;
     size_t num_local_participants = clique_key.num_local_participants();
 

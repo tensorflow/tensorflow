@@ -377,7 +377,7 @@ absl::Status AllReduceStartThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status AllReduceStartThunk::RunCollective(
+absl::StatusOr<bool> AllReduceStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
@@ -404,13 +404,15 @@ absl::Status AllReduceStartThunk::RunCollective(
     std::optional<RankId> rank =
         comm_handle.clique_key.rank(params.collective_params->global_device_id);
 
-    return RunOneShotAllReduce(comm_handle.clique_key, *rank, device_buffers,
-                               stream, comm_handle.comm, local_buffer,
-                               start_event, end_event);
+    TF_RETURN_IF_ERROR(RunOneShotAllReduce(
+        comm_handle.clique_key, *rank, device_buffers, stream, comm_handle.comm,
+        local_buffer, start_event, end_event));
+    return false;
   }
 
-  return RunAllReduce(collectives, config_.reduction_kind, device_buffers,
-                      stream, comm_handle.comm);
+  TF_RETURN_IF_ERROR(RunAllReduce(collectives, config_.reduction_kind,
+                                  device_buffers, stream, comm_handle.comm));
+  return true;
 }
 
 ReduceScatterStartThunk::ReduceScatterStartThunk(
@@ -433,7 +435,7 @@ ReduceScatterStartThunk::ReduceScatterStartThunk(
   return GetGroupModeInst(inst);
 }
 
-absl::Status ReduceScatterStartThunk::RunCollective(
+absl::StatusOr<bool> ReduceScatterStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
@@ -441,8 +443,10 @@ absl::Status ReduceScatterStartThunk::RunCollective(
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
-  return RunReduceScatter(collectives, config_.reduction_kind, device_buffers,
-                          stream, comm_handle.comm);
+  TF_RETURN_IF_ERROR(RunReduceScatter(collectives, config_.reduction_kind,
+                                      device_buffers, stream,
+                                      comm_handle.comm));
+  return true;
 }
 
 absl::Status RunReduceScatter(GpuCollectives* collectives,

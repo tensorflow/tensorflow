@@ -66,9 +66,9 @@ absl::Status RecvThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status RecvThunk::RunCollective(const ExecuteParams& params,
-                                      se::Stream& stream,
-                                      CommunicatorHandle comm_handle) {
+absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
+                                              se::Stream& stream,
+                                              CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -149,7 +149,7 @@ absl::Status RecvThunk::RunCollective(const ExecuteParams& params,
     VLOG(3) << absl::StreamFormat("%s : Recv: Issuing MemZero", device_string);
     TF_RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
   }
-  return absl::OkStatus();
+  return false;
 }
 
 }  // namespace gpu

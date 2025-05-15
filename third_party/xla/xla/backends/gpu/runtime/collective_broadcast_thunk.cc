@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -60,15 +61,16 @@ CollectiveBroadcastStartThunk::CollectiveBroadcastStartThunk(
   return GetCollectiveConfig(inst, std::nullopt).group_mode;
 }
 
-absl::Status CollectiveBroadcastStartThunk::RunCollective(
+absl::StatusOr<bool> CollectiveBroadcastStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_, config_.operand_element_type));
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
-  return ::xla::gpu::RunCollectiveBroadcast(device_buffers, stream,
-                                            comm_handle.comm, collectives);
+  TF_RETURN_IF_ERROR(::xla::gpu::RunCollectiveBroadcast(
+      device_buffers, stream, comm_handle.comm, collectives));
+  return true;
 }
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
