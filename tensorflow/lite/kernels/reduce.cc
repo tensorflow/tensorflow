@@ -74,7 +74,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Creates three temp tensors to store index and axis for internal
   // implementation only.
   auto* op_data = new OpData();
-  context->AddTensors(context, 4, &op_data->scratch_tensor_index);
+  op_data->scratch_tensor_index = -1;
   return op_data;
 }
 
@@ -252,6 +252,10 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   OpContext op_context(context, node);
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  if (op_data->scratch_tensor_index == -1) {
+    context->AddTensors(context, 4, &op_data->scratch_tensor_index);
+  }
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.axis->type, kTfLiteInt32);
   TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
