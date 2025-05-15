@@ -198,6 +198,50 @@ TEST_F(TritonTest, DISABLED_FuseChannelDequantizationFused) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(TritonTest, DISABLED_FuseSubchannelDequantizationWithTranspose) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule FuseSubchannelDequantizationWithTranspose
+
+    ENTRY FuseSubchannelDequantizationWithTranspose {
+      w_s4 = s4[2,2048,64] parameter(1)
+      w_s8 = s8[2,2048,64] convert(w_s4)
+      w_s8_reshaped = s8[2,8,256,64] reshape(w_s8)
+      w_bf16 = bf16[2,8,256,64] convert(w_s8_reshaped)
+      s_bf16 = bf16[2,8,1,64]{3,1,0,2} parameter(0)
+      s_bf16_reshaped = bf16[2,8,64] reshape(s_bf16)
+      s_bf16_broadcasted = bf16[2,8,256,64] broadcast(s_bf16_reshaped),
+          dimensions={0,1,3}
+      w_bf16_scaled = bf16[2,8,256,64] multiply(w_bf16, s_bf16_broadcasted)
+      w_bf16_scaled_reshaped = bf16[2,2048,64] reshape(w_bf16_scaled)
+
+      a_bf16 = bf16[2,2048,2,32] parameter(2)
+      a_bf16_reshaped = bf16[2,2048,64] reshape(a_bf16)
+      dot = bf16[2,64,64] dot(w_bf16_scaled_reshaped, a_bf16_reshaped),
+          lhs_batch_dims={0}, lhs_contracting_dims={1},
+          rhs_batch_dims={0}, rhs_contracting_dims={1}
+      dot_reshaped = bf16[2,64,2,32] reshape(dot)
+      dot_transposed = bf16[64,2,2,32] transpose(dot_reshaped),
+          dimensions={1,0,2,3}
+      ROOT root = bf16[2,64,2,32]{3,2,0,1} reshape(dot_transposed)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
+                          GetOptimizedModule(std::move(module)));
+  EXPECT_TRUE(*RunFileCheck(optimized_module->ToString(), R"(
+    CHECK:    %[[bitcast:.*]] = bf16[2,8,64]{2,1,0} bitcast({{.*}})
+    CHECK:    %[[transpose:.*]] = bf16[2,64,8]{2,1,0} transpose(%[[bitcast]]), dimensions={0,2,1}
+    CHECK:    %[[broadcast:.*]] = bf16[2,64,8,256]{3,2,1,0} broadcast(%[[transpose]]), dimensions={0,1,2}
+    CHECK:    %[[multiply:.*]] = bf16[2,64,8,256]{3,2,1,0} multiply({{.*}}, %[[broadcast]])
+  )"));
+  EXPECT_TRUE(
+      *RunFileCheck(optimized_module->ToString(), "CHECK: __triton_gemm"));
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(optimized_module), ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+}
+
 TEST_F(TritonTest, DISABLED_FuseSubchannelDequantization) {
   // This test is a Subchannel Dequantization fusion.
   // We run the non-fused version with the goal to fail if an hlo rewrite broke
