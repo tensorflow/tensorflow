@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -131,6 +132,11 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
+
+    absl::Status Initialize(IteratorContext* ctx) override {
+      LogFilenames(dataset()->filenames_);
+      return absl::OkStatus();
+    }
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
@@ -333,7 +339,6 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
     is_s3_fs &= absl::StartsWith(filenames[i], kS3FsPrefix);
     metrics::RecordTFDataFilename(kDatasetType, filenames[i]);
   }
-  LogFilenames(filenames);
 
   tstring compression_type;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,
