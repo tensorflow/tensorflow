@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -32,15 +33,19 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/ir_emission_utils.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
@@ -336,6 +341,16 @@ class DenseDataIntermediate {
     return data_.index() == 0 ? absl::Span<const uint8_t>(std::get<0>(data_))
                               : std::get<1>(data_);
   }
+
+  // Converts `this` into its protobuf representation.
+  // Note that the protobuf message will always contain a copy of the data -
+  // also for non-owning instances of DenseDataIntermediate.
+  DenseDataIntermediateProto ToProto() const;
+
+  // Constructs a data-owning instance of DenseDataIntermediate from its
+  // protobuf representation.
+  static DenseDataIntermediate FromProto(
+      const DenseDataIntermediateProto& proto);
 
  private:
   std::variant<std::vector<uint8_t>, absl::Span<const uint8_t>> data_;

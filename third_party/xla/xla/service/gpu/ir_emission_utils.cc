@@ -40,13 +40,10 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
-#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/TargetParser/Triple.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -63,13 +60,11 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -974,5 +969,17 @@ ResolveFunctionalDependencyOnInductionVariable(const HloInstruction* instr) {
   return result;
 }
 
+DenseDataIntermediateProto DenseDataIntermediate::ToProto() const {
+  DenseDataIntermediateProto proto;
+  absl::Span<const uint8_t> data = span();
+  proto.mutable_data()->assign(data.begin(), data.end());
+  return proto;
+}
+DenseDataIntermediate DenseDataIntermediate::FromProto(
+    const DenseDataIntermediateProto& proto) {
+  const std::string& data = proto.data();
+  return DenseDataIntermediate::Own(
+      std::vector<uint8_t>(data.begin(), data.end()));
+}
 }  // namespace gpu
 }  // namespace xla

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emission_utils.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -25,7 +26,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -35,20 +35,20 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.pb.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 
 using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
 using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 
@@ -1367,6 +1367,30 @@ TEST_F(IrEmissionUtilsTest, Transpose_102) {
   EXPECT_THAT(spec.canonical_output_shape, ElementsAre(6, 32, 2, 7, 8, 1));
   EXPECT_THAT(spec.canonical_permutation, ElementsAre(4, 2, 1, 3, 0, 5));
   EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(4, 2, 1, 3, 0, 5));
+}
+
+TEST(DenseDataIntermediateTest, OwnedDataToProto) {
+  const std::vector<uint8_t> data = {1, 2, 3, 4};
+  DenseDataIntermediate constant = DenseDataIntermediate::Own(data);
+
+  DenseDataIntermediateProto proto = constant.ToProto();
+  EXPECT_THAT(proto.data(), ElementsAreArray(data));
+}
+
+TEST(DenseDataIntermediateTest, BorrowedDataToProto) {
+  constexpr std::array<uint8_t, 4> kData = {5, 6, 7, 8};
+  DenseDataIntermediate constant = DenseDataIntermediate::Alias(kData);
+  DenseDataIntermediateProto proto = constant.ToProto();
+  EXPECT_THAT(proto.data(), ElementsAreArray(kData));
+}
+
+TEST(DenseDataIntermediateTest, FromProto) {
+  constexpr std::array<uint8_t, 4> kData = {1, 2, 3, 4};
+  DenseDataIntermediateProto proto;
+  proto.mutable_data()->assign(kData.begin(), kData.end());
+
+  DenseDataIntermediate constant = DenseDataIntermediate::FromProto(proto);
+  EXPECT_THAT(constant.span(), ElementsAreArray(kData));
 }
 
 }  // namespace gpu
