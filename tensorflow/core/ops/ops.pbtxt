@@ -41070,6 +41070,7 @@ op {
         type: DT_INT64
         type: DT_UINT16
         type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
