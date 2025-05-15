@@ -18,9 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -28,12 +26,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
-
-// Return the set of collective instructions that are synchronous post
-// scheduling.
-absl::StatusOr<absl::flat_hash_set<HloInstruction*>> SynchronousCollectives(
-    const HloModule& module, int64_t pointer_size,
-    const se::DeviceDescription& device_info);
 
 // Returns the maximum available memory on a device.
 int64_t MaxAvailableMemory(const HloModule& module,

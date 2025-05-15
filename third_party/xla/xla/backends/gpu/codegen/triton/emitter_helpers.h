@@ -17,14 +17,17 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_EMITTER_HELPERS_H_
 
 #include <cstdint>
+#include <string>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -37,9 +40,20 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu::triton {
+
+// Returns a string representation of the given MLIR entity.
+template <typename T>
+std::string MlirToString(T&& value) {
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  value.print(os);
+  return result;
+}
 
 // This is a wrapper around mlir::Value that can hold either a scalar or a
 // non-0D tensor. An attempt to use this class with 0D tensors will CHECK-fail
@@ -89,7 +103,10 @@ llvm::SmallVector<int64_t> GetPaddedTileSizes(
 // XLA -> Triton type conversions.
 absl::StatusOr<mlir::Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t);
 
-mlir::Type StorageType(EmitterLocOpBuilder& b, mlir::Type t);
+// Triton type -> XLA type conversions.
+absl::StatusOr<PrimitiveType> GetPrimitiveType(mlir::Type t);
+
+mlir::Type StorageType(mlir::Type t);
 
 // Get the value of the scalar constant's literal in a C++ type.
 template <typename T>

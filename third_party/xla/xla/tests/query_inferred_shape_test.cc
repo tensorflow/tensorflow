@@ -13,29 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-
-#include "absl/status/statusor.h"
-#include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/hlo/testlib/test_helpers.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class QueryInferredShapeTest : public ClientLibraryTestBase {};
-
-TEST_F(QueryInferredShapeTest, OnePlusOneShape) {
+TEST(QueryInferredShapeTest, OnePlusOneShape) {
   XlaBuilder builder("one_plus_one");
-  auto one = ConstantR0<float>(&builder, 1.0);
-  auto result = Add(one, one);
-  absl::StatusOr<Shape> shape_status = builder.GetShape(result);
-  ASSERT_IS_OK(shape_status.status());
-  auto shape = shape_status.value();
+  XlaOp one = ConstantR0<float>(&builder, 1.0);
+  XlaOp result = Add(one, one);
+  TF_ASSERT_OK_AND_ASSIGN(const Shape shape, builder.GetShape(result));
   ASSERT_TRUE(ShapeUtil::Equal(shape, ShapeUtil::MakeShape(F32, {})));
 }
 

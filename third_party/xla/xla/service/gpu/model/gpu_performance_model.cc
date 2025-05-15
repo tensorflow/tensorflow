@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/model/gpu_performance_model.h"
 
-#include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <optional>
 
 #include "absl/log/check.h"
@@ -32,41 +32,39 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/coalescing_analysis.h"
+#include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
 
-/*static*/ EstimateRunTimeData
-GpuPerformanceModel::EstimateRunTimeForInstruction(
-    const HloInstruction* instr, const se::DeviceDescription& device_info,
-    const GpuHloCostAnalysis* cost_analysis,
-    const GpuPerformanceModelOptions& config) {
+GpuPerformanceModel::GpuPerformanceModel(
+    const se::DeviceDescription& device_info,
+    HloFusionAnalysisCache& fusion_analysis_cache,
+    GpuPerformanceModelCache& gpu_performance_model_cache)
+    : device_info_(device_info),
+      fusion_analysis_cache_(fusion_analysis_cache),
+      gpu_performance_model_cache_(gpu_performance_model_cache) {};
+
+EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstructionImpl(
+    const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis) {
   VLOG(8) << "EstimateRunTimeForInstruction: " << instr->name();
 
   int64_t flops = cost_analysis->flop_count(*instr);
   int64_t bytes_written = cost_analysis->output_bytes_accessed(*instr);
 
-  // Use the analysis cache if present.
-  // TODO(jreiffers): Remove this once all callers use a cache.
-  std::optional<HloFusionAnalysis> local_analysis;
-  if (!config.fusion_analysis_cache) {
-    local_analysis = HloFusionAnalysis::Create(*instr, device_info);
-  }
-  const auto& fusion_analysis = config.fusion_analysis_cache
-                                    ? config.fusion_analysis_cache->Get(*instr)
-                                    : local_analysis.value();
+  const auto& fusion_analysis = fusion_analysis_cache_.Get(*instr);
   LaunchDimensions launch_dimensions =
       EstimateFusionLaunchDimensions(fusion_analysis);
   int64_t num_blocks = launch_dimensions.num_blocks();
 
   absl::Duration compute_time =
-      ComputeTime(device_info, flops, num_blocks,
+      ComputeTime(device_info_, flops, num_blocks,
                   launch_dimensions.num_threads_per_block());
 
   CoalescingAnalysis coalescing_analysis(instr, instr->operands(),
@@ -87,14 +85,14 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
     VLogOperandRead(operand, n_bytes_total, n_bytes_net, coalesced);
 
     read_time += ReadTimeWithDRAMHeuristic(
-        device_info, num_blocks, n_bytes_net, n_bytes_total,
+        device_info_, num_blocks, n_bytes_net, n_bytes_total,
         operand->shape().element_type(),
-        GetCoalescingUtilizationRate(element_type, device_info, coalesced));
+        GetCoalescingUtilizationRate(element_type, device_info_, coalesced));
   }
 
-  absl::Duration write_time = WriteTime(device_info, bytes_written);
-  absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
-      compute_time, read_time + write_time, config);
+  absl::Duration write_time = WriteTime(device_info_, bytes_written);
+  absl::Duration exec_time =
+      CombineComputeAndMemoryAccessTime(compute_time, read_time + write_time);
 
   EstimateRunTimeData runtime_data = {flops,     bytes_read, bytes_written,
                                       read_time, write_time, compute_time,
@@ -105,35 +103,24 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   return runtime_data;
 }
 
-/*static*/ EstimateRunTimeData
-GpuPerformanceModel::EstimateRunTimeForInstructionCached(
-    const HloInstruction* instr, const se::DeviceDescription& device_info,
-    const GpuHloCostAnalysis* cost_analysis,
-    const GpuPerformanceModelOptions& config) {
-  if (config.gpu_performance_model_cache) {
-    if (auto cached_result = config.gpu_performance_model_cache->Get(*instr)) {
-      return *cached_result;
-    }
+EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstruction(
+    const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis) {
+  if (auto cached_result_opt = gpu_performance_model_cache_.Get(*instr)) {
+    return *cached_result_opt;
   }
 
-  auto runtime_data =
-      EstimateRunTimeForInstruction(instr, device_info, cost_analysis, config);
+  auto runtime_data = EstimateRunTimeForInstructionImpl(instr, cost_analysis);
 
-  if (config.gpu_performance_model_cache) {
-    config.gpu_performance_model_cache->Set(*instr, runtime_data);
-  }
+  gpu_performance_model_cache_.Set(*instr, runtime_data);
 
   return runtime_data;
 }
 
-/*static*/ absl::Duration GpuPerformanceModel::EstimateRunTimeForFusion(
+absl::Duration GpuPerformanceModel::EstimateRunTimeForFusionImpl(
     const HloInstruction* producer, const HloInstruction* consumer,
     const EstimateRunTimeData& producer_runtime,
     const EstimateRunTimeData& consumer_runtime,
-    const se::DeviceDescription& device_info,
-    const GpuHloCostAnalysis* cost_analysis,
-    const GpuPerformanceModelOptions& config,
-    bool producer_writes_side_output) {
+    const GpuHloCostAnalysis* cost_analysis, bool producer_writes_side_output) {
   VLOG(8) << "EstimateRunTimeForFusion, producer: " << producer->name()
           << " consumer: " << consumer->name();
 
@@ -151,15 +138,8 @@ GpuPerformanceModel::EstimateRunTimeForInstructionCached(
     }
   }
 
-  std::optional<HloFusionAnalysis> local_analysis_fused;
-  if (!config.fusion_analysis_cache) {
-    local_analysis_fused =
-        HloFusionAnalysis::Create(*producer, *consumer, device_info);
-  }
   const auto& fusion_analysis =
-      config.fusion_analysis_cache
-          ? config.fusion_analysis_cache->Get(*producer, *consumer)
-          : local_analysis_fused.value();
+      fusion_analysis_cache_.Get(*producer, *consumer);
 
   LaunchDimensions launch_dimensions =
       EstimateFusionLaunchDimensions(fusion_analysis);
@@ -168,7 +148,7 @@ GpuPerformanceModel::EstimateRunTimeForInstructionCached(
                   consumer_runtime.flops;
 
   absl::Duration compute_time =
-      ComputeTime(device_info, flops, launch_dimensions.num_blocks(),
+      ComputeTime(device_info_, flops, launch_dimensions.num_blocks(),
                   launch_dimensions.num_threads_per_block());
 
   auto fusion_operands = fusion_analysis.fusion().GetParameters();
@@ -191,9 +171,9 @@ GpuPerformanceModel::EstimateRunTimeForInstructionCached(
     VLogOperandRead(operand, n_bytes_total, n_bytes_net, coalesced);
 
     read_time += ReadTimeWithDRAMHeuristic(
-        device_info, launch_dimensions.num_blocks(), n_bytes_net, n_bytes_total,
-        operand->shape().element_type(),
-        GetCoalescingUtilizationRate(element_type, device_info, coalesced));
+        device_info_, launch_dimensions.num_blocks(), n_bytes_net,
+        n_bytes_total, operand->shape().element_type(),
+        GetCoalescingUtilizationRate(element_type, device_info_, coalesced));
   }
 
   int64_t bytes_written = consumer_runtime.bytes_written;
@@ -207,8 +187,8 @@ GpuPerformanceModel::EstimateRunTimeForInstructionCached(
     write_time += producer_runtime.write_time;
   }
 
-  auto exec_time = CombineComputeAndMemoryAccessTime(
-      compute_time, read_time + write_time, config);
+  auto exec_time =
+      CombineComputeAndMemoryAccessTime(compute_time, read_time + write_time);
 
   VLOG(3) << "Runtime data for producer-consumer fusion:\n"
           << " producer: " << producer->name() << "\n"
@@ -222,39 +202,28 @@ GpuPerformanceModel::EstimateRunTimeForInstructionCached(
   return exec_time;
 }
 
-/*static*/
-absl::Duration GpuPerformanceModel::EstimateRunTimeForFusionCached(
+absl::Duration GpuPerformanceModel::EstimateRunTimeForFusion(
     const HloInstruction* producer, const HloInstruction* consumer,
     const EstimateRunTimeData& producer_runtime,
     const EstimateRunTimeData& consumer_runtime,
-    const se::DeviceDescription& device_info,
-    const GpuHloCostAnalysis* cost_analysis,
-    const GpuPerformanceModelOptions& config) {
-  if (config.gpu_performance_model_cache) {
-    if (auto fusion_runtime =
-            config.gpu_performance_model_cache->Get(*producer, *consumer)) {
-      return *fusion_runtime;
-    }
+    const GpuHloCostAnalysis* cost_analysis, bool producer_writes_side_output) {
+  if (auto fusion_runtime_opt =
+          gpu_performance_model_cache_.Get(*producer, *consumer)) {
+    return *fusion_runtime_opt;
   }
 
-  auto fusion_runtime = EstimateRunTimeForFusion(
-      producer, consumer, producer_runtime, consumer_runtime, device_info,
-      cost_analysis, config);
+  auto fusion_runtime = EstimateRunTimeForFusionImpl(
+      producer, consumer, producer_runtime, consumer_runtime, cost_analysis,
+      producer_writes_side_output);
 
-  if (config.gpu_performance_model_cache) {
-    config.gpu_performance_model_cache->Set(*producer, *consumer,
-                                            fusion_runtime);
-  }
+  gpu_performance_model_cache_.Set(*producer, *consumer, fusion_runtime);
   return fusion_runtime;
 }
 
-/*static*/
 GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
-    const HloInstruction* producer, const se::DeviceDescription& device_info,
-    const GpuHloCostAnalysis* cost_analysis,
-    const GpuPerformanceModelOptions& config,
+    const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
     absl::Span<const HloInstruction* const> fused_consumers) {
-  auto cache_result = config.gpu_performance_model_cache->Get(*producer);
+  auto cache_result = gpu_performance_model_cache_.Get(*producer);
   CHECK(cache_result.has_value());
   EstimateRunTimeData producer_runtime = *cache_result;
 
@@ -267,16 +236,15 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
   for (auto fused_consumer : fused_consumers) {
     VLOG(8) << "Fused consumer: " << fused_consumer->name();
 
-    auto cache_result =
-        config.gpu_performance_model_cache->Get(*fused_consumer);
+    auto cache_result = gpu_performance_model_cache_.Get(*fused_consumer);
     CHECK(cache_result.has_value());
     EstimateRunTimeData consumer_runtime = *cache_result;
 
     time_unfused += consumer_runtime.exec_time;
 
-    time_fused += EstimateRunTimeForFusionCached(
-        producer, fused_consumer, producer_runtime, consumer_runtime,
-        device_info, cost_analysis, config);
+    time_fused +=
+        EstimateRunTimeForFusion(producer, fused_consumer, producer_runtime,
+                                 consumer_runtime, cost_analysis);
   }
 
   if (VLOG_IS_ON(8)) {
@@ -288,20 +256,14 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
   return {time_unfused, time_fused};
 }
 
-/*static*/
 GpuPerformanceModel::RunTimes
 GpuPerformanceModel::EstimateRunTimesForMultiOutputFusion(
     const HloInstruction* producer, const HloInstruction* consumer,
-    const se::DeviceDescription& device_info,
     const GpuHloCostAnalysis* cost_analysis) {
-  GpuPerformanceModelOptions config = GpuPerformanceModelOptions::Default();
-
   EstimateRunTimeData producer_runtime =
-      GpuPerformanceModel::EstimateRunTimeForInstruction(producer, device_info,
-                                                         cost_analysis, config);
+      EstimateRunTimeForInstruction(producer, cost_analysis);
   EstimateRunTimeData consumer_runtime =
-      GpuPerformanceModel::EstimateRunTimeForInstruction(consumer, device_info,
-                                                         cost_analysis, config);
+      EstimateRunTimeForInstruction(consumer, cost_analysis);
 
   absl::Duration time_unfused = 2 * kKernelLaunchOverhead +
                                 producer_runtime.exec_time +
@@ -310,8 +272,8 @@ GpuPerformanceModel::EstimateRunTimesForMultiOutputFusion(
   absl::Duration time_fused =
       kKernelLaunchOverhead +
       EstimateRunTimeForFusion(producer, consumer, producer_runtime,
-                               consumer_runtime, device_info, cost_analysis,
-                               config, /*producer_writes_side_output=*/true);
+                               consumer_runtime, cost_analysis,
+                               /*producer_writes_side_output=*/true);
 
   if (VLOG_IS_ON(8)) {
     LOG(INFO) << "Unfused time: " << time_unfused;
@@ -321,23 +283,19 @@ GpuPerformanceModel::EstimateRunTimesForMultiOutputFusion(
   return {time_unfused, time_fused};
 }
 
-/*static*/
 void GpuPerformanceModel::RecordEstimatedRunTime(
-    HloInstruction* instruction, const se::DeviceDescription& device_info,
-    const GpuHloCostAnalysis* cost_analysis,
-    const GpuPerformanceModelOptions& config) {
+    HloInstruction* instruction, const GpuHloCostAnalysis* cost_analysis) {
   DCHECK(Cast<const HloFusionInstruction>(instruction)) << "expected fusion";
   DCHECK(cost_analysis != nullptr) << "expected cost analysis";
 
-  EstimateRunTimeData data = EstimateRunTimeForInstruction(
-      instruction, device_info, cost_analysis, config);
+  EstimateRunTimeData data =
+      EstimateRunTimeForInstruction(instruction, cost_analysis);
   double cycles =
-      absl::ToDoubleNanoseconds(data.exec_time) * device_info.clock_rate_ghz();
+      absl::ToDoubleNanoseconds(data.exec_time) * device_info_.clock_rate_ghz();
 
   auto gpu_config = instruction->backend_config<GpuBackendConfig>();
   TF_CHECK_OK(gpu_config.status()) << instruction->ToString();
-  auto reification_cost =
-      gpu_config->mutable_fusion_backend_config()->mutable_reification_cost();
+  auto reification_cost = gpu_config->add_reification_cost();
   reification_cost->set_end_to_end_cycles(cycles);
   reification_cost->set_compute_time_us(
       absl::ToDoubleMicroseconds(data.compute_time));
@@ -348,6 +306,34 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
   TF_CHECK_OK(instruction->set_backend_config(*gpu_config));
 
   VLOG(8) << "RecordEstimatedRunTime: " << instruction->ToString();
+}
+
+GpuPerformanceModelOwning::GpuPerformanceModelOwning(
+    const se::DeviceDescription& device_info)
+    : fusion_analysis_cache_(device_info),
+      gpu_performance_model_(std::make_unique<GpuPerformanceModel>(
+          device_info, fusion_analysis_cache_, gpu_performance_model_cache_)) {
+      };
+
+void GpuPerformanceModelOwning::RecordEstimatedRunTime(
+    HloInstruction* instruction,
+    const GpuHloCostAnalysis* cost_analysis) const {
+  gpu_performance_model_->RecordEstimatedRunTime(instruction, cost_analysis);
+}
+
+EstimateRunTimeData GpuPerformanceModelOwning::EstimateRunTimeForInstruction(
+    const HloInstruction* instr,
+    const GpuHloCostAnalysis* cost_analysis) const {
+  return gpu_performance_model_->EstimateRunTimeForInstruction(instr,
+                                                               cost_analysis);
+}
+
+GpuPerformanceModel::RunTimes
+GpuPerformanceModelOwning::EstimateRunTimesForMultiOutputFusion(
+    const HloInstruction* producer, const HloInstruction* consumer,
+    const GpuHloCostAnalysis* cost_analysis) const {
+  return gpu_performance_model_->EstimateRunTimesForMultiOutputFusion(
+      producer, consumer, cost_analysis);
 }
 
 }  // namespace gpu

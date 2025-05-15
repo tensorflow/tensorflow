@@ -19,24 +19,20 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
-#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 
 namespace xla {
 
 TEST(XlaCpuPjrtClientTest, GetXlaPjrtGpuClient) {
-  GpuClientOptions options;
-  ASSERT_OK_AND_ASSIGN(auto client, GetXlaPjrtGpuClient(options));
+  ASSERT_OK_AND_ASSIGN(auto client, GetXlaPjrtGpuClient({}));
   EXPECT_EQ(client->platform_name(), "cuda");
   EXPECT_NE(dynamic_cast<StreamExecutorGpuClient*>(client.get()), nullptr);
 }
 
 TEST(XlaCpuPjrtClientTest, GetXlaPjrtGpuClientWithTfrtClient) {
-  setenv("USE_TFRT_GPU_CLIENT", "true", 1);
-  GpuClientOptions options;
-  ASSERT_OK_AND_ASSIGN(auto client, GetXlaPjrtGpuClient(options));
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetXlaPjrtGpuClient({.use_tfrt_gpu_client = true}));
   EXPECT_EQ(client->platform_name(), "cuda");
   EXPECT_NE(dynamic_cast<TfrtGpuClient*>(client.get()), nullptr);
-  unsetenv("USE_TFRT_GPU_CLIENT");
 }
 
 }  // namespace xla

@@ -1,12 +1,16 @@
-def __update_globals(pywrap_m):
-  if hasattr(pywrap_m, '__all__'):
-    all_names = pywrap_m.__all__
-  else:
-    all_names = [name for name in dir(pywrap_m) if not name.startswith('_')]
+from sys import modules
+from types import ModuleType
 
-  extra_names = []  # template_val
-  all_names.extend(extra_names)
-  globals().update({name: getattr(pywrap_m, name) for name in all_names})
+
+def __update_globals(new_import_path, pywrap_m):
+  all_names = pywrap_m.__all__ if hasattr(pywrap_m, '__all__') else dir(
+      pywrap_m)
+  modules[new_import_path] = pywrap_m
+  for name in all_names:
+    sub_pywrap = getattr(pywrap_m, name)
+    if isinstance(sub_pywrap, ModuleType):
+      sub_name = sub_pywrap.__name__[len(pywrap_m.__name__):]
+      __update_globals(new_import_path + sub_name, sub_pywrap)
 
 
 def __try_import():
@@ -16,7 +20,7 @@ def __try_import():
   for import_path in imports_paths:
     try:
       pywrap_m = __import__(import_path, fromlist=["*"])
-      __update_globals(pywrap_m)
+      __update_globals(__name__, pywrap_m)
       return
     except ImportError as e:
       exceptions.append(str(e))
@@ -26,5 +30,6 @@ def __try_import():
   raise RuntimeError(f"""
 Could not import original test/binary location, import paths tried: {imports_paths}. 
 Previous exceptions: {exceptions}""", last_exception)
+
 
 __try_import()

@@ -144,12 +144,6 @@ class tstring {
   operator std::string() const;  // NOLINT
   // TODO(b/147740521): Make explicit.
   operator absl::string_view() const;  // NOLINT
-#ifdef PLATFORM_GOOGLE
-  template <typename T,
-            typename std::enable_if<std::is_same<T, absl::AlphaNum>::value,
-                                    T>::type* = nullptr>
-  operator T() const;  // NOLINT TODO(b/147740521): Remove.
-#endif  // PLATFORM_GOOGLE
 
   // Attributes
   size_t size() const;
@@ -215,6 +209,11 @@ class tstring {
   friend tstring operator+(const tstring& a, const tstring& b);
   friend std::ostream& operator<<(std::ostream& o, const tstring& str);
   friend std::hash<tstring>;
+  // Support for absl::StrCat() etc.
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const tstring& str) {
+    sink.Append(absl::string_view(str));
+  }
 };
 
 // Non-member function overloads
@@ -380,14 +379,6 @@ inline tstring::operator std::string() const {
 inline tstring::operator absl::string_view() const {
   return absl::string_view(data(), size());
 }
-
-#ifdef PLATFORM_GOOGLE
-template <typename T, typename std::enable_if<
-                          std::is_same<T, absl::AlphaNum>::value, T>::type*>
-inline tstring::operator T() const {
-  return T(absl::string_view(*this));
-}
-#endif  // PLATFORM_GOOGLE
 
 // Attributes
 

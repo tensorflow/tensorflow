@@ -200,7 +200,7 @@ ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
   verify_output(actual, "");
 
   // Try with all output layouts.
-  std::vector<int64_t> minor_to_major(expected.shape().dimensions_size());
+  std::vector<int64_t> minor_to_major(expected.shape().dimensions().size());
   std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
   do {
     auto layout = ShapeUtil::MakeShapeWithDenseLayout(
@@ -243,7 +243,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         return absl::OkStatus();
       }
 
-      std::vector<int64_t> minor_to_major(literal.shape().dimensions_size());
+      std::vector<int64_t> minor_to_major(literal.shape().dimensions().size());
       std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
       do {
         auto literal_relayout =
@@ -470,28 +470,6 @@ ClientLibraryTestBase::ComputeValueAndReference(
                                           computation, ref_argument_data_ptr));
 
   return std::make_pair(std::move(reference), std::move(result));
-}
-
-XlaComputation ClientLibraryTestBase::CreateScalarReluF32() {
-  XlaBuilder builder("relu");
-  auto shape = ShapeUtil::MakeShape(F32, {});
-  auto z_value = Parameter(&builder, 0, shape, "z_value");
-  auto zero = ConstantR0<float>(&builder, 0.0f);
-  Max(z_value, zero);
-  auto computation_status = builder.Build();
-  TF_CHECK_OK(computation_status.status());
-  return std::move(computation_status).value();
-}
-
-XlaComputation ClientLibraryTestBase::CreateScalarMax() {
-  XlaBuilder builder("max");
-  auto shape = ShapeUtil::MakeShape(test_type_, {});
-  auto x = Parameter(&builder, 0, shape, "x");
-  auto y = Parameter(&builder, 1, shape, "y");
-  Max(x, y);
-  auto computation_status = builder.Build();
-  TF_CHECK_OK(computation_status.status());
-  return std::move(computation_status).value();
 }
 
 std::unique_ptr<Array2D<float>> ClientLibraryTestBase::CreatePatternedMatrix(

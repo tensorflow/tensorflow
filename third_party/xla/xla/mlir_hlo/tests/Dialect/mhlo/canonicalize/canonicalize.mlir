@@ -212,17 +212,6 @@ func.func @concatenate_const_2D_horizontal() -> tensor<2x2xi32> {
 }
 
 ////////
-// CopyOp
-
-// CHECK-LABEL: func @fold_copy
-// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
-func.func @fold_copy(%arg : tensor<1x4xf32>) -> tensor<1x4xf32> {
-  // CHECK: return [[ARG]]
-  %0 = "mhlo.copy"(%arg) : (tensor<1x4xf32>) -> tensor<1x4xf32>
-  func.return %0 : tensor<1x4xf32>
-}
-
-////////
 // DynamicBroadcastInDimOp
 
 // CHECK-LABEL: func @dynamic_broadcast_in_dim_op_not_actually_dynamic

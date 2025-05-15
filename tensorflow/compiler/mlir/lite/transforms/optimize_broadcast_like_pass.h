@@ -16,24 +16,28 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass.h"
-#include "tensorflow/compiler/mlir/lite/transforms/pass_options.h"
 
 namespace mlir {
 namespace TFL {
 
 // Pass to optimize explicit broadcasting-like patterns.
 class OptimizeBroadcastLikePass
-    : public TFL::Pass<OptimizeBroadcastLikePass, EmptyPassOptions,
-                       func::FuncOp> {
+    : public TFL::Pass<OptimizeBroadcastLikePass,
+                       OptimizeBroadcastLikePassOptions, func::FuncOp> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeBroadcastLikePass)
 
   OptimizeBroadcastLikePass() = default;
   OptimizeBroadcastLikePass(const OptimizeBroadcastLikePass&) {};
+  explicit OptimizeBroadcastLikePass(const mlir::detail::PassOptions& options)
+      : Pass<OptimizeBroadcastLikePass, OptimizeBroadcastLikePassOptions,
+             func::FuncOp>(options) {}
 
   void runOnOperation() override;
   static llvm::StringRef GetName() { return "OptimizeBroadcastLikePass"; }

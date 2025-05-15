@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
+#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -28,7 +29,8 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static void BM_TopKCustomCall_F32(benchmark::State& state) {
+static void BM_TopKCustomCall_F32(benchmark::State& state,
+                                  HloBenchmarkOptions options) {
   int64_t k = state.range(0);
   int64_t batch = state.range(1);
   int64_t length = state.range(2);
@@ -53,10 +55,11 @@ static void BM_TopKCustomCall_F32(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, {&x},
                            {{"$batch", absl::StrCat(batch)},
                             {"$length", absl::StrCat(length)},
-                            {"$k", absl::StrCat(k)}}));
+                            {"$k", absl::StrCat(k)}},
+                           options));
 }
 
-static void BM_TopK_BF16(benchmark::State& state) {
+static void BM_TopK_BF16(benchmark::State& state, HloBenchmarkOptions options) {
   int64_t k = state.range(0);
   int64_t batch = state.range(1);
   int64_t length = state.range(2);
@@ -80,11 +83,12 @@ static void BM_TopK_BF16(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, {&x},
                            {{"$batch", absl::StrCat(batch)},
                             {"$length", absl::StrCat(length)},
-                            {"$k", absl::StrCat(k)}}));
+                            {"$k", absl::StrCat(k)}},
+                           options));
 }
 
 #define BENCHMARK_TOPK(name)               \
-  BENCHMARK(name)                          \
+  XLA_CPU_BENCHMARK(name)                  \
       ->MeasureProcessCPUTime()            \
       ->ArgNames({"k", "batch", "length"}) \
       ->Args({4, 4, 64})                   \

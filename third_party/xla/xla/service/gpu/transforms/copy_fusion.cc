@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -117,7 +119,7 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
     // Skip dynamic update slice fusions which might be emitted in-place.
     if (!dynamic_update_slices.empty() &&
         (HloPredicateIsNotOp<HloOpcode::kTuple>(root) ||
-         dynamic_update_slices.size() == root->shape().tuple_shapes_size())) {
+         dynamic_update_slices.size() == root->shape().tuple_shapes().size())) {
       continue;
     }
     changed = true;

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -72,17 +74,25 @@ absl::Status CollectiveBroadcastStartThunk::RunCollective(
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
                                     se::Stream& stream, Communicator* comm,
                                     GpuCollectives* collectives) {
-  TF_RETURN_IF_ERROR(collectives->GroupStart());
-  for (auto buffer : buffers) {
-    se::DeviceMemoryBase src_addr = buffer.source_buffer;
-    se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
-    TF_RETURN_IF_ERROR(comm->Broadcast(
-        // Always use rank 0 since we always broadcast from the first id in
-        // replica_groups
-        src_addr, dest_addr, buffer.element_type, buffer.element_count,
-        RankId(0), GpuCollectives::On(stream)));
+  TF_ASSIGN_OR_RETURN(GpuCommunicator * gpu_comm, collectives->TryCast(comm));
+  tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
+      [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
+        for (auto buffer : buffers) {
+          se::DeviceMemoryBase src_addr = buffer.source_buffer;
+          se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
+          TF_RETURN_IF_ERROR(comm->LaunchBroadcast(
+              // Always use rank 0 since we always broadcast from the first id
+              // in replica_groups
+              src_addr, dest_addr, buffer.element_type, buffer.element_count,
+              RankId(0), GpuCollectives::On(stream)));
+        }
+        return absl::OkStatus();
+      });
+  tsl::BlockUntilReady(event);
+  if (event.IsError()) {
+    return event.GetError();
   }
-  return collectives->GroupEnd();
+  return absl::OkStatus();
 }
 
 }  // namespace xla::gpu

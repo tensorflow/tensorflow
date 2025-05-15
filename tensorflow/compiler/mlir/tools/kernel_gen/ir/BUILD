@@ -30,24 +30,12 @@ td_library(
 gentbl_cc_library(
     name = "tf_framework_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "tf_framework_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "tf_framework_ops.cc.inc",
-        ),
-        (
-            ["-gen-dialect-decls"],
-            "tf_framework_dialect.h.inc",
-        ),
-        (
-            ["-gen-dialect-defs"],
-            "tf_framework_dialect.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "tf_framework_ops.h.inc": ["-gen-op-decls"],
+        "tf_framework_ops.cc.inc": ["-gen-op-defs"],
+        "tf_framework_dialect.h.inc": ["-gen-dialect-decls"],
+        "tf_framework_dialect.cc.inc": ["-gen-dialect-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tf_framework_ops.td",
     deps = [":td_files"],
@@ -56,16 +44,10 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tf_status_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-enum-decls"],
-            "tf_status.h.inc",
-        ),
-        (
-            ["-gen-enum-defs"],
-            "tf_status.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "tf_status.h.inc": ["-gen-enum-decls"],
+        "tf_status.cc.inc": ["-gen-enum-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tf_status.td",
     deps = [":td_files"],

@@ -248,14 +248,16 @@ TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
       MakeIncrementProgram(client.get(), /*alias=*/true, /*device=*/0);
 
   std::vector<int32_t> data(4, 0);
+  auto shared_data = std::make_shared<std::vector<int32_t>>(data);
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostBuffer(
-          data.data(), shape.element_type(), shape.dimensions(),
+          shared_data->data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
-          PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
-          client->memory_spaces()[0], /*device_layout=*/nullptr));
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
+          [shared_data]() {}, client->memory_spaces()[0],
+          /*device_layout=*/nullptr));
 
   auto external_reference = buffer->AcquireExternalReference();
 
@@ -568,6 +570,8 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
   TF_ASSERT_OK_AND_ASSIGN(auto buffer2,
                           MakeFloatBuffer(client.get(), data, {2, 2}));
 
+  xla::ExecuteOptions options;
+  options.untuple_result = true;
   {
     auto result = pjrt_executable->Execute(/*argument_handles=*/{{
                                                buffer0.get(),
@@ -575,7 +579,7 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
                                                buffer1.get(),
                                                buffer0.get(),
                                            }},
-                                           /*options=*/{});
+                                           /*options=*/options);
     ASSERT_FALSE(result.ok());
     EXPECT_THAT(result.status().message(),
                 ::testing::HasSubstr("f(donate(a), donate(a))"));
@@ -587,7 +591,7 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
                                                buffer2.get(),
                                                buffer0.get(),
                                            }},
-                                           /*options=*/{});
+                                           /*options=*/options);
     ASSERT_FALSE(result.ok());
     EXPECT_THAT(result.status().message(),
                 ::testing::HasSubstr("f(a, donate(a))"));
@@ -599,7 +603,7 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
                                                buffer2.get(),
                                                buffer2.get(),
                                            }},
-                                           /*options=*/{});
+                                           /*options=*/options);
     ASSERT_FALSE(result.ok());
     EXPECT_THAT(result.status().message(),
                 ::testing::HasSubstr("f(donate(a), a)"));

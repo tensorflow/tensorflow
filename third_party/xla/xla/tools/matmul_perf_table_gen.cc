@@ -69,11 +69,11 @@ namespace {
 constexpr size_t kNumProfilingRuns = 5;
 
 template <class... Ts>
-struct VariantVisitor : Ts... {
+struct Overload : Ts... {
   using Ts::operator()...;
 };
 template <class... Ts>
-VariantVisitor(Ts...) -> VariantVisitor<Ts...>;
+Overload(Ts...) -> Overload<Ts...>;
 
 struct StaticSpec {
   int b;
@@ -252,7 +252,7 @@ std::vector<ExplicitSpec> GetExplicitSpecs(
   for (int i = 0; i < entry_specs.size(); i++) {
     const EntrySpec& entry_spec = entry_specs[i];
     std::visit(
-        VariantVisitor{
+        Overload{
             [&specs](const PathSpec& spec) {
               std::string hlo;
               CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), spec.filepath,
@@ -309,12 +309,12 @@ int64_t GetFlops(const HloDotInstruction& dot) {
   const HloInstruction& rhs = *dot.operand(1);
 
   // Get non-contracting dims
-  for (int dim : GetNonContractingDims(lhs.shape().dimensions_size(),
+  for (int dim : GetNonContractingDims(lhs.shape().dimensions().size(),
                                        dot_dims.lhs_contracting_dimensions(),
                                        dot_dims.lhs_batch_dimensions())) {
     fmas *= dim_size(lhs, dim);
   }
-  for (int dim : GetNonContractingDims(rhs.shape().dimensions_size(),
+  for (int dim : GetNonContractingDims(rhs.shape().dimensions().size(),
                                        dot_dims.rhs_contracting_dimensions(),
                                        dot_dims.rhs_batch_dimensions())) {
     fmas *= dim_size(rhs, dim);

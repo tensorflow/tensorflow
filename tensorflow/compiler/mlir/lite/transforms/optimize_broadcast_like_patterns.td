@@ -364,3 +364,32 @@ def RemoveRedundantBroadcastToOp : Pat<
   (TFL_BroadcastToOp:$result AnyStaticShapeTensor:$pre_broadcast, $dim),
   (replaceWithValue $pre_broadcast),
   [(HasSameStaticShapes $pre_broadcast, $result)]>;
+
+////////////////////////////////////////////////////////////////////////////////
+// Reorder TFL::SumOp with the TFL::broadcast_to operator.
+////////////////////////////////////////////////////////////////////////////////
+
+def HasDistinctBroadcastAndReduceAxes : Constraint<CPred<
+    "AreBroadcastAndReductionAxesIndependent($0, $1, $2)">>;
+
+// Pattern to transform tfl.sum(tfl.broadcast_to(input, shape=S1), axis=B, keep_dims=true)
+// into tfl.broadcast_to(tfl.sum(input, axis=B, keep_dims=true), shape=S2)
+// where S1 is intermediate_target_shape_val, B is reduction_indices_val,
+// and S2 is the computed final_target_shape_val (shape of original sum).
+def ReorderBroadcastToAfterSumOp : Pat<
+  (TFL_SumOp:$original_sum
+    (TFL_BroadcastToOp:$intermediate_broadcast
+      AnyStaticShapeTensor:$original_input,
+      (Arith_ConstantOp $intermediate_target_shape_val)),
+    (Arith_ConstantOp I32ElementsAttr:$reduction_indices_val),
+    $keep_dims),
+  (TFL_BroadcastToOp
+    (TFL_SumOp
+      $original_input,
+      (Arith_ConstantOp $reduction_indices_val),
+      $keep_dims),
+    (Arith_ConstantOp (GetShapeAttr $original_sum))),
+  [(HasOneUse $intermediate_broadcast),
+   (HasDistinctBroadcastAndReduceAxes
+      $original_input, $reduction_indices_val, $intermediate_target_shape_val),
+   ]>;

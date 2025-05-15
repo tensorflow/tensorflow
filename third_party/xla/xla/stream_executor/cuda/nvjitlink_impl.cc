@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/nvJitLink.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
@@ -162,12 +163,24 @@ absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
   absl::c_transform(cli_args, std::back_inserter(cli_args_ptrs),
                     [](const std::string& s) { return s.c_str(); });
 
-  nvJitLinkHandle link_handle{};
-  RETURN_IF_NVJITLINK_ERROR(nvJitLinkCreate(&link_handle, cli_args_ptrs.size(),
-                                            cli_args_ptrs.data()));
+  nvJitLinkHandle link_handle = nullptr;
+  nvJitLinkResult create_result =
+      nvJitLinkCreate(&link_handle, cli_args_ptrs.size(), cli_args_ptrs.data());
+
   absl::Cleanup link_handle_cleaner = [&link_handle] {
-    CHECK_EQ(nvJitLinkDestroy(&link_handle), NVJITLINK_SUCCESS);
+    if (link_handle != nullptr) {
+      CHECK_EQ(nvJitLinkDestroy(&link_handle), NVJITLINK_SUCCESS);
+    }
   };
+
+  if (create_result != NVJITLINK_SUCCESS) {
+    TF_ASSIGN_OR_RETURN(std::string error_log,
+                        nvJitLinkGetErrorLog(link_handle));
+
+    VLOG(3) << "libnvjitlink error log output: " << error_log;
+
+    return ToStatus(create_result, error_log);
+  }
 
   for (auto& image : inputs) {
     nvJitLinkInputType input_type = image.type == NvJitLinkInput::Type::kPtx

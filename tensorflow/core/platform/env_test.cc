@@ -84,11 +84,12 @@ TEST_F(DefaultEnvTest, IncompleteReadOutOfRange) {
   // Reading past EOF should give an OUT_OF_RANGE error
   absl::string_view result;
   char scratch[3];
-  EXPECT_EQ(error::OUT_OF_RANGE, f->Read(0, 3, &result, scratch).code());
+  EXPECT_EQ(error::OUT_OF_RANGE,
+            f->Read(0, result, absl::MakeSpan(scratch, 3)).code());
   EXPECT_EQ(input, result);
 
   // Exact read to EOF works.
-  TF_EXPECT_OK(f->Read(0, 2, &result, scratch));
+  TF_EXPECT_OK(f->Read(0, result, absl::MakeSpan(scratch, 2)));
   EXPECT_EQ(input, result);
 }
 
@@ -407,9 +408,10 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   TF_CHECK_OK(env->NewRandomAccessFile(filename, &file_to_read));
   absl::string_view content;
   char scratch[1024];
-  CHECK_EQ(
-      error::OUT_OF_RANGE,
-      file_to_read->Read(/*offset=*/0, /*n=*/1024, &content, scratch).code());
+  CHECK_EQ(error::OUT_OF_RANGE, file_to_read
+                                    ->Read(/*offset=*/0, content,
+                                           absl::MakeSpan(scratch, /*n=*/1024))
+                                    .code());
   EXPECT_EQ("Null", content);
 
   // Delete the temporary file.

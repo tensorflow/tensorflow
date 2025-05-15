@@ -326,7 +326,7 @@ template <typename NativeT>
 template <typename T>
 /* static */ Literal LiteralUtil::CreateR0(PrimitiveType primitive_type,
                                            T value) {
-  return primitive_util::ArrayTypeSwitch<Literal>(
+  return primitive_util::ArrayTypeSwitch(
       [&value](auto type) {
         using NativeT = primitive_util::NativeTypeOf<type>;
         return CreateR0(static_cast<NativeT>(value));

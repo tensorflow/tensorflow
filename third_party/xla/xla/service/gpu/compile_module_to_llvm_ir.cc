@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
 
@@ -215,6 +216,7 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> LowerHlo(
 
 absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
                        absl::string_view cache_file_path) {
+  tsl::profiler::TraceMe traceme("LoadCache");
   CHECK(!cache_file_path.empty());
   std::string resolved_path;
   if (!tsl::io::ResolveTestPrefixes(cache_file_path, resolved_path)) {
@@ -250,9 +252,12 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
   ScopedAnnotation annotation(Phase("XlaBufferAssignment", module));
 
   const DebugOptions& options = module->config().debug_options();
-  BufferAssigner::Colorer colorer = options.xla_gpu_enable_nccl_user_buffers()
-                                        ? CollectiveColorer()
-                                        : BufferAssigner::DefaultColorer();
+  BufferAssigner::Colorer colorer =
+      (options.xla_gpu_enable_nccl_user_buffers() ||
+       options.xla_gpu_experimental_enable_nvshmem())
+          ? CollectiveColorer(options.xla_gpu_enable_nccl_user_buffers(),
+                              options.xla_gpu_experimental_enable_nvshmem())
+          : BufferAssigner::DefaultColorer();
 
   std::optional<BufferValue::Color> color =
       options.xla_gpu_temp_buffer_use_separate_color()
@@ -287,6 +292,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     const BufferValue::SizeFunction& buffer_size_bytes_function,
     bool split_constants_module) {
+  tsl::profiler::TraceMe traceme("CompileModuleToLlvmIr");
   const bool use_cache =
       UseCache(hlo_module->config().debug_options(), split_constants_module);
 

@@ -19,9 +19,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "xla/hlo/builder/xla_computation.h"
 
 namespace xla {
+
+// Registers all MLIR dialects that are necessary for using MLIR HLO modules.
+void RegisterAllHloDialects(mlir::DialectRegistry& registry);
 
 // Converts an MHLO/CHLO module string to an mlir::Module.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(

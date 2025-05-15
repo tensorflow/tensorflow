@@ -31,17 +31,17 @@ include "mlir/IR/OpBase.td"
 //===----------------------------------------------------------------------===//
 
 class DTensor_DTensorAttr <string name, string description> :
-    Attr<CPred<"$_self.isa<mlir::dtensor::" # name # "Attr>()">,
+    Attr<CPred<"llvm::isa<mlir::dtensor::" # name # "Attr>($_self)">,
          "DTensor " # description # " attribute">;
 
 def DTensor_LayoutAttr : DTensor_DTensorAttr<"Layout", "layout"> {
   let returnType = "mlir::dtensor::LayoutAttr::Layout";
-  let convertFromStorage = "$_self.cast<mlir::dtensor::LayoutAttr>().getValue()";
+  let convertFromStorage = "llvm::cast<mlir::dtensor::LayoutAttr>($_self).getValue()";
 }
 
 def DTensor_MeshAttr : DTensor_DTensorAttr<"Mesh", "mesh"> {
   let returnType = "mlir::dtensor::MeshAttr::Mesh";
-  let convertFromStorage = "$_self.cast<mlir::dtensor::MeshAttr>().getValue()";
+  let convertFromStorage = "llvm::cast<mlir::dtensor::MeshAttr>($_self).getValue()";
 }
 
 //===----------------------------------------------------------------------===//

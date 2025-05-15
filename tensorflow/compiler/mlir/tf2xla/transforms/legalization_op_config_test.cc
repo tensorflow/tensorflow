@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def.pb.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 
 TEST(LegalizationOpConfigTest, ExpectsTrueForMlirTypeID) {
   EXPECT_TRUE(IsTypeLegalizedWithMlir(TypeID::get<TF::ModOp>()));
@@ -83,7 +83,7 @@ TEST(LegalizationOpConfigTest, CountLoweringsSet) {
   // from MLIR to TF2XLA), these numbers should change. Or if TF Dialect adds
   // a new op, we should expect these to change too.
   EXPECT_EQ(mlir_lowering_count, 67);
-  EXPECT_EQ(tf2xla_fallback_count, 323);
+  EXPECT_EQ(tf2xla_fallback_count, 330);
   EXPECT_EQ(non_categorized_count, 431);
 }
 
@@ -121,7 +121,7 @@ TEST(LegalizationOpConfigTest, CountAllMlirLoweringPatterns) {
   context.loadAllAvailableDialects();
 
   RewritePatternSet mlir_legalize_lower_patterns(&context);
-  PopulateLegalizeTfPatterns(&context, &mlir_legalize_lower_patterns);
+  hlo::PopulateLegalizeTfPatterns(&context, &mlir_legalize_lower_patterns);
 
   int mlir_only_patterns = 0;
   for (auto& pattern : mlir_legalize_lower_patterns.getNativePatterns()) {
@@ -161,7 +161,7 @@ TEST(LegalizationOpConfigTest, MlirLoweringWithoutXlaKernel) {
   context.loadAllAvailableDialects();
 
   RewritePatternSet mlir_legalize_lower_patterns(&context);
-  PopulateLegalizeTfPatterns(&context, &mlir_legalize_lower_patterns);
+  hlo::PopulateLegalizeTfPatterns(&context, &mlir_legalize_lower_patterns);
 
   int mlir_without_xla_count = 0;
   for (auto& pattern : mlir_legalize_lower_patterns.getNativePatterns()) {
@@ -179,5 +179,5 @@ TEST(LegalizationOpConfigTest, MlirLoweringWithoutXlaKernel) {
   EXPECT_EQ(mlir_without_xla_count, 13);
 }
 
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir

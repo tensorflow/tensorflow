@@ -93,7 +93,7 @@ NamedAttrList GetAllAttributesFromOperation(Operation* op) {
 // TODO(tlongeri): Should num_elements overflow be handled by the MLIR
 // verifier? Are there other cases?
 std::optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
-  if (auto ranked_type = t.dyn_cast<RankedTensorType>()) {
+  if (auto ranked_type = llvm::dyn_cast<RankedTensorType>(t)) {
     tensorflow::PartialTensorShape shape;
     const absl::Status status =
         tensorflow::PartialTensorShape::BuildPartialTensorShape(
@@ -106,7 +106,7 @@ std::optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
 // Extracts a PartialTensorShape from the MLIR attr.
 std::optional<tensorflow::PartialTensorShape> GetShapeFromMlirAttr(Value v) {
   // Function arguments may have shape attr to describe its output shape.
-  if (auto arg = v.dyn_cast<BlockArgument>()) {
+  if (auto arg = dyn_cast<BlockArgument>(v)) {
     Operation* parent_op = arg.getOwner()->getParentOp();
     if (auto func_op = llvm::dyn_cast<FunctionOpInterface>(parent_op)) {
       int arg_idx = arg.getArgNumber();
@@ -116,7 +116,7 @@ std::optional<tensorflow::PartialTensorShape> GetShapeFromMlirAttr(Value v) {
 
       // "tf._output_shapes" in certain models may not store the shape as
       // ShapeAttr, ignore them because we don't know how to interpret it.
-      auto shape_attr = attrs[0].dyn_cast<tf_type::ShapeAttr>();
+      auto shape_attr = llvm::dyn_cast<tf_type::ShapeAttr>(attrs[0]);
       if (shape_attr && shape_attr.hasRank())
         return tensorflow::PartialTensorShape(shape_attr.getShape());
     }
@@ -131,7 +131,7 @@ std::unique_ptr<std::vector<
     std::pair<tensorflow::PartialTensorShape, tensorflow::DataType>>>
 GetSubtypesHelper(Type type) {
   auto type_with_subtypes =
-      type.cast<TensorType>().getElementType().dyn_cast<T>();
+      llvm::dyn_cast<T>(llvm::cast<TensorType>(type).getElementType());
   if (!type_with_subtypes || type_with_subtypes.getSubtypes().empty()) {
     return nullptr;
   }
@@ -317,8 +317,8 @@ LogicalResult InferReturnTypeComponentsForTFOp(
       if (input_tensors[input]) continue;
 
       if (c.requested_input_tensor(input)) {
-        if (auto attr = operand_as_constant_fn(op->getOperand(input))
-                            .dyn_cast_or_null<ElementsAttr>()) {
+        if (auto attr = llvm::dyn_cast_if_present<ElementsAttr>(
+                operand_as_constant_fn(op->getOperand(input)))) {
           VLOG(4) << "Requesting " << input << " as constant\n";
           tensorflow::Tensor* input_tensor = &tensors.at(input);
           auto status = ConvertToTensor(attr, input_tensor);
@@ -336,7 +336,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
       if (c.requested_input_tensor_as_partial_shape(input) &&
           !input_tensors[input] && !input_tensors_as_shapes[input].Handle()) {
         VLOG(4) << "Requesting " << input << " as shape\n";
-        auto op_result = op->getOperand(input).dyn_cast<OpResult>();
+        auto op_result = dyn_cast<OpResult>(op->getOperand(input));
         if (!op_result) continue;
         // Resize on first valid shape computed.
         auto handle = op_result_as_shape_fn(c, op_result);
@@ -370,7 +370,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
     Type new_element_type = result_element_type_fn(output);
     // Populate the handle shapes for a resource/variant.
     if (new_element_type &&
-        new_element_type.isa<tf_type::ResourceType, tf_type::VariantType>()) {
+        isa<tf_type::ResourceType, tf_type::VariantType>(new_element_type)) {
       auto handle_shapes_types = c.output_handle_shapes_and_types(output);
       if (handle_shapes_types) {
         SmallVector<TensorType, 1> subtypes;
@@ -382,7 +382,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
           subtypes.push_back(
               CreateTensorType(c, shape_n_type.shape, element_type));
         }
-        if (new_element_type.isa<tf_type::ResourceType>()) {
+        if (isa<tf_type::ResourceType>(new_element_type)) {
           new_element_type =
               tf_type::ResourceType::get(subtypes, op->getContext());
         } else {

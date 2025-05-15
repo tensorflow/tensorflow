@@ -71,7 +71,9 @@ std::string HloModuleConfig::compilation_cache_key() const {
       params.push_back(param_layout.shape().DebugString());
     }
     StrAppend(&key, absl::StrJoin(params, ", "), ") => ",
-              entry_computation_layout_->result_shape().SerializeAsString());
+              entry_computation_layout_->result_shape()
+                  .ToProto()
+                  .SerializeAsString());
   }
   if (seed() != 0) {
     static std::atomic<int> counter{0};
@@ -345,7 +347,9 @@ HloModuleConfig::CreateFromProto(const HloModuleConfigProto& proto) {
   auto config = std::make_unique<HloModuleConfig>();
 
   if (proto.has_entry_computation_layout()) {
-    auto comp_layout = ProgramShape{proto.entry_computation_layout()};
+    TF_ASSIGN_OR_RETURN(
+        auto comp_layout,
+        ProgramShape::FromProto(proto.entry_computation_layout()));
     config->SetComputationLayoutIfExists(comp_layout);
   } else {
     config->clear_entry_computation_layout();

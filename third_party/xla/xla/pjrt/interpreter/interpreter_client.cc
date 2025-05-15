@@ -179,7 +179,8 @@ inline DeviceAssignment MakeInterpreterDeviceAssignment() {
 }  // namespace
 
 const InterpreterDescription& InterpreterDescription::Singleton() {
-  static const InterpreterDescription* singleton = new InterpreterDescription;
+  static const InterpreterDescription* const singleton =
+      new InterpreterDescription;
   return *singleton;
 }
 
@@ -284,7 +285,7 @@ InterpreterLoadedExecutable::ExecuteSharded(
   std::vector<std::unique_ptr<PjRtBuffer>> result;
   // Untuple result if requested.
   if (options.untuple_result && result_literal.shape().IsTuple()) {
-    const int tuple_count = result_literal.shape().tuple_shapes_size();
+    const int tuple_count = result_literal.shape().tuple_shapes().size();
     result.reserve(tuple_count);
     // DecomposeTuple invalidates result_literal. move(...) to make it obvious.
     std::vector<Literal> tuple_elements =
@@ -314,6 +315,7 @@ absl::StatusOr<Literal> InterpreterLoadedExecutable::Evaluate(
     const HloComputation& computation,
     absl::Span<const Literal* const> arg_literals) {
   absl::MutexLock lock(&hlo_evaluator_lock_);
+  hlo_evaluator_->ResetVisitStates();
   return hlo_evaluator_->Evaluate(computation, arg_literals);
 }
 
@@ -409,17 +411,11 @@ InterpreterClient::CompileAndLoad(mlir::ModuleOp module,
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 InterpreterClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                         PjRtMemorySpace* memory_space) {
-  return std::make_unique<InterpreterLiteralWrapperBuffer>(
-      memory_space->client(), memory_space, literal);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-InterpreterClient::BufferFromHostLiteral(const LiteralSlice& literal,
                                          PjRtMemorySpace* memory_space,
                                          const Layout* device_layout) {
   if (device_layout == nullptr) {
-    return BufferFromHostLiteral(literal, memory_space);
+    return std::make_unique<InterpreterLiteralWrapperBuffer>(
+        memory_space->client(), memory_space, literal);
   }
   Literal device_literal = literal.Relayout(*device_layout);
   return std::make_unique<InterpreterLiteralWrapperBuffer>(

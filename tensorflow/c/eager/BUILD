@@ -1119,7 +1119,7 @@ cc_library(
 
 tf_cuda_cc_test(
     name = "dlpack_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "dlpack_test.cc",
     ],

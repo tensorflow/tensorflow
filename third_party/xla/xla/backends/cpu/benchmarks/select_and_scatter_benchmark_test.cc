@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
+#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
@@ -30,7 +31,8 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static void BM_SelectAndScatterF32(benchmark::State& state) {
+static void BM_SelectAndScatterF32(benchmark::State& state,
+                                   HloBenchmarkOptions options) {
   int64_t d0 = state.range(0);
   int64_t d1 = (d0 - 1) / 2;
 
@@ -67,12 +69,12 @@ static void BM_SelectAndScatterF32(benchmark::State& state) {
   auto p2 = LiteralUtil::CreateR0(1.0f);
 
   std::vector<const Literal*> args = {&p0, &p1, &p2};
-  CHECK_OK(
-      RunHloBenchmark(state, hlo, args,
-                      {{"$d0", absl::StrCat(d0)}, {"$d1", absl::StrCat(d1)}}));
+  CHECK_OK(RunHloBenchmark(
+      state, hlo, args, {{"$d0", absl::StrCat(d0)}, {"$d1", absl::StrCat(d1)}},
+      options));
 }
 
-BENCHMARK(BM_SelectAndScatterF32)
+XLA_CPU_BENCHMARK(BM_SelectAndScatterF32)
     ->MeasureProcessCPUTime()
     ->Arg(128)
     ->Arg(256)

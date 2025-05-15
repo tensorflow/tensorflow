@@ -23,11 +23,13 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/backend_config.h"
@@ -48,17 +50,15 @@ using BinaryMap = absl::flat_hash_map<std::string, std::string>;
 
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
-inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
-// But if both swap dimensions are larger than 'kMinDimensionToTransposeTiled2',
-// and the product of the dimensions to be swapped is larger than
+inline constexpr int64_t kMinDimensionToTransposeTiled = 4;
+// If the product of the dimensions to be swapped is larger than
 // 'kMinTotalDimensionsToTransposeTiled', tiled transposition may be more
-// efficient.
-inline constexpr int64_t kMinDimensionToTransposeTiled2 = 8;
-inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
+// efficient. See go/xla-transpose-emitter-performance-analysis.
+inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 16 * 16;
 // As the amount of shared memory is limited, we need to make sure that we don't
 // detect 102 transposes that would require too much bytes for the most minor
 // dimension.
-inline constexpr int64_t kMaxBytesInMostMinorDimension = 8;
+inline constexpr int64_t kMaxBitsInMostMinorDimension = 8 * 8;
 
 // Matrix multiplication before the rewrite.
 bool IsMatrixMultiplication(const HloInstruction& dot);
@@ -98,6 +98,12 @@ inline constexpr absl::string_view kUncompilableFusion =
 
 inline constexpr absl::string_view kTopKCustomCallTarget = "__gpu$TopK";
 
+// The number of shared memory banks.
+inline constexpr int64_t kNumShmemBanks = 32;
+
+// The bitwidth of a shared memory bank.
+inline constexpr int64_t kBankBitwidth = 32;
+
 // The name of the custom fusion config for dynamic slice fusion with static
 // slices, such that the offset can be computed at compile time.
 inline constexpr absl::string_view
@@ -120,6 +126,10 @@ std::optional<std::string> GetCustomFusionConfigName(
 // Returns true if the given instruction is a custom fusion for dynamic slice
 // fusion. This is determined by checking the name of custom fusion config.
 bool IsDynamicSliceFusion(const HloInstruction* instr);
+
+// Returns the bitwidth of the given primitive type. Unfortunately,
+// primitive_util::BitWidth(PRED) return 1 instead of 8.
+int GetBitwidth(PrimitiveType type);
 
 // Returns true if the given instruction is a dynamic memcpy fusion. This
 // function only checks the fusion kind, which is populated by the
@@ -197,14 +207,17 @@ struct TransposeDescription {
   // Permutations of normalized transpose dimensions.
   absl::InlinedVector<int64_t, 3> permutation;
 
-  TransposeDescription(absl::InlinedVector<int64_t, 3> dimensions,
-                       absl::InlinedVector<int64_t, 3> permutation)
-      : TransposeDescription(/*instr=*/nullptr, dimensions, permutation) {}
+  // Required amount of shared memory in bytes.
+  int64_t shmem_usage = 0;
 
   TransposeDescription(const HloInstruction* instr,
                        absl::InlinedVector<int64_t, 3> dimensions,
-                       absl::InlinedVector<int64_t, 3> permutation)
-      : instr(instr), dimensions(dimensions), permutation(permutation) {}
+                       absl::InlinedVector<int64_t, 3> permutation,
+                       int64_t shmem_usage)
+      : instr(instr),
+        dimensions(dimensions),
+        permutation(permutation),
+        shmem_usage(shmem_usage) {}
 
   // Transpose instruction input shape.
   const Shape& input_shape() const { return instr->operand(0)->shape(); }
@@ -212,12 +225,72 @@ struct TransposeDescription {
   // Returns true, if both descriptions have the same dimensions and
   // permutation, even if they're produced by different instructions.
   bool IsEquivalent(const TransposeDescription& other) const {
-    return dimensions == other.dimensions && permutation == other.permutation;
+    return dimensions == other.dimensions && permutation == other.permutation &&
+           GetBitwidth(instr->shape().element_type()) ==
+               GetBitwidth(other.instr->shape().element_type());
   }
 };
 
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& hero);
+
+// Canonical transpose permutes the input shape
+// <D_0 x ... x D_n x T2 x D_{n+1} x ... x D_m x A x T1 x B> into
+// <D'_0 x ... x D'_n' x T1 x D'_{n'+1} x ... x D'_m x A x T2 x B>.
+// Note that the `D` dimensions are batch dimensions. They can also be
+// permuted, but they are tiled by 1.
+//
+// Examples:
+// 1. <8x32> -> <32x8> will be canonicalized to <8x1x32x1> -> <32x1x8x1>.
+// 2. <8x2x32> -> <32x2x8> will be canonicalized to <8x2x32x1> -> <32x2x8x1>.
+// 3. <8x2x32x7x6> -> <6x32x2x7x8> becomes <8x2x32x7x6x1> -> <6x32x2x7x8x1>.
+
+// TODO(b/370690811): Unify this with TransposeDescription.
+struct TransposeSpec {
+  PrimitiveType elem_type() const { return input_shape().element_type(); }
+
+  const Shape& input_shape() const { return transpose->operand(0)->shape(); }
+  const Shape& output_shape() const { return transpose->shape(); }
+
+  int64_t rank() const { return input_shape().dimensions().size(); }
+  int64_t canonical_rank() const { return canonical_input_shape.size(); }
+
+  int64_t dim_A() const { return canonical_input_shape[dim_A_id()]; }
+  int64_t dim_A_id() const { return canonical_rank() - 3; }
+
+  int64_t dim_B() const { return canonical_input_shape.back(); }
+  int64_t dim_B_id() const { return canonical_rank() - 1; }
+
+  int64_t dim_T1() const { return canonical_input_shape[dim_T1_input_id()]; }
+  int64_t dim_T1_input_id() const { return canonical_rank() - 2; }
+  int64_t dim_T1_output_id() const {
+    return canonical_inv_permutation[canonical_rank() - 2];
+  }
+
+  int64_t dim_T2() const { return canonical_input_shape[dim_T2_input_id()]; }
+  int64_t dim_T2_input_id() const {
+    return canonical_permutation[canonical_rank() - 2];
+  }
+  int64_t dim_T2_output_id() const { return canonical_rank() - 2; }
+
+  std::string ToString() const;
+
+  const HloTransposeInstruction* transpose;
+
+  llvm::SmallVector<int64_t, 3> permutation;
+  llvm::SmallVector<int64_t, 3> inv_permutation;
+
+  llvm::SmallVector<int64_t, 3> canonical_output_shape;
+  llvm::SmallVector<int64_t, 3> canonical_permutation;
+  llvm::SmallVector<int64_t, 3> canonical_inv_permutation;
+  llvm::SmallVector<int64_t, 3> canonical_input_shape;
+};
+
+TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose);
+
+// Returns the default tile sizes for the packed transpose emitter.
+absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
+    const TransposeSpec& spec);
 
 // Checks if the instruction is elementwise.
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
@@ -288,28 +361,31 @@ absl::StatusOr<std::string> FingerprintWithBackendConfig(
 }
 
 struct InductionVariableFunctionalDependency {
-  // The value that is derived from the induction variable. This is guaranteed
-  // to have no other transitive dependencies (except constants).
-  const HloInstruction* derived_value;
+  // The dependency may be via multiple levels of intermediate calls. At each
+  // level, we need to know which parameters to evaluate, since not all of them
+  // may be relevant. The while loop's body is not included here, since the
+  // induction variable is implicitly the only dependency that is allowed.
+  // The size of the value is always the same as the number of parameters in the
+  // computation. We request a single element of inlined space, which will
+  // automatically pick the optimum value (16, usually).
+  absl::flat_hash_map<const HloComputation*,
+                      absl::InlinedVector<bool, 1 /* chosen automatically */>>
+      required_parameters;
 
   // The loop and its induction variable that the value depends on.
   const HloInstruction* loop;
   const HloInstruction* induction_var;
 };
 
-// Checks if `parameter`'s value is a pure function of a while loop's induction
-// variable. This supports parameters that are inside call, async or fusion
+// Checks if `instr`'s value is a pure function of a while loop's induction
+// variable. This supports instructions that are inside call, async or fusion
 // instructions. The dependency can be through arbitrary non-side-effecting
 // instructions.
-// `call_stack` should contain the nested instructions that are ancestor of
-// `parameter`. For example, if it is a parameter of a fusion in a while loop,
-// it should contain the while loop as the first element and the fusion as the
-// second element.
+// Currently, this does not support nested while loops. Only dependencies on the
+// inner-most while loop will successfully be analyzed.
 // Requires `while_loop_trip_count_annotator` to have been run on the loop.
 std::optional<InductionVariableFunctionalDependency>
-ResolveFunctionalDependencyOnInductionVariable(
-    absl::Span<const HloInstruction* const> call_stack,
-    const HloInstruction* parameter);
+ResolveFunctionalDependencyOnInductionVariable(const HloInstruction* instr);
 
 }  // namespace gpu
 }  // namespace xla

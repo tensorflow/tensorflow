@@ -58,8 +58,8 @@ EOF
 
   # grep patterns for targets which are allowed to be extra licenses
   cat > $BATS_TEST_TMPDIR/allowed_to_be_extra <<EOF
-//third_party/mkl
-//third_party/mkl_dnn
+@local_xla//third_party/mkl
+@local_xla//third_party/mkl_dnn
 @absl_py//
 @bazel_tools//src
 @bazel_tools//platforms

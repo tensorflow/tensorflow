@@ -18,6 +18,9 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include <cstdint>
+#include <utility>
+#include "absl/status/status.h"
 #include "tsl/platform/platform.h"
 // clang-format on
 
@@ -84,12 +87,12 @@ class Counter {
 #include <memory>
 #include <tuple>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
@@ -107,7 +110,7 @@ namespace monitoring {
 class CounterCell {
  public:
   explicit CounterCell(int64_t value) : value_(value) {}
-  ~CounterCell() {}
+  CounterCell() = default;
 
   // Atomically increments the value by step.
   // REQUIRES: Step be non-negative.
@@ -166,7 +169,7 @@ class Counter {
             &metric_def_, [&](MetricCollectorGetter getter) {
               auto metric_collector = getter.Get(&metric_def_);
 
-              mutex_lock l(mu_);
+              absl::MutexLock l(&mu_);
               for (const auto& cell : cells_) {
                 metric_collector.CollectValue(cell.first, cell.second.value());
               }
@@ -180,7 +183,7 @@ class Counter {
     }
   }
 
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   absl::Status status_;
 
@@ -201,7 +204,7 @@ class Counter {
 //  Implementation details follow. API readers may skip.
 ////
 
-inline void CounterCell::IncrementBy(const int64_t step) {
+inline void CounterCell::IncrementBy(int64_t step) {
   DCHECK_LE(0, step) << "Must not decrement cumulative metrics.";
   value_ += step;
 }
@@ -228,7 +231,7 @@ CounterCell* Counter<NumLabels>::GetCell(const Labels&... labels)
                 "provided in GetCell(...).");
 
   const LabelArray& label_array = {{labels...}};
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   const auto found_it = cells_.find(label_array);
   if (found_it != cells_.end()) {
     return &(found_it->second);

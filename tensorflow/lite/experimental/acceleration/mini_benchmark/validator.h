@@ -115,11 +115,6 @@ class Validator {
 
   std::unique_ptr<tools::ModelLoader> model_loader_;
   const ComputeSettings* compute_settings_;
-  // Optional. Interpreter that runs on CPU.
-  std::unique_ptr<Interpreter> golden_interpreter_;
-  // Interpreter that runs with delegate enabled, using the compute settings
-  // passed to the Validator constructor.
-  std::unique_ptr<Interpreter> interpreter_;
   // Op resolver used to create the interpreters. Depending on the
   // compute_settings_, it may or may not include the default delegate.
   std::unique_ptr<::tflite::MutableOpResolver> resolver_;
@@ -129,6 +124,11 @@ class Validator {
   TfLiteOpaqueDelegatePtr opaque_delegate_ =
       TfLiteOpaqueDelegatePtr(nullptr, [](TfLiteOpaqueDelegate*) {});
   std::unique_ptr<tflite::delegates::DelegatePluginInterface> delegate_plugin_;
+  // Optional. Interpreter that runs on CPU.
+  std::unique_ptr<Interpreter> golden_interpreter_;
+  // Interpreter that runs with delegate enabled, using the compute settings
+  // passed to the Validator constructor.
+  std::unique_ptr<Interpreter> interpreter_;
   int validation_entrypoint_index_ = -1;
   Subgraph* validation_entrypoint_ = nullptr;
   Subgraph* main_model_ = nullptr;

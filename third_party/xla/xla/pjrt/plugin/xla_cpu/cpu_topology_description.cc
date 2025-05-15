@@ -37,21 +37,6 @@ limitations under the License.
 
 namespace xla {
 
-/*static*/ CpuTopologyDescription CpuTopologyDescription::Create(
-    PjRtPlatformId platform_id, absl::string_view platform_name,
-    absl::string_view platform_version,
-    absl::Span<const std::unique_ptr<PjRtDevice>> devices,
-    absl::Span<const std::string> machine_attributes) {
-  std::vector<CpuTopology::CpuDevice> cpu_devices;
-  cpu_devices.reserve(devices.size());
-  for (const auto& device : devices) {
-    cpu_devices.push_back(CpuTopology::CpuDevice{
-        device->process_index(), device->local_hardware_id().value()});
-  }
-  return CpuTopologyDescription(platform_id, platform_name, platform_version,
-                                cpu_devices, machine_attributes);
-}
-
 absl::StatusOr<Layout> CpuTopologyDescription::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) const {
   Shape shape = ShapeUtil::MakeShape(element_type, dims);

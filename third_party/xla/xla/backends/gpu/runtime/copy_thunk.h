@@ -23,10 +23,12 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/event.h"
@@ -96,6 +98,8 @@ class CopyThunk : public Thunk {
   }
   uint64_t size_bytes() const { return mem_size_; }
 
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
  private:
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
@@ -122,6 +126,8 @@ class DeviceToHostCopyThunk : public CopyThunk {
                         const HloInstruction* instr);
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
  private:
   std::shared_ptr<CopyThunk::AsyncEvents> async_events_;
   const HloInstruction* instr_;
@@ -146,6 +152,8 @@ class HostToDeviceCopyThunk : public CopyThunk {
                         std::shared_ptr<CopyThunk::AsyncEvents> events,
                         const HloInstruction* instr);
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   std::shared_ptr<CopyThunk::AsyncEvents> async_events_;
@@ -180,6 +188,10 @@ class DynamicMemcpyThunk : public Thunk {
       // The while loop whose induction variable defines the offset.
       const HloInstruction* while_loop;
       const HloInstruction* induction_variable;
+
+      // See documentation for ResolveFunctionalDependencyOnInductionVariable.
+      absl::flat_hash_map<const HloComputation*, absl::InlinedVector<bool, 1>>
+          required_parameters;
 
       // All dependencies of `offset` must end in `induction_variable` or
       // constants only.

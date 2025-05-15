@@ -19,11 +19,11 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/types.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 
 // We replace this implementation with a null implementation for mobile
 // platforms.
@@ -36,7 +36,7 @@ namespace monitoring {
 
 void PercentileSamplerCell::Add(double sample) {
   uint64 nstime = EnvTime::NowNanos();
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   samples_[next_position_] = {nstime, sample};
   ++next_position_;
   if (TF_PREDICT_FALSE(next_position_ >= samples_.size())) {
@@ -90,7 +90,7 @@ Percentiles PercentileSamplerCell::value() const {
 
 std::vector<PercentileSamplerCell::Sample> PercentileSamplerCell::GetSamples(
     size_t* total_samples, long double* accumulator) const {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   std::vector<Sample> samples;
   if (num_samples_ == samples_.size()) {
     samples.insert(samples.end(), samples_.begin() + next_position_,

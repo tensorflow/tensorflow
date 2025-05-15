@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/transforms/constant_folding/pass.h"
 
 #include <algorithm>
-#include <iterator>
+#include <cassert>
+#include <cctype>
+#include <cstdint>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -26,6 +28,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
@@ -3717,7 +3721,7 @@ void ConstantFolding::runOnOperation() {
     }
     bool changed = false;
     GreedyRewriteConfig config;
-    config.strictMode = GreedyRewriteStrictness::ExistingAndNewOps;
+    config.setStrictness(GreedyRewriteStrictness::ExistingAndNewOps);
     (void)applyOpPatternsAndFold(ops, final_patterns_, config, &changed);
     if (!changed) break;
   } while (iteration++ < max_iterations);

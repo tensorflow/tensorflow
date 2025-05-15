@@ -200,7 +200,7 @@ bool QuantizableOpSupportsFloatOutputType(Operation* op);
 
 // Specialized version of location to string for flatbuffer exported locations.
 inline std::string GetTensorNameFromLoc(Location loc) {
-  if (auto name_loc = loc.dyn_cast<NameLoc>()) {
+  if (auto name_loc = llvm::dyn_cast<NameLoc>(loc)) {
     return name_loc.getName().str();
   }
   return "";
@@ -218,7 +218,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
 
   LogicalResult matchAndRewrite(quantfork::StatisticsOp op,
                                 PatternRewriter& rewriter) const override {
-    Type expressed = op.getType().cast<ShapedType>().getElementType();
+    Type expressed = llvm::cast<ShapedType>(op.getType()).getElementType();
     quant::QuantizedType quant_type;
     SmallVector<double, 4> mins, maxs;
 
@@ -226,7 +226,8 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
       // Per axis quantization (or per channel quantization)
       int stats_num = op.getAxisStats()->getNumElements();
       if (stats_num == 0 || stats_num % 2 != 0) return failure();
-      auto stats = op.getAxisStats()->dyn_cast<DenseFPElementsAttr>();
+      auto stats =
+          llvm::dyn_cast<DenseFPElementsAttr>(op.getAxisStats().value());
       if (!stats) return failure();
 
       for (auto it = stats.begin(), e = stats.end(); it != e; ++it) {
@@ -255,7 +256,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
         quant_type = DownCastScale(quant_type, mins, maxs, op->getLoc());
       }
     } else if (auto stats =
-                   op.getLayerStats().dyn_cast<DenseFPElementsAttr>()) {
+                   llvm::dyn_cast<DenseFPElementsAttr>(op.getLayerStats())) {
       // Per tensor quantization
       auto statValues = stats.getValues<APFloat>();
       double rmin = FloatAttr::getValueAsDouble(statValues[0]);
@@ -481,7 +482,7 @@ class QuantizationPattern : public RewritePattern {
       }
 
       if (!nodes_blocklist.empty()) {
-        if (auto name_loc = quantizing_op->getLoc().dyn_cast<NameLoc>()) {
+        if (auto name_loc = llvm::dyn_cast<NameLoc>(quantizing_op->getLoc())) {
           std::string sloc = name_loc.getName().str();
           if (!sloc.empty() &&
               (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
@@ -503,12 +504,13 @@ class QuantizationPattern : public RewritePattern {
       inputs.reserve(quantizing_op->getNumOperands());
       for (auto operand : quantizing_op->getOperands()) {
         Type operand_type = operand.getType();
-        if (operand_type.isa<NoneType>()) {
+        if (llvm::isa<NoneType>(operand_type)) {
           inputs.push_back(operand);
           continue;
         }
 
-        auto ele_type = operand.getType().cast<TensorType>().getElementType();
+        auto ele_type =
+            llvm::cast<TensorType>(operand.getType()).getElementType();
         if (static_cast<const ConcreteT*>(this)
                 ->AllowDynamicRangeQuantizedOperand(quantizing_op,
                                                     custom_map)) {
@@ -568,13 +570,13 @@ class QuantizationPattern : public RewritePattern {
           Type result_type = result.getType();
           // Add this to the test coverage once we create test ops with none
           // type results.
-          if (result_type.isa<NoneType>()) {
+          if (llvm::isa<NoneType>(result_type)) {
             outputs_replaced.insert({result, enumerated_result.index()});
             output_types.push_back(result_type);
             continue;
           }
           Type result_ele_type =
-              result.getType().cast<TensorType>().getElementType();
+              llvm::cast<TensorType>(result.getType()).getElementType();
           // If the user is the QuantizeOp, it must be the only user.
           if (result.hasOneUse() &&
               llvm::isa<QuantizeOpT>(*result.user_begin())) {
@@ -648,11 +650,9 @@ class QuantizationPattern : public RewritePattern {
         }
 
         for (int i = 0, e = quantized_op->getNumResults(); i < e; ++i) {
-          if (!quantizing_op->getResult(i)
-                   .getType()
-                   .cast<ShapedType>()
-                   .getElementType()
-                   .isa<FloatType>()) {
+          if (!llvm::isa<FloatType>(
+                  llvm::cast<ShapedType>(quantizing_op->getResult(i).getType())
+                      .getElementType())) {
             continue;
           }
           CreateVerifier<VerifierT>(quantizing_op, quantized_op, rewriter, i,
@@ -673,9 +673,7 @@ class QuantizationPattern : public RewritePattern {
   void RewireFloatModelBackbone(Operation* quantized_op,
                                 Operation* float_op) const {
     for (int i = 0, e = quantized_op->getNumResults(); i < e; ++i) {
-      if (!float_op->getResult(i)
-               .getType()
-               .cast<ShapedType>()
+      if (!llvm::cast<ShapedType>(float_op->getResult(i).getType())
                .getElementType()
                .isF32()) {
         continue;
@@ -768,14 +766,14 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<QuantizeOpT> {
 
     auto flags = quant::QuantizationFlags::Signed;
     QType new_qtype;
-    if (auto uqtype = qtype.template dyn_cast<quant::UniformQuantizedType>()) {
+    if (auto uqtype = llvm::dyn_cast<quant::UniformQuantizedType>(qtype)) {
       new_qtype = quant::UniformQuantizedType::getChecked(
           op.getLoc(), flags, qtype.getStorageType(), qtype.getExpressedType(),
           uqtype.getScale(), uqtype.getZeroPoint() - offset,
           uqtype.getStorageTypeMin() - offset,
           uqtype.getStorageTypeMax() - offset);
-    } else if (auto aqtype = qtype.template dyn_cast<
-                             quant::UniformQuantizedPerAxisType>()) {
+    } else if (auto aqtype =
+                   llvm::dyn_cast<quant::UniformQuantizedPerAxisType>(qtype)) {
       auto zero_points = aqtype.getZeroPoints();
       llvm::SmallVector<int64_t, 4> new_zero_points(zero_points.begin(),
                                                     zero_points.end());

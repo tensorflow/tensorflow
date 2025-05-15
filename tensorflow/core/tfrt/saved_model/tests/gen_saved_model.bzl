@@ -11,6 +11,7 @@ def gen_saved_model(model_name = "", script = "", version = "", **kwargs):
         name = "saved_model_gen_" + model_name,
         srcs = [],
         outs = [
+            model_path + "/fingerprint.pb",
             model_path + "/saved_model.pb",
             model_path + "/variables/variables.data-00000-of-00001",
             model_path + "/variables/variables.index",

@@ -183,6 +183,15 @@ TEST(AsyncValueTest, StackAllocatedAsyncValue) {
   EXPECT_EQ(2, counter);
 }
 
+TEST(AsyncValueTest, MoveOnlyCallback) {
+  struct MoveOnlyCb {
+    void operator()() && {}
+  };
+  auto value = MakeConstructedAsyncValueRef<int32_t>(123);
+  value.AndThen(MoveOnlyCb());
+  value.SetStateConcrete();
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//

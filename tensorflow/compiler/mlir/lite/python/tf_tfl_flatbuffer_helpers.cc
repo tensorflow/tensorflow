@@ -33,11 +33,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/types.pb.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "xla/tsl/platform/statusor.h"
@@ -216,7 +216,7 @@ absl::Status RegisterAllCustomOps(
 absl::Status PopulateQuantizationSpecs(
     const tflite::ModelFlags& model_flags,
     tflite::ConverterFlags& converter_flags,
-    mlir::quant::QuantizationSpecs* quant_specs,
+    mlir::TFL::QuantizationSpecs* quant_specs,
     std::vector<std::string>* node_names, std::vector<std::string>* node_dtypes,
     std::vector<std::optional<std::vector<int>>>* node_shapes,
     std::vector<std::optional<double>>* node_mins,
@@ -264,8 +264,8 @@ absl::Status PopulateQuantizationSpecs(
     }
   }
 
-  if (mlir::quant::GetInputNodeQuantSpecs(*node_names, *node_mins, *node_maxs,
-                                          inference_type, quant_specs)) {
+  if (mlir::TFL::GetInputNodeQuantSpecs(*node_names, *node_mins, *node_maxs,
+                                        inference_type, quant_specs)) {
     return errors::InvalidArgument("Failed to get input quant spec.");
   }
 

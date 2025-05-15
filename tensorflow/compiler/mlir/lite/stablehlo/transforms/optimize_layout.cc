@@ -91,7 +91,7 @@ struct TransposeCommuteWithPad : public OpRewritePattern<stablehlo::PadOp> {
   LogicalResult matchAndRewrite(stablehlo::PadOp pad_op,
                                 PatternRewriter& rewriter) const override {
     Value pad_input = pad_op.getOperand();
-    RankedTensorType pad_type = pad_op.getType().cast<RankedTensorType>();
+    RankedTensorType pad_type = mlir::cast<RankedTensorType>(pad_op.getType());
 
     auto transpose_op = pad_input.getDefiningOp<stablehlo::TransposeOp>();
     if (!transpose_op || !transpose_op->hasOneUse()) return failure();
@@ -132,7 +132,7 @@ struct TransposeCommuteWithReduceWindow
     Value reduce_input = inputs[0];
 
     RankedTensorType reduce_type =
-        reduce_op.getResultTypes()[0].cast<RankedTensorType>();
+        mlir::cast<RankedTensorType>(reduce_op.getResultTypes()[0]);
 
     auto transpose_op = reduce_input.getDefiningOp<stablehlo::TransposeOp>();
     if (!transpose_op || !transpose_op->hasOneUse()) return failure();

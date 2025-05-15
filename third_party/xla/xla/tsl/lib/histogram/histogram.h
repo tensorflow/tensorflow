@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
@@ -133,7 +133,7 @@ class ThreadSafeHistogram {
   std::string ToString() const;
 
  private:
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
   Histogram histogram_ TF_GUARDED_BY(mu_);
 };
 

@@ -40,7 +40,9 @@ limitations under the License.
 #include "xla/cpu_function_runtime.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/buffer_info_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -525,6 +527,7 @@ absl::Status GenerateHeader(const CodegenOpts& opts,
   TF_RETURN_IF_ERROR(
       CheckEqual(ps.result().tuple_shapes_size(), result_index_table.size(),
                  "Result number mismatch, proto vs. result_index_table"));
+  TF_ASSIGN_OR_RETURN(auto program_shape, xla::ProgramShape::FromProto(ps));
   const size_t arg_bytes_aligned =
       xla::cpu_function_runtime::AlignedBufferBytes(
           buffer_infos_for_args.data(), buffer_infos_for_args.size(),
@@ -845,7 +848,7 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       {"{{METHODS_VARIABLE}}\n", methods_variable},
       {"{{NS_END}}\n", ns_end},
       {"{{NS_START}}\n", ns_start},
-      {"{{PROGRAM_SHAPE}}", xla::ShapeUtil::HumanString(xla::ProgramShape(ps))},
+      {"{{PROGRAM_SHAPE}}", xla::ShapeUtil::HumanString(program_shape)},
       {"{{PROGRAM_SHAPE_SHIM_EXPRESSION}}",
        metadata_result.program_shape_access_shim},
       {"{{VARIABLE_NAMES_CODE}}", variable_names_code},

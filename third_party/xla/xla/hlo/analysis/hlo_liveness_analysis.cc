@@ -350,7 +350,7 @@ absl::StatusOr<std::unique_ptr<HloLivenessAnalysis>> HloLivenessAnalysis::Run(
 
   liveness_analysis->RunAnalysis();
 
-  return std::move(liveness_analysis);
+  return liveness_analysis;
 }
 
 }  // namespace xla

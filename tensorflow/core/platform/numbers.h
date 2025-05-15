@@ -37,6 +37,7 @@ using tsl::strings::HumanReadableElapsedTime;
 using tsl::strings::HumanReadableNum;
 using tsl::strings::HumanReadableNumBytes;
 using tsl::strings::kFastToBufferSize;
+using tsl::strings::LegacyPrecision;
 using tsl::strings::ProtoParseNumeric;
 using tsl::strings::safe_strto32;
 using tsl::strings::safe_strto64;

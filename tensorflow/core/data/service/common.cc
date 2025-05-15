@@ -132,8 +132,8 @@ absl::StatusOr<DeploymentMode> ParseDeploymentMode(absl::string_view s) {
 }
 
 bool IsPreemptedError(const absl::Status& status) {
-  return errors::IsAborted(status) || errors::IsCancelled(status) ||
-         errors::IsUnavailable(status);
+  return absl::IsAborted(status) || absl::IsCancelled(status) ||
+         absl::IsUnavailable(status);
 }
 }  // namespace data
 }  // namespace tensorflow

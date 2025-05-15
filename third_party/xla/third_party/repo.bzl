@@ -129,8 +129,6 @@ def tf_http_archive(name, sha256, urls, **kwargs):
              "along shortly thereafter and mirror the file.")
 
     if native.existing_rule(name):
-        print("\n\033[1;33mWarning:\033[0m skipping import of repository '" +
-              name + "' because it already exists.\n")
         return
 
     _tf_http_archive(

@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -35,7 +35,7 @@ namespace {
 
 using ::tsl::testing::IsOkAndHolds;
 
-using CanFoldTransposeOperandIntoDotTest = HloTestBase;
+using CanFoldTransposeOperandIntoDotTest = HloHardwareIndependentTestBase;
 
 TEST_F(CanFoldTransposeOperandIntoDotTest, ArgTransposeFoldGemm) {
   const char* hlo_text = R"(
@@ -223,7 +223,7 @@ TEST(GetMatrixLayoutTest, BatchInMostMinorPhysicalDimension) {
   EXPECT_FALSE(MatrixLayout::For(shape).ok());
 }
 
-using GetMatrixSizeRewriteThresholdTest = HloTestBase;
+using GetMatrixSizeRewriteThresholdTest = HloHardwareIndependentTestBase;
 
 TEST_F(GetMatrixSizeRewriteThresholdTest, MatMulTooSmallForRewrite) {
   const char* hlo_text = R"(

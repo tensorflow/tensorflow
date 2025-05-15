@@ -16,27 +16,33 @@ limitations under the License.
 #ifndef XLA_TESTS_LOCAL_CLIENT_TEST_BASE_H_
 #define XLA_TESTS_LOCAL_CLIENT_TEST_BASE_H_
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
-#include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/local_service.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

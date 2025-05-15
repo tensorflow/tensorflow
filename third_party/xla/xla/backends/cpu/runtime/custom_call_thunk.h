@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -28,8 +29,11 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_state.h"
+#include "xla/ffi/ffi_api.h"
+#include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
@@ -38,6 +42,10 @@ namespace xla::cpu {
 // Handles XLA custom calls.
 class CustomCallThunk final : public Thunk {
  public:
+  // Function signature for legacy untyped custom call API.
+  using CustomCallTarget = std::function<void(void*, const void**, const char*,
+                                              size_t, XlaCustomCallStatus*)>;
+
   // Buffer allocation slices and shapes to fill FFI arguments.
   struct OpBuffers {
     std::vector<BufferAllocation::Slice> arguments_buffers;
@@ -62,11 +70,13 @@ class CustomCallThunk final : public Thunk {
   const std::string& backend_config() const { return backend_config_; }
 
  private:
-  CustomCallThunk(Info info, absl::string_view target_name,
-                  OpBuffers op_buffers, CustomCallApiVersion api_version,
-                  absl::string_view backend_config,
-                  std::optional<ffi::CallFrame> call_frame,
-                  std::unique_ptr<ffi::ExecutionState> execution_state);
+  CustomCallThunk(
+      Info info, absl::string_view target_name,
+      std::variant<CustomCallTarget, ffi::HandlerRegistration> target,
+      OpBuffers op_buffers, CustomCallApiVersion api_version,
+      absl::string_view backend_config,
+      std::optional<ffi::CallFrame> call_frame,
+      std::unique_ptr<ffi::ExecutionState> execution_state);
 
   // Handles typed-FFI custom calls (API v4).
   tsl::AsyncValueRef<ExecuteEvent> CallTypedFFI(const ExecuteParams& params);
@@ -74,15 +84,19 @@ class CustomCallThunk final : public Thunk {
   // Handles legacy, untyped custom calls (API v1-v3).
   tsl::AsyncValueRef<ExecuteEvent> CallUntypedAPI(const ExecuteParams& params);
 
-  // Function signature for legacy untyped API.
-  using CustomCallTarget = std::function<void(void*, const void**, const char*,
-                                              size_t, XlaCustomCallStatus*)>;
-
   std::string target_name_;
+  std::variant<CustomCallTarget, ffi::HandlerRegistration> target_;
+
   OpBuffers op_buffers_;
   CustomCallApiVersion api_version_;
   std::string backend_config_;
+
+  // Reference call frame pre-initialized at construction time.
   std::optional<ffi::CallFrame> call_frame_;
+
+  // A pool of call frames used at run time. Newly created call frames are
+  // copied from the reference call frame and updated with buffer addresses.
+  ObjectPool<ffi::CallFrame> call_frames_;
 
   // Execution state bound to the FFI handler. Optional.
   std::unique_ptr<ffi::ExecutionState> execution_state_;

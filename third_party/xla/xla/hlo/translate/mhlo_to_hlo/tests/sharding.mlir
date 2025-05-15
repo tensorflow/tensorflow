@@ -34,7 +34,7 @@ func.func @main(%arg0: tensor<4x4xf32>) -> (tensor<4x4xf32> {mhlo.sharding = "\0
   // CHECK-NEXT: [[RESHAPE_0:%.*]] = f32[4,4] reshape(%Arg_0.1), sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
   // CHECK-NEXT: [[RESHAPE_1:%.*]] = f32[4,4] reshape(%Arg_0.1)
   // CHECK-NOT:  sharding
-  // CHECK-NEXT: ROOT {{%.*}} = (f32[4,4], f32[4,4]) tuple([[RESHAPE_0]], [[RESHAPE_1]])
+  // CHECK-NEXT: ROOT {{%.*}} = (f32[4,4], f32[4,4]) tuple(%Arg_0.1, %Arg_0.1)
   // CHECK-SAME: sharding={{\{}}{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}, {replicated}}
   return %arg0, %arg0 : tensor<4x4xf32>, tensor<4x4xf32>
 }
@@ -74,7 +74,7 @@ func.func @main(%arg0: tensor<2xui64>) -> (tensor<2xui64> {mhlo.sharding = "{dev
   // CHECK-NEXT: %reshape.6 = u64[2] reshape(%add.5)
   // CHECK-NEXT: %get-tuple-element.4 = u32[512,4] get-tuple-element(%rng-bit-generator.2), index=1, sharding={devices=[8,4]<=[32]}
   // CHECK-NEXT: %reshape.7 = u32[512,4] reshape(%get-tuple-element.4)
-  // CHECK-NEXT: ROOT %tuple.8 = (u64[2], u32[512,4]) tuple(%reshape.6, %reshape.7), sharding={{\{}}{devices=[2,16]<=[32] last_tile_dim_replicate}, {devices=[4,8]<=[32]}}
+  // CHECK-NEXT: ROOT %tuple.8 = (u64[2], u32[512,4]) tuple(%add.5, %get-tuple-element.4), sharding={{\{}}{devices=[2,16]<=[32] last_tile_dim_replicate}, {devices=[4,8]<=[32]}}
   %output_state, %output = "mhlo.rng_bit_generator"(%arg0) <{rng_algorithm = #mhlo.rng_algorithm<DEFAULT>}> {mhlo.sharding = "{{replicated}, {devices=[8,4]<=[32]}}"} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<512x4xui32>)
   %0 = mhlo.add %output_state, %output_state : tensor<2xui64>
   return %0, %output : tensor<2xui64>, tensor<512x4xui32>
@@ -264,6 +264,54 @@ func.func @main(%arg0: tensor<i32>,
   func.return %0#0, %0#1 : tensor<4xf32>, tensor<4xf32>
 }
 
+// -----
+
+// Test export mhlo::CaseOp with no results and captured variables that have
+// shardings.
+
+// CHECK-LABEL: HloModule main
+
+// CHECK:      %[[EMPTY_BRANCH:.*]] ({{.*}}: ()) -> () {
+// CHECK-NEXT:   %[[ARG:.*]] = () parameter(0)
+// CHECK-NEXT:   ROOT %{{.*}} = () tuple()
+// CHECK-NEXT: }
+
+// CHECK:      %[[CALLBACK_BRANCH:.*]] ({{.*}}: (s32[], s64[8])) -> () {
+// CHECK-NEXT:   %[[ARG:.*]] = (s32[], s64[8]) parameter(0)
+// CHECK-NEXT:   %[[ELEMENT_0:.*]] = s32[] get-tuple-element(%[[ARG]]), index=0, sharding={manual}
+// CHECK-NEXT:   %[[ELEMENT_1:.*]] = s64[8] get-tuple-element(%[[ARG]]), index=1, sharding={manual}
+// CHECK-NEXT:   %{{.*}} = () custom-call(%[[ELEMENT_0]], %[[ELEMENT_1]]),
+// CHECK-SAME{LITERAL}: custom_call_target="xla_ffi_python_cpu_callback", sharding={{manual}}
+// CHECK-NEXT:   ROOT %{{.*}} = () tuple()
+// CHECK-NEXT: }
+
+// CHECK: ENTRY {{.*}} ({{.*}}: s32[], {{.*}}: s64[8], {{.*}}: pred[]) -> () {
+// CHECK-NEXT:    %[[ARG_2:.*]] = pred[] parameter(2)
+// CHECK-NEXT:    %[[CONVERT:.*]] = s32[] convert(%[[ARG_2]]), sharding={manual}
+// CHECK-NEXT:    %[[EMPTY_TUPLE:.*]] = () tuple()
+// CHECK-NEXT:    %[[ARG_0:.*]] = s32[] parameter(0)
+// CHECK-NEXT:    %[[FULL_TO_SHARD:.*]] = s32[] custom-call(%[[ARG_0]]), custom_call_target="SPMDFullToShardShape", sharding={manual}
+// CHECK-NEXT:    %[[ARG_1:.*]] = s64[8] parameter(1), sharding={manual}
+// CHECK-NEXT:    %[[ARG_TUPLE:.*]] = (s32[], s64[8]) tuple(%[[FULL_TO_SHARD]], %[[ARG_1]]),
+// CHECK-SAME{LITERAL}: sharding={{manual}, {manual}}
+// CHECK-NEXT:    %{{.*}} = () conditional(%[[CONVERT]], %[[EMPTY_TUPLE]], %[[ARG_TUPLE]]), branch_computations={%[[EMPTY_BRANCH]], %[[CALLBACK_BRANCH]]},
+// CHECK-SAME{LITERAL}: sharding={{replicated}}
+// CHECK-NEXT:    ROOT %{{.*}} = () tuple()
+// CHECK-NEXT: }
+
+
+
+func.func @main(%arg0: tensor<i32>, %arg1: tensor<8xi64> {mhlo.sharding = "{manual}"}, %arg3: tensor<i1>) {
+  %0 = mhlo.custom_call @SPMDFullToShardShape(%arg0) {mhlo.sharding = "{manual}"} : (tensor<i32>) -> tensor<i32>
+  %1 = mhlo.convert %arg3 {mhlo.sharding = "{manual}"} : (tensor<i1>) -> tensor<i32>
+  "mhlo.case"(%1) ({
+    mhlo.return
+  }, {
+    mhlo.custom_call @xla_ffi_python_cpu_callback(%0, %arg1) {mhlo.sharding = "{manual}"} : (tensor<i32>, tensor<8xi64>) -> ()
+    mhlo.return
+  }) {mhlo.sharding = "{replicated}"} : (tensor<i32>) -> ()
+  return
+}
 
 // -----
 

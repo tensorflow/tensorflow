@@ -117,6 +117,7 @@ cc_library(
     ] + if_static(
         extra_deps = [
             ":allocator_registry_impl",
+            "@com_google_absl//absl/synchronization",
             "//xla/tsl/lib/gtl:inlined_vector",
             "@local_tsl//tsl/platform:strcat",
             "@local_tsl//tsl/platform:stringprintf",
@@ -124,7 +125,6 @@ cc_library(
             "//xla/tsl/platform:env_impl",
             "//xla/tsl/platform:logging",
             "//xla/tsl/platform:macros",
-            "@local_tsl//tsl/platform:mutex",
             "@local_tsl//tsl/platform:platform_port",
             "@local_tsl//tsl/platform:thread_annotations",
             "//xla/tsl/platform:types",
@@ -169,7 +169,7 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:stringprintf",
@@ -200,6 +200,7 @@ cc_library(
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:trace_filter_utils",
         "//xla/tsl/protobuf:bfc_memory_map_proto_cc",
+        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -254,7 +255,8 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -369,8 +371,8 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:notification",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
@@ -468,6 +470,7 @@ tsl_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/util:device_name_utils",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

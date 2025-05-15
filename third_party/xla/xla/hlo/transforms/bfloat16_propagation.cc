@@ -245,6 +245,57 @@ void BFloat16Propagation::DetermineConditionalComputationsPrecision(
   }
 }
 
+void BFloat16Propagation::DetermineAsyncComputationsPrecision(
+    HloInstruction* async_start) {
+  CHECK_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
+
+  auto root = async_start->async_wrapped_instruction();
+  ShapeUtil::ForEachSubshape(root->shape(), [&](const Shape& subshape,
+                                                const ShapeIndex& index) {
+    if (subshape.element_type() != F32) {
+      return;
+    }
+    if (OutputTypeAfterChange(async_start->async_chain_done(), index) == BF16) {
+      AddToOrRemoveFromBF16ChangeSet(root, index, BF16);
+      VLOG(2) << "Async wrapped computation root " << root->ToString()
+              << " at shape index " << index
+              << " changed to BF16 precision for async start "
+              << async_start->ToString();
+    }
+  });
+  auto insts =
+      async_start->async_wrapped_computation()->MakeInstructionPostOrder();
+  for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
+    DetermineInstructionPrecision(*inst_it, /*skip_parameters=*/false);
+  }
+  computations_visited_in_backward_pass_.insert(
+      async_start->async_wrapped_computation());
+}
+
+void BFloat16Propagation::DetermineCalledComputationsPrecision(
+    HloInstruction* call) {
+  CHECK_EQ(call->opcode(), HloOpcode::kCall);
+
+  auto root = call->to_apply()->root_instruction();
+  ShapeUtil::ForEachSubshape(
+      root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.element_type() != F32) {
+          return;
+        }
+        if (OutputTypeAfterChange(call, index) == BF16) {
+          AddToOrRemoveFromBF16ChangeSet(root, index, BF16);
+          VLOG(2) << "Called computation root " << root->ToString()
+                  << " at shape index " << index
+                  << " changed to BF16 precision for call " << call->ToString();
+        }
+      });
+  auto insts = call->to_apply()->MakeInstructionPostOrder();
+  for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
+    DetermineInstructionPrecision(*inst_it, /*skip_parameters=*/false);
+  }
+  computations_visited_in_backward_pass_.insert(call->to_apply());
+}
+
 bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
                                               const ShapeIndex& index) const {
   // If the subshape isn't floating point then none of the users will be BF16.
@@ -315,6 +366,28 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
           return false;
         }
         continue;
+      } else if (use.instruction->opcode() == HloOpcode::kAsyncStart &&
+                 HloInstruction::IsThreadIncluded(
+                     use.instruction->async_execution_thread(),
+                     execution_threads_)) {
+        auto* async_parameter =
+            use.instruction->async_wrapped_computation()->parameter_instruction(
+                use.operand_number);
+        if (OutputTypeAfterChange(async_parameter, use.operand_index) != BF16) {
+          return false;
+        }
+        continue;
+      } else if (use.instruction->opcode() == HloOpcode::kCall) {
+        auto* call_parameter =
+            use.instruction->to_apply()->parameter_instruction(
+                use.operand_number);
+        if (OutputTypeAfterChange(call_parameter, use.operand_index) != BF16) {
+          return false;
+        }
+        continue;
+      } else if (use.instruction->opcode() == HloOpcode::kAsyncDone) {
+        // async-done consumes whatever async-start gives it.
+        continue;
       }
       if (bfloat16_support_->EffectiveOperandPrecisionIsLowPrecision(
               *use.instruction, use.operand_number)) {
@@ -371,9 +444,11 @@ bool BFloat16Propagation::ShouldKeepPrecisionUnchanged(
   // since it is merely a buffer allocation and does not have any side effects.
   return (inst->opcode() == HloOpcode::kCustomCall &&
           !inst->IsCustomCall("AllocateBuffer")) ||
-         inst->opcode() == HloOpcode::kCall ||
          inst->opcode() == HloOpcode::kBitcastConvert ||
-         inst->HasSideEffectNoRecurse();
+         inst->HasSideEffectNoRecurse() ||
+         (inst->IsAsynchronous() &&
+          !HloInstruction::IsThreadIncluded(inst->async_execution_thread(),
+                                            execution_threads_));
 }
 
 void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
@@ -392,6 +467,12 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
         DetermineWhileComputationsPrecision(hlo);
       } else if (hlo->opcode() == HloOpcode::kConditional) {
         DetermineConditionalComputationsPrecision(hlo);
+      } else if (hlo->opcode() == HloOpcode::kAsyncStart &&
+                 HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
+                                                  execution_threads_)) {
+        DetermineAsyncComputationsPrecision(hlo);
+      } else if (hlo->opcode() == HloOpcode::kCall) {
+        DetermineCalledComputationsPrecision(hlo);
       }
     }
     instructions_visited_in_backward_pass_.insert(hlo);
@@ -408,6 +489,20 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
       absl::c_any_of(hlo->branch_computations(), [&](const HloComputation* c) {
         return caller_counts_[c] > 1;
       })) {
+    postpone_processing_called_computations = true;
+    return;
+  }
+
+  if (hlo->opcode() == HloOpcode::kAsyncStart &&
+      HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
+                                       execution_threads_) &&
+      caller_counts_[hlo->async_wrapped_computation()] > 1) {
+    postpone_processing_called_computations = true;
+    return;
+  }
+
+  if (hlo->opcode() == HloOpcode::kCall &&
+      caller_counts_[hlo->to_apply()] > 1) {
     postpone_processing_called_computations = true;
     return;
   }
@@ -521,6 +616,15 @@ void BFloat16Propagation::AdjustCalledComputationParameters(
                            {hlo->mutable_operand(i + 1)});
       }
       break;
+    case HloOpcode::kAsyncStart:
+      if (HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
+                                           execution_threads_)) {
+        adjust_computation(hlo->async_wrapped_computation(), hlo->operands());
+      }
+      break;
+    case HloOpcode::kCall:
+      adjust_computation(hlo->to_apply(), hlo->operands());
+      break;
     default:
       break;
   }
@@ -575,6 +679,15 @@ void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
       for (auto* branch : hlo->branch_computations()) {
         adjust_computation(branch, hlo);
       }
+      break;
+    case HloOpcode::kAsyncStart:
+      if (HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
+                                           execution_threads_)) {
+        adjust_computation(hlo->async_wrapped_computation(), hlo);
+      }
+      break;
+    case HloOpcode::kCall:
+      adjust_computation(hlo->to_apply(), hlo);
       break;
     default:
       break;
@@ -698,6 +811,14 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
           ResolveInconsistencyOfAliasingBuffersHelper(branch,
                                                       visited_computations);
         }
+      } else if (hlo->opcode() == HloOpcode::kAsyncStart &&
+                 HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
+                                                  execution_threads_)) {
+        ResolveInconsistencyOfAliasingBuffersHelper(
+            hlo->async_wrapped_computation(), visited_computations);
+      } else if (hlo->opcode() == HloOpcode::kCall) {
+        ResolveInconsistencyOfAliasingBuffersHelper(hlo->to_apply(),
+                                                    visited_computations);
       }
     }
     if (!any_change) {
@@ -712,10 +833,9 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
 }
 
 void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    HloModule* module) {
   const auto& computations_topological_order =
-      module->MakeComputationPostOrder(execution_threads);
+      module->MakeComputationPostOrder(execution_threads_);
   absl::flat_hash_set<const HloComputation*> resolved;
   for (auto comp_it = computations_topological_order.rbegin();
        comp_it != computations_topological_order.rend(); ++comp_it) {
@@ -727,8 +847,7 @@ void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
 }
 
 absl::Status BFloat16Propagation::ResolveInconsistentFusions(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    HloModule* module) {
   // We could have changed a fusion computation's root shape to have a different
   // precision than the fusion node's output, if the fusion root does not
   // define a buffer (e.g., a tuple). Now we add conversions after such fusion
@@ -754,7 +873,8 @@ absl::Status BFloat16Propagation::ResolveInconsistentFusions(
   // (1) a is F32 but tuple is BF16
   // (2) after adding conversion
   // (3) after tuple simplifier and DCE.
-  for (auto computation : module->MakeComputationPostOrder(execution_threads)) {
+  for (auto computation :
+       module->MakeComputationPostOrder(execution_threads_)) {
     auto insts = computation->MakeInstructionPostOrder();
     for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
       auto hlo = *inst_it;
@@ -789,9 +909,7 @@ absl::Status BFloat16Propagation::ResolveInconsistentFusions(
   return absl::OkStatus();
 }
 
-absl::Status BFloat16Propagation::ResolveConvertedConstants(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+absl::Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
   // We may have converted some constants from F32 to BF16, so adjust the
   // constant literals in such cases. We do this here instead of when the
   // constant node's is changed because 1) the HloInstruction interface does not
@@ -802,7 +920,8 @@ absl::Status BFloat16Propagation::ResolveConvertedConstants(
   // can avoid repeated conversions.
   //
   // TODO(b/73833576): Consider resetting literal in HloInstruction.
-  for (auto computation : module->MakeComputationPostOrder(execution_threads)) {
+  for (auto computation :
+       module->MakeComputationPostOrder(execution_threads_)) {
     for (auto hlo : computation->MakeInstructionPostOrder()) {
       if (hlo->opcode() != HloOpcode::kConstant) {
         continue;
@@ -821,10 +940,8 @@ absl::Status BFloat16Propagation::ResolveConvertedConstants(
   return absl::OkStatus();
 }
 
-absl::Status BFloat16Propagation::SkipNoopConversions(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  for (auto computation : module->computations(execution_threads)) {
+absl::Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
+  for (auto computation : module->computations(execution_threads_)) {
     for (auto hlo : computation->MakeInstructionPostOrder()) {
       if (hlo->opcode() != HloOpcode::kConvert) {
         continue;
@@ -859,9 +976,10 @@ absl::StatusOr<bool> BFloat16Propagation::Run(
   caller_counts_.clear();
   changes_to_bf16_.clear();
   changed_ = false;
+  execution_threads_ = execution_threads;
 
   auto computations_topological_order =
-      module->MakeComputationPostOrder(execution_threads);
+      module->MakeComputationPostOrder(execution_threads_);
 
   // Before running the propagation pass, we insert copies (kConvert to the same
   // type) of F32 inputs to while loops. This prevents other uses of the same
@@ -929,7 +1047,7 @@ absl::StatusOr<bool> BFloat16Propagation::Run(
   // It's possible that an instruction does not define a buffer, but the
   // defining instruction's shape has changed. So we need to adjust the output
   // shapes of instructions according to the HLO values they refer to.
-  ResolveInconsistencyOfAliasingBuffers(module, execution_threads);
+  ResolveInconsistencyOfAliasingBuffers(module);
 
   // Apply the changes in changes_to_bf16_.
   for (auto& change : changes_to_bf16_) {
@@ -978,13 +1096,13 @@ absl::StatusOr<bool> BFloat16Propagation::Run(
   // Removes redundant HLOs added by this pass, either when inserting
   // de-aliasing copies to while loop inputs, or later when converting output
   // types.
-  auto clean_up = [this, module, &execution_threads]() {
-    TF_RETURN_IF_ERROR(SkipNoopConversions(module, execution_threads));
+  auto clean_up = [this, module]() {
+    TF_RETURN_IF_ERROR(SkipNoopConversions(module));
     TupleSimplifier tuple_simplifier;
     TF_RETURN_IF_ERROR(
-        tuple_simplifier.Run(module, execution_threads).status());
+        tuple_simplifier.Run(module, execution_threads_).status());
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
+    TF_RETURN_IF_ERROR(dce.Run(module, execution_threads_).status());
     return absl::OkStatus();
   };
 
@@ -993,8 +1111,8 @@ absl::StatusOr<bool> BFloat16Propagation::Run(
     return false;
   }
 
-  TF_RETURN_IF_ERROR(ResolveInconsistentFusions(module, execution_threads));
-  TF_RETURN_IF_ERROR(ResolveConvertedConstants(module, execution_threads));
+  TF_RETURN_IF_ERROR(ResolveInconsistentFusions(module));
+  TF_RETURN_IF_ERROR(ResolveConvertedConstants(module));
 
   TF_RETURN_IF_ERROR(clean_up());
   return true;

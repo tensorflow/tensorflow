@@ -109,8 +109,8 @@ cc_library(
     hdrs = ["quantization_context.h"],
     deps = [
         ":device_target",
+        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

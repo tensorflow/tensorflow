@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <string>
 #include <unordered_set>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
@@ -152,21 +154,42 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
     llvm::errs() << "Failed to get CustomHloConverterOps list\n";
     return false;
   }
-
   // Convert the list to a set for faster lookups.
   std::unordered_set<std::string> custom_convert_op_names;
   for (const auto* op_def : custom_convert_op_defs->getValues())
     custom_convert_op_names.insert(op_def->getAsString());
 
+  // Get the list of StableHLO operations that are allowed to be directly
+  // converted to HLO without intermediate MHLO step.
+  const auto* hlo_conversion_allowed_op_defs =
+      llvm::dyn_cast_or_null<llvm::ListInit>(
+          records.getGlobal("HloConversionAllowedOps"));
+  if (!hlo_conversion_allowed_op_defs) {
+    llvm::errs() << "Failed to get HloConversionAllowedOps list\n";
+    return false;
+  }
+  // Convert the list to a set for faster lookups.
+  absl::flat_hash_set<std::string> hlo_conversion_allowed_op_names;
+  for (const auto* op_def : hlo_conversion_allowed_op_defs->getValues())
+    hlo_conversion_allowed_op_names.insert(op_def->getAsString());
+
   emitSourceFileHeader("MLIR XLA Builders", os);
 
-  // Emit all the helper functions.
-  for (const auto* def : records.getAllDerivedDefinitions("MHLO_Op")) {
-    Operator op(def);
+  // Emit all the HLO writers.
+  std::array<StringRef, 2> dialect_defs = {"MHLO_Op", "StableHLO_Op"};
+  for (auto dialect_def : dialect_defs) {
+    for (const auto* def : records.getAllDerivedDefinitions(dialect_def)) {
+      Operator op(def);
 
-    // Skip operations that have a custom exporter.
-    if (!(custom_convert_op_names.count(def->getName().str()) > 0))
+      if (dialect_def == "StableHLO_Op" &&
+          !(hlo_conversion_allowed_op_names.contains(def->getName().str()))) {
+        continue;
+      }
+
+      if (custom_convert_op_names.count(def->getName().str()) > 0) continue;
+
       BuildOperator(op, os);
+    }
   }
 
   // Emit a function to generate an XLA operation for the operations with
@@ -193,22 +216,28 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
         "op, lowering_context.frame_index_builder));\n\n";
 
   // Retrieve all the definitions derived from MHLO_Op and sort by record name.
-  for (const auto* def : records.getAllDerivedDefinitions("MHLO_Op")) {
-    // Skip operations that have a custom exporter.
-    Operator op(def);
+  for (auto dialect_def : dialect_defs) {
+    for (const auto* def : records.getAllDerivedDefinitions(dialect_def)) {
+      // Skip operations that have a custom exporter.
+      Operator op(def);
 
-    // Cast to the current operation and build the exporter.
-    os << "  if (auto xla_op = llvm::dyn_cast<" << op.getCppNamespace()
-       << "::" << op.getCppClassName() << ">(op)) {\n";
-    os << "    return ";
+      if (dialect_def == "StableHLO_Op" &&
+          !(hlo_conversion_allowed_op_names.contains(def->getName().str()))) {
+        continue;
+      }
 
-    if (custom_convert_op_names.count(def->getName().str()) > 0)
-      os << op.getCppNamespace() << "::";
+      // Cast to the current operation and build the exporter.
+      os << "  if (auto xla_op = llvm::dyn_cast<" << op.getCppNamespace()
+         << "::" << op.getCppClassName() << ">(op)) {\n";
+      os << "    return ";
 
-    os << "ExportXlaOp(xla_op, lowering_context);\n";
-    os << "  }\n";
+      if (custom_convert_op_names.count(def->getName().str()) > 0)
+        os << op.getCppNamespace() << "::";
+
+      os << "ExportXlaOp(xla_op, lowering_context);\n";
+      os << "  }\n";
+    }
   }
-
   os << "  return mlir::failure();\n"
         "}\n";
   return false;

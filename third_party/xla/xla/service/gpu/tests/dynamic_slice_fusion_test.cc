@@ -13,20 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
-#include <functional>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "xla/error_spec.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
-#include "xla/primitive_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -38,7 +34,7 @@ static constexpr char kPlatform[] = "CUDA";
 static constexpr char kPlatform[] = "ROCM";
 #endif
 
-class DynamicSliceFusionTest : public HloTestBase {};
+class DynamicSliceFusionTest : public HloPjRtTestBase {};
 
 TEST_F(DynamicSliceFusionTest, GemmSlice) {
   const char* hlo_reference = R"(

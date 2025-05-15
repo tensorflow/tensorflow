@@ -92,7 +92,7 @@ func.func @custom_call(%x: tensor<6x3xf32>) -> (tensor<6xf32>, tensor<3xf32>) {
 // CHECK-LABEL: @custom_call_tupled_operand
 // CHECK-SAME: %[[ARG0:.*]]: tuple<tensor<ui32>, tensor<i32>>
 func.func @custom_call_tupled_operand(%arg0: tuple<tensor<ui32>, tensor<i32>>)
-  -> (tensor<i32>, tensor<ui32>) {
+  -> (tensor<i32>, tensor<ui32>, tensor<ui32>) {
   // CHECK-NEXT: %[[C0:.*]] = stablehlo.constant dense<1> : tensor<ui32>
   %0 = stablehlo.constant dense<1> : tensor<ui32>
   // CHECK-NEXT: %[[C1:.*]] = stablehlo.constant dense<10> : tensor<i32>
@@ -102,10 +102,26 @@ func.func @custom_call_tupled_operand(%arg0: tuple<tensor<ui32>, tensor<i32>>)
   // CHECK-NEXT: %[[VAR1:.*]] = stablehlo.get_tuple_element %[[ARG0]][0]
   // CHECK-NEXT: %[[VAR2:.*]] = stablehlo.get_tuple_element %[[ARG0]][1]
   // CHECK-NEXT: stablehlo.custom_call @ScalarProgramDummyConstant(%[[C0]], %[[C1]], %[[VAR1]], %[[VAR2]])
-  %3 = stablehlo.custom_call @ScalarProgramDummyConstant(%2)
+  %3:2 = stablehlo.custom_call @ScalarProgramDummyConstant(%2)
     : (tuple<tensor<ui32>, tensor<i32>, tuple<tensor<ui32>, tensor<i32>>>)
-    -> tensor<ui32>
-  return %1, %3 : tensor<i32>, tensor<ui32>
+    -> (tensor<ui32>, tensor<ui32>)
+  return %1, %3#0, %3#1 : tensor<i32>, tensor<ui32>, tensor<ui32>
+}
+
+// -----
+
+// CHECK-LABEL: @custom_call_tupled_result
+// CHECK-SAME: %[[ARG0:.*]]: tensor<ui32>
+func.func @custom_call_tupled_result(%arg0: tensor<ui32>)
+  -> (tuple<tensor<ui32>, tuple<tensor<ui32>, tensor<i32>>, tensor<i32>>) {
+  // CHECK-NEXT: %[[CUSTOM_CALL:.*]]:4 = stablehlo.custom_call @ScalarProgramTupleResult(%[[ARG0]])
+  %0 = stablehlo.custom_call @ScalarProgramTupleResult(%arg0)
+    : (tensor<ui32>)
+    -> tuple<tensor<ui32>, tuple<tensor<ui32>, tensor<i32>>, tensor<i32>>
+  // CHECK-NEXT: %[[TUPLE1:.*]] = stablehlo.tuple %[[CUSTOM_CALL]]#1, %[[CUSTOM_CALL]]#2
+  // CHECK-NEXT: %[[TUPLE2:.*]] = stablehlo.tuple %[[CUSTOM_CALL]]#0, %[[TUPLE1]], %[[CUSTOM_CALL]]#3
+  // CHECK-NEXT: return %[[TUPLE2]]
+  return %0 : tuple<tensor<ui32>, tuple<tensor<ui32>, tensor<i32>>, tensor<i32>>
 }
 
 // -----

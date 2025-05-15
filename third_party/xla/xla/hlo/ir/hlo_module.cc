@@ -37,6 +37,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "highwayhash/arch_specific.h"
+#include "highwayhash/hh_types.h"
+#include "highwayhash/highwayhash.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -241,8 +244,9 @@ HloComputation* HloModule::AddEmbeddedComputation(
 }
 
 void HloModule::MarkFusionDuplications(
-    const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
-  for (std::unique_ptr<HloComputation>& computation : computations_) {
+    const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements)
+    const {
+  for (const std::unique_ptr<HloComputation>& computation : computations_) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kFusion) {
         auto rep =
@@ -488,6 +492,52 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
   return std::move(printer).ToCord();
 }
 
+namespace {
+// Generated using openssl rand.
+static constexpr highwayhash::HHKey kDefaultKey = {
+    0x9e0433b546e065d2ull,
+    0x0e7ecad49e703760ull,
+    0x83d29f20dae229b0ull,
+    0x40c1ce3ff9d19a42ull,
+};
+
+// HighwayHashPrinter is a Printer that computes the fingerprint of the added
+// data using a HighwayHash hasher.
+class HighwayHashPrinter : public Printer {
+ public:
+  HighwayHashPrinter() : hasher_(kDefaultKey) {}
+
+  void Append(const absl::AlphaNum& a) override {
+    hasher_.Append(a.data(), a.size());
+  }
+
+  void AppendInt64List(absl::Span<const int64_t> list,
+                       bool _ /*leading_comma*/) override {
+    // Instead of separators, prefix with the length. This is fine since
+    // there's no way for the caller to distinguish between the two.
+    const uint64_t num = list.size();
+    hasher_.Append(reinterpret_cast<const char*>(&num), sizeof(num));
+    hasher_.Append(reinterpret_cast<const char*>(list.data()),
+                   list.size() * sizeof(list[0]));
+  }
+
+  uint64_t ToFingerprint() {
+    highwayhash::HHResult64 result;
+    hasher_.Finalize(&result);
+    return result;
+  }
+
+ private:
+  highwayhash::HighwayHashCatT<HH_TARGET_PREFERRED> hasher_;
+};
+}  // namespace
+
+uint64_t HloModule::ToFingerprint(const HloPrintOptions& options) const {
+  HighwayHashPrinter printer;
+  Print(&printer, options);
+  return printer.ToFingerprint();
+}
+
 HloModuleProto HloModule::ToProto() const {
   HloModuleProto proto;
   proto.set_id(unique_id_);
@@ -544,6 +594,9 @@ HloModuleProto HloModule::ToProto() const {
     profile_info_proto.set_fingerprint(profile_info.fingerprint());
     profile_info_proto.set_profile_generation_strategy(
         profile_info.profile_generation_strategy());
+    profile_info_proto.set_original_changelist(
+        profile_info.original_changelist());
+    profile_info_proto.set_changelist(profile_info.changelist());
   }
   if (config().has_static_device_assignment()) {
     DeviceAssignmentProto device_assignment;
@@ -605,7 +658,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   // the entry parameters and root.
   TF_RET_CHECK(proto.has_host_program_shape())
       << "No program shape found in the proto";
-  ProgramShape expected_program_shape(proto.host_program_shape());
+  TF_ASSIGN_OR_RETURN(ProgramShape expected_program_shape,
+                      ProgramShape::FromProto(proto.host_program_shape()));
   TF_RET_CHECK(expected_program_shape.parameters_size() ==
                module_config.entry_computation_layout().parameter_count());
   for (int i = 0; i < expected_program_shape.parameters_size(); ++i) {
@@ -737,7 +791,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
       module->stack_frame_index_ = std::move(proto.stack_frame_index());
     }
   }
-  return std::move(module);
+  return module;
 }
 
 /* static */
@@ -830,7 +884,8 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     return tsl::errors::FailedPrecondition(
         "No program shape found in the proto");
   }
-  ProgramShape program_shape(module.host_program_shape());
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      ProgramShape::FromProto(module.host_program_shape()));
   TF_ASSIGN_OR_RETURN(HloModuleConfig config,
                       CreateModuleConfigFromShape(program_shape, debug_options,
                                                   execution_options));
@@ -1090,8 +1145,10 @@ class FingerprintMap {
   uint64_t GetFingerprint(const HloComputation* computation) {
     auto result = fingerprint_map_.try_emplace(computation, 0);
     if (result.second) {
-      result.first->second =
-          tsl::Fingerprint64(computation->ToString(print_options_));
+      HighwayHashPrinter printer;
+      computation->Print(&printer, print_options_,
+                         computation->MakeInstructionPostOrder());
+      result.first->second = printer.ToFingerprint();
     }
     return result.first->second;
   }
@@ -1292,7 +1349,8 @@ uint64_t HloModule::RandomNew64() const {
   return rng_();
 }
 
-HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
+HloComputation* HloModule::GetComputationWithName(
+    absl::string_view name) const {
   auto computations_in_module = computations();
   auto it = absl::c_find_if(
       computations_in_module,

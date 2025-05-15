@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 
 // Returns a ConversionTarget that includes default legalized MLIR dialects
 // for conversion to XLA.
@@ -28,7 +28,7 @@ namespace mhlo {
 mlir::ConversionTarget GetDefaultLegalConversionTargets(
     MLIRContext& mlir_context, bool legalize_chlo);
 
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_XLA_LEGALIZE_TARGETS_H_

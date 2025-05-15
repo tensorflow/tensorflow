@@ -46,7 +46,7 @@ SimplePropagatorState::SimplePropagatorState(
 SimplePropagatorState::~SimplePropagatorState() {}
 
 void SimplePropagatorState::ActivateRoots(
-    gtl::ArraySlice<const NodeItem*> roots, TaggedNodeSeq* ready) {
+    absl::Span<const NodeItem* const> roots, TaggedNodeSeq* ready) {
   for (const NodeItem* item : roots) {
     DCHECK_EQ(item->num_inputs, 0);
     ready->push_back(TaggedNode{item});

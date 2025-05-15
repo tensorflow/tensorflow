@@ -21,11 +21,9 @@ import numpy as np
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.dtensor.python import api
-from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import layout as layout_lib
-from tensorflow.dtensor.python.tests import test_backend_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import constant_op
@@ -103,7 +101,6 @@ class CollectiveTest(test_util.DTensorBaseTest):
     self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
 
   def testTwoReducesWithAssign(self):
-    self.skipForPathways('TODO(b/260775095)')
     # FIXME(b/238384852): The purpose of this test is to validate the control
     # dependency added by DTensor.
     # However, as we have no way of testing the per-device graph
@@ -247,11 +244,8 @@ class CollectiveTest(test_util.DTensorBaseTest):
     # core IDs: both are range(8). So local device IDs happen to be usable here.
     # TODO(b/180046115): Add a device.get_tpu_core_ids method and translate
     # device IDs to core IDs before setting the list here.
-    if not config.backend_is_pw():
-      device = dtensor_device.DTensorDevice(meshes=[mesh])
-      device.set_tpu_core_ids('tpu_mesh', local_ids)
-    else:
-      test_backend_util.config_test_mesh(mesh)
+    device = dtensor_device.DTensorDevice(meshes=[mesh])
+    device.set_tpu_core_ids('tpu_mesh', local_ids)
     layout_x = Layout.batch_sharded(mesh, _MESH_DIM_X, 2)
     layout_y = Layout.batch_sharded(mesh, _MESH_DIM_Y, 2)
 
@@ -536,7 +530,6 @@ class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
     # The purpose of this test is to validate the depdency check in AllReduce
     # AllReduce combiner (dtensor_allreduce_combine_optimization). Specifically,
     # the side effects from indirect dependency.
-    self.skipForPathways('TODO(b/260775095)')
     self.skipForDeviceType(['TPU'],
                            'This test requires 8 TPU cores.',
                            unless_device_count_equals_to=8)

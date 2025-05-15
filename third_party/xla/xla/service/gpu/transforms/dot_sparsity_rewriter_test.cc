@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -32,9 +32,10 @@ namespace {
 
 using ::testing::ElementsAre;
 
-class DotSparsityRewriterTest : public HloTestBase {
+class DotSparsityRewriterTest : public HloHardwareIndependentTestBase {
  public:
-  DotSparsityRewriterTest() : HloTestBase(/*verifier_layout_sensitive=*/true) {}
+  DotSparsityRewriterTest()
+      : HloHardwareIndependentTestBase(/*verifier_layout_sensitive=*/true) {}
 };
 
 TEST_F(DotSparsityRewriterTest, SparseDotRhsToLhs) {

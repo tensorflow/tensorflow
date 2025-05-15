@@ -9,6 +9,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
     "if_rocm_is_configured",
+    "rocm_library",
 )
 load(
     "@local_config_sycl//sycl:build_defs.bzl",
@@ -21,7 +22,6 @@ load(
 )
 load(
     "//xla/stream_executor:build_defs.bzl",
-    "gpu_only_cc_library",
     "stream_executor_gpu_friends",
 )
 load(
@@ -33,6 +33,10 @@ load(
     "internal_visibility",
     "tsl_copts",
     "tsl_gpu_library",
+)
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
 )
 load(
     "//xla/tsl/platform:build_config_root.bzl",
@@ -136,12 +140,6 @@ xla_cc_test(
     ],
 )
 
-gpu_only_cc_library(
-    name = "gpu_diagnostics_header",
-    hdrs = ["gpu_diagnostics.h"],
-    deps = ["@com_google_absl//absl/status:statusor"],
-)
-
 cc_library(
     name = "scoped_update_mode",
     hdrs = [
@@ -159,30 +157,26 @@ cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_command_buffer",
     srcs = ["gpu_command_buffer.cc"],
     hdrs = [
         "gpu_command_buffer.h",
     ],
     deps = [
-        ":gpu_executor_header",
         ":scoped_update_mode",
         "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:dnn",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -210,7 +204,7 @@ cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_helpers_header",
     hdrs = ["gpu_helpers.h"],
     deps = [
@@ -260,25 +254,11 @@ tsl_gpu_library(
     alwayslink = True,
 )
 
-gpu_only_cc_library(
-    name = "gpu_stream_header",
-    hdrs = ["gpu_stream.h"],
-    deps = [
-        ":gpu_types_header",
-        "//xla/stream_executor:kernel",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_common",
-        "//xla/stream_executor:stream_executor_h",
-        "@com_google_absl//absl/log:check",
-    ],
-)
-
-gpu_only_cc_library(
+cc_library(
     name = "gpu_stream",
     srcs = ["gpu_stream.cc"],
     hdrs = ["gpu_stream.h"],
+    tags = ["gpu"],
     deps = [
         ":gpu_types_header",
         "//xla/stream_executor:stream",
@@ -287,7 +267,7 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_semaphore",
     srcs = ["gpu_semaphore.cc"],
     hdrs = ["gpu_semaphore.h"],
@@ -300,7 +280,7 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_types_header",
     hdrs = ["gpu_types.h"],
     defines = if_rocm_is_configured([
@@ -308,6 +288,7 @@ gpu_only_cc_library(
     ]) + if_sycl_is_configured([
         "TENSORFLOW_USE_SYCL=1",
     ]),
+    tags = ["gpu"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
@@ -331,7 +312,7 @@ cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "asm_compiler",
     srcs = ["asm_compiler.cc"],
     hdrs = ["asm_compiler.h"],
@@ -383,18 +364,21 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
 
-gpu_kernel_library(
+rocm_library(
     name = "redzone_allocator_kernel_rocm",
     srcs = [
         "redzone_allocator_kernel.h",
         "redzone_allocator_kernel_rocm.cu.cc",
     ],
-    tags = ["manual"],
+    tags = [
+        "gpu",
+        "manual",
+        "rocm-only",
+    ],
     deps = [
         ":gpu_asm_opts",
         "//xla/stream_executor:device_memory",
@@ -408,7 +392,7 @@ gpu_kernel_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "redzone_allocator",
     srcs = [
         "redzone_allocator.cc",
@@ -533,10 +517,10 @@ cc_library(
     name = "gpu_blas_lt",
     srcs = ["gpu_blas_lt.cc"],
     hdrs = ["gpu_blas_lt.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
+        ":gpu_blas_lt_proto_cc",
+        "//xla:protobuf_util",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
@@ -548,11 +532,17 @@ cc_library(
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
@@ -561,6 +551,28 @@ cc_library(
     ]) + if_static([
         "@local_tsl//tsl/platform:tensor_float_32_utils",
     ]),
+)
+
+tf_proto_library(
+    name = "gpu_blas_lt_proto",
+    srcs = ["gpu_blas_lt.proto"],
+    protodeps = [
+        "//xla:xla_data_proto",
+        "//xla/stream_executor:blas_proto",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_blas_lt_test",
+    srcs = ["gpu_blas_lt_test.cc"],
+    deps = [
+        ":gpu_blas_lt",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:blas",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 gpu_kernel_library(
@@ -627,6 +639,7 @@ xla_test(
         ":gpu_test_kernels_fatbin",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
@@ -636,14 +649,14 @@ xla_test(
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
     data = [":gpu_test_kernels_fatbin"],
 )
@@ -874,5 +887,56 @@ xla_cc_test(
         "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "buffer_comparator_kernel",
+    hdrs = ["buffer_comparator_kernel.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+exports_files([
+    "buffer_comparator_kernel_lib.cu.h",
+    "all_reduce_kernel_lib.cu.h",
+    "ragged_all_to_all_kernel_lib.cu.h",
+])
+
+cc_library(
+    name = "make_batch_pointers_kernel",
+    hdrs = ["make_batch_pointers_kernel.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+cc_library(
+    name = "ragged_all_to_all_kernel",
+    hdrs = ["ragged_all_to_all_kernel.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+cc_library(
+    name = "all_reduce_kernel",
+    hdrs = ["all_reduce_kernel.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+cc_library(
+    name = "topk_kernel",
+    hdrs = ["topk_kernel.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
     ],
 )

@@ -109,7 +109,7 @@ class TestCoordinationServiceTaskState {
         [service = coord_rpc_service_.get()]() { service->HandleRPCsLoop(); }));
   }
 
-  void SetCoordinationService(CoordinationServiceInterface* service) {
+  void SetCoordinationService(CoordinationService* service) {
     auto* grpc_coord_service =
         static_cast<GrpcCoordinationServiceImpl*>(coord_rpc_service_.get());
     grpc_coord_service->SetCoordinationServiceInstance(service);
@@ -181,7 +181,7 @@ class CoordinationServiceRecoverableJobTest : public ::testing::Test {
     client_cache->AddTask(
         /*target=*/"/job:worker/replica:0/task:1",
         state_worker_1_.GetCoordinationClient());
-    coord_service_ = CoordinationServiceInterface::EnableCoordinationService(
+    coord_service_ = CoordinationService::Create(
         Env::Default(), coordination_config_, std::move(client_cache));
     // Set the service pointer for all the tasks since it is needed for handling
     // error propagations. In reality, every task has its own service pointer.
@@ -224,7 +224,7 @@ class CoordinationServiceRecoverableJobTest : public ::testing::Test {
 
  protected:
   CoordinationServiceConfig coordination_config_;
-  std::unique_ptr<CoordinationServiceInterface> coord_service_;
+  std::unique_ptr<CoordinationService> coord_service_;
   TestCoordinationServiceTaskState state_ps_0_;
   TestCoordinationServiceTaskState state_ps_1_;
   TestCoordinationServiceTaskState state_worker_0_;

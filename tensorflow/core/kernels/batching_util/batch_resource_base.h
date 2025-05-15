@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/request_cost.h"
@@ -82,7 +84,7 @@ class BatchResourceBase : public ResourceBase {
   // Note input from one batch-op invocation is valid and considered a
   // specialized `slice`.
   struct BatchTask : public tensorflow::serving::BatchTask {
-    BatchTask() : criticality_val(tsl::criticality::GetCriticality()){};
+    BatchTask() : criticality_val(tsl::criticality::GetCriticality()) {};
 
     // A unique ID to identify this invocation of Batch.
     int64_t guid;
@@ -274,6 +276,14 @@ class BatchResourceBase : public ResourceBase {
           batch_cost_measurements,
       int64_t processed_size, BatchT& batch);
 
+  // Records information about the delay between a task being registered and
+  // that task being scheduled into a batch.
+  static void RecordBatchDelayMetrics(
+      const BatchResourceBase::BatchT& batch, const std::string& model_name,
+      const std::string& op_name, int64_t processed_size,
+      absl::Time batch_schedule_time,
+      std::optional<absl::Duration> batch_timeout);
+
  private:
   // Implementation of calling the process batch function.
   virtual void ProcessFuncBatchImpl(
@@ -345,6 +355,10 @@ class BatchResourceBase : public ResourceBase {
                                     const string& model_name,
                                     const string& op_name,
                                     BatcherQueueT** queue);
+
+  // Returns the batch timeout for the configured scheduler, or nullopt if the
+  // scheduler does not have such a parameter.
+  std::optional<absl::Duration> GetBatchTimeout() const;
 
   SessionMetadata session_metadata_;
 

@@ -89,12 +89,12 @@ namespace ifrt {
 namespace proxy {
 namespace {
 
-using IfrtArrayRef = tsl::RCReference<xla::ifrt::Array>;
+using IfrtArrayRef = xla::ifrt::ArrayRef;
 
 absl::StatusOr<IfrtArrayRef> MakeStringArrayFromHostBuffer(
     Client* client, std::shared_ptr<const std::string> host_buffer, DType dtype,
     Shape shape, std::optional<absl::Span<const int64_t>> byte_strides,
-    std::shared_ptr<const Sharding> sharding) {
+    ShardingRef sharding) {
   TF_ASSIGN_OR_RETURN(std::vector<absl::Cord> string_host_buffer,
                       DeserializeStringHostBufferFromString(*host_buffer));
   const void* data = string_host_buffer.data();
@@ -299,8 +299,7 @@ std::vector<uint64_t> IfrtBackend::ArrayStore::Reservation::Fill(
 }
 
 struct IfrtBackend::LoadedExecutableWithInfo {
-  explicit LoadedExecutableWithInfo(
-      std::unique_ptr<xla::ifrt::LoadedExecutable> executable_p)
+  explicit LoadedExecutableWithInfo(xla::ifrt::LoadedExecutableRef executable_p)
       : executable(std::move(executable_p)) {}
 
   absl::Mutex mu;
@@ -309,7 +308,7 @@ struct IfrtBackend::LoadedExecutableWithInfo {
   // do not result in a different specification.
   std::optional<std::vector<xla::ifrt::ArraySpec>> output_spec
       ABSL_GUARDED_BY(mu);
-  const std::unique_ptr<xla::ifrt::LoadedExecutable> executable;
+  const xla::ifrt::LoadedExecutableRef executable;
 
   absl::flat_hash_set<int> donatable_indices ABSL_GUARDED_BY(mu);
 };
@@ -526,8 +525,14 @@ Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
       asr.emplace(request->make_arrays_from_host_buffer_shards_request()
                       .array_handles(),
                   &array_store_);
-      return Future<Response>(HandleMakeArraysFromHostBufferShardsRequest(
-          *asr, std::move(request)));
+      return Future<Response>(
+          asr->ProcessResponse(HandleMakeArraysFromHostBufferShardsRequest(
+              *asr, std::move(request))));
+    case IfrtRequest::RequestCase::kMakeErrorArraysRequest:
+      asr.emplace(request->make_error_arrays_request().array_handles(),
+                  &array_store_);
+      return Future<Response>(asr->ProcessResponse(
+          HandleMakeErrorArraysRequest(*asr, std::move(request))));
     case IfrtRequest::RequestCase::kAssembleArrayFromSingleDeviceArraysRequest:
       asr.emplace(request->assemble_array_from_single_device_arrays_request()
                       .result_handle(),
@@ -611,6 +616,9 @@ Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
     case IfrtRequest::RequestCase::kGetDefaultDeviceAssignmentRequest:
       return Future<Response>(
           HandleGetDefaultDeviceAssignmentRequest(std::move(request)));
+    case IfrtRequest::RequestCase::kGetDefaultLayoutRequest:
+      return Future<Response>(
+          HandleGetDefaultLayoutRequest(std::move(request)));
     default:
       LOG(ERROR) << "Got unimplemented request type: "
                  << request->DebugString();
@@ -778,7 +786,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCheckFutureRequest(
 
 Future<BackendInterface::Response> IfrtBackend::HandleCheckValueReadyRequest(
     std::unique_ptr<IfrtRequest> request) {
-  std::vector<tsl::RCReference<xla::ifrt::Value>> values;
+  std::vector<xla::ifrt::ValueRef> values;
   values.reserve(request->check_value_ready_request().value_handles_size());
   for (const auto& value_handle :
        request->check_value_ready_request().value_handles()) {
@@ -911,7 +919,7 @@ IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
 
   std::move(cleanup).Invoke();
 
-  TF_ASSIGN_OR_RETURN(std::vector<tsl::RCReference<xla::ifrt::Array>> arrays,
+  TF_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArrayRef> arrays,
                       client_->MakeArraysFromHostBufferShards(
                           absl::MakeSpan(specs),
                           xla::ifrt::Client::HostBufferSemantics::
@@ -941,6 +949,36 @@ IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
   make_arrays_resp->mutable_array_handles()->Reserve(arrays.size());
   for (uint64_t handle : asr.Fill(arrays)) {
     make_arrays_resp->add_array_handles(handle);
+  }
+
+  return response;
+}
+
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleMakeErrorArraysRequest(
+    ArrayStore::Reservation& asr, std::unique_ptr<IfrtRequest> request) {
+  CHECK(request->has_make_error_arrays_request());
+  auto* make_array_request = request->mutable_make_error_arrays_request();
+
+  const absl::Status error = tsl::StatusFromProto(make_array_request->error());
+
+  std::vector<xla::ifrt::ArraySpec> array_specs;
+  array_specs.reserve(make_array_request->array_specs_size());
+  for (const auto& array_spec_proto : make_array_request->array_specs()) {
+    TF_ASSIGN_OR_RETURN(auto array_spec,
+                        ArraySpec::FromProto(client_.get(), array_spec_proto));
+    array_specs.push_back(std::move(array_spec));
+  }
+
+  TF_ASSIGN_OR_RETURN(std::vector<IfrtArrayRef> arrays,
+                      client_->MakeErrorArrays(error, array_specs,
+                                               client_->CreateUserContext()));
+
+  std::unique_ptr<IfrtResponse> response =
+      NewIfrtResponse(request->request_metadata().op_id());
+  auto* make_array_resp = response->mutable_make_error_arrays_response();
+  for (uint64_t handle : asr.Fill(arrays)) {
+    make_array_resp->add_array_handles(handle);
   }
 
   return response;
@@ -1374,8 +1412,19 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
       }
     }
 
+    if (auto xla_options =
+            llvm::dyn_cast<xla::ifrt::XlaCompileOptions>(options.get())) {
+      // TODO(emilyaf): Devices should be plumbed through or serialized to
+      // support MPMD parallelism, which allows executables with empty device
+      // assignments. In the meantime, devices are obtained from the device
+      // assignment in compile_options.
+      TF_ASSIGN_OR_RETURN(xla_options->devices,
+                          xla::ifrt::GetDeviceListFromXlaCompileOptions(
+                              client_.get(), xla_options->compile_options));
+    }
+
     TF_ASSIGN_OR_RETURN(auto executable,
-                        client_->GetDefaultCompiler()->Compile(
+                        client_->GetDefaultCompiler()->CompileAndLoad(
                             std::move(program), std::move(options)));
 
     std::unique_ptr<IfrtResponse> ifrt_resp =
@@ -1664,14 +1713,13 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   return ifrt_resp;
 }
 
+// This handler will be deleted on 2025-06-06 since the underlying IFRT API is
+// deprecated. An error is returned until then to gracefully handle old clients.
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleLoadedExecutableDeleteRequest(
     std::unique_ptr<IfrtRequest> request) {
-  const auto& del = request->loaded_executable_delete_request();
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<LoadedExecutableWithInfo> executable_info,
-                      GetLoadedExecutable(del.loaded_executable_handle()));
-
-  Future<> future = executable_info->executable->Delete();
+  Future<> future(absl::UnimplementedError(
+      "LoadedExecutable::Delete is no longer supported"));
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
   auto* del_response = ifrt_resp->mutable_loaded_executable_delete_response();
@@ -1685,18 +1733,15 @@ IfrtBackend::HandleLoadedExecutableDeleteRequest(
   return ifrt_resp;
 }
 
+// This handler will be deleted on 2025-06-06 since the underlying IFRT API is
+// deprecated. false is returned until then to gracefully handle old clients.
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleLoadedExecutableIsDeletedRequest(
     std::unique_ptr<IfrtRequest> request) {
-  const auto& is_deleted = request->loaded_executable_is_deleted_request();
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<LoadedExecutableWithInfo> executable_info,
-      GetLoadedExecutable(is_deleted.loaded_executable_handle()));
-
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
   auto* is_deleted_response =
       ifrt_resp->mutable_loaded_executable_is_deleted_response();
-  is_deleted_response->set_is_deleted(executable_info->executable->IsDeleted());
+  is_deleted_response->set_is_deleted(false);
 
   return ifrt_resp;
 }
@@ -1892,6 +1937,33 @@ IfrtBackend::HandleGetDefaultDeviceAssignmentRequest(
   return ifrt_resp;
 }
 
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleGetDefaultLayoutRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  const auto& get_default_layout_request =
+      request->get_default_layout_request();
+  TF_ASSIGN_OR_RETURN(auto dtype,
+                      DType::FromProto(get_default_layout_request.dtype()));
+  TF_ASSIGN_OR_RETURN(
+      Device* const device,
+      client_->LookupDevice(DeviceId(get_default_layout_request.device_id())));
+  MemoryKind memory_kind =
+      get_default_layout_request.memory_kind().empty()
+          ? MemoryKind()
+          : MemoryKind(get_default_layout_request.memory_kind());
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const xla::PjRtLayout> layout,
+      client_->GetDefaultLayout(dtype, get_default_layout_request.dims(),
+                                device, memory_kind));
+
+  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+
+  *ifrt_resp->mutable_get_default_layout_response()
+       ->mutable_serialized_pjrt_layout() = layout->Serialize();
+
+  return ifrt_resp;
+}
+
 absl::StatusOr<std::shared_ptr<IfrtBackend::LoadedExecutableWithInfo>>
 IfrtBackend::GetLoadedExecutable(uint64_t handle) {
   absl::MutexLock lock(&executables_mutex_);
@@ -1933,7 +2005,7 @@ absl::StatusOr<std::vector<IfrtArrayRef>> IfrtBackend::ArrayStore::Find(
 std::vector<uint64_t> IfrtBackend::ArrayStore::EraseAndReturnMissing(
     absl::Span<const uint64_t> handles) {
   std::vector<uint64_t> missing_handles;
-  std::vector<tsl::RCReference<xla::ifrt::Array>> to_destruct;
+  std::vector<xla::ifrt::ArrayRef> to_destruct;
   {
     absl::MutexLock l(&mu_);
     for (const uint64_t h : handles) {
@@ -1961,7 +2033,7 @@ void IfrtBackend::ArrayStore::Insert(absl::Span<const uint64_t> handles,
 
 void IfrtBackend::ArrayStore::Insert(
     absl::Span<const uint64_t> handles,
-    absl::Span<const tsl::RCReference<xla::ifrt::Array>> arrays) {
+    absl::Span<const xla::ifrt::ArrayRef> arrays) {
   CHECK_EQ(handles.size(), arrays.size());
   absl::MutexLock l(&mu_);
   for (int i = 0; i < handles.size(); ++i) {

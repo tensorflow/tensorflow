@@ -2825,6 +2825,43 @@ TEST(KernelTest, Case) {
   }
 }
 
+TEST(KernelTest, CaseInvalidBranchIndexShallChooseLastBranch) {
+  auto buffer = CreateCaseExecutable();
+
+  bc::Executable executable(buffer.data());
+
+  KernelRegistry registry;
+  RegisterBuiltinKernels(registry);
+  LoadedExecutable loaded_executable(executable, registry);
+
+  ExecutionContext execution_context(&loaded_executable);
+
+  auto function = loaded_executable.GetFunction("main");
+  ASSERT_TRUE(function);
+
+  Value inputs[3];
+
+  constexpr int32_t kBranch0In = 123;
+  constexpr int32_t kBranch1In = 456;
+
+  // Test Invalid Branch 10
+  {
+    inputs[0].Set<uint32_t>(10);
+    inputs[1].Set(kBranch0In);
+    inputs[2].Set(kBranch1In);
+    Value output;
+
+    std::vector<uint8_t> last_uses = {true, true, true};
+    execution_context.Call(function, last_uses, absl::MakeSpan(inputs),
+                           absl::Span<Value>(&output, 1));
+
+    Execute(execution_context);
+
+    ASSERT_TRUE(output.HasValue());
+    EXPECT_EQ(kBranch1In, output.Get<int32_t>());
+  }
+}
+
 struct TestPromiseReturnOp : PromiseReturnOpBase<TestPromiseReturnOp> {
   using PromiseReturnOpBase::PromiseReturnOpBase;
 

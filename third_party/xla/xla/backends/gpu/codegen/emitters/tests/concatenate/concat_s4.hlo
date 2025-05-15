@@ -1,0 +1,13 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  param0 = s4[200] parameter(0)
+  param1 = s4[400] parameter(1)
+  param2 = s4[300] parameter(2)
+  ROOT concat = s4[900] concatenate(param0, param1, param2), dimensions={0}
+}
+// CHECK: xla.pure_call @fusion_param0
+// CHECK: xla.pure_call @fusion_param1
+// CHECK: xla.pure_call @fusion_param2

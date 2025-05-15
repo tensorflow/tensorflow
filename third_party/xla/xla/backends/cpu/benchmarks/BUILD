@@ -1,4 +1,5 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -35,8 +36,6 @@ xla_cc_test(
         "//xla/service:compiler",
         "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/service/cpu:test_header_helper",
-        "//xla/tsl/platform:status_matchers",
-        "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -53,19 +52,15 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
-        "//xla/pjrt/cpu:abstract_tfrt_cpu_buffer",
         "//xla/pjrt/cpu:cpu_client",
-        "//xla/pjrt/cpu:cpu_device",
-        "//xla/pjrt/cpu:cpu_event",
-        "//xla/pjrt/cpu:tracked_cpu_device_buffer",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/service:compiler",
         "//xla/service:hlo_module_config",
         "//xla/tests:test_utils",
-        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -86,6 +81,7 @@ xla_cc_test(
     srcs = ["aliasing_benchmark_test.cc"],
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
@@ -102,6 +98,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -121,16 +118,20 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:stacktrace_handler",
     ],
 )
 
@@ -140,6 +141,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -159,6 +161,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -178,6 +181,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -197,6 +201,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -216,6 +221,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -248,6 +254,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -267,6 +274,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -286,6 +294,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -303,6 +312,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -325,6 +335,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:array2d",
         "//xla:literal",
         "//xla:literal_util",
@@ -345,6 +356,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -364,6 +376,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -383,6 +396,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -400,6 +414,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -414,11 +429,35 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "onednn_matmul_benchmark_test",
+    srcs = ["onednn_matmul_benchmark_test.cc"],
+    copts = tsl_copts(),
+    fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
+    deps = [
+        ":hlo_benchmark_runner",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/service/cpu:onednn_util",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_cc_test(
     name = "tanh_benchmark_test",
     srcs = ["tanh_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -438,6 +477,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:array2d",
         "//xla:literal",
         "//xla:literal_util",
@@ -451,7 +491,6 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -461,6 +500,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -480,6 +520,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -499,6 +540,7 @@ xla_cc_test(
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     deps = [
         ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",

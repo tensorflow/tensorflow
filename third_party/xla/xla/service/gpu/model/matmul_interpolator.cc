@@ -75,13 +75,13 @@ InterpolationSpecification ExtractDotSpec(const DotDimensionNumbers& dot_dims,
     k *= ShapeUtil::GetDimension(lhs, dim);
   }
   m *= ShapeUtil::ByteSizeOfPrimitiveType(lhs.element_type());
-  for (int dim : GetNonContractingDims(lhs.dimensions_size(),
+  for (int dim : GetNonContractingDims(lhs.dimensions().size(),
                                        dot_dims.lhs_contracting_dimensions(),
                                        dot_dims.lhs_batch_dimensions())) {
     m *= ShapeUtil::GetDimension(lhs, dim);
   }
   n *= ShapeUtil::ByteSizeOfPrimitiveType(rhs.element_type());
-  for (int dim : GetNonContractingDims(rhs.dimensions_size(),
+  for (int dim : GetNonContractingDims(rhs.dimensions().size(),
                                        dot_dims.rhs_contracting_dimensions(),
                                        dot_dims.rhs_batch_dimensions())) {
     n *= ShapeUtil::GetDimension(rhs, dim);
@@ -106,8 +106,10 @@ absl::StatusOr<InterpolationSpecification> Spec(
         "Expected dot, got: ", profile.instruction().DebugString()));
   }
 
-  Shape lhs_shape = Shape(profile.operands(0).shape());
-  Shape rhs_shape = Shape(profile.operands(1).shape());
+  TF_ASSIGN_OR_RETURN(Shape lhs_shape,
+                      Shape::FromProto(profile.operands(0).shape()));
+  TF_ASSIGN_OR_RETURN(Shape rhs_shape,
+                      Shape::FromProto(profile.operands(1).shape()));
   DotDimensionNumbers dot_dims = profile.instruction().dot_dimension_numbers();
   return ExtractDotSpec(dot_dims, lhs_shape, rhs_shape);
 }
@@ -168,7 +170,7 @@ MatmulInterpolator::Create(const HloInstructionProfileList& profiles,
 }
 
 std::optional<absl::Duration> MatmulInterpolator::EstimatedRuntime(
-    const HloInstruction& instr) {
+    const HloInstruction& instr) const {
   InterpolationSpecification spec;
   if (instr.opcode() == HloOpcode::kDot) {
     auto* dot = Cast<HloDotInstruction>(&instr);

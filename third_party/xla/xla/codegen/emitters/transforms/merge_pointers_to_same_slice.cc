@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cassert>
 #include <memory>
 #include <optional>
 #include <string>
@@ -78,7 +79,10 @@ struct PackedArgs {
         arg.replaceAllUsesWith(op.getArgument(replacement_args[idx]));
       }
     }
-    op.eraseArguments(args_to_erase);
+
+    auto res = op.eraseArguments(args_to_erase);
+    (void)res;
+    assert(llvm::succeeded(res));
     for (int i = 0; i < op.getNumArguments(); ++i) {
       if (op.getArgAttr(i, "xla.slice_index")) {
         op.removeArgAttr(i, "xla.slice_index");

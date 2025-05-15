@@ -15,23 +15,23 @@ limitations under the License.
 
 // Tests that slice operations can be performed.
 
-#include <memory>
 
 #include "xla/array2d.h"
 #include "xla/array3d.h"
-#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class SliceTest : public ClientLibraryTestBase {};
+class SliceTest : public ClientLibraryTestRunnerMixin<
+                      HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
 
-XLA_TEST_F(SliceTest, Slice2D) {
+TEST_F(SliceTest, Slice2D) {
   XlaBuilder builder("slice_2d");
   auto original = ConstantR2<float>(
       &builder,
@@ -42,7 +42,7 @@ XLA_TEST_F(SliceTest, Slice2D) {
   ComputeAndCompareR2<float>(&builder, expected, {}, ErrorSpec(0.000001));
 }
 
-XLA_TEST_F(SliceTest, Slice3D) {
+TEST_F(SliceTest, Slice3D) {
   XlaBuilder builder("slice_3d");
   Array3D<float> array_3d(
       {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}});

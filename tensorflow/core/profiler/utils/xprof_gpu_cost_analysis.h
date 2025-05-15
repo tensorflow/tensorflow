@@ -16,42 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPROF_GPU_COST_ANALYSIS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPROF_GPU_COST_ANALYSIS_H_
 
-#include <cstdint>
-#include <memory>
-
-#include "absl/status/status.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/hlo_cost_analysis.h"
-
-namespace tensorflow {
-namespace profiler {
-
-// XProfGpuCostAnalysis provides additional cost analysis for XProf, which
-// normalizes the flops to the device flops based on input bit widths.
-class XProfGpuCostAnalysis : public xla::gpu::GpuHloCostAnalysis {
- public:
-  explicit XProfGpuCostAnalysis(const xla::HloCostAnalysis::Options& options)
-      : xla::gpu::GpuHloCostAnalysis(options) {}
-
-  absl::Status HandleCustomCall(const xla::HloInstruction* hlo) override;
-
-  absl::Status Postprocess(const xla::HloInstruction* hlo) override;
-
-  int64_t GetDeviceFlopsAdjustment(const xla::HloInstruction& hlo);
-
- protected:
-  std::unique_ptr<xla::HloCostAnalysis> CreateNestedCostAnalysis() override;
-
-  absl::Status DefaultPostprocess(const xla::HloInstruction* hlo);
-
- private:
-  static inline constexpr absl::string_view kDeviceFlopsAdjustment =
-      "device_flops_adjustment";
-};
-
-}  // namespace profiler
-}  // namespace tensorflow
+#include "xprof/utils/xprof_gpu_cost_analysis.h"  // from @org_xprof  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_PROFILER_UTILS_XPROF_GPU_COST_ANALYSIS_H_

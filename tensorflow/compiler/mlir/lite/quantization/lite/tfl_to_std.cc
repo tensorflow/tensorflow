@@ -20,9 +20,9 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -65,8 +65,8 @@ void ConvertMlirQuantOpsToTFLQuantOps(func::FuncOp func) {
       auto dcast = b.create<DequantizeOp>(dq.getLoc(), dq.getResult().getType(),
                                           dq.getArg());
       dq.getResult().replaceAllUsesWith(dcast);
-      if (auto extra_attr = op->getAttr(mlir::quant::kVolatileOpAttrName)) {
-        dcast->setAttr(mlir::quant::kVolatileOpAttrName, extra_attr);
+      if (auto extra_attr = op->getAttr(kVolatileOpAttrName)) {
+        dcast->setAttr(kVolatileOpAttrName, extra_attr);
       }
       dq.erase();
     } else if (auto q = llvm::dyn_cast<quantfork::QuantizeCastOp>(op)) {
@@ -74,8 +74,8 @@ void ConvertMlirQuantOpsToTFLQuantOps(func::FuncOp func) {
       auto qcast = b.create<QuantizeOp>(q.getLoc(), out_type, q.getArg(),
                                         TypeAttr::get(out_type));
       q.getResult().replaceAllUsesWith(qcast);
-      if (auto extra_attr = op->getAttr(mlir::quant::kVolatileOpAttrName)) {
-        qcast->setAttr(mlir::quant::kVolatileOpAttrName, extra_attr);
+      if (auto extra_attr = op->getAttr(kVolatileOpAttrName)) {
+        qcast->setAttr(kVolatileOpAttrName, extra_attr);
       }
       q.erase();
     }

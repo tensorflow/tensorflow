@@ -98,7 +98,7 @@ auto ToArithmeticSafeType(T t) {
     return static_cast<detail::unsigned_promoted_type_t<T>>(t);
   }
   if constexpr (!std::is_integral_v<T>) {
-    return std::move(t);
+    return t;
   }
 }
 
@@ -136,6 +136,18 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return InvalidArgument(
         "Unsupported type for %s: %s", HloOpcodeString(instruction->opcode()),
         PrimitiveType_Name(instruction->shape().element_type()));
+  }
+
+  // Returns `shape`, if it has a layout, or a copy of `shape` with the default
+  // layout if it doesn't. Some functions require shapes to have layouts, so we
+  // simply always set one.
+  Shape GetShapeWithLayout(const Shape& shape) {
+    CHECK(shape.IsArray());
+    Shape shape_copy = shape;
+    if (!shape.has_layout()) {
+      LayoutUtil::SetToDefaultLayout(&shape_copy);
+    }
+    return shape_copy;
   }
 
  public:
@@ -813,14 +825,9 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                              const Literal& lhs_literal,
                                              const Literal& rhs_literal) {
     const auto& window = conv->window();
-    const Shape& result_shape = conv->shape();
+    Shape result_shape = GetShapeWithLayout(conv->shape());
     const Shape& lhs_shape = lhs_literal.shape();
     const Shape& rhs_shape = rhs_literal.shape();
-    const auto packed_nibble_count =
-        absl::c_count(conv->precision_config().operand_precision(),
-                      PrecisionConfig::PACKED_NIBBLE);
-    CHECK_NE(packed_nibble_count, 1);
-    const bool is_packed_nibble = packed_nibble_count == 2;
 
     TF_CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
     TF_CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
@@ -858,9 +865,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     auto func = [&window_shape, &dnums, &lhs_shape, &rhs_shape, &window,
                  &lhs_dim_multipliers, &rhs_dim_multipliers, lhs_literal_data,
                  rhs_literal_data, feature_group_count, batch_group_count,
-                 is_packed_nibble, result_shape,
-                 this](const absl::Span<const int64_t> out_index,
-                       int /*thread_id*/) {
+                 result_shape, this](const absl::Span<const int64_t> out_index,
+                                     int /*thread_id*/) {
       // Dimension number applicable for input (lhs).
       const int64_t input_batch_dim = dnums.input_batch_dimension();
       const int64_t input_z_dim = dnums.input_feature_dimension();
@@ -982,23 +988,15 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
               static_cast<ElementwiseT>(lhs_literal_data[lhs_linear_index]);
           auto rhs =
               static_cast<ElementwiseT>(rhs_literal_data[rhs_linear_index]);
-          if (is_packed_nibble) {
-            auto lhs_n0 = ToArithmeticSafeType(Nibble0(lhs));
-            auto lhs_n1 = ToArithmeticSafeType(Nibble1(lhs));
-            auto rhs_n0 = ToArithmeticSafeType(Nibble0(rhs));
-            auto rhs_n1 = ToArithmeticSafeType(Nibble1(rhs));
-            result_val += (lhs_n0 * rhs_n0) + (lhs_n1 * rhs_n1);
-          } else {
-            result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+          result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
 
-            if (parent_->trace_mac_handler_ != nullptr) {
-              const int64_t result_linear_index =
-                  IndexUtil::MultidimensionalIndexToLinearIndex(result_shape,
-                                                                out_index);
+          if (parent_->trace_mac_handler_ != nullptr) {
+            const int64_t result_linear_index =
+                IndexUtil::MultidimensionalIndexToLinearIndex(result_shape,
+                                                              out_index);
 
-              parent_->trace_mac_handler_(result_linear_index, lhs_linear_index,
-                                          rhs_linear_index);
-            }
+            parent_->trace_mac_handler_(result_linear_index, lhs_linear_index,
+                                        rhs_linear_index);
           }
         }
       cnt: {}
@@ -1024,9 +1022,9 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     auto lhs = conv->operand(0);
     auto rhs = conv->operand(1);
     const auto& window = conv->window();
-    const Shape& result_shape = conv->shape();
-    const Shape& lhs_shape = lhs->shape();
-    const Shape& rhs_shape = rhs->shape();
+    Shape result_shape = GetShapeWithLayout(conv->shape());
+    Shape lhs_shape = GetShapeWithLayout(lhs->shape());
+    Shape rhs_shape = GetShapeWithLayout(rhs->shape());
 
     TF_CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
     TF_CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
@@ -1040,8 +1038,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     CHECK_GE(num_spatial_dims, 0);
     CHECK_EQ(window.dimensions_size(), num_spatial_dims);
 
-    const auto lhs_rank = lhs_shape.dimensions_size();
-    const auto rhs_rank = rhs_shape.dimensions_size();
+    const auto lhs_rank = lhs_shape.dimensions().size();
+    const auto rhs_rank = rhs_shape.dimensions().size();
 
     CHECK_EQ(num_spatial_dims + 2, lhs_rank);
     CHECK_EQ(num_spatial_dims + 2, rhs_rank);
@@ -1100,8 +1098,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
     const auto& dnums = dot->dot_dimension_numbers();
 
-    const int64_t lhs_rank = lhs->shape().dimensions_size();
-    const int64_t rhs_rank = rhs->shape().dimensions_size();
+    const int64_t lhs_rank = lhs->shape().dimensions().size();
+    const int64_t rhs_rank = rhs->shape().dimensions().size();
 
     CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
     CHECK(ShapeUtil::SameElementType(lhs->shape(), dot->shape()));
@@ -1119,15 +1117,16 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         << " rhs contracted dimension: "
         << rhs->shape().dimensions(rhs_contracting_dimension);
 
+    auto is_default_layout = [](const HloInstruction* op) {
+      return !op->shape().has_layout() ||
+             LayoutUtil::Equal(op->shape().layout(),
+                               LayoutUtil::GetDefaultLayoutForR2());
+    };
+
     // The fast path is for a simple rank 2 dot with default layout operands.
     if (lhs_rank != 2 || rhs_rank != 2 || lhs_contracting_dimension != 1 ||
-        rhs_contracting_dimension != 0 ||
-        !LayoutUtil::Equal(lhs->shape().layout(),
-                           LayoutUtil::GetDefaultLayoutForR2()) ||
-        !LayoutUtil::Equal(rhs->shape().layout(),
-                           LayoutUtil::GetDefaultLayoutForR2()) ||
-        !LayoutUtil::Equal(dot->shape().layout(),
-                           LayoutUtil::GetDefaultLayoutForR2())) {
+        rhs_contracting_dimension != 0 || !is_default_layout(lhs) ||
+        !is_default_layout(rhs) || !is_default_layout(dot)) {
       return HandleDotSlowPath(dot);
     }
 
@@ -1165,17 +1164,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                              const Literal& rhs_literal) {
     const auto& dnums = dot->dot_dimension_numbers();
 
-    const auto lhs_rank = lhs_literal.shape().dimensions_size();
-    const auto rhs_rank = rhs_literal.shape().dimensions_size();
+    const auto lhs_rank = lhs_literal.shape().dimensions().size();
+    const auto rhs_rank = rhs_literal.shape().dimensions().size();
 
     CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), rhs_literal.shape()));
     CHECK(ShapeUtil::SameElementType(lhs_literal.shape(), dot->shape()));
 
-    const auto packed_nibble_count =
-        absl::c_count(dot->precision_config().operand_precision(),
-                      PrecisionConfig::PACKED_NIBBLE);
-    CHECK_NE(packed_nibble_count, 1);
-    const bool is_packed_nibble = packed_nibble_count == 2;
     CHECK_EQ(dnums.lhs_batch_dimensions_size(),
              dnums.rhs_batch_dimensions_size());
 
@@ -1199,7 +1193,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       contracting_dim_sizes.push_back(dim_size);
     }
     const int64_t total_contraction_size = Product(contracting_dim_sizes);
-    Literal result(dot->shape());
+    Shape dot_shape = GetShapeWithLayout(dot->shape());
+    Literal result(dot_shape);
     TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
         [&](absl::Span<const int64_t> result_index, int /*thread_id*/) {
           // Locations in LHS and RHS that we read from.
@@ -1229,30 +1224,21 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                 static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index));
             const auto rhs =
                 static_cast<ElementwiseT>(rhs_literal.Get<ReturnT>(rhs_index));
-            if (is_packed_nibble) {
-              auto lhs_n0 = ToArithmeticSafeType(Nibble0(lhs));
-              auto lhs_n1 = ToArithmeticSafeType(Nibble1(lhs));
-              auto rhs_n0 = ToArithmeticSafeType(Nibble0(rhs));
-              auto rhs_n1 = ToArithmeticSafeType(Nibble1(rhs));
-              result_val += (lhs_n0 * rhs_n0) + (lhs_n1 * rhs_n1);
-            } else {
-              result_val +=
-                  ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
+            result_val += ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs);
 
-              if (parent_->trace_mac_handler_ != nullptr) {
-                const int64_t result_linear_index =
-                    IndexUtil::MultidimensionalIndexToLinearIndex(dot->shape(),
-                                                                  result_index);
-                const int64_t lhs_linear_index =
-                    IndexUtil::MultidimensionalIndexToLinearIndex(
-                        lhs_literal.shape(), lhs_index);
-                const int64_t rhs_linear_index =
-                    IndexUtil::MultidimensionalIndexToLinearIndex(
-                        rhs_literal.shape(), rhs_index);
+            if (parent_->trace_mac_handler_ != nullptr) {
+              const int64_t result_linear_index =
+                  IndexUtil::MultidimensionalIndexToLinearIndex(dot_shape,
+                                                                result_index);
+              const int64_t lhs_linear_index =
+                  IndexUtil::MultidimensionalIndexToLinearIndex(
+                      lhs_literal.shape(), lhs_index);
+              const int64_t rhs_linear_index =
+                  IndexUtil::MultidimensionalIndexToLinearIndex(
+                      rhs_literal.shape(), rhs_index);
 
-                parent_->trace_mac_handler_(result_linear_index,
-                                            lhs_linear_index, rhs_linear_index);
-              }
+              parent_->trace_mac_handler_(result_linear_index, lhs_linear_index,
+                                          rhs_linear_index);
             }
 
             // If there are no contracting dimensions, do not try to count down
@@ -1312,7 +1298,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     CHECK(pad->operand(0)->shape().IsArray());
     // Padding value must be scalar.
     CHECK(ShapeUtil::IsScalar(pad->operand(1)->shape()));
-    CHECK_EQ(pad->operand(0)->shape().dimensions_size(),
+    CHECK_EQ(pad->operand(0)->shape().dimensions().size(),
              pad->padding_config().dimensions_size());
 
     TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
@@ -1342,14 +1328,14 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     }
 
     // Create new HLO of padded shape with padding value.
-    Literal result(pad->shape());
+    Literal result(GetShapeWithLayout(pad->shape()));
     TF_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
         [&scalar](int64_t linear_index, int) { return scalar; }));
 
     const Literal& evaluated_operand =
         parent_->GetEvaluatedLiteralFor(pad->operand(0));
 
-    std::vector<int64_t> target_index(result.shape().dimensions_size(), 0);
+    std::vector<int64_t> target_index(result.shape().dimensions().size(), 0);
 
     // Loop through each element of the operand, assign them to the
     // corresponding index of the resulting padded literal.
@@ -1376,9 +1362,9 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       return true;
     };
 
-    std::vector<int64_t> zero_base(evaluated_operand.shape().dimensions_size(),
-                                   0);
-    std::vector<int64_t> step(evaluated_operand.shape().dimensions_size(), 1);
+    std::vector<int64_t> zero_base(
+        evaluated_operand.shape().dimensions().size(), 0);
+    std::vector<int64_t> step(evaluated_operand.shape().dimensions().size(), 1);
 
     ShapeUtil::ForEachIndexNoStatus(evaluated_operand.shape(), zero_base,
                                     evaluated_operand.shape().dimensions(),
@@ -1578,9 +1564,10 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     if constexpr (std::is_integral_v<ElementwiseT> ||
                   is_complex_v<ElementwiseT> ||
                   std::is_floating_point_v<ElementwiseT>) {
-      Literal result(iota->shape());
+      auto iota_shape = GetShapeWithLayout(iota->shape());
+      Literal result(iota_shape);
       ShapeUtil::ForEachIndexNoStatus(
-          iota->shape(), [&](absl::Span<const int64_t> idx) {
+          iota_shape, [&](absl::Span<const int64_t> idx) {
             result.Set(idx, static_cast<ReturnT>(idx[iota->iota_dimension()]));
             return true;
           });
@@ -1592,7 +1579,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
   absl::Status HandleRng(const HloInstruction* random) override {
     RandomDistribution distribution = random->random_distribution();
-    const Shape& result_shape = random->shape();
+    Shape result_shape = GetShapeWithLayout(random->shape());
     Literal result(result_shape);
 
     if constexpr (std::is_floating_point_v<ElementwiseT>) {
@@ -1712,7 +1699,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                         ElementwiseT>,
                   "Invalid BinaryOp signature");
 
-    const auto& shape = instruction->shape();
+    Shape shape = GetShapeWithLayout(instruction->shape());
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
     TF_RET_CHECK(ShapeUtil::SameDimensions(shape, rhs->shape()));
@@ -1755,7 +1742,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         std::is_invocable_r_v<ReturnT, TernaryOp, LhsType, RhsType, EhsType>,
         "Invalid TernaryOp signature");
 
-    const auto& shape = instruction->shape();
+    Shape shape = GetShapeWithLayout(instruction->shape());
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
     const auto* ehs = instruction->operand(2);

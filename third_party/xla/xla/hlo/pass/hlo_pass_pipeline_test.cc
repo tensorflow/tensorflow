@@ -58,7 +58,7 @@ class HloPassPipelineTest : public HloHardwareIndependentTestBase {
                           ParseAndReturnVerifiedModule(hlo_string));
       group.push_back(std::move(module));
     }
-    return std::move(group);
+    return group;
   }
 };
 

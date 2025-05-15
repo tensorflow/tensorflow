@@ -53,7 +53,7 @@ namespace xla {
 namespace spmd {
 
 // Enum representing the partitioning methods for gather and scatter.
-enum class PartitioningMethod {
+enum class GatherScatterPartitioningMethod {
   kExplicitBatch,
   kIndexParallel,
   kOperandPassthrough,
@@ -111,12 +111,16 @@ struct SpmdPartitionerOptions {
   bool disable_ag_rewrite_for_multiple_consumers = false;
 
   // Partitioning method to prioritize for gather operations.
-  PartitioningMethod gather_partition_method =
-      PartitioningMethod::kExplicitBatch;
+  std::vector<GatherScatterPartitioningMethod>
+      preferred_gather_partition_methods = {
+          GatherScatterPartitioningMethod::kExplicitBatch,
+          GatherScatterPartitioningMethod::kIndexParallel};
 
   // Partitioning method to prioritize for scatter operations.
-  PartitioningMethod scatter_partition_method =
-      PartitioningMethod::kExplicitBatch;
+  std::vector<GatherScatterPartitioningMethod>
+      preferred_scatter_partition_methods = {
+          GatherScatterPartitioningMethod::kExplicitBatch,
+          GatherScatterPartitioningMethod::kIndexParallel};
 
   // The minimum size to enable windowed einsum in total bytes.
   // This combines sizes in bytes of both operands.
@@ -220,6 +224,15 @@ struct SPMDCollectiveOpsCreator {
       const std::vector<std::vector<int64_t>>& partition_subgroups,
       int64_t channel_id, std::optional<int64_t> split_dimension)>
       create_cross_partition_all_to_all;
+
+  // Function used to create a cross-partition all-to-all HLO using device list
+  // in iota format. This function is optional: if it is a nullptr, use
+  // create_cross_partition_all_to_all.
+  std::function<HloInstruction*(
+      SpmdBuilder*, absl::Span<HloInstruction* const> operands,
+      const IotaReplicaGroupList& partition_group_list, int64_t channel_id,
+      std::optional<int64_t> split_dimension)>
+      create_cross_partition_all_to_all_with_iota_device_list;
 
   // Function used to create a cross-partition all-gather HLO. This is optional:
   // if it is nullptr, the partitioner will use all-reduce instead.
@@ -352,6 +365,9 @@ class SpmdPartitioner : public HloModulePass {
   // sharding information of the module's parameters and outptuts.
   static void RecordInputsOutputsSharding(HloModule* module);
 
+  int64_t num_partitions() const { return num_partitions_; }
+  int64_t num_replicas() const { return num_replicas_; }
+
  protected:
   // This is the internal implementation for AllGatherShards(), returns a pair
   // of hlo instructions whose first element is the result of the all-gather
@@ -395,13 +411,6 @@ class SpmdPartitioner : public HloModulePass {
   absl::Status PreprocessHlos(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
-
-  // A plug for subclasses to alter the IR based on the computation that has the
-  // rotate-right pattern. This is called during `PreprocessHlos`.
-  virtual absl::Status HandleRotateRightWhilePreprocessing(
-      HloComputation* computation) {
-    return absl::OkStatus();
-  };
 
   void set_execution_threads(
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -493,8 +502,15 @@ class PartitionedHlo {
       absl::Span<const int64_t> left_padded_dims = {},
       absl::Span<const int64_t> skipped_dims = {}) const;
 
+  // Same as PadWithValue with zero as the pad value.
   PartitionedHlo PadWithZero(absl::Span<const int64_t> left_padded_dims = {},
                              absl::Span<const int64_t> skipped_dims = {}) const;
+
+  // PadWithZero consider all dimensions except the skipped dimensions.
+  // PadWithZeroOnSpecifiedDims considers only the specified dimensions.
+  PartitionedHlo PadWithZeroOnSpecifiedDims(
+      absl::Span<const int64_t> dims,
+      absl::Span<const int64_t> left_padded_dims = {}) const;
 
   // Returns the SPMD instruction.
   HloInstruction* hlo() const { return hlo_; }
@@ -620,6 +636,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandlePad(HloInstruction* hlo) override;
   absl::Status HandleParameter(HloInstruction* hlo) override;
   absl::Status HandlePartitionId(HloInstruction* hlo) override;
+  absl::Status HandleRaggedDot(HloInstruction* hlo) override;
   absl::Status HandleReduce(HloInstruction* hlo) override;
   absl::Status HandleReduceWindow(HloInstruction* hlo) override;
   absl::Status HandleReshape(HloInstruction* hlo) override;

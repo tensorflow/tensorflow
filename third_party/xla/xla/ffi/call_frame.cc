@@ -35,9 +35,9 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace xla::ffi {
 
@@ -55,12 +55,6 @@ CallFrameBuilder::AttributesMap CallFrameBuilder::AttributesBuilder::Build() {
   return std::move(attrs_);
 }
 
-static CallFrameBuilder::Attribute FromFlatAttribute(
-    CallFrameBuilder::FlatAttribute attr) {
-  return std::visit(
-      [](auto& attr) { return CallFrameBuilder::Attribute{attr}; }, attr);
-}
-
 CallFrameBuilder::AttributesBuilder::AttributesBuilder() = default;
 CallFrameBuilder::AttributesBuilder::~AttributesBuilder() = default;
 
@@ -76,7 +70,9 @@ void CallFrameBuilder::AttributesBuilder::Insert(std::string name,
 }
 
 void CallFrameBuilder::AttributesBuilder::Append(AttributesMap attrs) {
-  for (auto& [name, attr] : attrs) Insert(name, std::move(attr));
+  for (auto& [name, attr] : attrs) {
+    Insert(name, std::move(attr));
+  }
 }
 
 CallFrameBuilder::CallFrameBuilder(size_t num_args, size_t num_rets) {
@@ -583,9 +579,13 @@ absl::Status CallFrame::UpdateWithBuffers(
   return absl::OkStatus();
 }
 
+CallFrame CallFrame::Copy() const {
+  return CallFrame(CopyArgs(*arguments_), CopyRets(*results_), attributes_);
+}
+
 absl::StatusOr<CallFrame> CallFrame::CopyWithBuffers(
     absl::Span<const se::DeviceMemoryBase> args,
-    absl::Span<const se::DeviceMemoryBase> rets) {
+    absl::Span<const se::DeviceMemoryBase> rets) const {
   CallFrame clone(CopyArgs(*arguments_), CopyRets(*results_), attributes_);
   TF_RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
   return clone;

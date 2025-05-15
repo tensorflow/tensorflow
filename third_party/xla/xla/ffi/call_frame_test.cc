@@ -26,9 +26,9 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla::ffi {
 

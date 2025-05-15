@@ -24,15 +24,15 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/rng_expander.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using RngTest = HloTestBase;
+using RngTest = HloPjRtTestBase;
 
 void DisableHloPass(HloModule& module, absl::string_view pass_name) {
   auto debug_options = module.config().debug_options();
@@ -77,7 +77,7 @@ XLA_TEST_F(RngTest, ReturnsErrorWhenExpanderPassDisabled) {
               ::testing::HasSubstr("Rng should be expanded for CPU"));
 }
 
-using RngBitGeneratorTest = HloTestBase;
+using RngBitGeneratorTest = HloPjRtTestBase;
 
 XLA_TEST_F(RngBitGeneratorTest, ReturnsErrorWhenExpanderPassDisabled_Default) {
   const char* const kModuleStr = R"(

@@ -52,7 +52,7 @@ cc_library(
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
     ],
     alwayslink = 1,
 )
@@ -95,7 +95,7 @@ cc_library(
     deps = [
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -170,7 +170,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@local_xla//xla/tsl/python/lib/core:numpy",
     ],
     alwayslink = 1,
@@ -185,7 +185,7 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/python:py_func_headers_lib",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -195,7 +195,7 @@ cc_library(
     srcs = ["safe_pyobject_ptr.cc"],
     hdrs = ["safe_pyobject_ptr.h"],
     deps = [
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -227,7 +227,7 @@ cc_library(
         "//tensorflow/core:framework_internal_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@local_xla//xla/tsl/python/lib/core:numpy",
     ],
 )
@@ -272,7 +272,7 @@ cc_library(
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+        "@local_xla//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "@local_xla//xla/tsl/python/lib/core:numpy",
     ],
 )
@@ -285,7 +285,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:script_ops_op_lib",
         "//tensorflow/core/platform:logging",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -302,7 +302,7 @@ cc_library(
 #         "@com_google_absl//absl/log:check",
 #         "@com_google_absl//absl/status",
 #         "//third_party/clif/python:clif",
-#         "//third_party/python_runtime:headers",
+#         "@local_xla//third_party/python_runtime:headers",
 #         "@local_xla//xla/tsl/python/lib/core:numpy",
 #         "//tensorflow/core:framework",
 #     ],

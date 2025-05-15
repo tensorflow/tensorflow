@@ -137,4 +137,22 @@ def CopyCleanupPass : Pass<"copy-cleanup", "mlir::func::FuncOp"> {
   }];
 }
 
+def ShapeSimplificationPass
+    : Pass<"shape-simplification", "mlir::func::FuncOp"> {
+  let summary = "Simplify shape ops";
+}
+
+def MergeAssumingOpsPass : Pass<"mhlo-merge-assuming-ops", "func::FuncOp"> {
+  let summary = "Prepare moving dynamic broadcasts up over element-wise "
+    "operations and broadcast the operands rather than the result. This will "
+    "eventually allow for larger fusions.";
+}
+
+def BroadcastPropagationPass : Pass<"mhlo-broadcast-propagation", "func::FuncOp"> {
+  let summary = "Move dynamic broadcasts up over element-wise operations and "
+    "broadcast the operands rather than the result. This will eventually allow "
+    "for larger fusions.";
+}
+
+
 #endif // TF_KERNEL_GEN_PASSES

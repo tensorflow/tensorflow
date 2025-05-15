@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
@@ -105,8 +106,8 @@ static std::unique_ptr<HloModuleConfig> ParseXlaBackendExtraOptions(
 // of the proto should be ignored since they're just the default values.
 // We could instead return an unordered_map<str, str>, but we already have
 // helpers that expect a DebugOptions, so this ends up being simpler.
-static absl::Nullable<std::unique_ptr<HloModuleConfig>>
-GetXlaBackendExtraOptions(const llvm::Module& llvm_module) {
+static absl_nullable std::unique_ptr<HloModuleConfig> GetXlaBackendExtraOptions(
+    const llvm::Module& llvm_module) {
   llvm::Metadata* md = llvm_module.getModuleFlag("xla_backend_extra_options");
   if (md == nullptr) return nullptr;
   auto* md_string = llvm::dyn_cast<llvm::MDString>(md);
@@ -123,6 +124,10 @@ static llvm::PipelineTuningOptions GetPipelineTuningOptions(
     pto.SLPVectorization =
         !opts.optimize_for_size && !opts.disable_slp_vectorizer;
     pto.LoopUnrolling = !opts.disable_loop_unrolling;
+
+    // TODO(b/411125413): Re-enable SLPVectorization once the LLVM bug is fixed.
+    pto.SLPVectorization = false;
+
     return pto;
   };
 

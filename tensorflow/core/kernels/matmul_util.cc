@@ -57,6 +57,23 @@ bool BlasLtMatmulPlanParams::operator==(
 
 namespace {
 
+// Thread-safe map from matmul parameters to their corresponding plan and
+// algorithms.
+struct BlasLtMatmulPlanMap {
+  absl::Mutex mu;
+
+  template <class K, class... Args>
+  auto try_emplace(K&& k, Args&&... args) {
+    absl::MutexLock lock(&mu);
+    return map_.try_emplace(std::forward<K>(k), std::forward<Args>(args)...);
+  }
+
+ private:
+  absl::flat_hash_map<BlasLtMatmulPlanParams,
+                      std::unique_ptr<PlanAndAlgorithms>>
+      map_ ABSL_GUARDED_BY(mu);
+};
+
 int MatmulMaxAutotuneAlgorithmCount() {
   int64_t value;
   Status status =

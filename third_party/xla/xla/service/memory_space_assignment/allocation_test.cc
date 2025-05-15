@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -32,7 +32,7 @@ limitations under the License.
 namespace xla::memory_space_assignment {
 namespace {
 
-class AllocationTest : public HloTestBase {};
+class AllocationTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(AllocationTest, CopyAllocationProcessSimple) {
   absl::string_view hlo_string = R"(
@@ -55,10 +55,10 @@ ENTRY entry {
   HeapSimulator::Chunk p1_negate_chunk =
       HeapSimulator::Chunk::FromOffsetSize(0, 24);
 
-  PinnedAllocation p1_negate_pinned(
-      HloPosition{p1_negate, {}}, MemorySpace::kDefault, p1_negate_chunk,
-      /*start_time=*/0,
-      /*end_time=*/5, /*is_scoped_allocation=*/false);
+  PinnedAllocation p1_negate_pinned(HloPosition{p1_negate, {}},
+                                    MemorySpace::kDefault, p1_negate_chunk,
+                                    /*start_time=*/0,
+                                    /*end_time=*/5);
   CopyAllocation copy_allocation(p1_negate_pinned, MemorySpace::kAlternate,
                                  std::nullopt,
                                  /*copy_start_schedule_after_time=*/2,
@@ -110,10 +110,10 @@ ENTRY entry {
   HeapSimulator::Chunk p1_negate_chunk =
       HeapSimulator::Chunk::FromOffsetSize(0, 24);
 
-  PinnedAllocation p1_negate_pinned(
-      HloPosition{p1_negate, {}}, MemorySpace::kAlternate, p1_negate_chunk,
-      /*start_time=*/0,
-      /*end_time=*/5, /*is_scoped_allocation=*/false);
+  PinnedAllocation p1_negate_pinned(HloPosition{p1_negate, {}},
+                                    MemorySpace::kAlternate, p1_negate_chunk,
+                                    /*start_time=*/0,
+                                    /*end_time=*/5);
   CopyAllocation copy_allocation(p1_negate_pinned, MemorySpace::kDefault,
                                  std::nullopt,
                                  /*copy_start_schedule_after_time=*/2,
@@ -168,10 +168,10 @@ ENTRY entry {
   HeapSimulator::Chunk p1_negate_chunk =
       HeapSimulator::Chunk::FromOffsetSize(0, 24);
 
-  PinnedAllocation p1_negate_pinned(
-      HloPosition{p1_negate, {}}, MemorySpace::kAlternate, p1_negate_chunk,
-      /*start_time=*/0,
-      /*end_time=*/5, /*is_scoped_allocation=*/false);
+  PinnedAllocation p1_negate_pinned(HloPosition{p1_negate, {}},
+                                    MemorySpace::kAlternate, p1_negate_chunk,
+                                    /*start_time=*/0,
+                                    /*end_time=*/5);
   CopyAllocation copy_allocation(p1_negate_pinned, MemorySpace::kAlternate,
                                  std::nullopt,
                                  /*copy_start_schedule_after_time=*/2,

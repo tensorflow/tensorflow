@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/signature/signature_def_util.h"
 
+#include <map>
+#include <memory>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -156,11 +158,11 @@ TEST_F(SimpleSignatureDefUtilTest, ClearSignatureDefTest) {
 TEST_F(SimpleSignatureDefUtilTest, SetSignatureDefErrorsTest) {
   std::map<string, SignatureDef> test_signature_def_map;
   std::string model_output;
-  EXPECT_TRUE(tensorflow::errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       SetSignatureDefMap(model_, test_signature_def_map, &model_output)));
   SignatureDef test_signature_def;
   test_signature_def_map[kDefaultServingSignatureDefKey] = test_signature_def;
-  EXPECT_TRUE(tensorflow::errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       SetSignatureDefMap(model_, test_signature_def_map, nullptr)));
 }
 

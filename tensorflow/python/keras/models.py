@@ -451,7 +451,7 @@ def clone_model(model, input_tensors=None, clone_function=None):
           model, input_tensors=input_tensors, layer_fn=clone_function)
 
 
-# "Clone" a subclassed model by reseting all of the attributes.
+# "Clone" a subclassed model by resetting all of the attributes.
 def _in_place_subclassed_model_reset(model):
   """Substitute for model cloning that works for subclassed models.
 

@@ -64,7 +64,7 @@ class PerThread {
   class Registry {
    public:
     static Registry& Get() {
-      static Registry* singleton = new Registry();
+      static Registry* const singleton = new Registry();
       return *singleton;
     }
 

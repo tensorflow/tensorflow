@@ -593,6 +593,8 @@ absl::Status FloatNormalizationVisitor::DefaultAction(HloInstruction* hlo) {
       hlo->opcode() == HloOpcode::kWhile ||            //
       hlo->opcode() == HloOpcode::kConditional ||      //
       hlo->opcode() == HloOpcode::kBitcastConvert ||   //
+      hlo->opcode() == HloOpcode::kAsyncStart ||       //
+      hlo->opcode() == HloOpcode::kAsyncDone ||        //
       hlo->HasSideEffectNoRecurse()) {
     return absl::OkStatus();
   }

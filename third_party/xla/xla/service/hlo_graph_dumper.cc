@@ -1486,10 +1486,10 @@ std::string HloDotDumper::GetInstructionNodeExtraInfo(
     // layout on tuples or tensors with just one dimension (which only have one
     // possible layout) to avoid visual noise.
     bool shape_is_multidim = false;
-    ShapeUtil::ForEachSubshape(instr->shape(),
-                               [&](const Shape& s, const ShapeIndex&) {
-                                 shape_is_multidim |= s.dimensions_size() > 1;
-                               });
+    ShapeUtil::ForEachSubshape(
+        instr->shape(), [&](const Shape& s, const ShapeIndex&) {
+          shape_is_multidim |= s.IsArray() && s.dimensions().size() > 1;
+        });
     std::string instr_shape;
     if (instr->opcode() != HloOpcode::kTuple && shape_is_multidim) {
       instr_shape = ShapeUtil::HumanStringWithLayout(instr->shape());

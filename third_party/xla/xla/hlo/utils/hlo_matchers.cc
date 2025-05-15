@@ -15,17 +15,23 @@ limitations under the License.
 
 #include "xla/hlo/utils/hlo_matchers.h"
 
+#include <cstdint>
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace testing {
@@ -226,6 +232,47 @@ void HloShardingMatcher::DescribeTo(std::ostream* os) const {
   } else {
     *os << "<no-sharding>";
   }
+}
+
+bool HloFrontendAttributeMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (std::optional<std::string> value =
+          instruction->get_frontend_attribute(key_)) {
+    if (*value == value_) {
+      return true;
+    }
+    *listener << instruction->ToString() << " has incorrect value for '" << key_
+              << "' frontend attribute (expected: " << value_ << ")";
+    return false;
+  }
+
+  *listener << instruction->ToString() << " has no '" << key_
+            << "' frontend attribute (expected: " << value_ << ")";
+  return false;
+}
+
+void HloFrontendAttributeMatcher::DescribeTo(std::ostream* os) const {
+  *os << key_ << " = \"" << value_ << "\"";
+}
+
+bool HloUsedByMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  for (const HloInstruction* user : instruction->users()) {
+    if (used_by_.MatchAndExplain(user, listener)) {
+      return true;
+    }
+  }
+  *listener << instruction->ToString()
+            << " has no users that match expected:\n\t";
+  used_by_.DescribeTo(listener->stream());
+  return false;
+}
+
+void HloUsedByMatcher::DescribeTo(std::ostream* os) const {
+  *os << "used by ";
+  used_by_.DescribeTo(os);
 }
 
 bool HloDotWithContractingDimsMatcher::MatchAndExplain(

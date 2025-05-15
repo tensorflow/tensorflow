@@ -87,7 +87,40 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$TestError", "Host",
                          kTestError);
 
 TEST(TfrtCpuClientTest, MemorySpace) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
+  CpuClientOptions options;
+  options.legacy_memory_space_behavior = false;
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(std::move(options)));
+  ASSERT_GE(client->devices().size(), 1);
+
+  ASSERT_EQ(client->memory_spaces().size(),
+            client->addressable_devices().size() * 3);
+  for (auto* device : client->devices()) {
+    TF_ASSERT_OK_AND_ASSIGN(auto* default_memory_space,
+                            device->default_memory_space());
+    EXPECT_EQ(default_memory_space->kind(), CpuDeviceMemorySpace::kKind);
+    EXPECT_EQ(default_memory_space->kind_id(), CpuDeviceMemorySpace::kKindId);
+    EXPECT_THAT(device->memory_space_by_kind(CpuDeviceMemorySpace::kKind),
+                IsOkAndHolds(default_memory_space));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto cpu_device_memory_space,
+        device->memory_space_by_kind(CpuDeviceMemorySpace::kKind));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto unpinned_host_memory_space,
+        device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto pinned_host_memory_space,
+        device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+    device->memory_spaces(),
+        ElementsAre(cpu_device_memory_space, unpinned_host_memory_space,
+                    pinned_host_memory_space);
+  }
+}
+
+TEST(TfrtCpuClientTest, LegacyMemorySpace) {
+  CpuClientOptions options;
+  options.legacy_memory_space_behavior = true;
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(std::move(options)));
   ASSERT_GE(client->devices().size(), 1);
 
   ASSERT_EQ(client->memory_spaces().size(),

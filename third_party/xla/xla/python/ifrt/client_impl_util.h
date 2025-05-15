@@ -34,8 +34,7 @@ namespace ifrt {
 //
 // TODO(hyeontaek): Remove this adapter once all major IFRT implementations
 // natively support `MakeArraysFromHostBufferShards`.
-absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-ClientMakeArraysFromHostBufferShards(
+absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
     Client* client,
     absl::Span<Client::MakeArraysFromHostBufferShardsSpec> specs,
     Client::HostBufferSemantics semantics,

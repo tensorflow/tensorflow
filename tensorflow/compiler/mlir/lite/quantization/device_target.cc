@@ -72,11 +72,11 @@ ScaleDecomposeFn DeviceTarget::GetDecomposeFn(
 
 void DeviceTarget::AppendToSignature(Type spec,
                                      KernelSpecs::Signature* signature) {
-  if (auto quant = spec.dyn_cast_or_null<UniformQuantizedType>()) {
+  if (auto quant = llvm::dyn_cast_or_null<UniformQuantizedType>(spec)) {
     signature->push_back(AnyQuantizedType::get(
         quant.getFlags(), quant.getStorageType(), quant.getExpressedType(),
         quant.getStorageTypeMin(), quant.getStorageTypeMax()));
-  } else if (auto any = spec.dyn_cast_or_null<AnyQuantizedType>()) {
+  } else if (auto any = llvm::dyn_cast_or_null<AnyQuantizedType>(spec)) {
     signature->push_back(any);
   } else {  // float
     signature->push_back(AnyQuantizedType());
@@ -113,17 +113,17 @@ LogicalResult DeviceTarget::DecomposeMultiplyAccumulateScale(
 
   llvm::SmallVector<Type, 4> input_specs, out_specs;
   for (auto spec : rop.getInputSpecs()) {
-    input_specs.push_back(spec.cast<TypeAttr>().getValue());
+    input_specs.push_back(llvm::cast<TypeAttr>(spec).getValue());
   }
   for (auto spec : rop.getOutputSpecs()) {
-    out_specs.push_back(spec.cast<TypeAttr>().getValue());
+    out_specs.push_back(llvm::cast<TypeAttr>(spec).getValue());
   }
 
-  auto in_spec = input_specs[0].dyn_cast<UniformQuantizedType>();
+  auto in_spec = llvm::dyn_cast<UniformQuantizedType>(input_specs[0]);
   // TODO(fengliuai): handles the PerAxis QuantizedType.
-  auto w_spec = input_specs[1].dyn_cast<UniformQuantizedType>();
-  auto b_spec = input_specs[2].dyn_cast<UniformQuantizedType>();
-  auto o_spec = out_specs[0].dyn_cast<UniformQuantizedType>();
+  auto w_spec = llvm::dyn_cast<UniformQuantizedType>(input_specs[1]);
+  auto b_spec = llvm::dyn_cast<UniformQuantizedType>(input_specs[2]);
+  auto o_spec = llvm::dyn_cast<UniformQuantizedType>(out_specs[0]);
   if (!in_spec || !w_spec || !b_spec || !o_spec) return failure();
 
   double scale_product = in_spec.getScale() * w_spec.getScale();
@@ -164,10 +164,8 @@ LogicalResult DeviceTarget::DecomposeSameScale(
     output_multipliers->push_back(kUnitQuantizedMultiplier);
   }
 
-  auto o_spec = rop.getOutputSpecs()[0]
-                    .cast<TypeAttr>()
-                    .getValue()
-                    .dyn_cast<UniformQuantizedType>();
+  auto o_spec = llvm::dyn_cast<UniformQuantizedType>(
+      llvm::cast<TypeAttr>(rop.getOutputSpecs()[0]).getValue());
   if (!o_spec) return failure();
 
   // output ranges

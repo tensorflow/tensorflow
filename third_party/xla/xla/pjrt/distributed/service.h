@@ -76,7 +76,7 @@ class CoordinationServiceImpl {
 
  private:
   tsl::Env* env_ = nullptr;  // Not owned.
-  std::unique_ptr<tsl::CoordinationServiceInterface> coord_service_;
+  std::unique_ptr<tsl::CoordinationService> coord_service_;
   std::unique_ptr<tsl::thread::ThreadPool> coord_compute_pool_;
   std::unique_ptr<tsl::AsyncServiceInterface> coord_rpc_service_;
   std::unique_ptr<tsl::Thread> coord_rpc_thread_;

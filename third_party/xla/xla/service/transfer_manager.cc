@@ -182,7 +182,7 @@ absl::Status TransferManager::ReadDynamicShapes(
 
         // Update shape size from metadata.
         for (int64_t i = 0; i < metadata.element_count(); ++i) {
-          device_sub_shape.mutable_dimensions()[i] = metadata.Get<int32_t>({i});
+          device_sub_shape.set_dimensions(i, metadata.Get<int32_t>({i}));
         }
         return absl::OkStatus();
       }));

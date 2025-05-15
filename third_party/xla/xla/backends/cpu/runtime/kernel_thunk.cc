@@ -333,11 +333,18 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
   static constexpr auto _4 = std::integral_constant<size_t, 4>{};
   static constexpr auto _5 = std::integral_constant<size_t, 5>{};
   static constexpr auto _6 = std::integral_constant<size_t, 6>{};
+  static constexpr auto _7 = std::integral_constant<size_t, 7>{};
+  static constexpr auto _8 = std::integral_constant<size_t, 8>{};
+  static constexpr auto _9 = std::integral_constant<size_t, 9>{};
+  static constexpr auto _10 = std::integral_constant<size_t, 10>{};
+  static constexpr auto _11 = std::integral_constant<size_t, 11>{};
+  static constexpr auto _12 = std::integral_constant<size_t, 12>{};
 
   std::pair<size_t, size_t> params(arguments_buffers.size(),
                                    results_buffers.size());
 
   // Return SmallKernelThunk specializations for the most common cases.
+  // NOLINTBEGIN
   if (params == std::make_pair(_0(), _1())) return small_kernel_thunk(_0, _1);
   if (params == std::make_pair(_1(), _1())) return small_kernel_thunk(_1, _1);
   if (params == std::make_pair(_2(), _1())) return small_kernel_thunk(_2, _1);
@@ -345,6 +352,13 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
   if (params == std::make_pair(_4(), _1())) return small_kernel_thunk(_4, _1);
   if (params == std::make_pair(_5(), _1())) return small_kernel_thunk(_5, _1);
   if (params == std::make_pair(_6(), _1())) return small_kernel_thunk(_6, _1);
+  if (params == std::make_pair(_7(), _1())) return small_kernel_thunk(_7, _1);
+  if (params == std::make_pair(_8(), _1())) return small_kernel_thunk(_8, _1);
+  if (params == std::make_pair(_9(), _1())) return small_kernel_thunk(_9, _1);
+  if (params == std::make_pair(_10(), _1())) return small_kernel_thunk(_10, _1);
+  if (params == std::make_pair(_11(), _1())) return small_kernel_thunk(_11, _1);
+  if (params == std::make_pair(_12(), _1())) return small_kernel_thunk(_12, _1);
+  // NOLINTEND
 
   // Return a generic KernelThunk for dynamic numbers of arguments and results.
   return absl::WrapUnique(

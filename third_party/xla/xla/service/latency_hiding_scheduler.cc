@@ -108,9 +108,7 @@ bool InstructionFirstDefinesBuffer(
   if (buffer_value_info.first_definition == instruction) {
     return true;
   }
-  if (buffer_value_info.value->values()[0]->shape().has_layout() &&
-      buffer_value_info.value->values()[0]->shape().layout().memory_space() !=
-          kDefaultMemorySpace) {
+  if (buffer_value_info.non_default_memory_space_layout) {
     return false;
   }
   // Similar to logic above, also check if the instruction is a call to a
@@ -742,7 +740,9 @@ void MemoryPressureTracker::Initialize(
   output_buffers_.clear();
   defined_buffers_.clear();
   live_buffers_set_.clear();
+  int32_t next_id = 0;
   for (auto* instruction : computation->instructions()) {
+    instruction_ids_[instruction] = next_id++;
     auto& output_values = this->output_buffers_[instruction];
     auto& defined_values = this->defined_buffers_[instruction];
     ShapeUtil::ForEachSubshape(
@@ -764,8 +764,7 @@ void MemoryPressureTracker::Initialize(
   if (!initial_live_buffers.empty()) {
     for (HloBuffer::Id id : initial_live_buffers) {
       auto& buffer = buffer_tracker_.GetBufferInfo(id);
-      if (buffer.value->values()[0]->shape().has_layout() &&
-          buffer.value->values()[0]->shape().layout().memory_space() != 0) {
+      if (buffer.non_default_memory_space_layout) {
         continue;
       }
       live_buffers_[buffer.value->id()] = 1;
@@ -776,6 +775,54 @@ void MemoryPressureTracker::Initialize(
     absl::c_fill(live_buffers_, 0);
   }
   pressure_state_.live_ids_at_bottom = live_buffers_set_;
+
+  // Precompute allocated and released buffers per instruction.
+  alloc_release_spans_.resize(next_id);
+  for (auto* instruction : computation->instructions()) {
+    NodeAllocReleaseSpan s;
+    s.start = alloc_release_ids_.size();
+    s.num_alloc = ComputeBufferAllocations(instruction, &alloc_release_ids_);
+    s.num_release = ComputeBufferReleases(instruction, &alloc_release_ids_);
+    alloc_release_spans_[instruction_ids_[instruction]] = s;
+  }
+}
+
+int32_t MemoryPressureTracker::ComputeBufferAllocations(
+    const HloInstruction* instruction, std::vector<HloBuffer::Id>* dst) {
+  int32_t added = 0;
+  for (auto* op : instruction->operands()) {
+    auto it = output_buffers_.find(op);
+    CHECK(it != output_buffers_.end());
+    for (auto& b : it->second) {
+      if (ShouldSkipBufferAllocations(instruction, b.second,
+                                      b.first.first_definition) ||
+          b.first.non_default_memory_space_layout) {
+        continue;
+      }
+      dst->push_back(b.first.value->id());
+      added++;
+    }
+  }
+  return added;
+}
+
+int32_t MemoryPressureTracker::ComputeBufferReleases(
+    const HloInstruction* instruction, std::vector<HloBuffer::Id>* dst) {
+  int32_t added = 0;
+  if (!ShouldSkipBufferReleases(instruction)) {
+    auto it = defined_buffers_.find(instruction);
+    CHECK(it != defined_buffers_.end());
+    for (auto& b : it->second) {
+      if (b.non_default_memory_space_layout) {
+        continue;
+      }
+      if (InstructionFirstDefinesBuffer(instruction, b)) {
+        dst->push_back(b.value->id());
+        added++;
+      }
+    }
+  }
+  return added;
 }
 
 void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
@@ -791,40 +838,19 @@ void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
   if (pressure_state_.memory_peak < live_memory_usage_ + computations_peak) {
     pressure_state_.memory_peak = live_memory_usage_ + computations_peak;
   }
-  for (auto* op : instruction->operands()) {
-    auto& output_values = output_buffers_[op];
-    for (auto& info : output_values) {
-      if (ShouldSkipBufferAllocations(instruction, info.second,
-                                      info.first.first_definition) ||
-          (info.first.value->values()[0]->shape().has_layout() &&
-           info.first.value->values()[0]->shape().layout().memory_space() !=
-               kDefaultMemorySpace)) {
-        continue;
-      }
-      if (live_buffers_[info.first.value->id()] == 0) {
-        live_buffers_[info.first.value->id()] = 1;
-        live_buffers_set_.insert(info.first.value->id());
-        live_memory_usage_ += info.first.buffer_size;
-      }
+  for (HloBuffer::Id id : allocated_buffer_ids(instruction)) {
+    if (live_buffers_[id] == 0) {
+      live_buffers_[id] = 1;
+      live_buffers_set_.insert(id);
+      live_memory_usage_ += buffer_tracker_.GetBufferInfo(id).buffer_size;
     }
   }
   pressure_state_.memory_peak =
       std::max(live_memory_usage_, pressure_state_.memory_peak);
-  auto it = defined_buffers_.find(instruction);
-  CHECK(it != defined_buffers_.end());
-  if (!ShouldSkipBufferReleases(instruction)) {
-    for (auto& b : it->second) {
-      if (b.value->values()[0]->shape().has_layout() &&
-          b.value->values()[0]->shape().layout().memory_space() !=
-              kDefaultMemorySpace) {
-        continue;
-      }
-      if (live_buffers_[b.value->id()] != 0) {
-        if (InstructionFirstDefinesBuffer(instruction, b)) {
-          live_memory_usage_ -= b.buffer_size;
-          live_buffers_set_.erase(b.value->id());
-        }
-      }
+  for (HloBuffer::Id id : released_buffer_ids(instruction)) {
+    if (live_buffers_[id] != 0) {
+      live_memory_usage_ -= buffer_tracker_.GetBufferInfo(id).buffer_size;
+      live_buffers_set_.erase(id);
     }
   }
 }
@@ -849,39 +875,17 @@ std::pair<int64_t, int64_t> MemoryPressureTracker::MemoryPressureDifference(
           std::max(called_comp_peak, it->second.memory_peak);
     }
   }
-  // Allocate memory increase from the operand and record increase in peak.
-  for (auto* op : instruction->operands()) {
-    auto it = output_buffers_.find(op);
-    CHECK(it != output_buffers_.end());
-    for (auto& b : it->second) {
-      if (ShouldSkipBufferAllocations(instruction, b.second,
-                                      b.first.first_definition) ||
-          (b.first.value->values()[0]->shape().has_layout() &&
-           b.first.value->values()[0]->shape().layout().memory_space() !=
-               kDefaultMemorySpace)) {
-        continue;
-      }
-      if (!live_buffers_[b.first.value->id()]) {
-        increase += b.first.buffer_size;
-      }
+  // Allocate memory increase from the operands and record increase in peak.
+  for (HloBuffer::Id id : allocated_buffer_ids(instruction)) {
+    if (!live_buffers_[id]) {
+      increase += buffer_tracker_.GetBufferInfo(id).buffer_size;
     }
   }
   peak = std::max(increase, peak);
-  auto it = defined_buffers_.find(instruction);
-  CHECK(it != defined_buffers_.end());
   // Decrease memory pressure if some buffers are released.
-  if (!ShouldSkipBufferReleases(instruction)) {
-    for (auto& b : it->second) {
-      if (b.value->values()[0]->shape().has_layout() &&
-          b.value->values()[0]->shape().layout().memory_space() !=
-              kDefaultMemorySpace) {
-        continue;
-      }
-      if (live_buffers_[b.value->id()]) {
-        if (InstructionFirstDefinesBuffer(instruction, b)) {
-          increase -= b.buffer_size;
-        }
-      }
+  for (HloBuffer::Id id : released_buffer_ids(instruction)) {
+    if (live_buffers_[id]) {
+      increase -= buffer_tracker_.GetBufferInfo(id).buffer_size;
     }
   }
   return std::make_pair(increase, peak);
@@ -932,6 +936,196 @@ class ReadySetLt {
       : sched_state_(*sched_state),
         target_scheduling_rule_(target_scheduling_rule),
         early_target_scheduling_rule_(early_target_scheduling_rule) {}
+
+  std::optional<DefaultSchedulerCore::CandidateResult> MemoryPressurePolicy(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      std::pair<int64_t, int64_t>& a_increase,
+      DefaultSchedulerCore::ScheduleCandidate& b,
+      std::pair<int64_t, int64_t>& b_increase) const {
+    // If out of memory reduce memory at all costs. Choose the instruction
+    // that causes the most decrease (or least further increase) of memory
+    // pressure.
+    if (sched_state_.memory_pressure_tracker->memory_usage() >=
+        sched_state_.config.memory_limit) {
+      if (sched_state_.config.depth_based_memory_pressure_reduction) {
+        // Try to pick a node that actually reduces memory pressure first.
+        if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+                a_increase.first < 0 && a_increase.first < b_increase.first, a,
+                b_increase.first < 0 && b_increase.first < a_increase.first, b,
+                "kOnlyDecreaseMemoryOverLimit")) {
+          return *value;
+        }
+        // If there's none than prefer a node that is the deepest. That
+        // matches well with unlocking pressure-reducing nodes for typical ML
+        // graphs.
+        if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+                a.node->GetGraphDepth() > b.node->GetGraphDepth(), a,
+                b.node->GetGraphDepth() > a.node->GetGraphDepth(), b,
+                "kDepthOverLimit")) {
+          return *value;
+        }
+      }
+      // Otherwise pick a node that increases the pressure the least from the
+      // list.
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              a_increase.first < b_increase.first, a,
+              b_increase.first < a_increase.first, b,
+              "kDecreaseMemoryOverLimit")) {
+        return *value;
+      }
+    }
+    // Avoid to bring peak beyond limit. Choose instruction that doesn't do
+    // so.
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            a_increase.second +
+                    sched_state_.memory_pressure_tracker->memory_usage() <=
+                sched_state_.config.memory_limit,
+            a,
+            b_increase.second +
+                    sched_state_.memory_pressure_tracker->memory_usage() <=
+                sched_state_.config.memory_limit,
+            b, "kMemoryPeakOverLimit")) {
+      return *value;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<DefaultSchedulerCore::CandidateResult> ReleaseStartPolicy(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b) const {
+    // Prioritise scheduling ready "start" ops, to avoid useless extension of
+    // start-done latencies. This benefits future latency ops, as ops
+    // postponed here may be used to hide not-yet-scheduled latency ops.
+    const ApproximateLatencyEstimator::TimeCost a_ready_interval =
+        a.node->GetReadyTime() - sched_state_.current_time;
+    const ApproximateLatencyEstimator::TimeCost b_ready_interval =
+        b.node->GetReadyTime() - sched_state_.current_time;
+    bool a_ready_and_release =
+        a_ready_interval <= 0 &&
+        a.node->DoesReleaseResource(ResourceType::kCollectivePermute);
+    bool b_ready_and_release =
+        b_ready_interval <= 0 &&
+        b.node->DoesReleaseResource(ResourceType::kCollectivePermute);
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            a_ready_and_release, a, b_ready_and_release, b, "kScheduleStart")) {
+      return *value;
+    }
+    if (a_ready_and_release && b_ready_and_release) {
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              a_ready_interval < b_ready_interval, a,
+              b_ready_interval < a_ready_interval, b, "kScheduleStart")) {
+        return *value;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<DefaultSchedulerCore::CandidateResult> UnlockDone(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b) const {
+    //  Check if any operand is an async done operation of the two ops to be
+    //  compared. Prioritize those to unlock async dones to be scheduled.
+    //  TODO(maggioni): Develop a more complete analysis of the graph to
+    //  prioritize candidates that would more likely unlock more async dones
+    //  to be scheduled.
+    bool a_operands = absl::c_any_of(
+        a.node->GetInstr().operands(),
+        [async_tracker = sched_state_.async_tracker](const HloInstruction* i) {
+          return async_tracker->IsSupportedAsyncDone(*i);
+        });
+    bool b_operands = absl::c_any_of(
+        b.node->GetInstr().operands(),
+        [async_tracker = sched_state_.async_tracker](const HloInstruction* i) {
+          return async_tracker->IsSupportedAsyncDone(*i);
+        });
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            a_operands, a, b_operands, b, "kUnlockDone")) {
+      return *value;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<DefaultSchedulerCore::CandidateResult> AsyncDepth0Candidate(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b) const {
+    // If an instruction releasing a resource is not resource constrained and
+    // has an async depth of 0, delay it as much as possible to avoid
+    // potential cost model inefficiencies. For example, if a pair of
+    // async-start and async-done have no dependencies on other ops inside a
+    // loop, the async-start will be pushed to the beginning of the loop.
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            /*first_cond=*/!(a.node->DoesReleaseAnyResource() &&
+                             a.node->GetAsyncDepth() == 0 &&
+                             !IsResourceConstrained(a)),
+            a,
+            /*second_cond=*/
+            !(b.node->DoesReleaseAnyResource() &&
+              b.node->GetAsyncDepth() == 0 && !IsResourceConstrained(b)),
+            b, "kStartAtZeroDepth")) {
+      return value;
+    }
+    return std::nullopt;
+  }
+  std::optional<DefaultSchedulerCore::CandidateResult> AvoidWaste(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b) const {
+    // Favor nodes that are the closest in amount of latency they hide with
+    // the highest amount of latency that needs to be hidden to avoid
+    // wasting / big nodes over small async operations.
+    if (!sched_state_.next_ready_stack.empty()) {
+      HloGraphNode::TimeCost latest_ready =
+          sched_state_.next_ready_stack.front()->GetReadyTime();
+      HloGraphNode::TimeCost a_cost_diff = std::abs(
+          latest_ready - sched_state_.current_time - a.node->GetCost());
+      HloGraphNode::TimeCost b_cost_diff = std::abs(
+          latest_ready - sched_state_.current_time - b.node->GetCost());
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              !a.node->DoesReleaseAnyResource() && a_cost_diff < b_cost_diff, a,
+              !b.node->DoesReleaseAnyResource() && b_cost_diff < a_cost_diff, b,
+              "kAvoidWaste")) {
+        return *value;
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  std::optional<DefaultSchedulerCore::CandidateResult>
+  IsValuableForSelectiveOverlap(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b) const {
+    int64_t distance_to_selective_overlap_for_a =
+        GetNumHopsToClosestSelectiveOverlap(sched_state_.ready_set, a.node);
+    int64_t distance_to_selective_overlap_for_b =
+        GetNumHopsToClosestSelectiveOverlap(sched_state_.ready_set, b.node);
+    // If a is valuable for selective overlap and there is a selective
+    // overlap in the near future a can be scheduled inside, hold off
+    // scheduling a and schedule b instead. Same logic applies in reverse.
+    int64_t max_distance =
+        sched_state_.config.max_hops_to_closest_selective_overlap;
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            (a.node->GetValuableForSelectiveOverlap() &&
+             distance_to_selective_overlap_for_a <= max_distance),
+            b,
+            (b.node->GetValuableForSelectiveOverlap() &&
+             distance_to_selective_overlap_for_b <= max_distance),
+            a, "kNotValuableForSelectiveOverlap")) {
+      return *value;
+    }
+    return std::nullopt;
+  }
+
+  DefaultSchedulerCore::CandidateResult OriginalPosition(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b) const {
+    if (sched_state_.sched_graph.OriginalInstructionPosition(
+            &a.node->GetInstr()) >
+        sched_state_.sched_graph.OriginalInstructionPosition(
+            &b.node->GetInstr())) {
+      return {a, "kOriginalOrder"};
+    }
+    return {b, "kOriginalOrder"};
+  }
   // The comparison here implements the priority for the nodes in the ready set.
   DefaultSchedulerCore::CandidateResult operator()(
       DefaultSchedulerCore::ScheduleCandidate& a,
@@ -948,59 +1142,18 @@ class ReadySetLt {
             "kForceDelay")) {
       return *value;
     }
-    std::pair<int64_t, int64_t> a_increase = std::make_pair(0LL, 0LL);
-    std::pair<int64_t, int64_t> b_increase = std::make_pair(0LL, 0LL);
-    // Check if memory pressure tracking is enabled. Even if it evaluate memory
-    // pressure.
+    std::pair<int64_t, int64_t> a_increase = {0, 0};
+    std::pair<int64_t, int64_t> b_increase = {0, 0};
+
+    // Check if memory pressure tracking is enabled. If it is, evaluate memory
+    // pressure
     if (sched_state_.config.memory_limit != UINT64_MAX &&
         sched_state_.memory_pressure_tracker->memory_usage() >
             (sched_state_.config.memory_limit / 2)) {
       a_increase = GetMemoryPressureChanges(a);
       b_increase = GetMemoryPressureChanges(b);
-      // If out of memory reduce memory at all costs. Choose the instruction
-      // that causes the most decrease (or least further increase) of memory
-      // pressure.
-      if (sched_state_.memory_pressure_tracker->memory_usage() >=
-          sched_state_.config.memory_limit) {
-        if (sched_state_.config.depth_based_memory_pressure_reduction) {
-          // Try to pick a node that actually reduces memory pressure first.
-          if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-                  a_increase.first < 0 && a_increase.first < b_increase.first,
-                  a,
-                  b_increase.first < 0 && b_increase.first < a_increase.first,
-                  b, "kOnlyDecreaseMemoryOverLimit")) {
-            return *value;
-          }
-          // If there's none than prefer a node that is the deepest. That
-          // matches well with unlocking pressure-reducing nodes for typical ML
-          // graphs.
-          if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-                  a.node->GetGraphDepth() > b.node->GetGraphDepth(), a,
-                  b.node->GetGraphDepth() > a.node->GetGraphDepth(), b,
-                  "kDepthOverLimit")) {
-            return *value;
-          }
-        }
-        // Otherwise pick a node that increases the pressure the least from the
-        // list.
-        if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-                a_increase.first < b_increase.first, a,
-                b_increase.first < a_increase.first, b,
-                "kDecreaseMemoryOverLimit")) {
-          return *value;
-        }
-      }
-      // Avoid to bring peak beyond limit. Choose instruction that doesn't do
-      // so.
-      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-              a_increase.second +
-                      sched_state_.memory_pressure_tracker->memory_usage() <=
-                  sched_state_.config.memory_limit,
-              a,
-              b_increase.second +
-                      sched_state_.memory_pressure_tracker->memory_usage() <=
-                  sched_state_.config.memory_limit,
-              b, "kMemoryPeakOverLimit")) {
+
+      if (auto value = MemoryPressurePolicy(a, a_increase, b, b_increase)) {
         return *value;
       }
     }
@@ -1036,56 +1189,17 @@ class ReadySetLt {
       // Prioritise scheduling ready "start" ops, to avoid useless extension of
       // start-done latencies. This benefits future latency ops, as ops
       // postponed here may be used to hide not-yet-scheduled latency ops.
-      const ApproximateLatencyEstimator::TimeCost a_ready_interval =
-          a.node->GetReadyTime() - sched_state_.current_time;
-      const ApproximateLatencyEstimator::TimeCost b_ready_interval =
-          b.node->GetReadyTime() - sched_state_.current_time;
-      bool a_ready_and_release =
-          a_ready_interval <= 0 &&
-          a.node->DoesReleaseResource(ResourceType::kCollectivePermute);
-      bool b_ready_and_release =
-          b_ready_interval <= 0 &&
-          b.node->DoesReleaseResource(ResourceType::kCollectivePermute);
-      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-              a_ready_and_release, a, b_ready_and_release, b,
-              "kScheduleStart")) {
+      if (auto value = ReleaseStartPolicy(a, b)) {
         return *value;
-      }
-      if (a_ready_and_release && b_ready_and_release) {
-        if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-                a_ready_interval < b_ready_interval, a,
-                b_ready_interval < a_ready_interval, b, "kScheduleStart")) {
-          return *value;
-        }
       }
     }
 
-    auto async_depth_0_candidate =
-        [this](DefaultSchedulerCore::ScheduleCandidate& a,
-               DefaultSchedulerCore::ScheduleCandidate& b)
-        -> std::optional<DefaultSchedulerCore::CandidateResult> {
-      // If an instruction releasing a resource is not resource constrained and
-      // has an async depth of 0, delay it as much as possible to avoid
-      // potential cost model inefficiencies. For example, if a pair of
-      // async-start and async-done have no dependencies on other ops inside a
-      // loop, the async-start will be pushed to the beginning of the loop.
-      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-              /*first_cond=*/!(a.node->DoesReleaseAnyResource() &&
-                               a.node->GetAsyncDepth() == 0 &&
-                               !IsResourceConstrained(a)),
-              a,
-              /*second_cond=*/
-              !(b.node->DoesReleaseAnyResource() &&
-                b.node->GetAsyncDepth() == 0 && !IsResourceConstrained(b)),
-              b, "kStartAtZeroDepth")) {
-        return value;
-      }
-      return std::nullopt;
-    };
-
     if (sched_state_.config.aggressive_scheduling_policies &&
         sched_state_.config.prioritize_async_depth_over_stall) {
-      if (auto value = async_depth_0_candidate(a, b)) {
+      // If an instruction releasing a resource is not resource constrained and
+      // has an async depth of 0, delay it as much as possible to avoid
+      // potential cost model inefficiencies.
+      if (auto value = AsyncDepth0Candidate(a, b)) {
         return *value;
       }
     }
@@ -1118,7 +1232,7 @@ class ReadySetLt {
     }
     if (sched_state_.config.aggressive_scheduling_policies &&
         !sched_state_.config.prioritize_async_depth_over_stall) {
-      if (auto value = async_depth_0_candidate(a, b)) {
+      if (auto value = AsyncDepth0Candidate(a, b)) {
         return *value;
       }
     }
@@ -1128,6 +1242,7 @@ class ReadySetLt {
             "kFreeBackedupResource")) {
       return *value;
     }
+
     if (sched_state_.config.aggressive_scheduling_policies) {
       // Try to favor paths that are dependent of chains of async operations
       // with long latency as we want to get to them as soon as possible to
@@ -1141,41 +1256,17 @@ class ReadySetLt {
       // Favor nodes that are the closest in amount of latency they hide with
       // the highest amount of latency that needs to be hidden to avoid
       // wasting / big nodes over small async operations.
-      if (!sched_state_.next_ready_stack.empty()) {
-        HloGraphNode::TimeCost latest_ready =
-            sched_state_.next_ready_stack.front()->GetReadyTime();
-        HloGraphNode::TimeCost a_cost_diff = std::abs(
-            latest_ready - sched_state_.current_time - a.node->GetCost());
-        HloGraphNode::TimeCost b_cost_diff = std::abs(
-            latest_ready - sched_state_.current_time - b.node->GetCost());
-        if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-                !a.node->DoesReleaseAnyResource() && a_cost_diff < b_cost_diff,
-                a,
-                !b.node->DoesReleaseAnyResource() && b_cost_diff < a_cost_diff,
-                b, "kAvoidWaste")) {
-          return *value;
-        }
+      if (auto value = AvoidWaste(a, b)) {
+        return *value;
       }
     }
-    //  Check if any operand is an async done operation of the two ops to be
-    //  compared. Prioritize those to unlock async dones to be scheduled.
-    //  TODO(maggioni): Develop a more complete analysis of the graph to
-    //  prioritize candidates that would more likely unlock more async dones
-    //  to be scheduled.
-    bool a_operands = absl::c_any_of(
-        a.node->GetInstr().operands(),
-        [async_tracker = sched_state_.async_tracker](const HloInstruction* i) {
-          return async_tracker->IsSupportedAsyncDone(*i);
-        });
-    bool b_operands = absl::c_any_of(
-        b.node->GetInstr().operands(),
-        [async_tracker = sched_state_.async_tracker](const HloInstruction* i) {
-          return async_tracker->IsSupportedAsyncDone(*i);
-        });
-    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-            a_operands, a, b_operands, b, "kUnlockDone")) {
+
+    // Check if any operand is an async done operation of the two ops to be
+    // compared. Prioritize those to unlock async dones to be scheduled.
+    if (auto value = UnlockDone(a, b)) {
       return *value;
     }
+
     if (target_scheduling_rule_) {
       if (auto value = target_scheduling_rule_(a, b)) {
         return *value;
@@ -1186,22 +1277,7 @@ class ReadySetLt {
     // that are valuable for selective overlaps.
     if (sched_state_.config.enable_selective_resources &&
         sched_state_.selective_resource_releasers.empty()) {
-      int64_t distance_to_selective_overlap_for_a =
-          GetNumHopsToClosestSelectiveOverlap(sched_state_.ready_set, a.node);
-      int64_t distance_to_selective_overlap_for_b =
-          GetNumHopsToClosestSelectiveOverlap(sched_state_.ready_set, b.node);
-      // If a is valuable for selective overlap and there is a selective
-      // overlap in the near future a can be scheduled inside, hold off
-      // scheduling a and schedule b instead. Same logic applies in reverse.
-      int64_t max_distance =
-          sched_state_.config.max_hops_to_closest_selective_overlap;
-      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-              (a.node->GetValuableForSelectiveOverlap() &&
-               distance_to_selective_overlap_for_a <= max_distance),
-              b,
-              (b.node->GetValuableForSelectiveOverlap() &&
-               distance_to_selective_overlap_for_b <= max_distance),
-              a, "kNotValuableForSelectiveOverlap")) {
+      if (auto value = IsValuableForSelectiveOverlap(a, b)) {
         return *value;
       }
     }
@@ -1226,15 +1302,10 @@ class ReadySetLt {
             "kDecreaseMemory")) {
       return *value;
     }
+
     // If none of the heuristics above triggers then prefer to schedule
     // according the original order so that we don't impact memory pressure.
-    if (sched_state_.sched_graph.OriginalInstructionPosition(
-            &a.node->GetInstr()) >
-        sched_state_.sched_graph.OriginalInstructionPosition(
-            &b.node->GetInstr())) {
-      return {a, "kOriginalOrder"};
-    }
-    return {b, "kOriginalOrder"};
+    return OriginalPosition(a, b);
   }
 
  private:
@@ -1831,19 +1902,18 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   if (!annotations.empty()) {
     VLOG(2) << "Scheduled node is a frontier: " << n->GetInstr().name();
     for (int64_t annotation : annotations) {
-      sched_state->num_scheduled_successors_for_annotation[annotation]++;
-      VLOG(2)
-          << "Annotation: " << annotation << " scheduled num successors: "
-          << sched_state->num_scheduled_successors_for_annotation[annotation]
-          << " total num successors: "
-          << annotation_tracker_->GetNumSuccessors(n->GetInstr().parent(),
-                                                   annotation);
+      DefaultSchedulerCore::SchedulingState::NumSuccessorsForAnnotation&
+          num_successors_for_annotation =
+              sched_state->num_successors_for_annotation[annotation];
+      num_successors_for_annotation.scheduled++;
+      VLOG(2) << "Annotation: " << annotation << " scheduled num successors: "
+              << num_successors_for_annotation.scheduled
+              << " total num successors: " << num_successors_for_annotation.all;
       // LegalizeSchedulingAnnotations pass should have made sure that we will
       // eventually reach a state where all successors of the annotation are
       // scheduled.
-      if (annotation_tracker_->GetNumSuccessors(n->GetInstr().parent(),
-                                                annotation) ==
-          sched_state->num_scheduled_successors_for_annotation[annotation]) {
+      if (num_successors_for_annotation.scheduled ==
+          num_successors_for_annotation.all) {
         sched_state->ready_annotations.push_back(annotation);
       }
     }
@@ -2076,12 +2146,18 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   VLOG(10)
       << "Memory peak before schedule: "
       << sched_state->memory_pressure_tracker->pressure_state().memory_peak;
+
   sched_state->memory_pressure_tracker->UpdateBuffers(&n->GetInstr());
-  VLOG(10) << "Memory pressure after schedule: "
-           << sched_state->memory_pressure_tracker->memory_usage();
-  VLOG(10)
-      << "Memory peak after schedule: "
-      << sched_state->memory_pressure_tracker->pressure_state().memory_peak;
+  int64_t memory_after = sched_state->memory_pressure_tracker->memory_usage();
+  int64_t memory_peak =
+      sched_state->memory_pressure_tracker->pressure_state().memory_peak;
+
+  if (schedule_proto_.has_value()) {
+    sched_state->memory_trace[&n->GetInstr()] = {memory_after, memory_peak};
+  }
+
+  VLOG(10) << "Memory pressure after schedule: " << memory_after;
+  VLOG(10) << "Memory peak after schedule: " << memory_peak;
   return current_time;
 }
 
@@ -2402,6 +2478,7 @@ void HloScheduleGraph::AnnotateGraph(
 
 absl::Status DefaultSchedulerCore::InitializeScheduler(
     const HloModule* module) {
+  module_ = module;
   TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));
   module_pressure_state_ = std::make_unique<ModulePressureState>(
       module, alias_analysis_.get(), shape_size_bytes_);
@@ -2411,6 +2488,7 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
   if (VLOG_IS_ON(2)) {
     annotation_tracker_->PrintAnnotationSets(2);
   }
+
   if (!scheduling_instruction_crosses_overlap_limit_) {
     scheduling_instruction_crosses_overlap_limit_ =
         [](const SchedulingState& sched_state, const HloGraphNode* node) {
@@ -2455,15 +2533,35 @@ DefaultSchedulerCore::GetNumResourcesNeededForAnnotation(
       sched_state.sched_graph.GetOriginalInstrList()[0]->parent();
   for (const HloInstruction* instr :
        annotation_tracker_->GetInstructions(comp, annotation)) {
-    absl::Span<const ResourcePair> rv =
-        sched_state.async_tracker->GetResourcesFromInstruction(*instr);
-    for (const auto& [resource, usage] : rv) {
-      if (usage == ResourceUsageType::kResourceOccupy) {
-        num_resources_needed[resource]++;
-      }
+    auto num_resources_needed_per_instr =
+        sched_state.async_tracker->GetNumResourcesPerInstruction(*instr);
+    for (const auto& [resource, usage] : num_resources_needed_per_instr) {
+      num_resources_needed[resource] += usage;
     }
   }
   return num_resources_needed;
+}
+
+int64_t DefaultSchedulerCore::GetNumSuccessorsForAnnotation(
+    const SchedulingState& sched_state, int64_t annotation) const {
+  const HloComputation* comp =
+      sched_state.sched_graph.GetOriginalInstrList()[0]->parent();
+  int64_t num_successors = 0;
+  std::vector<const HloInstruction*> instrs =
+      annotation_tracker_->GetInstructions(comp, annotation);
+  absl::flat_hash_set<const HloInstruction*> seen_instrs(instrs.begin(),
+                                                         instrs.end());
+  for (const HloInstruction* instr : instrs) {
+    for (const HloEdge& edge :
+         sched_state.sched_graph.GetNode(instr).GetSuccessors()) {
+      const HloGraphNode& user = edge.Target();
+      if (seen_instrs.insert(&user.GetInstr()).second &&
+          (user.GetAnnotation() != annotation)) {
+        ++num_successors;
+      }
+    }
+  }
+  return num_successors;
 }
 
 bool DefaultSchedulerCore::SchedulingAnnotationCrossesOverlapLimit(
@@ -2494,19 +2592,25 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
       latency_estimator_, async_tracker_, &memory_pressure_tracker, config_);
   async_tracker_->PostProcessScheduleGraph(&sched_state.sched_graph,
                                            latency_estimator_);
+  sched_state.sched_graph.InitializeGraphAnalysis(async_tracker_);
+  VLOG(5) << "Just built graph:";
+
   if (annotation_tracker_->HasAnnotations(computation)) {
     sched_state.sched_graph.AnnotateGraph(annotation_tracker_.get());
     for (int64_t annotation :
          annotation_tracker_->GetAnnotations(computation)) {
-      if (annotation_tracker_->GetSuccessors(computation, annotation).empty()) {
+      int64_t num_successors =
+          GetNumSuccessorsForAnnotation(sched_state, annotation);
+      sched_state.num_successors_for_annotation[annotation].all =
+          num_successors;
+      if (num_successors == 0) {
         VLOG(3) << "Annotation " << annotation
                 << " does not have any successors, is ready to be scheduled";
         sched_state.ready_annotations.push_back(annotation);
       }
     }
   }
-  sched_state.sched_graph.InitializeGraphAnalysis(async_tracker_);
-  VLOG(5) << "Just built graph:";
+
   XLA_VLOG_LINES(5, sched_state.sched_graph.ToString(async_tracker_));
   async_tracker_->SetConcurrentResourceLimits(
       sched_state.max_concurrent_resource);
@@ -2589,25 +2693,23 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
                  .GetNode(sched_state.new_sequence_reversed.front())
                  .GetReadyTime();
 
-  const auto& debug_options = xla::GetDebugOptionsFromFlags();
-  if (debug_options.xla_dump_latency_hiding_schedule()) {
-    int core_freq = latency_estimator_->CyclesPerMicrosecond();
-    DumpLatencyHidingSchedule(computation, sched_state.sched_graph,
-                              sched_state.new_sequence_reversed, core_freq,
-                              debug_options);
+  if (schedule_proto_.has_value()) {
+    *schedule_proto_->add_computation_schedules() = ComputationScheduleToProto(
+        computation, sched_state, *latency_estimator_,
+        sched_state.new_sequence_reversed);
   }
-
   return std::move(sched_state.new_sequence_reversed);
 }
 
-void DefaultSchedulerCore::DumpLatencyHidingSchedule(
-    const HloComputation* computation, const HloScheduleGraph& schedule_graph,
-    const std::vector<HloInstruction*>& instructions,
-    const int cycles_per_microsecond, const DebugOptions& debug_options) {
-  ScheduleProto proto;
+ScheduleProto::ComputationScheduleProto
+DefaultSchedulerCore::ComputationScheduleToProto(
+    const HloComputation* computation, const SchedulingState& sched_state,
+    const LatencyEstimator& estimator,
+    const std::vector<HloInstruction*>& instructions) {
+  const HloScheduleGraph& schedule_graph = sched_state.sched_graph;
+  ScheduleProto::ComputationScheduleProto proto;
   proto.set_computation_id(computation->unique_id());
-  proto.set_cycles_per_microsecond(cycles_per_microsecond);
-
+  proto.set_cycles_per_microsecond(estimator.CyclesPerMicrosecond());
   *proto.mutable_scheduler_statistics() =
       LatencyHidingScheduler::LatencyHidingStatistics(
           computation, latency_estimator_, async_tracker_, shape_size_bytes_)
@@ -2625,11 +2727,14 @@ void DefaultSchedulerCore::DumpLatencyHidingSchedule(
     instr_msg->set_id(instr->unique_id());
     instr_msg->set_start_timestamp_cycles(start_time);
     instr_msg->set_end_timestamp_cycles(end_time);
-  }
-  *proto.mutable_hlo_module() = computation->parent()->ToProto();
 
-  const std::string fn = absl::StrFormat("%s.schedule", computation->name());
-  DumpProtobufToFile(proto, debug_options, fn);
+    auto it = sched_state.memory_trace.find(instr);
+    if (it != sched_state.memory_trace.end()) {
+      instr_msg->set_memory_usage_after(it->second.first);
+      instr_msg->set_peak_memory_after(it->second.second);
+    }
+  }
+  return proto;
 }
 
 LatencyHidingScheduler::SchedulerStatistics
@@ -2839,7 +2944,7 @@ LatencyHidingScheduler::SchedulerStatistics::ToProto() const {
 void LatencyHidingScheduler::LogScheduleStatistics(
     const HloComputation* computation) {
   XLA_VLOG_LINES(
-      1, LatencyHidingStatistics(computation, latency_estimator_.get(),
+      3, LatencyHidingStatistics(computation, latency_estimator_.get(),
                                  async_tracker_.get(), shape_size_bytes_)
              .ToString());
 }
@@ -2874,6 +2979,11 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
   absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>
       saved_schedules;
   TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
+  const auto& debug_options = xla::GetDebugOptionsFromFlags();
+  if (debug_options.xla_dump_latency_hiding_schedule()) {
+    TF_RETURN_IF_ERROR(scheduler_core_->CaptureScheduleProto());
+  }
+
   for (HloComputation* computation : computations_to_schedule) {
     TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                         scheduler_core_->ScheduleComputation(computation));
@@ -2898,16 +3008,23 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
       saved_schedules[computation] = std::move(new_schedule);
     }
   }
-  LOG(INFO) << "LatencyHidingScheduler current memory usage: "
+  LOG(INFO) << "[" << name() << "]"
+            << " LatencyHidingScheduler current memory usage: "
             << scheduler_core_->GetMemoryPeak()
             << " bytes. Current limit: " << scheduler_core_->GetMemoryLimit();
   for (HloComputation* computation : computations_to_schedule) {
-    VLOG(1) << "Statistics before scheduling:";
+    VLOG(3) << "[" << name() << "] Statistics before scheduling:";
     LogScheduleStatistics(computation);
     module->schedule().set_sequence(
         computation, absl::MakeConstSpan(saved_schedules[computation]));
-    VLOG(1) << "Statistics after scheduling:";
+    VLOG(3) << "[" << name() << "] Statistics after scheduling:";
     LogScheduleStatistics(computation);
+  }
+  if (debug_options.xla_dump_latency_hiding_schedule()) {
+    TF_ASSIGN_OR_RETURN(ScheduleProto proto,
+                        scheduler_core_->GetCapturedScheduleProto());
+    const std::string filename = absl::StrFormat("%s.schedule", module->name());
+    DumpProtobufToFile(proto, debug_options, filename);
   }
   return true;
 }

@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/mlir/utils/error_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -67,7 +67,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   return std::move(module);
 }
 
-class XLAOpsTest : public HloTestBase {
+class XLAOpsTest : public HloPjRtTestBase {
  public:
   mlir::MLIRContext mlir_context_;
 };

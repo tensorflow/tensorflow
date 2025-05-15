@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "stablehlo/dialect/StablehloOps.h"

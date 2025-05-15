@@ -37,12 +37,13 @@ absl::string_view HloOpcodeString(HloOpcode opcode) {
 }
 
 absl::StatusOr<HloOpcode> StringToHloOpcode(absl::string_view opcode_name) {
-  static auto* opcode_map = new absl::flat_hash_map<std::string, HloOpcode>({
+  static auto* const opcode_map =
+      new absl::flat_hash_map<std::string, HloOpcode>({
 #define STRING_TO_OPCODE_ENTRY(enum_name, opcode_name, ...) \
   {opcode_name, HloOpcode::enum_name},
-      HLO_OPCODE_LIST(STRING_TO_OPCODE_ENTRY)
+          HLO_OPCODE_LIST(STRING_TO_OPCODE_ENTRY)
 #undef STRING_TO_OPCODE_ENTRY
-  });
+      });
   auto it = opcode_map->find(opcode_name);
   if (it == opcode_map->end()) {
     return InvalidArgument("Unknown opcode: %s", opcode_name);

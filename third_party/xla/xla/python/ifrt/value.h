@@ -65,6 +65,8 @@ class Value : public tsl::ReferenceCounted<Value>,
   static char ID;  // NOLINT
 };
 
+using ValueRef = tsl::RCReference<Value>;
+
 }  // namespace ifrt
 }  // namespace xla
 

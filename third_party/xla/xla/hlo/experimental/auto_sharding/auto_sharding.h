@@ -209,10 +209,6 @@ HloSharding GetReduceScatterOutput(const HloInstruction* ins,
                                    const ShardingStrategy& strategy,
                                    const ClusterEnvironment& cluster_env);
 
-// Populates temporal distance values.
-void PopulateTemporalValues(const CostGraph& cost_graph,
-                            AutoShardingSolverRequest& request);
-
 void AddReplicatedStrategy(
     const HloInstruction* ins, const Shape& shape,
     const ClusterEnvironment& cluster_env, const StrategyMap& strategy_map,

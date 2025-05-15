@@ -462,7 +462,7 @@ class PropagatorState {
 
  public:
   // Creates and adds a `TaggedNode` for each node in `roots` to `*ready`.
-  void ActivateRoots(gtl::ArraySlice<const NodeItem*> roots,
+  void ActivateRoots(absl::Span<const NodeItem* const> roots,
                      TaggedNodeSeq* ready);
 
   // After processing the outputs, propagates the outputs to their dsts.

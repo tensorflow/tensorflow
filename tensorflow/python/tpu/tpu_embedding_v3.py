@@ -1703,7 +1703,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           )
       )
     elif isinstance(input_feature, ragged_tensor.RaggedTensor):
-      if not weight:
+      if weight is None:
         weight = array_ops.ones_like(input_feature.values, dtype=dtypes.float32)
       elif isinstance(weight, ragged_tensor.RaggedTensor):
         weight = weight.values

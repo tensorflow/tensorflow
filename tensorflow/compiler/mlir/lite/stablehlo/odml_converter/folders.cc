@@ -104,7 +104,7 @@ static LogicalResult FoldDivOpInternal(stablehlo::DivOp op,
   }
 
   auto res_attr = DenseElementsAttr::get(
-      const_oprs[0].getType().cast<RankedTensorType>(), res);
+      mlir::cast<RankedTensorType>(const_oprs[0].getType()), res);
   rewriter.replaceOpWithNewOp<stablehlo::ConstantOp>(adaptor.value().Op(),
                                                      res_attr);
   return success();
@@ -112,10 +112,10 @@ static LogicalResult FoldDivOpInternal(stablehlo::DivOp op,
 
 static LogicalResult FoldDivOp(stablehlo::DivOp op, PatternRewriter& rewriter) {
   auto etype = op.getType().getElementType();
-  if (etype.isa<FloatType>()) {
+  if (mlir::isa<FloatType>(etype)) {
     return FoldDivOpInternal<APFloat>(op, rewriter);
   }
-  if (etype.isa<IntegerType>()) {
+  if (mlir::isa<IntegerType>(etype)) {
     return FoldDivOpInternal<APInt>(op, rewriter);
   }
   return failure();

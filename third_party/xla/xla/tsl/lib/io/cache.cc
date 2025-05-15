@@ -20,8 +20,9 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
-#include "tsl/platform/mutex.h"
+#include "absl/synchronization/mutex.h"
 #include "tsl/platform/raw_coding.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 
@@ -176,7 +177,7 @@ class LRUCache {
   void Erase(Slice key, uint32_t hash);
   void Prune();
   size_t TotalCharge() const {
-    mutex_lock l(mutex_);
+    absl::MutexLock l(&mutex_);
     return usage_;
   }
 
@@ -191,7 +192,7 @@ class LRUCache {
   size_t capacity_;
 
   // mutex_ protects the following state.
-  mutable mutex mutex_;
+  mutable absl::Mutex mutex_;
   size_t usage_ TF_GUARDED_BY(mutex_);
 
   // Dummy head of LRU list.
@@ -262,7 +263,7 @@ void LRUCache::LRU_Append(LRUHandle* list, LRUHandle* e) {
 }
 
 Cache::Handle* LRUCache::Lookup(Slice key, uint32_t hash) {
-  mutex_lock l(mutex_);
+  absl::MutexLock l(&mutex_);
   LRUHandle* e = table_.Lookup(key, hash);
   if (e != nullptr) {
     Ref(e);
@@ -271,14 +272,14 @@ Cache::Handle* LRUCache::Lookup(Slice key, uint32_t hash) {
 }
 
 void LRUCache::Release(Cache::Handle* handle) {
-  mutex_lock l(mutex_);
+  absl::MutexLock l(&mutex_);
   Unref(reinterpret_cast<LRUHandle*>(handle));
 }
 
 Cache::Handle* LRUCache::Insert(Slice key, uint32_t hash, void* value,
                                 size_t charge,
                                 void (*deleter)(Slice key, void* value)) {
-  mutex_lock l(mutex_);
+  absl::MutexLock l(&mutex_);
 
   LRUHandle* e =
       reinterpret_cast<LRUHandle*>(malloc(sizeof(LRUHandle) - 1 + key.size()));
@@ -327,12 +328,12 @@ bool LRUCache::FinishErase(LRUHandle* e) {
 }
 
 void LRUCache::Erase(Slice key, uint32_t hash) {
-  mutex_lock l(mutex_);
+  absl::MutexLock l(&mutex_);
   FinishErase(table_.Remove(key, hash));
 }
 
 void LRUCache::Prune() {
-  mutex_lock l(mutex_);
+  absl::MutexLock l(&mutex_);
   while (lru_.next != &lru_) {
     LRUHandle* e = lru_.next;
     assert(e->refs == 1);
@@ -349,7 +350,7 @@ static const int kNumShards = 1 << kNumShardBits;
 class ShardedLRUCache : public Cache {
  private:
   LRUCache shard_[kNumShards];
-  mutex id_mutex_;
+  absl::Mutex id_mutex_;
   uint64_t last_id_;
 
   static inline uint32_t HashSlice(Slice s) {
@@ -387,7 +388,7 @@ class ShardedLRUCache : public Cache {
     return reinterpret_cast<LRUHandle*>(handle)->value;
   }
   uint64_t NewId() override {
-    mutex_lock l(id_mutex_);
+    absl::MutexLock l(&id_mutex_);
     return ++(last_id_);
   }
   void Prune() override {

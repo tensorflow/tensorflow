@@ -35,6 +35,8 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
+#include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
+#include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
@@ -65,6 +67,7 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/comparison_util.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -710,6 +713,31 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadKernelThunk(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     const HloInstruction* instruction) {
   auto* fusion = Cast<HloFusionInstruction>(instruction);
+
+  if (ir_emitter_.IsSupportedByFusionEmitter(fusion) &&
+      fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
+    auto kernel_emitter =
+        std::make_unique<CpuScatterFusion>(buffer_assignment_, fusion);
+
+    TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
+                        kernel_emitter->EmitKernelDefinition());
+
+    auto [kernel_spec, kernel_source] = std::move(kernel_definition).release();
+    auto* mlir_kernel_source =
+        tsl::down_cast<MlirKernelSource*>(kernel_source.get());
+
+    FusionCompiler compiler(FusionCompiler::Options{});
+    TF_ASSIGN_OR_RETURN(LlvmIrKernelSource llvm_ir_kernel_source,
+                        compiler.Compile(std::move(*mlir_kernel_source)));
+
+    kernels_.push_back({kernel_spec.name(),
+                        std::move(llvm_ir_kernel_source).thread_safe_module()});
+
+    return MakeKernelThunkSequence(
+        instruction, std::move(kernel_spec),
+        /*min_alignment=*/cpu_function_runtime::MinAlign());
+  }
+
   TF_ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitFusionHostKernel(fusion));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
@@ -852,10 +880,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
   const HloInstruction* lhs = instruction->operand(0);
   const HloInstruction* rhs = instruction->operand(1);
 
-  TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
-      *instruction, /*operands=*/{lhs, rhs},
-      /*supported_types=*/
-      {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
+  TF_RETURN_IF_ERROR(
+      ElementTypesSameAndSupported(*instruction, /*operands=*/{lhs, rhs},
+                                   /*supported_types=*/
+                                   {PRED, S8, U8, S16, U16, S32, U32, S64, U64,
+                                    BF16, F16, F32, F64, C64, C128}));
 
   const DotDimensionNumbers& dnums = instruction->dot_dimension_numbers();
   if (dnums.lhs_contracting_dimensions_size() != 1) {
@@ -940,7 +969,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKThunk(
 
   // Deduce parameters from the result shape and operand shape
   const int64_t input_size = input->shape().dimensions().back();
-  const bool has_batch = result_shape.tuple_shapes(0).dimensions_size() == 2;
+  const bool has_batch = result_shape.tuple_shapes(0).dimensions().size() == 2;
   const int64_t batch_size =
       has_batch ? result_shape.tuple_shapes(0).dimensions(0) : 1;
   const int64_t k = result_shape.tuple_shapes(0).dimensions().back();

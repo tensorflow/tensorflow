@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_THUNK_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -26,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
@@ -475,6 +476,12 @@ class Thunk {
   // Returns `true` if this thunk requires inter-GPU communication.
   bool IsCollective() const;
 
+  // Returns any communicators used during execution.
+  virtual absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
+      const ExecuteParams& params) const {
+    return std::vector<Communicator*>();
+  }
+
   // Invokes `fn` with this thunk and all nested thunks.
   virtual void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const;
 
@@ -491,6 +498,15 @@ class Thunk {
     }
     return params.collective_params->collectives;
   }
+
+  // Serializes the thunk into a `ThunkProto`.
+  virtual absl::StatusOr<ThunkProto> ToProto() const;
+
+  // This declares a deserializer callback that `FromProto` Thunk factory
+  // functions can use to deserialize sub messages.
+  using Deserializer =
+      absl::AnyInvocable<absl::StatusOr<std::unique_ptr<Thunk>>(
+          const ThunkProto&) const>;
 
  private:
   Kind kind_;

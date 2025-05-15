@@ -35,11 +35,10 @@ namespace ifrt {
 // Loaded executable and unique name for a compiled atom program.
 struct AtomProgramCompileResult {
   std::string name;
-  std::shared_ptr<LoadedExecutable> executable;
+  LoadedExecutableRef executable;
 };
 
-using AtomExecutableMap =
-    absl::flat_hash_map<std::string, std::shared_ptr<LoadedExecutable>>;
+using AtomExecutableMap = absl::flat_hash_map<std::string, LoadedExecutableRef>;
 
 class AtomProgramCompiler {
  public:

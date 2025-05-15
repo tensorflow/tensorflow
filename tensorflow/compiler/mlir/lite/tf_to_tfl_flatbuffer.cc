@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/converter_error_data.pb.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantize_weights.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
@@ -76,7 +77,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
@@ -270,7 +270,7 @@ absl::StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
 // on the translated_result using quant_specs and saving the final output in
 // result.
 absl::Status ApplyDynamicRangeQuantizationFromOldQuantizer(
-    const mlir::quant::QuantizationSpecs& quant_specs,
+    const mlir::TFL::QuantizationSpecs& quant_specs,
     std::string translated_result, std::string* result) {
   flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
   const uint8_t* buffer =
@@ -538,7 +538,7 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
-  const mlir::quant::QuantizationSpecs& quant_specs = pass_config.quant_specs;
+  const mlir::TFL::QuantizationSpecs& quant_specs = pass_config.quant_specs;
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   tflite::FlatbufferExportOptions options;
   std::string translated_result;

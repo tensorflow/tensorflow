@@ -158,6 +158,7 @@ SimpleDelegate::SimpleDelegate(const std::vector<int>& nodes,
       automatic_shape_propagation_(automatic_shape_propagation),
       custom_op_(custom_op),
       set_output_tensor_dynamic_(set_output_tensor_dynamic) {
+  delegate_ = TfLiteDelegateCreate();
   delegate_.Prepare = [](TfLiteContext* context,
                          TfLiteDelegate* delegate) -> TfLiteStatus {
     auto* simple = static_cast<SimpleDelegate*>(delegate->data_);

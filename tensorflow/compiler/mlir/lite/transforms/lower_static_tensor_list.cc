@@ -139,7 +139,7 @@ Value CreateI32SplatTensor(Location loc, PatternRewriter *rewriter,
 Type PrependLeadingDimIfRanked(int64_t dim, Type type,
                                PatternRewriter *rewriter) {
   Type dtype = getElementTypeOrSelf(type);
-  if (RankedTensorType ty = type.dyn_cast<RankedTensorType>()) {
+  if (RankedTensorType ty = llvm::dyn_cast<RankedTensorType>(type)) {
     llvm::SmallVector<int64_t, 4> shape = {dim};
     shape.append(ty.getShape().begin(), ty.getShape().end());
     return tensorflow::GetTypeFromTFTensorShape(shape, dtype);
@@ -256,7 +256,7 @@ struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
       ConversionPatternRewriter &rewriter) const override {
     // Verify that the tensor proto contains tensor of type variant and scalar
     // shape. The variant type should hold a TensorList.
-    auto proto_attr = op.getValue().dyn_cast<TF::TensorProtoAttr>();
+    auto proto_attr = llvm::dyn_cast<tf_type::TensorProtoAttr>(op.getValue());
     if (!proto_attr) return failure();
     tensorflow::Tensor tensor;
     if (!tensorflow::ConvertToTensor(proto_attr, &tensor).ok())
@@ -270,13 +270,13 @@ struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
     if (!list) return failure();
 
     // Verify output type is variant and contains exactly one ranked subtypes.
-    auto variant_ty =
-        getElementTypeOrSelf(op.getType()).dyn_cast<TF::VariantType>();
+    auto variant_ty = llvm::dyn_cast<tf_type::VariantType>(
+        getElementTypeOrSelf(op.getType()));
     if (!variant_ty) return failure();
     ArrayRef<TensorType> subtypes = variant_ty.getSubtypes();
     if (subtypes.size() != 1) return failure();
     RankedTensorType list_element_ty =
-        subtypes.front().dyn_cast<RankedTensorType>();
+        llvm::dyn_cast<RankedTensorType>(subtypes.front());
     if (!list_element_ty) return failure();
 
     // Extract tensor elements for the TensorList and construct result type
@@ -372,7 +372,8 @@ struct ConvertTensorListSetItem
         loc, tensorflow::GetTypeFromTFTensorShape({1}, shape_dtype), item_rank,
         scalar_zero);
     // Create two slice ops.
-    Type element_type = input.getType().cast<TensorType>().getElementType();
+    Type element_type =
+        llvm::cast<TensorType>(input.getType()).getElementType();
     UnrankedTensorType unranked_tensor = UnrankedTensorType::get(element_type);
     Value scalar_minus_one = CreateI32SplatConst(loc, &rewriter, {}, -1);
     TF::SliceOp slice1 =
@@ -441,7 +442,8 @@ struct ConvertTensorListSetItem
     // Expand the dimension of item so that it will have the same rank with
     // input.
     // ExpandDims(item, 0)
-    Type element_type = input.getType().cast<TensorType>().getElementType();
+    Type element_type =
+        llvm::cast<TensorType>(input.getType()).getElementType();
     UnrankedTensorType unranked_tensor = UnrankedTensorType::get(element_type);
     auto expanded_item = rewriter.create<TF::ExpandDimsOp>(
         op.getLoc(), unranked_tensor, item, scalar_zero);
@@ -494,7 +496,8 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
     // looking at the first `TensorListSetItemOp` writing to this tensor list.
     // Here we assume that the element_shape won't be changed before calling
     // the first `TensorListSetItemOp`.
-    if (auto shaped_type = element_shape.getType().dyn_cast<ShapedType>()) {
+    if (auto shaped_type =
+            llvm::dyn_cast<ShapedType>(element_shape.getType())) {
       if (shaped_type.hasRank() && shaped_type.getRank() == 0) {
         bool element_shape_acquired = false;
         auto uses = op.getResult().getUses();
@@ -517,8 +520,8 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
               if (TF::TensorListSetItemOp set_op =
                       llvm::dyn_cast<TF::TensorListSetItemOp>(
                           inside_use.getOwner())) {
-                if (auto shaped_type =
-                        set_op.getItem().getType().dyn_cast<ShapedType>()) {
+                if (auto shaped_type = llvm::dyn_cast<ShapedType>(
+                        set_op.getItem().getType())) {
                   if (shaped_type.hasStaticShape()) {
                     RankedTensorType type =
                         tensorflow::GetTypeFromTFTensorShape(
@@ -592,7 +595,8 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
       }
 
       auto attr = DenseIntElementsAttr::get(
-          element_shape.getType().cast<ShapedType>(), new_element_shape_values);
+          llvm::cast<ShapedType>(element_shape.getType()),
+          new_element_shape_values);
       auto new_element_shape = rewriter.create<arith::ConstantOp>(
           op.getLoc(), element_shape.getType(), attr);
       element_shape = new_element_shape;
@@ -603,7 +607,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
     Type result_type = UnrankedTensorType::get(element_dtype);
     Value leading_dim = GetNumElements(op, adaptor.getOperands(), &rewriter);
     if (auto element_type =
-            op.element_type().template dyn_cast<RankedTensorType>()) {
+            llvm::dyn_cast<RankedTensorType>(op.element_type())) {
       result_rank = element_type.getRank() + 1;
       int64_t leading_dim_v = -1;
       ElementsAttr element_attr;
@@ -662,12 +666,12 @@ struct ConvertTensorListReserve
       return CreateI32SplatConst(op.getLoc(), rewriter, {1}, attr.getInt());
     }
     if (auto const_op = num_elements.getDefiningOp<TF::ConstOp>()) {
-      return CreateI32SplatConst(op->getLoc(), rewriter, {1},
-                                 (*const_op.getValue()
-                                       .cast<DenseElementsAttr>()
-                                       .getValues<APInt>()
-                                       .begin())
-                                     .getSExtValue());
+      return CreateI32SplatConst(
+          op->getLoc(), rewriter, {1},
+          (*llvm::cast<DenseElementsAttr>(const_op.getValue())
+                .getValues<APInt>()
+                .begin())
+              .getSExtValue());
     }
     return rewriter->create<TF::ExpandDimsOp>(
         op.getLoc(), tensorflow::GetTypeFromTFTensorShape({1}, shape_dtype),
@@ -713,8 +717,8 @@ struct ConvertTensorListPushBack
         loc, expanded_item_type, item, scalar_zero);
 
     Type elem_type = getElementTypeOrSelf(item);
-    auto handle_dtype = getElementTypeOrSelf(op.getOutputHandle().getType())
-                            .cast<TF::VariantType>();
+    auto handle_dtype = llvm::cast<tf_type::VariantType>(
+        getElementTypeOrSelf(op.getOutputHandle().getType()));
     Type result_type =
         GetTensorTypeForTensorList(elem_type, handle_dtype, &rewriter);
 
@@ -756,8 +760,8 @@ struct ConvertTensorListResize
 
     // Infer result type of this op based on TF's shape inference result.
     Type elem_type = getElementTypeOrSelf(input_handle);
-    auto handle_dtype = getElementTypeOrSelf(op.getOutputHandle().getType())
-                            .cast<TF::VariantType>();
+    auto handle_dtype = llvm::cast<tf_type::VariantType>(
+        getElementTypeOrSelf(op.getOutputHandle().getType()));
     Type result_type =
         GetTensorTypeForTensorList(elem_type, handle_dtype, &rewriter);
 
@@ -952,7 +956,8 @@ struct ConvertTensorListStack
     // trivial Reshape op (that doesn't actually change the input's shape) and
     // also populate the shape info to the op result. The shape of the
     // tensorlist is inferred from `num_elements` and `element_shape`.
-    auto ranked_type = element_shape.getType().dyn_cast<RankedTensorType>();
+    auto ranked_type =
+        llvm::dyn_cast<RankedTensorType>(element_shape.getType());
     DenseIntElementsAttr dense_elem_attr;
     if ((ranked_type && ranked_type.getRank() == 0) ||
         !matchPattern(element_shape, m_Constant(&dense_elem_attr))) {
@@ -1013,7 +1018,7 @@ struct ConvertTensorListConcatV2
     // First unpack the input tensor along the first dimension.
     Type input_element_type = getElementTypeOrSelf(input);
     int64_t num_unpacked = 0;
-    if (auto type = input.getType().dyn_cast<RankedTensorType>()) {
+    if (auto type = llvm::dyn_cast<RankedTensorType>(input.getType())) {
       if (type.getDimSize(0) > 0) {
         num_unpacked = type.getDimSize(0);
       } else {
@@ -1091,7 +1096,7 @@ struct ConvertYield : public OpConversionPattern<TF::YieldOp> {
 // if `type` is a tensor of variant. Otherwise, returns `type` unmodified.
 Type VariantToUnrankedTensorType(Type type, Value value) {
   TF::VariantType variant_ty =
-      getElementTypeOrSelf(type).dyn_cast<TF::VariantType>();
+      llvm::dyn_cast<tf_type::VariantType>(getElementTypeOrSelf(type));
   if (!variant_ty) {
     return type;
   }
@@ -1102,7 +1107,7 @@ Type VariantToUnrankedTensorType(Type type, Value value) {
   }
   Type value_type = value.getType();
   Type element_type;
-  variant_ty = value_type.dyn_cast<TF::VariantType>();
+  variant_ty = llvm::dyn_cast<tf_type::VariantType>(value_type);
   if (variant_ty && !variant_ty.getSubtypes().empty()) {
     element_type = variant_ty.getSubtypes()[0].getElementType();
   } else {
@@ -1114,7 +1119,7 @@ Type VariantToUnrankedTensorType(Type type, Value value) {
 // Returns true if we can deduce the type is tensorlist.
 bool IsTensorListType(Type type, std::optional<Value> value) {
   TF::VariantType variant_ty =
-      getElementTypeOrSelf(type).dyn_cast<TF::VariantType>();
+      llvm::dyn_cast<tf_type::VariantType>(getElementTypeOrSelf(type));
   if (!variant_ty) {
     return false;
   }
@@ -1336,7 +1341,7 @@ llvm::DenseMap<int, int> MapTensorListResultToArgument(func::FuncOp func) {
         break;
       }
     }
-    if (auto block_arg = parent.dyn_cast<mlir::BlockArgument>()) {
+    if (auto block_arg = dyn_cast<mlir::BlockArgument>(parent)) {
       return block_arg.getArgNumber();
     }
     // Returns -1 if we don't find which this result maps to.
@@ -1547,7 +1552,7 @@ void LowerStaticTensorListPass::runOnOperation() {
   // still.
   auto is_legal = [](Operation *op) {
     auto is_not_variant = [](Type ty) {
-      return !ty.cast<ShapedType>().getElementType().isa<TF::VariantType>();
+      return !isa<TF::VariantType>(cast<ShapedType>(ty).getElementType());
     };
     return llvm::all_of(op->getOperandTypes(), is_not_variant) &&
            llvm::all_of(op->getResultTypes(), is_not_variant);
@@ -1555,8 +1560,7 @@ void LowerStaticTensorListPass::runOnOperation() {
 
   auto is_set_item_legal = [](Operation *op) {
     return op->hasAttr("resize_if_index_out_of_bounds") &&
-           op->getAttr("resize_if_index_out_of_bounds")
-               .cast<mlir::BoolAttr>()
+           llvm::cast<BoolAttr>(op->getAttr("resize_if_index_out_of_bounds"))
                .getValue();
   };
 

@@ -15,14 +15,14 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-using PropagateOriginalValueTest = HloTestBase;
+using PropagateOriginalValueTest = HloHardwareIndependentTestBase;
 
 TEST_F(PropagateOriginalValueTest, InstructionFusion) {
   constexpr absl::string_view hlo_string = R"(

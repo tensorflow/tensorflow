@@ -103,13 +103,11 @@ RemoveSignTypeConverter::RemoveSignTypeConverter() {
   addConversion(convertInteger);
   addConversion(convertShapedType);
 
-  addArgumentMaterialization(materializeCastFromIllegal);
   addSourceMaterialization(materializeCastToIllegal);
   addTargetMaterialization(materializeCastFromIllegal);
 }
 
 LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
-  addArgumentMaterialization(scalarToTensor);
   addSourceMaterialization(scalarToTensor);
   addTargetMaterialization(scalarToTensor);
 }
@@ -182,10 +180,25 @@ Attribute HloToStablehloTypeConverter::convertSourceDialectEncoding(
 }
 
 StablehloToHloTypeConverter::StablehloToHloTypeConverter()
-    : HloTypeConverter() {
+    : HloTypeConverter(), convert_xla_supported_stablehlo_(true) {
   addConversion([](stablehlo::TokenType stablehloType) -> Type {
     return mhlo::TokenType::get(stablehloType.getContext());
   });
+}
+
+StablehloToHloTypeConverter::StablehloToHloTypeConverter(
+    bool convertXlaSupportedStablehlo)
+    : HloTypeConverter(),
+      convert_xla_supported_stablehlo_(convertXlaSupportedStablehlo) {
+  if (convert_xla_supported_stablehlo_) {
+    addConversion([](stablehlo::TokenType stablehloType) -> Type {
+      return mhlo::TokenType::get(stablehloType.getContext());
+    });
+  } else {
+    addConversion([](stablehlo::TokenType stablehloType) -> Type {
+      return stablehlo::TokenType::get(stablehloType.getContext());
+    });
+  }
 }
 
 bool StablehloToHloTypeConverter::isSourceDialect(Dialect& dialect) {

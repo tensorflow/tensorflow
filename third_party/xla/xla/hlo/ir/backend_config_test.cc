@@ -37,7 +37,7 @@ const int kNumRepetitions = 100;
 // since the == operator does not canonicalize the raw strings before comparing
 // them.
 constexpr absl::string_view kRawString =
-    R"({"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"32","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}},"force_earliest_schedule":false})";
+    R"({"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"32","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}},"force_earliest_schedule":false,"reification_cost":[]})";
 
 template <typename Input, typename CheckFn>
 void RunThreaded(Input input, CheckFn check_fn) {

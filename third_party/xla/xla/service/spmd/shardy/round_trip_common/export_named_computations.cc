@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/log/check.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
+#include "xla/service/spmd/shardy/constants.h"
 
 namespace xla {
 namespace sdy {
@@ -48,7 +50,9 @@ using ::mlir::StringRef;
 using ::mlir::SymbolTable;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
+
 using ::mlir::sdy::kShardingAttr;
+using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::NamedComputationOp;
 using ::mlir::sdy::TensorShardingPerValueAttr;
 
@@ -78,33 +82,56 @@ class ExportNamedComputationsPass
           namedComputationOp.getBody(), funcOp.getBody());
       rewriter.setInsertionPoint(namedComputationOp);
 
+      ManualAxesAttr manualAxesAttr =
+          namedComputationOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
+      std::optional<TensorShardingPerValueAttr> inShardings =
+          namedComputationOp.getInShardings();
+      std::optional<TensorShardingPerValueAttr> outShardings =
+          namedComputationOp.getOutShardings();
+
+      if (manualAxesAttr) {
+        CHECK(!manualAxesAttr.empty());
+        CHECK(inShardings.has_value());
+        CHECK(outShardings.has_value());
+      }
+
       // Copy the input shardings to the func.
-      if (std::optional<TensorShardingPerValueAttr> inShardings =
-              namedComputationOp.getInShardings()) {
-        for (auto [arg, sharding] : llvm::zip_equal(
-                 funcOp.getArguments(), inShardings->getShardings())) {
-          setSharding(arg, sharding);
+      if (inShardings.has_value()) {
+        for (auto [i, sharding] :
+             llvm::enumerate(inShardings->getShardings())) {
+          funcOp.setArgAttr(i, kShardingAttr, sharding);
+          if (manualAxesAttr) {
+            funcOp.setArgAttr(i, kManualAxes, manualAxesAttr);
+          }
         }
       }
 
-      // Copy the output shardings to the func AND call.
-      mlir::SmallVector<NamedAttribute> callOpAttrs(
-          namedComputationOp->getDiscardableAttrs());
-      if (std::optional<TensorShardingPerValueAttr> outShardings =
-              namedComputationOp.getOutShardings()) {
+      // Copy the output shardings to the func.
+      if (outShardings.has_value()) {
         for (auto [i, sharding] :
              llvm::enumerate(outShardings->getShardings())) {
           funcOp.setResultAttr(i, kShardingAttr, sharding);
+          if (manualAxesAttr) {
+            funcOp.setResultAttr(i, kManualAxes, manualAxesAttr);
+          }
         }
-        callOpAttrs.push_back(NamedAttribute(
-            rewriter.getStringAttr(kShardingAttr), *outShardings));
       }
 
-      mlir::StringAttr funcName = symbolTable.insert(funcOp);
+      // Replace the `NamedComputationOp` with a `CallOp`.
+      mlir::SmallVector<NamedAttribute> callOpAttrs(
+          namedComputationOp->getDiscardableAttrs());
       auto callOp = rewriter.replaceOpWithNewOp<CallOp>(
-          namedComputationOp, namedComputationOp.getResultTypes(), funcName,
-          namedComputationOp.getOperands());
+          namedComputationOp, namedComputationOp.getResultTypes(),
+          symbolTable.insert(funcOp), namedComputationOp.getOperands());
       callOp->setAttrs(callOpAttrs);
+
+      // Copy the output shardings to the call op.
+      if (outShardings.has_value()) {
+        mlir::sdy::setShardings(callOp, *outShardings);
+        if (manualAxesAttr) {
+          callOp->setAttr(kManualAxes, manualAxesAttr);
+        }
+      }
     });
   }
 
@@ -113,10 +140,9 @@ class ExportNamedComputationsPass
   }
 
   StringRef getDescription() const override {
-    return "Creates a pass that converts a `NamedComputationOp` with a "
-           "`to a `CallOp` with a new private function "
-           "called the `NamedComputationOp`'s `name`. The new `FuncOp` and "
-           "`CallOp` have the same shardings as the original "
+    return "Converts a `NamedComputationOp` to a `CallOp` with a new private "
+           "function called the `NamedComputationOp`'s `name`. The new "
+           "`FuncOp` and `CallOp` have the same shardings as the original "
            "`NamedComputationOp`s operands/results.";
   }
 };

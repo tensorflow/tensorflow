@@ -75,7 +75,7 @@ class MatmulInterpolatorParamTest : public TestWithParam<ParametrizedTestCase> {
     absl::StatusOr<HloInstructionProfileList> profiles =
         DotInterpolationSpace(interpolation_space_);
     CHECK_OK(profiles.status()) << "Cannot generate interpolation space.";
-    absl::StatusOr<std::unique_ptr<MatmulInterpolator>> interpolator =
+    absl::StatusOr<std::unique_ptr<const MatmulInterpolator>> interpolator =
         MatmulInterpolator::Create(*std::move(profiles), device_info_);
     CHECK_OK(interpolator.status()) << "Cannot construct interpolator.";
     interpolator_ = std::move(*interpolator);
@@ -123,7 +123,7 @@ class MatmulInterpolatorParamTest : public TestWithParam<ParametrizedTestCase> {
     return list;
   }
 
-  MatmulInterpolator& interpolator() { return *interpolator_; }
+  const MatmulInterpolator& interpolator() { return *interpolator_; }
 
  private:
   int64_t ClockCycles(absl::Duration runtime) {
@@ -168,7 +168,7 @@ class MatmulInterpolatorParamTest : public TestWithParam<ParametrizedTestCase> {
           /*clock_cycles=*/ClockCycles(absl::Seconds(5)),
       },
   };
-  std::unique_ptr<MatmulInterpolator> interpolator_;
+  std::unique_ptr<const MatmulInterpolator> interpolator_;
 };
 
 TEST_P(MatmulInterpolatorParamTest,

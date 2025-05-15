@@ -40,6 +40,7 @@ static TfLiteDelegate* CreateDelegate(const void* settings) {
     if (xnnpack_settings->flags()) {
       options.flags = xnnpack_settings->flags();
     }
+    options.runtime_flags = xnnpack_settings->runtime_flags();
     if (xnnpack_settings->weight_cache_file_path()) {
       options.weight_cache_file_path =
           xnnpack_settings->weight_cache_file_path()->c_str();

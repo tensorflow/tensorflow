@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/concurrent_vector.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
+#include "tsl/platform/context.h"
 
 namespace tsl {
 namespace internal {
@@ -487,8 +488,13 @@ class AsyncValue {
     static_assert(std::is_invocable_v<Waiter>, "Waiter must be invocable");
 
     struct Node final : public WaiterListNode {
-      explicit Node(Waiter waiter) : waiter(std::move(waiter)) {}
-      void operator()() final { waiter(); }
+      explicit Node(Waiter waiter)
+          : context(ContextKind::kThread), waiter(std::move(waiter)) {}
+      void operator()() final {
+        WithContext wc(context);
+        std::move(waiter)();
+      }
+      Context context;
       Waiter waiter;
     };
 
@@ -516,9 +522,9 @@ void BlockUntilReady(AsyncValue* async_value);
 
 // Runs the `callee` when all async values become available.
 void RunWhenReady(absl::Span<AsyncValue* const> values,
-                  absl::AnyInvocable<void()> callee);
+                  absl::AnyInvocable<void() &&> callee);
 void RunWhenReady(absl::Span<RCReference<AsyncValue> const> values,
-                  absl::AnyInvocable<void()> callee);
+                  absl::AnyInvocable<void() &&> callee);
 
 //===----------------------------------------------------------------------===//
 
@@ -1014,7 +1020,7 @@ void AsyncValue::AndThen(Waiter&& waiter) {
   if (waiters_and_state.state() == State::kConcrete ||
       waiters_and_state.state() == State::kError) {
     DCHECK_EQ(waiters_and_state.waiter(), nullptr);
-    waiter();
+    std::forward<Waiter>(waiter)();
     return;
   }
 

@@ -61,7 +61,7 @@ void InputMetricsLoweringPass::runOnOperation() {
     auto abstractOp = op->getRegisteredInfo();
     if (!abstractOp) return WalkResult::advance();
 
-    if (mlir::mhlo::IsDynamicPadderOp(abstractOp->getTypeID())) {
+    if (mlir::hlo::IsDynamicPadderOp(abstractOp->getTypeID())) {
       has_dynamic_op = true;
       dynamism_op_counter->GetCell(op->getName().getStringRef().str())
           ->IncrementBy(1);

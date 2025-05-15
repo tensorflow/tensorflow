@@ -54,11 +54,11 @@ load(
     "cc_test",
 )
 load(
-    "//third_party/compute_library:build_defs.bzl",
+    "@local_xla//third_party/compute_library:build_defs.bzl",
     "if_enable_acl",
 )
 load(
-    "//third_party/llvm_openmp:openmp.bzl",
+    "@local_xla//third_party/llvm_openmp:openmp.bzl",
     "windows_llvm_openmp_linkopts",
 )
 load(
@@ -216,22 +216,9 @@ def if_android_arm64(a):
         "//conditions:default": [],
     })
 
-def if_android_mips(a):
-    return select({
-        clean_dep("//tensorflow:android_mips"): a,
-        "//conditions:default": [],
-    })
-
 def if_not_android(a):
     return select({
         clean_dep("//tensorflow:android"): [],
-        "//conditions:default": a,
-    })
-
-def if_not_android_mips_and_mips64(a):
-    return select({
-        clean_dep("//tensorflow:android_mips"): [],
-        clean_dep("//tensorflow:android_mips64"): [],
         "//conditions:default": a,
     })
 
@@ -332,7 +319,6 @@ def if_not_fuchsia(a):
 def if_linux_x86_64(a):
     return select({
         clean_dep("//tensorflow:linux_x86_64"): a,
-        clean_dep("//tensorflow:haswell"): a,
         "//conditions:default": [],
     })
 
@@ -1604,7 +1590,7 @@ def tf_cc_test(
                 "-lpthread",
                 "-lm",
             ],
-            clean_dep("//third_party/compute_library:build_with_acl"): [
+            clean_dep("@local_xla//third_party/compute_library:build_with_acl"): [
                 "-fopenmp",
                 "-lm",
             ],
@@ -1647,7 +1633,7 @@ def tf_cc_shared_test(
                 "-lpthread",
                 "-lm",
             ],
-            clean_dep("//third_party/compute_library:build_with_acl"): [
+            clean_dep("@local_xla//third_party/compute_library:build_with_acl"): [
                 "-fopenmp",
                 "-lm",
             ],
@@ -2230,6 +2216,8 @@ def tf_custom_op_library_additional_deps_impl():
         clean_dep("//tensorflow/core:reader_base"),
     ]
 
+CollectedDepsInfo = provider("CollectedDepsInfo", fields = ["tf_collected_deps"])
+
 # Traverse the dependency graph along the "deps" attribute of the
 # target and return a struct with one field called 'tf_collected_deps'.
 # tf_collected_deps will be the union of the deps of the current target
@@ -2245,9 +2233,9 @@ def _collect_deps_aspect_impl(target, ctx):
         all_deps += ctx.rule.attr.roots
     for dep in all_deps:
         direct.append(dep.label)
-        if hasattr(dep, "tf_collected_deps"):
-            transitive.append(dep.tf_collected_deps)
-    return struct(tf_collected_deps = depset(direct = direct, transitive = transitive))
+        if CollectedDepsInfo in dep:
+            transitive.append(dep[CollectedDepsInfo].tf_collected_deps)
+    return CollectedDepsInfo(tf_collected_deps = depset(direct = direct, transitive = transitive))
 
 collect_deps_aspect = aspect(
     attr_aspects = ["deps", "data", "roots"],
@@ -2266,9 +2254,9 @@ def _check_deps_impl(ctx):
     required_deps = ctx.attr.required_deps
     disallowed_deps = ctx.attr.disallowed_deps
     for input_dep in ctx.attr.deps:
-        if not hasattr(input_dep, "tf_collected_deps"):
+        if CollectedDepsInfo not in input_dep:
             continue
-        collected_deps = sets.make(input_dep.tf_collected_deps.to_list())
+        collected_deps = sets.make(input_dep[CollectedDepsInfo].tf_collected_deps.to_list())
         for disallowed_dep in disallowed_deps:
             if sets.contains(collected_deps, disallowed_dep.label):
                 fail(
@@ -2465,7 +2453,7 @@ def pywrap_tensorflow_macro_opensource(
     """Builds the pywrap_tensorflow_internal shared object."""
 
     if use_pywrap_rules():
-        native.py_library(
+        _plain_py_library(
             name = name,
             srcs = [],
             deps = [],

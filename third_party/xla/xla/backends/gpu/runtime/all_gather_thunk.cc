@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -109,17 +111,23 @@ absl::Status RunAllGather(GpuCollectives* collectives,
   TF_RETURN_IF_ERROR(
       MaybeRegisterBuffers(collectives, stream.parent(), buffers, comm));
 
-  TF_RETURN_IF_ERROR(collectives->GroupStart());
+  TF_ASSIGN_OR_RETURN(GpuCommunicator * gpu_comm, collectives->TryCast(comm));
+  tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
+      [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
+        for (DeviceBufferPair& buffer : buffers) {
+          TF_RETURN_IF_ERROR(comm->LaunchAllGather(
+              buffer.source_buffer, buffer.destination_buffer,
+              buffer.element_type, buffer.element_count,
+              GpuCollectives::On(stream)));
+        }
+        return absl::OkStatus();
+      });
 
-  for (DeviceBufferPair& buffer : buffers) {
-    TF_RETURN_IF_ERROR(comm->AllGather(
-        buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
-        buffer.element_count, GpuCollectives::On(stream)));
-  }
-
-  TF_RETURN_IF_ERROR(collectives->GroupEnd());
-
+  tsl::BlockUntilReady(event);
   VLOG(3) << "Done performing all-gather for ordinal: " << device_ordinal;
+  if (event.IsError()) {
+    return event.GetError();
+  }
   return absl::OkStatus();
 }
 

@@ -325,11 +325,11 @@ class StreamExecutor {
   virtual bool SetArgumentLoggingMode(uint64_t mode) { return false; }
 
   // Creates, allocates, and copies a CUtensorMap object for the given TMA
-  // descriptor.  Returns a DeviceMemoryBase pointing to the allocated
-  // CUtensorMap object to be used as an argument to a kernel.
+  // descriptor. Returns a TensorMap, which is 128 bytes of storage, to be
+  // passed by value to the kernel.
   // Only implemented on CUDA GPUs.
-  virtual absl::StatusOr<DeviceMemoryBase> CreateTensorMap(
-      gpu::TmaDescriptor tma_desc, void* global_address) {
+  virtual absl::StatusOr<TensorMap> CreateTensorMap(gpu::TmaDescriptor tma_desc,
+                                                    void* global_address) {
     return absl::UnimplementedError("Not Implemented");
   }
 };

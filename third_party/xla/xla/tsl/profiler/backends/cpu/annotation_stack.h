@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
-#include <string_view>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/types.h"
 
@@ -31,7 +31,7 @@ class AnnotationStack {
   // Appends name to the annotations for the current thread, separated by "::".
   // The choice of separator "::" is based on characters not used by TensorFlow
   // for its TensorOps.
-  static void PushAnnotation(std::string_view name);
+  static void PushAnnotation(absl::string_view name);
 
   // Resizes the annotation stack for the current thread.
   static void PopAnnotation();

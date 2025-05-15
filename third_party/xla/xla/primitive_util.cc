@@ -35,7 +35,7 @@ namespace xla {
 namespace primitive_util {
 
 int SignificandWidth(PrimitiveType type) {
-  return FloatingPointTypeSwitch<int>(
+  return FloatingPointTypeSwitch(
       [&](auto constant_type) -> int {
         return std::numeric_limits<NativeTypeOf<constant_type>>::digits;
       },
@@ -61,7 +61,7 @@ int UnderflowExponent(PrimitiveType type) {
   // normalized floating-point number." as such it does not actually yield the
   // minimum exponent but one above the minimum exponent that a normalized
   // number can have.
-  return FloatingPointTypeSwitch<int>(
+  return FloatingPointTypeSwitch(
       [&](auto constant_type) -> int {
         return std::numeric_limits<NativeTypeOf<constant_type>>::min_exponent;
       },
@@ -74,7 +74,7 @@ int OverflowExponent(PrimitiveType type) {
   // representable finite floating-point number." as such it does not actually
   // yield the maximum exponent but the exponent of the first integer which
   // overflows.
-  return FloatingPointTypeSwitch<int>(
+  return FloatingPointTypeSwitch(
       [&](auto constant_type) -> int {
         return std::numeric_limits<NativeTypeOf<constant_type>>::max_exponent;
       },
@@ -87,7 +87,7 @@ int ExponentBias(PrimitiveType type) {
 
 bool HasInfinity(PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
-    return FloatingPointTypeSwitch<bool>(
+    return FloatingPointTypeSwitch(
         [&](auto constant_type) -> bool {
           return std::numeric_limits<NativeTypeOf<constant_type>>::has_infinity;
         },
@@ -98,7 +98,7 @@ bool HasInfinity(PrimitiveType type) {
 
 bool HasNaN(PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
-    return FloatingPointTypeSwitch<bool>(
+    return FloatingPointTypeSwitch(
         [&](auto constant_type) -> bool {
           return std::numeric_limits<
               NativeTypeOf<constant_type>>::has_quiet_NaN;
@@ -110,7 +110,7 @@ bool HasNaN(PrimitiveType type) {
 
 bool HasNegativeZero(PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
-    return FloatingPointTypeSwitch<bool>(
+    return FloatingPointTypeSwitch(
         [&](auto constant_type) -> bool {
           return has_negative_zero_v<NativeTypeOf<constant_type>>;
         },
@@ -249,7 +249,7 @@ class PrimitiveTypeNameGenerator {
 };
 
 const std::string& LowercasePrimitiveTypeName(PrimitiveType s) {
-  static auto* gen = new PrimitiveTypeNameGenerator();
+  static auto* const gen = new PrimitiveTypeNameGenerator();
   return gen->LowercaseName(s);
 }
 
@@ -263,7 +263,8 @@ const absl::flat_hash_map<std::string, PrimitiveType>&
 LowerCaseNameToPrimitiveType() {
   static absl::flat_hash_map<std::string, PrimitiveType>* const name_to_type =
       [] {
-        static auto* map = new absl::flat_hash_map<std::string, PrimitiveType>;
+        static auto* const map =
+            new absl::flat_hash_map<std::string, PrimitiveType>;
         for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
           if (PrimitiveType_IsValid(i) && i != PRIMITIVE_TYPE_INVALID) {
             auto value = static_cast<PrimitiveType>(i);

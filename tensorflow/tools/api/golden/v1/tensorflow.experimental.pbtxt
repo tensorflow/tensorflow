@@ -57,7 +57,15 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "int2"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "int4"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "uint2"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {

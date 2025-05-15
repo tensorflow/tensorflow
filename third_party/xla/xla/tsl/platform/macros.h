@@ -153,7 +153,7 @@ limitations under the License.
 namespace tsl {
 namespace internal {
 template <typename T>
-void remove_unused_variable_compiler_warning(const T&){};
+void remove_unused_variable_compiler_warning(const T&) {}
 }  // namespace internal
 }  // namespace tsl
 #define TF_UNUSED_VARIABLE(x) \

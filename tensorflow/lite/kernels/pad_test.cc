@@ -207,6 +207,10 @@ TEST_F(PadOpTest, Int32PaddingTooFewDimensions) { TooFewDimensions<int32_t>(); }
 
 TEST_F(PadOpTest, Int64PaddingTooFewDimensions) { TooFewDimensions<int64_t>(); }
 
+TEST_F(PadOpTest, Int8PaddingTooFewDimensions) { TooFewDimensions<int8_t>(); }
+
+TEST_F(PadOpTest, Int16PaddingTooFewDimensions) { TooFewDimensions<int16_t>(); }
+
 template <typename padding_integer_type>
 void UnequalDimensions() {
   EXPECT_DEATH(PadOpConstModel<padding_integer_type>(
@@ -223,6 +227,12 @@ TEST_F(PadOpTest, Int64PaddingUnequalDimensions) {
   UnequalDimensions<int64_t>();
 }
 
+TEST_F(PadOpTest, Int8PaddingUnequalDimensions) { UnequalDimensions<int8_t>(); }
+
+TEST_F(PadOpTest, Int16PaddingUnequalDimensions) {
+  UnequalDimensions<int16_t>();
+}
+
 template <typename padding_integer_type>
 void InvalidPadValue() {
   EXPECT_DEATH(PadOpConstModel<int32_t>({TensorType_FLOAT32, {1, 1, 2, 1}},
@@ -234,6 +244,10 @@ void InvalidPadValue() {
 TEST_F(PadOpTest, Int32PaddingInvalidPadValue) { InvalidPadValue<int32_t>(); }
 
 TEST_F(PadOpTest, Int64PaddingInvalidPadValue) { InvalidPadValue<int64_t>(); }
+
+TEST_F(PadOpTest, Int8PaddingInvalidPadValue) { InvalidPadValue<int8_t>(); }
+
+TEST_F(PadOpTest, Int16PaddingInvalidPadValue) { InvalidPadValue<int16_t>(); }
 
 TEST_F(PadOpTest, Int64PaddingOverflow) {
   EXPECT_DEATH(PadOpConstModel<int64_t>(
@@ -270,6 +284,10 @@ TEST_F(PadOpTest, Int32PaddingSimpleConstTest) { SimpleConstTest<int32_t>(); }
 
 TEST_F(PadOpTest, Int64PaddingSimpleConstTest) { SimpleConstTest<int64_t>(); }
 
+TEST_F(PadOpTest, Int8PaddingSimpleConstTest) { SimpleConstTest<int8_t>(); }
+
+TEST_F(PadOpTest, Int16PaddingSimpleConstTest) { SimpleConstTest<int16_t>(); }
+
 template <typename padding_integer_type>
 void SimpleConstImageStyleTest() {
   // Padding is represented as four 2-D lists representing above padding and
@@ -292,6 +310,14 @@ TEST_F(PadOpTest, Int64PaddingSimpleConstImageStyleTest) {
   SimpleConstImageStyleTest<int64_t>();
 }
 
+TEST_F(PadOpTest, Int8PaddingSimpleConstImageStyleTest) {
+  SimpleConstImageStyleTest<int8_t>();
+}
+
+TEST_F(PadOpTest, Int16PaddingSimpleConstImageStyleTest) {
+  SimpleConstImageStyleTest<int16_t>();
+}
+
 // Optimized versions may choose to handle zero-sized images differently.
 template <typename padding_integer_type>
 void ZeroHeightConstImageStyleTest() {
@@ -310,6 +336,14 @@ TEST_F(PadOpTest, Int32PaddingZeroHeightConstImageStyleTest) {
 
 TEST_F(PadOpTest, Int64PaddingZeroHeightConstImageStyleTest) {
   ZeroHeightConstImageStyleTest<int64_t>();
+}
+
+TEST_F(PadOpTest, Int8PaddingZeroHeightConstImageStyleTest) {
+  ZeroHeightConstImageStyleTest<int8_t>();
+}
+
+TEST_F(PadOpTest, Int16PaddingZeroHeightConstImageStyleTest) {
+  ZeroHeightConstImageStyleTest<int16_t>();
 }
 
 // Optimized versions may choose to handle zero-sized images differently.
@@ -332,6 +366,14 @@ TEST_F(PadOpTest, Int64PaddingZeroWidthConstImageStyleTest) {
   ZeroWidthConstImageStyleTest<int64_t>();
 }
 
+TEST_F(PadOpTest, Int8PaddingZeroWidthConstImageStyleTest) {
+  ZeroWidthConstImageStyleTest<int8_t>();
+}
+
+TEST_F(PadOpTest, Int16PaddingZeroWidthConstImageStyleTest) {
+  ZeroWidthConstImageStyleTest<int16_t>();
+}
+
 template <typename padding_integer_type>
 void SimpleConst1DTest() {
   PadOpConstModel<padding_integer_type> m({TensorType_FLOAT32, {2}}, {1, 2},
@@ -348,6 +390,12 @@ TEST_F(PadOpTest, Int32PaddingSimpleConst1DTest) {
 
 TEST_F(PadOpTest, Int64PaddingSimpleConst1DTest) {
   SimpleConst1DTest<int64_t>();
+}
+
+TEST_F(PadOpTest, Int8PaddingSimpleConst1DTest) { SimpleConst1DTest<int8_t>(); }
+
+TEST_F(PadOpTest, Int16PaddingSimpleConst1DTest) {
+  SimpleConst1DTest<int16_t>();
 }
 
 template <typename padding_integer_type>
@@ -371,6 +419,14 @@ TEST_F(PadOpTest, Int64PaddingSimpleConst1DDim0Test) {
   SimpleConst1DDim0Test<int64_t>();
 }
 
+TEST_F(PadOpTest, Int8PaddingSimpleConst1DDim0Test) {
+  SimpleConst1DDim0Test<int8_t>();
+}
+
+TEST_F(PadOpTest, Int16PaddingSimpleConst1DDim0Test) {
+  SimpleConst1DDim0Test<int16_t>();
+}
+
 template <typename padding_integer_type>
 void SimpleDynamicTest() {
   PadOpDynamicModel<padding_integer_type> m({TensorType_FLOAT32, {1, 2, 2, 1}},
@@ -389,6 +445,12 @@ TEST_F(PadOpTest, Int32PaddingSimpleDynamicTest) {
 
 TEST_F(PadOpTest, Int64PaddingSimpleDynamicTest) {
   SimpleDynamicTest<int64_t>();
+}
+
+TEST_F(PadOpTest, Int8PaddingSimpleDynamicTest) { SimpleDynamicTest<int8_t>(); }
+
+TEST_F(PadOpTest, Int16PaddingSimpleDynamicTest) {
+  SimpleDynamicTest<int16_t>();
 }
 
 template <typename padding_integer_type>
@@ -410,6 +472,14 @@ TEST_F(PadOpTest, Int32PaddingDynamicUnequalDimensions) {
 
 TEST_F(PadOpTest, Int64PaddingDynamicUnequalDimensions) {
   DynamicUnequalDimensions<int64_t>();
+}
+
+TEST_F(PadOpTest, Int8PaddingDynamicUnequalDimensions) {
+  DynamicUnequalDimensions<int8_t>();
+}
+
+TEST_F(PadOpTest, Int16PaddingDynamicUnequalDimensions) {
+  DynamicUnequalDimensions<int16_t>();
 }
 
 template <typename padding_integer_type>
@@ -435,6 +505,14 @@ TEST_F(PadOpTest, Int64PaddingAdvancedConstTest) {
   AdvancedConstTestV2<int64_t>();
 }
 
+TEST_F(PadOpTest, Int8PaddingAdvancedConstTest) {
+  AdvancedConstTestV2<int8_t>();
+}
+
+TEST_F(PadOpTest, Int16PaddingAdvancedConstTest) {
+  AdvancedConstTestV2<int16_t>();
+}
+
 template <typename padding_integer_type>
 void AdvancedConstImageStyleTest() {
   PadOpConstModel<int32_t> m({TensorType_FLOAT32, {1, 2, 3, 1}}, {4, 2},
@@ -453,6 +531,14 @@ TEST_F(PadOpTest, Int32PaddingAdvancedConstImageStyleTest) {
 
 TEST_F(PadOpTest, Int64PaddingAdvancedConstImageStyleTest) {
   AdvancedConstImageStyleTest<int64_t>();
+}
+
+TEST_F(PadOpTest, Int8PaddingAdvancedConstImageStyleTest) {
+  AdvancedConstImageStyleTest<int8_t>();
+}
+
+TEST_F(PadOpTest, Int16PaddingAdvancedConstImageStyleTest) {
+  AdvancedConstImageStyleTest<int16_t>();
 }
 
 template <typename padding_integer_type>
@@ -474,6 +560,14 @@ TEST_F(PadOpTest, Int32PaddingAdvancedDynamicTest) {
 
 TEST_F(PadOpTest, Int64PaddingAdvancedDynamicTest) {
   AdvancedDynamicTest<int64_t>();
+}
+
+TEST_F(PadOpTest, Int8PaddingAdvancedDynamicTest) {
+  AdvancedDynamicTest<int8_t>();
+}
+
+TEST_F(PadOpTest, Int16PaddingAdvancedDynamicTest) {
+  AdvancedDynamicTest<int16_t>();
 }
 
 std::vector<Matcher<float>> DequantizedArrayNear(
@@ -639,6 +733,14 @@ TEST_F(PadV2OpTest, Int64PaddingTooManyDimensions) {
   TooManyDimensions<int64_t>();
 }
 
+TEST_F(PadV2OpTest, Int8PaddingTooManyDimensions) {
+  TooManyDimensions<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingTooManyDimensions) {
+  TooManyDimensions<int16_t>();
+}
+
 template <typename padding_integer_type>
 void UnequalDimensionsV2() {
   typedef PadV2OpConstModel<float, padding_integer_type> f;
@@ -655,6 +757,14 @@ TEST_F(PadV2OpTest, Int64PaddingUnequalDimensions) {
   UnequalDimensionsV2<int64_t>();
 }
 
+TEST_F(PadV2OpTest, Int8PaddingUnequalDimensions) {
+  UnequalDimensionsV2<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingUnequalDimensions) {
+  UnequalDimensionsV2<int16_t>();
+}
+
 template <typename padding_integer_type>
 void InvalidPadValueV2() {
   typedef PadV2OpConstModel<float, padding_integer_type> f;
@@ -669,6 +779,12 @@ TEST_F(PadV2OpTest, Int32PaddingInvalidPadValue) {
 
 TEST_F(PadV2OpTest, Int64PaddingInvalidPadValue) {
   InvalidPadValueV2<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingInvalidPadValue) { InvalidPadValueV2<int8_t>(); }
+
+TEST_F(PadV2OpTest, Int16PaddingInvalidPadValue) {
+  InvalidPadValueV2<int16_t>();
 }
 
 TEST_F(PadV2OpTest, Int64PaddingOverflow) {
@@ -711,6 +827,14 @@ TEST_F(PadV2OpTest, Int64PaddingSimpleConstTestUint8) {
   SimpleConstTestUint8<int64_t>();
 }
 
+TEST_F(PadV2OpTest, Int8PaddingSimpleConstTestUint8) {
+  SimpleConstTestUint8<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleConstTestUint8) {
+  SimpleConstTestUint8<int16_t>();
+}
+
 template <typename padding_integer_type>
 void SimpleConstTestInt8() {
   // Padding is represented as four 2-D lists representing above padding and
@@ -731,6 +855,14 @@ TEST_F(PadV2OpTest, Int32PaddingSimpleConstTestInt8) {
 
 TEST_F(PadV2OpTest, Int64PaddingSimpleConstTestInt8) {
   SimpleConstTestInt8<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingSimpleConstTestInt8) {
+  SimpleConstTestInt8<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleConstTestInt8) {
+  SimpleConstTestInt8<int16_t>();
 }
 
 template <typename padding_integer_type>
@@ -755,6 +887,14 @@ TEST_F(PadV2OpTest, Int64PaddingSimpleConstFloat32ValuedTestUint8) {
   SimpleConstFloat32ValuedTestUint8<int64_t>();
 }
 
+TEST_F(PadV2OpTest, Int8PaddingSimpleConstFloat32ValuedTestUint8) {
+  SimpleConstFloat32ValuedTestUint8<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleConstFloat32ValuedTestUint8) {
+  SimpleConstFloat32ValuedTestUint8<int16_t>();
+}
+
 template <typename padding_integer_type>
 void SimpleConstFloat32ValuedTestInt8() {
   // Padding is represented as four 2-D lists representing above padding and
@@ -777,6 +917,77 @@ TEST_F(PadV2OpTest, Int64PaddingSimpleConstFloat32ValuedTestInt8) {
   SimpleConstFloat32ValuedTestInt8<int64_t>();
 }
 
+TEST_F(PadV2OpTest, Int8PaddingSimpleConstFloat32ValuedTestInt8) {
+  SimpleConstFloat32ValuedTestInt8<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleConstFloat32ValuedTestInt8) {
+  SimpleConstFloat32ValuedTestInt8<int16_t>();
+}
+
+template <typename padding_integer_type>
+void SimpleConstFloat16ValuedTest() {
+  PadV2OpConstModel<Eigen::half, padding_integer_type> m(
+      {TensorType_FLOAT16, {1, 2, 2, 1}}, {4, 2}, {0, 0, 1, 1, 1, 1, 0, 0},
+      Eigen::half{4.0f}, {TensorType_FLOAT16});
+  m.SetInput({Eigen::half{1.5f}, Eigen::half{2.5f}, Eigen::half{3.5f},
+              Eigen::half{4.5}});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {Eigen::half{4}, Eigen::half{4}, Eigen::half{4}, Eigen::half{4},
+           Eigen::half{4}, Eigen::half{1.5}, Eigen::half{2.5}, Eigen::half{4},
+           Eigen::half{4}, Eigen::half{3.5}, Eigen::half{4.5}, Eigen::half{4},
+           Eigen::half{4}, Eigen::half{4}, Eigen::half{4}, Eigen::half{4}})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimpleConstFloat16) {
+  SimpleConstFloat16ValuedTest<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimpleConstFloat16) {
+  SimpleConstFloat16ValuedTest<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingSimpleConstFloat16) {
+  SimpleConstFloat16ValuedTest<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleConstFloat16) {
+  SimpleConstFloat16ValuedTest<int16_t>();
+}
+
+template <typename padding_integer_type>
+void SimpleConstBFloat16ValuedTest() {
+  PadV2OpConstModel<Eigen::bfloat16, padding_integer_type> m(
+      {TensorType_BFLOAT16, {1, 2, 2, 1}}, {4, 2}, {0, 0, 1, 1, 1, 1, 0, 0},
+      Eigen::bfloat16{6.0f}, {TensorType_BFLOAT16});
+  m.SetInput({Eigen::bfloat16{1.0f}, Eigen::bfloat16{2.0f},
+              Eigen::bfloat16{3.0f}, Eigen::bfloat16{4.0}});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({6, 6, 6, 6, 6, 1, 2, 6, 6, 3, 4,
+                                               6, 6, 6, 6, 6}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimpleConstBFloat16) {
+  SimpleConstBFloat16ValuedTest<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimpleConstBFloat16) {
+  SimpleConstBFloat16ValuedTest<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingSimpleConstBFloat16) {
+  SimpleConstBFloat16ValuedTest<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleConstBFloat16) {
+  SimpleConstBFloat16ValuedTest<int16_t>();
+}
+
 template <typename padding_integer_type>
 void Simple4DConstFloat32ValuedTest() {
   // Padding is represented as four 2-D lists representing above padding and
@@ -796,6 +1007,73 @@ TEST_F(PadV2OpTest, Int32PaddingSimple4DConstFloat32ValuedTest) {
 
 TEST_F(PadV2OpTest, Int64PaddingSimple4DConstFloat32ValuedTest) {
   Simple4DConstFloat32ValuedTest<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingSimple4DConstFloat32ValuedTest) {
+  Simple4DConstFloat32ValuedTest<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimple4DConstFloat32ValuedTest) {
+  Simple4DConstFloat32ValuedTest<int16_t>();
+}
+
+template <typename padding_integer_type>
+void Simple4DConstFloat16ValuedTest() {
+  PadV2OpConstModel<Eigen::half, padding_integer_type> m(
+      {TensorType_FLOAT16, {1, 1, 2, 1}}, {4, 2}, {0, 1, 0, 0, 0, 0, 0, 1},
+      Eigen::half{7.0}, {TensorType_FLOAT16});
+  m.SetInput({Eigen::half{3.0f}, Eigen::half{6.0f}});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 7, 6, 7, 7, 7, 7, 7}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 2, 2}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimple4DConstFloat16ValuedTest) {
+  Simple4DConstFloat16ValuedTest<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimple4DConstFloat16ValuedTest) {
+  Simple4DConstFloat16ValuedTest<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingSimple4DConstFloat16ValuedTest) {
+  Simple4DConstFloat16ValuedTest<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimple4DConstFloat16ValuedTest) {
+  Simple4DConstFloat16ValuedTest<int16_t>();
+}
+
+template <typename padding_integer_type>
+void Simple4DConstBFloat16ValuedTest() {
+  PadV2OpConstModel<Eigen::bfloat16, padding_integer_type> m(
+      {TensorType_BFLOAT16, {1, 1, 2, 1}}, {4, 2}, {0, 1, 0, 0, 0, 0, 0, 1},
+      Eigen::bfloat16{5.0}, {TensorType_BFLOAT16});
+  m.SetInput({Eigen::bfloat16{3.2f}, Eigen::bfloat16{6.4f}});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {Eigen::bfloat16{3.2f}, Eigen::bfloat16{5.0f}, Eigen::bfloat16{6.4f},
+           Eigen::bfloat16{5.0f}, Eigen::bfloat16{5.0f}, Eigen::bfloat16{5.0f},
+           Eigen::bfloat16{5.0f}, Eigen::bfloat16{5.0f}})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 2, 2}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimple4DConstBFloat16ValuedTest) {
+  Simple4DConstBFloat16ValuedTest<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimple4DConstBFloat16ValuedTest) {
+  Simple4DConstBFloat16ValuedTest<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingSimple4DConstBFloat16ValuedTest) {
+  Simple4DConstBFloat16ValuedTest<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimple4DConstBFloat16ValuedTest) {
+  Simple4DConstBFloat16ValuedTest<int16_t>();
 }
 
 template <typename padding_integer_type>
@@ -820,6 +1098,14 @@ TEST_F(PadV2OpTest, Int64PaddingSimpleConstInt32ValuedTest) {
   SimpleConstInt32ValuedTest<int64_t>();
 }
 
+TEST_F(PadV2OpTest, Int8PaddingSimpleConstInt32ValuedTest) {
+  SimpleConstInt32ValuedTest<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleConstInt32ValuedTest) {
+  SimpleConstInt32ValuedTest<int16_t>();
+}
+
 template <typename padding_integer_type>
 void SimpleDynamicTestV2() {
   PadV2OpDynamicModel<float, padding_integer_type> m(
@@ -838,6 +1124,74 @@ TEST_F(PadV2OpTest, Int32PaddingSimpleDynamicTest) {
 
 TEST_F(PadV2OpTest, Int64PaddingSimpleDynamicTest) {
   SimpleDynamicTestV2<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingSimpleDynamicTest) {
+  SimpleDynamicTestV2<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleDynamicTest) {
+  SimpleDynamicTestV2<int16_t>();
+}
+
+template <typename padding_integer_type>
+void SimpleDynamicTestV2Float16() {
+  PadV2OpDynamicModel<Eigen::half, padding_integer_type> m(
+      {TensorType_FLOAT16, {1, 2, 2, 1}}, {4, 2}, Eigen::half{0.0},
+      {TensorType_FLOAT16});
+  m.SetInput({Eigen::half{1.0f}, Eigen::half{2.0f}, Eigen::half{3.0f},
+              Eigen::half{4.0f}});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
+                                               0, 0, 0, 0, 0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimpleDynamicTestFloat16) {
+  SimpleDynamicTestV2Float16<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimpleDynamicTestFloat16) {
+  SimpleDynamicTestV2Float16<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingSimpleDynamicTestFloat16) {
+  SimpleDynamicTestV2Float16<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleDynamicTestFloat16) {
+  SimpleDynamicTestV2Float16<int16_t>();
+}
+
+template <typename padding_integer_type>
+void SimpleDynamicTestV2BFloat16() {
+  PadV2OpDynamicModel<Eigen::bfloat16, padding_integer_type> m(
+      {TensorType_BFLOAT16, {1, 2, 2, 1}}, {4, 2}, Eigen::bfloat16{2.0},
+      {TensorType_BFLOAT16});
+  m.SetInput({Eigen::bfloat16{5.0f}, Eigen::bfloat16{6.0f},
+              Eigen::bfloat16{7.0f}, Eigen::bfloat16{8.0f}});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 2, 2, 2, 2, 5, 6, 2, 2, 7, 8,
+                                               2, 2, 2, 2, 2}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST_F(PadV2OpTest, Int32PaddingSimpleDynamicTestBFloat16) {
+  SimpleDynamicTestV2BFloat16<int32_t>();
+}
+
+TEST_F(PadV2OpTest, Int64PaddingSimpleDynamicTestBFloat16) {
+  SimpleDynamicTestV2BFloat16<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingSimpleDynamicTestBFloat16) {
+  SimpleDynamicTestV2BFloat16<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleDynamicTestBFloat16) {
+  SimpleDynamicTestV2BFloat16<int16_t>();
 }
 
 template <typename padding_integer_type>
@@ -861,6 +1215,14 @@ TEST_F(PadV2OpTest, Int64PaddingDynamicUnequalDimensions) {
   PadV2OpDynamicUnequalDimensions<int64_t>();
 }
 
+TEST_F(PadV2OpTest, Int8PaddingDynamicUnequalDimensions) {
+  PadV2OpDynamicUnequalDimensions<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingDynamicUnequalDimensions) {
+  PadV2OpDynamicUnequalDimensions<int16_t>();
+}
+
 template <typename padding_integer_type>
 void SimpleDynamicValuedTest() {
   PadV2OpDynamicModel<float, padding_integer_type> m(
@@ -879,6 +1241,14 @@ TEST_F(PadV2OpTest, Int32PaddingSimpleDynamicValuedTest) {
 
 TEST_F(PadV2OpTest, Int64PaddingSimpleDynamicValuedTest) {
   SimpleDynamicValuedTest<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingSimpleDynamicValuedTest) {
+  SimpleDynamicValuedTest<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleDynamicValuedTest) {
+  SimpleDynamicValuedTest<int16_t>();
 }
 
 template <typename padding_integer_type>
@@ -906,6 +1276,14 @@ TEST_F(PadV2OpTest, Int64PaddingSimpleTensorWithDim0Test) {
   SimpleTensorWithDim0Test<int64_t>();
 }
 
+TEST_F(PadV2OpTest, Int8PaddingSimpleTensorWithDim0Test) {
+  SimpleTensorWithDim0Test<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimpleTensorWithDim0Test) {
+  SimpleTensorWithDim0Test<int16_t>();
+}
+
 template <typename padding_integer_type>
 void Simple5DConstFloat32ValuedTest() {
   PadV2OpConstModel<float, padding_integer_type> m(
@@ -924,6 +1302,14 @@ TEST_F(PadV2OpTest, Int32PaddingSimple5DConstFloat32ValuedTest) {
 
 TEST_F(PadV2OpTest, Int64PaddingSimple5DConstFloat32ValuedTest) {
   Simple5DConstFloat32ValuedTest<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingSimple5DConstFloat32ValuedTest) {
+  Simple5DConstFloat32ValuedTest<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimple5DConstFloat32ValuedTest) {
+  Simple5DConstFloat32ValuedTest<int16_t>();
 }
 
 template <typename padding_integer_type>
@@ -949,6 +1335,14 @@ TEST_F(PadV2OpTest, Int64PaddingSimple5DConstInt32ValuedTest) {
   Simple5DConstInt32ValuedTest<int64_t>();
 }
 
+TEST_F(PadV2OpTest, Int8PaddingSimple5DConstInt32ValuedTest) {
+  Simple5DConstInt32ValuedTest<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimple5DConstInt32ValuedTest) {
+  Simple5DConstInt32ValuedTest<int16_t>();
+}
+
 template <typename padding_integer_type>
 void Simple5DDynamicValuedTest() {
   PadV2OpDynamicModel<float, padding_integer_type> m(
@@ -972,6 +1366,14 @@ TEST_F(PadV2OpTest, Int64PaddingSimple5DDynamicValuedTest) {
   Simple5DDynamicValuedTest<int64_t>();
 }
 
+TEST_F(PadV2OpTest, Int8PaddingSimple5DDynamicValuedTest) {
+  Simple5DDynamicValuedTest<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingSimple5DDynamicValuedTest) {
+  Simple5DDynamicValuedTest<int16_t>();
+}
+
 template <typename padding_integer_type>
 void AdvancedConstTest() {
   PadV2OpConstModel<float, padding_integer_type> m(
@@ -993,6 +1395,14 @@ TEST_F(PadV2OpTest, Int64PaddingAdvancedConstTest) {
   AdvancedConstTest<int64_t>();
 }
 
+TEST_F(PadV2OpTest, Int8PaddingAdvancedConstTest) {
+  AdvancedConstTest<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingAdvancedConstTest) {
+  AdvancedConstTest<int16_t>();
+}
+
 template <typename padding_integer_type>
 void AdvancedDynamicTestV2() {
   PadV2OpDynamicModel<float, padding_integer_type> m(
@@ -1012,6 +1422,14 @@ TEST_F(PadV2OpTest, Int32PaddingAdvancedDynamicTest) {
 
 TEST_F(PadV2OpTest, Int64PaddingAdvancedDynamicTest) {
   AdvancedDynamicTestV2<int64_t>();
+}
+
+TEST_F(PadV2OpTest, Int8PaddingAdvancedDynamicTest) {
+  AdvancedDynamicTestV2<int8_t>();
+}
+
+TEST_F(PadV2OpTest, Int16PaddingAdvancedDynamicTest) {
+  AdvancedDynamicTestV2<int16_t>();
 }
 
 class QuantizedPadV2OpTest : public ::testing::Test {

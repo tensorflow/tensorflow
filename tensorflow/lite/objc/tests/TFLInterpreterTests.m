@@ -20,9 +20,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Regular expression for TensorFlow Lite runtime version string, e.g. "1.14.0", "0.1.2-alpha.1",
- * "0.3.4-beta2", "1.14.0-rc.3".
+ * "0.3.4-beta2", "1.14.0-rc.3", "2.20.0-dev0+selfbuilt".
  */
-static NSString *const kTFLVersionRegex = @"^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$";
+static NSString *const kTFLVersionRegex = @"^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?(\\+\\w+)?$";
 
 /** Float model resource name. */
 static NSString *const kAddFloatModelResourceName = @"add";
@@ -89,12 +89,11 @@ static const float kTestAccuracy = 1E-5F;
 
 #pragma mark - Tests
 
-// Disable below test for now to validate TFLite ios tests.
-// - (void)testTFLVersion {
-//   NSLog(@"TFLVersion: %@", TFLVersion);
-//   NSRange range = [TFLVersion rangeOfString:kTFLVersionRegex options:NSRegularExpressionSearch];
-//   XCTAssertNotEqual(range.location, NSNotFound);
-// }
+- (void)testTFLVersion {
+  NSLog(@"TFLVersion: %@", TFLVersion);
+  NSRange range = [TFLVersion rangeOfString:kTFLVersionRegex options:NSRegularExpressionSearch];
+  XCTAssertNotEqual(range.location, NSNotFound);
+}
 
 - (void)testSuccessfulFullRunAddFloatModel {
   // Shape for both input and output tensor.

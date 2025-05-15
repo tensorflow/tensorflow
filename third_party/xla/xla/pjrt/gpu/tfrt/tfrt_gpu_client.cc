@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -38,30 +39,46 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
+#include "xla/core/collectives/collectives.h"
+#include "xla/core/collectives/collectives_registry.h"
+#include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/maybe_owning.h"
+#include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/distributed/in_memory_key_value_store.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/distributed/protocol.pb.h"
+#include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
+#include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
-#include "xla/pjrt/gpu/tfrt/stream_pool.h"
-#include "xla/pjrt/gpu/tfrt/tracked_tfrt_gpu_device_buffer.h"
+#include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
+#include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/layout_mode.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -69,8 +86,10 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/semaphore.h"
+#include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/pjrt/worker_thread.h"
@@ -79,6 +98,8 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/generic_transfer_manager.h"
+#include "xla/service/global_device_id.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
@@ -87,8 +108,10 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
@@ -108,45 +131,94 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/mem.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
 
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace xla {
 namespace {
 
+constexpr absl::string_view kPjRtClientName = "TfrtGpuClient";
+
+absl::StatusOr<Shape> GetDestinationDeviceShape(const Shape& host_shape,
+                                                TfrtGpuDevice* device,
+                                                TfrtGpuClient* client,
+                                                PjRtMemorySpace* memory_space) {
+  if (host_shape.IsTuple()) {
+    return InvalidArgument(
+        "Cannot allocate a PjRtStreamExecutorBuffer for a tuple.");
+  }
+
+  PjRtMemorySpace* default_memory_space =
+      device->default_memory_space().value_or(nullptr);
+  if (!memory_space) {
+    memory_space = default_memory_space;
+  }
+  bool is_pinned_host_memory =
+      memory_space && (memory_space->kind() == PinnedHostMemorySpace::kKind);
+  // Only allow pinned host memory or device memory.
+  if (memory_space != default_memory_space && !is_pinned_host_memory) {
+    return InvalidArgument("Buffer allocation: invalid memory space");
+  }
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(host_shape));
+  TransferManager* transfer_manager =
+      client->xla_client()->backend().transfer_manager();
+  Shape device_shape = transfer_manager->HostShapeToDeviceShape(host_shape);
+  if (is_pinned_host_memory) {
+    device_shape.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
+  }
+  TF_RET_CHECK(LayoutUtil::HasLayout(device_shape));
+  return device_shape;
+}
+
 absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
-    const Shape& on_device_shape,
+    const Shape& on_host_shape,
     absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
-    TfrtGpuDevice* device, TfrtGpuClient* client,
-    PjRtMemorySpace* memory_space) {
-  if (on_device_shape.IsTuple()) {
+    TfrtGpuDevice* device, TfrtGpuClient* client, PjRtMemorySpace* memory_space,
+    int64_t pack_size = 0) {
+  if (on_host_shape.IsTuple()) {
     return Unimplemented(
         "tuple case not implemented for AllocateTfrtGpuDestinationBuffer");
   }
-    size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
-    TF_ASSIGN_OR_RETURN(
-        auto device_buffer,
-        MaybeOwningGpuMemory::AllocateShared(device->allocator(), byte_size));
-    auto buffer_async_value_ref =
-        tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
-            std::move(device_buffer));
-    return std::make_unique<TfrtGpuBuffer>(
-        on_device_shape,
-        std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-            buffer_async_value_ref, std::move(definition_events)),
-        client, device, memory_space);
+  TF_ASSIGN_OR_RETURN(
+      Shape on_device_shape,
+      GetDestinationDeviceShape(on_host_shape, device, client, memory_space));
+  size_t byte_size =
+      pack_size > 0 ? pack_size : ShapeUtil::ByteSizeOf(on_device_shape);
+  TF_ASSIGN_OR_RETURN(
+      auto device_buffer,
+      GpuDeviceMemory::Allocate(client->allocator(),
+                                device->local_device_id().value(), byte_size,
+                                LayoutUtil::MemorySpace(on_device_shape)));
+  auto buffer_async_value_ref =
+      tsl::MakeAvailableAsyncValueRef<GpuDeviceMemory>(
+          std::move(device_buffer));
+  return std::make_unique<TfrtGpuBuffer>(
+      on_device_shape,
+      std::make_unique<TrackedGpuDeviceBuffer>(buffer_async_value_ref,
+                                               std::move(definition_events)),
+      client, device, memory_space);
 }
 
 void EnqueueWork(tsl::thread::ThreadPool* pool,
-                 absl::AnyInvocable<void()> callee) {
+                 absl::AnyInvocable<void() &&> callee) {
   // TSL TheadPool expects std::function that must be copyable, so we are
   // forced to do a little bit of manual memory management here.
-  pool->Schedule([ptr = new absl::AnyInvocable<void()>(std::move(callee))]() {
-    (*ptr)();
-    delete ptr;
-  });
+  pool->Schedule(
+      [ptr = new absl::AnyInvocable<void() &&>(std::move(callee))]() {
+        std::move (*ptr)();
+        delete ptr;
+      });
 }
 
 // Enqueue to a thread pool when all `values` are ready.
@@ -160,18 +232,18 @@ void EnqueueWorkWhenReady(
   });
 }
 
-std::string get_platform_version(xla::LocalClient* xla_client) {
-  const stream_executor::DeviceDescription& device =
-      xla_client->backend().default_stream_executor()->GetDeviceDescription();
-  if (std::holds_alternative<stream_executor::RocmComputeCapability>(
-          device.gpu_compute_capability())) {
-    return absl::StrCat("rocm ", device.runtime_version());
+std::string MakeComputeCapabilityString(
+    const stream_executor::DeviceDescription* desc) {
+  stream_executor::GpuComputeCapability cc = desc->gpu_compute_capability();
+  if (std::holds_alternative<stream_executor::CudaComputeCapability>(cc)) {
+    auto nvcc = std::get<stream_executor::CudaComputeCapability>(cc);
+    return absl::StrCat(nvcc.major, ".", nvcc.minor);
   }
-  if (std::holds_alternative<stream_executor::CudaComputeCapability>(
-          device.gpu_compute_capability())) {
-    return absl::StrCat("cuda ", device.runtime_version());
+  if (std::holds_alternative<stream_executor::RocmComputeCapability>(cc)) {
+    auto rocmcc = std::get<stream_executor::RocmComputeCapability>(cc);
+    return rocmcc.gfx_version();
   }
-  return "<unknown>";
+  return "unknown";
 }
 
 bool IsAllZeros(const DeviceAssignment& assignment) {
@@ -194,7 +266,7 @@ std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
 // on device for the compiled program.
 absl::Status CheckBufferCompatibilities(
     absl::Span<int64_t const> input_buffer_sizes_in_bytes,
-    absl::Span<TrackedTfrtGpuDeviceBuffer* const> input_buffers) {
+    absl::Span<TrackedGpuDeviceBuffer* const> input_buffers) {
   if (input_buffers.size() != input_buffer_sizes_in_bytes.size()) {
     return InvalidArgument(
         "Execution supplied %lld buffers but compiled program expected %lld "
@@ -203,14 +275,19 @@ absl::Status CheckBufferCompatibilities(
   }
   for (int i = 0; i < input_buffers.size(); ++i) {
     const auto& buffer = input_buffers[i];
-    if (input_buffer_sizes_in_bytes[i] != buffer->buffer()->size()) {
+    if (input_buffer_sizes_in_bytes[i] != buffer->buffer()->size_bytes()) {
       return InvalidArgument(
           "Executable expected parameter %d of size %lld but got buffer with"
           " incompatible size %lld ",
-          i, input_buffer_sizes_in_bytes[i], buffer->buffer()->size());
+          i, input_buffer_sizes_in_bytes[i], buffer->buffer()->size_bytes());
     }
   }
   return absl::OkStatus();
+}
+
+template <typename MemorySpaceKind>
+bool IsMemorySpaceKind(const PjRtMemorySpace* memory_space) {
+  return memory_space->kind_id() == MemorySpaceKind::kKindId;
 }
 
 class TfrtGpuAsyncHostToDeviceTransferManager final
@@ -229,12 +306,12 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
           device_layouts->size(), shape_specs.size());
     }
     absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers;
-    absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningGpuMemory>, 4>
-        buffer_ptrs;
+    absl::InlinedVector<tsl::AsyncValueRef<GpuDeviceMemory>, 4> buffer_ptrs;
     absl::InlinedVector<absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4>, 4>
         definition_events;
     absl::InlinedVector<Shape, 4> device_shapes;
     buffers.reserve(shape_specs.size());
+    buffer_ptrs.reserve(shape_specs.size());
     definition_events.reserve(shape_specs.size());
     device_shapes.reserve(shape_specs.size());
     for (int i = 0; i < shape_specs.size(); ++i) {
@@ -261,23 +338,18 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
                                 .transfer_manager()
                                 ->ChooseCompactLayoutForShape(device_shape));
       }
-      int64_t byte_size = ShapeUtil::ByteSizeOf(device_shape);
-
-      buffer_ptrs.push_back(
-          tsl::MakeUnconstructedAsyncValueRef<MaybeOwningGpuMemory>());
-      absl::StatusOr<MaybeOwningGpuMemory> buffer_allocated =
-          MaybeOwningGpuMemory::AllocateShared(device->allocator(), byte_size);
-      if (!buffer_allocated.ok()) {
-        copy_event.SetError(buffer_allocated.status());
+      absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> buffer =
+          AllocateTfrtGpuDestinationBuffer(device_shape,
+                                           definition_events.back(), device,
+                                           client, memory_space);
+      if (!buffer.ok()) {
+        copy_event.SetError(buffer.status());
         return absl::InternalError("Failed to allocate buffer.");
       } else {
-        buffer_ptrs.back().emplace(std::move(buffer_allocated.value()));
+        buffer_ptrs.push_back(buffer->get()->GetBufferPtr());
       }
-      auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-          buffer_ptrs.back(), definition_events.back());
-      buffers.push_back(std::make_unique<TfrtGpuBuffer>(
-          device_shape, std::move(tracked_device_buffer), client, device,
-          memory_space));
+
+      buffers.push_back(std::move(*buffer));
     }
 
     return std::make_unique<TfrtGpuAsyncHostToDeviceTransferManager>(
@@ -287,8 +359,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
 
   TfrtGpuAsyncHostToDeviceTransferManager(
       absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers,
-      absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningGpuMemory>, 4>
-          buffer_ptrs,
+      absl::InlinedVector<tsl::AsyncValueRef<GpuDeviceMemory>, 4> buffer_ptrs,
       absl::InlinedVector<absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4>,
                           4>
           definition_events,
@@ -298,6 +369,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
             tsl::Env::Default(),
             "TfrtGpuAsyncHostToDeviceTransferManager_h2d_thread")),
         buffer_ptrs_(std::move(buffer_ptrs)),
+        buffer_sizes_(GetBufferSizes(buffers_)),
         definition_events_(std::move(definition_events)),
         device_shapes_(std::move(device_shapes)),
         remaining_buffer_count_(buffers_.size()),
@@ -307,10 +379,6 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
                "TfrtGpuAsyncHostToDeviceTransferManager: this="
             << this << " buffers_.size()=" << buffers_.size();
 
-    buffer_sizes_.reserve(buffers_.size());
-    for (const auto& buffer : buffers_) {
-      buffer_sizes_.push_back(buffer->GetOnDeviceSizeInBytes().value());
-    }
     last_transfer_started_.resize(buffer_ptrs_.size(), false);
   }
 
@@ -327,7 +395,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
     }
   }
 
-  size_t buffer_count() const override { return buffers_.size(); };
+  size_t buffer_count() const override { return buffer_sizes_.size(); };
 
   size_t buffer_size(int buffer_index) const override {
     DCHECK_LT(buffer_index, buffer_sizes_.size());
@@ -337,6 +405,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
   PjRtDevice* device() const override { return device_; }
 
   std::unique_ptr<PjRtBuffer> RetrieveBuffer(int buffer_index) override {
+    absl::MutexLock l(&mu_);
     DCHECK_LT(buffer_index, buffers_.size());
     return std::move(buffers_[buffer_index]);
   };
@@ -355,7 +424,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
     TransferManager* transfer_manager =
         client->xla_client()->backend().transfer_manager();
 
-    tsl::AsyncValueRef<MaybeOwningGpuMemory> buffer;
+    tsl::AsyncValueRef<GpuDeviceMemory> buffer;
     {
       absl::MutexLock l(&mu_);
 
@@ -377,7 +446,9 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
     // because it includes linearization that may be slow.
     // TODO(misard) assess if it would be preferable to introduce a heuristic
     // to put the transfer into the calling thread for small literals.
-    auto transfer_h2d = [this, buffer_index, transfer_manager, literal, buffer,
+    auto transfer_h2d = [this, buffer_index, transfer_manager,
+                         literal = std::move(literal),
+                         buffer = std::move(buffer),
                          on_done = std::move(on_done)]() mutable {
       tsl::profiler::TraceMe traceme(
           "TfrtGpuAsyncHostToDeviceTransferManager::TransferLiteralToBuffer::"
@@ -387,10 +458,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
       ShapedBuffer shaped_buffer =
           buffer->AsShapedBuffer(device_shapes_[buffer_index], device_);
 
-      absl::StatusOr<BoundedStreamPool::Handle> stream =
-          device_->stream_pool().Borrow();
-      TF_CHECK_OK(stream.status());
-      CHECK_NE(stream->get(), nullptr);
+      auto stream = device_->stream();
 
       GenericTransferManager::LiteralFromDeviceMetadata transfer_metadata;
       // We never call device functions from the `done` callback.
@@ -401,12 +469,16 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
               : nullptr;
 
       TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-          stream->get(), literal, shaped_buffer, transfer_metadata_ptr));
+          stream, literal, shaped_buffer, transfer_metadata_ptr));
 
-      TF_CHECK_OK((*stream)->BlockHostUntilDone())
-          << "Failed to block host until done";
+      auto status = stream->DoHostCallback(
+          [buffer_index, on_done = std::move(on_done), this]() mutable {
+            CleanUp(buffer_index, true, std::move(on_done));
+          });
 
-      CleanUp(buffer_index, /*is_last_transfer=*/true, std::move(on_done));
+      if (!status.ok()) {
+        LOG(ERROR) << "Failed to do host callback for transfer_h2d";
+      }
     };
     // Enqueue the transfer to the h2d thread.
     h2d_thread_->Schedule(std::move(transfer_h2d));
@@ -433,65 +505,81 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
 
     auto* client = tsl::down_cast<TfrtGpuClient*>(device_->client());
     DCHECK(client);
-    HostMemoryAllocator* host_memory_allocator =
-        client->host_memory_allocator();
-    if (host_memory_allocator == nullptr) {
-      return InvalidArgument(
-          "host_memory_allocator should be initialized for staging buffer "
-          "transfer.");
+
+    HostMemoryAllocator::OwnedPtr staging_buffer;
+    if (client->should_stage_host_to_device_transfers() &&
+        !client->IsDmaMapped(data, transfer_size)) {
+      HostMemoryAllocator* host_memory_allocator =
+          client->host_memory_allocator();
+      if (host_memory_allocator == nullptr) {
+        return InvalidArgument(
+            "host_memory_allocator should be initialized for staging buffer "
+            "transfer.");
+      }
+      staging_buffer = host_memory_allocator->Allocate(transfer_size);
     }
 
-    std::unique_ptr<void, std::function<void(void*)>> staging_buffer =
-        host_memory_allocator->Allocate(transfer_size);
-
-    absl::ReleasableMutexLock l(&mu_);
-    DCHECK_LT(buffer_index, buffer_ptrs_.size());
-    if (last_transfer_started_[buffer_index]) {
-      return InvalidArgument(
-          "TransferRawData requested for buffer index %d which has "
-          "already been fully transferred",
-          buffer_index);
-    }
-    if (is_last_transfer) {
-      last_transfer_started_[buffer_index] = true;
-    }
-    DCHECK(buffer_ptrs_[buffer_index]);
-    tsl::AsyncValueRef<MaybeOwningGpuMemory>& buffer_memory =
-        buffer_ptrs_[buffer_index];
     se::DeviceMemoryBase sub_buffer;
-    CHECK_LE(offset, buffer_memory->size());
-    CHECK_LE(transfer_size, buffer_memory->size() - offset);
-    if (transfer_size < buffer_memory->size()) {
-      sub_buffer = buffer_memory->buffer().GetByteSlice(offset, transfer_size);
-    } else {
-      sub_buffer = buffer_memory->buffer();
+    {
+      absl::MutexLock l(&mu_);
+      DCHECK_LT(buffer_index, buffer_ptrs_.size());
+      if (last_transfer_started_[buffer_index]) {
+        return InvalidArgument(
+            "TransferRawData requested for buffer index %d which has "
+            "already been fully transferred",
+            buffer_index);
+      }
+      if (is_last_transfer) {
+        last_transfer_started_[buffer_index] = true;
+      }
+      DCHECK(buffer_ptrs_[buffer_index]);
+      tsl::AsyncValueRef<GpuDeviceMemory>& buffer_memory =
+          buffer_ptrs_[buffer_index];
+      CHECK_LE(offset, buffer_memory->size_bytes());
+      CHECK_LE(transfer_size, buffer_memory->size_bytes() - offset);
+      if (transfer_size < buffer_memory->size_bytes()) {
+        sub_buffer =
+            buffer_memory->buffer().GetByteSlice(offset, transfer_size);
+      } else {
+        sub_buffer = buffer_memory->buffer();
+      }
+
+      ++transfers_in_flight_;
     }
 
-    ++transfers_in_flight_;
-    // Release the lock before transfer in case transfer or cleanup could be
-    // called on this thread, to avoid deadlock.
-    l.Release();
-
-    absl::AnyInvocable<void() &&> copy_to_gpu =
+    auto copy_to_gpu =
         [transfer_size, staging_buffer = std::move(staging_buffer), data,
          sub_buffer = std::move(sub_buffer), buffer_index, is_last_transfer,
          on_done = std::move(on_done), this]() mutable {
+          tsl::profiler::TraceMe traceme(
+              "TfrtGpuAsyncHostToDeviceTransferManager::"
+              "TransferRawDataToSubBuffer::"
+              "copy_to_gpu");
+
           if (transfer_size != 0) {
-            std::memcpy(staging_buffer.get(), data, transfer_size);
+            if (staging_buffer != nullptr) {
+              std::memcpy(staging_buffer.get(), data, transfer_size);
+            }
 
-            absl::StatusOr<BoundedStreamPool::Handle> stream =
-                device_->stream_pool().Borrow();
-            TF_CHECK_OK(stream.status())
-                << "Failed to borrow a stream from the pool";
-            CHECK_NE(stream->get(), nullptr);
+            auto stream = device_->stream();
 
-            TF_CHECK_OK((*stream)->Memcpy(&sub_buffer, staging_buffer.get(),
-                                          transfer_size))
+            TF_CHECK_OK(stream->Memcpy(
+                &sub_buffer, staging_buffer ? staging_buffer.get() : data,
+                transfer_size))
                 << "Failed to copy data to GPU";
-            auto status = (*stream)->BlockHostUntilDone();
-            TF_CHECK_OK(status) << "Failed to block host until done";
+
+            auto status = stream->DoHostCallback(
+                [buffer_index, is_last_transfer, on_done = std::move(on_done),
+                 this]() mutable {
+                  CleanUp(buffer_index, is_last_transfer, std::move(on_done));
+                });
+
+            if (!status.ok()) {
+              LOG(ERROR) << "Failed to do host callback for copy_to_gpu";
+            }
+          } else {
+            CleanUp(buffer_index, is_last_transfer, std::move(on_done));
           }
-          CleanUp(buffer_index, is_last_transfer, std::move(on_done));
         };
     // Enqueue the transfer to the h2d thread.
     h2d_thread_->Schedule(std::move(copy_to_gpu));
@@ -506,16 +594,29 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
       CHECK(!definition_events_[buffer_index].back().IsConcrete());
       definition_events_[buffer_index].back().SetError(error);
     }
-    VLOG(1) << "SetBufferError sets the " << buffer_index
-            << "th buffer error: " << error;
+    LOG(ERROR) << "SetBufferError sets the " << buffer_index
+               << "th buffer error: " << error;
   }
 
   void AddTransferMetadata(const TransferMetadata& meta) override {}
 
  private:
+  static absl::InlinedVector<size_t, 4> GetBufferSizes(
+      absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4>& buffers) {
+    absl::InlinedVector<size_t, 4> buffer_sizes;
+    buffer_sizes.reserve(buffers.size());
+    for (const auto& buffer : buffers) {
+      buffer_sizes.push_back(buffer->GetOnDeviceSizeInBytes().value());
+    }
+    return buffer_sizes;
+  }
+
   void CleanUp(int buffer_index, bool is_last_transfer,
                absl::AnyInvocable<void() &&> on_done) {
     {
+      tsl::profiler::TraceMe traceme(
+          "TfrtGpuAsyncHostToDeviceTransferManager::CleanUp");
+
       absl::MutexLock l(&mu_);
 
       CHECK_GT(transfers_in_flight_, 0);
@@ -540,21 +641,26 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
     }
 
     // Call on_done after finishing all housekeeping and releasing the lock.
-    std::move(on_done)();
+    EnqueueWork(client_->non_blocking_thread_pool(), std::move(on_done));
   }
 
   absl::Mutex mu_;
   // The newly created buffers, which will be returned to the caller via
   // Retrieve.
-  absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers_;
+  absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers_
+      ABSL_GUARDED_BY(mu_);
 
-  // Just a single thread, to ensure transfers are ordered.
+  // Just a single thread, to ensure transfers are ordered. Its lifetime is
+  // managed by H2DTransferManager. We assume `h2d_thread` is destructed before
+  // `client_`, so `on_done` callbacks on `h2d_thread` will be handled by
+  // threads managed by `client_`.
   std::unique_ptr<WorkerThread> h2d_thread_;
 
-  absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningGpuMemory>, 4> buffer_ptrs_;
+  absl::InlinedVector<tsl::AsyncValueRef<GpuDeviceMemory>, 4> buffer_ptrs_
+      ABSL_GUARDED_BY(mu_);
   // Cached versions of the sizes of all the buffers, so we can return them
   // without acquiring mu_.
-  absl::InlinedVector<size_t, 4> buffer_sizes_;
+  const absl::InlinedVector<size_t, 4> buffer_sizes_;
   // True if the last transfer for a buffer has been initiated. Used to
   // prevent a client initiating another transfer after the last transfer has
   // already been initiated.
@@ -577,7 +683,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
 };
 
 std::optional<stream_executor::GpuTargetConfigProto> GetTargetConfigForDevices(
-    const std::vector<std::unique_ptr<TfrtGpuDevice>>& devices) {
+    absl::Span<PjRtDevice* const> devices) {
   if (devices.empty()) {
     return std::nullopt;
   }
@@ -592,13 +698,19 @@ std::optional<stream_executor::GpuTargetConfigProto> GetTargetConfigForDevices(
       return std::nullopt;
     }
   }
-  return xla::Compiler::TargetConfig(devices.front()->executor()).ToProto();
+  for (const PjRtDevice* device : devices) {
+    se::StreamExecutor* executor =
+        tensorflow::down_cast<const TfrtGpuDevice*>(device)->executor();
+    if (executor != nullptr) {
+      return xla::Compiler::TargetConfig(executor).ToProto();
+    }
+  }
+  return std::nullopt;
 }
 
 absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
-    const std::vector<std::unique_ptr<TfrtGpuDevice>>& devices) {
+    std::optional<stream_executor::GpuTargetConfigProto> target_config) {
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attrs;
-  auto target_config = GetTargetConfigForDevices(devices);
   if (target_config.has_value()) {
     std::string attr;
     if (tsl::protobuf::TextFormat::PrintToString(*target_config, &attr)) {
@@ -606,6 +718,238 @@ absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
     }
   }
   return attrs;
+}
+
+class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
+ public:
+  TfrtGpuCopyToDeviceStream(int64_t channel_id, se::Stream* stream,
+                            se::DeviceMemoryBase dst,
+                            tsl::AsyncValueRef<std::unique_ptr<se::Event>> done)
+      : CopyToDeviceStream(dst.size(), /*granule_bytes=*/1),
+        channel_id_(channel_id),
+        stream_(stream),
+        dst_(dst),
+        done_(std::move(done)) {}
+
+  PjRtFuture<> AddChunk(PjRtChunk chunk) final {
+    tsl::profiler::TraceMe trace([&] {
+      return tsl::profiler::TraceMeEncode("TfrtGpuCopyToDeviceStream::AddChunk",
+                                          {{"channel_id", channel_id_}});
+    });
+
+    absl::ReleasableMutexLock lock(&mu_);
+
+    VLOG(3) << "Add chunk to a H2D channel #" << channel_id_ << ": "
+            << "size=" << chunk.size() << ", "
+            << "current_bytes=" << current_bytes_ << ", "
+            << "total_bytes=" << total_bytes_;
+
+    if (chunk.size() % granule_size_in_bytes() != 0) {
+      done_.SetError(absl::InvalidArgumentError(absl::StrFormat(
+          "Chunk size (%d) was not a multiple of the granule size (%d)",
+          chunk.size(), granule_size_in_bytes())));
+      return PjRtFuture<>(done_.GetError());
+    }
+
+    if (current_bytes_ + chunk.size() > total_bytes_) {
+      done_.SetError(absl::InvalidArgumentError(
+          absl::StrFormat("Adding chunk of size %d would overflow buffer of "
+                          "size %d (%d already transferred)",
+                          chunk.size(), total_bytes_, current_bytes_)));
+      return PjRtFuture<>(done_.GetError());
+    }
+
+    se::DeviceMemoryBase dst(
+        reinterpret_cast<std::byte*>(dst_.opaque()) + current_bytes_,
+        dst_.size() - current_bytes_);
+
+    current_bytes_ += chunk.size();
+    bool complete = IsCompleteLocked();
+    lock.Release();
+
+    auto copied = stream_->Memcpy(&dst, chunk.data(), chunk.size());
+    if (!copied.ok()) {
+      done_.SetError(copied);
+      return PjRtFuture<>(done_.GetError());
+    }
+
+    // Delete chunk once the memcpy operation completes.
+    auto deleted = stream_->DoHostCallback([chunk = std::move(chunk)]() {});
+    if (!deleted.ok()) {
+      done_.SetError(deleted);
+      return PjRtFuture<>(done_.GetError());
+    }
+
+    // Record done event once processed the last chunk. It is the caller
+    // responsibility to synchronize with this event before submitting any new
+    // computations to the stream.
+    if (complete) {
+      auto recorded = stream_->RecordEvent(done_.get().get());
+      if (!recorded.ok()) {
+        done_.SetError(recorded);
+        return PjRtFuture<>(done_.GetError());
+      }
+      done_.SetStateConcrete();
+    }
+
+    return PjRtFuture<>(absl::OkStatus());
+  }
+
+ private:
+  int64_t channel_id_;
+  se::Stream* stream_;
+  se::DeviceMemoryBase dst_;
+
+  // Async value will become available after we'll submit the last memcpy
+  // operation, and the event will be recorded on the stream.
+  tsl::AsyncValueRef<std::unique_ptr<se::Event>> done_;
+};
+
+template <typename T>
+const T* FindCallback(int channel_id, absl::Span<const T> callbacks) {
+  // TODO(ezhulenev): Can we use binary search here assuming that callbacks
+  // are sorted by channel id? Are they always sorted?
+  auto it = absl::c_find_if(callbacks, [&](const T& callback) {
+    return callback.channel_id == channel_id;
+  });
+  return it == callbacks.end() ? nullptr : &*it;
+}
+
+// Converts PjRt SendCallbacks to an XLA StreamExecutor send function.
+SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
+    int replica, const ExecuteOptions& options,
+    tsl::thread::ThreadPool* thread_pool) {
+  // Check if we have callbacks registered for the given replica.
+  if (replica >= options.send_callbacks.size()) {
+    return [replica](int64_t channel_id, se::Stream*, const Shape&,
+                     const se::DeviceMemoryBase&,
+                     const absl::flat_hash_map<std::string, std::string>&) {
+      return Internal(
+          "Don't send a buffer to the channel_id=%d, there was no send "
+          "callbacks registered for the replica=%d",
+          channel_id, replica);
+    };
+  }
+
+  // SendCallbacks registered for a device ordinal. Can be empty.
+  absl::Span<const SendCallback> callbacks = options.send_callbacks[replica];
+
+  return [callbacks, thread_pool](
+             int64_t channel_id, se::Stream* stream, const Shape& shape,
+             const se::DeviceMemoryBase& src,
+             const absl::flat_hash_map<std::string, std::string>&)
+             -> absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<se::Event>>> {
+    VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
+            << " (shape=" << shape.ToString() << ")";
+
+    const SendCallback* send = FindCallback(channel_id, callbacks);
+    if (!send) {
+      return InvalidArgument(
+          "Failed to send a buffer to the channel_id=%d, callback not found",
+          channel_id);
+    }
+
+    // Allocate event that will signal completion of send operation. We do not
+    // actually track the completion of the send callback, we only have to keep
+    // the device memory long enough to complete the memcpy command.
+    TF_ASSIGN_OR_RETURN(auto se_event, stream->parent()->CreateEvent());
+    auto done_event =
+        tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
+            std::move(se_event));
+
+    thread_pool->Schedule([done_event, stream, src, channel_id, shape, send] {
+      tsl::profiler::TraceMe trace([&] {
+        return tsl::profiler::TraceMeEncode("TfrtGpuExecutable::Send",
+                                            {{"channel_id", channel_id}});
+      });
+
+      // Allocate chunk on the host for copying data from device.
+      PjRtChunk chunk = PjRtChunk::AllocateDefault(src.size());
+
+      auto status = stream->Memcpy(chunk.data(), src, src.size());
+      if (!status.ok()) {
+        done_event.SetError(status);
+        return;
+      }
+      status = stream->RecordEvent(done_event.get().get());
+      if (!status.ok()) {
+        done_event.SetError(status);
+        return;
+      }
+
+      // Wait for the data to be available on the host.
+      if (auto st = stream->BlockHostUntilDone(); !st.ok()) {
+        done_event.SetError(absl::InternalError(absl::StrFormat(
+            "failed to synchronize send operation with a stream: %s",
+            st.message())));
+        return;
+      }
+
+      // Pass chunk to the registered callback.
+      auto sent = send->callback({shape}, std::move(chunk),
+                                 /*total_size_in_bytes=*/src.size(),
+                                 /*done=*/true);
+
+      if (!sent.ok()) {
+        done_event.SetError(sent);
+      } else {
+        done_event.SetStateConcrete();
+      }
+    });
+
+    return std::move(done_event);
+  };
+}
+
+RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
+    int replica, const ExecuteOptions& options) {
+  // Check if we have callbacks registered for the given replica.
+  if (replica >= options.send_callbacks.size()) {
+    return [replica](int64_t channel_id, se::Stream*, const Shape&,
+                     se::DeviceMemoryBase*,
+                     const absl::flat_hash_map<std::string, std::string>&) {
+      return InvalidArgument(
+          "Failed to receive a buffer from the channel_id=%d, there was no "
+          "recv callbacks registered for the replica=%d",
+          channel_id, replica);
+    };
+  }
+
+  // RecvCallbacks registered for a device ordinal. Can be empty.
+  absl::Span<const RecvCallback> callbacks = options.recv_callbacks[replica];
+
+  return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
+                     se::DeviceMemoryBase* dst,
+                     const absl::flat_hash_map<std::string, std::string>&)
+             -> absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<se::Event>>> {
+    VLOG(3) << "Recv from channel #" << channel_id
+            << " (shape=" << shape.ToString() << ")";
+
+    tsl::profiler::TraceMe trace([&] {
+      return tsl::profiler::TraceMeEncode("TfrtGpuExecutable::Recv",
+                                          {{"channel_id", channel_id}});
+    });
+
+    const RecvCallback* recv = FindCallback(channel_id, callbacks);
+    if (!recv) {
+      return InvalidArgument(
+          "Failed to recv a buffer from the channel_id=%d, callback not found",
+          channel_id);
+    }
+
+    // Allocate event that will signal completion of recv operation. We record
+    // it on a stream after submitting the memcpy for the last chunk (see
+    // `TfrtGpuCopyToDeviceStream` implementation above).
+    TF_ASSIGN_OR_RETURN(auto event, stream->parent()->CreateEvent());
+    auto done_event =
+        tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
+            std::move(event));
+
+    recv->callback({shape}, std::make_unique<TfrtGpuCopyToDeviceStream>(
+                                channel_id, stream, *dst, done_event));
+
+    return std::move(done_event);
+  };
 }
 
 }  // namespace
@@ -632,24 +976,44 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
       local_device_id_(options.local_device_id),
       local_hardware_id_(options.local_hardware_id),
       executor_(options.executor),
-      stream_pool_(options.executor, options.stream_capacity),
-      compute_stream_pool_(options.executor, options.max_inflight_computations),
-      allocator_(std::move(options.allocator)),
+      stream_(options.executor == nullptr
+                  ? nullptr
+                  : options.executor->CreateStream().value()),
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()),
       last_collective_launch_event_(
           tsl::MakeAvailableAsyncValueRef<GpuEvent>()),
-      description_(options.id, options.platform_version),
+      description_(options.id, options.process_index, options.platform_version),
       max_inflight_computations_semaphore_(
           /*capacity=*/options.max_inflight_computations) {
+  std::array<int, 1> coords = {local_device_id_.value()};
+  description_.SetCoords(coords);
+  std::vector<int64_t> v_coords(description_.coords().begin(),
+                                description_.coords().end());
+
+  description_.SetAttributes({
+      {"coords", xla::PjRtDeviceAttribute(v_coords)},
+      {"device_vendor", options.device_vendor},
+      {"slice_index", static_cast<int64_t>(options.slice_index)},
+      {"compute_capability",
+       xla::PjRtDeviceAttribute(options.compute_capability)},
+      {"core_count", static_cast<int64_t>(options.core_count)},
+  });
+
   description_.SetDebugString(absl::StrCat("TFRT_GPU_", id_));
   description_.SetToString(absl::StrCat("GpuDevice(id=", id_, ")"));
+}
 
-  CHECK_OK(executor_->CreateStream().status()) << "Failed to create stream";
-
-  se_allocator_ = std::make_unique<se::TfAllocatorAdapter>(
-      allocator_.get(), const_cast<se::Platform*>(executor_->GetPlatform()));
+TfrtGpuDevice::~TfrtGpuDevice() {
+  // Block the host until all pending work on the stream is done. This is to
+  // avoid user-after-free errors in host callbacks.
+  if (stream_ != nullptr) {
+    absl::Status status = stream_->BlockHostUntilDone();
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to wait for stream to finish: " << status;
+    }
+  }
 }
 
 void TfrtGpuDevice::SetClient(PjRtClient* client) {
@@ -658,6 +1022,7 @@ void TfrtGpuDevice::SetClient(PjRtClient* client) {
 
   // We have to define debug_string_ and to_string_ here, because
   // platform_name() requires client_ to be set.
+  CHECK(!client_->platform_name().empty());
   std::string device_name =
       absl::StrCat(MakeAsciiTitlecase(client_->platform_name()), "Device");
   description_.SetDebugString(
@@ -665,13 +1030,26 @@ void TfrtGpuDevice::SetClient(PjRtClient* client) {
   description_.SetToString(absl::StrCat(device_name, "(id=", id(), ")"));
 }
 
+absl::StatusOr<TransferManager*> TfrtGpuDevice::GetTransferManager() {
+  // Downcast Base class to TfrtGpuClient.
+  TfrtGpuClient* client = tensorflow::down_cast<TfrtGpuClient*>(client_);
+  if (client == nullptr) {
+    return absl::InternalError("Client is null");
+  }
+  return client->xla_client()->backend().transfer_manager();
+}
+
 absl::Status TfrtGpuDevice::TransferToInfeed(const LiteralSlice& literal) {
-  return Unimplemented("TransferToInfeed");
+  TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager, GetTransferManager());
+
+  return transfer_manager->TransferLiteralToInfeed(executor_, literal);
 }
 
 absl::Status TfrtGpuDevice::TransferFromOutfeed(
     MutableBorrowingLiteral literal) {
-  return Unimplemented("TransferFromOutfeed");
+  TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager, GetTransferManager());
+
+  return transfer_manager->TransferLiteralFromOutfeed(executor_, literal);
 }
 
 int TfrtGpuDevice::GetNewPrngSeed() {
@@ -736,72 +1114,111 @@ absl::StatusOr<PjRtMemorySpace*> TfrtGpuDevice::default_memory_space() const {
   return default_memory_space_;
 }
 
-void TfrtGpuDevice::SetLastCollectiveLaunchEvent(
+absl::StatusOr<tsl::AllocatorStats> TfrtGpuDevice::GetAllocatorStats() const {
+  if (!IsAddressable()) {
+    return FailedPrecondition(
+        "GetAllocatorStats() is allowed only for addressable devices");
+  }
+
+  auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(allocator());
+  if (!allocator_adapter) {
+    return Unimplemented(
+        "GetAllocatorStats() is only implemented with MultiDeviceAdapter "
+        "allocator");
+  }
+
+  TF_ASSIGN_OR_RETURN(auto allocator, allocator_adapter->GetAllocator(
+                                          local_device_id().value()));
+
+  auto stats = allocator->GetStats();
+  TF_RET_CHECK(stats.has_value());
+  return stats.value();
+}
+
+se::DeviceMemoryAllocator* TfrtGpuDevice::allocator() const {
+  return tensorflow::down_cast<TfrtGpuClient*>(client())->allocator();
+}
+
+tsl::AsyncValueRef<GpuEvent> TfrtGpuDevice::SetLastCollectiveLaunchEvent(
     tsl::AsyncValueRef<GpuEvent> event) {
   absl::MutexLock lock(&mu_);
   VLOG(2) << "SetLastCollectiveLaunchEvent: IsAvailable: "
-          << event.IsAvailable() << "; pointer: " << event.GetAsyncValue();
-  last_collective_launch_event_ = std::move(event);
-}
-
-tsl::AsyncValueRef<GpuEvent> TfrtGpuDevice::GetLastCollectiveLaunchEvent() {
-  absl::MutexLock lock(&mu_);
-  VLOG(2) << "GetLastCollectiveLaunchEvent: IsAvailable: "
+          << event.IsAvailable() << "; pointer: " << event.GetAsyncValue()
+          << "Old Event: IsAvailable: "
           << last_collective_launch_event_.IsAvailable()
           << "; pointer: " << last_collective_launch_event_.GetAsyncValue();
-  return last_collective_launch_event_.CopyRef();
+  std::swap(last_collective_launch_event_, event);
+  return event;
 }
 
-TfrtGpuClient::TfrtGpuClient(
-    int process_index, xla::LocalClient* xla_client,
-    std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
-    bool should_stage_host_to_device_transfers,
-    std::unique_ptr<tsl::Allocator> host_memory_allocator,
-    std::shared_ptr<const GpuTopology> gpu_topology)
-    : process_index_(process_index),
-      xla_client_(CHECK_NOTNULL(xla_client)),
-      platform_version_(get_platform_version(xla_client)),
-      should_stage_host_to_device_transfers_(
-          should_stage_host_to_device_transfers),
-      host_memory_allocator_(std::make_unique<HostMemoryAllocator>(
-          std::move(host_memory_allocator))),
-      owned_devices_(std::move(devices)),
-      computation_placer_(std::make_unique<ComputationPlacer>()),
-      compile_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
-          tsl::Env::Default(), "TfrtGpuClient_compile_thread_pool",
-          std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()))),
-      blocking_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
-          tsl::Env::Default(), "TfrtGpuClient_blocking_thread_pool",
-          std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()))),
-      non_blocking_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
-          tsl::Env::Default(), "TfrtGpuClient_non_blocking_thread_pool",
-          std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()))),
-      transpose_cache_(1024),
-      platform_name_(xla::CudaName()),
-      topology_(tsl::Fingerprint64(platform_name_), platform_name_,
-                std::move(gpu_topology), GetAttrsForDevices(owned_devices_),
-                GetTargetConfigForDevices(owned_devices_)) {
-  for (const std::unique_ptr<TfrtGpuDevice>& device : owned_devices_) {
-    devices_.push_back(device.get());
-    CHECK(
-        id_to_device_.emplace(device->global_device_id(), device.get()).second)
-        << "Duplicate device id: " << device->id();
+namespace {
 
-    device->SetClient(this);
+std::vector<PjRtMemorySpace*> GetMemorySpacePointers(
+    const std::vector<std::unique_ptr<PjRtMemorySpace>>& memory_spaces) {
+  std::vector<PjRtMemorySpace*> memory_spaces_ptrs;
+  memory_spaces_ptrs.reserve(memory_spaces.size());
+  for (const std::unique_ptr<PjRtMemorySpace>& memory_space : memory_spaces) {
+    memory_spaces_ptrs.push_back(memory_space.get());
+  }
+  return memory_spaces_ptrs;
+}
+
+std::vector<PjRtDevice*> InitializeDevices(
+    PjRtClient* client,
+    const std::vector<std::unique_ptr<TfrtGpuDevice>>& owned_devices) {
+  std::vector<PjRtDevice*> devices;
+  devices.reserve(owned_devices.size());
+  for (const std::unique_ptr<TfrtGpuDevice>& device : owned_devices) {
+    device->SetClient(client);
+    devices.push_back(device.get());
+  }
+  return devices;
+}
+
+absl::flat_hash_map<PjRtGlobalDeviceId, TfrtGpuDevice*> GetIdToDeviceMap(
+    absl::Span<const std::unique_ptr<TfrtGpuDevice>> devices) {
+  absl::flat_hash_map<PjRtGlobalDeviceId, TfrtGpuDevice*> id_to_device;
+  for (const std::unique_ptr<TfrtGpuDevice>& device : devices) {
+    CHECK(id_to_device.emplace(device->global_device_id(), device.get()).second)
+        << "Duplicate device id: " << device->id();
+  }
+  return id_to_device;
+}
+
+std::vector<PjRtDevice*> GetAddressableDevicePointers(
+    absl::Span<const std::unique_ptr<TfrtGpuDevice>> devices) {
+  std::vector<PjRtDevice*> addressable_devices;
+  for (const std::unique_ptr<TfrtGpuDevice>& device : devices) {
     if (device->IsAddressable()) {
       int idx = device->local_hardware_id().value();
-      if (idx >= addressable_devices_.size()) {
-        addressable_devices_.resize(idx + 1);
+      if (idx >= addressable_devices.size()) {
+        addressable_devices.resize(idx + 1);
       }
-      CHECK(addressable_devices_[idx] == nullptr) << idx;
-      addressable_devices_[idx] = device.get();
+      CHECK(addressable_devices[idx] == nullptr) << idx;
+      addressable_devices[idx] = device.get();
     }
   }
-  for (int idx = 0; idx < addressable_devices_.size(); ++idx) {
-    CHECK(addressable_devices_[idx] != nullptr) << idx;
+  for (PjRtDevice* device : addressable_devices) {
+    CHECK(device != nullptr);
   }
+  return addressable_devices;
+}
 
-  for (auto* device : addressable_devices()) {
+StreamExecutorGpuTopologyDescription GetTopology(
+    absl::string_view platform_name,
+    std::shared_ptr<const GpuTopology> gpu_topology,
+    absl::Span<PjRtDevice* const> devices) {
+  auto target_config = GetTargetConfigForDevices(devices);
+  return StreamExecutorGpuTopologyDescription(
+      tsl::Fingerprint64(platform_name), platform_name, std::move(gpu_topology),
+      GetAttrsForDevices(target_config), target_config);
+}
+
+std::vector<std::unique_ptr<PjRtMemorySpace>> InitializeMemorySpaces(
+    int global_device_count,
+    absl::Span<PjRtDevice* const> addressable_devices) {
+  std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
+  for (auto* device : addressable_devices) {
     // Use the device id to construct a globally unique memory space id. We do
     // not promise that memory space ids and device ids are the same.
     TfrtGpuDevice* gpu_device = tensorflow::down_cast<TfrtGpuDevice*>(device);
@@ -810,24 +1227,92 @@ TfrtGpuClient::TfrtGpuClient(
     auto memory_space =
         std::make_unique<TfrtGpuDeviceMemorySpace>(global_device_id, device);
     gpu_device->AttachMemorySpace(memory_space.get(), /*is_default=*/true);
-    memory_spaces_.push_back(memory_space.get());
-    owned_memory_spaces_.push_back(std::move(memory_space));
+    memory_spaces.push_back(std::move(memory_space));
   }
-  const int basePinnedId = device_count();
-  for (auto* device : addressable_devices()) {
+  const int basePinnedId = global_device_count;
+  for (auto* device : addressable_devices) {
     TfrtGpuDevice* gpu_device = tensorflow::down_cast<TfrtGpuDevice*>(device);
     const int global_device_id = gpu_device->global_device_id().value();
     auto pinned = std::make_unique<PinnedHostMemorySpace>(
         basePinnedId + global_device_id, device);
     gpu_device->AttachMemorySpace(pinned.get());
-    memory_spaces_.push_back(pinned.get());
-    owned_memory_spaces_.push_back(std::move(pinned));
+    memory_spaces.push_back(std::move(pinned));
   }
+  // We don't promise anything about the order of memory spaces, but this
+  // sorting is done for consistency with the device list that's sorted above.
+  absl::c_sort(memory_spaces, [](const std::unique_ptr<PjRtMemorySpace>& a,
+                                 const std::unique_ptr<PjRtMemorySpace>& b) {
+    return a->id() < b->id();
+  });
+  return memory_spaces;
+}
 
-  LOG(INFO) << "TfrtGpuClient created.";
+}  // namespace
+
+TfrtGpuClient::TfrtGpuClient(
+    std::string platform_name, int process_index, xla::LocalClient* xla_client,
+    std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
+    bool should_stage_host_to_device_transfers,
+    MaybeOwning<se::DeviceMemoryAllocator> allocator,
+    std::unique_ptr<tsl::Allocator> host_memory_allocator,
+    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
+    std::shared_ptr<KeyValueStoreInterface> kv_store,
+    std::shared_ptr<const GpuTopology> gpu_topology)
+    : process_index_(process_index),
+      platform_name_(std::move(platform_name)),
+      xla_client_(CHECK_NOTNULL(xla_client)),
+      should_stage_host_to_device_transfers_(
+          should_stage_host_to_device_transfers),
+      allocator_(std::move(allocator)),
+      host_memory_allocator_(std::make_unique<HostMemoryAllocator>(
+          std::move(host_memory_allocator))),
+      devices_(InitializeDevices(this, devices)),
+      id_to_device_(GetIdToDeviceMap(devices)),
+      addressable_devices_(GetAddressableDevicePointers(devices)),
+      computation_placer_(std::make_unique<ComputationPlacer>()),
+      owned_memory_spaces_(
+          InitializeMemorySpaces(devices.size(), addressable_devices_)),
+      memory_spaces_(GetMemorySpacePointers(owned_memory_spaces_)),
+      gpu_run_options_(std::move(gpu_run_options)),
+      transpose_cache_(1024),
+      topology_(GetTopology(platform_name_, std::move(gpu_topology),
+                            addressable_devices_)),
+      kv_store_(std::move(kv_store)),
+      owned_devices_(std::move(devices)),
+      compile_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
+          tsl::Env::Default(), tsl::ThreadOptions(),
+          "TfrtGpuClient_compile_thread_pool",
+          std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()),
+          true)),
+      blocking_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
+          tsl::Env::Default(), tsl::ThreadOptions(),
+          "TfrtGpuClient_blocking_thread_pool",
+          std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()),
+          true)),
+      non_blocking_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
+          tsl::Env::Default(), tsl::ThreadOptions(),
+          "TfrtGpuClient_non_blocking_thread_pool",
+          std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()),
+          true)) {
+  LOG(INFO) << "TfrtGpuClient created with " << addressable_devices_.size()
+            << " / " << devices_.size() << " addressable devices.";
 }
 
 TfrtGpuClient::~TfrtGpuClient() { LOG(INFO) << "TfrtGpuClient destroyed."; }
+
+absl::string_view TfrtGpuClient::platform_version() const {
+#define STRINGIFY2(X) #X
+#define STRINGIFY(X) STRINGIFY2(X)
+#if TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)  // rocm
+  // TF_ROCM_VERSION format may change in future. Use it
+  // cautiously
+  return "rocm " STRINGIFY(TF_ROCM_VERSION);
+#elif GOOGLE_CUDA && defined(CUDART_VERSION)  // cuda
+  return "cuda " STRINGIFY(CUDART_VERSION);
+#else
+  return "<unknown>";
+#endif  // TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)
+}
 
 absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupDevice(
     PjRtGlobalDeviceId global_device_id) const {
@@ -875,9 +1360,14 @@ absl::StatusOr<DeviceAssignment> TfrtGpuClient::GetDefaultDeviceAssignment(
   return computation_placer_->AssignDevices(num_replicas, num_partitions);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-TfrtGpuClient::CompileAndLoad(const XlaComputation& computation,
-                              CompileOptions options) {
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  return Compile(computation, options, /*lookup_addressable_devices=*/false);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
+    const XlaComputation& computation, CompileOptions options,
+    bool lookup_addressable_devices) {
   std::vector<const Shape*> argument_layout_pointers;
   const ExecutableBuildOptions& build_options =
       options.executable_build_options;
@@ -899,21 +1389,20 @@ TfrtGpuClient::CompileAndLoad(const XlaComputation& computation,
       &argument_layout_pointers));
   return CompileInternal(computation, argument_layout_pointers,
                          /* layout_canonicalization_callback = */ nullptr,
-                         options);
+                         options, lookup_addressable_devices);
 
   // TODO: b/382117736 - Record free gpu memory.
   // Ref:
   // https://github.com/openxla/xla/blob/b729ae319d85d5ec1ec11c488092c2d6683a63f2/xla/pjrt/gpu/se_gpu_pjrt_client.cc#L792-L809
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-TfrtGpuClient::CompileInternal(
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::CompileInternal(
     const XlaComputation& computation,
     const std::vector<const Shape*>& argument_layout_pointers,
     LayoutCanonicalizationCallback layout_canonicalization_callback,
-    CompileOptions options) {
-  tsl::profiler::TraceMe traceme("TfrtGpuClient::Compile");
-  VLOG(1) << "TfrtGpuClient::Compile";
+    CompileOptions options, bool lookup_addressable_devices) {
+  tsl::profiler::TraceMe traceme("TfrtGpuClient::CompileInternal");
+  VLOG(1) << "TfrtGpuClient::CompileInternal";
   if (key_value_store().has_value() &&
       !options.executable_build_options.key_value_store()) {
     options.executable_build_options.set_key_value_store(*key_value_store());
@@ -921,13 +1410,8 @@ TfrtGpuClient::CompileInternal(
   auto input_options = options;
 
   TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
-
-  TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
-  std::shared_ptr<DeviceAssignment>& device_assignment =
-      extras.device_assignment;
-  std::vector<TfrtGpuExecutable::LogicalDeviceIds>&
-      addressable_device_logical_ids = extras.addressable_device_logical_ids;
-  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
+  TF_RETURN_IF_ERROR(
+      UpdateCompileOptions(&options, lookup_addressable_devices));
 
   // It is important to set the canonicalization callback after creating
   // a copy of the options so that the executable's options remain without
@@ -942,25 +1426,18 @@ TfrtGpuClient::CompileInternal(
       xla_client_->Compile(computation, argument_layout_pointers,
                            options.executable_build_options));
 
-  auto executable = std::make_unique<TfrtGpuExecutable>(
-      std::move(local_executables), options.parameter_is_tupled_arguments,
-      std::move(device_assignment), std::move(input_options),
-      std::move(addressable_device_logical_ids), std::move(addressable_devices),
-      this);
-
-  TF_RETURN_IF_ERROR(
-      executable->SetUpDonation(options.parameter_is_tupled_arguments));
-  const auto& ex_options = options.executable_build_options;
-  if (ex_options.has_debug_options() &&
-      ex_options.debug_options().xla_gpu_dump_hlo_unoptimized_snapshots()) {
-    executable->SetInputHloSnapshotBits(
-        computation.proto(), options.executable_build_options.debug_options());
-  }
-  return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
+  return BuildPjRtExecutable(std::move(local_executables),
+                             std::move(input_options));
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
+    mlir::ModuleOp module, CompileOptions options) {
+  return Compile(module, options, /*lookup_addressable_devices=*/false);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
+    mlir::ModuleOp module, CompileOptions options,
+    bool lookup_addressable_devices) {
   XlaComputation xla_computation;
   const ExecutableBuildOptions& exec_build_options =
       options.executable_build_options;
@@ -969,10 +1446,69 @@ TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false, exec_build_options.use_shardy_partitioner()));
 
-  // TODO: b/382117736 - Add support for LayoutModesToXlaShapes
-  // Ref:
-  // https://github.com/openxla/xla/blob/b729ae319d85d5ec1ec11c488092c2d6683a63f2/xla/pjrt/pjrt_stream_executor_client.cc#L3538-L3586
-  return CompileAndLoad(xla_computation, options);
+  // If the compile options specify argument layout, then let's
+  // fall back to using the options to determine layouts.
+  if (options.argument_layouts) {
+    return Compile(xla_computation, options, lookup_addressable_devices);
+  }
+
+  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
+                      GetArgLayoutModes(module));
+  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
+                      GetOutputLayoutModes(module));
+  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
+                      GetArgMemoryKinds(module));
+  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
+                      GetOutputMemoryKinds(module));
+
+  // If auto-sharding modifies shapes of arguments and/or result,
+  // we get a callback to restore the layouts. Let us restore the layouts
+  // according to the attributes we parsed from MLIR.
+  auto layout_callback = [local_client = xla_client_, &arg_layout_modes,
+                          &out_layout_modes, &arg_memory_spaces,
+                          &out_memory_spaces](const HloModule& module)
+      -> absl::StatusOr<std::pair<std::vector<Shape>, Shape>> {
+    XlaComputation xla_computation(XlaComputation(module.ToProto()));
+    return LayoutModesToXlaShapes(
+        xla_computation, arg_layout_modes, out_layout_modes, arg_memory_spaces,
+        out_memory_spaces,
+        [local_client](Shape shape) -> absl::StatusOr<Shape> {
+          return local_client->backend()
+              .transfer_manager()
+              ->ChooseCompactLayoutForShape(shape);
+        });
+  };
+
+  // This call will update result_layout in options.executable_build_options.
+  TF_ASSIGN_OR_RETURN(auto arg_layouts_and_pointers,
+                      LayoutModesToXla(
+                          xla_computation, arg_layout_modes, out_layout_modes,
+                          arg_memory_spaces, out_memory_spaces,
+                          [this](Shape shape) -> absl::StatusOr<Shape> {
+                            return this->xla_client_->backend()
+                                .transfer_manager()
+                                ->ChooseCompactLayoutForShape(shape);
+                          },
+                          options.executable_build_options));
+  return CompileInternal(xla_computation, arg_layouts_and_pointers.second,
+                         layout_callback, options, lookup_addressable_devices);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+TfrtGpuClient::CompileAndLoad(const XlaComputation& computation,
+                              CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                      Compile(computation, options,
+                              /*lookup_addressable_devices=*/true));
+  return Load(std::move(executable), LoadOptions());
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                      Compile(module, options,
+                              /*lookup_addressable_devices=*/true));
+  return Load(std::move(executable), LoadOptions());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -984,11 +1520,11 @@ TfrtGpuClient::CreateViewOfDeviceBuffer(
   auto* device = memory_space->devices().front();
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
   se::DeviceMemoryBase device_memory(device_ptr, byte_size);
-  auto non_owning_buffer = MaybeOwningGpuMemory(device_memory);
+  auto non_owning_buffer = GpuDeviceMemory(device_memory);
   auto buffer_async_value_ref =
-      tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
+      tsl::MakeAvailableAsyncValueRef<GpuDeviceMemory>(
           std::move(non_owning_buffer));
-  auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+  auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
       std::move(buffer_async_value_ref),
       /*definition_event=*/tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
       std::move(on_delete_callback));
@@ -1001,13 +1537,15 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 TfrtGpuClient::CreateUninitializedBuffer(const Shape& shape,
                                          PjRtMemorySpace* memory_space) {
   tsl::profiler::TraceMe traceme("TfrtGpuClient::CreateUninitializedBuffer");
-  if (VLOG_IS_ON(1)) {
-    LOG(INFO) << "TfrtGpuClient::CreateUninitializedBuffer: shape: "
-              << shape.DebugString()
-              << " memory_space: " << memory_space->DebugString();
-  }
+  VLOG(1) << "TfrtGpuClient::CreateUninitializedBuffer: shape: "
+          << shape.DebugString()
+          << " memory_space: " << memory_space->DebugString();
+  TransferManager* transfer_manager =
+      xla_client()->backend().transfer_manager();
+  TF_ASSIGN_OR_RETURN(Shape compact_shape,
+                      transfer_manager->ChooseCompactLayoutForShape(shape));
   return AllocateTfrtGpuDestinationBuffer(
-      shape, /*definition_events=*/{},
+      compact_shape, /*definition_events=*/{},
       tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]), this,
       memory_space);
 }
@@ -1033,24 +1571,66 @@ absl::StatusOr<std::string> TfrtGpuExecutable::SerializeExecutable() const {
   *proto.mutable_serialized_executable() = std::move(serialized);
   TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                       compile_options_.ToProto());
+  *proto.mutable_pjrt_client_name() = kPjRtClientName;
   return proto.SerializeAsString();
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-TfrtGpuClient::LoadSerializedExecutable(absl::string_view serialized,
-                                        std::optional<CompileOptions> options,
-                                        const LoadOptions& load_options) {
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+TfrtGpuClient::BuildPjRtExecutable(
+    std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+    CompileOptions compile_options) {
+  if (local_executables.empty()) {
+    return Internal("No local executable");
+  }
+  if (local_executables.size() != 1) {
+    return Unimplemented("Multiple executables are not supported");
+  }
+  Executable* built_executable = local_executables[0]->executable();
+  if (!built_executable->has_module()) {
+    return absl::InternalError("Executable does not have HLO modules.");
+  }
+  const auto& hlo_module = built_executable->module();
+
+  const int num_replicas = hlo_module.config().replica_count();
+  const int num_partitions = hlo_module.config().num_partitions();
+  const std::string name = hlo_module.name();
+  const std::string fingerprint = hlo_module.GetFingerprint128();
+
+  return std::make_unique<StreamExecutorExecutable>(
+      std::move(compile_options), std::move(local_executables), xla_client_,
+      num_replicas, num_partitions, name, fingerprint,
+      memory_spaces()[0]->kind());
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+TfrtGpuClient::DeserializeExecutable(
+    absl::string_view serialized,
+    std::optional<CompileOptions> compile_options) {
+  TF_ASSIGN_OR_RETURN(
+      auto local_executables_and_options,
+      DeserializeToLocalExecutable(serialized, compile_options));
+
+  return BuildPjRtExecutable(std::move(local_executables_and_options.first),
+                             local_executables_and_options.second);
+}
+
+absl::StatusOr<
+    std::pair<std::vector<std::unique_ptr<LocalExecutable>>, CompileOptions>>
+TfrtGpuClient::DeserializeToLocalExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options) {
   ExecutableAndOptionsProto proto;
   if (serialized.size() > std::numeric_limits<int>::max()) {
-    return Internal(
-        "TfrtGpuClient::LoadSerializedExecutable proto too large "
-        "(>2GB)");
+    return Internal("Proto is too large (>2GB)");
   }
   if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
+    return Internal("Proto deserialization failed");
+  }
+  if (!proto.pjrt_client_name().empty() &&
+      proto.pjrt_client_name() != kPjRtClientName) {
     return Internal(
-        "TfrtGpuClient::LoadSerializedExecutable proto "
-        "deserialization "
-        "failed");
+        "Serialized executable is from an incompatible PjRt client type. "
+        "PjRt client type expected by the serialized executable: %s",
+        proto.pjrt_client_name());
   }
 
   CompileOptions compile_options;
@@ -1060,33 +1640,88 @@ TfrtGpuClient::LoadSerializedExecutable(absl::string_view serialized,
     TF_ASSIGN_OR_RETURN(compile_options,
                         CompileOptions::FromProto(proto.compile_options()));
   }
+
+  tsl::profiler::TraceMe traceme("TfrtGpuClient::DeserializeToLocalExecutable");
+  VLOG(1) << "TfrtGpuClient::DeserializeToLocalExecutable";
+
+  std::string str = std::move(*proto.mutable_serialized_executable());
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<LocalExecutable> loaded,
+      xla_client_->Load(str, compile_options.executable_build_options));
+
+  std::vector<std::unique_ptr<LocalExecutable>> local_executables;
+  local_executables.push_back(std::move(loaded));
+
+  return std::make_pair(std::move(local_executables), compile_options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+TfrtGpuClient::LoadSerializedExecutable(absl::string_view serialized,
+                                        std::optional<CompileOptions> options,
+                                        const LoadOptions& load_options) {
+  TF_ASSIGN_OR_RETURN(auto local_executables_and_options,
+                      DeserializeToLocalExecutable(serialized, options));
+  return LoadInternal(std::move(local_executables_and_options.first),
+                      local_executables_and_options.second);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+TfrtGpuClient::LoadInternal(
+    std::vector<std::unique_ptr<LocalExecutable>> local_executables,
+    CompileOptions compile_options) {
   auto input_options = compile_options;
 
-  tsl::profiler::TraceMe traceme("TfrtGpuClient::LoadSerializedExecutable");
+  TF_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
 
-  TF_ASSIGN_OR_RETURN(ExecutableExtras extras,
-                      GetExecutableExtras(&compile_options));
+  TF_ASSIGN_OR_RETURN(
+      ExecutableExtras extras,
+      UpdateCompileOptionsAndGetExecutableExtras(&compile_options));
   std::shared_ptr<DeviceAssignment>& device_assignment =
       extras.device_assignment;
   std::vector<TfrtGpuExecutable::LogicalDeviceIds>&
       addressable_device_logical_ids = extras.addressable_device_logical_ids;
   std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
-  std::string str = std::move(*proto.mutable_serialized_executable());
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<LocalExecutable> loaded,
-      xla_client_->Load(str, compile_options.executable_build_options));
-  std::vector<std::unique_ptr<LocalExecutable>> executables;
-  executables.push_back(std::move(loaded));
+  const auto& ex_options = compile_options.executable_build_options;
+  const bool xla_gpu_dump_hlo_unoptimized_snapshots =
+      ex_options.has_debug_options() &&
+      ex_options.debug_options().xla_gpu_dump_hlo_unoptimized_snapshots();
+  HloModuleProto hlo_module_proto;
+  if (xla_gpu_dump_hlo_unoptimized_snapshots) {
+    hlo_module_proto = local_executables[0]->executable()->module().ToProto();
+  }
 
   auto executable = std::make_unique<TfrtGpuExecutable>(
-      std::move(executables), compile_options.parameter_is_tupled_arguments,
+      std::move(local_executables),
+      compile_options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(input_options),
-      addressable_device_logical_ids, addressable_devices, this);
+      std::move(addressable_device_logical_ids), std::move(addressable_devices),
+      this);
 
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(compile_options.parameter_is_tupled_arguments));
+  if (xla_gpu_dump_hlo_unoptimized_snapshots) {
+    executable->SetInputHloSnapshotBits(
+        std::move(hlo_module_proto),
+        compile_options.executable_build_options.debug_options());
+  }
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtGpuClient::Load(
+    std::unique_ptr<PjRtExecutable> executable,
+    const LoadOptions& load_options) {
+  auto se_executable = absl::WrapUnique(
+      tensorflow::down_cast<StreamExecutorExecutable*>(executable.release()));
+  CompileOptions compile_options = se_executable->compile_options();
+
+  tsl::profiler::TraceMe traceme("TfrtGpuClient::Load");
+  VLOG(1) << "TfrtGpuClient::Load";
+
+  TF_ASSIGN_OR_RETURN(
+      auto local_executables,
+      se_executable->ConsumeExecutable(xla_client_, compile_options));
+  return LoadInternal(std::move(local_executables), compile_options);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
@@ -1097,25 +1732,18 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
         "Memory space is not attached to this client");
   }
 
-  TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(memory_space->devices().front());
-  if (VLOG_IS_ON(1)) {
-    LOG(INFO) << "TfrtGpuClient::CreateErrorBuffer: shape: " << shape.ToString()
-              << " device: " << device->DebugString() << " error: " << error;
+  if (IsMemorySpaceKind<UnpinnedHostMemorySpace>(memory_space)) {
+    return absl::InvalidArgumentError(
+        "Error buffers are not supported for unpinned host memory yet");
   }
 
-  // Create a dummy buffer because the rest of the code expects a buffer
-  // regardless of whether the definition event is an error.
-  int64_t byte_size = ShapeUtil::ByteSizeOf(shape);
-  void* device_ptr = device->allocator()->AllocateRaw(
-      tsl::Allocator::kAllocatorAlignment, byte_size);
-  se::DeviceMemoryBase device_memory(device_ptr, byte_size);
-  auto gpu_buffer =
-      MaybeOwningGpuMemory(device->allocator(), std::move(device_memory));
-  auto buffer_async_value_ref =
-      tsl::MakeAvailableAsyncValueRef<MaybeOwningGpuMemory>(
-          std::move(gpu_buffer));
-  auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+  TfrtGpuDevice* device =
+      tensorflow::down_cast<TfrtGpuDevice*>(memory_space->devices().front());
+  VLOG(3) << "TfrtGpuClient::CreateErrorBuffer: shape: " << shape.ToString()
+          << " device: " << device->DebugString() << " error: " << error;
+
+  auto buffer_async_value_ref = tsl::MakeErrorAsyncValueRef(error);
+  auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
       std::move(buffer_async_value_ref),
       /*definition_event=*/tsl::MakeErrorAsyncValueRef(std::move(error)));
   return std::make_unique<TfrtGpuBuffer>(
@@ -1123,20 +1751,28 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
       tsl::down_cast<TfrtGpuDevice*>(device), memory_space);
 }
 
-absl::StatusOr<TfrtGpuClient::ExecutableExtras>
-TfrtGpuClient::GetExecutableExtras(CompileOptions* options) {
-  ExecutableExtras extras;
-  std::shared_ptr<DeviceAssignment>& device_assignment =
-      extras.device_assignment;
-  std::vector<TfrtGpuExecutable::LogicalDeviceIds>&
-      addressable_device_logical_ids = extras.addressable_device_logical_ids;
-  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
+absl::Status TfrtGpuClient::UpdateCompileOptions(
+    CompileOptions* options, bool lookup_addressable_devices) {
+  return UpdateCompileOptionsInternal(options, /*returned_extras=*/nullptr,
+                                      lookup_addressable_devices);
+}
 
+absl::StatusOr<TfrtGpuClient::ExecutableExtras>
+TfrtGpuClient::UpdateCompileOptionsAndGetExecutableExtras(
+    CompileOptions* options) {
+  ExecutableExtras extras;
+  TF_RETURN_IF_ERROR(UpdateCompileOptionsInternal(
+      options, &extras, /*lookup_addressable_devices=*/true));
+  return extras;
+}
+
+absl::Status TfrtGpuClient::UpdateCompileOptionsInternal(
+    CompileOptions* options, ExecutableExtras* returned_extras,
+    bool lookup_addressable_devices) {
   ExecutableBuildOptions& build_options = options->executable_build_options;
   if (!build_options.compile_thread_pool()) {
     build_options.set_compile_thread_pool(compile_thread_pool_.get());
   }
-
   if (!build_options.device_allocator()) {
     build_options.set_device_allocator(
         xla_client_->backend().memory_allocator());
@@ -1170,6 +1806,27 @@ TfrtGpuClient::GetExecutableExtras(CompileOptions* options) {
   };
 
   build_options.set_layout_canonicalization_callback(layout_callback);
+
+  // We don't look up devices when it is not required. It could fail if
+  // we look up a device ID on a client with a different topology.
+  // Note that we always look up devices for XLA GPU shard autotuning, as it
+  // needs to know the number of processes and the current process index.
+  const bool use_xla_gpu_shard_autotuning =
+      build_options.has_debug_options() &&
+      build_options.debug_options().xla_gpu_shard_autotuning();
+  if (!lookup_addressable_devices && !use_xla_gpu_shard_autotuning) {
+    if (build_options.device_ordinal() < 0) {
+      build_options.set_device_ordinal(0);
+    }
+    return absl::OkStatus();
+  }
+
+  ExecutableExtras extras;
+  std::shared_ptr<DeviceAssignment>& device_assignment =
+      extras.device_assignment;
+  std::vector<TfrtGpuExecutable::LogicalDeviceIds>&
+      addressable_device_logical_ids = extras.addressable_device_logical_ids;
+  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
   int num_replicas;
   int num_partitions;
@@ -1209,20 +1866,22 @@ TfrtGpuClient::GetExecutableExtras(CompileOptions* options) {
       }
     }
     if (addressable_devices.empty()) {
-      return InvalidArgument(
-          "Device assignment (%s) does not have any local devices.",
-          device_assignment->ToString());
+      if (build_options.device_ordinal() < 0) {
+        build_options.set_device_ordinal(0);
+      }
+    } else {
+      if (build_options.device_ordinal() < 0) {
+        build_options.set_device_ordinal(
+            addressable_devices.front()->local_hardware_id().value());
+      }
+      build_options.set_process_index(*this_process_index);
+      build_options.set_process_count(all_process_indices.size());
     }
-
-    if (build_options.device_ordinal() < 0) {
-      build_options.set_device_ordinal(
-          addressable_devices.front()->local_hardware_id().value());
-    }
-
-    build_options.set_process_index(*this_process_index);
-    build_options.set_process_count(all_process_indices.size());
   }
-  return extras;
+  if (returned_extras != nullptr) {
+    *returned_extras = std::move(extras);
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
@@ -1231,16 +1890,13 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     HostBufferSemantics host_buffer_semantics,
     absl::AnyInvocable<void() &&> on_done_with_host_buffer,
     PjRtMemorySpace* memory_space, const Layout* device_layout) {
-  // TODO: b/382117736 - support device_layout
-  // TODO: b/382117736 - support non-default memory_space (e.g. pinned)
-  PjRtDevice* device = memory_space->devices()[0];
+  TfrtGpuDevice* device =
+      tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]);
+
   tsl::profiler::TraceMe traceme("TfrtGpuClient::BufferFromHostBuffer");
   Shape device_shape = ShapeUtil::MakeShape(type, dims);
-  if (VLOG_IS_ON(2)) {
-    LOG(INFO) << "TfrtGpuClient::BufferFromHostBuffer: shape: "
-              << device_shape.ToString()
-              << " device: " << device->DebugString();
-  }
+  VLOG(3) << "TfrtGpuClient::BufferFromHostBuffer: shape: "
+          << device_shape.ToString() << " device: " << device->DebugString();
   absl::InlinedVector<int64_t, 4> tmp_strides;
   if (!byte_strides) {
     tmp_strides.resize(dims.size());
@@ -1248,14 +1904,20 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
         ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(tmp_strides)));
     byte_strides = tmp_strides;
   }
+
   int64_t byte_size = ShapeUtil::ByteSizeOf(device_shape);
 
   TransferManager* transfer_manager = xla_client_->backend().transfer_manager();
-  TF_ASSIGN_OR_RETURN(
-      device_shape,
-      transfer_manager->ChooseCompactLayoutForShape(device_shape));
+  if (device_layout != nullptr) {
+    *(device_shape.mutable_layout()) = *device_layout;
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        device_shape,
+        transfer_manager->ChooseCompactLayoutForShape(device_shape));
+  }
 
-  absl::InlinedVector<int64_t, 4> shape_strides(device_shape.dimensions_size());
+  absl::InlinedVector<int64_t, 4> shape_strides(
+      device_shape.dimensions().size());
   TF_RETURN_IF_ERROR(
       ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
@@ -1275,106 +1937,140 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
 
-  // TODO: b/382117736 - support SubByteNonPredType
-  if (primitive_util::IsSubByteNonPredType(type)) {
-    return absl::UnimplementedError(
-        "SubByteNonPredType is not supported in TfrtGpuClient.");
+  bool should_pack = primitive_util::IsSubByteNonPredType(type) &&
+                     transfer_manager->PackSubbyteTypes();
+  int64_t packed_size;
+  if (should_pack) {
+    packed_size =
+        CeilOfRatio<int64_t>(byte_size, 8 / primitive_util::BitWidth(type));
+  } else {
+    packed_size = byte_size;
+  }
+  auto dst_definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<TfrtGpuBuffer> output_buffer,
+                      AllocateTfrtGpuDestinationBuffer(
+                          device_shape, {dst_definition_event.CopyRef()},
+                          device, this, memory_space, packed_size));
+  auto copy_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  TrackedGpuDeviceBuffer* allocated_dst_buffer =
+      output_buffer->AcquireUsage(copy_event);
+  CHECK(allocated_dst_buffer != nullptr);
+  auto gpu_buffer = allocated_dst_buffer->buffer();
+  if (gpu_buffer.IsError()) {
+    return gpu_buffer.GetError();
   }
 
-  auto* gpu_device = tsl::down_cast<TfrtGpuDevice*>(device);
+  // If necessary, allocate a host-side buffer for staging host-to-device
+  // transfers. On GPU this is a buffer in pinned memory.
+  HostMemoryAllocator::OwnedPtr staging_buffer;
+  bool must_use_staging_buffer =
+      host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall ||
+      !host_and_device_strides_equal || packed_size != byte_size;
 
-  auto gpu_buffer = tsl::MakeUnconstructedAsyncValueRef<MaybeOwningGpuMemory>();
-  absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events;
-  tsl::AsyncValueRef<GpuEvent> copy_event =
-      tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  definition_events.push_back(copy_event.CopyRef());
+  // Allocating multigigabyte pinned buffers can be very slow. In that case,
+  // using a staging buffer is probably worse than not using one.
+  bool should_stage_transfers = !IsDmaMapped(data, packed_size) &&
+                                should_stage_host_to_device_transfers() &&
+                                packed_size < (int64_t{1} << 30);
 
-  // TODO: b/382117736 - support DmaMapping
-  const bool should_sync_copy =
-      (host_buffer_semantics ==
-       HostBufferSemantics::kImmutableOnlyDuringCall) ||
-      should_stage_host_to_device_transfers();
+  bool use_staging_buffer = must_use_staging_buffer || should_stage_transfers;
+
+  auto copy_to_staging_buffer = [allocator = host_memory_allocator(), data,
+                                 byte_size, type, packed_size,
+                                 transpose{std::move(transpose)}, should_pack,
+                                 on_done_with_host_buffer = std::move(
+                                     on_done_with_host_buffer)]() mutable {
+    tsl::profiler::TraceMe traceme("H2D staging copy");
+
+    HostMemoryAllocator::OwnedPtr staging_buffer =
+        allocator->Allocate(transpose ? byte_size : packed_size);
+    void* buffer = staging_buffer.get();
+    const void* data_ptr = data;
+
+    if (transpose) {
+      transpose->Execute(data_ptr, buffer);
+      data_ptr = buffer;
+    }
+    if (should_pack) {
+      primitive_util::PackIntN(
+          type,
+          absl::MakeConstSpan(static_cast<const char*>(data_ptr), byte_size),
+          absl::MakeSpan(static_cast<char*>(buffer), packed_size));
+      data_ptr = buffer;
+    }
+    if (data_ptr != buffer) {
+      std::memcpy(buffer, data_ptr, byte_size);
+    }
+    if (on_done_with_host_buffer) {
+      std::move(on_done_with_host_buffer)();
+    }
+    return staging_buffer;
+  };
+
+  auto copy_to_gpu = [device, packed_size, data,
+                      copy_event(std::move(copy_event)),
+                      dst_definition_event(std::move(dst_definition_event)),
+                      gpu_buffer{gpu_buffer.CopyRef()}](
+                         HostMemoryAllocator::OwnedPtr staging_buffer) {
+    tsl::profiler::TraceMe traceme("H2D GPU copy");
+
+    auto stream = device->stream();
+
+    se::DeviceMemoryBase dest = gpu_buffer->buffer();
+    const void* host_data_ptr;
+    if (staging_buffer) {
+      host_data_ptr = staging_buffer.get();
+    } else {
+      host_data_ptr = data;
+    }
+    absl::Status status = stream->Memcpy(&dest, host_data_ptr, packed_size);
+    if (!status.ok()) {
+      copy_event.SetError(status);
+      dst_definition_event.SetError(status);
+      return;
+    }
+    status = stream->BlockHostUntilDone();
+    if (status.ok()) {
+      copy_event.SetStateConcrete();
+      dst_definition_event.SetStateConcrete();
+    } else {
+      copy_event.SetError(status);
+      dst_definition_event.SetError(status);
+    }
+  };
 
   // Define H2D copy lambda. First, copy host data to staging buffer, then copy
   // staging buffer to GPU device.
-  auto h2d_copy =
-      [this, data, byte_size, gpu_device, transpose(std::move(transpose)),
-       copy_event(std::move(copy_event)), gpu_buffer{gpu_buffer.CopyRef()},
-       on_done_with_host_buffer = std::move(on_done_with_host_buffer),
-       host_memory_allocator = host_memory_allocator_.get()]() mutable {
-        tsl::profiler::TraceMe traceme("H2D staging copy");
-        HostMemoryAllocator::OwnedPtr staging_buffer =
-            host_memory_allocator->Allocate(byte_size);
-        if (transpose) {
-          transpose->Execute(data, staging_buffer.get());
-        } else {
-          std::memcpy(staging_buffer.get(), data, byte_size);
-        }
-        if (on_done_with_host_buffer) {
-          std::move(on_done_with_host_buffer)();
-        }
+  auto h2d_copy = [this, use_staging_buffer,
+                   copy_to_staging_buffer(std::move(copy_to_staging_buffer)),
+                   copy_to_gpu(std::move(copy_to_gpu))]() mutable {
+    HostMemoryAllocator::OwnedPtr staging_buffer;
+    if (use_staging_buffer) {
+      staging_buffer = copy_to_staging_buffer();
+    }
 
-        auto copy_to_gpu = [gpu_device, byte_size,
-                            copy_event(std::move(copy_event)),
-                            gpu_buffer{gpu_buffer.CopyRef()},
-                            staging_buffer(std::move(staging_buffer))]() {
-          tsl::profiler::TraceMe traceme("H2D GPU copy");
-          auto gpu_buffer_or = MaybeOwningGpuMemory::AllocateShared(
-              gpu_device->allocator(), byte_size);
-          if (gpu_buffer_or.ok()) {
-            gpu_buffer.emplace(std::move(gpu_buffer_or.value()));
-          } else {
-            gpu_buffer.SetError(gpu_buffer_or.status());
-            copy_event.SetError(gpu_buffer_or.status());
-            return;
-          }
+    EnqueueWork(blocking_thread_pool_.get(),
+                [copy_to_gpu(std::move(copy_to_gpu)),
+                 staging_buffer(std::move(staging_buffer))]() mutable {
+                  copy_to_gpu(std::move(staging_buffer));
+                });
+  };
 
-          absl::StatusOr<BoundedStreamPool::Handle> handle_or =
-              gpu_device->stream_pool().Borrow();
-          if (!handle_or.ok()) {
-            copy_event.SetError(handle_or.status());
-            return;
-          }
-          BoundedStreamPool::Handle stream = std::move(handle_or.value());
-
-          se::DeviceMemoryBase dest = gpu_buffer->buffer();
-          absl::Status status =
-              stream->Memcpy(&dest, staging_buffer.get(), byte_size);
-          if (!status.ok()) {
-            copy_event.SetError(status);
-            return;
-          }
-          status = stream->BlockHostUntilDone();
-          if (status.ok()) {
-            copy_event.SetStateConcrete();
-          } else {
-            copy_event.SetError(status);
-          }
-        };
-
-        EnqueueWork(blocking_thread_pool_.get(), std::move(copy_to_gpu));
-      };
-
-  if (should_sync_copy) {
+  if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
     h2d_copy();
   } else {
     EnqueueWork(non_blocking_thread_pool_.get(), std::move(h2d_copy));
   }
 
-  std::function<void()> on_delete_callback;
-  auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-      std::move(gpu_buffer), std::move(definition_events),
-      std::move(on_delete_callback));
-
-  return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtGpuBuffer>(
-      device_shape, std::move(tracked_device_buffer), this, gpu_device,
-      memory_space));
+  return output_buffer;
 }
+
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 TfrtGpuClient::CreateBuffersForAsyncHostToDevice(
     absl::Span<const ShapeSpec> shape_specs,
     std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
     PjRtMemorySpace* memory_space) {
+  VLOG(3) << "TfrtGpuClient::CreateBuffersForAsyncHostToDevice";
   CHECK_EQ(memory_space->devices().size(), 1);
   PjRtDevice* device = memory_space->devices()[0];
   auto* tfrt_gpu_device = tensorflow::down_cast<TfrtGpuDevice*>(device);
@@ -1384,21 +2080,26 @@ TfrtGpuClient::CreateBuffersForAsyncHostToDevice(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                     PjRtMemorySpace* memory_space) {
+                                     PjRtMemorySpace* memory_space,
+                                     const Layout* device_layout) {
+  if (device_layout) {
+    return absl::UnimplementedError(absl::StrCat(
+        "BufferFromHostLiteral with device_layout is not implemented on "
+        "platform: ",
+        platform_name()));
+  }
   PjRtDevice* device = memory_space->devices()[0];
   tsl::profiler::TraceMe traceme("TfrtGpuClient::BufferFromHostLiteral");
-  if (VLOG_IS_ON(1)) {
-    LOG(INFO) << "TfrtGpuClient::BufferFromHostLiteral: shape: "
-              << literal.shape().DebugString()
-              << " device: " << device->DebugString();
-  }
+  VLOG(3) << "TfrtGpuClient::BufferFromHostLiteral: shape: "
+          << literal.shape().DebugString()
+          << " device: " << device->DebugString();
   const Shape& shape = literal.shape();
 
   // Add a placeholder definition event for each leaf buffer when creating the
   // buffer. They are set only after h2d dispatch.
   absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events;
   absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4> avs;
-  int num_leaf_buffers = shape.IsTuple() ? shape.tuple_shapes_size() : 1;
+  int num_leaf_buffers = shape.IsTuple() ? shape.tuple_shapes().size() : 1;
   for (int i = 0; i < num_leaf_buffers; ++i) {
     tsl::AsyncValueRef<GpuEvent> definition_event =
         tsl::MakeConstructedAsyncValueRef<GpuEvent>();
@@ -1420,7 +2121,7 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   }
   // It is OK to capture `buffer` pointer because the `output_buffer` can't
   // be deleted until all the usage holds have gone away.
-  VLOG(2) << "BufferFromHostLiteral for device_buffer: " << device_buffer;
+  VLOG(3) << "BufferFromHostLiteral for device_buffer: " << device_buffer;
   EnqueueWork(non_blocking_thread_pool_.get(),
               [literal, av = avs[0], device_buffer, shape, this,
                device = tsl::down_cast<TfrtGpuDevice*>(device),
@@ -1429,21 +2130,18 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
                 TransferManager* transfer_manager =
                     xla_client()->backend().transfer_manager();
 
-                absl::StatusOr<BoundedStreamPool::Handle> handle_or =
-                    device->stream_pool().Borrow();
-                CHECK_OK(handle_or.status())
-                    << "Failed to borrow a stream from the pool";
-                BoundedStreamPool::Handle stream = std::move(handle_or.value());
+                auto stream = device->stream();
 
                 const auto& buffer = device_buffer->buffer();
-                CHECK_EQ(literal.size_bytes(), buffer->size());
+                if (literal.shape().IsArray()) {
+                  CHECK_EQ(literal.size_bytes(), buffer->size_bytes());
+                }
 
                 ShapedBuffer shaped_buffer =
                     buffer->AsShapedBuffer(shape, device);
 
-                CHECK_NE(stream.get(), nullptr);
                 TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-                    stream.get(), literal, shaped_buffer));
+                    stream, literal, shaped_buffer));
 
                 auto status = stream->BlockHostUntilDone();
                 CHECK_OK(status) << "Failed to block host until done";
@@ -1456,79 +2154,347 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   return std::unique_ptr<PjRtBuffer>(std::move(output_buffer));
 }
 
-static absl::StatusOr<std::vector<std::unique_ptr<TfrtGpuDevice>>>
-GetTfrtGpuDevices(LocalClient* xla_client) {
-  std::vector<std::unique_ptr<TfrtGpuDevice>> devices;
-  int i = 0;
+absl::Status TfrtGpuClient::DmaMap(void* data, size_t buffer_size) {
+  tsl::profiler::TraceMe trace_me("TfrtGpuClient::DmaMap");
+  se::StreamExecutor* executor =
+      tensorflow::down_cast<TfrtGpuDevice*>(addressable_devices_[0])
+          ->executor();
+  DCHECK(executor);
+  bool success = executor->HostMemoryRegister(data, buffer_size);
+  if (!success) {
+    return absl::InternalError(absl::StrFormat(
+        "Failed to register host memory at address: %ps", data));
+  }
+  absl::MutexLock lock(&dma_maps_mutex_);
+  dma_maps_.insert({data, buffer_size});
+  return absl::OkStatus();
+}
+
+absl::Status TfrtGpuClient::DmaUnmap(void* data) {
+  tsl::profiler::TraceMe trace_me("TfrtGpuClient::DmaUnmap");
+  se::StreamExecutor* executor =
+      tensorflow::down_cast<TfrtGpuDevice*>(addressable_devices_[0])
+          ->executor();
+  DCHECK(executor);
+  bool success = executor->HostMemoryUnregister(data);
+  if (!success) {
+    return absl::InternalError(absl::StrFormat(
+        "Failed to unregister host memory at address: %ps", data));
+  }
+  absl::MutexLock lock(&dma_maps_mutex_);
+  dma_maps_.erase(data);
+  return absl::OkStatus();
+}
+
+bool TfrtGpuClient::IsDmaMapped(const void* data_start, int64_t transfer_size) {
+  absl::MutexLock lock(&dma_maps_mutex_);
+  if (dma_maps_.empty()) {
+    return false;
+  }
+  auto it = dma_maps_.lower_bound(data_start);
+  if (it == dma_maps_.end()) {
+    return false;
+  }
+  void* data_end = (char*)data_start + transfer_size;
+  void* map_end = (char*)it->first + it->second;
+  return data_end <= map_end;
+}
+
+namespace {
+
+absl::StatusOr<std::unique_ptr<tsl::Allocator>> CreateAllocatorForDevice(
+    se::StreamExecutor* executor, const GpuAllocatorConfig& allocator_config) {
+  switch (allocator_config.kind) {
+    case GpuAllocatorConfig::Kind::kCudaAsync:
+      return absl::UnimplementedError(
+          "CudaAsync allocator is not supported in TfrtGpuClient.");
+    case GpuAllocatorConfig::Kind::kDefault:
+    case GpuAllocatorConfig::Kind::kBFC:
+      LOG_FIRST_N(INFO, 1) << "Using BFC allocator.";
+      return CreateBFCAllocator(executor, allocator_config.memory_fraction,
+                                allocator_config.preallocate,
+                                allocator_config.gpu_system_memory_size);
+    case GpuAllocatorConfig::Kind::kPlatform:
+      LOG(FATAL) << "Platform allocator should be handled before calling this "
+                    "function.";
+  }
+}
+
+absl::StatusOr<MaybeOwning<se::DeviceMemoryAllocator>> CreateDeviceAllocator(
+    LocalClient* xla_client, const GpuAllocatorConfig& allocator_config) {
+  if (allocator_config.kind == GpuAllocatorConfig::Kind::kPlatform) {
+    LOG(INFO) << "Using platform allocator.";
+    if (allocator_config.collective_memory_size != 0) {
+      LOG(WARNING)
+          << "collective_memory_size is non-zero, but allocator kind is set "
+             "to \"platform\". Collective memory will not be allocated.";
+    }
+    return MaybeOwning<se::DeviceMemoryAllocator>(
+        xla_client->backend().memory_allocator());
+  }
+
+  std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
   for (se::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {
-    // TODO: b/382117736 - allow GPU allocator parameters to be configurable.
     TF_ASSIGN_OR_RETURN(auto allocator,
-                        CreateBFCAllocator(executor, /*memory_fraction=*/0.9,
-                                           /*preallocate=*/true, std::nullopt));
+                        CreateAllocatorForDevice(executor, allocator_config));
+    allocators.emplace_back(
+        std::move(allocator),
+        /*stream=*/nullptr,
+        /*memory_space=*/static_cast<int>(se::MemoryType::kDevice),
+        /*device_ordinal=*/executor->device_ordinal(),
+        /*platform=*/executor->GetPlatform());
 
-    TfrtGpuDevice::Options options;
-    options.id = i;
-    options.local_device_id = PjRtLocalDeviceId(i);
-    options.local_hardware_id = PjRtLocalHardwareId(i);
-    options.executor = executor;
-    options.allocator = std::move(allocator);
-    options.stream_capacity = 4;
-    options.max_inflight_computations = 1;
+    TF_ASSIGN_OR_RETURN(
+        auto collective_bfc_allocator,
+        CreateCollectiveBFCAllocator(
+            executor,
+            /*memory_fraction=*/1.0 - allocator_config.memory_fraction,
+            allocator_config.collective_memory_size));
+    allocators.emplace_back(std::move(collective_bfc_allocator),
+                            /*stream=*/nullptr,
+                            /*memory_space=*/1,
+                            /*device_ordinal=*/executor->device_ordinal(),
+                            /*platform=*/executor->GetPlatform());
+
+    TF_ASSIGN_OR_RETURN(auto host_allocator, GetGpuHostAllocator(executor));
+    allocators.emplace_back(
+        std::move(host_allocator),
+        /*stream=*/nullptr,
+        /*memory_space=*/static_cast<int>(se::MemoryType::kHost),
+        /*device_ordinal=*/executor->device_ordinal(),
+        /*platform=*/executor->GetPlatform());
+  }
+  return MaybeOwning<se::DeviceMemoryAllocator>(
+      std::make_unique<se::MultiDeviceAdapter>(xla_client->platform(),
+                                               std::move(allocators)));
+}
+
+using DeviceTopologyPair =
+    std::pair<std::vector<std::unique_ptr<TfrtGpuDevice>>, GpuTopologyProto>;
+
+absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
+    absl::string_view platform_name, LocalClient* xla_client, int node_id,
+    int num_nodes, gpu::GpuExecutableRunOptions* gpu_executable_run_options,
+    std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
+    std::optional<absl::string_view> mock_gpu_topology,
+    std::optional<int> slice_index, absl::Duration get_local_topology_timeout,
+    absl::Duration get_global_topology_timeout) {
+  std::vector<std::unique_ptr<TfrtGpuDevice>> devices;
+  LocalTopologyProto local_topology;
+  local_topology.set_node_id(node_id);
+  auto boot_id_str_or_status = GetBootIdString();
+  if (!boot_id_str_or_status.ok()) {
+    LOG(INFO) << boot_id_str_or_status.status();
+  } else {
+    local_topology.set_boot_id(boot_id_str_or_status.value());
+  }
+  if (slice_index.has_value()) {
+    local_topology.set_slice_index(*slice_index);
+  }
+  for (se::StreamExecutor* executor :
+       xla_client->backend().stream_executors()) {
     const se::Platform* platform = executor->GetPlatform();
+
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::se::DeviceDescription> desc,
-        platform->DescriptionForDevice(options.local_hardware_id.value()));
-    options.platform_version = desc->name();
+        platform->DescriptionForDevice(executor->device_ordinal()));
+    DeviceProto* device_proto = local_topology.add_devices();
+    device_proto->set_local_device_ordinal(executor->device_ordinal());
+    device_proto->set_name(desc->name());
+    device_proto->set_vendor(desc->device_vendor());
+    device_proto->set_compute_capability(
+        MakeComputeCapabilityString(desc.get()));
+    device_proto->set_core_count(desc->core_count());
 
-    auto device = std::make_unique<TfrtGpuDevice>(std::move(options));
-    devices.push_back(std::move(device));
-    ++i;
+    // TODO: hhb
+    // const se::GpuComputeCapability& compute_capability =
+    //     desc->gpu_compute_capability();
+    // if (std::holds_alternative<se::CudaComputeCapability>(compute_capability)
+    // &&
+    //     std::get<se::CudaComputeCapability>(compute_capability).major >= 9) {
+    //   auto fabric_info = GetDeviceFabricInfo(executor->device_ordinal());
+    //   if (fabric_info.ok()) {
+    //     device_proto->set_fabric_uuid(*fabric_info);
+    //   }
+    // }
   }
-  return std::move(devices);
+
+  GlobalTopologyProto global_topology;
+  if (enable_mock_nccl) {
+    TopologySizes sizes;
+    if (mock_gpu_topology.has_value()) {
+      TF_ASSIGN_OR_RETURN(sizes, TopologySizes::FromString(*mock_gpu_topology));
+    } else {
+      // If there is no topology spec, we assume that each node is a slice,
+      // there is one process (host) on each slice and each host
+      // has all the local devices.
+      sizes.num_slices = num_nodes;
+      sizes.num_hosts_per_slice = 1;
+      sizes.num_devices_per_host = local_topology.devices().size();
+    }
+
+    if (sizes.num_devices_per_host != local_topology.devices().size()) {
+      return absl::InternalError(
+          "The number of devices per host in 'mock_gpu_topology' "
+          "must be the same as the number of devices in the local topology");
+    }
+
+    if (sizes.num_slices * sizes.num_hosts_per_slice != num_nodes) {
+      return absl::InternalError(
+          "The number of hosts in 'mock_gpu_topology' "
+          "must be the same as 'num_nodes'");
+    }
+
+    std::vector<LocalTopologyProto> local_topologies(num_nodes, local_topology);
+    for (int i = 0; i < sizes.num_slices; ++i) {
+      for (int j = 0; j < sizes.num_hosts_per_slice; j++) {
+        int node_id = i * sizes.num_hosts_per_slice + j;
+        local_topologies[node_id].set_node_id(node_id);
+        local_topologies[node_id].set_boot_id(absl::StrCat(i));
+      }
+    }
+    TF_ASSIGN_OR_RETURN(global_topology,
+                        BuildGlobalTopology(absl::MakeSpan(local_topologies),
+                                            /*assign_global_device_ids=*/true));
+  } else {
+    TF_RETURN_IF_ERROR(ExchangeTopologies(
+        platform_name, node_id, num_nodes, get_local_topology_timeout,
+        get_global_topology_timeout, kv_store.get(), local_topology,
+        &global_topology, /*assign_global_device_ids=*/true));
+  }
+
+  std::map<int, GlobalDeviceId> gpu_device_ids;
+  absl::flat_hash_map<GlobalDeviceId, int> device_to_node;
+  for (const LocalTopologyProto& node : global_topology.nodes()) {
+    for (const DeviceProto& device_proto : node.devices()) {
+      GlobalDeviceId global_device_id(device_proto.global_device_id());
+      device_to_node[global_device_id] = node.node_id();
+      TfrtGpuDevice::Options options;
+      if (node.node_id() == node_id) {
+        gpu_device_ids[device_proto.local_device_ordinal()] = global_device_id;
+        // Assign some descriptive names for profiling tools.
+        // TODO: hhb
+        // NameDeviceAndLauncherThread(node, device_proto,
+        //                             local_device->execute_thread());
+
+        TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                            xla_client->backend().stream_executor(
+                                device_proto.local_device_ordinal()));
+        options.local_device_id = executor->device_ordinal();
+        options.local_hardware_id = executor->device_ordinal();
+        options.executor = executor;
+      } else {
+        options.local_device_id = -1;
+        options.local_hardware_id = -1;
+        options.executor = nullptr;
+      }
+      options.id = device_proto.global_device_id();
+      options.process_index = node.node_id();
+      options.slice_index = device_proto.slice_index();
+      options.max_inflight_computations = 32;
+      options.platform_version = device_proto.name();
+      options.device_vendor = device_proto.vendor();
+      options.compute_capability = device_proto.compute_capability();
+      options.core_count = device_proto.core_count();
+
+      auto device = std::make_unique<TfrtGpuDevice>(std::move(options));
+      devices.push_back(std::move(device));
+    }
+  }
+  for (se::StreamExecutor* executor :
+       xla_client->backend().stream_executors()) {
+    TF_RET_CHECK(gpu_device_ids.find(executor->device_ordinal()) !=
+                 gpu_device_ids.end());
+  }
+  gpu_executable_run_options->set_gpu_global_device_ids(
+      std::move(gpu_device_ids));
+
+  TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
+                      xla::CollectivesRegistry::Default("gpu"));
+  xla::gpu::GpuCollectives* gpu_collectives =
+      tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+
+  if (gpu_collectives == nullptr) {
+    return absl::InternalError("Failed to get GPU collectives");
+  }
+
+  TF_RETURN_IF_ERROR(gpu_collectives->InitializeTopology(
+      {node_id, global_topology.nodes().size(),
+       xla_client->backend().stream_executors().size(), kv_store,
+       device_to_node, gpu_executable_run_options}));
+
+  TF_ASSIGN_OR_RETURN(GpuTopologyProto gpu_topology,
+                      BuildGpuTopology(global_topology));
+  return std::make_pair(std::move(devices), gpu_topology);
 }
+
+}  // namespace
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
     const GpuClientOptions& options) {
+#if TENSORFLOW_USE_ROCM
+  const auto* pjrt_platform_name = xla::RocmName();
+#elif TENSORFLOW_USE_SYCL
+  const auto* pjrt_platform_name = xla::SyclName();
+#else   // TENSORFLOW_USE_ROCM
+  const auto* pjrt_platform_name = xla::CudaName();
+#endif  // TENSORFLOW_USE_ROCM
+
   TF_ASSIGN_OR_RETURN(
       LocalClient * xla_client,
       GetGpuXlaClient(options.platform_name, options.allowed_devices));
   EnablePeerAccess(xla_client->backend().stream_executors());
+
+  TF_ASSIGN_OR_RETURN(
+      auto allocator,
+      CreateDeviceAllocator(xla_client, options.allocator_config));
+
   std::unique_ptr<tsl::Allocator> host_memory_allocator;
   if (!xla_client->backend().stream_executors().empty()) {
     TF_ASSIGN_OR_RETURN(
         host_memory_allocator,
         GetGpuHostAllocator(xla_client->backend().stream_executors().front()));
   }
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
-                      GetTfrtGpuDevices(xla_client));
 
-  GpuTopologyProto gpu_topology_proto;
-  for (const auto& device : devices) {
-    if (gpu_topology_proto.platform_version().empty()) {
-      gpu_topology_proto.set_platform_version(
-          std::string(device->device_kind()));
-    }
-    gpu_topology_proto.add_device_ids(device->id());
+  auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
+  if (options.enable_mock_nccl) {
+    gpu_run_options->set_enable_mock_collectives();
   }
 
-  // TODO: b/382117736 - Support multi-host
-  gpu_topology_proto.set_num_slices(1);
-  gpu_topology_proto.set_num_hosts_per_slice(1);
-  gpu_topology_proto.set_num_devices_per_host(devices.size());
+  static const bool xla_gpu_require_exclusive_lock =
+      xla::GetDebugOptionsFromFlags().xla_gpu_require_exclusive_lock();
+  if (xla_gpu_require_exclusive_lock) {
+    gpu_run_options->set_requires_exclusive_lock_on_gpu();
+  }
+
+  std::shared_ptr<KeyValueStoreInterface> kv_store = options.kv_store;
+  if (options.enable_mock_nccl) {
+    kv_store = std::make_shared<InMemoryKeyValueStore>();
+  }
+  TF_RET_CHECK(options.num_nodes == 1 || kv_store != nullptr);
+  TF_ASSIGN_OR_RETURN(
+      DeviceTopologyPair device_topology_pair,
+      BuildDistributedDevices(pjrt_platform_name, xla_client, options.node_id,
+                              options.num_nodes, gpu_run_options.get(),
+                              kv_store, options.enable_mock_nccl,
+                              options.mock_gpu_topology, options.slice_index,
+                              absl::Minutes(2), absl::Minutes(5)));
 
   auto gpu_topology = std::shared_ptr<const GpuTopology>(
-      GpuTopology::FromProto(gpu_topology_proto));
+      GpuTopology::FromProto(device_topology_pair.second));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtGpuClient>(
-      /*process_index=*/0, xla_client, std::move(devices),
-      options.should_stage_host_to_device_transfers,
-      std::move(host_memory_allocator), gpu_topology));
+      std::move(pjrt_platform_name), options.node_id, xla_client,
+      std::move(device_topology_pair.first),
+      options.should_stage_host_to_device_transfers, std::move(allocator),
+      std::move(host_memory_allocator), std::move(gpu_run_options),
+      std::move(kv_store), std::move(gpu_topology)));
 }
 
 TfrtGpuBuffer::TfrtGpuBuffer(
     Shape on_device_shape,
-    std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer,
+    std::unique_ptr<TrackedGpuDeviceBuffer> tracked_device_buffer,
     TfrtGpuClient* client, TfrtGpuDevice* device, PjRtMemorySpace* memory_space)
     : client_(client),
       on_device_shape_(std::move(on_device_shape)),
@@ -1545,7 +2511,7 @@ absl::StatusOr<size_t> TfrtGpuBuffer::GetOnDeviceSizeInBytes() const {
   return ShapeUtil::ByteSizeOf(on_device_shape_);
 }
 
-TrackedTfrtGpuDeviceBuffer* TfrtGpuBuffer::AcquireUsage(
+TrackedGpuDeviceBuffer* TfrtGpuBuffer::AcquireUsage(
     tsl::AsyncValueRef<GpuEvent> usage_event) {
   absl::MutexLock lock(&mu_);
   if (!tracked_device_buffer_) {
@@ -1585,15 +2551,15 @@ absl::StatusOr<Shape> TfrtGpuBuffer::logical_on_device_shape() {
   TransferManager* transfer_manager =
       client_->xla_client()->backend().transfer_manager();
 
-  TF_ASSIGN_OR_RETURN(BoundedStreamPool::Handle stream,
-                      device_->stream_pool_.Borrow());
-  TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
-      stream.get(), &shaped_buffer, &ret_shape));
+  auto stream = device_->stream();
+  TF_RETURN_IF_ERROR(
+      transfer_manager->ReadDynamicShapes(stream, &shaped_buffer, &ret_shape));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return ret_shape;
 }
 
 PjRtFuture<> TfrtGpuBuffer::GetReadyFuture() {
+  VLOG(3) << "TfrtGpuBuffer::GetReadyFuture";
   tsl::AsyncValueRef<GpuEvent> definition_event;
   absl::MutexLock lock(&mu_);
   if (!tracked_device_buffer_) {
@@ -1631,7 +2597,7 @@ PjRtFuture<> TfrtGpuBuffer::GetReadyFuture() {
       /*on_block_start=*/
       []() {
         tsl::profiler::TraceMeProducer traceme("TfrtGpuBuffer::Await");
-        VLOG(1) << "TfrtGpuBuffer::Await";
+        VLOG(3) << "TfrtGpuBuffer::Await";
         return PjRtFutureHelpers::ProfilingKeys(
             {/*traceme_context_id=*/traceme.GetContextId()});
       },
@@ -1642,12 +2608,94 @@ PjRtFuture<> TfrtGpuBuffer::GetReadyFuture() {
       });
 }
 
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+TfrtGpuBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
+  VLOG(3) << "TfrtGpuBuffer::DonateWithControlDependency";
+
+  {
+    // TODO(ziyinh): Remove this once we have a better solution.
+    // Wait on the definition and usage events before we can donate the buffer.
+    // This is might not be optimal but avoids issues where a buffer is donated
+    // before its usage event is ready.
+    absl::MutexLock lock(&mu_);
+    auto usage_events = tracked_device_buffer_->LockUseAndTransferUsageEvents();
+    auto definition_event = tracked_device_buffer_->definition_event();
+    tsl::BlockUntilReady(usage_events);
+    tsl::BlockUntilReady(definition_event);
+  }
+  // Acquire donation hold.
+  TF_ASSIGN_OR_RETURN(auto donation_transaction, AcquireDonation());
+
+  TrackedGpuDeviceBuffer* original_tracked_buffer =
+      donation_transaction.device_buffer();
+
+  // Check if the original buffer is valid.
+  if (original_tracked_buffer == nullptr) {
+    // Donation hold is released on destruction, return error.
+    return InvalidArgument(
+        "DonateWithControlDependency was called on a deleted or donated "
+        "buffer.");
+  }
+
+  // Get definition event and buffer data Async Values.
+  tsl::AsyncValueRef<GpuDeviceMemory> buffer_data_av =
+      original_tracked_buffer->buffer();
+  tsl::AsyncValueRef<GpuEvent> original_def_event =
+      original_tracked_buffer->definition_event();
+
+  // Create new event for donated buffer, the dependency will resolve it.
+  tsl::AsyncValueRef<GpuEvent> donation_event =
+      tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+
+  // Create new buffer with the combined event and underlying data from the
+  // original buffer.
+  absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> new_definition_events{
+      donation_event.CopyRef(), original_def_event.CopyRef()};
+  auto new_tracked_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
+      std::move(buffer_data_av), new_definition_events,
+      std::move(original_tracked_buffer->on_delete_callback_));
+
+  // Create the new PjRtBuffer wrapper.
+  auto new_pjrt_buffer = std::make_unique<TfrtGpuBuffer>(
+      on_device_shape(),  // Reuse the shape
+      std::move(new_tracked_buffer),
+      client_,  // Reuse client, device, memory space
+      device_, memory_space_);
+
+  // Resolve the donation event when the dependency is ready.
+  dependency.OnReady([donation_event](absl::Status status) mutable {
+    if (status.ok()) {
+      donation_event.SetStateConcrete();
+    } else {
+      donation_event.SetError(status);
+    }
+  });
+
+  // Commit the donation transaction when the original definition event is ready
+  original_def_event.AndThen(
+      [donation_transaction = std::move(donation_transaction)]() mutable {
+        std::move(donation_transaction).Commit();
+      });
+
+  return new_pjrt_buffer;
+}
+
+bool TfrtGpuBuffer::IsOnCpu() const {
+  return memory_space() != nullptr &&
+         memory_space()->kind() == PinnedHostMemorySpace::kKind;
+}
+
+const tsl::AsyncValueRef<GpuDeviceMemory>& TfrtGpuBuffer::GetBufferPtr() const {
+  absl::MutexLock lock(&mu_);
+  return tracked_device_buffer_->buffer();
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
 TfrtGpuBuffer::AcquireExternalReference() {
   class ScopedExternalReference : public PjRtBuffer::ExternalReference {
    public:
-    explicit ScopedExternalReference(
-        TfrtGpuBuffer* buffer, tsl::AsyncValueRef<MaybeOwningGpuMemory> data)
+    explicit ScopedExternalReference(TfrtGpuBuffer* buffer,
+                                     tsl::AsyncValueRef<GpuDeviceMemory> data)
         : buffer_(buffer), data_(std::move(data)) {
       DCHECK(data_);
       data_ptr_ = data_->buffer().opaque();
@@ -1659,12 +2707,20 @@ TfrtGpuBuffer::AcquireExternalReference() {
     TfrtGpuBuffer* buffer_ = nullptr;
     // Keep a reference to the underlying data used. Note that it is still
     // users' responsibility to synchronize reads and writes to the data.
-    tsl::AsyncValueRef<MaybeOwningGpuMemory> data_;
+    tsl::AsyncValueRef<GpuDeviceMemory> data_;
   };
 
   absl::MutexLock lock(&mu_);
   if (tracked_device_buffer_ == nullptr) {
     return InvalidArgument("Buffer has been deleted or donated.");
+  }
+
+  // If the external reference event is concrete, it means we previously dropped
+  // the last external reference but want to create one again without having
+  // deleted the buffer. So we need a new external_references_dropped_event_.
+  if (external_references_dropped_event_.IsConcrete()) {
+    external_references_dropped_event_ =
+        tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   }
 
   ++external_reference_counter_;
@@ -1681,7 +2737,7 @@ class TrackedGpuDeviceBufferExternalReference
     : public PjRtBuffer::ExternalReference {
  public:
   explicit TrackedGpuDeviceBufferExternalReference(
-      std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer)
+      std::unique_ptr<TrackedGpuDeviceBuffer> tracked_device_buffer)
       : tracked_device_buffer_(std::move(tracked_device_buffer)) {
     data_ptr_ = tracked_device_buffer_->buffer()->buffer().opaque();
   }
@@ -1689,7 +2745,7 @@ class TrackedGpuDeviceBufferExternalReference
   ~TrackedGpuDeviceBufferExternalReference() override = default;
 
  private:
-  std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer_;
+  std::unique_ptr<TrackedGpuDeviceBuffer> tracked_device_buffer_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
@@ -1700,7 +2756,7 @@ TfrtGpuBuffer::ReleaseDeviceMemoryOwnership(
         "ReleaseDeviceMemoryOwnership allowed only for non-tuple");
   }
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<TrackedTfrtGpuDeviceBuffer> tracked_device_buffer,
+      std::unique_ptr<TrackedGpuDeviceBuffer> tracked_device_buffer,
       Release(wait_for_operations_to_complete));
 
   std::unique_ptr<PjRtBuffer::ExternalReference> ref;
@@ -1712,6 +2768,8 @@ TfrtGpuBuffer::ReleaseDeviceMemoryOwnership(
 }
 
 PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
+  VLOG(2) << "TfrtGpuBuffer::ToLiteral for a tensor of shape "
+          << literal->shape().ToString();
   tsl::profiler::TraceMe traceme("TfrtGpuBuffer::ToLiteral");
   auto promise = PjRtFuture<>::CreatePromise();
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
@@ -1721,57 +2779,135 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
         InvalidArgument("ToLiteral() called on deleted or donated buffer"));
     return PjRtFuture<>(promise);
   }
-  EnqueueWorkWhenReady(
-      client_->blocking_thread_pool(),
-      {device_buffer->definition_event().CopyRCRef()},
-      [device(device_), device_buffer, usage_event(std::move(usage_event)),
-       literal, promise, client = client_]() mutable {
-        tsl::profiler::TraceMe traceme("D2H copy");
-        if (device_buffer->definition_event().IsError()) {
-          usage_event.SetStateConcrete();
-          VLOG(2) << "device_buffer->definition_event().GetError(): "
-                  << device_buffer->definition_event().GetError();
 
-          promise.Set(device_buffer->definition_event().GetError());
-          return;
+  bool unpack_subbyte_types =
+      client_->xla_client()->backend().transfer_manager()->PackSubbyteTypes();
+
+  std::shared_ptr<TransposePlan> transpose;
+  if (on_device_shape().IsArray()) {
+    xla::Layout literal_layout;
+    if (literal->shape().has_layout()) {
+      literal_layout = literal->shape().layout();
+    } else {
+      literal_layout = LayoutUtil::MakeDescendingLayout(
+          on_device_shape().dimensions().size());
+    }
+
+    if (on_device_shape().layout() != literal_layout) {
+      absl::InlinedVector<int64_t, 4> byte_strides(
+          on_device_shape().dimensions().size());
+      absl::Status s = ShapeUtil::ByteStrides(on_device_shape(),
+                                              absl::MakeSpan(byte_strides));
+      if (!s.ok()) {
+        return PjRtFuture<>(s);
+      }
+      absl::Span<const int64_t> dims = on_device_shape().dimensions();
+      absl::InlinedVector<int64_t, 4> permutation(dims.size());
+      absl::c_reverse_copy(literal_layout.minor_to_major(),
+                           permutation.begin());
+      TransposePlan::Options options;
+      options.elem_size_in_bytes =
+          primitive_util::ByteWidth(on_device_shape().element_type());
+      options.dims = on_device_shape().dimensions();
+      options.permutation = permutation;
+      options.input_layout = TransposePlan::Striding{byte_strides};
+      {
+        absl::MutexLock lock(&client_->transpose_mu_);
+        absl::StatusOr<std::shared_ptr<TransposePlan>> t =
+            client_->transpose_cache_.GetOrCreate(options);
+        if (!t.ok()) {
+          return PjRtFuture<>(t.status());
         }
-        size_t byte_size = device_buffer->buffer()->buffer().size();
-        HostMemoryAllocator::OwnedPtr staging_buffer =
-            client->host_memory_allocator()->Allocate(byte_size);
+        transpose = *std::move(t);
+      }
+    }
+  }
 
-        {
-          tsl::profiler::TraceMe traceme2("D2H GPU copy");
-          MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
+  auto copy_to_host = [device(device_), device_buffer,
+                       usage_event(std::move(usage_event)), literal, promise,
+                       client = client_, on_device_shape{on_device_shape_},
+                       unpack_subbyte_types, transpose]() mutable {
+    tsl::profiler::TraceMe traceme("D2H copy");
+    if (device_buffer->definition_event().IsError()) {
+      usage_event.SetStateConcrete();
+      VLOG(2) << "device_buffer->definition_event().GetError(): "
+              << device_buffer->definition_event().GetError();
 
-          auto stream_or = device->stream_pool().Borrow();
-          if (!stream_or.ok()) {
-            promise.Set(stream_or.status());
-            return;
-          }
-          BoundedStreamPool::Handle stream = std::move(stream_or.value());
+      promise.Set(device_buffer->definition_event().GetError());
+      return;
+    }
+    size_t byte_size = device_buffer->buffer()->buffer().size();
 
-          CHECK_OK(stream->Memcpy(staging_buffer.get(),
-                                  device_buffer->buffer()->buffer(), byte_size))
-              << "stream->Memcpy failed copying from GPU to host";
-          absl::Status status = stream->BlockHostUntilDone();
-          if (!status.ok()) {
-            VLOG(2) << "stream->BlockHostUntilDone failed: " << status;
-            promise.Set(status);
-            return;
-          }
-        }
-        tsl::profiler::TraceMe traceme3("D2H staging copy");
-        std::memcpy(literal->untyped_data(), staging_buffer.get(), byte_size);
-        VLOG(2) << "D2H staging copy done";
-        promise.Set(absl::OkStatus());
-      });
+    PrimitiveType type = on_device_shape.element_type();
+    bool should_unpack =
+        unpack_subbyte_types && primitive_util::IsSubByteNonPredType(type);
+
+    HostMemoryAllocator::OwnedPtr staging_buffer;
+    void* buffer_ptr;
+    if (should_unpack || transpose != nullptr) {
+      staging_buffer = client->host_memory_allocator()->Allocate(byte_size);
+      buffer_ptr = staging_buffer.get();
+    } else if (on_device_shape.IsArray()) {
+      buffer_ptr = literal->untyped_data();
+    } else {
+      CHECK_EQ(byte_size, 0);
+      buffer_ptr = nullptr;
+    }
+
+    {
+      tsl::profiler::TraceMe traceme2("D2H GPU copy");
+      MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
+
+      auto stream = device->stream();
+
+      CHECK_OK(stream->Memcpy(buffer_ptr, device_buffer->buffer()->buffer(),
+                              byte_size))
+          << "stream->Memcpy failed copying from GPU to host";
+
+      absl::Status status = stream->BlockHostUntilDone();
+      if (!status.ok()) {
+        VLOG(2) << "stream->BlockHostUntilDone failed: " << status;
+        promise.Set(status);
+        return;
+      }
+    }
+    void* buffer;
+    if (should_unpack) {
+      tsl::profiler::TraceMe traceme("D2H staging copy");
+      int64_t unpacked_size = ShapeUtil::ElementsIn(on_device_shape);
+      if (transpose != nullptr) {
+        buffer = tsl::port::AlignedMalloc(unpacked_size,
+                                          tsl::Allocator::kAllocatorAlignment);
+      } else {
+        buffer = literal->untyped_data();
+      }
+      primitive_util::UnpackIntN(
+          on_device_shape.element_type(),
+          absl::MakeConstSpan(static_cast<const char*>(buffer_ptr), byte_size),
+          absl::MakeSpan(static_cast<char*>(buffer), unpacked_size));
+      VLOG(2) << "D2H staging copy done";
+    } else {
+      buffer = buffer_ptr;
+    }
+    if (transpose != nullptr) {
+      tsl::profiler::TraceMe traceme("Transpose");
+      transpose->Execute(buffer, static_cast<char*>(literal->untyped_data()));
+      if (should_unpack) {
+        tsl::port::AlignedFree(buffer);
+      }
+    }
+    promise.Set(absl::OkStatus());
+  };
+  EnqueueWorkWhenReady(client_->blocking_thread_pool(),
+                       {device_buffer->definition_event().CopyRCRef()},
+                       std::move(copy_to_host));
 
   return PjRtFuture<>(
       std::move(promise),
       /*on_block_start=*/
       []() {
         tsl::profiler::TraceMeProducer traceme("TfrtGpuBuffer::ToLiteral");
-        VLOG(1) << "TfrtGpuBuffer::ToLiteral";
+        VLOG(2) << "TfrtGpuBuffer::ToLiteral::OnBlockStart";
         return PjRtFutureHelpers::ProfilingKeys(
             {/*traceme_context_id =*/traceme.GetContextId()});
       },
@@ -1837,42 +2973,44 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
         } else {
           sub_buffer = std::make_unique<se::DeviceMemoryBase>(device_memory);
         }
-
-        HostMemoryAllocator::OwnedPtr staging_buffer =
-            client->host_memory_allocator()->Allocate(transfer_size);
-
-        {
-          tsl::profiler::TraceMe traceme2("D2H GPU copy");
-          MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
-          auto stream_or = device->stream_pool().Borrow();
-          if (!stream_or.ok()) {
-            promise.Set(stream_or.status());
-            LOG(ERROR) << "Failed to borrow a stream from the pool";
-            return;
-          }
-          BoundedStreamPool::Handle stream = std::move(stream_or.value());
-
-          CHECK_OK(
-              stream->Memcpy(staging_buffer.get(), *sub_buffer, transfer_size))
-              << "stream->Memcpy failed copying from GPU to host";
-          absl::Status status = stream->BlockHostUntilDone();
-          if (!status.ok()) {
-            LOG(ERROR) << "stream->BlockHostUntilDone failed: " << status;
-            promise.Set(status);
-            return;
-          }
-        }
-        dst.OnReady([staging_buffer = std::move(staging_buffer),
-                     promise = std::move(promise),
+        dst.OnReady([client = std::move(client), promise = std::move(promise),
+                     usage_event = std::move(usage_event),
+                     device = std::move(device),
+                     sub_buffer = std::move(sub_buffer),
                      transfer_size](absl::StatusOr<void*> dst) mutable {
-          tsl::profiler::TraceMe traceme3("D2H staging copy");
+          HostMemoryAllocator::OwnedPtr staging_buffer;
+          if (client->should_stage_host_to_device_transfers() &&
+              !client->IsDmaMapped(dst.value(), transfer_size)) {
+            staging_buffer =
+                client->host_memory_allocator()->Allocate(transfer_size);
+          }
+
+          {
+            tsl::profiler::TraceMe traceme2("D2H GPU copy");
+            MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
+            auto stream = device->stream();
+            void* host_ptr =
+                staging_buffer != nullptr ? staging_buffer.get() : dst.value();
+
+            CHECK_OK(stream->Memcpy(host_ptr, *sub_buffer, transfer_size))
+                << "stream->Memcpy failed copying from GPU to host";
+            absl::Status status = stream->BlockHostUntilDone();
+            if (!status.ok()) {
+              LOG(ERROR) << "stream->BlockHostUntilDone failed: " << status;
+              promise.Set(status);
+              return;
+            }
+          }
           if (!dst.ok()) {
             promise.Set(dst.status());
             LOG(ERROR) << "dst.status(): " << dst.status();
             return;
           }
-          std::memcpy(dst.value(), staging_buffer.get(), transfer_size);
-          VLOG(4) << "D2H staging copy done";
+          if (staging_buffer != nullptr) {
+            tsl::profiler::TraceMe traceme3("D2H staging copy");
+            std::memcpy(dst.value(), staging_buffer.get(), transfer_size);
+            VLOG(3) << "D2H staging copy done";
+          }
           promise.Set(absl::OkStatus());
         });
       });
@@ -1883,7 +3021,7 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
       []() {
         tsl::profiler::TraceMeProducer traceme(
             "TfrtGpuBuffer::CopyRawToHostFuture");
-        VLOG(1) << "TfrtGpuBuffer::CopyRawToHostFuture";
+        VLOG(2) << "TfrtGpuBuffer::CopyRawToHostFuture";
         return PjRtFutureHelpers::ProfilingKeys(
             {/*traceme_context_id =*/traceme.GetContextId()});
       },
@@ -1896,12 +3034,15 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
 
 void TfrtGpuBuffer::Delete() {
   tsl::profiler::TraceMe traceme("Gpu buffer delete");
-  std::unique_ptr<TrackedTfrtGpuDeviceBuffer> device_buffer;
+  VLOG(3) << " TfrtGpuBuffer::Delete";
+  std::unique_ptr<TrackedGpuDeviceBuffer> device_buffer;
   tsl::AsyncValueRef<GpuEvent> external_references_dropped_event;
   {
     absl::MutexLock lock(&mu_);
     device_buffer = ReleaseBufferLocked();
-    if (device_buffer == nullptr) return;
+    if (device_buffer == nullptr) {
+      return;
+    }
 
     if (external_reference_counter_ > 0) {
       external_references_dropped_event =
@@ -1944,9 +3085,11 @@ bool TfrtGpuBuffer::IsDeleted() {
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
     PjRtMemorySpace* dst_memory_space) {
-  // TODO: b/382117736 -  Support non-default memory spaces.
   tsl::profiler::TraceMe traceme("TfrtGpuBuffer::CopyToMemorySpace");
   PjRtDevice* dst_device = dst_memory_space->devices()[0];
+
+  VLOG(1) << " TfrtGpuBuffer::CopyToMemorySpace:  dst_device: " << dst_device
+          << " dst_memory_space: " << dst_memory_space->kind();
 
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
@@ -1968,60 +3111,76 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
   }
 
   // Copy each leaf buffer to a destination buffer.
-  auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
-  TrackedTfrtGpuDeviceBuffer* src_device_buffer = AcquireUsage(usage_event);
+  auto src_usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  TrackedGpuDeviceBuffer* src_device_buffer = AcquireUsage(src_usage_event);
   if (src_device_buffer == nullptr) {
     return InvalidArgument(
         "CopyToMemorySpace called on deleted or donated buffer");
   }
 
+  TfrtGpuDevice* gpu_src_device = tsl::down_cast<TfrtGpuDevice*>(device());
   TfrtGpuDevice* gpu_dst_device = tsl::down_cast<TfrtGpuDevice*>(dst_device);
-  tsl::AsyncValueRef<MaybeOwningGpuMemory> src_buffer =
-      src_device_buffer->buffer();
-  auto dst_buffer = tsl::MakeUnconstructedAsyncValueRef<MaybeOwningGpuMemory>();
+  tsl::AsyncValueRef<GpuDeviceMemory> src_buffer = src_device_buffer->buffer();
+
   auto dst_definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  TF_ASSIGN_OR_RETURN(auto output_buffer,
+                      AllocateTfrtGpuDestinationBuffer(
+                          on_device_shape_, {dst_definition_event.CopyRef()},
+                          gpu_dst_device, client_, dst_memory_space));
+  auto dst_usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  TrackedGpuDeviceBuffer* allocated_dst_device_buffer =
+      output_buffer->AcquireUsage(dst_usage_event);
+  CHECK(allocated_dst_device_buffer != nullptr);
+  auto allocated_dst_buffer = allocated_dst_device_buffer->buffer();
 
   absl::AnyInvocable<void()> transfer_d2d =
-      [src_buffer(src_buffer.CopyRef()), dst_buffer(dst_buffer.CopyRef()),
+      [src_buffer(src_buffer.CopyRef()),
+       allocated_dst_buffer(allocated_dst_buffer.CopyRef()),
        dst_definition_event(dst_definition_event.CopyRef()),
-       dst_device(gpu_dst_device), usage_event(usage_event.CopyRef())]() {
+       src_definition_event(src_device_buffer->definition_event().CopyRef()),
+       src_device(gpu_src_device), dst_device(gpu_dst_device),
+       src_usage_event(src_usage_event.CopyRef()),
+       dst_usage_event(dst_usage_event.CopyRef())]() {
+        VLOG(2) << "Request to transfer D2D from "
+                << src_buffer->buffer().opaque() << " on device "
+                << src_device->id() << " to "
+                << allocated_dst_buffer->buffer().opaque() << " on device "
+                << dst_device->id();
         tsl::profiler::TraceMe traceme("D2D copy");
+
+        MarkGpuEventReadyOnExit ready_on_exit_src(std::move(src_usage_event));
+        MarkGpuEventReadyOnExit ready_on_exit_dst(std::move(dst_usage_event));
+
         if (const absl::Status* error =
                 dst_definition_event.GetErrorIfPresent()) {
-          dst_buffer.SetError(*error);
+          allocated_dst_buffer.SetError(*error);
           dst_definition_event.SetError(*error);
-          usage_event.SetStateConcrete();
           return;
         }
 
-        MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
-        absl::StatusOr<MaybeOwningGpuMemory> allocated_dst_buffer =
-            MaybeOwningGpuMemory::AllocateShared(dst_device->allocator(),
-                                                 src_buffer->buffer().size());
-        if (!allocated_dst_buffer.ok()) {
-          dst_buffer.SetError(allocated_dst_buffer.status());
-          dst_definition_event.SetError(allocated_dst_buffer.status());
+        if (const absl::Status* error =
+                src_definition_event.GetErrorIfPresent()) {
+          allocated_dst_buffer.SetError(*error);
+          dst_definition_event.SetError(*error);
           return;
         }
-        dst_buffer.emplace(std::move(allocated_dst_buffer.value()));
 
-        absl::StatusOr<BoundedStreamPool::Handle> stream =
-            dst_device->stream_pool_.Borrow();
-        if (!stream.ok()) {
-          dst_definition_event.SetError(stream.status());
-          return;
-        }
-        se::DeviceMemoryBase dst(dst_buffer->buffer());
-        absl::Status status = stream->get()->Memcpy(
-            &dst, src_buffer->buffer(), src_buffer->buffer().size());
+        // TODO: Use the destination device stream for D2D copies.
+        auto stream = src_device->stream();
+        se::DeviceMemoryBase dst(allocated_dst_buffer->buffer());
+        absl::Status status = stream->Memcpy(&dst, src_buffer->buffer(),
+                                             src_buffer->buffer().size());
         if (!status.ok()) {
           dst_definition_event.SetError(status);
           return;
         }
-        status = stream->get()->BlockHostUntilDone();
+        status = stream->BlockHostUntilDone();
         if (status.ok()) {
+          VLOG(2) << "D2D copy done. dst: " << dst.opaque();
           dst_definition_event.SetStateConcrete();
         } else {
+          LOG(ERROR) << "D2D copy failed. dst: " << dst.opaque()
+                     << " status: " << status;
           dst_definition_event.SetError(status);
         }
       };
@@ -2029,11 +3188,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
   EnqueueWorkWhenReady(client_->blocking_thread_pool(),
                        {src_device_buffer->definition_event().CopyRCRef()},
                        std::move(transfer_d2d));
-  return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtGpuBuffer>(
-      on_device_shape_,
-      std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-          std::move(dst_buffer), std::move(dst_definition_event)),
-      client(), tsl::down_cast<TfrtGpuDevice*>(dst_device), dst_memory_space));
+  return output_buffer;
 }
 
 void TfrtGpuBuffer::DropExternalReference() {
@@ -2045,11 +3200,11 @@ void TfrtGpuBuffer::DropExternalReference() {
   }
 }
 
-absl::StatusOr<std::unique_ptr<TrackedTfrtGpuDeviceBuffer>>
-TfrtGpuBuffer::Release(bool wait_for_operations_to_complete) {
+absl::StatusOr<std::unique_ptr<TrackedGpuDeviceBuffer>> TfrtGpuBuffer::Release(
+    bool wait_for_operations_to_complete) {
   auto donation_event = GetDonationEvent();
   tsl::BlockUntilReady(donation_event);
-  std::unique_ptr<TrackedTfrtGpuDeviceBuffer> device_buffer;
+  std::unique_ptr<TrackedGpuDeviceBuffer> device_buffer;
   {
     absl::MutexLock lock(&mu_);
     device_buffer = ReleaseBufferLocked();
@@ -2080,8 +3235,7 @@ TfrtGpuBuffer::Release(bool wait_for_operations_to_complete) {
   return device_buffer;
 }
 
-std::unique_ptr<TrackedTfrtGpuDeviceBuffer>
-TfrtGpuBuffer::ReleaseBufferLocked() {
+std::unique_ptr<TrackedGpuDeviceBuffer> TfrtGpuBuffer::ReleaseBufferLocked() {
   tsl::profiler::TraceMe traceme("TfrtGpuBuffer::ReleaseBufferLocked");
   return std::move(tracked_device_buffer_);
 }
@@ -2100,19 +3254,18 @@ TfrtGpuExecutable::TfrtGpuExecutable(
       addressable_device_logical_ids_(
           std::move(addressable_device_logical_ids)),
       addressable_devices_(std::move(addressable_devices)) {
-  executables_.reserve(executables.size());
+  TransferManager* transfer_manager =
+      client_->xla_client()->backend().transfer_manager();
   tsl::Fprint128 fingerprint = tsl::Fingerprint128(fingerprint_);
+  executables_.reserve(executables.size());
   for (auto& executable : executables) {
     const auto& computation_layout =
         executable->executable()->module().entry_computation_layout();
     std::vector<Shape> parameter_shapes;
     parameter_shapes.reserve(computation_layout.parameter_count());
     for (int i = 0; i < computation_layout.parameter_count(); ++i) {
-      // TODO: b/400541410 - Convert to device shape when we have transfer
-      // manager.
-      // parameter_shapes.push_back(transfer_manager->HostShapeToDeviceShape(
-      // computation_layout.parameter_shape(i)));
-      parameter_shapes.push_back(computation_layout.parameter_shape(i));
+      parameter_shapes.push_back(transfer_manager->HostShapeToDeviceShape(
+          computation_layout.parameter_shape(i)));
     }
     on_device_executable_parameter_shapes_.push_back(
         std::make_shared<std::vector<Shape>>(std::move(parameter_shapes)));
@@ -2146,7 +3299,8 @@ TfrtGpuExecutable::TfrtGpuExecutable(
 
     fingerprint = tsl::FingerprintCat128(
         fingerprint,
-        tsl::Fingerprint128(executable->executable()->module().ToString()));
+        tsl::Fingerprint128(executable->executable()->module().ToString(
+            HloPrintOptions::ModuleFingerprint())));
     executables_.emplace_back(std::move(executable));
   }
   fingerprint_ = absl::StrCat(fingerprint.low64, fingerprint.high64);
@@ -2159,11 +3313,8 @@ TfrtGpuExecutable::TfrtGpuExecutable(
     CHECK(addressable_devices_.empty());
   } else {
     // This must go after `executables_` is initialized.
-    if (VLOG_IS_ON(3)) {
-      VLOG(3) << "TfrtGpuExecutable device_assignment:\n"
-              << device_assignment_->ToString();
-    }
-    CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
+    VLOG(3) << "TfrtGpuExecutable device_assignment:\n"
+            << device_assignment_->ToString();
 
     if ((device_assignment_->replica_count() > 1 ||
          device_assignment_->computation_count() > 1) &&
@@ -2194,12 +3345,11 @@ TfrtGpuExecutable::TfrtGpuExecutable(
 
 absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
-    const RunId& run_id, const ExecuteOptions& options,
-    tsl::AsyncValueRef<GpuEvent> last_collective_launch_event, bool fill_future,
+    const RunId& run_id, const ExecuteOptions& options, bool fill_future,
     TfrtGpuDevice* device) {
-  tsl::profiler::TraceMe traceme("TfrtGpuExecutable::ExecuteHelper");
-  VLOG(2) << "ExecuteHelper " << name() << ": " << options.launch_id
-          << "; replica: " << replica;
+  tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::ExecuteHelper",
+                                          tsl::profiler::ContextType::kPjRt,
+                                          run_id.ToInt());
 
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
@@ -2220,6 +3370,28 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   }
   CHECK_EQ(device->process_index(), client_->process_index());
 
+  VLOG(1) << "ExecuteHelper " << name() << ": " << options.launch_id
+          << "; replica: " << replica << "; partition: " << partition
+          << "; mapped to device ordinal for execution: " << device->id();
+
+  // The choice of where we wait is arbitrary; the reason for the wait is
+  // pacing to avoid problems such as memory fragmentation and running ahead
+  // too far, not for correctness. Placing it before the executable launch
+  // allows the inputs for the next executable to be fetched even if the
+  // launch is delayed.
+  std::unique_ptr<Semaphore::ScopedReservation> compute_reservation;
+  {
+    tsl::profiler::TraceMe traceme_compute_reservation(
+        "TfrtGpuExecutable::ExecuteHelper::acquire_sempahore");
+
+    VLOG(1) << "Trying to acquire semaphore for " << name() << " on device "
+            << device->DebugString();
+    compute_reservation = std::make_unique<Semaphore::ScopedReservation>(
+        device->max_inflight_computations_semaphore().ScopedAcquire(1));
+    VLOG(1) << "Acquired semaphore for " << name() << " on device "
+            << device->DebugString();
+  }
+
   // Handle inputs.
   if (options.arguments_are_tupled) {
     if (!parameter_is_tupled_arguments_) {
@@ -2235,33 +3407,43 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     }
   }
 
-  // `execute_event` indicates whether gpu computation is complete and whether
+  // SPMD sharding produces a single executable for multiple partitions.
+  int executable_idx = executables_.size() > 1 ? partition : 0;
+
+  // `scheduled_event` indicates whether gpu computation is dispatched to the
+  // stream and whether there was an error.
+  auto scheduled_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+
+  // `complete_event` indicates whether gpu computation is complete and whether
   // there was an error.
-  auto execute_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  auto complete_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
 
   absl::InlinedVector<TfrtGpuBuffer::DonationTransaction, 4>
       donation_transactions;
 
-  absl::InlinedVector<TrackedTfrtGpuDeviceBuffer*, 4> tracked_buffers;
+  absl::InlinedVector<TrackedGpuDeviceBuffer*, 4> tracked_buffers;
   absl::InlinedVector<bool, 4> buffer_is_donated;
   tracked_buffers.reserve(argument_handles.size());
   buffer_is_donated.reserve(argument_handles.size());
   // To avoid clobbering inputs, we must ensure that
   //   `extra_deps` = inputs' definition events + donated inputs' usage events.
-  // This also ensures that the returned `execute_event` dominates all inputs'
-  // events, and thus output buffer only need to contain `execute_event` as
+  // This also ensures that the returned `complete_event` dominates all inputs'
+  // events, and thus output buffer only need to contain `complete_event` as
   // the single definition event.
   std::vector<tsl::RCReference<tsl::AsyncValue>> prepare_input_deps;
   std::vector<tsl::RCReference<tsl::AsyncValue>> input_deps;
   input_deps.reserve(argument_handles.size() + 1);
 
-  // TODO(b/382117736): Support multiple devices.
-  CHECK_EQ(parameters_that_must_be_donated_.size(), 1);
-  auto donate_it = parameters_that_must_be_donated_[0].begin();
+  absl::Span<int const> donated_params =
+      parameters_that_must_be_donated_[executable_idx];
+  auto donate_it = donated_params.begin();
 
+  absl::flat_hash_map<const void*, std::pair<bool, int>> donation_clashes;
+  donation_clashes.reserve(argument_handles.size());
   for (int i = 0; i < argument_handles.size(); ++i) {
     PjRtBuffer* handle = argument_handles[i];
     auto* tfrt_buffer = tsl::down_cast<TfrtGpuBuffer*>(handle);
+
     if (tfrt_buffer->device() != device) {
       return InvalidArgument(
           "Buffer passed to Execute() as argument %d to replica %d is on "
@@ -2269,75 +3451,105 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           i, replica, tfrt_buffer->device()->DebugString(),
           device->DebugString());
     }
+    bool donation_denied_at_runtime =
+        options.non_donatable_input_indices.contains(i);
+    bool must_donate = donate_it != donated_params.end() && *donate_it == i &&
+                       !donation_denied_at_runtime;
+    auto tracked_buffer_or = [&]() -> absl::StatusOr<TrackedGpuDeviceBuffer*> {
+      TrackedGpuDeviceBuffer* tracked_buffer = nullptr;
+      if (must_donate) {
+        VLOG(2) << "Buffer for argument_handles[" << i << "] is donated";
 
-    bool must_donate = donate_it != parameters_that_must_be_donated_[0].end() &&
-                       *donate_it == i;
-    TrackedTfrtGpuDeviceBuffer* tracked_buffer = nullptr;
-    if (must_donate) {
-      ++donate_it;
-      TF_ASSIGN_OR_RETURN(auto donation_transaction,
-                          tfrt_buffer->AcquireDonation());
+        ++donate_it;
+        TF_RETURN_IF_ERROR(TestBufferDonationClashes(
+            handle, donation_clashes, must_donate, i, replica, partition));
+        TF_ASSIGN_OR_RETURN(auto donation_transaction,
+                            tfrt_buffer->AcquireDonation());
 
-      // After acquiring the buffer for donation, we retrieve the dependent
-      // usage events. Note that we don't need any locking here as
-      // AcquireDonation() is supposed to synchronize with other usages.
-      input_deps.push_back(
-          donation_transaction.device_buffer()->AfterAllUsageEvents());
-      tracked_buffer = donation_transaction.device_buffer();
-      tracked_buffers.push_back(tracked_buffer);
-      buffer_is_donated.push_back(true);
-      donation_transactions.push_back(std::move(donation_transaction));
-    } else {
-      tracked_buffer = tfrt_buffer->AcquireUsage(execute_event);
-      if (!tracked_buffer) {
-        return InvalidArgument(
-            "Invalid buffer passed: buffer has been deleted or donated.");
+        // After acquiring the buffer for donation, we retrieve the dependent
+        // usage events. Note that we don't need any locking here as
+        // AcquireDonation() is supposed to synchronize with other usages.
+        input_deps.push_back(
+            donation_transaction.device_buffer()->AfterAllUsageEvents());
+        tracked_buffer = donation_transaction.device_buffer();
+        donation_transactions.push_back(std::move(donation_transaction));
+        buffer_is_donated.push_back(true);
+      } else {
+        tracked_buffer = tfrt_buffer->AcquireUsage(complete_event);
+        if (!tracked_buffer) {
+          return InvalidArgument(
+              "Invalid buffer passed: buffer has been deleted or donated.");
+        }
+        buffer_is_donated.push_back(false);
       }
+      return tracked_buffer;
+    }();
+
+    if (!tracked_buffer_or.ok()) {
+      // If something failed when preparing the input, we still need to add it
+      // to the input deps so that it can poison the output buffers.
+      auto error_av = tsl::MakeErrorAsyncValueRef(tracked_buffer_or.status());
+      prepare_input_deps.push_back(error_av);
+      input_deps.push_back(error_av);
+
+      LOG(ERROR) << "argument_handles[" << i
+                 << "]: failed to get tracked buffer with status "
+                 << tracked_buffer_or.status();
+    } else {
+      TrackedGpuDeviceBuffer* tracked_buffer = tracked_buffer_or.value();
       tracked_buffers.push_back(tracked_buffer);
-      buffer_is_donated.push_back(false);
-    }
-    prepare_input_deps.push_back(tracked_buffer->buffer().CopyRCRef());
+      prepare_input_deps.push_back(tracked_buffer->buffer().CopyRCRef());
 
-    // Definition events are never modified after buffer construction. If they
-    // are available and have no error, they can be skipped in input deps.
-    // In contrast, already known errors in the input are taken as deps so that
-    // they can poison output buffers.
-    const auto& definition_event = tracked_buffer->definition_event();
-    if (!definition_event.IsAvailable() || definition_event.IsError()) {
-      VLOG(2) << "definition_event is not available: AsyncValue pointer: "
-              << definition_event.GetAsyncValue();
-      input_deps.push_back(definition_event.CopyRCRef());
+      VLOG(2) << "argument_handles[" << i
+              << "]: addr = " << tracked_buffer->buffer()->buffer().opaque()
+              << ", logical shape = "
+              << tfrt_buffer->logical_on_device_shape()->ToString();
+
+      // Definition events are never modified after buffer construction. If they
+      // are available and have no error, they can be skipped in input deps.
+      // In contrast, already known errors in the input are taken as deps so
+      // that they can poison output buffers.
+      const auto& definition_event = tracked_buffer->definition_event();
+      if (!definition_event.IsAvailable() || definition_event.IsError()) {
+        VLOG(2) << "definition_event is not available: AsyncValue pointer: "
+                << definition_event.GetAsyncValue();
+        input_deps.push_back(definition_event.CopyRCRef());
+      }
     }
   }
 
-  // Schedule only one collective at a time.
-  bool is_a_collective_launch = !!last_collective_launch_event;
-  if (is_a_collective_launch) {
-    VLOG(2) << "last_collective_launch_event: AsyncValue pointer: "
-            << last_collective_launch_event.GetAsyncValue()
-            << "; IsAvailable: " << last_collective_launch_event.IsAvailable();
-    input_deps.push_back(std::move(last_collective_launch_event));
-    device->SetLastCollectiveLaunchEvent(execute_event);
+  {
+    // Schedule only one collective at a time.
+    tsl::AsyncValueRef<GpuEvent> ordering_event =
+        tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+    tsl::AsyncValueRef<GpuEvent> last_collective_launch_event =
+        device->SetLastCollectiveLaunchEvent(scheduled_event);
+    // We don't use last_collective_launch_event directly because we don't
+    // want the previous failure to be propagated to the current execution.
+    last_collective_launch_event.AndThen(
+        [event = ordering_event.CopyRef()]() { event.SetStateConcrete(); });
+    input_deps.push_back(std::move(ordering_event));
   }
 
-  std::vector<tsl::AsyncValueRef<MaybeOwningGpuMemory>> output_buffers;
+  std::vector<tsl::AsyncValueRef<GpuDeviceMemory>> output_buffers;
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
-  Executable* executable = executables_[0]->executable();
-  const Shape& result_shape = executable->result_shape();
+  auto gpu_executable = executables_[executable_idx];
+  TF_ASSIGN_OR_RETURN(std::vector<Shape> output_shapes, GetOutputShapes());
+  const Shape& result_shape = output_shapes[executable_idx];
   bool untuple_result = options.untuple_result;
   bool result_is_tuple = result_shape.IsTuple();
   if (options.untuple_result && result_shape.IsTuple()) {
-    output_buffers.reserve(result_shape.tuple_shapes_size());
+    output_buffers.reserve(result_shape.tuple_shapes().size());
     outputs.reserve(output_buffers.size());
-    for (int i = 0; i < result_shape.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < result_shape.tuple_shapes().size(); ++i) {
       output_buffers.push_back(
-          tsl::MakeUnconstructedAsyncValueRef<MaybeOwningGpuMemory>());
+          tsl::MakeUnconstructedAsyncValueRef<GpuDeviceMemory>());
       // Program execution writes to output buffers so it's a definition
       // event.
       auto leaf_tracked_device_buffer =
-          std::make_unique<TrackedTfrtGpuDeviceBuffer>(
-              output_buffers.back().CopyRef(), execute_event.CopyRef());
-      VLOG(4) << "created leaf_tracked_device_buffer: "
+          std::make_unique<TrackedGpuDeviceBuffer>(
+              output_buffers.back().CopyRef(), scheduled_event.CopyRef());
+      VLOG(3) << "created leaf_tracked_device_buffer: "
               << leaf_tracked_device_buffer.get();
 
       const Shape& shape = result_shape.tuple_shapes(i);
@@ -2356,12 +3568,12 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     }
   } else {
     output_buffers.push_back(
-        tsl::MakeUnconstructedAsyncValueRef<MaybeOwningGpuMemory>());
+        tsl::MakeUnconstructedAsyncValueRef<GpuDeviceMemory>());
     // Program execution writes to output buffers so it's a definition event.
-    auto tracked_device_buffer = std::make_unique<TrackedTfrtGpuDeviceBuffer>(
+    auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
         output_buffers.back().CopyRef(),
-        /*definition_event=*/execute_event.CopyRef());
-    VLOG(4) << "created tracked_device_buffer: " << tracked_device_buffer.get();
+        /*definition_event=*/scheduled_event.CopyRef());
+    VLOG(3) << "created tracked_device_buffer: " << tracked_device_buffer.get();
 
     const Shape& shape = result_shape;
     PjRtMemorySpace* memory_space =
@@ -2378,38 +3590,51 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     outputs.push_back(std::move(tfrt_output_buffer));
   }
 
-  // The choice of where we wait is arbitrary; the reason for the wait is
-  // pacing to avoid problems such as memory fragmentation and running ahead
-  // too far, not for correctness. Placing it before the executable launch
-  // allows the inputs for the next executable to be fetched even if the
-  // launch is delayed.
-  VLOG(0) << "Going to get compute reservation for " << name() << ": "
-          << options.launch_id << "; replica: " << replica;
-  auto compute_reservation = std::make_unique<Semaphore::ScopedReservation>(
-      device->max_inflight_computations_semaphore().ScopedAcquire(1));
-  VLOG(0) << "Got compute reservation for " << name() << ": "
-          << options.launch_id << "; replica: " << replica;
   auto ffi_context =
       options.context != nullptr ? &options.context->ffi_context() : nullptr;
+
+  // Create a PjRt<->StreamExecutor adaptors to send/recv device memory as
+  // PjRt chunks via the user-provided callbacks.
+  SendDeviceMemoryFunction send_device_memory =
+      ConvertSendCallbacksToSendFunction(replica, options,
+                                         client_->non_blocking_thread_pool());
+  RecvDeviceMemoryFunction recv_device_memory =
+      ConvertRecvCallbacksToRecvFunction(replica, options);
+
   auto execute_fn =
       [replica, partition, device, launch_id(options.launch_id), run_id(run_id),
-       output_buffers(output_buffers), execute_event(execute_event.CopyRef()),
+       output_buffers(output_buffers), complete_event(complete_event.CopyRef()),
+       scheduled_event(scheduled_event.CopyRef()),
        untuple_result(untuple_result), result_is_tuple(result_is_tuple),
-       compute_reservation(std::move(compute_reservation)),
        donation_transactions(std::move(donation_transactions)),
-       parameter_shapes(on_device_executable_parameter_shapes_[0]),
-       gpu_executable(executables_[0]), device_assignment(device_assignment),
-       executable_name(name()), ffi_context(ffi_context),
-       inputs_avs(CopyAsyncValues(input_deps)),
+       parameter_shapes(on_device_executable_parameter_shapes_[executable_idx]),
+       gpu_executable(std::move(gpu_executable)),
+       device_assignment(device_assignment), executable_name(name()),
+       ffi_context(ffi_context), inputs_avs(CopyAsyncValues(input_deps)),
+       execution_profile(options.execution_profile),
+       send_device_memory(std::move(send_device_memory)),
+       recv_device_memory(std::move(recv_device_memory)),
+       compute_reservation(std::move(compute_reservation)),
        client = client_](std::vector<ExecutionInput> execution_inputs) mutable {
-        VLOG(0) << "execute_fn for " << executable_name << ": " << launch_id
-                << "; replica: " << replica;
-        tsl::profiler::TraceMe traceme("execute_fn");
+        VLOG(1) << "execute_fn for " << executable_name
+                << ", run_id: " << launch_id << ", replica: " << replica
+                << ", device: " << device->DebugString();
+
+        tsl::profiler::TraceMeProducer producer(
+            [&] {
+              return tsl::profiler::TraceMeEncode(
+                  "execute_fn",
+                  {{"launch_id", std::to_string(launch_id)},
+                   {"device_ordinal", device->local_device_id().value()}});
+            },
+            tsl::profiler::ContextType::kTfExecutor, run_id.ToInt());
+
         auto set_error = [&](absl::Status status) {
           for (auto& output_buffer : output_buffers) {
             output_buffer.SetError(status);
           }
-          execute_event.SetError(status);
+          complete_event.SetError(status);
+          scheduled_event.SetError(status);
         };
 
         for (const auto& av : inputs_avs) {
@@ -2419,19 +3644,12 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           }
         }
 
-        absl::StatusOr<BoundedStreamPool::Handle> stream_or =
-            device->compute_stream_pool().Borrow();
-        if (!stream_or.ok()) {
-          set_error(stream_or.status());
-          return;
-        }
-
-        BoundedStreamPool::Handle stream = std::move(stream_or.value());
+        auto stream = device->stream();
         ExecutableRunOptions run_options;
-        run_options.set_stream(stream.get());
-        run_options.set_host_to_device_stream(stream.get());
-        run_options.set_device_to_host_stream(stream.get());
-        run_options.set_allocator(device->se_allocator_.get());
+        run_options.set_stream(stream);
+        run_options.set_host_to_device_stream(stream);
+        run_options.set_device_to_host_stream(stream);
+        run_options.set_allocator(client->allocator());
         run_options.set_device_assignment(device_assignment.get());
 
         if (launch_id != 0) {
@@ -2440,15 +3658,21 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           run_options.set_run_id(run_id);
         }
         run_options.set_rng_seed(device->GetNewPrngSeed());
-        run_options.set_gpu_executable_run_options(client->gpu_run_options());
+        run_options.set_gpu_executable_run_options(
+            CHECK_NOTNULL(client->gpu_run_options()));
         run_options.set_launch_id(launch_id);
         run_options.set_local_device_count(client->device_count());
         run_options.set_device_ordinal(device->local_device_id().value());
         run_options.set_physical_device_ordinal(
             device->local_hardware_id().value());
         run_options.set_ffi_execution_context(ffi_context);
-        VLOG(2) << "launch id for " << executable_name << ": "
-                << run_options.launch_id();
+        run_options.set_intra_op_thread_pool(
+            client->xla_client()
+                ->backend()
+                .eigen_intra_op_thread_pool_device());
+        run_options.set_send_device_memory_function(&send_device_memory);
+        run_options.set_recv_device_memory_function(&recv_device_memory);
+        run_options.set_execution_profile(execution_profile);
 
         // TODO(phawkins): *technically* this should probably happen after
         // calling RunAsync(). But that causes a large performance problem: it
@@ -2459,12 +3683,22 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           std::move(donation_transaction).Commit();
         }
 
+        VLOG(1) << "Start calling RunAsync for executable " << executable_name
+                << " on device " << device->DebugString();
+
         absl::StatusOr<ExecutionOutput> result_buffer_or_status =
             gpu_executable->RunAsync(std::move(execution_inputs), run_options);
-        VLOG(0) << "Replica " << replica << " partition " << partition
-                << " completed; ok=" << result_buffer_or_status.ok();
+
+        VLOG(1) << "Finish calling RunAsync for executable " << executable_name
+                << " on device " << device->DebugString() << ", replica "
+                << replica << ", partition " << partition
+                << ", status=" << result_buffer_or_status.status();
 
         if (!result_buffer_or_status.ok()) {
+          LOG(ERROR) << "Calling RunAsync failed for executable "
+                     << executable_name << " on device "
+                     << device->DebugString()
+                     << ", status = " << result_buffer_or_status.status();
           set_error(result_buffer_or_status.status());
           return;
         }
@@ -2474,47 +3708,65 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         if (untuple_result && result_is_tuple) {
           for (int i = 0; i < output_buffers.size(); ++i) {
             ScopedShapedBuffer tuple_buffer = output.TakeSubTree({i});
-            auto* elem = tuple_buffer.buffers().mutable_element({});
-            VLOG(4) << "untuple: output_buffers[" << i
+            stream_executor::DeviceMemoryBase* elem =
+                tuple_buffer.buffers().mutable_element({});
+            VLOG(2) << "untuple: output_buffers[" << i
                     << "].emplace: " << elem->opaque();
-            output_buffers[i].emplace(device->allocator(), *elem);
+            output_buffers[i].emplace(stream_executor::OwningDeviceMemory(
+                *elem, device->local_device_id().value(), device->allocator()));
             *elem = se::DeviceMemoryBase();
           }
         } else {
           CHECK_EQ(output_buffers.size(), 1);
           auto* elem = output.buffers().mutable_element({});
-          VLOG(4) << "output_buffers[0].emplace: " << elem->opaque();
-          output_buffers.front().emplace(device->allocator(), *elem);
+          VLOG(2) << "output_buffers[0].emplace: " << elem->opaque();
+          output_buffers.front().emplace(stream_executor::OwningDeviceMemory(
+              *elem, device->local_device_id().value(), device->allocator()));
           *elem = se::DeviceMemoryBase();
         }
 
+        // Set the scheduled event to concrete to indicate that the scheduling
+        // has completed, so that the next execute_fn can start.
+        scheduled_event.SetStateConcrete();
+
         absl::Status status = stream->BlockHostUntilDone();
         if (!status.ok()) {
-          execute_event.SetError(status);
-          return;
+          LOG(ERROR) << "BlockHostUntilDone failed for executable "
+                     << executable_name << " on device "
+                     << device->DebugString() << ", status = " << status;
+          complete_event.SetError(status);
+        } else {
+          VLOG(1) << "Device execution done for " << executable_name
+                  << ", run_id: " << run_id.ToInt();
+          complete_event.SetStateConcrete();
         }
-        execute_event.SetStateConcrete();
+
+        VLOG(1) << "execute_fn for " << executable_name << " on "
+                << device->DebugString() << " is done with status " << status;
       };
 
   auto prepare_inputs =
-      [blocking_thread_pool = client_->blocking_thread_pool(), device,
+      [blocking_thread_pool = client_->blocking_thread_pool(), run_id(run_id),
+       executable_name(name()), device,
        tracked_buffers(std::move(tracked_buffers)),
        buffer_is_donated(std::move(buffer_is_donated)),
        prepare_inputs_avs(CopyAsyncValues(prepare_input_deps)),
-       execute_event(execute_event.CopyRef()),
+       complete_event(complete_event.CopyRef()),
+       scheduled_event(scheduled_event.CopyRef()),
        output_buffers(std::move(output_buffers)),
        execute_fn(std::move(execute_fn)), input_deps(std::move(input_deps)),
-       parameter_shapes(on_device_executable_parameter_shapes_[0]),
+       parameter_shapes(on_device_executable_parameter_shapes_[executable_idx]),
        parameter_is_tupled_arguments(parameter_is_tupled_arguments_),
        arguments_are_tupled(options.arguments_are_tupled),
-       input_buffer_sizes_in_bytes(input_buffer_sizes_in_bytes_[0])]() mutable {
-        tsl::profiler::TraceMe traceme("prepare_inputs");
-
-        VLOG(2) << "prepare_inputs";
-        DCHECK_EQ(tracked_buffers.size(), buffer_is_donated.size());
+       input_buffer_sizes_in_bytes(
+           input_buffer_sizes_in_bytes_[executable_idx])]() mutable {
+        tsl::profiler::TraceMeConsumer activity(
+            "prepare_inputs", tsl::profiler::ContextType::kPjRt,
+            run_id.ToInt());
 
         auto set_error = [&](absl::Status status) {
-          execute_event.SetError(status);
+          complete_event.SetError(status);
+          scheduled_event.SetError(status);
           for (auto& output_buffer : output_buffers) {
             output_buffer.SetError(status);
           }
@@ -2526,6 +3778,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
             return;
           }
         }
+
+        VLOG(2) << "prepare_inputs for " << executable_name << " on device "
+                << device->DebugString();
+        DCHECK_EQ(tracked_buffers.size(), buffer_is_donated.size());
 
         absl::Status status = CheckBufferCompatibilities(
             *input_buffer_sizes_in_bytes, tracked_buffers);
@@ -2540,12 +3796,14 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
               ShapeTree<MaybeOwningDeviceMemory>(&parameter_shapes->front()));
           ExecutionInput& input = inputs.back();
           for (int i = 0; i < tracked_buffers.size(); ++i) {
+            VLOG(3) << "tupled input[" << i
+                    << "]: " << tracked_buffers[i]->buffer()->buffer().opaque();
             if (buffer_is_donated[i]) {
               input.SetUnownedBuffer(
                   {i}, MaybeOwningDeviceMemory(se::OwningDeviceMemory(
                            tracked_buffers[i]->buffer()->buffer(),
                            device->local_hardware_id().value(),
-                           device->se_allocator_.get())));
+                           device->allocator())));
             } else {
               input.SetBuffer({i}, MaybeOwningDeviceMemory(
                                        tracked_buffers[i]->buffer()->buffer()));
@@ -2554,6 +3812,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         } else {
           inputs.reserve(tracked_buffers.size());
           for (int i = 0; i < tracked_buffers.size(); ++i) {
+            VLOG(3) << "untupled input[" << i
+                    << "]: " << tracked_buffers[i]->buffer()->buffer().opaque();
             inputs.emplace_back(
                 ShapeTree<MaybeOwningDeviceMemory>(&(*parameter_shapes)[i]));
             ExecutionInput& input = inputs.back();
@@ -2562,17 +3822,13 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                   {}, MaybeOwningDeviceMemory(se::OwningDeviceMemory(
                           tracked_buffers[i]->buffer()->buffer(),
                           device->local_hardware_id().value(),
-                          device->se_allocator_.get())));
+                          device->allocator())));
             } else {
               input.SetBuffer({}, MaybeOwningDeviceMemory(
                                       tracked_buffers[i]->buffer()->buffer()));
             }
           }
         }
-
-        VLOG(2) << "prepare_inputs done";
-        VLOG(2) << "EnqueueWorkWhenReady; blocking_thread_pool: "
-                << blocking_thread_pool;
 
         EnqueueWorkWhenReady(blocking_thread_pool, input_deps,
                              [execute_fn(std::move(execute_fn)),
@@ -2588,12 +3844,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   if (fill_future) {
     auto promise = PjRtFuture<>::CreatePromise();
     future = PjRtFuture<>(promise);
-    execute_event.AndThen([promise = std::move(promise),
-                           event = execute_event.CopyRef()]() mutable {
+    complete_event.AndThen([promise = std::move(promise),
+                            event = complete_event.CopyRef()]() mutable {
       absl::Status s;
       if (auto* error = event.GetErrorIfPresent()) {
-        s = absl::InternalError(
-            absl::StrFormat("Compute error: %s", error->message()));
+        s = *error;
       }
       VLOG(1) << "Setting future: " << s;
       promise.Set(s);
@@ -2635,7 +3890,7 @@ TfrtGpuExecutable::Execute(
   if (returned_futures.has_value()) {
     returned_futures->resize(num_addressable_devices);
   }
-  if (num_addressable_devices == 1) {
+  if (num_addressable_devices == 1 && !ThisThreadIsInsideHostCallback()) {
     // Fast-path if there is only one device — run the computation on the
     // current thread.
     const int replica = addressable_device_logical_ids_[0].replica;
@@ -2648,7 +3903,6 @@ TfrtGpuExecutable::Execute(
 
     auto statusor = ExecuteHelper(
         argument_handles[0], replica, partition, run_id, options,
-        /*last_collective_launch_event=*/tsl::AsyncValueRef<GpuEvent>(),
         returned_futures.has_value());
 
     if (!statusor.ok()) {
@@ -2678,9 +3932,8 @@ TfrtGpuExecutable::Execute(
       TfrtGpuDevice* gpu_device =
           tensorflow::down_cast<TfrtGpuDevice*>(pjrt_device);
 
-      VLOG(2) << "ExecuteHelper: " << i << " " << replica << " " << partition
-              << " " << device_id << " "
-              << gpu_device->local_hardware_id().value();
+      VLOG(1) << "Try to run ExecuteHelper for " << name() << " on device "
+              << gpu_device->DebugString() << ", run_id: " << run_id.ToInt();
 
       // Gang schedule collectives to ensure that collectives with the same
       // RunId are run at the same time. We conservatively run only one
@@ -2693,7 +3946,6 @@ TfrtGpuExecutable::Execute(
            &failed, &first_failure_status] {
             auto statusor = ExecuteHelper(
                 argument_handles[i], replica, partition, run_id, options,
-                gpu_device->GetLastCollectiveLaunchEvent(),
                 returned_futures.has_value());
             if (statusor.ok()) {
               wrapped_results[i] = std::move(statusor->buffers);
@@ -2757,8 +4009,6 @@ TfrtGpuExecutable::ExecuteSharded(
           ExecuteHelper(
               argument_handles, addressable_device_logical_ids_[i].replica,
               addressable_device_logical_ids_[i].partition, run_id, options,
-              tsl::down_cast<TfrtGpuDevice*>(device)
-                  ->GetLastCollectiveLaunchEvent(),
               fill_future));
       returned_future = std::move(result.future);
       return std::move(result.buffers);
@@ -2799,7 +4049,6 @@ TfrtGpuExecutable::ExecutePortable(
           argument_handles,
           /*replica=*/0,
           /*partition=*/0, run_id, options,
-          /*last_collective_launch_event=*/tsl::AsyncValueRef<GpuEvent>(),
           fill_future, tsl::down_cast<TfrtGpuDevice*>(device)));
   returned_future = std::move(result.future);
   return std::move(result.buffers);
@@ -2854,7 +4103,7 @@ absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
     return {{memory_kind}};
   }
   std::vector<absl::string_view> result;
-  result.reserve(shape.tuple_shapes_size());
+  result.reserve(shape.tuple_shapes().size());
   for (const auto& element_shape : shape.tuple_shapes()) {
     TF_ASSIGN_OR_RETURN(
         absl::string_view element_memory_kind,
@@ -2899,6 +4148,25 @@ absl::Status TfrtGpuExecutable::SetUpDonation(bool tuple_inputs) {
   return absl::OkStatus();
 }
 
+absl::StatusOr<CompiledMemoryStats> TfrtGpuExecutable::GetCompiledMemoryStats()
+    const {
+  if (executables_.size() != 1) {
+    return Unimplemented(
+        "Retrieving CompiledMemoryStats is not supported for multiple "
+        "executables.");
+  }
+  CompiledMemoryStats memory_stats = CompiledMemoryStats();
+  memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
+  const BufferAssignmentProto* proto =
+      executables_[0]->executable()->buffer_assignment_proto();
+  if (proto != nullptr) {
+    memory_stats.buffer_assignment = *proto;
+  }
+  memory_stats.PopulateBufferStatsFromAllocations(
+      executables_[0]->executable()->GetAllocations());
+  return memory_stats;
+}
+
 absl::StatusOr<TfrtGpuBuffer::DonationTransaction>
 TfrtGpuBuffer::AcquireDonation() {
   absl::MutexLock lock(&mu_);
@@ -2918,7 +4186,7 @@ TfrtGpuBuffer::AcquireDonation() {
 
   // Swap out `tracked_device_buffer_` so that no one can acquire a usage
   // event after this point.
-  VLOG(1) << "TfrtGpuBuffer::AcquireDonation: " << tracked_device_buffer_.get();
+  VLOG(3) << "TfrtGpuBuffer::AcquireDonation: " << tracked_device_buffer_.get();
   return DonationTransaction(donation_event_,
                              std::move(tracked_device_buffer_));
 }

@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/types.pb.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/service/hlo.pb.h"
@@ -83,7 +83,7 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(
     const std::string& input, const tflite::ModelFlags& model_flags,
     tflite::ConverterFlags& converter_flags, std::string* result) {
   auto context = std::make_unique<mlir::MLIRContext>();
-  mlir::quant::QuantizationSpecs quant_specs;
+  mlir::TFL::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
   std::vector<std::string> node_names;

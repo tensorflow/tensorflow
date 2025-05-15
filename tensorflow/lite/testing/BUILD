@@ -639,8 +639,8 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
-        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
+        "@local_xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -707,7 +707,7 @@ pybind_extension(
         ":string_util_lib",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )

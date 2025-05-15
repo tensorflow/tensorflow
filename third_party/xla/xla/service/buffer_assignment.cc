@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
+#include "xla/service/buffer_assignment.pb.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
@@ -235,6 +236,29 @@ absl::Status GatherComputationsByAllocationType(
 std::string BufferAllocation::Slice::ToString() const {
   return absl::StrCat("{index:", allocation_ == nullptr ? -1 : index(),
                       ", offset:", offset_, ", size:", size_, "}");
+}
+
+absl::StatusOr<xla::buffer_assignment::BufferAllocationSliceProto>
+BufferAllocation::Slice::ToProto() const {
+  xla::buffer_assignment::BufferAllocationSliceProto proto;
+  proto.set_offset(offset());
+  proto.set_size(size());
+  proto.set_buffer_allocation_index(allocation() == nullptr ? -1 : index());
+  return proto;
+}
+
+absl::StatusOr<BufferAllocation::Slice> BufferAllocation::Slice::FromProto(
+    const xla::buffer_assignment::BufferAllocationSliceProto& proto,
+    const std::vector<BufferAllocation>& buffer_allocations) {
+  if (proto.buffer_allocation_index() < 0 ||
+      proto.buffer_allocation_index() >= buffer_allocations.size()) {
+    return absl::OutOfRangeError(absl::StrCat("Buffer allocation index ",
+                                              proto.buffer_allocation_index(),
+                                              " is out of range."));
+  }
+  const BufferAllocation& allocation =
+      buffer_allocations[proto.buffer_allocation_index()];
+  return BufferAllocation::Slice(&allocation, proto.offset(), proto.size());
 }
 
 BufferAllocation::Slice BufferAllocation::GetSlice(
@@ -1225,8 +1249,11 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
       absl::c_copy(alloc_proto.parameter_shape_index(),
                    std::back_inserter(shape_idx_vals));
       ShapeIndex shape_index(shape_idx_vals);
+      const bool parameter_has_alias =
+          module->input_output_alias_config().ParameterHasAlias(
+              alloc_proto.parameter_number(), shape_index);
       allocation->set_entry_computation_parameter(
-          alloc_proto.parameter_number(), shape_index, false);
+          alloc_proto.parameter_number(), shape_index, parameter_has_alias);
     }
 
     // Process each logical buffer assigned to the current allocation and create

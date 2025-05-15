@@ -23,13 +23,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-using CollectiveSendRecvCombinerTest = HloTestBase;
+using CollectiveSendRecvCombinerTest = HloHardwareIndependentTestBase;
 
 TEST_F(CollectiveSendRecvCombinerTest, TransformedWithSourceTargetPairs) {
   const char* kHloStr = R"(
@@ -165,7 +165,7 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithControlDependency) {
     CHECK: ENTRY %[[MAIN:.*]] () -> f32[] {
     CHECK: %[[DATA:.*]] = f32[] constant(5)
     CHECK: %[[RECV_START:.*]] = token[] after-all()
-    CHECK: %[[TUPLE_START:.*]] = ((f32[], token[], token[]), ((f32[], u32[], token[]), (f32[], u32[], token[])), s32[]) async-start(%[[DATA]], %[[RECV_START]], %[[RECV_START]]), calls=%[[WRAPPED_SEND_RECV]] 
+    CHECK: %[[TUPLE_START:.*]] = ((f32[], token[], token[]), ((f32[], u32[], token[]), (f32[], u32[], token[])), s32[]) async-start(%[[DATA]], %[[RECV_START]], %[[RECV_START]]), calls=%[[WRAPPED_SEND_RECV]]
     CHECK: %[[TUPLE_DONE:.*]] = ((f32[], u32[], token[]), (f32[], u32[], token[])) async-done(%[[TUPLE_START]])
     CHECK %[[GTE2:.*]] = (f32[], u32[], token[]) get-tuple-element(%[[TUPLE_DONE]], index=1)
     CHECK %[[GTE3:.*]] = f32[] get-tuple-element(%[[GTE2]], index=0)

@@ -81,6 +81,8 @@ struct MlDtypesInitInfo {
           py::dtype::from_args(ml_dtypes.attr("float8_e8m0fnu")).num();
       numpy_dtypes.int4 = py::dtype::from_args(ml_dtypes.attr("int4")).num();
       numpy_dtypes.uint4 = py::dtype::from_args(ml_dtypes.attr("uint4")).num();
+      numpy_dtypes.int2 = py::dtype::from_args(ml_dtypes.attr("int2")).num();
+      numpy_dtypes.uint2 = py::dtype::from_args(ml_dtypes.attr("uint2")).num();
     } catch (const std::exception& e) {
       py::gil_scoped_acquire acquire;
       py::print(e.what());
@@ -98,7 +100,8 @@ struct MlDtypesInitInfo {
         numpy_dtypes.float8_e5m2 == NPY_NOTYPE ||
         numpy_dtypes.float8_e5m2fnuz == NPY_NOTYPE ||
         numpy_dtypes.float8_e8m0fnu == NPY_NOTYPE ||
-        numpy_dtypes.int4 == NPY_NOTYPE || numpy_dtypes.uint4 == NPY_NOTYPE) {
+        numpy_dtypes.int4 == NPY_NOTYPE || numpy_dtypes.uint4 == NPY_NOTYPE ||
+        numpy_dtypes.int2 == NPY_NOTYPE || numpy_dtypes.uint2 == NPY_NOTYPE) {
       init_valid = false;
     }
 

@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/tsl/util/reporter.h"
 
 #include "xla/tsl/platform/errors.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/str_util.h"
 
 namespace tsl {

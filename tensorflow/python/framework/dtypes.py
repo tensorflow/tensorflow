@@ -491,6 +491,18 @@ tf_export("dtypes.experimental.uint4", "experimental.uint4").export_constant(
     __name__, "uint4"
 )
 
+int2 = DType(types_pb2.DT_INT2)
+doc_typealias.document(obj=int2, doc="Signed 2-bit integer.")
+tf_export("dtypes.experimental.int2", "experimental.int2").export_constant(
+    __name__, "int2"
+)
+
+uint2 = DType(types_pb2.DT_UINT2)
+doc_typealias.document(obj=uint2, doc="Unsigned 2-bit integer.")
+tf_export("dtypes.experimental.uint2", "experimental.uint2").export_constant(
+    __name__, "uint2"
+)
+
 resource_ref = DType(types_pb2.DT_RESOURCE_REF)
 variant_ref = DType(types_pb2.DT_VARIANT_REF)
 float16_ref = DType(types_pb2.DT_HALF_REF)
@@ -523,6 +535,8 @@ float8_e4m3b11fnuz_ref = DType(types_pb2.DT_FLOAT8_E4M3B11FNUZ_REF)
 float8_e5m2fnuz_ref = DType(types_pb2.DT_FLOAT8_E5M2FNUZ_REF)
 int4_ref = DType(types_pb2.DT_INT4_REF)
 uint4_ref = DType(types_pb2.DT_UINT4_REF)
+int2_ref = DType(types_pb2.DT_INT2_REF)
+uint2_ref = DType(types_pb2.DT_UINT2_REF)
 
 # Maintain an intern table so that we don't have to create a large
 # number of small objects.
@@ -555,6 +569,8 @@ _INTERN_TABLE = {
     types_pb2.DT_FLOAT8_E5M2FNUZ: float8_e5m2fnuz,
     types_pb2.DT_INT4: int4,
     types_pb2.DT_UINT4: uint4,
+    types_pb2.DT_INT2: int2,
+    types_pb2.DT_UINT2: uint2,
     types_pb2.DT_RESOURCE: resource,
     types_pb2.DT_VARIANT: variant,
     types_pb2.DT_HALF_REF: float16_ref,
@@ -585,6 +601,8 @@ _INTERN_TABLE = {
     types_pb2.DT_FLOAT8_E5M2FNUZ_REF: float8_e5m2fnuz_ref,
     types_pb2.DT_INT4_REF: int4_ref,
     types_pb2.DT_UINT4_REF: uint4_ref,
+    types_pb2.DT_INT2_REF: int2_ref,
+    types_pb2.DT_UINT2_REF: uint2_ref,
     types_pb2.DT_RESOURCE_REF: resource_ref,
     types_pb2.DT_VARIANT_REF: variant_ref,
 }
@@ -619,6 +637,8 @@ _TYPE_TO_STRING = {
     types_pb2.DT_FLOAT8_E5M2FNUZ: "float8_e5m2fnuz",
     types_pb2.DT_INT4: "int4",
     types_pb2.DT_UINT4: "uint4",
+    types_pb2.DT_INT2: "int2",
+    types_pb2.DT_UINT2: "uint2",
     types_pb2.DT_RESOURCE: "resource",
     types_pb2.DT_VARIANT: "variant",
     types_pb2.DT_HALF_REF: "float16_ref",
@@ -649,6 +669,8 @@ _TYPE_TO_STRING = {
     types_pb2.DT_FLOAT8_E5M2FNUZ_REF: "float8_e5m2fnuz_ref",
     types_pb2.DT_INT4_REF: "int4_ref",
     types_pb2.DT_UINT4_REF: "uint4_ref",
+    types_pb2.DT_INT2_REF: "int2_ref",
+    types_pb2.DT_UINT2_REF: "uint2_ref",
     types_pb2.DT_RESOURCE_REF: "resource_ref",
     types_pb2.DT_VARIANT_REF: "variant_ref",
 }
@@ -684,6 +706,8 @@ _np_float8_e5m2 = ml_dtypes.float8_e5m2
 _np_float8_e5m2fnuz = ml_dtypes.float8_e5m2fnuz
 _np_int4 = ml_dtypes.int4
 _np_uint4 = ml_dtypes.uint4
+_np_int2 = ml_dtypes.int2
+_np_uint2 = ml_dtypes.uint2
 
 # Custom struct dtype for directly-fed ResourceHandles of supported type(s).
 np_resource = np.dtype([("resource", np.ubyte)])
@@ -720,6 +744,8 @@ _NP_TO_TF = {
     _np_float8_e5m2fnuz: float8_e5m2fnuz,
     _np_int4: int4,
     _np_uint4: uint4,
+    _np_int2: int2,
+    _np_uint2: uint2,
 }
 
 # Map (some) NumPy platform dtypes to TF ones using their fixed-width
@@ -770,6 +796,8 @@ _TF_TO_NP = {
     types_pb2.DT_FLOAT8_E5M2FNUZ: _np_float8_e5m2fnuz,
     types_pb2.DT_INT4: _np_int4,
     types_pb2.DT_UINT4: _np_uint4,
+    types_pb2.DT_INT2: _np_int2,
+    types_pb2.DT_UINT2: _np_uint2,
     # Ref types
     types_pb2.DT_HALF_REF: np.float16,
     types_pb2.DT_FLOAT_REF: np.float32,
@@ -799,6 +827,8 @@ _TF_TO_NP = {
     types_pb2.DT_FLOAT8_E5M2FNUZ_REF: _np_float8_e5m2fnuz,
     types_pb2.DT_INT4_REF: _np_int4,
     types_pb2.DT_UINT4_REF: _np_uint4,
+    types_pb2.DT_INT2_REF: _np_int2,
+    types_pb2.DT_UINT2_REF: _np_uint2,
 }
 
 _QUANTIZED_DTYPES_NO_REF = frozenset([qint8, quint8, qint16, quint16, qint32])

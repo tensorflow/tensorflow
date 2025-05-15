@@ -12,6 +12,7 @@ package_group(
     packages = [
         "//learning/deepmind/partir/compiler/mpmd/...",
         "//learning/deepmind/partir/compiler/shardonnay/...",
+        "//third_party/australis/google/ifrt/...",
         "//third_party/openxla/shardy/tools/...",
         "//third_party/py/jax/...",
         "//xla/...",
@@ -61,6 +62,8 @@ cc_library(
     deps = [
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:FuncDialect",
@@ -100,7 +103,6 @@ cc_library(
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -119,29 +121,12 @@ cc_library(
     deps = [
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@shardy//shardy/dialect/sdy/transforms/common:sharding_walker",
-    ],
-)
-
-cc_library(
-    name = "import_callback_custom_calls",
-    srcs = ["import_callback_custom_calls.cc"],
-    hdrs = ["import_callback_custom_calls.h"],
-    deps = [
-        "//xla/service/spmd/shardy:utils",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@shardy//shardy/dialect/sdy/ir:dialect",
-        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -150,15 +135,12 @@ cc_library(
     srcs = ["dedup_meshes.cc"],
     hdrs = ["dedup_meshes.h"],
     deps = [
-        "//xla/service/spmd/shardy:utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@shardy//shardy/dialect/sdy/transforms/common:sharding_walker",
-        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -171,7 +153,6 @@ cc_library(
         ":dedup_meshes",
         ":export_ops",
         ":export_shardy_attrs",
-        ":import_callback_custom_calls",
         ":import_shardy_attrs",
         ":remove_size_one_axes",
         ":shard_map_export",

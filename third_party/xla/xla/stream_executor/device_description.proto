@@ -54,12 +54,19 @@ message DnnVersionInfoProto {
   int32 patch = 3;
 }
 
+message RuntimeVersionProto {
+  int32 major = 1;
+  int32 minor = 2;
+  int32 patch = 3;
+}
+
 message GpuTargetConfigProto {
   GpuDeviceInfoProto gpu_device_info = 1;
   reserved 2, 3;
   reserved "cuda_compute_capability", "rocm_compute_capability";
   string platform_name = 4;
   DnnVersionInfoProto dnn_version_info = 5;
+  RuntimeVersionProto runtime_version = 8;
 
   // TODO(b/248362914): Autotuning results should be separate from
   // GpuTargetConfig because autotuning can be updated regularly separate from

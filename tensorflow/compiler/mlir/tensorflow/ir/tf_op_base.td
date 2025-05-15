@@ -144,24 +144,24 @@ def TF_UniqueResourceAllocation: TraitList<[
 //===----------------------------------------------------------------------===//
 
 class TF_OperandIsUnrankedPred<int n> :
-  CPred<"$_op.getOperand(" # n # ").getType().isa<UnrankedTensorType>()">;
+  CPred<"llvm::isa<UnrankedTensorType>($_op.getOperand(" # n # ").getType())">;
 
 class TF_ResultIsUnrankedPred<int n> :
-  CPred<"$_op.getResult(" # n # ").getType().isa<UnrankedTensorType>()">;
+  CPred<"llvm::isa<UnrankedTensorType>($_op.getResult(" # n # ").getType())">;
 
 // Returns true if the n-th operand has unknown rank or has rank m.
 class TF_OperandHasRank<int n, int m> :
   PredOpTrait<"operand " # n # " is " # m # "-D",
     Or<[TF_OperandIsUnrankedPred<n>,
-      CPred<"$_op.getOperand(" # n #
-      ").getType().cast<ShapedType>().getRank() == " # m>]>>;
+      CPred<"llvm::cast<ShapedType>($_op.getOperand(" # n #
+      ").getType()).getRank() == " # m>]>>;
 
 // Returns true if the n-th result has unknown rank or has rank m.
 class TF_ResultHasRank<int n, int m> :
   PredOpTrait<"result " # n # " is " # m # "-D",
     Or<[TF_ResultIsUnrankedPred<n>,
-      CPred<"$_op.getResult(" # n #
-      ").getType().cast<ShapedType>().getRank() == " # m>]>>;
+      CPred<"llvm::cast<ShapedType>($_op.getResult(" # n #
+      ").getType()).getRank() == " # m>]>>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow resources and side effects
@@ -282,12 +282,12 @@ class TF_Op<string mnemonic, list<Trait> traits = []> :
 //===----------------------------------------------------------------------===//
 
 class TF_TensorFlowAttr <string name, string description> :
-    Attr<CPred<"$_self.isa<mlir::TF::" # name # "Attr>()">,
+    Attr<CPred<"llvm::isa<mlir::TF::" # name # "Attr>($_self)">,
          "TensorFlow " # description # " attribute">;
 
 def TF_ShapeAttr : TF_TensorFlowAttr<"Shape", "shape"> {
   let returnType = "std::optional<llvm::ArrayRef<int64_t>>";
-  let convertFromStorage = "$_self.cast<mlir::TF::ShapeAttr>().getValue()";
+  let convertFromStorage = "llvm::cast<mlir::TF::ShapeAttr>($_self).getValue()";
 
   // Create a ranked shape attr by default.
   let constBuilderCall = "mlir::TF::ShapeAttr::get($_builder.getContext(), $0)";
@@ -309,11 +309,11 @@ def TF_SymbolRefArrayAttr :
 
 // Any tensor element type defined in the TensorFlow dialect
 def TF_TFDialectType :
-    Type<CPred<"$_self.isa<mlir::TF::TensorFlowType>()">, "TensorFlow type">;
+    Type<CPred<"llvm::isa<mlir::TF::TensorFlowType>($_self)">, "TensorFlow type">;
 
 // Class for any TensorFlow dialect specific type
 class TF_TensorFlowType <string name, string description> :
-    Type<CPred<"$_self.isa<mlir::TF::" # name # "Type>()">,
+    Type<CPred<"llvm::isa<mlir::TF::" # name # "Type>($_self)">,
          "TensorFlow " # description # " type">,
     BuildableType<"getType<mlir::TF::" # name # "Type>()">;
 
@@ -547,9 +547,9 @@ def TF_Tensor : TensorOf<[TF_ElementType]>;
 // A string attribute whose value are one of the values in `cases`.
 class TF_AnyStrAttrOf<list<string> cases> : StringBasedAttr<
   CPred<!foldl(
-      "$_self.cast<StringAttr>().getValue() == \"" # !head(cases) # "\"",
+      "llvm::cast<StringAttr>($_self).getValue() == \"" # !head(cases) # "\"",
       !foreach(case, !tail(cases),
-               "$_self.cast<StringAttr>().getValue() == \"" # case # "\""),
+               "llvm::cast<StringAttr>($_self).getValue() == \"" # case # "\""),
       prev, cur, prev # " || " # cur)>,
   "string attribute whose value is " #
     !foldl(/*init*/!head(cases), /*list*/!tail(cases),
@@ -558,8 +558,8 @@ class TF_AnyStrAttrOf<list<string> cases> : StringBasedAttr<
 // TODO: Use EnumAttr to define the common attribute cases
 
 def TF_ConvnetDataFormatAttr : StringBasedAttr<
-    CPred<"$_self.cast<StringAttr>().getValue() == \"NHWC\" || " #
-          "$_self.cast<StringAttr>().getValue() == \"NCHW\"">,
+    CPred<"llvm::cast<StringAttr>($_self).getValue() == \"NHWC\" || " #
+          "llvm::cast<StringAttr>($_self).getValue() == \"NCHW\"">,
     "'NHWC' or 'NCHW' convnet data format">;
 
 //===----------------------------------------------------------------------===//
@@ -679,7 +679,7 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
 
 // A derived attribute that returns the shape of the first result type.
 def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
-  "return (*getOperation()->result_type_begin()).cast<ShapedType>();",
+  "return llvm::cast<ShapedType>((*getOperation()->result_type_begin()));",
   [{ mlir::TF::ShapeAttr::get($_ctxt, $_self) }]>;
 
 def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
@@ -713,14 +713,14 @@ class WithBroadcastableCmpOpBuilder {
     OpBuilder<(ins "Value":$x, "Value":$y),
     [{
   Type resultType;
-  if (x.getType().isa<UnrankedTensorType>() ||
-      y.getType().isa<UnrankedTensorType>()) {
+  if (llvm::isa<UnrankedTensorType>(x.getType()) ||
+      llvm::isa<UnrankedTensorType>(y.getType())) {
     resultType = UnrankedTensorType::get($_builder.getI1Type());
   } else {
     SmallVector<int64_t, 4> resultShape;
     if (!OpTrait::util::getBroadcastedShape(
-            x.getType().cast<ShapedType>().getShape(),
-            y.getType().cast<ShapedType>().getShape(), resultShape)) {
+            llvm::cast<ShapedType>(x.getType()).getShape(),
+            llvm::cast<ShapedType>(y.getType()).getShape(), resultShape)) {
       mlir::emitError($_state.location,
                       "operands have no broadcastable shapes");
     }

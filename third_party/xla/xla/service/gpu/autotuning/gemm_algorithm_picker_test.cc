@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
-#include "xla/service/gpu/variant_visitor.h"
+#include "xla/service/overload.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
@@ -74,7 +74,7 @@ class GemmAlgorithmPickerTest : public HloTestBase,
     bool blas_get_version = name.rfind("BlasGetVersion") == 0;
 
     std::visit(
-        VariantVisitor{
+        Overload{
             [&](const se::CudaComputeCapability& cc) {
               if (!blas_get_version && cc.IsAtLeastAmpere()) {
                 GTEST_SKIP()

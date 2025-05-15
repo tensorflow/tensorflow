@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -29,8 +30,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -78,6 +79,8 @@ class WhileThunk : public Thunk {
     return condition_result_buffer_index_;
   }
 
+  std::optional<int64_t> trip_count() const { return trip_count_; }
+
   // Returns the current loop iteration if the caller is inside a while loop(s).
   //
   // Implementation relies on thread local storage, be careful when call it from
@@ -89,6 +92,8 @@ class WhileThunk : public Thunk {
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
 
   std::string ToString(int indent) const override;
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   const HloInstruction* loop_;

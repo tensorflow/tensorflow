@@ -63,6 +63,8 @@ typedef enum TF_DataType {
                                // finite-only,with NaN.
   TF_INT4 = 29,
   TF_UINT4 = 30,
+  TF_INT2 = 31,
+  TF_UINT2 = 32,
 } TF_DataType;
 
 // TF_DataTypeSize returns the sizeof() for the underlying type corresponding

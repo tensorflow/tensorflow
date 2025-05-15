@@ -165,7 +165,7 @@ TEST_F(CollectiveRemoteAccessLocalTest, CheckHealth) {
                           done.Notify();
                         });
   done.WaitForNotification();
-  EXPECT_TRUE(errors::IsInternal(status));
+  EXPECT_TRUE(absl::IsInternal(status));
 }
 
 TEST_F(CollectiveRemoteAccessLocalTest, RecvThenCancel) {
@@ -187,7 +187,7 @@ TEST_F(CollectiveRemoteAccessLocalTest, RecvThenCancel) {
   cm_->StartCancel();
   recv_note.WaitForNotification();
   EXPECT_TRUE(cm_->IsCancelled());
-  EXPECT_TRUE(errors::IsCancelled(recv_status));
+  EXPECT_TRUE(absl::IsCancelled(recv_status));
 }
 
 TEST_F(CollectiveRemoteAccessLocalTest, CancelThenRecv) {
@@ -209,7 +209,7 @@ TEST_F(CollectiveRemoteAccessLocalTest, CancelThenRecv) {
                      });
   recv_note.WaitForNotification();
   EXPECT_TRUE(cm_->IsCancelled());
-  EXPECT_TRUE(errors::IsCancelled(recv_status));
+  EXPECT_TRUE(absl::IsCancelled(recv_status));
 }
 
 TEST_F(CollectiveRemoteAccessLocalTest, PostThenCancel) {
@@ -231,7 +231,7 @@ TEST_F(CollectiveRemoteAccessLocalTest, PostThenCancel) {
   cm_->StartCancel();
   send_note.WaitForNotification();
   EXPECT_TRUE(cm_->IsCancelled());
-  EXPECT_TRUE(errors::IsCancelled(send_status));
+  EXPECT_TRUE(absl::IsCancelled(send_status));
 }
 
 TEST_F(CollectiveRemoteAccessLocalTest, CancelThenPost) {
@@ -253,7 +253,7 @@ TEST_F(CollectiveRemoteAccessLocalTest, CancelThenPost) {
                    });
   send_note.WaitForNotification();
   EXPECT_TRUE(cm_->IsCancelled());
-  EXPECT_TRUE(errors::IsCancelled(send_status));
+  EXPECT_TRUE(absl::IsCancelled(send_status));
 }
 
 }  // namespace

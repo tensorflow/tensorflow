@@ -43,6 +43,10 @@ class PjRtMemory final
  public:
   PjRtMemory(PjRtClient* client, xla::PjRtMemorySpace* pjrt_memory);
 
+  // Constructor for memories for non-addressable devices that are not backed by
+  // a PjRtMemorySpace.
+  PjRtMemory(PjRtClient* client, const MemoryKind& kind, Device* device);
+
   PjRtClient* client() const { return client_; }
   xla::PjRtMemorySpace* pjrt_memory() override { return pjrt_memory_; }
 

@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_utils.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -37,7 +37,7 @@ using ::tsl::testing::IsOkAndHolds;
 
 namespace op = xla::testing::opcode_matchers;
 
-using GpuAllGatherCombinerTest = HloTestBase;
+using GpuAllGatherCombinerTest = HloHardwareIndependentTestBase;
 
 TEST_F(GpuAllGatherCombinerTest,
        CombinesPipelinedCollectivesUpToSuggestedThreshold) {
@@ -356,8 +356,10 @@ TEST_F(GpuAllGatherCombinerTest, CombinesSynchronousCollectivesMaximally) {
       p1 = f16[5000000]{0} parameter(1)
 
       // 20MB combinable all-gather collectives. Default combiner threshold is 30MB.
-      ag0 = f16[10000000]{0} all-gather(p0), replica_groups={}, dimensions={0}
-      ag1 = f16[10000000]{0} all-gather(p1), replica_groups={}, dimensions={0}
+      ag0 = f16[10000000]{0} all-gather(p0), replica_groups={}, dimensions={0},
+        frontend_attributes={sync_collective="true"}
+      ag1 = f16[10000000]{0} all-gather(p1), replica_groups={}, dimensions={0},
+        frontend_attributes={sync_collective="true"}
       ROOT result = tuple(ag0, ag1)
     }
   )";
@@ -373,18 +375,54 @@ TEST_F(GpuAllGatherCombinerTest, CombinesSynchronousCollectivesMaximally) {
       /*combine_by_dim=*/false,
       /*combine_different_dtypes=*/true, /*pointer_size=*/4);
 
-  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
-
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_experimental_enable_sync_collective_combining(true);
   EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
-
   Matcher<const HloInstruction*> combined_all_gather =
       op::AllGather(op::Parameter(0), op::Parameter(1));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::GetTupleElement(combined_all_gather, 0),
                         op::GetTupleElement(combined_all_gather, 1)));
+}
+
+TEST_F(GpuAllGatherCombinerTest, FavorsPipelinedCollectivesOverSynchronous) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    ENTRY main {
+      p0 = f16[1000000]{0} parameter(0)
+      p1 = f16[1000000]{0} parameter(1)
+      p2 = f16[1000000]{0} parameter(2)
+
+      ag0 = f16[10000000]{0} all-gather(p0), replica_groups={}, dimensions={0},
+        frontend_attributes={sync_collective="true"},
+        backend_config={"collective_backend_config": {"is_pipelined": true}}
+      ag1 = f16[10000000]{0} all-gather(p1), replica_groups={}, dimensions={0},
+        frontend_attributes={sync_collective="true"},
+        backend_config={"collective_backend_config": {"is_pipelined": true}}
+      ag2 = f16[10000000]{0} all-gather(p2), replica_groups={}, dimensions={0},
+        backend_config={"collective_backend_config": {"is_pipelined": true}}
+
+      ROOT result = tuple(ag0, ag1, ag2)
+    }
+  )";
+  DeviceDescription device_info;
+  device_info.set_device_memory_size(10000000000);  // 10GB
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  GpuAllGatherCombiner combiner(
+      device_info, /*default_combine_threshold_in_bytes=*/
+      kDefaultAllGatherCombineThreshold,
+      /*combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
+      /*combine_threshold_count=*/256,
+      /*combine_by_dim=*/false,
+      /*combine_different_dtypes=*/true, /*pointer_size=*/4);
+
+  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
+  Matcher<const HloInstruction*> combined_all_gather =
+      op::AllGather(op::Parameter(0), op::Parameter(1), op::Parameter(2));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::GetTupleElement(combined_all_gather, 0),
+                        op::GetTupleElement(combined_all_gather, 1),
+                        op::GetTupleElement(combined_all_gather, 2)));
 }
 
 }  // namespace

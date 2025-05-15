@@ -113,8 +113,8 @@ std::optional<Value> convertTFConv2DCommon(
       stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
-      int64_t stride_h = strides_attr[1].cast<IntegerAttr>().getInt();
-      int64_t stride_w = strides_attr[2].cast<IntegerAttr>().getInt();
+      int64_t stride_h = mlir::cast<IntegerAttr>(strides_attr[1]).getInt();
+      int64_t stride_w = mlir::cast<IntegerAttr>(strides_attr[2]).getInt();
       stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
@@ -123,8 +123,8 @@ std::optional<Value> convertTFConv2DCommon(
       dilation = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
-      int64_t dilation_h = dilations_attr[1].cast<IntegerAttr>().getInt();
-      int64_t dilation_w = dilations_attr[2].cast<IntegerAttr>().getInt();
+      int64_t dilation_h = mlir::cast<IntegerAttr>(dilations_attr[1]).getInt();
+      int64_t dilation_w = mlir::cast<IntegerAttr>(dilations_attr[2]).getInt();
       dilation = rewriter.getDenseI64ArrayAttr({dilation_h, dilation_w});
     }
   }
@@ -172,9 +172,9 @@ std::optional<Value> convertTFConv3DCommon(
     // Defaults to [1, 1, 1].
     strides = rewriter.getDenseI64ArrayAttr({1, 1, 1});
   } else {
-    int64_t stride_d = strides_attr[1].cast<IntegerAttr>().getInt();
-    int64_t stride_h = strides_attr[2].cast<IntegerAttr>().getInt();
-    int64_t stride_w = strides_attr[3].cast<IntegerAttr>().getInt();
+    int64_t stride_d = mlir::cast<IntegerAttr>(strides_attr[1]).getInt();
+    int64_t stride_h = mlir::cast<IntegerAttr>(strides_attr[2]).getInt();
+    int64_t stride_w = mlir::cast<IntegerAttr>(strides_attr[3]).getInt();
     strides = rewriter.getDenseI64ArrayAttr({stride_d, stride_h, stride_w});
   }
 
@@ -183,17 +183,18 @@ std::optional<Value> convertTFConv3DCommon(
     // Defaults to [1, 1, 1].
     dilations = rewriter.getDenseI64ArrayAttr({1, 1, 1});
   } else {
-    int64_t dilation_d = dilations_attr[1].cast<IntegerAttr>().getInt();
-    int64_t dilation_h = dilations_attr[2].cast<IntegerAttr>().getInt();
-    int64_t dilation_w = dilations_attr[3].cast<IntegerAttr>().getInt();
+    int64_t dilation_d = mlir::cast<IntegerAttr>(dilations_attr[1]).getInt();
+    int64_t dilation_h = mlir::cast<IntegerAttr>(dilations_attr[2]).getInt();
+    int64_t dilation_w = mlir::cast<IntegerAttr>(dilations_attr[3]).getInt();
     dilations =
         rewriter.getDenseI64ArrayAttr({dilation_d, dilation_h, dilation_w});
   }
 
-  RankedTensorType input_type = input.getType().cast<RankedTensorType>();
+  RankedTensorType input_type = mlir::cast<RankedTensorType>(input.getType());
   DenseI64ArrayAttr pads;
   {
-    RankedTensorType filter_type = filter.getType().cast<RankedTensorType>();
+    RankedTensorType filter_type =
+        mlir::cast<RankedTensorType>(filter.getType());
 
     tensorflow::TensorFormat data_format_tf;
     if (!FormatFromString(data_format_ref, &data_format_tf)) {
@@ -582,6 +583,90 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
   }
 }
 
+Value getTosaConstHardSwish8bitTable(PatternRewriter& rewriter, Operation* op,
+                                     float input_scale, int32_t input_zp,
+                                     float output_scale, int32_t output_zp) {
+  // Define tflite params:
+  // See: HardSwishPrepare / HardSwishParams
+  const float hires_input_scale = (1.0f / 128.0f) * input_scale;
+  const float reluish_scale = 3.0f / 32768.0f;
+  const float output_multiplier = hires_input_scale / output_scale;
+
+  int16_t output_multiplier_fixedpoint_int16;
+  int output_multiplier_exponent;
+
+  int16_t reluish_multiplier_fixedpoint_int16;
+  int reluish_multiplier_exponent;
+
+  int32_t output_multiplier_fixedpoint_int32;
+  tflite::QuantizeMultiplier(output_multiplier,
+                             &output_multiplier_fixedpoint_int32,
+                             &output_multiplier_exponent);
+  tflite::DownScaleInt32ToInt16Multiplier(output_multiplier_fixedpoint_int32,
+                                          &output_multiplier_fixedpoint_int16);
+  assert(output_multiplier_exponent <= 0);
+
+  const float reluish_multiplier = hires_input_scale / reluish_scale;
+  int32_t reluish_multiplier_fixedpoint_int32;
+
+  tflite::QuantizeMultiplier(reluish_multiplier,
+                             &reluish_multiplier_fixedpoint_int32,
+                             &reluish_multiplier_exponent);
+  tflite::DownScaleInt32ToInt16Multiplier(reluish_multiplier_fixedpoint_int32,
+                                          &reluish_multiplier_fixedpoint_int16);
+
+  // See HardSwish function in
+  // tensorflow/lite/kernels/internal/reference/hardswish.h
+  SmallVector<int8_t, 256> table;
+  for (int32_t i = -128; i < 128; i++) {
+    const int16_t input_value = i - input_zp;
+    const int16_t input_value_on_hires_input_scale = input_value * (1 << 7);
+    const int16_t input_value_on_preshift_output_scale =
+        gemmlowp::SaturatingRoundingDoublingHighMul(
+            input_value_on_hires_input_scale,
+            output_multiplier_fixedpoint_int16);
+    int16_t reluish_value = input_value_on_hires_input_scale;
+    if (reluish_multiplier_exponent > 0) {
+      reluish_value = tflite::reference_ops::SaturatingLeftShift(
+          reluish_value, reluish_multiplier_exponent - 1);
+    }
+    reluish_value = gemmlowp::SaturatingRoundingDoublingHighMul(
+        reluish_value, reluish_multiplier_fixedpoint_int16);
+    if (reluish_multiplier_exponent > 0) {
+      reluish_value =
+          tflite::reference_ops::SaturatingLeftShift(reluish_value, 1);
+    }
+    if (reluish_multiplier_exponent < 0) {
+      reluish_value = gemmlowp::RoundingDivideByPOT(
+          reluish_value, -reluish_multiplier_exponent);
+    }
+    reluish_value = (reluish_value + (1 << 15)) >> 1;
+    const int16_t preshift_output_value =
+        tflite::reference_ops::SaturatingDoublingHighMul(
+            reluish_value, input_value_on_preshift_output_scale);
+    int16_t output_value = gemmlowp::RoundingDivideByPOT(
+        preshift_output_value, -output_multiplier_exponent);
+    output_value += output_zp;
+    output_value =
+        std::min<int16_t>(output_value, std::numeric_limits<int8_t>::max());
+    output_value =
+        std::max<int16_t>(output_value, std::numeric_limits<int8_t>::min());
+    table.push_back(output_value);
+  }
+
+  auto element_qtype =
+      UniformQuantizedType::get(true, rewriter.getIntegerType(8),
+                                rewriter.getF32Type(), 1.0f, 0, -128, 127);
+  auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
+  auto storage_type = tensorflow::GetTypeFromTFTensorShape(
+      {256}, element_qtype.getStorageType());
+  auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
+
+  auto const_op =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
+  return const_op.getResult();
+}
+
 Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
                                  float input_scale, int32_t input_zp,
                                  float output_scale, int32_t output_zp) {
@@ -637,24 +722,25 @@ Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
 }
 
 // Create a 8-bit TOSA TABLE constant tensor with int8[256] array.
-// Follow PopulateLookupTable() tensorflow/lite/kernels/activations.cc
+// Follow LUTPopulateInt8() tensorflow/lite/kernels/internal/common.h
 Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
-                            double input_scale, int32_t input_zp,
-                            double output_scale, int32_t output_zp,
-                            std::function<double(double)> func) {
+                            float input_scale, int32_t input_zp,
+                            float output_scale, int32_t output_zp,
+                            std::function<float(float)> func) {
   SmallVector<int8_t, 256> table;
 
+  float inverse_scale = 1.0f / output_scale;
   for (int32_t i = -128; i < 128; i++) {
-    double dequantized = input_scale * (i - input_zp);
-    double transformed = func(dequantized);
+    float dequantized = input_scale * (i - input_zp);
+    float transformed = func(dequantized);
 
-    double max = (output_scale > 1.0) ? DBL_MAX : (DBL_MAX * output_scale);
+    float max = (output_scale > 1.0) ? FLT_MAX : (FLT_MAX * output_scale);
     if (transformed >= max) {
       table.push_back(INT8_MAX);
       continue;
     }
 
-    int32_t rescaled = std::llround(transformed / output_scale);
+    int32_t rescaled = std::round(transformed * inverse_scale);
     int32_t quantized = static_cast<int32_t>(rescaled + output_zp);
     table.push_back(
         static_cast<int8_t>(std::min(std::max(quantized, -128), 127)));
@@ -673,34 +759,52 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
   return const_op.getResult();
 }
 
-// Create a 16-bit TOSA TABLE constant tensor with int16[513] array.
-// Output is restricted to [-1.0, 1.0].
-// Follow gen_lut() tensorflow/lite/kernels/internal/common.h
+// Create a 16-bit TOSA TABLE constant tensor.
+// A float should be used by default for FloatT except if a double is required
+// for backward compatibility.
+// Follow LUTPopulateInt16() tensorflow/lite/kernels/internal/common.h
+template <typename FloatT>
 Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
-                             std::function<double(double)> func, double min,
-                             double max) {
+                             FloatT input_scale, int32_t input_zp,
+                             FloatT output_scale, int32_t output_zp,
+                             std::function<FloatT(FloatT)> func) {
+  static_assert(std::is_floating_point<FloatT>::value,
+                "FloatT must be a floating-point type.");
+
   SmallVector<int16_t, 513> table;
 
-  double step = (max - min) / 512.0f;
-  double half_step = step / 2.0f;
+  FloatT input_min =
+      input_scale * (std::numeric_limits<int16_t>::min() - input_zp);
+  FloatT input_max =
+      input_scale * (std::numeric_limits<int16_t>::max() - input_zp);
+  FloatT output_min =
+      output_scale * (std::numeric_limits<int16_t>::min() - output_zp);
+  FloatT output_max =
+      output_scale * (std::numeric_limits<int16_t>::max() - output_zp);
+
+  FloatT step = (input_max - input_min) / 512;
+  FloatT half_step = step / 2;
+  FloatT output_scaling_inv = 65536 / (output_max - output_min);
+
   for (int32_t i = 0; i < 512; i++) {
-    int32_t sample_val = std::llround(func(min + (i * step)) * 32768.0);
-    double midpoint_interp_val =
-        std::round(((func(min + (i + 1) * step) * 32768.0) +
-                    std::round(func(min + (i * step)) * 32768.0)) /
-                   2.0);
-    double midpoint_val =
-        std::round(func(min + (i * step) + half_step) * 32768.0);
-    double midpoint_err = midpoint_interp_val - midpoint_val;
-    int32_t bias = std::llround(midpoint_err / 2.0);
+    FloatT sample_val =
+        std::round(func(input_min + (i * step)) * output_scaling_inv);
+    FloatT midpoint_interp_val = std::round(
+        ((func(input_min + (i + 1) * step) * output_scaling_inv) +
+         std::round(func(input_min + (i * step)) * output_scaling_inv)) /
+        2);
+    FloatT midpoint_val = std::round(func(input_min + (i * step) + half_step) *
+                                     output_scaling_inv);
+    FloatT midpoint_err = midpoint_interp_val - midpoint_val;
+    FloatT bias = std::round(midpoint_err / 2);
 
     table.push_back(static_cast<int16_t>(
-        std::min(std::max(sample_val - bias, -32768), 32767)));
+        std::min<FloatT>(std::max<FloatT>(sample_val - bias, -32768), 32767)));
   }
 
-  int32_t max_val = std::llround(func(max) * 32768.0);
-  table.push_back(
-      static_cast<int16_t>(std::min(std::max(max_val, -32768), 32767)));
+  FloatT max_val = std::round(func(input_max) * output_scaling_inv);
+  table.push_back(static_cast<int16_t>(
+      std::min<FloatT>(std::max<FloatT>(max_val, -32768), 32767)));
 
   auto const_type =
       tensorflow::GetTypeFromTFTensorShape({513}, rewriter.getIntegerType(16));
@@ -710,6 +814,18 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
   return const_op.getResult();
 }
+
+template Value getTosaConst16bitTable<float>(PatternRewriter& rewriter,
+                                             Operation* op, float input_scale,
+                                             int32_t input_zp,
+                                             float output_scale,
+                                             int32_t output_zp,
+                                             std::function<float(float)> func);
+
+template Value getTosaConst16bitTable<double>(
+    PatternRewriter& rewriter, Operation* op, double input_scale,
+    int32_t input_zp, double output_scale, int32_t output_zp,
+    std::function<double(double)> func);
 
 // Create a 32-bit TOSA TABLE for Softmax Exp
 void getTosaConst32bitSoftmaxExpTable(PatternRewriter& rewriter, Operation* op,
@@ -837,7 +953,7 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
                                   int64_t val, int rank) {
   assert(rank >= 0);
-  assert(type.isa<IntegerType>());
+  assert(mlir::isa<IntegerType>(type));
   mlir::RankedTensorType const_type;
   mlir::DenseElementsAttr const_attr;
   auto bit_width = type.getIntOrFloatBitWidth();
@@ -1036,14 +1152,14 @@ bool getTransposeConv2dPaddingValues(
       return false;
     }
 
-    int total_padding = ((ifm_size - 1) * dim_stride + filter_size - ofm_size);
-    total_padding = total_padding > 0 ? total_padding : 0;
+    int total_padding =
+        ((ifm_size - 1) * dim_stride + filter_size - ofm_size);
 
     pad_before = total_padding / 2;
     pad_after = total_padding - pad_before;
 
-    computed_paddings.push_back(pad_before);
-    computed_paddings.push_back(pad_after);
+    computed_paddings.push_back(-pad_before);
+    computed_paddings.push_back(-pad_after);
   }
 
   explicit_padding = rewriter.getDenseI64ArrayAttr(computed_paddings);
@@ -1208,7 +1324,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // We use top-down traversal so that shape inference can fully infer types
   // during pattern rewrite.
   GreedyRewriteConfig config;
-  config.useTopDownTraversal = true;
+  config.setUseTopDownTraversal(true);
   if (failed(applyPatternsGreedily(func, patterns, config))) {
     return failure();
   }
@@ -1292,10 +1408,10 @@ Value reshapeScalarTo1D(PatternRewriter& rewriter, Location loc, Value value) {
     }
 
     DenseElementsAttr const_attr;
-    if (attr.getElementType().isa<mlir::IntegerType>()) {
+    if (mlir::isa<mlir::IntegerType>(attr.getElementType())) {
       const_attr = DenseElementsAttr::get(storage_type,
                                           {attr.getValues<mlir::APInt>()[0]});
-    } else if (attr.getElementType().isa<mlir::FloatType>()) {
+    } else if (mlir::isa<mlir::FloatType>(attr.getElementType())) {
       const_attr = DenseElementsAttr::get(storage_type,
                                           {attr.getValues<mlir::APFloat>()[0]});
     } else {
@@ -1380,6 +1496,37 @@ LogicalResult broadcastLowRankTensor(PatternRewriter& rewriter, Operation* op,
     input2 = low_rank_tensor;
   }
   return success();
+}
+
+bool checkUniqueConstantScatterIndices(ShapedType indices_type,
+                                       ShapedType result_type,
+                                       ElementsAttr const_data) {
+  llvm::ArrayRef<int64_t> const indices_shape = indices_type.getShape();
+  const unsigned int indices_rank = indices_shape.size();
+  const unsigned int result_rank = result_type.getRank();
+  const unsigned int last_dim_size = indices_shape[indices_rank - 1];
+
+  // Reconstruct each index from the unshaped constant data array and
+  // calculate the corresponding flattened index
+  auto const const_data_range = const_data.getValues<int32_t>();
+  assert((const_data_range.size() % last_dim_size == 0) &&
+         "Constant data length should be a multiple of indices_shape[-1]");
+
+  std::vector<int64_t> flattened_indices;
+  flattened_indices.reserve(const_data_range.size() / last_dim_size);
+  for (auto beg = const_data_range.begin(); beg < const_data_range.end();
+       beg += last_dim_size) {
+    std::vector<uint64_t> current_single_index(result_rank);
+    std::copy(beg, beg + last_dim_size, current_single_index.begin());
+    const uint64_t f_index{
+        ElementsAttr::getFlattenedIndex(result_type, current_single_index)};
+    flattened_indices.push_back(f_index);
+  }
+
+  // If adjacent flattened values are found, there are non-unique indices
+  std::sort(flattened_indices.begin(), flattened_indices.end());
+  return std::adjacent_find(flattened_indices.begin(),
+                            flattened_indices.end()) == flattened_indices.end();
 }
 
 }  // namespace tosa

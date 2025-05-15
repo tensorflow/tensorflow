@@ -24,10 +24,12 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace tsl {
-
 namespace {
+
+using tsl::proto_testing::EqualsProto;
 using tsl::test::TestRequest;
 
 string ToString(const grpc::ByteBuffer& buf) {
@@ -96,7 +98,7 @@ TEST(GrpcProto, Unparse) {
   ASSERT_TRUE(GrpcMaybeUnparseProto(proto, &buf).ok());
   TestRequest parsed;
   ASSERT_TRUE(parsed.ParseFromString(ToString(buf)));
-  ASSERT_EQ(proto.DebugString(), parsed.DebugString());
+  ASSERT_THAT(parsed, EqualsProto(proto));
 }
 
 TEST(GrpcProto, UnparseToString) {
@@ -109,7 +111,7 @@ TEST(GrpcProto, UnparseToString) {
   ASSERT_TRUE(GrpcMaybeUnparseProto(str, &buf).ok());
   TestRequest parsed;
   ASSERT_TRUE(parsed.ParseFromString(ToString(buf)));
-  ASSERT_EQ(proto.DebugString(), parsed.DebugString());
+  ASSERT_THAT(parsed, EqualsProto(proto));
 }
 
 TEST(GrpcProto, Parse) {
@@ -131,7 +133,7 @@ TEST(GrpcProto, Parse) {
     TestRequest parsed;
     ASSERT_TRUE(GrpcMaybeParseProto(&src, &parsed))
         << c.length << " " << c.slices;
-    ASSERT_EQ(proto.DebugString(), parsed.DebugString());
+    ASSERT_THAT(parsed, EqualsProto(proto));
   }
 }
 
@@ -156,7 +158,7 @@ TEST(GrpcProto, ParseFromString) {
     ASSERT_TRUE(GrpcMaybeParseProto(&src, &parsed_str))
         << c.length << " " << c.slices;
     ASSERT_TRUE(parsed.ParseFromString(parsed_str));
-    ASSERT_EQ(proto.DebugString(), parsed.DebugString());
+    ASSERT_THAT(parsed, EqualsProto(proto));
   }
 }
 

@@ -38,14 +38,15 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "xla/tsl/platform/stack_frame.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/stacktrace.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/stringprintf.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 
@@ -56,7 +57,7 @@ namespace {
 class StatusLogSink : public TFLogSink {
  public:
   static StatusLogSink* GetInstance() {
-    static StatusLogSink* sink = new StatusLogSink();
+    static StatusLogSink* const sink = new StatusLogSink();
     return sink;
   }
 
@@ -81,7 +82,7 @@ class StatusLogSink : public TFLogSink {
   }
 
   void GetMessages(std::vector<std::string>* logs) TF_LOCKS_EXCLUDED(mu_) {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
 
     for (auto& msg : messages_) {
       logs->push_back(msg);
@@ -91,7 +92,7 @@ class StatusLogSink : public TFLogSink {
   void Send(const TFLogEntry& entry) override TF_LOCKS_EXCLUDED(mu_) {
     if (entry.log_severity() < absl::LogSeverity::kWarning) return;
 
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     messages_.emplace_back(entry.ToString());
     if (messages_.size() > static_cast<size_t>(num_messages_)) {
       messages_.pop_front();
@@ -99,7 +100,7 @@ class StatusLogSink : public TFLogSink {
   }
 
  private:
-  mutex mu_;
+  absl::Mutex mu_;
   // for allowing repeated/concurrent calls to enable()
   absl::once_flag flag_;
   int num_messages_ = 0;

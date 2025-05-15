@@ -97,7 +97,7 @@ void QuantizedConcatTest::TestInvalidMinMax(const Tensor& first_min,
   AddInputFromArray<float>(TensorShape({}), {1.0});
   AddInputFromArray<float>(first_max.shape(), first_max.flat<float>());
   AddInputFromArray<float>(TensorShape({}), {2.0});
-  EXPECT_TRUE(errors::IsInvalidArgument(RunOpKernel()));
+  EXPECT_TRUE(absl::IsInvalidArgument(RunOpKernel()));
 }
 
 TEST_F(QuantizedConcatTest, Small8Bit) {

@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tsl/platform/abi.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -66,12 +66,11 @@ using tensorflow::profiler::XLine;
 using tensorflow::profiler::XPlane;
 using tensorflow::profiler::XSpace;
 using tensorflow::profiler::XStatMetadata;
-using tsl::mutex;
-using tsl::mutex_lock;
 using tsl::profiler::Annotation;
 using tsl::profiler::FindMutablePlaneWithName;
 using tsl::profiler::FindOrAddMutablePlaneWithName;
 using tsl::profiler::GpuPlaneName;
+using tsl::profiler::kCuptiActivityNvtxPlaneName;
 using tsl::profiler::kCuptiDriverApiPlaneName;
 using tsl::profiler::kDeviceVendorNvidia;
 using tsl::profiler::kScopeRangeIdTreePlaneName;
@@ -82,11 +81,9 @@ using tsl::profiler::XEventBuilder;
 using tsl::profiler::XLineBuilder;
 using tsl::profiler::XPlaneBuilder;
 
-static constexpr int64_t kNvtxLineIdStart = 1LL << 32;
-static constexpr int64_t kNvtxLineIdEnd = 2LL << 32;
-
-bool IsNvtxLine(int64_t line_id) {
-  return line_id >= kNvtxLineIdStart && line_id < kNvtxLineIdEnd;
+bool IsNvtxActivityEvent(const CuptiTracerEvent& event) {
+  return event.source == CuptiTracerEventSource::Activity &&
+         event.type == CuptiTracerEventType::ThreadMarkerRange;
 }
 
 bool IsHostEvent(const CuptiTracerEvent& event, int64_t* line_id) {
@@ -95,11 +92,10 @@ bool IsHostEvent(const CuptiTracerEvent& event, int64_t* line_id) {
     *line_id = event.thread_id;
     return true;
   }
-  // nvtx marker events from activity source are host events. Those markers
-  // are put into a separate line whose id value greater than kNvtxLineIdStart.
-  if (event.source == CuptiTracerEventSource::Activity &&
-      event.type == CuptiTracerEventType::ThreadMarkerRange) {
-    *line_id = kNvtxLineIdStart + event.thread_id;
+  // nvtx marker events from activity source are host events. Just put those
+  // events on the original host thread line.
+  if (IsNvtxActivityEvent(event)) {
+    *line_id = event.thread_id;
     return true;
   }
   // Other non-overhead activity events are device events.
@@ -128,30 +124,6 @@ int64_t GetNextAvailableLineId(absl::flat_hash_set<int64_t>& occupied_line_ids,
   while (occupied_line_ids.contains(next_line_id)) ++next_line_id;
   occupied_line_ids.insert(next_line_id);
   return next_line_id;
-}
-
-// Change the line id of the lines where line id >= kNvtxLineIdStart to
-// any non-occupied line id start from 1, making sure the lower 32 bits value of
-// the line ids are unique. This is to avoid the effective line id conflict
-// which only count on the lower 32 bits of the line id in further analysis.
-void AdjustHostPlaneNvtxLines(XPlane* plane) {
-  // Get all occupied line ids with value less than kNvtxLineIdStart.
-  absl::flat_hash_set<int64_t> occupied_line_ids;
-  for (const XLine& line : plane->lines()) {
-    if (line.id() < kNvtxLineIdStart) {
-      occupied_line_ids.insert(line.id());
-    }
-  }
-
-  // Change the line id,  whose id value > kNvtxLineIdStart, to a non-occupied
-  // line id in uint32 range.
-  int64_t next_line_id = 0;
-  for (XLine& line : *plane->mutable_lines()) {
-    if (line.id() >= kNvtxLineIdStart) {
-      next_line_id = GetNextAvailableLineId(occupied_line_ids, next_line_id);
-      line.set_id(next_line_id);
-    }
-  }
 }
 
 struct DeviceOccupancyParams {
@@ -431,13 +403,14 @@ class PerDeviceCollector {
   PerDeviceCollector() = default;
 
   void AddEvent(CuptiTracerEvent&& event) {
-    mutex_lock l(m_);
+    absl::MutexLock l(&m_);
     events_.emplace_back(std::move(event));
   }
 
   size_t Flush(uint64_t start_gpu_ns, uint64_t end_gpu_ns,
-               XPlaneBuilder* device_plane, XPlaneBuilder* host_plane) {
-    mutex_lock l(m_);
+               XPlaneBuilder* device_plane, XPlaneBuilder* host_plane,
+               XPlaneBuilder* nvtx_plane) {
+    absl::MutexLock l(&m_);
     // Tracking event types per line.
     absl::flat_hash_map<int64_t, absl::flat_hash_set<CuptiTracerEventType>>
         events_types_per_line;
@@ -449,7 +422,10 @@ class PerDeviceCollector {
         VLOG(9) << "Ignoring event, type=" << static_cast<int>(event.type);
         continue;
       }
-      auto* plane = is_host_event ? host_plane : device_plane;
+      auto* plane = is_host_event ? ((nvtx_plane && IsNvtxActivityEvent(event))
+                                         ? nvtx_plane
+                                         : host_plane)
+                                  : device_plane;
       VLOG(9) << "Event" << " type=" << static_cast<int>(event.type)
               << " line_id=" << line_id
               << (is_host_event ? " host plane=" : " device plane=")
@@ -464,16 +440,13 @@ class PerDeviceCollector {
           GetDeviceXLineName(line.Id(), events_types_per_line[line.Id()]));
     });
     host_plane->ForEachLine([&](XLineBuilder line) {
-      if (IsNvtxLine(line.Id())) {
-        // Lines will order by name, by appending suffix to the normal cupti
-        // line name, the nvtx lines will be placed right after their
-        // corresponding cupti lines.
-        line.SetName(absl::StrCat("Host Threads/",
-                                  static_cast<uint32_t>(line.Id()), "/NVTX"));
-      } else {
-        line.SetName(absl::StrCat("Host Threads/", line.Id()));
-      }
+      line.SetName(absl::StrCat("Host Threads/", line.Id()));
     });
+    if (nvtx_plane) {
+      nvtx_plane->ForEachLine([&](XLineBuilder line) {
+        line.SetName(absl::StrCat("Host Threads/", line.Id(), "/NVTX"));
+      });
+    }
     size_t num_events = events_.size();
     events_.clear();
     return num_events;
@@ -590,7 +563,7 @@ class PerDeviceCollector {
   }
 
  private:
-  mutex m_;
+  absl::Mutex m_;
   std::vector<CuptiTracerEvent> events_ TF_GUARDED_BY(m_);
   cudaOccDeviceProp device_properties_;
   absl::flat_hash_map<DeviceOccupancyParams, OccupancyStats> occupancy_cache_;
@@ -800,6 +773,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     size_t num_events = 0;
     XPlaneBuilder host_plane(
         FindOrAddMutablePlaneWithName(space, kCuptiDriverApiPlaneName));
+    XPlaneBuilder nvtx_plane(
+        FindOrAddMutablePlaneWithName(space, kCuptiActivityNvtxPlaneName));
     for (int device_ordinal = 0; device_ordinal < num_gpus_; ++device_ordinal) {
       std::string name = GpuPlaneName(device_ordinal);
       XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
@@ -812,11 +787,9 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       per_device_collector_[device_ordinal].GetDeviceCapabilities(
           device_ordinal, &device_plane);
       num_events += per_device_collector_[device_ordinal].Flush(
-          start_gpu_ns_, end_gpu_ns, &device_plane, &host_plane);
+          start_gpu_ns_, end_gpu_ns, &device_plane, &host_plane, &nvtx_plane);
       NormalizeTimeStamps(&device_plane, start_walltime_ns_);
     }
-    AdjustHostPlaneNvtxLines(
-        FindMutablePlaneWithName(space, kCuptiDriverApiPlaneName));
     NormalizeTimeStamps(&host_plane, start_walltime_ns_);
     return num_events > 0;
   }

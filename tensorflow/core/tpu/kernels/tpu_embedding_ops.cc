@@ -484,7 +484,7 @@ class SplitDedupDataOp : public XlaOpKernel {
     absl::StatusOr<xla::Shape> tuple_shape = builder->GetShape(input_tuple);
     OP_REQUIRES_OK(ctx, tuple_shape.status());
 
-    const int num_tuple_elements = tuple_shape->tuple_shapes_size();
+    const int num_tuple_elements = tuple_shape->tuple_shapes().size();
     OP_REQUIRES(
         ctx,
         tuple_mask_tensor_.tensor_shape().dim(0).size() == num_tuple_elements,

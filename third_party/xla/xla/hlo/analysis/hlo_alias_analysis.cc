@@ -421,7 +421,7 @@ absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
   });
 
   XLA_VLOG_LINES(2, alias_analysis->ToString());
-  return std::move(alias_analysis);
+  return alias_analysis;
 }
 
 }  // namespace xla

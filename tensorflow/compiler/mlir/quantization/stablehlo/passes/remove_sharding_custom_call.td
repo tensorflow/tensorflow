@@ -15,7 +15,7 @@ limitations under the License.
 include "stablehlo/dialect/StablehloOps.td"
 
 class IsStringAttrOf<string value> : Constraint<
-  CPred<"::llvm::isa_and_nonnull<StringAttr>($_self) && $_self.cast<StringAttr>().getValue() == \"" # value # "\"">,
+  CPred<"::llvm::isa_and_nonnull<StringAttr>($_self) && llvm::cast<StringAttr>($_self).getValue() == \"" # value # "\"">,
   "Is a string attribute whose value is \"" # value # "\""
 >;
 

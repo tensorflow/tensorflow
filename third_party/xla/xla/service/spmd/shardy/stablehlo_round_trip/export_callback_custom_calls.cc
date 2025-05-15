@@ -48,12 +48,12 @@ using ::mlir::stablehlo::CustomCallOp;
 //
 // This only happens if the op has a single result and the result type is not
 // a tuple.
-void replaceCallbackWithTupleVersion(CustomCallOp customCall,
-                                     mlir::IRRewriter& rewriter) {
+void replaceCallbackWithTupleVersion(CustomCallOp customCall) {
   if (customCall.getNumResults() != 1 ||
       mlir::isa<mlir::TupleType>(customCall->getResultTypes().front())) {
     return;
   }
+  mlir::IRRewriter rewriter(customCall);
   CustomCallOp tupleCustomCall = cloneCustomCallWithNewResultTypes(
       customCall,
       mlir::TupleType::get(customCall->getContext(),
@@ -76,19 +76,10 @@ class StablehloRoundTripExportCallbackCustomCallsPass
 
   void runOnOperation() final {
     getOperation().walk([&](CustomCallOp customCall) {
-      if (!isPythonCallbackCustomCall(customCall)) {
+      if (!isPythonCallbackCustomCall(customCall) || customCall->use_empty()) {
         return;
       }
-      mlir::IRRewriter rewriter(customCall);
-      if (!customCall->use_empty()) {
-        replaceCallbackWithTupleVersion(customCall, rewriter);
-        return;
-      }
-      CustomCallOp newCustomCall = cloneCustomCallWithNewResultTypes(
-          customCall, mlir::TypeRange(), rewriter);
-      newCustomCall.setResultLayoutsAttr(rewriter.getArrayAttr({}));
-      rewriter.eraseOp(customCall);
-      return;
+      replaceCallbackWithTupleVersion(customCall);
     });
   }
 

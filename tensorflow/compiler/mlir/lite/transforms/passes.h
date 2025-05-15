@@ -22,9 +22,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/cleanup_optimization_barrier_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/push_transpose_through_ewise_pass.h"
@@ -34,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/split_merged_operands_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/unfold_large_splat_constants_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 
 namespace mlir {
 namespace quant {
@@ -110,7 +112,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass();
 // Use quant_specs.ops_blocklist and quant_specs.nodes_blocklist if possible
 // as they are now structure variables of QuantizationSpecs.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
-    const quant::QuantizationSpecs& quant_specs,
+    const QuantizationSpecs& quant_specs,
     const absl::flat_hash_set<std::string>& ops_blocklist = {},
     const absl::flat_hash_set<std::string>& nodes_blocklist = {});
 
@@ -128,15 +130,14 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
-    const quant::QuantizationSpecs& quant_specs);
+    const QuantizationSpecs& quant_specs);
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass();
 
 // Creates an instance of the TensorFlow Lite dialect
 // PrepareDynamicRangeQuantize pass.
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreatePrepareDynamicRangeQuantizePass(
-    const quant::QuantizationSpecs& quant_specs);
+CreatePrepareDynamicRangeQuantizePass(const QuantizationSpecs& quant_specs);
 
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePrepareDynamicRangeQuantizePass();
@@ -144,7 +145,7 @@ CreatePrepareDynamicRangeQuantizePass();
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass(
-    bool emit_quant_adaptor_ops, const quant::CustomOpMap& custom_op_map = {});
+    bool emit_quant_adaptor_ops, const CustomOpMap& custom_op_map = {});
 
 // Creates an instance of the TensorFlow Lite dialect QuantizeVariables pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareQuantizeVariablesPass();
@@ -224,7 +225,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass(
 // Creates raise custom ops pass, which legalize custom ops to TFL::CustomOp
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerCustomOpsPass();
 
-// Inserts an TFL::CallOnce op when the tf_saved_model's session initialzer is
+// Inserts a TFL::CallOnce op when the tf_saved_model's session initialzer is
 // given.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateInsertCallOnceOpFromSessionInitializerPass();
@@ -289,6 +290,11 @@ inline std::unique_ptr<mlir::Pass> CreateCanonicalizeBoundaryValuePass() {
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePartitionedTopologicalSortPass();
 
+// Create a pass that cleans up optimization barriers.
+inline std::unique_ptr<mlir::Pass> CreateCleanupOptimizationBarrierPass() {
+  return Create<CleanupOptimizationBarrierPass>();
+}
+
 #define GEN_PASS_DECL_DEFAULTQUANTPARAMSPASS
 #define GEN_PASS_DECL_LEGALIZETFPASS
 #define GEN_PASS_DECL_LOWERSTATICTENSORLISTPASS
@@ -340,13 +346,14 @@ inline void registerTensorFlowLitePasses() {
   Register<OptimizePass, OptimizePassOptions>();
   Register<OptimizeBatchMatmulPass>();
   Register<UnfreezeMutableGlobalTensorsPass>();
-  Register<OptimizeBroadcastLikePass>();
+  Register<OptimizeBroadcastLikePass, OptimizeBroadcastLikePassOptions>();
   Register<PushTransposeThroughEwisePass>();
   Register<CanonicalizeBoundaryValuePass>();
 
   // Other TFLite Passes
   Register<UnfoldLargeSplatConstantPass>();
   Register<SplitMergedOperandsPass>();
+  Register<CleanupOptimizationBarrierPass>();
 }
 
 }  // namespace TFL

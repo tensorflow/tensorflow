@@ -141,16 +141,10 @@ td_library(
 gentbl_cc_library(
     name = "tfrt_fallback_opdefs_inc_gen",
     compatible_with = get_compatible_with_portable(),  # copybara: comment
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "tfrt_fallback.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "tfrt_fallback.cpp.inc",
-        ),
-    ],
+    tbl_outs = {
+        "tfrt_fallback.h.inc": ["-gen-op-decls"],
+        "tfrt_fallback.cpp.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tfrt_fallback.td",
     deps = [":tfrt_fallback_td_files"],
@@ -159,16 +153,10 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tfrt_fallback_async_opdefs_inc_gen",
     compatible_with = get_compatible_with_portable(),  # copybara: comment
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "tfrt_fallback_async.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "tfrt_fallback_async.cpp.inc",
-        ),
-    ],
+    tbl_outs = {
+        "tfrt_fallback_async.h.inc": ["-gen-op-decls"],
+        "tfrt_fallback_async.cpp.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tfrt_fallback_async.td",
     deps = [":tfrt_fallback_td_files"],
@@ -176,23 +164,14 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tfrt_fallback_sync_opdefs_inc_gen",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "tfrt_fallback_sync.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "tfrt_fallback_sync.cpp.inc",
-        ),
-        (
-            [
-                "-gen-dialect-decls",
-                "-dialect=tfrt_fallback_sync",
-            ],
-            "tfrt_fallback_sync_dialect.h.inc",
-        ),
-    ],
+    tbl_outs = {
+        "tfrt_fallback_sync.h.inc": ["-gen-op-decls"],
+        "tfrt_fallback_sync.cpp.inc": ["-gen-op-defs"],
+        "tfrt_fallback_sync_dialect.h.inc": [
+            "-gen-dialect-decls",
+            "-dialect=tfrt_fallback_sync",
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tfrt_fallback_sync.td",
     test = True,
@@ -219,23 +198,14 @@ td_library(
 
 gentbl_cc_library(
     name = "tfrt_gpu_opdefs_inc_gen",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "gpu_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "gpu_ops.cpp.inc",
-        ),
-        (
-            [
-                "-gen-dialect-decls",
-                "-dialect=gpurt",
-            ],
-            "gpurt_dialect.h.inc",
-        ),
-    ],
+    tbl_outs = {
+        "gpu_ops.h.inc": ["-gen-op-decls"],
+        "gpu_ops.cpp.inc": ["-gen-op-defs"],
+        "gpurt_dialect.h.inc": [
+            "-gen-dialect-decls",
+            "-dialect=gpurt",
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "gpu_ops.td",
     test = True,

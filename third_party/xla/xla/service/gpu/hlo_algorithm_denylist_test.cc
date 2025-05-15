@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "xla/debug_options_flags.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tests/test_utils.h"
 #include "tsl/platform/env.h"
@@ -46,6 +47,7 @@ class DenylistTest : public testing::Test {
                               "data", "hlo_algorithm_denylist.pbtxt"))
             .data(),
         /*overwrite=*/1);
+    ParseDebugOptionFlagsFromEnv(false);
     config_ =
         ParseTextProto<GpuBackendConfig>(
             "operation_queue_id: 0 wait_on_operation_queues: [] "

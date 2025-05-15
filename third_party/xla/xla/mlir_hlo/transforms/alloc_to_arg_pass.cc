@@ -67,7 +67,11 @@ void AllocToArgPass::runOnOperation() {
     if (auto allocOp = llvm::dyn_cast_or_null<memref::AllocOp>(resultDef)) {
       resultsToErase.set(i);
       auto attrs = funcOp.getResultAttrDict(i);
-      funcOp.insertArgument(funcOp.getNumArguments(), resultTy, attrs, loc);
+
+      if (failed(funcOp.insertArgument(funcOp.getNumArguments(), resultTy,
+                                       attrs, loc))) {
+        return signalPassFailure();
+      }
       rewriter.replaceOp(allocOp, funcOp.getArguments().back());
       continue;
     }
@@ -79,7 +83,10 @@ void AllocToArgPass::runOnOperation() {
       if (auto allocOp = llvm::dyn_cast_or_null<memref::AllocOp>(expandDef)) {
         resultsToErase.set(i);
         auto attrs = funcOp.getResultAttrDict(i);
-        funcOp.insertArgument(funcOp.getNumArguments(), resultTy, attrs, loc);
+        if (failed(funcOp.insertArgument(funcOp.getNumArguments(), resultTy,
+                                         attrs, loc))) {
+          return signalPassFailure();
+        }
 
         // Collapse buffer argument to replace possible uses of the unexpanded
         // buffer.
@@ -100,7 +107,9 @@ void AllocToArgPass::runOnOperation() {
     return signalPassFailure();
   }
 
-  funcOp.eraseResults(resultsToErase);
+  if (failed(funcOp.eraseResults(resultsToErase))) {
+    return signalPassFailure();
+  }
   returnOp->eraseOperands(resultsToErase);
 }
 

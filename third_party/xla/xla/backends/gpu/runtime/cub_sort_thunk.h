@@ -23,9 +23,12 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -46,7 +49,8 @@ class CubSortRunnerInterface {
                                                  int64_t batch_size) = 0;
 
   static absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> Create(
-      PrimitiveType type, std::optional<PrimitiveType> value_type);
+      PrimitiveType type, std::optional<PrimitiveType> value_type,
+      absl::string_view platform_name);
 };
 
 class CubSortThunk : public Thunk {
@@ -56,7 +60,7 @@ class CubSortThunk : public Thunk {
                absl::InlinedVector<BufferAllocation::Slice, 2> operands,
                absl::InlinedVector<BufferAllocation::Slice, 2> results,
                BufferAllocation::Slice scratch, bool descending,
-               int64_t batch_size);
+               int64_t batch_size, absl::string_view platform_name);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return runner_->Run(params, this);

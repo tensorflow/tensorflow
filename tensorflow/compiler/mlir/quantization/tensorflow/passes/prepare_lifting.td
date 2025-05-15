@@ -83,21 +83,21 @@ class HasEqualElementSize<list<int> shape_1, list<int> shape_2> : Constraint<
   "Checks if the given dimensions contain the same number of elements.">;
 
 def ReshapableTo1DTensor : Constraint<
-  CPred<"quant::ReshapableTo1DTensor($0.getType().cast<ShapedType>())">,
+  CPred<"quant::ReshapableTo1DTensor(llvm::cast<ShapedType>($0.getType()))">,
   "Checks if the value dims are all ones except the right most dim">;
 
 def ReshapeTo1DTensor : NativeCodeCall<
   "quant::ReshapeTo1DTensor($_builder, $_loc, $0)">;
 
 def HasEqualShape : Constraint<CPred<
-  "$0.getType().cast<ShapedType>().hasRank() && "
-  "$1.getType().cast<ShapedType>().hasRank() && "
-  "$0.getType().cast<ShapedType>().getShape() == $1.getType().cast<ShapedType>().getShape()">,
+  "llvm::cast<ShapedType>($0.getType()).hasRank() && "
+  "llvm::cast<ShapedType>($1.getType()).hasRank() && "
+  "llvm::cast<ShapedType>($0.getType()).getShape() == llvm::cast<ShapedType>($1.getType()).getShape()">,
   "Checks if the shapes of tensors are same.">;
 
 // Make the 1D value $0 broadcastable with the shape of $1.
 def MakeOneDimValueBroadcastable : NativeCodeCall<
-  "MakeOneDimValueBroadcastable($_builder, $_loc, $0, $1.getType().cast<ShapedType>())">;
+  "MakeOneDimValueBroadcastable($_builder, $_loc, $0, llvm::cast<ShapedType>($1.getType()))">;
 
 // Match convolution op with "NHWC" data format or matmul op.
 def SupportedAffineOpMatcher : NativeCodeCall<

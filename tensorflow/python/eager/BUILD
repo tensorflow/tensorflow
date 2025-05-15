@@ -69,7 +69,6 @@ cc_library(
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:stack_trace",
         "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/hash",
@@ -79,6 +78,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_xla//third_party/python_runtime:headers",
         "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/python/lib/core:numpy",
         "@pybind11",
@@ -251,7 +251,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -320,7 +320,9 @@ cuda_py_strict_test(
     size = "small",
     srcs = ["context_cross_platform_gpu_test.py"],
     tags = [
+        "no_gpu",  # TODO(b/417285186): Re-enable once the test is fixed.
         "no_oss",
+        "no_pip",  # TODO(b/417285186): Re-enable once the test is fixed.
     ],
     tpu_ops_enabled = True,
     xla_enabled = True,

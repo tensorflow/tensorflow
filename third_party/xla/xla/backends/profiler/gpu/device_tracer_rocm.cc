@@ -36,7 +36,6 @@ limitations under the License.
 #include "tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/macros.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
@@ -45,8 +44,6 @@ namespace xla {
 namespace profiler {
 
 using tensorflow::ProfileOptions;
-using tsl::mutex;
-using tsl::mutex_lock;
 using tsl::profiler::Annotation;
 using tsl::profiler::AnnotationStack;
 using tsl::profiler::FindOrAddMutablePlaneWithName;

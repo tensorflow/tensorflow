@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/synchronization/mutex.h"
+
 namespace tsl {
 
 namespace {
 EnvTime* get_default_env_time() {
-  static EnvTime* default_env_time = new EnvTime;
+  static EnvTime* const default_env_time = new EnvTime;
   return default_env_time;
 }
 }  // namespace
@@ -33,7 +35,7 @@ GcsThrottle::GcsThrottle(EnvTime* env_time)
       env_time_(env_time ? env_time : get_default_env_time()) {}
 
 bool GcsThrottle::AdmitRequest() {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   UpdateState();
   if (available_tokens_ < config_.tokens_per_request) {
     return false || !config_.enabled;
@@ -43,13 +45,13 @@ bool GcsThrottle::AdmitRequest() {
 }
 
 void GcsThrottle::RecordResponse(size_t num_bytes) {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   UpdateState();
   available_tokens_ -= request_bytes_to_tokens(num_bytes);
 }
 
 void GcsThrottle::SetConfig(GcsThrottleConfig config) {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   config_ = config;
   available_tokens_ = config.initial_tokens;
   last_updated_secs_ = env_time_->GetOverridableNowSeconds();

@@ -82,10 +82,14 @@ TEST(TimespanTests, InstantSpanNonInstantSpanOverlappedDuration) {
 
 TEST(TimespanTests, Operators) {
   EXPECT_LT(Timespan(11, 0), Timespan(12, 0));
-  EXPECT_LT(Timespan(12, 1), Timespan(12, 0));
 
+  // Instants nest within larger timespans
+  EXPECT_LT(Timespan(12, 1), Timespan(12, 0));
   EXPECT_FALSE(Timespan(12, 0) < Timespan(12, 1));
+
   EXPECT_FALSE(Timespan(12, 0) < Timespan(11, 0));
+
+  // Instants with same beginning are considered equivalent
   EXPECT_FALSE(Timespan(12, 0) < Timespan(12, 0));
 
   EXPECT_FALSE(Timespan(12, 0) == Timespan(12, 1));

@@ -126,10 +126,9 @@ filegroup(
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
     }) + if_cuda([
-        "@cub_archive//:LICENSE.TXT",
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
-        "//third_party/mkl_dnn:LICENSE",
+        "@local_xla//third_party/mkl_dnn:LICENSE",
     ]) + if_enable_mkl(["@local_xla//xla/tsl/mkl:LICENSE"]) + if_not_system_lib(
         "absl_py",
         [
@@ -371,7 +370,9 @@ py_test(
         "cpu",
         "manual",
     ],
-    deps = if_wheel_dependency(tf_wheel_dep()),
+    deps = if_wheel_dependency(tf_wheel_dep()) + [
+        "@pypi_absl_py//:pkg",
+    ],
 )
 
 py_test(
@@ -389,7 +390,9 @@ py_test(
         "gpu",
         "manual",
     ],
-    deps = if_wheel_dependency(tf_wheel_dep()),
+    deps = if_wheel_dependency(tf_wheel_dep()) + [
+        "@pypi_absl_py//:pkg",
+    ],
 )
 
 py_test(

@@ -267,10 +267,10 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
   v_ptr = v_ptr + sizeof(float) * op_data->layer_index * elements_in_one_block;
 
   // 0. Ensure output ptr is pointing to the cache data
-  TF_LITE_ENSURE_EQ(context, k_ptr, op_data->key_cache_ptr);
-  TF_LITE_ENSURE_EQ(context, v_ptr, op_data->value_cache_ptr);
-  TF_LITE_ENSURE_EQ(context, k_ptr, kfull->data.data);
-  TF_LITE_ENSURE_EQ(context, v_ptr, vfull->data.data);
+  TF_LITE_ENSURE(context, k_ptr == op_data->key_cache_ptr);
+  TF_LITE_ENSURE(context, v_ptr == op_data->value_cache_ptr);
+  TF_LITE_ENSURE(context, k_ptr == kfull->data.data);
+  TF_LITE_ENSURE(context, v_ptr == vfull->data.data);
 
   // 1. Determine which slots the inputs take up, and which slots are in the
   //    existing span of the cache.

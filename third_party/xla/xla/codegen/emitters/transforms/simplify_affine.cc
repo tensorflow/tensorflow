@@ -311,7 +311,7 @@ struct SimplifyAffinePass
     patterns.add<RewriteAffineApply, RewriteApplyIndexingOp>(ctx);
     mlir::GreedyRewriteConfig config;
     // There's no point simplifying more than once.
-    config.strictMode = mlir::GreedyRewriteStrictness::ExistingOps;
+    config.setStrictness(mlir::GreedyRewriteStrictness::ExistingOps);
     if (mlir::failed(mlir::applyPatternsGreedily(
             getOperation(), std::move(patterns), config))) {
       signalPassFailure();

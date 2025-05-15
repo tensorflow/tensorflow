@@ -163,6 +163,9 @@ class CollectiveThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
+      const ExecuteParams& params) const override;
+
   std::shared_ptr<AsyncEvents> async_events() const { return async_events_; }
   void set_async_events(std::shared_ptr<AsyncEvents> async_events) {
     async_events_ = async_events;

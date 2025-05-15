@@ -1,5 +1,5 @@
-// RUN: tf-opt %s --tosa-tflite-verify-fully-converted --split-input-file -verify-diagnostics
-// REQUIRES: tf_tosa
+// RUN: tf-tosa-opt %s --tosa-tflite-verify-fully-converted --split-input-file -verify-diagnostics
+
 
 // CHECK-LABEL: func.func @main
 func.func @main(%arg0: tensor<2xf32>) -> (tensor<2xf32>) {

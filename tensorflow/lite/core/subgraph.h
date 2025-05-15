@@ -213,6 +213,8 @@ class Subgraph {
   // TODO(ycling): Move this function to an external context interface.
   resource::ResourceMap& resources() { return *resources_; }
 
+  resource::ResourceMap* resources_ptr() { return resources_; }
+
   // WARNING: Experimental interface, subject to change.
   // TODO(b/149099381): Move this function to an external context interface.
   resource::ResourceIDMap& resource_ids() { return *resource_ids_; }

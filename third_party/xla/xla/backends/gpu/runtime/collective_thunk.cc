@@ -321,7 +321,7 @@ absl::Status RegisterBufferOnce(GpuCollectives* collectives,
   struct RegisteredBuffers {
     absl::Mutex mu;
     // Device ordinal, communicator, and base pointer address.
-    absl::flat_hash_set<std::tuple<int, Communicator*, void*>> records
+    absl::flat_hash_set<std::tuple<int, uint64_t, Communicator*, void*>> records
         ABSL_GUARDED_BY(mu);
     // Buffers could be deregistered with ncclCommDeregister.
     std::vector<std::unique_ptr<Communicator::RegisteredBufferHandle>> handles
@@ -337,13 +337,20 @@ absl::Status RegisterBufferOnce(GpuCollectives* collectives,
 
   absl::MutexLock lock(&all_registered.mu);
   if (!all_registered.records.contains(
-          {executor->device_ordinal(), comm, base_buffer.opaque()})) {
+          {executor->device_ordinal(), buffer.size(), comm, buffer.opaque()})) {
     // ncclCommRegister will internally get and use the base address/size of the
     // address we provide.
+    VLOG(5) << "Registering " << buffer.opaque()
+            << " with size: " << buffer.size()
+            << " and base pointer: " << base_buffer.opaque();
     TF_ASSIGN_OR_RETURN(auto handle, comm->RegisterBuffer(buffer));
     all_registered.handles.push_back(std::move(handle));
     all_registered.records.insert(
-        {executor->device_ordinal(), comm, base_buffer.opaque()});
+        {executor->device_ordinal(), buffer.size(), comm, buffer.opaque()});
+  } else {
+    VLOG(5) << "Buffer: " << buffer.opaque() << " with size: " << buffer.size()
+            << " and base pointer: " << base_buffer.opaque()
+            << " is already registered.";
   }
   return absl::OkStatus();
 }
@@ -480,13 +487,36 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
         "first call to collective operation %d; run_id=%d", config().op_id,
         params.collective_params->run_id.ToInt());
 
-    Rendezvous(first_call_rendezvous_flag_, rendezvous_name, rendezvous_key,
-               num_local_participants,
-               /*warn_stuck_timeout=*/absl::Seconds(20),
-               /*terminate_timeout=*/absl::Seconds(40));
+    const xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+
+    TF_RETURN_IF_ERROR(Rendezvous(
+        first_call_rendezvous_flag_, rendezvous_name, rendezvous_key,
+        num_local_participants,
+        /*warn_stuck_timeout=*/
+        absl::Seconds(
+            debug_options
+                .xla_gpu_first_collective_call_warn_stuck_timeout_seconds()),
+        /*terminate_timeout=*/
+        absl::Seconds(
+            debug_options
+                .xla_gpu_first_collective_call_terminate_timeout_seconds())
+
+            ));
   }
 
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::vector<Communicator*>> CollectiveThunk::GetCommunicators(
+    const ExecuteParams& params) const {
+  AsyncStreamKind stream_kind = GetAsyncStreamKind();
+  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
+  TF_ASSIGN_OR_RETURN(
+      CommunicatorHandle comm_handle,
+      GetComm(collectives, *params.collective_params,
+              *params.collective_cliques, config().replica_groups,
+              config().group_mode, stream_kind));
+  return std::vector<Communicator*>{comm_handle.comm};
 }
 
 std::string CollectiveThunk::GetDeviceString(

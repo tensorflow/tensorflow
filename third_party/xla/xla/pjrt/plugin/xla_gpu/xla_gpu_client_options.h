@@ -46,6 +46,10 @@ struct GpuClientOptions {
   bool enable_mock_nccl = false;
 
   std::optional<std::string> mock_gpu_topology;
+
+  std::optional<int> slice_index;
+
+  bool use_tfrt_gpu_client = false;
 };
 
 }  //  namespace xla

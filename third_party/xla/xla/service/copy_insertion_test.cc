@@ -33,6 +33,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
@@ -41,9 +44,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -91,7 +91,7 @@ int64_t CountControlEdges(const HloModule& module) {
   return count;
 }
 
-class CopyInsertionTest : public HloTestBase {
+class CopyInsertionTest : public HloHardwareIndependentTestBase {
  protected:
   void InsertCopies(HloModule* module) {
     CopyInsertion copy_insertion;
@@ -790,7 +790,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
           while_hlo->mutable_operand(0)));
   HloInstruction* outer_param = outer_while_body->parameter_instruction(0);
   std::vector<HloInstruction*> materialized_gtes;
-  for (int i = 0; i < outer_param->shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < outer_param->shape().tuple_shapes().size(); ++i) {
     materialized_gtes.push_back(
         outer_while_body->AddInstruction(HloInstruction::CreateGetTupleElement(
             outer_param->shape().tuple_shapes(i), outer_param, i)));
@@ -916,7 +916,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]{0}, s32[], f32[8]{0}, s
           while_hlo->mutable_operand(0)));
   HloInstruction* outer_param = outer_while_body->parameter_instruction(0);
   std::vector<HloInstruction*> materialized_gtes;
-  for (int i = 0; i < outer_param->shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < outer_param->shape().tuple_shapes().size(); ++i) {
     materialized_gtes.push_back(
         outer_while_body->AddInstruction(HloInstruction::CreateGetTupleElement(
             outer_param->shape().tuple_shapes(i), outer_param, i)));

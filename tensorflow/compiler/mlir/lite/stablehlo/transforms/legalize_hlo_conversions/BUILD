@@ -341,8 +341,8 @@ cc_library(
     srcs = ["fft.cc"],
     hdrs = ["fft.h"],
     deps = [
-        "//tensorflow/compiler/mlir/lite:const_tensor_utils",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",

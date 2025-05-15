@@ -654,7 +654,7 @@ TEST(XlaBuilderTest, BroadcastInDimWithNegativeSize) {
                  /*broadcast_dimensions=*/{0, 1, 2});
   auto statusor = BuildHloModule(b);
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().message(), HasSubstr("invalid shape"));
+  EXPECT_THAT(statusor.status().message(), HasSubstr("Invalid dimension size"));
 }
 
 TEST(XlaBuilderTest, OperandFromWrongBuilder) {
@@ -2185,9 +2185,9 @@ TEST(XlaBuilderTest, TopKDimensions) {
   const HloInstruction* root = GetRoot(*module);
   EXPECT_TRUE(root->opcode() == HloOpcode::kTopK);
   EXPECT_TRUE(root->shape().IsTuple());
-  EXPECT_EQ(root->shape().tuple_shapes_size(), 2);
-  EXPECT_EQ(root->shape().tuple_shapes(0).dimensions_size(), 2);
-  EXPECT_EQ(root->shape().tuple_shapes(1).dimensions_size(), 2);
+  EXPECT_EQ(root->shape().tuple_shapes().size(), 2);
+  EXPECT_EQ(root->shape().tuple_shapes(0).dimensions().size(), 2);
+  EXPECT_EQ(root->shape().tuple_shapes(1).dimensions().size(), 2);
   EXPECT_EQ(root->shape().tuple_shapes(0).dimensions(0), 6);
   EXPECT_EQ(root->shape().tuple_shapes(0).dimensions(1), k);
   EXPECT_EQ(root->shape().tuple_shapes(1).dimensions(0), 6);

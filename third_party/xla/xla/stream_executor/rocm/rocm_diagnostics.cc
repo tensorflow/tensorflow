@@ -93,12 +93,6 @@ absl::StatusOr<DriverVersion> StringToDriverVersion(const std::string& value) {
   return result;
 }
 
-}  // namespace rocm
-}  // namespace stream_executor
-
-namespace stream_executor {
-namespace gpu {
-
 // -- class Diagnostician
 
 std::string Diagnostician::GetDevNodePath(int dev_node_ordinal) {
@@ -233,5 +227,5 @@ absl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   return status;
 }
 
-}  // namespace gpu
+}  // namespace rocm
 }  // namespace stream_executor

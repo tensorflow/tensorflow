@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
+#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
@@ -30,7 +31,8 @@ limitations under the License.
 
 namespace xla::cpu {
 
-static void BM_Optimizer0(benchmark::State& state) {
+static void BM_Optimizer0(benchmark::State& state,
+                          HloBenchmarkOptions options) {
   int64_t d0 = state.range(0);
 
   absl::string_view hlo = R"(
@@ -107,10 +109,11 @@ static void BM_Optimizer0(benchmark::State& state) {
   auto p1 = *LiteralUtil::CreateRandomLiteral<S32>(scalar, &engine, 1, 2);
 
   std::vector<const Literal*> args = {&p0, &p0, &p0, &p1};
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
 }
 
-BENCHMARK(BM_Optimizer0)
+XLA_CPU_BENCHMARK(BM_Optimizer0)
     ->MeasureProcessCPUTime()
     ->Arg(128)
     ->Arg(256)

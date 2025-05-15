@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/mlir/framework/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
   mlir::registerAllPasses();

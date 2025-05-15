@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "ortools/linear_solver/linear_solver.h"
@@ -38,15 +40,23 @@ struct AutoShardingSolverOutput {
   bool operator==(const AutoShardingSolverOutput& other) const;
 };
 
-// Scales down values to reduce the range of costs & coefficients in the solver.
-AutoShardingSolverRequest ScaleRequest(
-    const AutoShardingSolverRequest& request);
-
 // Determines the minimum memory budget required to avoid memory violations.
 double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request);
 
+struct AutoShardingSolverParams {
+  std::vector<std::vector<double>> departure_costs;
+  bool deterministic_mode = false;
+  std::optional<double> max_departures;
+  bool minimize_departures = false;
+  std::optional<double> overbudget_coeff;
+  absl::Duration solver_timeout = absl::InfiniteDuration();
+};
+
+AutoShardingSolverParams GetParams(const AutoShardingSolverRequest& request);
+
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
-    const AutoShardingSolverRequest& request);
+    const AutoShardingSolverRequest& request,
+    const AutoShardingSolverParams& params);
 
 // TODO(fahrbach): Create AutoShardingHeuristicOptions proto with a oneof field.
 // Runs a heuristic specified by one of the following values of `algorithm`:
@@ -71,7 +81,6 @@ struct CostComponents {
   double computation_cost = 0.0;
   double resharding_cost = 0.0;
   double overbudget_cost = 0.0;
-  double makespan_cost = 0.0;
   double max_memory = 0.0;
 
   double cost() const;
@@ -92,16 +101,14 @@ struct AutoShardingEvaluation {
   // How many instructions departed from the "default" sharding strategy.
   double total_departures = 0.0;
 
-  // The (raw) total makespan, i.e., not scaled by the makespan coefficient.
-  double total_makespan = 0.0;
-
   bool operator==(const AutoShardingEvaluation& other) const;
 };
 
 // Evaluates the given solver result w.r.t. the input request, computing various
 // solution quality metrics and validating the consistency of hard constraints.
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
-                                const AutoShardingSolverOutput& result);
+                                const AutoShardingSolverOutput& result,
+                                const AutoShardingSolverParams& params);
 
 // Computes the objective value of the sharding strategy. If the objective value
 // is infinite or the sharding is infeasible (e.g., violates the peak-memory
@@ -111,16 +118,6 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
 double ComputeShardingStrategyCost(
     const AutoShardingSolverRequest& request,
     const std::vector<NodeStrategyIdx>& node_strategies);
-
-// Creates and returns a variable for makespan.
-operations_research::MPVariable* CreateMakespanVar(
-    const AutoShardingSolverRequest& request,
-    const std::vector<std::vector<operations_research::MPVariable*>>& e,
-    operations_research::MPSolver& solver);
-
-double EvaluateMakespan(const AutoShardingSolverRequest& request,
-                        const AutoShardingSolverOutput& result,
-                        AutoShardingEvaluation& evaluation);
 
 // Determines if strategy 'first' is dominated by strategy 'second' (i.e., its
 // costs are all equal or worse, and it has identical alias mappings).

@@ -45,18 +45,24 @@ class NcclCollectives : public GpuCollectives {
 
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final;
 
-  absl::Status GroupStart() final;
-  absl::Status GroupEnd() final;
-
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
   CreateCommunicators(const CliqueKey& clique_key,
                       const std::optional<CliqueIds>& clique_ids,
                       absl::Span<const DeviceRank> ranks,
                       const Collectives::Config& config) final;
 
+  absl::StatusOr<std::unique_ptr<Communicator>> CreateCommunicator() final {
+    return absl::UnimplementedError("Not implemented.");
+  }
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
       absl::Span<const Communicator* const> comms, int32_t color,
       absl::Span<const RankId> keys, const Collectives::Config& config) final;
+
+  absl::StatusOr<void*> Allocate(uint64_t bytes) final;
+
+  absl::Status Deallocate(void* location) final;
+
+  absl::Status InitializeTopology(Topology topology) final;
 };
 
 }  // namespace xla::gpu

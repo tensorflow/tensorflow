@@ -300,9 +300,11 @@ class HloInstruction {
   void DetachFromOperandsAndUsers();
 
   // Adds a derived instruction to the parent computation of this instruction.
-  // Also update setup the new instruction as a derived instruction.
+  // Updates setup the new instruction as a derived instruction, and sets the
+  // name of the new instruction (if `new_name` is not empty).
   HloInstruction* AddInstruction(
-      std::unique_ptr<HloInstruction> derived_instruction);
+      std::unique_ptr<HloInstruction> derived_instruction,
+      absl::string_view new_name = "");
 
   // Creates an instruction from the given proto. Arguments:
   //
@@ -996,7 +998,7 @@ class HloInstruction {
   // Creates a dynamic reshape instruction. Similar to reshape but dynamic
   // dimensions sizes are provided as additional variadic arguments.
   //
-  // Precondition: dim_sizes.size() == shape.dimensions_size()
+  // Precondition: dim_sizes.size() == shape.dimensions().size()
   static std::unique_ptr<HloInstruction> CreateDynamicReshape(
       const Shape& shape, HloInstruction* data_operand,
       absl::Span<HloInstruction* const> dim_sizes);
@@ -1265,6 +1267,9 @@ class HloInstruction {
 
   // Returns if instruction has any control dependencies.
   bool HasControlDependencies() const;
+
+  // Returns if instruction has successor control dependencies.
+  bool HasSuccessorControlDependencies() const;
 
   // Copies the control predecessors and successors on this HLO instruction to
   // `inst`.  Does not do a deep copy so this makes sense only if `inst` and
@@ -1717,9 +1722,8 @@ class HloInstruction {
   }
 
   // Returns the computations this instruction directly calls (if any).
-  const PtrVec<HloComputation*>& called_computations() const {
-    return rare()->called_computations;
-  }
+  const PtrVec<HloComputation*>& called_computations() const;
+
   bool has_called_computations() const {
     return has_rare() && !called_computations().empty();
   }
@@ -1867,8 +1871,7 @@ class HloInstruction {
   }
 
   // Adds or overrides a single attribute in the HloInstruction.
-  void set_frontend_attribute(const std::string& key,
-                              const std::string& value) {
+  void set_frontend_attribute(absl::string_view key, absl::string_view value) {
     (*mutable_rare()->frontend_attributes.mutable_map())[key] = value;
   }
 
@@ -1881,7 +1884,7 @@ class HloInstruction {
   }
 
   std::optional<std::string> get_frontend_attribute(
-      const std::string& key) const {
+      absl::string_view key) const {
     auto it = rare()->frontend_attributes.map().find(key);
     if (it == rare()->frontend_attributes.map().end()) {
       return std::nullopt;
@@ -1964,7 +1967,7 @@ class HloInstruction {
   absl::StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
     TF_RETURN_IF_ERROR(backend_config_.GetProto(&proto));
-    return std::move(proto);
+    return proto;
   }
 
   absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
@@ -2024,10 +2027,7 @@ class HloInstruction {
   }
   const OpMetadata& metadata() const { return *metadata_; }
 
-  // Set/get the computation containing this instruction. set_parent should only
-  // be called by HloComputation methods which add/remove instructions to
-  // computations.
-  void set_parent(HloComputation* computation) { parent_ = computation; }
+  // Get the computation containing this instruction.
   const HloComputation* parent() const { return parent_; }
   HloComputation* parent() { return parent_; }
 
@@ -2429,6 +2429,9 @@ class HloInstruction {
       bool layout_sensitive, bool sharding_sensitive,
       bool ignore_channel_id_values,
       bool ignore_commutative_operand_order) const;
+
+  // Set the computation containing this instruction.
+  void set_parent(HloComputation* computation) { parent_ = computation; }
 
   // Implementation for non-common logic of PrintExtraAttributes.
   virtual void PrintExtraAttributesImpl(AttributePrinter& printer,

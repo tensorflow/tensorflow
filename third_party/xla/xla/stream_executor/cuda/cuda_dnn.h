@@ -24,22 +24,22 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
-
-#if CUDNN_VERSION >= 8100
-#include "third_party/cudnn_frontend/include/cudnn_frontend.h"
-#endif  // CUDNN_VERSION >= 8100
 
 namespace stream_executor {
 namespace gpu {
@@ -54,7 +54,6 @@ using BatchDescriptorSlice = absl::Span<const dnn::BatchDescriptor>;
 template <typename T>
 using DeviceMemorySlice = absl::Span<const DeviceMemory<T>* const>;
 
-#if CUDNN_VERSION >= 8100
 class CudnnGraph : public dnn::DnnGraph {
  public:
   explicit CudnnGraph(cudnn_frontend::graph::Graph&& graph)
@@ -77,14 +76,22 @@ class CudnnGraph : public dnn::DnnGraph {
     current_dropout_rng_offset_[local_device_ordinal] +=
         dropout_rng_offset_increment_;
   }
+  absl::StatusOr<bool> SupportsExplicitCommandBufferConstruction()
+      const override;
+  absl::Status PopulateOrUpdateRawCommandBuffer(
+      Stream&, absl::Span<DeviceMemoryBase> operands, RawCommandBufferHandle,
+      bool do_update) override;
 
  private:
   cudnn_frontend::graph::Graph graph_;
   int64_t dropout_rng_seed_;
   mutable std::vector<int64_t> current_dropout_rng_offset_;
   int64_t dropout_rng_offset_increment_ = 0;
+  using VariantPack = std::unordered_map<int64_t, void*>;
+  VariantPack PackOperands(
+      absl::Span<DeviceMemoryBase> operands, DeviceMemoryBase& workspace,
+      std::optional<int64_t> local_device_ordinal = std::nullopt) const;
 };
-#endif  // CUDNN_VERSION >= 8100
 
 // cudnn-library based DNN support. For details on overridden interface
 // functions, see dnn.h.
@@ -255,8 +262,8 @@ class CudnnSupport : public dnn::DnnSupport {
                      dnn::ProfileResult* output_profile_result) override;
 
   absl::Status GetConvolveRunners(
-      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
-      dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
       const dnn::FilterDescriptor& filter_descriptor,
       DeviceMemoryBase filter_data,
@@ -298,10 +305,9 @@ class CudnnSupport : public dnn::DnnSupport {
       std::string serialized_graph) override;
 
   absl::Status GetFusedConvolveRunners(
-      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
-      dnn::DataType input_type, dnn::DataType bias_type,
-      dnn::DataType output_type, double conv_scale, double side_input_scale,
-      double leakyrelu_alpha, Stream* stream,
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType bias_type, dnn::DataType output_type, double conv_scale,
+      double side_input_scale, double leakyrelu_alpha, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& bias_descriptor,
@@ -313,10 +319,9 @@ class CudnnSupport : public dnn::DnnSupport {
       override;
 
   absl::Status GetFusedMatmulRunners(
-      bool use_cudnn_frontend, dnn::DataType input_type,
-      dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
-      bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
-      int64_t lda, int64_t ldb, int64_t ldc,
+      dnn::DataType input_type, dnn::DataType bias_type,
+      dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
+      uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
       dnn::ActivationMode activation_mode, bool use_fallback,
       const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
@@ -554,11 +559,9 @@ class CudnnSupport : public dnn::DnnSupport {
 
   void NotifyStreamDestroyed(Stream* stream) override;
 
-#if CUDNN_VERSION >= 8100
   // Loads complete graph from its serialized representation.
   absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> DeserializeGraph(
       Stream& stream, absl::string_view serialized_data) const override;
-#endif  // CUDNN_VERSION >= 8100
 
  private:
   // Uses cuDNN handle for execution.
@@ -705,7 +708,9 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     const dnn::MatmulTensorDescriptor& v_descriptor,
     const dnn::TensorDescriptor& o_descriptor,
     std::optional<dnn::TensorDescriptor> bias_descriptor,
-    std::optional<dnn::TensorDescriptor> stats_descriptor, double scale,
+    std::optional<dnn::TensorDescriptor> stats_descriptor,
+    std::optional<dnn::TensorDescriptor> page_table_k_descriptor,
+    std::optional<dnn::TensorDescriptor> page_table_v_descriptor, double scale,
     bool use_dropout, std::optional<double> dropout_rate,
     dnn::FMHAMaskKind mask_type, int sliding_window_length,
     int max_seg_per_batch);

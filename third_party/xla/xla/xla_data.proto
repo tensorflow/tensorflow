@@ -147,7 +147,11 @@ enum PrimitiveType {
   // primitive type will have empty dimensions and tuple_shapes fields.
   TOKEN = 17;
 
-  // Next = 34
+  // A buffer type. A shape of this primitive type has empty dimensions and
+  // its underlying primitive type is in the tuple_shapes field.
+  BUFFER = 34;
+
+  // Next = 35
 }
 // LINT.ThenChange(
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
@@ -1071,10 +1075,8 @@ message PrecisionConfig {
     DEFAULT = 0;
     HIGH = 1;
     HIGHEST = 2;
-    // Each U8/S8 value in a tensor actually represents 2 nibble values.
-    PACKED_NIBBLE = 3;
 
-    // Next: 4
+    // Next: 3
   }
 
   // The algorithm used to evaluate the instruction.

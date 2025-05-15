@@ -218,7 +218,7 @@ class HloRunner : public HloRunnerInterface {
       std::unique_ptr<OpaqueExecutable> wrapped) const;
   std::unique_ptr<OpaqueExecutable> WrapExecutable(
       std::unique_ptr<Executable> executable) const;
-  absl::StatusOr<absl::Nonnull<const HloModule*>> HloModuleFromWrapped(
+  absl::StatusOr<const HloModule* absl_nonnull> HloModuleFromWrapped(
       const OpaqueExecutable* wrapped) const override;
   // Returns the HloProto of the Executable wrapped by the given
   // OpaqueExecutable. This is a temporary API to help move to OpaqueExecutable.
@@ -228,15 +228,15 @@ class HloRunner : public HloRunnerInterface {
   // information is not available from a PjRt(Loaded)Executable.
   //
   // TODO: b/393183864 - Remove this API.
-  absl::StatusOr<absl::Nonnull<const HloProto*>> HloProtoFromWrapped(
+  absl::StatusOr<const HloProto* absl_nonnull> HloProtoFromWrapped(
       const OpaqueExecutable* wrapped) const;
 
   // Returns true if the two given OpaqueExecutables originate from the same
   // runner and are equivalent according to some notion specific to that runner.
   // Executables that were created by different runners can never be equivalent.
   bool ExecutablesAreEquivalent(
-      absl::Nonnull<const OpaqueExecutable*> lhs,
-      absl::Nonnull<const OpaqueExecutable*> rhs) const override {
+      const OpaqueExecutable* absl_nonnull lhs,
+      const OpaqueExecutable* absl_nonnull rhs) const override {
     LOG(FATAL) << "ExecutablesAreEquivalent is not implemented for HloRunner.";
     return false;
   }
@@ -244,11 +244,11 @@ class HloRunner : public HloRunnerInterface {
  private:
   absl::StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(
       const Literal& literal,
-      absl::Nullable<const ComputationLayout*> entry_computation_layout,
+      const ComputationLayout* absl_nullable entry_computation_layout,
       int64_t param_no);
   absl::StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
       absl::Span<const Literal* const> literals,
-      absl::Nullable<const ComputationLayout*> entry_computation_layout);
+      const ComputationLayout* absl_nullable entry_computation_layout);
 
   absl::StatusOr<ExecutionOutput> ExecuteWithExecutionInputs(
       Executable* executable, std::vector<ExecutionInput> arguments,

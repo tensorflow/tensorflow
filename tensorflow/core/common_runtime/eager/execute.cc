@@ -545,10 +545,12 @@ absl::Status UpdateCompileCounter(const EagerOperation* op,
   string device_type = CanonicalizeDeviceType(op->GetDeviceParsedName().type);
   string compilation_option = kDisabled;
   if (!compile_with_xla) {
-    bool nested_jit_compile;
+    bool nested_jit_compile = false;
     string device;
-    TF_RETURN_IF_ERROR(
-        HasNestedJitCompile(*op, ctx, &nested_jit_compile, &device));
+    if (!ctx.FuncLibDef()->HasOptimizedFunctionGraph(op->Name())) {
+      TF_RETURN_IF_ERROR(
+          HasNestedJitCompile(*op, ctx, &nested_jit_compile, &device));
+    }
     if (nested_jit_compile) {
       if (!device.empty()) {
         tsl::DeviceNameUtils::ParsedName device_parsed_name;

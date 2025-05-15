@@ -24,6 +24,7 @@ limitations under the License.
 #include <cstring>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -2158,7 +2159,8 @@ TfLiteStatus Subgraph::UndoAllDelegates() {
   // nodes' inputs to point to their fp16 versions (if delegate supports fp16
   // acceleration). This remapping is performed in FP16GraphPartitionHelper in
   // delegates/utils. We need to undo this remapping to ensure CPU kernels work.
-  std::vector<int> fp16_to_fp32(tensors_size(), -1);
+  std::vector<int> fp16_to_fp32(tensors_size());
+  std::iota(fp16_to_fp32.begin(), fp16_to_fp32.end(), 0);
   for (int execution_plan_index = 0;
        execution_plan_index < execution_plan_.size(); ++execution_plan_index) {
     int node_index = execution_plan_[execution_plan_index];

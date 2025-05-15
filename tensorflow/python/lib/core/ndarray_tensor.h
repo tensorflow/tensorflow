@@ -34,8 +34,6 @@ absl::Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor,
 // in `ret` may have its own Python reference to `ndarray`s data. After `ret`
 // is destroyed, this reference must (eventually) be decremented via
 // ClearDecrefCache().
-// `convert_string` indicates whether it has to handle tstring conversion.
-// Expected to be removed once tstring migration is done.
 ABSL_MUST_USE_RESULT
 absl::Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
                              Safe_TF_TensorPtr* ret);

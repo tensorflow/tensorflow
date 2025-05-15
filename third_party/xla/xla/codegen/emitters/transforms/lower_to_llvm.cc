@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
+#include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
@@ -90,8 +91,18 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
                                                        patterns);
     if (device_spec_.IsGpu()) {
       if (device_spec_.IsAmdGpu()) {
+        std::string chipset =
+            device_spec_.gpu().rocm_compute_capability().gfx_version();
+        llvm::FailureOr<mlir::amdgpu::Chipset> maybeChipset =
+            mlir::amdgpu::Chipset::parse(chipset);
+        if (failed(maybeChipset)) {
+          mlir::emitError(mlir::UnknownLoc::get(&getContext()),
+                          "Invalid chipset name: " + chipset);
+          return signalPassFailure();
+        }
         mlir::populateGpuToROCDLConversionPatterns(
-            type_converter, patterns, mlir::gpu::amd::Runtime::Unknown);
+            type_converter, patterns, mlir::gpu::amd::Runtime::Unknown,
+            *maybeChipset);
         mlir::configureGpuToROCDLConversionLegality(target);
       } else {
         mlir::populateGpuToNVVMConversionPatterns(type_converter, patterns);

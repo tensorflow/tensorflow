@@ -509,28 +509,31 @@ static int64_t SharedMemoryUsageNoCache(
              IsReductionFromOrToContiguousDimensions(instr, device_info)) {
     ReductionDimensions reduction_info =
         GetReductionKindAndContiguousComponents(instr);
-    int64_t primitive_size = ShapeUtil::ByteSizeOfPrimitiveType(
-        instr.operand(0)->shape().element_type());
-    int num_variadic =
-        instr.shape().IsTuple() ? instr.shape().tuple_shapes_size() : 1;
+    int64_t primitive_size_sum = 0;
+    // Variadic reductions will allocate one shared memory buffer for each
+    // input. They all have the same shape, so we can just sum up the primitive
+    // sizes of the inputs.
+    for (int i = 0; i < instr.operand_count() / 2; ++i) {
+      primitive_size_sum += ShapeUtil::ByteSizeOfPrimitiveType(
+          instr.operand(i)->shape().element_type());
+    }
+
     if (reduction_info.is_row_reduction) {
-      // __shared__[32] is used for row reduction.
-      return 32 * primitive_size * num_variadic;
+      // In row reductions, we write at most one element per warp to shared
+      // memory, regardless of whether the reduction is vectorized or not. We
+      // have at most 32 warps for a single row. We could tighten this estimate,
+      // but it doesn't really matter. Row reductions are very unlikely to ever
+      // run out of shared memory budget.
+      return 32 * primitive_size_sum;
     } else {
-      // __shared__[4][32][33] cache is used for column reduction ("4" comes
-      // from potential x-tiling).
-      return 4 * 32 * 33 * primitive_size * num_variadic;
+      // The shape of the cache for column reductions is 32x(vector_size * 32 +
+      // 1). We don't know the actual vector size here, so we assume the
+      // maximum.
+      constexpr int kMaxVectorSize = 4;
+      return 32 * (kMaxVectorSize * 32 + 1) * primitive_size_sum;
     }
   } else if (auto tr = GetDescriptionForTiledTransposeEmitter(instr)) {
-    // Tile size for transposition.
-    int64_t primitive_size =
-        ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());
-    int64_t bytes_required = 32 * 33 * primitive_size;
-    // If the last dimension is not changed, it becomes part of the tile.
-    if (tr->permutation.back() == tr->permutation.size() - 1) {
-      bytes_required *= tr->dimensions.back();
-    }
-    return bytes_required;
+    return tr->shmem_usage;
   }
   // Other fused expressions for now don't need the shared memory budget.
   return 0;
@@ -842,8 +845,10 @@ bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
       case HloOpcode::kConcatenate:
         return node.instruction().operand_count() >
                kMaxConcatArgumentsForUnrolling;
-      case HloOpcode::kReduce:
-        return node.instruction().shape().tuple_shapes_size() > 1;
+      case HloOpcode::kReduce: {
+        const Shape& shape = node.instruction().shape();
+        return shape.IsTuple() && shape.tuple_shapes().size() > 1;
+      }
       default:
         return false;
     }

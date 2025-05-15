@@ -28,16 +28,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
+#include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/logical_buffer.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
-class ElementalKernelEmitterTest : public HloTestBase {
+class ElementalKernelEmitterTest : public HloHardwareIndependentTestBase {
  public:
   ElementalKernelEmitterTest()
       : target_machine_features_([](int64_t size) { return 1; }) {}
@@ -54,7 +57,9 @@ class ElementalKernelEmitterTest : public HloTestBase {
       const HloModule& hlo) {
     return BufferAssigner::Run(
         &hlo, std::make_unique<DependencyHloOrdering>(&hlo),
-        backend().compiler()->BufferSizeBytesFunction(),
+        [](const BufferValue& buffer) {
+          return CpuExecutable::ShapeSizeBytes(buffer.shape());
+        },
         [](LogicalBuffer::Color) { return /*alignment=*/1; });
   }
 

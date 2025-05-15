@@ -25,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/criticality.h"
@@ -129,10 +130,12 @@ class TestGcuCostMeasurement : public CostMeasurement {
 REGISTER_COST_MEASUREMENT("test_gcu", TestGcuCostMeasurement);
 
 std::unique_ptr<BatchResourceBase::BatchTask> MakeBatchTask(
-    const int64_t task_size, RequestCost* request_cost) {
+    const int64_t task_size, RequestCost* request_cost,
+    absl::Time start_time = absl::UnixEpoch()) {
   auto task = std::make_unique<BatchResourceBase::BatchTask>();
   task->inputs.push_back(Tensor(DT_DOUBLE, TensorShape({task_size, 1})));
   task->request_cost = request_cost;
+  task->start_time = absl::ToUnixNanos(start_time);
   return task;
 }
 
@@ -416,6 +419,136 @@ TEST(SplitBatchCostsAndRecordMetricsTest, GlobalBatchStatsProcessedSize) {
                 .model(/* model_name= */ kModelName, /* op_name= */ "op_name")
                 .cumulative_processed_size(),
             original_cumulative_processed_size + 4);
+}
+
+TEST(RecordBatchDelayMetricsTest,
+     TwoRequestsWithNoQueueingDelayAndSchedulingAtBatchTimeout) {
+  const absl::Duration batch_timeout = absl::Seconds(1);
+  const absl::Duration task2_delay = batch_timeout / 4;
+  const absl::Time task1_start_time = absl::Now();
+  const absl::Time task2_start_time = task1_start_time + task2_delay;
+  const absl::Time batch_schedule_time = task1_start_time + batch_timeout;
+
+  BatchResourceBase::BatchT batch;
+  RequestCost cost1, cost2;
+  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost1, task1_start_time));
+  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost2, task2_start_time));
+  batch.Close();
+
+  BatchResourceBase::RecordBatchDelayMetrics(
+      batch, "model_name", "op_name", /*processed_size=*/20,
+      batch_schedule_time, batch_timeout);
+
+  EXPECT_THAT(
+      batch.task(0).request_cost->GetMetrics(),
+      UnorderedElementsAre(Pair("batching_delay_msecs",
+                                absl::ToDoubleMilliseconds(batch_timeout)),
+                           Pair("queueing_delay_msecs", 0)));
+  EXPECT_THAT(batch.task(1).request_cost->GetMetrics(),
+              UnorderedElementsAre(
+                  Pair("batching_delay_msecs",
+                       absl::ToDoubleMilliseconds(batch_timeout - task2_delay)),
+                  Pair("queueing_delay_msecs", 0)));
+}
+
+TEST(RecordBatchDelayMetricsTest,
+     TwoRequestsWithNoQueueingDelayAndSchedulingAfterSecondRequest) {
+  const absl::Duration batch_timeout = absl::Seconds(1);
+  const absl::Duration task2_delay = batch_timeout / 4;
+  const absl::Duration scheduling_delay = batch_timeout / 10;
+  const absl::Time task1_start_time = absl::Now();
+  const absl::Time task2_start_time = task1_start_time + task2_delay;
+  const absl::Time batch_schedule_time =
+      task1_start_time + task2_delay + scheduling_delay;
+
+  BatchResourceBase::BatchT batch;
+  RequestCost cost1, cost2;
+  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost1, task1_start_time));
+  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost2, task2_start_time));
+  batch.Close();
+
+  BatchResourceBase::RecordBatchDelayMetrics(
+      batch, "model_name", "op_name", /*processed_size=*/20,
+      batch_schedule_time, batch_timeout);
+
+  EXPECT_THAT(
+      batch.task(0).request_cost->GetMetrics(),
+      UnorderedElementsAre(
+          Pair("batching_delay_msecs",
+               absl::ToDoubleMilliseconds(task2_delay + scheduling_delay)),
+          Pair("queueing_delay_msecs", 0)));
+  EXPECT_THAT(
+      batch.task(1).request_cost->GetMetrics(),
+      UnorderedElementsAre(Pair("batching_delay_msecs",
+                                absl::ToDoubleMilliseconds(scheduling_delay)),
+                           Pair("queueing_delay_msecs", 0)));
+}
+
+TEST(RecordBatchDelayMetricsTest, TwoRequestWithQueueingDelay) {
+  const absl::Duration batch_timeout = absl::Seconds(1);
+  const absl::Duration task2_delay = batch_timeout / 4;
+  const absl::Duration queueing_delay = 5 * batch_timeout;
+  const absl::Time task1_start_time = absl::Now();
+  const absl::Time task2_start_time = task1_start_time + task2_delay;
+  const absl::Time batch_schedule_time =
+      task1_start_time + batch_timeout + queueing_delay;
+
+  BatchResourceBase::BatchT batch;
+  RequestCost cost1, cost2;
+  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost1, task1_start_time));
+  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost2, task2_start_time));
+  batch.Close();
+
+  BatchResourceBase::RecordBatchDelayMetrics(
+      batch, "model_name", "op_name", /*processed_size=*/20,
+      batch_schedule_time, batch_timeout);
+
+  EXPECT_THAT(
+      batch.task(0).request_cost->GetMetrics(),
+      UnorderedElementsAre(Pair("batching_delay_msecs",
+                                absl::ToDoubleMilliseconds(batch_timeout)),
+                           Pair("queueing_delay_msecs",
+                                absl::ToDoubleMilliseconds(queueing_delay))));
+  EXPECT_THAT(batch.task(1).request_cost->GetMetrics(),
+              UnorderedElementsAre(
+                  Pair("batching_delay_msecs",
+                       absl::ToDoubleMilliseconds(batch_timeout - task2_delay)),
+                  Pair("queueing_delay_msecs",
+                       absl::ToDoubleMilliseconds(queueing_delay))));
+}
+
+TEST(RecordBatchDelayMetricsTest,
+     TwoRequestsWithQueueingDelayAndSecondArrivingAfterBatchTimeout) {
+  const absl::Duration batch_timeout = absl::Seconds(1);
+  const absl::Duration task2_delay = 3 * batch_timeout;
+  const absl::Duration queueing_delay = 5 * batch_timeout;
+  const absl::Time task1_start_time = absl::Now();
+  const absl::Time task2_start_time = task1_start_time + task2_delay;
+  const absl::Time batch_schedule_time =
+      task1_start_time + task2_delay + queueing_delay;
+
+  BatchResourceBase::BatchT batch;
+  RequestCost cost1, cost2;
+  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost1, task1_start_time));
+  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost2, task2_start_time));
+  batch.Close();
+
+  BatchResourceBase::RecordBatchDelayMetrics(
+      batch, "model_name", "op_name", /*processed_size=*/20,
+      batch_schedule_time, batch_timeout);
+
+  EXPECT_THAT(batch.task(0).request_cost->GetMetrics(),
+              UnorderedElementsAre(
+                  Pair("batching_delay_msecs",
+                       absl::ToDoubleMilliseconds(batch_timeout)),
+                  Pair("queueing_delay_msecs",
+                       absl::ToDoubleMilliseconds(task2_delay - batch_timeout +
+                                                  queueing_delay))));
+  EXPECT_THAT(
+      batch.task(1).request_cost->GetMetrics(),
+      UnorderedElementsAre(Pair("batching_delay_msecs", 0),
+                           Pair("queueing_delay_msecs",
+                                absl::ToDoubleMilliseconds(queueing_delay))));
 }
 
 class BatchResourceBaseTest : public ::testing::Test {

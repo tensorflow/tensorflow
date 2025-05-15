@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <variant>
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/tests/hlo_test_base.h"

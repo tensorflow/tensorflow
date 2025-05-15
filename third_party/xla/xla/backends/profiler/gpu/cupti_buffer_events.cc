@@ -598,6 +598,53 @@ static absl::Status ConvertActivityBuffer(
 
 }  // namespace
 
+const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
+  // Do not use a default so that this gives a build error when
+  // CuptiTracerEventType is extended but this is not.
+  switch (type) {
+    case CuptiTracerEventType::MemcpyH2D:
+      return "MemcpyH2D";
+    case CuptiTracerEventType::MemcpyD2H:
+      return "MemcpyD2H";
+    case CuptiTracerEventType::MemcpyD2D:
+      return "MemcpyD2D";
+    case CuptiTracerEventType::MemcpyP2P:
+      return "MemcpyP2P";
+    case CuptiTracerEventType::MemcpyOther:
+      return "MemcpyOther";
+    case CuptiTracerEventType::Kernel:
+      return "Compute";
+    case CuptiTracerEventType::MemoryAlloc:
+      return "MemoryAlloc";
+    case CuptiTracerEventType::MemoryFree:
+      return "MemoryFree";
+    case CuptiTracerEventType::Memset:
+      return "Memset";
+    case CuptiTracerEventType::Overhead:
+      return "Overhead";
+    case CuptiTracerEventType::UnifiedMemory:
+      return "UnifiedMemory";
+    case CuptiTracerEventType::Generic:
+      return "Generic";
+    case CuptiTracerEventType::MemoryResidency:
+      return "MemoryResidency";
+    case CuptiTracerEventType::HostRegister:
+      return "HostRegister";
+    case CuptiTracerEventType::HostUnregister:
+      return "HostUnregister";
+    case CuptiTracerEventType::CudaGraph:
+      return "CudaGraph";
+    case CuptiTracerEventType::ThreadMarkerRange:
+      return "ThreadMarkerRange";
+    case CuptiTracerEventType::ThreadMarkerStart:
+      return "ThreadMarkerStart";
+    case CuptiTracerEventType::ThreadMarkerEnd:
+      return "ThreadMarkerEnd";
+    case CuptiTracerEventType::Unsupported:
+      return "";
+  }
+}
+
 absl::string_view StringDeduper::Dedup(absl::string_view str,
                                        size_t max_unique_count) {
   if (str.empty()) return absl::string_view();

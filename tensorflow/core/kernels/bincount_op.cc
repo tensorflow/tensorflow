@@ -442,7 +442,7 @@ class SparseBincountOp : public OpKernel {
             errors::InvalidArgument("Index out of bound. `batch` (", batch,
                                     ") must be less than the dimension size (",
                                     out.dimension(0), ")."));
-        if (bin < size) {
+        if (0 <= bin && bin < size) {
           if (binary_output_) {
             out(batch, bin) = T(1);
           } else {

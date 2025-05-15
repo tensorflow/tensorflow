@@ -153,7 +153,7 @@ absl::Status ZlibInputStream::ReadFromStream() {
   // Note: data.size() could be different from bytes_to_read.
   z_stream_def_->stream->avail_in += data.size();
 
-  if (!s.ok() && !errors::IsOutOfRange(s)) {
+  if (!s.ok() && !absl::IsOutOfRange(s)) {
     return s;
   }
 
@@ -165,7 +165,7 @@ absl::Status ZlibInputStream::ReadFromStream() {
   if (data.empty()) {
     return errors::OutOfRange("EOF reached");
   }
-  if (errors::IsOutOfRange(s)) {
+  if (absl::IsOutOfRange(s)) {
     return absl::OkStatus();
   }
 
