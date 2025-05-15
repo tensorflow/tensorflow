@@ -58,6 +58,7 @@ cc_library(
 xla_cc_test(
     name = "xnn_threadpool_test",
     srcs = ["xnn_threadpool_test.cc"],
+    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_threadpool",
         "//xla/backends/cpu/runtime:parallel_loop_runner",
@@ -101,6 +102,7 @@ cc_library(
 xla_cc_test(
     name = "xnn_convolution_thunk_test",
     srcs = ["xnn_convolution_thunk_test.cc"],
+    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_convolution_thunk",
         "//xla:error_spec",
@@ -157,6 +159,7 @@ cc_library(
 xla_cc_test(
     name = "xnn_dot_thunk_test",
     srcs = ["xnn_dot_thunk_test.cc"],
+    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_dot_thunk",
         "//xla:literal_util",
@@ -213,6 +216,7 @@ cc_library(
 xla_cc_test(
     name = "xnn_fusion_thunk_test",
     srcs = ["xnn_fusion_thunk_test.cc"],
+    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_fusion_thunk",
         ":xnn_interop",
