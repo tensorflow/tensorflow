@@ -50,9 +50,10 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
-namespace quantization {
+namespace tf_quantization {
 
 using ::mlir::tf_quant::stablehlo::AddXlaCallModuleOpDeserializationPasses;
+using ::tensorflow::quantization::RunPassesOnModuleOp;
 
 // Adds passes that unfuse MHLO ops that do not have their equivalents in
 // StableHLO.
@@ -228,5 +229,5 @@ absl::Status PreprocessAndFreezeGraph(
       pm_after_freezing_variables, module_op);
 }
 
-}  // namespace quantization
+}  // namespace tf_quantization
 }  // namespace tensorflow

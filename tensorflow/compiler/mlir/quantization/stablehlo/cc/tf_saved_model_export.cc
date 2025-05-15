@@ -78,7 +78,7 @@ using ::tensorflow::OpRegistry;
 using ::tensorflow::SaverDef;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::RunPasses;
-using ::tensorflow::quantization::UnfreezeConstantsAndSaveVariables;
+using ::tensorflow::tf_quantization::UnfreezeConstantsAndSaveVariables;
 
 // Finds and returns the name of the node from a set of control output nodes.
 // The name should contain the string `contains`. Returns an empty string if no
