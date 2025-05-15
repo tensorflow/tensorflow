@@ -243,7 +243,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Instead, we allocate a new object to carry information from Prepare() to
   // Eval().
   auto* op_data = new OpData();
-  op_data->scratch_tensor_index = -1;
+  context->AddTensors(context, /*tensors_to_add=*/6,
+                      &op_data->scratch_tensor_index);
   return op_data;
 }
 
@@ -638,11 +639,6 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
 
 template <KernelType kernel_type>
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  OpData* data = reinterpret_cast<OpData*>(node->user_data);
-  if (data->scratch_tensor_index == -1) {
-    context->AddTensors(context, /*tensors_to_add=*/6,
-                        &data->scratch_tensor_index);
-  }
   // Check for supported activation types.
   auto* params =
       reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
