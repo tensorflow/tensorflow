@@ -1252,4 +1252,3 @@ EXPORTS
   ?FailedPreconditionError@lts_20230802@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?PermissionDeniedError@lts_20230802@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?IsFailedPrecondition@lts_20230802@absl@@YA_NAEBVStatus@12@@Z
-  ?view@CompactString@xla@@QEBA?AV?$basic_string_view@DU?$char_traits@D@std@@@std@@XZ
