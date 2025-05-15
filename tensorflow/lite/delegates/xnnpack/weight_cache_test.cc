@@ -312,7 +312,7 @@ TEST(WeightCacheBuilderTest, ReserveAppendWriteWorks) {
 
   WeightCacheBuilder builder;
   const std::string cache_path = testing::TempDir() + "/cache";
-  ASSERT_TRUE(builder.Start(cache_path.c_str()));
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), FileDescriptor()));
   ASSERT_TRUE(builder.StartBuildStep());
 
   const size_t payload_size = size(payload);
@@ -377,7 +377,7 @@ TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
 
   const std::string cache_path = testing::TempDir() + "/cache";
   WeightCacheBuilder builder;
-  ASSERT_TRUE(builder.Start(cache_path.c_str()));
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), FileDescriptor()));
   ASSERT_TRUE(builder.StartBuildStep());
 
   const size_t payload_size = size(payload);
@@ -432,8 +432,8 @@ TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
 
 TEST(WeightCacheBuilderTest, NonExistingPathFails) {
   WeightCacheBuilder builder;
-  EXPECT_FALSE(builder.Start(""));
-  EXPECT_FALSE(builder.Start("/seldf/sedsft"));
+  EXPECT_FALSE(builder.Start("", FileDescriptor()));
+  EXPECT_FALSE(builder.Start("/seldf/sedsft", FileDescriptor()));
 }
 
 TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
@@ -443,7 +443,7 @@ TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
   }
   {  // Exact in-memory flag used starts an in-memory build.
     WeightCacheBuilder builder;
-    EXPECT_TRUE(builder.Start(kInMemoryCachePath));
+    EXPECT_TRUE(builder.Start(kInMemoryCachePath, FileDescriptor()));
     EXPECT_TRUE(builder.IsStarted());
     const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY));
     EXPECT_FALSE(file_fd.IsValid());
@@ -453,7 +453,8 @@ TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
     WeightCacheBuilder builder;
     const std::string path_with_in_memory_prefix =
         std::string(kInMemoryCachePath) + "/slkdjfsldf";
-    EXPECT_TRUE(builder.Start(path_with_in_memory_prefix.c_str()));
+    EXPECT_TRUE(
+        builder.Start(path_with_in_memory_prefix.c_str(), FileDescriptor()));
     EXPECT_TRUE(builder.IsStarted());
     const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY));
     EXPECT_FALSE(file_fd.IsValid());
@@ -475,7 +476,7 @@ TEST(WeightCacheBuilderTest, MultipleStepBuild) {
   TempFileDesc tmp_file{TempFileDesc::kAutoClose};
 
   WeightCacheBuilder builder;
-  ASSERT_TRUE(builder.Start(tmp_file.GetCPath()));
+  ASSERT_TRUE(builder.Start(tmp_file.GetCPath(), FileDescriptor()));
   ASSERT_TRUE(builder.StartBuildStep());
 
   {
@@ -646,7 +647,7 @@ struct FakeContext {
         packed_buffers.emplace(pack_id, PackedBuffer{})->second;
     (AddTensorToPack(packed.buffer, tensor_indices), ...);
 
-    // Add the packed buffer to the XNNPack cache. Normaly you would pack in
+    // Add the packed buffer to the XNNPack cache. Normally you would pack in
     // place where the reserved space is.
     xnn_weights_cache_look_up_key look_up_key =
         LookUpKey(algorithm_seed, tensor_indices...);
@@ -668,7 +669,31 @@ struct FakeContext {
   std::unordered_map<size_t, size_t> tensor_buffer_identifiers;
 };
 
-struct BuildMMapWeightCacheProviderTest : testing::Test {
+struct TestVariant {
+  bool use_explicit_fd;
+  const char* explicit_fd_path;
+
+  static std::string Name(const testing::TestParamInfo<TestVariant>& info) {
+    if (info.param.use_explicit_fd) {
+      if (info.param.explicit_fd_path) {
+        return "WithExplicitFileDescriptorAndPath";
+      } else {
+        return "WithExplicitFileDescriptorAndNoPath";
+      }
+    }
+    return "WithImplicitFileDescriptor";
+  }
+};
+
+auto TestVariants() {
+  return testing::Values(
+      TestVariant{/*use_explicit_fd=*/false, /*explicit_fd_path=*/nullptr},
+      TestVariant{/*use_explicit_fd=*/true, /*explicit_fd_path=*/nullptr},
+      TestVariant{/*use_explicit_fd=*/true,
+                  /*explicit_fd_path=*/"explicit file descriptor"});
+}
+
+struct BuildMMapWeightCacheProviderTest : testing::TestWithParam<TestVariant> {
   enum { kAlgoSeed1, kAlgoSeed2, kAlgoSeed3 };
   enum { kBufferId1, kBufferId2, kBufferId3, kBufferId4 };
 
@@ -688,25 +713,36 @@ struct BuildMMapWeightCacheProviderTest : testing::Test {
     ctx.FinalizeTensors();
     cache_provider.MapTensorIdentifiers(ctx.tensors.data(), ctx.tensors.size(),
                                         ctx.tensor_buffer_identifiers);
-    ASSERT_TRUE(cache_provider.StartBuild(tmp_file.GetCPath()));
+    if (use_explicit_fd) {
+      ASSERT_TRUE(cache_provider.StartBuild(
+          explicit_fd_path, FileDescriptor::Duplicate(tmp_file.GetFd())));
+    } else {
+      tmp_file.Close();
+      ASSERT_TRUE(cache_provider.StartBuild(tmp_file.GetCPath()));
+    }
   }
 
   FakeContext ctx;
   MMapWeightCacheProvider cache_provider;
-  TempFileDesc tmp_file{TempFileDesc::kAutoClose};
+  TempFileDesc tmp_file;
+  bool use_explicit_fd = GetParam().use_explicit_fd;
+  const char* explicit_fd_path = GetParam().explicit_fd_path;
 };
 
-TEST_F(BuildMMapWeightCacheProviderTest, LookUpFailsIfKeyDoesntMatch) {
+INSTANTIATE_TEST_SUITE_P(Test, BuildMMapWeightCacheProviderTest, TestVariants(),
+                         TestVariant::Name);
+
+TEST_P(BuildMMapWeightCacheProviderTest, LookUpFailsIfKeyDoesntMatch) {
   xnn_weights_cache_look_up_key look_up_key{};
   EXPECT_EQ(cache_provider.LookUp(&look_up_key), SIZE_MAX);
 }
 
-TEST_F(BuildMMapWeightCacheProviderTest, LookUpSucceeds) {
+TEST_P(BuildMMapWeightCacheProviderTest, LookUpSucceeds) {
   enum { kWeightIndex, kBiasIndex };
   ASSERT_TRUE(cache_provider.StartBuildStep());
   const auto pack_id = ctx.PackTensors(&cache_provider.GetCacheProvider(),
                                        kAlgoSeed1, kWeightIndex, kBiasIndex);
-  EXPECT_TRUE(cache_provider.StopBuildStep());
+  ASSERT_TRUE(cache_provider.StopBuildStep());
   const xnn_weights_cache_look_up_key look_up_key =
       ctx.LookUpKey(kAlgoSeed1, kWeightIndex, kBiasIndex);
 
@@ -714,7 +750,7 @@ TEST_F(BuildMMapWeightCacheProviderTest, LookUpSucceeds) {
             ctx.packed_buffers.find(pack_id)->second.offset);
 }
 
-TEST_F(BuildMMapWeightCacheProviderTest,
+TEST_P(BuildMMapWeightCacheProviderTest,
        DifferentAlgoSeedsSameTensorsDontConflict) {
   enum { kWeightIndex, kBiasIndex };
   ASSERT_TRUE(cache_provider.StartBuildStep());
@@ -737,7 +773,7 @@ TEST_F(BuildMMapWeightCacheProviderTest,
             cache_provider.LookUp(&look_up_key_2));
 }
 
-TEST_F(BuildMMapWeightCacheProviderTest,
+TEST_P(BuildMMapWeightCacheProviderTest,
        SameAlgoSeedDifferentTensorsDontConflict) {
   enum { kWeightIndex1, kWeightIndex2, kBiasIndex1, kBiasIndex2 };
   ASSERT_TRUE(cache_provider.StartBuildStep());
@@ -787,7 +823,7 @@ TEST_F(BuildMMapWeightCacheProviderTest,
             cache_provider.LookUp(&look_up_key_4));
 }
 
-TEST_F(BuildMMapWeightCacheProviderTest, BuildStepSequenceWorks) {
+TEST_P(BuildMMapWeightCacheProviderTest, BuildStepSequenceWorks) {
   enum { kWeightIndex1, kBiasIndex, kWeightIndex2 };
   ASSERT_TRUE(cache_provider.StartBuildStep());
 
@@ -831,12 +867,15 @@ struct LoadMMapWeightCacheProviderTest : BuildMMapWeightCacheProviderTest {
   PackIdentifier pack_id_2;
 };
 
-TEST_F(LoadMMapWeightCacheProviderTest, LookUpFailsIfKeyDoesntMatch) {
+INSTANTIATE_TEST_SUITE_P(Test, LoadMMapWeightCacheProviderTest, TestVariants(),
+                         TestVariant::Name);
+
+TEST_P(LoadMMapWeightCacheProviderTest, LookUpFailsIfKeyDoesntMatch) {
   xnn_weights_cache_look_up_key look_up_key{};
   EXPECT_EQ(cache_provider.LookUp(&look_up_key), SIZE_MAX);
 }
 
-TEST_F(LoadMMapWeightCacheProviderTest, LookUpSucceeds) {
+TEST_P(LoadMMapWeightCacheProviderTest, LookUpSucceeds) {
   const auto& reference_1 = ctx.packed_buffers.find(pack_id_1)->second;
   const auto& reference_2 = ctx.packed_buffers.find(pack_id_2)->second;
 
@@ -861,9 +900,24 @@ TEST_F(LoadMMapWeightCacheProviderTest, LookUpSucceeds) {
               ElementsAreArray(reference_2.buffer));
 }
 
-TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
+struct MMapWeightCacheProviderTest : testing::TestWithParam<TestVariant> {
+  bool use_explicit_fd = GetParam().use_explicit_fd;
+  const char* const explicit_fd_path = GetParam().explicit_fd_path;
+};
+
+INSTANTIATE_TEST_SUITE_P(Test, MMapWeightCacheProviderTest, TestVariants(),
+                         TestVariant::Name);
+
+TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
   using std::size;
-  TempFileDesc temp_fd(TempFileDesc::kAutoClose);
+  TempFileDesc temp_fd;
+  const char* temp_fd_cpath = explicit_fd_path;
+  FileDescriptor temp_fd_value = FileDescriptor::Duplicate(temp_fd.GetFd());
+  if (!use_explicit_fd) {
+    temp_fd.Close();
+    temp_fd_cpath = temp_fd.GetCPath();
+    temp_fd_value.Close();
+  }
   const int32_t fake_packing_algo_seed = 0xBA0BAB;
   const char packed_data_ref_1[] = "abcdefghij";
   const char packed_data_ref_2[] = "klmnopqr";
@@ -887,7 +941,8 @@ TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
     }
 
     MMapWeightCacheProvider cache_provider;
-    ASSERT_TRUE(cache_provider.StartBuild(temp_fd.GetCPath()));
+    ASSERT_TRUE(cache_provider.LoadOrStartBuild(temp_fd_cpath,
+                                                temp_fd_value.Duplicate()));
     // 1st build step.
     ASSERT_TRUE(cache_provider.StartBuildStep());
 
@@ -1002,7 +1057,8 @@ TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
     }
 
     MMapWeightCacheProvider cache_provider;
-    ASSERT_TRUE(cache_provider.Load(temp_fd.GetCPath()));
+    ASSERT_TRUE(cache_provider.LoadOrStartBuild(temp_fd_cpath,
+                                                temp_fd_value.Duplicate()));
 
     xnn_weights_cache_t cache = &cache_provider.GetCacheProvider();
     cache_provider.MapTensorIdentifiers(tensors, size(tensors),

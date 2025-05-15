@@ -521,9 +521,17 @@ class Delegate {
 
     // If no weight cache is provided, add one when requested.
     if (!options_.weights_cache) {
-      if (options_.weight_cache_file_path) {
-        if (weight_cache_provider_.LoadOrStartBuild(
-                options_.weight_cache_file_path)) {
+      if (options_.weight_cache_file_path ||
+          options_.weight_cache_file_descriptor > 0) {
+        const char* const file_path = options_.weight_cache_file_path
+                                          ? options_.weight_cache_file_path
+                                          : "unknown path";
+        // See TfLiteXNNPackDelegateOptions::weight_cache_file_descriptor
+        // comment for > 0 check.
+        FileDescriptor fd(options_.weight_cache_file_descriptor > 0
+                              ? options_.weight_cache_file_descriptor
+                              : -1);
+        if (weight_cache_provider_.LoadOrStartBuild(file_path, std::move(fd))) {
           options_.weights_cache =
               reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(
                   weight_cache_provider_.GetCacheProvider().context);
@@ -7183,7 +7191,7 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED;
 #endif  // XNNPACK_DELEGATE_TEST_MODE
-
+  options.weight_cache_file_descriptor = -1;
   return options;
 }
 

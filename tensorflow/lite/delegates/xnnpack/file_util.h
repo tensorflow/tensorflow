@@ -42,13 +42,18 @@ class FileDescriptor {
   FileDescriptor(FileDescriptor&& other) : fd_(other.fd_) { other.fd_ = -1; }
 
   FileDescriptor& operator=(FileDescriptor&& other) {
-    Close();
-    fd_ = other.fd_;
-    other.fd_ = -1;
+    if (other.fd_ != fd_) {
+      Close();
+      fd_ = other.fd_;
+      other.fd_ = -1;
+    }
     return *this;
   }
 
   ~FileDescriptor() { Close(); }
+
+  // Duplicates an existing raw file descriptor.
+  static FileDescriptor Duplicate(int fd);
 
   // Checks that the file descriptor has a valid value.
   //

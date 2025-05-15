@@ -78,9 +78,26 @@ typedef struct {
   bool handle_variable_ops;
   // Path to the weight cache to load.
   //
-  // To keep backwards compatibility with the previous caching mechanism, the
-  // weight cache will only be loaded from this if `weight_cache` is undefined.
+  // Note: To keep backwards compatibility with the previous caching mechanism,
+  // the weight cache will only be loaded from this if `weights_cache` is
+  // undefined.
   const char* weight_cache_file_path;
+  // Explicit file descriptor for the weight cache.
+  //
+  // Warning: This will override opening the file from `weight_cache_file_path`.
+  //
+  // Warning: Because value initialization of a C structure will initialize this
+  // field to 0, we cannot accept a file descriptor with that value to remain
+  // compatible with existing code. Hopefully this won't cause issues as the
+  // file descriptor 0 is usually a special one.
+  //
+  // Warning: Ownership of the file descriptor is taken by the XNNPack delegate
+  // weight cache. `dup` it if you want to keep it open for longer.
+  //
+  // Note: To keep backwards compatibility with the previous caching mechanism,
+  // the weight cache will only be loaded from this if `weights_cache` is
+  // undefined.
+  int weight_cache_file_descriptor;
 } TfLiteXNNPackDelegateOptions;
 
 // Returns true on systems that support running the in-memory weight cache
