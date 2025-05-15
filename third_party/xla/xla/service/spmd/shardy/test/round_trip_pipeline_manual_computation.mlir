@@ -15,11 +15,11 @@ sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
 
 // CHECK-LABEL: func.func @main
 func.func @main(%arg0: tensor<16x32xf32>) -> tensor<128x32xf32> {
-  // CHECK:          %[[SHARD_MAP:.*]]:2 = sdy.manual_computation(%arg0)
+  // CHECK-NEXT:     %[[MANUAL_COMP:.*]]:2 = sdy.manual_computation(%arg0)
   // CHECK-SAME{LITERAL}: in_shardings=[<@mesh_1, [{}, {}], replicated={"a", "b"}>] out_shardings=[<@mesh_1, [{"a", "b"}, {}]>, <@mesh_1, [{"b", "a"}, {}]>] manual_axes={"a", "b"} (%arg1: tensor<16x32xf32>) {
   // CHECK-NEXT:       sdy.return %arg1, %arg1 : tensor<16x32xf32>, tensor<16x32xf32>
   // CHECK-NEXT:     } : (tensor<16x32xf32>) -> (tensor<128x32xf32>, tensor<128x32xf32>)
-  // CHECK-NEXT:     %[[ADD:.*]] = stablehlo.add %[[SHARD_MAP]]#0, %[[SHARD_MAP]]#1 : tensor<128x32xf32>
+  // CHECK-NEXT:     %[[ADD:.*]] = stablehlo.add %[[MANUAL_COMP]]#0, %[[MANUAL_COMP]]#1 : tensor<128x32xf32>
   // CHECK-NEXT:     return %[[ADD]] : tensor<128x32xf32>
   %0:2 = sdy.manual_computation(%arg0) in_shardings=[<@mesh_1, [{}, {}], replicated={"a", "b"}>] out_shardings=[<@mesh_1, [{"a", "b"}, {}]>, <@mesh_1, [{"b", "a"}, {}]>] manual_axes={"a", "b"} (%arg1: tensor<16x32xf32>) {
     sdy.return %arg1, %arg1 : tensor<16x32xf32>, tensor<16x32xf32>
@@ -40,12 +40,12 @@ sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
 
 // CHECK-LABEL: func.func @main
 func.func @main() -> tensor<4xi64> {
-  // CHECK:          %[[SHARD_MAP:.*]] = sdy.manual_computation()
+  // CHECK-NEXT:     %[[MANUAL_COMP:.*]] = sdy.manual_computation()
   // CHECK-SAME{LITERAL}: in_shardings=[] out_shardings=[<@mesh_1, [{"b"}]>] manual_axes={"b"} () {
   // CHECK-NEXT:       %[[C:.*]] = sdy.constant dense<[2, 3]> : tensor<2xi64>
   // CHECK-NEXT:       sdy.return %[[C]] : tensor<2xi64>
   // CHECK-NEXT:     } : () -> tensor<4xi64>
-  // CHECK-NEXT:     return %[[SHARD_MAP]] : tensor<4xi64>
+  // CHECK-NEXT:     return %[[MANUAL_COMP]] : tensor<4xi64>
   %0 = sdy.manual_computation() in_shardings=[] out_shardings=[<@mesh_1, [{"b"}]>] manual_axes={"b"} () {
     %1 = sdy.constant dense<[2, 3]> : tensor<2xi64>
     sdy.return %1 : tensor<2xi64>
@@ -65,7 +65,7 @@ sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
 
 // CHECK-LABEL: func.func @main
 func.func @main(%arg0: tensor<4xi64>) {
-  // CHECK:          sdy.manual_computation(%arg0)
+  // CHECK-NEXT:     sdy.manual_computation(%arg0)
   // CHECK-SAME{LITERAL}: in_shardings=[<@mesh_1, [{"b"}]>] out_shardings=[] manual_axes={"b"} (%arg1: tensor<2xi64>) {
   // CHECK-NEXT:       stablehlo.custom_call @sdy_testonly(%arg1) {backend_config = "", has_side_effect = true, xla_shape = "()"} : (tensor<2xi64>) -> ()
   // CHECK-NEXT:       sdy.return
@@ -88,7 +88,7 @@ func.func @main(%arg0: tensor<4xi64>) {
 
 // CHECK-LABEL: func.func @main
 func.func @main() {
-  // CHECK:          sdy.manual_computation()
+  // CHECK-NEXT:     sdy.manual_computation()
   // CHECK-SAME{LITERAL}: in_shardings=[] out_shardings=[] manual_axes={} () {
   // CHECK-NEXT:       sdy.return
   // CHECK-NEXT:     } : () -> ()
@@ -97,4 +97,33 @@ func.func @main() {
     sdy.return
   } : () -> ()
   return
+}
+
+// -----
+
+// ***************** Tokens test *****************
+
+// Make sure this temp attr doesn't exist anymore.
+// CHECK-NOT: sharding_hlo_string
+
+// CHECK: sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
+sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
+
+// CHECK-LABEL: func.func @main
+func.func @main(
+    %arg0: !stablehlo.token {sdy.sharding = #sdy.sharding<@mesh_1, []>},
+    %arg1: tensor<2xi64> {sdy.sharding = #sdy.sharding<@mesh_1, [{"b"}]>}
+) -> (!stablehlo.token, tensor<2xi64>) {
+  // CHECK-NEXT:     %[[MANUAL_COMP:.*]]:2 = sdy.manual_computation(%arg0, %arg1)
+  // CHECK-SAME{LITERAL}: in_shardings=[<@mesh_1, []>, <@mesh_1, [{"b"}]>] out_shardings=[<@mesh_1, []>, <@mesh_1, [{"b"}]>] manual_axes={"b"} (%arg2: !stablehlo.token, %arg3: tensor<1xi64>) {
+  // CHECK-NEXT:       sdy.return %arg2, %arg3 : !stablehlo.token, tensor<1xi64>
+  // CHECK-NEXT:     } : (!stablehlo.token, tensor<2xi64>) -> (!stablehlo.token, tensor<2xi64>)
+  // CHECK-NEXT:     return %[[MANUAL_COMP]]#0, %[[MANUAL_COMP]]#1 : !stablehlo.token, tensor<2xi64>
+  %0:2 = sdy.manual_computation(%arg0, %arg1)
+      in_shardings=[<@mesh_1, []>, <@mesh_1, [{"b"}]>]
+      out_shardings=[<@mesh_1, []>, <@mesh_1, [{"b"}]>]
+      manual_axes={"b"} (%arg2: !stablehlo.token, %arg3: tensor<1xi64>) {
+    sdy.return %arg2, %arg3 : !stablehlo.token, tensor<1xi64>
+  } : (!stablehlo.token, tensor<2xi64>) -> (!stablehlo.token, tensor<2xi64>)
+  return %0#0, %0#1 : !stablehlo.token, tensor<2xi64>
 }
