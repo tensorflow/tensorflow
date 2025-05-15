@@ -2836,11 +2836,7 @@ cc_library(
 xla_test(
     name = "determinism_test",
     srcs = ["determinism_test.cc"],
-    backends = [
-        "gpu_a100",
-        "gpu_b200",
-        "gpu_amd_any",
-    ],
+    backends = ["gpu"],
     deps = [
         "//xla:literal",
         "//xla:xla_proto_cc",
@@ -2858,11 +2854,11 @@ xla_test(
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
