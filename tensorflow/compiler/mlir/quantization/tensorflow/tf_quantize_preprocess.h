@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
-namespace quantization {
+namespace tf_quantization {
 
 // Default MLIR dump file prefix for TensorFlow quantization passes.
 inline constexpr absl::string_view kDefaultTfQuantMlirDumpFilePrefix =
@@ -80,7 +80,7 @@ void AddTFToStablehloPasses(
     mlir::PassManager& pm,
     llvm::ArrayRef<llvm::ArrayRef<int64_t>> input_arg_shapes = {});
 
-}  // namespace quantization
+}  // namespace tf_quantization
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_TF_QUANTIZE_PREPROCESS_H_

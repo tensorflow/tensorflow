@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
-namespace quantization {
+namespace tf_quantization {
 
 // Unfreezes constants into variables and saves them to a checkpoint files under
 // `checkpoint_dir`. `checkpoint_dir` will be created within this function. It
@@ -39,7 +39,7 @@ namespace quantization {
 absl::Status UnfreezeConstantsAndSaveVariables(
     const absl::string_view checkpoint_dir, mlir::MLIRContext &ctx,
     mlir::ModuleOp module_op) {
-  TF_RETURN_IF_ERROR(RunPasses(
+  TF_RETURN_IF_ERROR(quantization::RunPasses(
       /*name=*/kTfQuantConstantUnfreezingStepName, /*add_passes_func=*/
       [](mlir::PassManager &pm) {
         pm.addPass(mlir::tf_quant::CreateUnfreezeConstantsPass());
@@ -54,10 +54,11 @@ absl::Status UnfreezeConstantsAndSaveVariables(
     return create_dir_status;
   }
 
-  TF_ASSIGN_OR_RETURN(const auto unused_variable_names,
-                      SaveVariablesToCheckpoint(checkpoint_dir, module_op));
+  TF_ASSIGN_OR_RETURN(
+      const auto unused_variable_names,
+      quantization::SaveVariablesToCheckpoint(checkpoint_dir, module_op));
 
-  return RunPasses(
+  return quantization::RunPasses(
       /*name=*/kTfQuantInsertRestoreOpStepName,
       /*add_passes_func=*/
       [](mlir::PassManager &pm) {
@@ -70,5 +71,5 @@ absl::Status UnfreezeConstantsAndSaveVariables(
       },
       ctx, module_op);
 }
-}  // namespace quantization
+}  // namespace tf_quantization
 }  // namespace tensorflow

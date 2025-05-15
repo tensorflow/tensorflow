@@ -178,7 +178,9 @@ class FuseMhloMulAndConvolutionPattern : public OpRewritePattern<mhlo::MulOp> {
 class FuseMhloConvolutionPass
     : public PassWrapper<FuseMhloConvolutionPass, OperationPass<func::FuncOp>> {
  public:
-  StringRef getArgument() const final { return "fuse-mhlo-convolution-pass"; }
+  StringRef getArgument() const final {
+    return "tf-fuse-mhlo-convolution-pass";
+  }
   StringRef getDescription() const final {
     return "Fuses MHLO binary element-wise ops and convolution op";
   }

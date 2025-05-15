@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 
 namespace tensorflow {
-namespace quantization {
+namespace tf_quantization {
 
 inline constexpr absl::string_view kTfQuantConstantUnfreezingStepName =
     "tf_quant_constant_unfreezing";
@@ -32,7 +32,7 @@ absl::Status UnfreezeConstantsAndSaveVariables(absl::string_view checkpoint_dir,
                                                mlir::MLIRContext &ctx,
                                                mlir::ModuleOp module_op);
 
-}  // namespace quantization
+}  // namespace tf_quantization
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_TF_UNFREEZE_CONSTANTS_H_

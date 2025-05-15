@@ -22,7 +22,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
 namespace tensorflow {
-namespace quantization {
+namespace tf_quantization {
+
+using ::tensorflow::quantization::QuantizationOptions;
 
 // mlir_dump_file_prefix is an optional field that is used for debugging to save
 // mlir dump files.
@@ -49,7 +51,7 @@ void AddQuantizePtqPostCalibrationPasses(
     std::optional<const absl::string_view> mlir_dump_file_prefix =
         std::nullopt);
 
-}  // namespace quantization
+}  // namespace tf_quantization
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_TF_QUANTIZE_PASSES_H_

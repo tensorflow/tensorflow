@@ -36,8 +36,8 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_saved_model_import.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/tf_quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -48,7 +48,8 @@ namespace {
 
 // Extract the mlir TF module and optionally a ::tensorflow::SavedModelBundle
 // from a saved model or from an mlir file.
-absl::StatusOr<quant::stablehlo::ImportedMlirModuleOp> ImportSavedModelOrTfMlir(
+absl::StatusOr<tf_quant::stablehlo::ImportedMlirModuleOp>
+ImportSavedModelOrTfMlir(
     absl::string_view input_path, MLIRContext* context,
     const std::vector<std::string>& exported_model_signatures,
     const std::vector<std::string>& tag_names, bool is_input_mlir_module) {
@@ -68,17 +69,18 @@ absl::StatusOr<quant::stablehlo::ImportedMlirModuleOp> ImportSavedModelOrTfMlir(
       return absl::AbortedError("Failed to parse input MLIR model.");
     }
 
-    return quant::stablehlo::ImportedMlirModuleOp(std::move(module), nullptr);
+    return tf_quant::stablehlo::ImportedMlirModuleOp(std::move(module),
+                                                     nullptr);
   }
 
   std::unordered_set<std::string> tag_set(tag_names.begin(), tag_names.end());
-  return quant::stablehlo::SavedModelToMlirModuleOp(
+  return tf_quant::stablehlo::SavedModelToMlirModuleOp(
       input_path, tag_set, exported_model_signatures, *context);
 }
 
 // Convert an TF module to a StableHLO module
 absl::StatusOr<OwningOpRef<ModuleOp>> ConvertTFToStablehlo(
-    quant::stablehlo::ImportedMlirModuleOp imported_module,
+    tf_quant::stablehlo::ImportedMlirModuleOp imported_module,
     absl::string_view input_path, MLIRContext* context,
     const std::vector<std::string>& tag_names,
     absl::string_view input_arg_shapes_str, bool is_input_mlir_module) {
@@ -91,8 +93,8 @@ absl::StatusOr<OwningOpRef<ModuleOp>> ConvertTFToStablehlo(
     std::unordered_set<std::string> tag_set(tag_names.begin(), tag_names.end());
     TF_ASSIGN_OR_RETURN(
         auto function_aliases,
-        quant::stablehlo::GetFunctionAliases(input_path, tag_set));
-    quant::stablehlo::UpdateFunctionAliases(function_aliases, *module_op);
+        tf_quant::stablehlo::GetFunctionAliases(input_path, tag_set));
+    tf_quant::stablehlo::UpdateFunctionAliases(function_aliases, *module_op);
     absl::c_for_each(function_aliases, [&](const auto& aliases) {
       return aliased_function_names.insert(aliases.first);
     });
@@ -106,7 +108,7 @@ absl::StatusOr<OwningOpRef<ModuleOp>> ConvertTFToStablehlo(
                       TF::ParseArgumentShapes(input_arg_shapes_str));
   llvm::SmallVector<llvm::ArrayRef<int64_t>> input_arg_shapes(
       input_arg_shapes_vec.begin(), input_arg_shapes_vec.end());
-  TF_RETURN_IF_ERROR(tensorflow::quantization::PreprocessAndFreezeGraph(
+  TF_RETURN_IF_ERROR(tensorflow::tf_quantization::PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/"", /*is_inliner_run=*/true,
       /*noinline_functions=*/aliased_function_names, *module_op, context,
       session,

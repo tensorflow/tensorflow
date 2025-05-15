@@ -26,8 +26,10 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace tensorflow {
-namespace quantization {
+namespace tf_quantization {
 namespace {
+
+using quantization::OpSet;
 
 void AddConvertTpuToCpuModelPasses(mlir::OpPassManager &pm) {
   pm.addPass(mlir::tf_quant::CreateConvertTpuModelToCpuPass());
@@ -212,5 +214,5 @@ void AddQuantizeWeightOnlyPasses(
   pm.addNestedPass<mlir::func::FuncOp>(mlir::tf_quant::CreateOptimizePass());
 }
 
-}  // namespace quantization
+}  // namespace tf_quantization
 }  // namespace tensorflow

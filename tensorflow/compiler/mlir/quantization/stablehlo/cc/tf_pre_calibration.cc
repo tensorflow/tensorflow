@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "xla/tsl/platform/errors.h"
 
-namespace mlir::quant::stablehlo {
+namespace mlir::tf_quant::stablehlo {
 
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::quantization::RunPasses;
@@ -46,4 +46,4 @@ absl::StatusOr<ModuleOp> PreCalibrationComponent::Run(
   return module_op;
 }
 
-}  // namespace mlir::quant::stablehlo
+}  // namespace mlir::tf_quant::stablehlo

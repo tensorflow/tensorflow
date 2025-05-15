@@ -51,7 +51,7 @@ using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::MLIRImportOptions;
 using ::tensorflow::SavedModelBundle;
 using ::tensorflow::SavedModelSignatureDefsToMlirImport;
-using ::tensorflow::quantization::PreprocessAndFreezeGraph;
+using ::tensorflow::tf_quantization::PreprocessAndFreezeGraph;
 
 absl::StatusOr<ImportedMlirModuleOp> SavedModelToMlirModuleOp(
     const absl::string_view saved_model_path,
