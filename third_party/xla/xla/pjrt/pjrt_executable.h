@@ -297,8 +297,6 @@ struct CompiledMemoryStats {
   int64_t host_temp_size_in_bytes = 0;
 
   std::string serialized_buffer_assignment;
-  // TODO(b/418027607): Clean up this field.
-  std::optional<xla::BufferAssignmentProto> buffer_assignment;
 
   std::string DebugString() const;
 
