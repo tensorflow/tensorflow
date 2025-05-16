@@ -591,6 +591,7 @@ message HloModuleProto {
     DOT = 4;
     FLAGNET = 5;
     SHARDING = 6;
+    SCHEDULE = 7;
   }
   // The type of profile generation strategy used to generate the profile.
   enum ProfileGenerationStrategy {
