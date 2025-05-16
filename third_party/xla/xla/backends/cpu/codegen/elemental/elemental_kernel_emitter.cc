@@ -101,7 +101,7 @@ ParallelPartitionBounds EmitParallelPartitionBounds(
       parallel_config.outer_dimension_partitions.size();
 
   // Create a constant array of all partition bounds. We will be indexing into
-  // this array using block and thread dimension indices passed in a call frame.
+  // this array using workgroup id passed in a call frame.
   //
   // Type: [#partitions x [#outer_dimensions x [lower_bound, upper_bound]]]
   //
@@ -138,7 +138,7 @@ ParallelPartitionBounds EmitParallelPartitionBounds(
   // Construct IR to load bounds for all parallel dimensions.
   ParallelPartitionBounds bounds;
   for (size_t i = 0; i < num_parallel_dimensions; ++i) {
-    llvm::Value* partition = kernel_prototype.thread_id.x;
+    llvm::Value* partition = kernel_prototype.workgroup_id.x;
     llvm::Value* parallel_dim = b.getInt32(i);
 
     llvm::Value* lower_gep = b.CreateInBoundsGEP(
@@ -264,7 +264,7 @@ absl::StatusOr<se::ThreadDim> ElementalKernelEmitter::EmitElementalLoops(
   const llvm_ir::IrArray& result = kernel_prototype.results.front();
 
   // Emit a loop for a single parallel partition with dynamic bounds computed
-  // from thread index.
+  // from workgroup id.
   if (has_parallel_config) {
     ParallelPartitionBounds parallel_bounds = EmitParallelPartitionBounds(
         b, kernel_prototype, *parallel_config, instr->shape(), instr->name());

@@ -121,7 +121,7 @@ class MemoryDependencyAnalyzer {
   absl::flat_hash_set<BufferAllocation::Slice> result_slices_;
 };
 
-// Following struct types correspond to HostKernel C API.
+// Following struct types correspond to XLA:CPU Kernel C API.
 // See: xla/backends/cpu/runtime/kernel_c_api.h
 
 llvm::StructType* Dim3StructTy(llvm::LLVMContext& ctx, absl::string_view name) {
@@ -129,12 +129,12 @@ llvm::StructType* Dim3StructTy(llvm::LLVMContext& ctx, absl::string_view name) {
   return llvm::StructType::create(name, i64, i64, i64);
 }
 
-llvm::StructType* KernelThreadDimTy(llvm::LLVMContext& ctx) {
-  return Dim3StructTy(ctx, "XLA_CPU_KernelThreadDim");
+llvm::StructType* KernelWorkgroupDimTy(llvm::LLVMContext& ctx) {
+  return Dim3StructTy(ctx, "XLA_CPU_WorkgroupDim");
 }
 
-llvm::StructType* KernelThreadTy(llvm::LLVMContext& ctx) {
-  return Dim3StructTy(ctx, "XLA_CPU_KernelThread");
+llvm::StructType* KernelWorkgroupTy(llvm::LLVMContext& ctx) {
+  return Dim3StructTy(ctx, "XLA_CPU_WorkgroupId");
 }
 
 llvm::StructType* KernelArgTy(llvm::LLVMContext& ctx) {
@@ -295,8 +295,8 @@ KernelApiIrBuilder::KernelApiIrBuilder(llvm::LLVMContext& context,
     : context_(context),
       options_(std::move(options)),
       buffer_validation_(buffer_validation) {
-  thread_dim_ty_ = KernelThreadDimTy(context_);
-  thread_ty_ = KernelThreadTy(context_);
+  workgroup_dim_ty_ = KernelWorkgroupDimTy(context_);
+  workgroup_id_ty_ = KernelWorkgroupTy(context_);
   arg_ty_ = KernelArgTy(context_);
   call_frame_ty_ = KernelCallFrameTy(context_);
   kernel_function_ty_ = KernelFunctionTy(context_);
@@ -350,10 +350,12 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   b.SetInsertPoint(llvm::BasicBlock::Create(context_, "", function));
 
   llvm::Value* call_frame = function->getArg(0);
-  // Build thread coordinates from the call frame.
-  KernelApiIrBuilder::ThreadDims kernel_thread_dims =
-      EmitKernelThreadDims(b, call_frame);
-  KernelApiIrBuilder::ThreadId kernel_thread = EmitKernelThread(b, call_frame);
+
+  // Build workgroup coordinates from the call frame.
+  KernelApiIrBuilder::WorkgroupDim kernel_workgroup_dim =
+      EmitKernelWorkgroupDim(b, call_frame);
+  KernelApiIrBuilder::WorkgroupId kernel_workgroup_id =
+      EmitKernelWorkgroupId(b, call_frame);
 
   int64_t idx = 0;
 
@@ -417,8 +419,8 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
 
   return KernelPrototype{function,
                          return_block,
-                         kernel_thread_dims,
-                         kernel_thread,
+                         kernel_workgroup_dim,
+                         kernel_workgroup_id,
                          std::move(ir_arguments),
                          std::move(ir_results),
                          std::move(invariant_arguments),
@@ -431,9 +433,8 @@ absl::StatusOr<std::string> KernelApiIrBuilder::GetKernelName(
   if (options_.generate_unique_c_style_kernel_entry_points) {
     return ConvertToCName(
         absl::StrCat(instr->GetModule()->name(), "_", instr->name(), suffix));
-  } else {
-    return absl::StrCat(instr->name(), suffix);
   }
+  return absl::StrCat(instr->name(), suffix);
 }
 
 std::unique_ptr<llvm::Module> KernelApiIrBuilder::CreateModule(
@@ -443,39 +444,40 @@ std::unique_ptr<llvm::Module> KernelApiIrBuilder::CreateModule(
       absl::StrCat(kXlaModuleIdentifier, "_", name), context);
 }
 
-auto KernelApiIrBuilder::EmitKernelThreadDims(llvm::IRBuilderBase& builder,
-                                              llvm::Value* call_frame)
-    -> ThreadDims {
+auto KernelApiIrBuilder::EmitKernelWorkgroupDim(llvm::IRBuilderBase& builder,
+                                                llvm::Value* call_frame)
+    -> WorkgroupDim {
   llvm::Value* td_gep =
-      builder.CreateStructGEP(call_frame_ty_, call_frame, 0, "tdims_gep");
-  llvm::Value* tdims = builder.CreateLoad(builder.getPtrTy(), td_gep, "tdims");
+      builder.CreateStructGEP(call_frame_ty_, call_frame, 0, "wdims_gep");
+  llvm::Value* wdims = builder.CreateLoad(builder.getPtrTy(), td_gep, "wdims");
   llvm::Value* x_gep =
-      builder.CreateStructGEP(thread_dim_ty_, tdims, 0, "tdim_x_gep");
+      builder.CreateStructGEP(workgroup_dim_ty_, wdims, 0, "wdim_x_gep");
   llvm::Value* y_gep =
-      builder.CreateStructGEP(thread_dim_ty_, tdims, 1, "tdim_y_gep");
+      builder.CreateStructGEP(workgroup_dim_ty_, wdims, 1, "wdim_y_gep");
   llvm::Value* z_gep =
-      builder.CreateStructGEP(thread_dim_ty_, tdims, 2, "tdim_z_gep");
+      builder.CreateStructGEP(workgroup_dim_ty_, wdims, 2, "wdim_z_gep");
 
-  return {builder.CreateLoad(builder.getInt64Ty(), x_gep, "tdim_x"),
-          builder.CreateLoad(builder.getInt64Ty(), y_gep, "tdim_y"),
-          builder.CreateLoad(builder.getInt64Ty(), z_gep, "tdim_z")};
+  return {builder.CreateLoad(builder.getInt64Ty(), x_gep, "wdim_x"),
+          builder.CreateLoad(builder.getInt64Ty(), y_gep, "wdim_y"),
+          builder.CreateLoad(builder.getInt64Ty(), z_gep, "wdim_z")};
 }
 
-auto KernelApiIrBuilder::EmitKernelThread(llvm::IRBuilderBase& builder,
-                                          llvm::Value* call_frame) -> ThreadId {
+auto KernelApiIrBuilder::EmitKernelWorkgroupId(llvm::IRBuilderBase& builder,
+                                               llvm::Value* call_frame)
+    -> WorkgroupId {
   llvm::Value* t_gep =
-      builder.CreateStructGEP(call_frame_ty_, call_frame, 1, "tid_gep");
-  llvm::LoadInst* tids = builder.CreateLoad(builder.getPtrTy(), t_gep, "tids");
+      builder.CreateStructGEP(call_frame_ty_, call_frame, 1, "wid_gep");
+  llvm::LoadInst* wids = builder.CreateLoad(builder.getPtrTy(), t_gep, "wids");
   llvm::Value* x_gep =
-      builder.CreateStructGEP(thread_ty_, tids, 0, "tid_x_gep");
+      builder.CreateStructGEP(workgroup_id_ty_, wids, 0, "wid_x_gep");
   llvm::Value* y_gep =
-      builder.CreateStructGEP(thread_ty_, tids, 1, "tid_y_gep");
+      builder.CreateStructGEP(workgroup_id_ty_, wids, 1, "wid_y_gep");
   llvm::Value* z_gep =
-      builder.CreateStructGEP(thread_ty_, tids, 2, "tid_z_gep");
+      builder.CreateStructGEP(workgroup_id_ty_, wids, 2, "wid_z_gep");
 
-  return {builder.CreateLoad(builder.getInt64Ty(), x_gep, "tid_x"),
-          builder.CreateLoad(builder.getInt64Ty(), y_gep, "tid_y"),
-          builder.CreateLoad(builder.getInt64Ty(), z_gep, "tid_z")};
+  return {builder.CreateLoad(builder.getInt64Ty(), x_gep, "wid_x"),
+          builder.CreateLoad(builder.getInt64Ty(), y_gep, "wid_y"),
+          builder.CreateLoad(builder.getInt64Ty(), z_gep, "wid_z")};
 }
 
 llvm_ir::IrArray KernelApiIrBuilder::EmitKernelArgument(
