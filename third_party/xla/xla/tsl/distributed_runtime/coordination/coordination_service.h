@@ -364,6 +364,9 @@ class CoordinationService {
     absl::flat_hash_map<tensorflow::CoordinatedTask, bool, CoordinatedTaskHash,
                         CoordinatedTaskEqual>
         tasks_at_barrier;
+    absl::flat_hash_set<tensorflow::CoordinatedTask, CoordinatedTaskHash,
+                        CoordinatedTaskEqual>
+        recoverable_tasks_restarted_during_barrier;
     absl::flat_hash_map<tensorflow::CoordinatedTask, BarrierCallback,
                         CoordinatedTaskHash, CoordinatedTaskEqual>
         done_callbacks;
@@ -448,6 +451,12 @@ class CoordinationService {
   // clients are not polling for error from the service, the service should stop
   // when there is an error. Otherwise, the service should not stop.
   bool IsClientPollingForError() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+
+  // Checks if the barrier can be passed, if recoverable tasks reconnected or
+  // disconnected to the service while barrier is ongoing.
+  // This is only applicable if leave_barriers_on_recoverable_agent_restart flag
+  // is set to true.
+  void CheckBarrierStatusWithRecoverableTasks();
 
   class ErrorPollingState {
    public:
