@@ -145,6 +145,11 @@ class SymbolicTileAnalysis {
   // Returns the output index of the real root.
   int64_t real_root_index() const { return root_indexing_.real_root_index; }
 
+  // Returns the indexing for the real root.
+  const IndexingMap& GetRealRootIndexing() const {
+    return root_indexing_.real_root_indexing;
+  }
+
   // Returns the number of tile parameters in this symbolic analysis.
   // TODO(b/390569102): This assumes that there is only one root that matters
   // for computing the tiling, and that it is the last symbolic tiled hlo

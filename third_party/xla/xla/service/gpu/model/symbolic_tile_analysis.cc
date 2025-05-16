@@ -46,7 +46,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
@@ -78,7 +77,6 @@ namespace gpu {
 namespace {
 
 using ::mlir::AffineExpr;
-using ::mlir::AffineExprKind;
 using ::mlir::MLIRContext;
 
 struct OutputTilingInfo {
@@ -94,11 +92,54 @@ struct OutputTilingInfo {
   // size of `num_output_tiles_per_dim`. For example above it would look like:
   //   `(pid_0, pid_1) -> (<tile 0 offset>, <tile 1 offset>)`.
   IndexingMap output_tile_offset_indexing;
+
+  // Same as above, but linearized in row major order, so for the example above
+  // it would look like:
+  //   `(pid) -> (<tile 0 offset>, <tile 1 offset>)`.
+  // with tile offset expressions where pid_0 is replaced by (pid floordiv 2),
+  // and pid_1 is replaced by (pid mod 2).
+  IndexingMap linear_output_tile_offset_indexing;
 };
+
+llvm::SmallVector<int64_t> GetNumberOfTilesPerDimension(
+    const TiledHloInstruction& tiled_hlo_instr) {
+  llvm::SmallVector<int64_t> result;
+  absl::Span<const int64_t> dimensions =
+      tiled_hlo_instr.hlo()->shape().dimensions();
+  result.reserve(dimensions.size());
+  for (auto [dim_size, tile_size] :
+       llvm::zip(dimensions, tiled_hlo_instr.tile_sizes())) {
+    result.push_back(CeilOfRatio(dim_size, tile_size));
+  }
+  return result;
+}
+
+IndexingMap LinearizeTileOffsets(
+    const IndexingMap& tile_offsets_indexing,
+    absl::Span<const int64_t> num_output_tiles_per_dim,
+    mlir::MLIRContext* mlir_context) {
+  int64_t num_tiles = Product(num_output_tiles_per_dim);
+  mlir::AffineExpr program_id = mlir::getAffineDimExpr(0, mlir_context);
+  auto tile_exprs =
+      DelinearizeIndex(num_output_tiles_per_dim, program_id, mlir_context);
+  std::vector<IndexingMap::Variable> dim_vars{{0, num_tiles - 1, "pid_0"}};
+  IndexingMap program_id_to_output_dims{
+      mlir::AffineMap::get(
+          /*dimCount=*/1, /*symbolCount=*/0, tile_exprs, mlir_context),
+      dim_vars, /*range_vars=*/{}, /*rt_vars=*/{}};
+  auto linearized_tile_offsets_indexing =
+      ComposeIndexingMaps(program_id_to_output_dims, tile_offsets_indexing);
+  linearized_tile_offsets_indexing.Simplify();
+  linearized_tile_offsets_indexing.RescaleSymbols();
+  linearized_tile_offsets_indexing.RemoveUnusedSymbols();
+  return linearized_tile_offsets_indexing;
+}
 
 absl::StatusOr<OutputTilingInfo> ComputeOutputTilingInfo(
     const IndexingMap& root_indexing, absl::Span<const int64_t> tile_sizes,
-    mlir::MLIRContext* mlir_context) {
+    mlir::MLIRContext* mlir_context,
+    const std::optional<absl::Span<const Interval>>&
+        parent_output_tile_dim_bounds = std::nullopt) {
   int64_t rank = root_indexing.GetDimVarsCount();
   CHECK_EQ(rank, tile_sizes.size());  // Crash OK
 
@@ -106,11 +147,11 @@ absl::StatusOr<OutputTilingInfo> ComputeOutputTilingInfo(
   std::vector<IndexingMap::Variable> dim_vars;
   outer_loop_bounds.reserve(rank);
   dim_vars.reserve(rank);
+  llvm::SmallVector<AffineExpr> tiled_dims;
+  tiled_dims.reserve(rank);
+  llvm::SmallVector<std::pair<mlir::AffineExpr, Interval>> constraints;
   for (auto [dim_bounds, tile_size] :
        llvm::zip(root_indexing.GetDimensionBounds(), tile_sizes)) {
-    outer_loop_bounds.push_back(
-        CeilOfRatio(dim_bounds.upper + 1 - dim_bounds.lower, tile_size));
-
     // Start out by making the assumption that we only get tiles with offsets
     // divisible by the tile size. This is true for our initial support of
     // concatenates, but is not a given in the future.
@@ -120,16 +161,34 @@ absl::StatusOr<OutputTilingInfo> ComputeOutputTilingInfo(
                        ToString(root_indexing)));
     }
 
-    int64_t loop_lower_bound_offset = dim_bounds.lower / tile_size;
-    int64_t loop_upper_bound_ofset =
-        loop_lower_bound_offset + outer_loop_bounds.back() - 1;
-    dim_vars.push_back({loop_lower_bound_offset, loop_upper_bound_ofset});
-    dim_vars.back().name = absl::StrCat("pid_", dim_vars.size() - 1);
-  }
+    int64_t dim_id = dim_vars.size();
+    int64_t upper_bound = CeilOfRatio(dim_bounds.upper + 1, tile_size);
+    if (parent_output_tile_dim_bounds) {
+      // This is used to handle cases where the iteration space of a nested
+      // fusion is smaller than the iteration space of the parent fusion
+      // instruction. When we want to linearize that, we would not model the
+      // "gap" in the linear iteration space correctly, as that can only be
+      // modelled with a constraint instead of a dimension bound. Therefore,
+      // we replace the dimension bound with the full range (taken from the
+      // parent) and add a dimension constraint to describe it equivalently in a
+      // way where linearization will work correctly.
+      CHECK_EQ(parent_output_tile_dim_bounds->size(),
+               rank);  // Crash OK
+      constraints.push_back(
+          {mlir::getAffineDimExpr(dim_id, mlir_context),
+           Interval{dim_bounds.lower / tile_size, upper_bound - 1}});
+      upper_bound = parent_output_tile_dim_bounds.value()[dim_id].upper + 1;
+    } else if (dim_bounds.lower != 0) {
+      // Dimension lower bounds != 0 currently only happen for Concatenate ops,
+      // and for those we should have passed `parent_output_tile_dim_bounds`.
+      return absl::UnimplementedError(
+          absl::StrCat("Dimension lower bound is not equal to 0: ",
+                       ToString(root_indexing)));
+    }
+    outer_loop_bounds.push_back(upper_bound);
 
-  llvm::SmallVector<AffineExpr> tiled_dims;
-  tiled_dims.reserve(rank);
-  for (auto [dim_id, tile_size] : llvm::enumerate(tile_sizes)) {
+    dim_vars.push_back({0, outer_loop_bounds.back() - 1});
+    dim_vars.back().name = absl::StrCat("pid_", dim_id);
     tiled_dims.push_back(tile_size *
                          mlir::getAffineDimExpr(dim_id, mlir_context));
   }
@@ -137,8 +196,11 @@ absl::StatusOr<OutputTilingInfo> ComputeOutputTilingInfo(
   IndexingMap output_tile_offset_indexing{
       mlir::AffineMap::get(
           /*dimCount=*/rank, /*symbolCount=*/0, tiled_dims, mlir_context),
-      dim_vars, /*range_vars=*/{}, /*rt_vars=*/{}};
-  return OutputTilingInfo{outer_loop_bounds, output_tile_offset_indexing};
+      dim_vars, /*range_vars=*/{}, /*rt_vars=*/{}, constraints};
+  IndexingMap linear_output_tile_offset_indexing = LinearizeTileOffsets(
+      output_tile_offset_indexing, outer_loop_bounds, mlir_context);
+  return OutputTilingInfo{outer_loop_bounds, output_tile_offset_indexing,
+                          linear_output_tile_offset_indexing};
 }
 
 // Extension of SymbolicTiledHloInstruction for fusions that holds the analysis
@@ -195,7 +257,8 @@ absl::StatusOr<IndexingMap> ComputeTileOffsetIndexing(
 
   IndexingMap simplified_indexing_map =
       IndexingMap{simplified_affine_map, tile_offset_indexing.GetDimVars(),
-                  /*range_vars=*/{}, tile_offset_indexing.GetRTVars()};
+                  /*range_vars=*/{}, tile_offset_indexing.GetRTVars(),
+                  tile_offset_indexing.GetConstraints()};
 
   simplified_indexing_map.Simplify();
   simplified_indexing_map.RescaleSymbols();
@@ -688,39 +751,6 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
 }
 
 namespace {
-llvm::SmallVector<int64_t> GetNumberOfTilesPerDimension(
-    const TiledHloInstruction& tiled_hlo_instr) {
-  llvm::SmallVector<int64_t> result;
-  absl::Span<const int64_t> dimensions =
-      tiled_hlo_instr.hlo()->shape().dimensions();
-  result.reserve(dimensions.size());
-  for (auto [dim_size, tile_size] :
-       llvm::zip(dimensions, tiled_hlo_instr.tile_sizes())) {
-    result.push_back(CeilOfRatio(dim_size, tile_size));
-  }
-  return result;
-}
-
-IndexingMap LinearizeTileOffsets(
-    const IndexingMap& tile_offsets_indexing,
-    absl::Span<const int64_t> num_output_tiles_per_dim,
-    mlir::MLIRContext* mlir_context) {
-  int64_t num_tiles = Product(num_output_tiles_per_dim);
-  mlir::AffineExpr program_id = mlir::getAffineDimExpr(0, mlir_context);
-  auto tile_exprs =
-      DelinearizeIndex(num_output_tiles_per_dim, program_id, mlir_context);
-  auto program_id_to_output_dims = IndexingMap::FromTensorSizes(
-      mlir::AffineMap::get(
-          /*dimCount=*/1, /*symbolCount=*/0, tile_exprs, mlir_context),
-      /*dim_upper_bounds=*/{num_tiles}, /*symbol_upper_bounds=*/{});
-  auto linearized_tile_offsets_indexing =
-      ComposeIndexingMaps(program_id_to_output_dims, tile_offsets_indexing);
-  linearized_tile_offsets_indexing.Simplify();
-  linearized_tile_offsets_indexing.RescaleSymbols();
-  linearized_tile_offsets_indexing.RemoveUnusedSymbols();
-  return linearized_tile_offsets_indexing;
-}
-
 // Returns whether the tiling from `output` can be used by the emitter for
 // producing a fusion output without causing issues in case a buffer is shared
 // between a fusion operand and a fusion output. Buffer sharing is (as of May
@@ -751,22 +781,20 @@ IndexingMap LinearizeTileOffsets(
 // by using `output` as a tiling root using the propagated tile sizes as tiling
 // parameters. As a side effect, this check will also make sure that by using
 // the tiling from `output` we will produce the full output.
-// `reference_output_tiling_iteration_space` is the number of tiles per output
-// dimension of the root from which the tiling was propagated. We need to ensure
-// that the iteration spaces for tiles match for all outputs. This is a
-// restriction we may lift later in case the buffer sharing logic is adapted.
+// `reference_num_output_tiles` is the number of tiles of the root from which
+// the tiling was propagated. We need to ensure that the iteration spaces for
+// tiles match for all outputs. This is a restriction we may lift later in case
+// the buffer sharing logic is adapted.
 // This method assumes that `output` has tile_offset_indexing computed, and
 // returns a FailedPrecondition error if not.
-absl::StatusOr<bool> IsSafeForBufferSharing(
-    const TiledHloInstruction& output,
-    absl::Span<const int64_t> reference_output_tiling_iteration_space,
-    mlir::MLIRContext* mlir_context) {
+absl::StatusOr<bool> IsSafeForBufferSharing(const TiledHloInstruction& output,
+                                            int64_t reference_num_output_tiles,
+                                            mlir::MLIRContext* mlir_context) {
   // For expanding reshapes, we can have the case that the number of
   // blocks are different. This is not supported by the triton emitter.
   llvm::SmallVector<int64_t> num_tiles_per_dim =
       GetNumberOfTilesPerDimension(output);
-  if (Product(num_tiles_per_dim) !=
-      Product(reference_output_tiling_iteration_space)) {
+  if (Product(num_tiles_per_dim) != reference_num_output_tiles) {
     return false;
   }
   // Compute the tile offset indexing directly for `output`. We use default
@@ -779,8 +807,7 @@ absl::StatusOr<bool> IsSafeForBufferSharing(
                                             output.tile_sizes(), mlir_context));
 
   // Check whether the tile_offsets_indexing expression is the same as one
-  // computed directly for this root. We need to linearize both indexing
-  // maps to be able to compare them.
+  // computed directly for this root.
   absl::StatusOr<IndexingMap> maybe_tile_offset_indexing =
       output.tile_offsets_indexing();
   if (!maybe_tile_offset_indexing.ok()) {
@@ -788,14 +815,8 @@ absl::StatusOr<bool> IsSafeForBufferSharing(
         absl::StrCat("Expected ", output.ToString(),
                      " to have a tile_offsets_indexing value"));
   }
-  IndexingMap linearized_propagated_tile_offsets_indexing =
-      LinearizeTileOffsets(maybe_tile_offset_indexing.value(),
-                           reference_output_tiling_iteration_space,
-                           mlir_context);
-  IndexingMap linearized_local_tile_offsets_indexing = LinearizeTileOffsets(
-      tiling_info.output_tile_offset_indexing, num_tiles_per_dim, mlir_context);
-  return linearized_propagated_tile_offsets_indexing ==
-         linearized_local_tile_offsets_indexing;
+  return maybe_tile_offset_indexing.value() ==
+         tiling_info.linear_output_tile_offset_indexing;
 }
 
 absl::StatusOr<std::vector<const TiledHloInstruction*>> InitializeTiledRoots(
@@ -831,10 +852,10 @@ absl::StatusOr<std::vector<const TiledHloInstruction*>> InitializeTiledRoots(
     // Therefore we need to make sure that we use an input tile only in the
     // iteration in which we overwrite it.
     TF_ASSIGN_OR_RETURN(
-        bool valid,
-        IsSafeForBufferSharing(*tiled_hlo_instr,
-                               /*reference_output_tiling_iteration_space=*/
-                               num_output_tiles_per_dim, mlir_context));
+        bool valid, IsSafeForBufferSharing(*tiled_hlo_instr,
+                                           /*reference_num_output_tiles=*/
+                                           Product(num_output_tiles_per_dim),
+                                           mlir_context));
     if (!valid) {
       continue;
     }
@@ -889,18 +910,20 @@ absl::StatusOr<int64_t> GetReductionTileSize(
   }
   return output_tile_sizes.front()[it - results.begin()];
 }
-
 }  // namespace
 
 // TODO(b/406244630): this function is too long. We should chunk it up.
-absl::StatusOr<TiledHloComputation>
-SymbolicTileAnalysis::ComputeTiledHloInstructions(
+absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructionsImpl(
+    const SymbolicTileAnalysis& analysis,
     absl::Span<const int64_t> tile_parameters,
     bool constraints_are_known_satisfied,
-    bool compute_all_tile_offset_indexing_maps) const {
+    bool compute_all_tile_offset_indexing_maps,
+    const std::optional<absl::Span<const Interval>>&
+        parent_output_tile_dim_bounds,
+    MLIRContext* context) {
   if (!constraints_are_known_satisfied) {
     TF_ASSIGN_OR_RETURN(bool constraints_are_satisfied,
-                        ParametersSatisfyConstraints(tile_parameters));
+                        analysis.ParametersSatisfyConstraints(tile_parameters));
     if (!constraints_are_satisfied) {
       return absl::InvalidArgumentError(
           absl::StrCat("Tile parameters ", absl::StrJoin(tile_parameters, ", "),
@@ -912,7 +935,7 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
   // strides at the moment if padding is required. Also, for the Reverse op it
   // might make sense to emit code for it, and normalizing strides to >= 0.
   for (const std::unique_ptr<SymbolicTiledHloInstruction>& symbolic_tiled_hlo :
-       symbolic_tiled_hlo_instructions_) {
+       analysis.GetSymbolicTiledHloComputation()) {
     llvm::SmallVector<int64_t> tile_strides = EvaluateTileStrides(
         symbolic_tiled_hlo->symbolic_tile(), tile_parameters);
     if (absl::c_any_of(tile_strides,
@@ -944,7 +967,7 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
   if (!compute_all_tile_offset_indexing_maps) {
     absl::flat_hash_set<size_t> hashes;
     for (const std::unique_ptr<SymbolicTiledHloInstruction>& symbolic_tiling :
-         symbolic_tiled_hlo_instructions_) {
+         analysis.GetSymbolicTiledHloComputation()) {
       if (!symbolic_tiling->operands().empty()) {
         continue;
       }
@@ -963,20 +986,21 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
         parameters_with_offset_indexing.insert(symbolic_tiling->hlo());
       }
     }
-    if (root_indexing_.roots.size() > 1) {
+    if (analysis.GetRoots().size() > 1) {
       // We need tile_offset_indexing to check whether we can reuse a tile for
       // another root.
-      parameters_with_offset_indexing.insert(root_indexing_.roots.begin(),
-                                             root_indexing_.roots.end());
+      parameters_with_offset_indexing.insert(analysis.GetRoots().begin(),
+                                             analysis.GetRoots().end());
     }
   }
 
   // TODO(b/390569102): This assumes that there is only one root that matters
   // for computing the tiling, and that it is the last symbolic tiled hlo
   // instruction in the list.
-  TF_ASSIGN_OR_RETURN(OutputTilingInfo output_tiling_info,
-                      ComputeOutputTilingInfo(root_indexing_.real_root_indexing,
-                                              tile_parameters, context_));
+  TF_ASSIGN_OR_RETURN(
+      OutputTilingInfo output_tiling_info,
+      ComputeOutputTilingInfo(analysis.GetRealRootIndexing(), tile_parameters,
+                              context, parent_output_tile_dim_bounds));
 
   OrderedUniquePtrValueHashSet<TiledHloInstruction> tiled_hlo_instructions_set;
   absl::flat_hash_map<const SymbolicTiledHloInstruction*, TiledHloInstruction*>
@@ -985,10 +1009,11 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
   // of `SymbolicTiledHloInstruction`s, because some instruction will be
   // deduplicated, but we reserve to the upper bound to avoid reallocations and
   // additional hash calculations.
-  tiled_hlo_instructions_set.Reserve(symbolic_tiled_hlo_instructions_.size());
+  tiled_hlo_instructions_set.Reserve(
+      analysis.GetSymbolicTiledHloComputation().size());
 
   for (const std::unique_ptr<SymbolicTiledHloInstruction>& symbolic_tiled_hlo :
-       symbolic_tiled_hlo_instructions_) {
+       analysis.GetSymbolicTiledHloComputation()) {
     llvm::SmallVector<int64_t> tile_sizes;
     auto it = tile_sizes_map.find(symbolic_tiled_hlo.get());
     if (it != tile_sizes_map.end()) {
@@ -1010,7 +1035,13 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
           tile_offset_indexing,
           ComputeTileOffsetIndexing(
               *symbolic_tiled_hlo,
-              output_tiling_info.output_tile_offset_indexing, context_));
+              output_tiling_info.linear_output_tile_offset_indexing, context));
+    }
+    std::optional<std::vector<Interval>> fusion_tile_dim_bounds;
+    if (hlo->opcode() == HloOpcode::kFusion && !hlo->users().empty() &&
+        hlo->users().front()->opcode() == HloOpcode::kConcatenate) {
+      fusion_tile_dim_bounds =
+          output_tiling_info.output_tile_offset_indexing.GetDimensionBounds();
     }
 
     llvm::SmallVector<const TiledHloInstruction*> operands;
@@ -1025,6 +1056,11 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
                 symbolic_tiled_hlo.get())) {
       std::vector<int64_t> nested_tiling_parameters(tile_parameters.begin(),
                                                     tile_parameters.end());
+      if (hlo->users().empty()) {
+        return absl::FailedPreconditionError(
+            absl::StrCat("Expected the nested fusion instruction ",
+                         hlo->ToString(), " to have a user"));
+      }
       const HloInstruction* user = hlo->users().front();
       // Nested fusions materialize regions of control flow delineated rooted
       // in their user. If the user has a contracting dimension, we need to
@@ -1046,9 +1082,11 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
       // Compute tiled instructions recursively.
       TF_ASSIGN_OR_RETURN(
           auto tiled_hlo_computation,
-          symbolic_fusion_tiling->analysis_.ComputeTiledHloInstructions(
-              nested_tiling_parameters, constraints_are_known_satisfied,
-              compute_all_tile_offset_indexing_maps));
+          ComputeTiledHloInstructionsImpl(symbolic_fusion_tiling->analysis_,
+                                          nested_tiling_parameters,
+                                          constraints_are_known_satisfied,
+                                          compute_all_tile_offset_indexing_maps,
+                                          fusion_tile_dim_bounds, context));
 
       TF_ASSIGN_OR_RETURN(tiled_instruction,
                           TiledHloFusionInstruction::Create(
@@ -1073,12 +1111,23 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
   auto tiled_hlo_instructions = tiled_hlo_instructions_set.ExtractData();
   TF_ASSIGN_OR_RETURN(
       auto tiled_roots,
-      InitializeTiledRoots(root_indexing_.roots, tiled_hlo_instructions,
+      InitializeTiledRoots(analysis.GetRoots(), tiled_hlo_instructions,
                            output_tiling_info.num_output_tiles_per_dim,
-                           context_));
+                           context));
   return TiledHloComputation::FromSortedTiledHloInstructions(
       std::move(tiled_hlo_instructions), tiled_roots,
       output_tiling_info.num_output_tiles_per_dim);
+}
+
+absl::StatusOr<TiledHloComputation>
+SymbolicTileAnalysis::ComputeTiledHloInstructions(
+    absl::Span<const int64_t> tile_parameters,
+    bool constraints_are_known_satisfied,
+    bool compute_all_tile_offset_indexing_maps) const {
+  return ComputeTiledHloInstructionsImpl(
+      *this, tile_parameters, constraints_are_known_satisfied,
+      compute_all_tile_offset_indexing_maps,
+      /*parent_output_tile_dim_bounds=*/std::nullopt, context_);
 }
 
 std::string SymbolicTileAnalysis::ToString() const {

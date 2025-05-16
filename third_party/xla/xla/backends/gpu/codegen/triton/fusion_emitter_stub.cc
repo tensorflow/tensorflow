@@ -82,15 +82,5 @@ std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
   return "";
 }
 
-namespace ir_emitter_triton_internal {
-
-llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
-    EmitterLocOpBuilder& b,
-    absl::Span<const int64_t> num_output_tiles_per_dim) {
-  return {};
-}
-
-}  // namespace ir_emitter_triton_internal
-
 }  // namespace gpu
 }  // namespace xla

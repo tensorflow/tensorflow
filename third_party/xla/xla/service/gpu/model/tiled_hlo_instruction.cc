@@ -65,6 +65,14 @@ absl::Status VerifyTiledHloInstructionConstructorPreconditions(
   }
 
   if (tile_offsets_indexing.has_value() &&
+      tile_offsets_indexing->GetDimensionCount() != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("tile_offsets_indexing must have 1 dim. "
+                     "tile_offsets_indexing = ",
+                     ToString(*tile_offsets_indexing)));
+  }
+
+  if (tile_offsets_indexing.has_value() &&
       tile_offsets_indexing->GetAffineMap().getNumResults() != rank) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "tile_offsets_indexing must have the same number of results as the "
