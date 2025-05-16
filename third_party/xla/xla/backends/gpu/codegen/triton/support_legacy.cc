@@ -358,7 +358,7 @@ CodegenDecision IsTritonSupportedDynamicSlice(
   const HloInstruction* input = instr.operand(0);
   Layout in_layout = input->shape().layout();
   int64_t majormost_dim_id =
-      in_layout.minor_to_major(in_layout.minor_to_major_size() - 1);
+      in_layout.minor_to_major(in_layout.minor_to_major().size() - 1);
 
   for (int i = 0; i < input->shape().dimensions().size(); ++i) {
     if (i == majormost_dim_id) {
