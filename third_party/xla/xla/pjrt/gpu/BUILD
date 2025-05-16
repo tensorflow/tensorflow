@@ -211,6 +211,7 @@ xla_test(
         "//xla/pjrt/profiling:device_time_measurement",
         "//xla/pjrt/profiling/test_util:mock_device_time_measurement",
         "//xla/service:platform_util",
+        "//xla/service/gpu:gpu_memory_space_assignment",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
         "//xla/stream_executor/cuda:cuda_compute_capability",
