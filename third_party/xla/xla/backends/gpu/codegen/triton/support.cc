@@ -151,7 +151,8 @@ CodegenDecision IsTritonSupportedConversion(
     return error_message();
   }
 
-  if (input == S4 && output != S8) {
+  if (input == S4 && output != S8 && output != F16 && output != BF16 &&
+      output != F32 && output != F64) {
     return error_message();
   }
   if (output == S4) {
