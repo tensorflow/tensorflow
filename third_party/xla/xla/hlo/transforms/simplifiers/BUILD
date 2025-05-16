@@ -904,6 +904,7 @@ xla_cc_test(
     name = "hlo_rematerialization_test",
     srcs = ["hlo_rematerialization_test.cc"],
     deps = [
+        ":hlo_dce",
         ":hlo_memory_scheduler",
         ":hlo_rematerialization",
         ":hlo_rematerialization_test_utils",
@@ -922,6 +923,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
     ],
 )
 
