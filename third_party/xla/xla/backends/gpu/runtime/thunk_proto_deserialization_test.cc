@@ -51,7 +51,7 @@ TEST(ThunkProtoDeserializationTest, SequentialThunkChain) {
 
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, outer_thunk.ToProto());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Thunk> new_thunk,
-                          DeserializeThunkProto(proto));
+                          DeserializeThunkProto(proto, {}));
 
   EXPECT_THAT(new_thunk.get(),
               WhenDynamicCastTo<const SequentialThunk*>(Property(

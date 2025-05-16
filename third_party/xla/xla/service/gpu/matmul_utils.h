@@ -81,6 +81,11 @@ struct MatrixLayout : public se::gpu::MatrixLayout {
 };
 
 struct GemmConfig : public se::gpu::GemmConfig {
+  GemmConfig() = default;
+  GemmConfig(const se::gpu::GemmConfig& base) : se::gpu::GemmConfig(base) {}
+  GemmConfig(se::gpu::GemmConfig&& base)
+      : se::gpu::GemmConfig(std::move(base)) {}
+
   // For legacy Gemm operations XLA:GPU allocates its own workspace and passes
   // it to all BLAS API calls.
   //
