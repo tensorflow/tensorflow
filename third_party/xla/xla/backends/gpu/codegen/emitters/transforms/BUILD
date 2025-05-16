@@ -40,6 +40,7 @@ cc_library(
         "lower_xla_shared.cc",
         "optimize_loops.cc",
         "peel_loops.cc",
+        "recover_exp2.cc",
     ],
     hdrs = ["passes.h"],
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),

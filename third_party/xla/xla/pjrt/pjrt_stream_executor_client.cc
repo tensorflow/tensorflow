@@ -1048,35 +1048,35 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
   // usage holds have gone away.
   // TODO(misard) assess if it would be preferable to introduce a heuristic to
   // put the transfer into the calling thread for small literals.
-  auto transfer_h2d = [local_client = client(), transfer_manager, local_device,
-                       device_memory = device_buffer->device_memory(), device,
-                       event, literal, py_buffer{py_buffer.get()},
-                       on_device_shape{
-                           py_buffer->on_device_shape()}]() mutable {
-    // This function uses TF_CHECK_OK and value() since we have no way
-    // to report failures from a callback. However, the operations here are
-    // unlikely to fail and not recoverable even if we were to fail: DMAs to
-    // memory that has already been allocated, and a possible Event
-    // allocation.
+  auto transfer_h2d =
+      [local_client = client(), transfer_manager, local_device,
+       device_memory = device_buffer->device_memory(), device, event, literal,
+       py_buffer{py_buffer.get()},
+       on_device_shape{py_buffer->on_device_shape()}]() mutable {
+        // This function uses TF_CHECK_OK and value() since we have no way
+        // to report failures from a callback. However, the operations here are
+        // unlikely to fail and not recoverable even if we were to fail: DMAs to
+        // memory that has already been allocated, and a possible Event
+        // allocation.
 
-    se::Stream* h2d_stream = local_device->host_to_device_stream();
+        se::Stream* h2d_stream = local_device->host_to_device_stream();
 
-    ShapedBuffer buffer =
-        device_memory->AsShapedBuffer(device, on_device_shape);
-    TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-        h2d_stream, literal, buffer));
+        ShapedBuffer buffer =
+            device_memory->AsShapedBuffer(device, on_device_shape);
+        TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+            h2d_stream, literal, buffer));
 
-    TF_CHECK_OK(
-        AddDestinationBufferSynchronization(local_device, event, h2d_stream));
+        TF_CHECK_OK(AddDestinationBufferSynchronization(local_device, event,
+                                                        h2d_stream));
 
-    local_device->ThenRelease(h2d_stream, device_memory).IgnoreError();
+        local_device->ThenRelease(h2d_stream, device_memory).IgnoreError();
 
-    // This can sometimes catch the case where the literal memory has been
-    // freed before the H2D transfer was issued.
-    h2d_stream->RefreshStatus()
-        .IgnoreError();  // Can return error::Unimplemented
-    QCHECK(h2d_stream->ok());
-  };
+        // This can sometimes catch the case where the literal memory has been
+        // freed before the H2D transfer was issued.
+        h2d_stream->RefreshStatus()
+            .IgnoreError();  // Can return error::Unimplemented
+        QCHECK(h2d_stream->ok());
+      };
   thread_pool()->Schedule(WrapClosureAsCopyable(std::move(transfer_h2d)));
   RecordUsage(std::move(device_buffer), local_device, local_device, event,
               local_device->host_to_device_stream());
@@ -2727,12 +2727,21 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
         }));
   }
 
+  VLOG(1) << "Start calling RunAsync for "
+          << executables_[executable_idx]->executable()->module().name()
+          << ", device=" << device->DebugString()
+          << ", run_id=" << run_options.run_id().ToInt();
+
   absl::StatusOr<PjRtStreamExecutorExecutionOutput> result_buffer_or_status =
       client_->RunAsync(*executables_[executable_idx], device,
                         std::move(execution_inputs), run_options);
 
-  VLOG(1) << "Replica " << replica << " partition " << partition
-          << " completed; ok=" << result_buffer_or_status.ok();
+  VLOG(1) << "Finish calling RunAsync for "
+          << executables_[executable_idx]->executable()->module().name()
+          << ", device=" << device->DebugString()
+          << ", run_id=" << run_options.run_id().ToInt()
+          << ", replica=" << replica << ", partition=" << partition
+          << ", completed, ok=" << result_buffer_or_status.ok();
 
   if (!result_buffer_or_status.ok()) {
     return result_buffer_or_status.status();
@@ -3736,16 +3745,19 @@ PjRtStreamExecutorClient::Load(std::unique_ptr<PjRtExecutable> executable,
 bool PjRtStreamExecutorClient::IsDmaMapped(const void* data_start,
                                            int64_t transfer_size) {
   absl::MutexLock lock(&dma_maps_mutex_);
-  if (!dma_maps_.empty()) {
-    void* data_end = (char*)data_start + transfer_size;
-    for (const auto& [map_start, map_size] : dma_maps_) {
-      void* map_end = (char*)map_start + map_size;
-      if (data_start >= map_start && data_end <= map_end) {
-        return true;
-      }
-    }
+  if (dma_maps_.empty()) {
+    return false;
   }
-  return false;
+
+  auto it = dma_maps_.upper_bound(data_start);
+  if (it == dma_maps_.begin()) {
+    return false;
+  }
+
+  --it;
+  void* data_end = (char*)data_start + transfer_size;
+  void* map_end = (char*)it->first + it->second;
+  return data_end <= map_end;
 }
 
 }  // namespace xla

@@ -59,6 +59,16 @@ def ConvertFloatAMDPass : Pass<"xla-gpu-convert-float-amd", "mlir::ModuleOp"> {
   ];
   let constructor = "CreateConvertFloatAMDPass()";
 }
+def RecoverExp2Pass : Pass<"xla-gpu-recover-exp2", "mlir::ModuleOp"> {
+  let summary = "Recovers exp2(x) from exp(x*log(2))";
+
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::math::MathDialect",
+  ];
+  let constructor = "CreateRecoverExp2Pass()";
+}
 
 def FuseLoopsPass : Pass<"xla-gpu-fuse-loops", "mlir::func::FuncOp"> {
   let summary = "Fuse xla_gpu.loop.";
