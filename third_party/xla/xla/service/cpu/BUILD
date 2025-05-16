@@ -13,7 +13,7 @@ load(
     "xla_cc_test",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "internal_visibility", "tf_openmp_copts", "tsl_copts")
+load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api", "mkl_deps")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
@@ -599,7 +599,6 @@ cc_library(
         ":onednn_softmax",
         ":runtime_conv2d",
         ":runtime_conv2d_acl",
-        ":runtime_conv2d_mkl",
         ":runtime_conv3d",
         ":runtime_custom_call_status",
         ":runtime_fft",
@@ -1184,25 +1183,6 @@ cc_library(
         "//xla/service:custom_call_status_internal",
         "@com_google_absl//absl/base:core_headers",
     ],
-)
-
-cc_library(
-    name = "runtime_conv2d_mkl",
-    srcs = [
-        "runtime_conv2d_mkl.cc",
-    ],
-    hdrs = ["runtime_conv2d_mkl.h"],
-    copts = runtime_copts() + tf_openmp_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":runtime_conv2d",
-        ":runtime_single_threaded_conv2d",
-        "//xla:executable_run_options",
-        "//xla/tsl/framework/convolution:eigen_helpers",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
-        "@eigen_archive//:eigen3",
-    ] + mkl_deps(),
 )
 
 cc_library(
