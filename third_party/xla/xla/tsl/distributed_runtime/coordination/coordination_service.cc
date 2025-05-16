@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/flags/flag.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -49,6 +50,10 @@ limitations under the License.
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/tsl/util/device_name_utils.h"
+
+ABSL_FLAG(bool, leave_barriers_on_recoverable_agent_restart, false,
+          "If true, allow the recoverable agent to leave ongoing barriers on "
+          "restart.");
 
 namespace tsl {
 namespace {
@@ -268,6 +273,43 @@ void CoordinationService::CheckHeartbeatTimeout() {
   }
 }
 
+void CoordinationService::CheckBarrierStatusWithRecoverableTasks() {
+  absl::MutexLock l(&state_mu_);
+  if (!absl::GetFlag(FLAGS_leave_barriers_on_recoverable_agent_restart)) {
+    return;
+  }
+  // Gather barriers which are ready to pass except for the recoverable tasks
+  // reconnected during the barrier. When the flag
+  // leave_barriers_on_recoverable_agent_restart is set, the recoverable tasks
+  // will be removed from the barrier and the barrier will be passed.
+  absl::flat_hash_set<BarrierState*> passing_barriers;
+  for (absl::string_view barrier_id : ongoing_barriers_) {
+    auto* barrier = &barriers_[barrier_id];
+    if (barrier->num_pending_tasks ==
+        barrier->recoverable_tasks_restarted_during_barrier.size()) {
+      LOG(INFO) << "Barrier " << barrier_id << " has no pending tasks, this "
+                << "might be because recoverable tasks have disconnected/"
+                << "restarted and were removed from the barrier.";
+      passing_barriers.insert(barrier);
+    }
+  }
+  for (auto* barrier : passing_barriers) {
+    for (auto& task : barrier->recoverable_tasks_restarted_during_barrier) {
+      const std::string task_name = GetTaskName(task);
+      const std::unique_ptr<TaskState>& task_state = cluster_state_[task_name];
+      if (!barrier->tasks_at_barrier[task]) {
+        --barrier->num_pending_tasks;
+      }
+      barrier->done_callbacks.erase(task);
+      task_state->ExitBarrier(barrier->id);
+      LOG(INFO) << "Removed the recoverable task " << task_name
+                << " from the barrier: " << barrier->id;
+    }
+    PassBarrier(barrier, absl::OkStatus());
+    barrier->recoverable_tasks_restarted_during_barrier.clear();
+  }
+}
+
 void CoordinationService::CheckBarrierTimeout() {
   absl::flat_hash_map<std::string, BarrierState*> expired_barriers;
   uint64_t current_time_micros = Env::Default()->NowMicros();
@@ -322,6 +364,7 @@ void CoordinationService::CheckStaleness() {
       }
     }
     CheckHeartbeatTimeout();
+    CheckBarrierStatusWithRecoverableTasks();
     CheckBarrierTimeout();
   }
 }
@@ -1528,10 +1571,18 @@ void CoordinationService::LeaveOngoingBarriers(const CoordinatedTask& task,
     for (const auto& barrier_id : task_state->GetOngoingBarriers()) {
       BarrierState* barrier = &barriers_[barrier_id];
       // Unregister task from barrier.
-      if (barrier->tasks_at_barrier[task]) {
-        barrier->tasks_at_barrier[task] = false;
-        ++barrier->num_pending_tasks;
+      if (absl::GetFlag(FLAGS_leave_barriers_on_recoverable_agent_restart)) {
+        if (barrier->tasks_at_barrier.contains(task)) {
+          // Remove task from barrier.
+          barrier->recoverable_tasks_restarted_during_barrier.insert(task);
+        }
+      } else {
+        if (barrier->tasks_at_barrier[task]) {
+          barrier->tasks_at_barrier[task] = false;
+          ++barrier->num_pending_tasks;
+        }
       }
+
       // Cancel any pending callbacks.
       auto it = barrier->done_callbacks.find(task);
       if (it != barrier->done_callbacks.end()) {
