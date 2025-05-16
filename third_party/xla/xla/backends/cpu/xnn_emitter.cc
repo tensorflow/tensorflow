@@ -192,7 +192,8 @@ static absl::StatusOr<uint32_t> DefineBatchMatMul(xnn_subgraph_t subgraph,
                                 out);
 
   // IsXnnDotSupported has verified that rhs_contracting_dimensions has size 1.
-  bool rhs_canonical = dnums.rhs_contracting_dimensions(0) == 0;
+  bool rhs_canonical =
+      dnums.rhs_contracting_dimensions(0) == dnums.rhs_batch_dimensions_size();
   XNN_RETURN_IF_ERROR(xnn_define_batch_matrix_multiply(
       subgraph, lhs, rhs, out,
       /*flags=*/rhs_canonical ? 0 : XNN_FLAG_TRANSPOSE_B));

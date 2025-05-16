@@ -46,6 +46,29 @@ TEST_F(XnnFusionTest, AddAndMultiply) {
   EXPECT_TRUE(RunAndCompare(kModuleStr, ErrorSpec{0.0}));
 }
 
+TEST_F(XnnFusionTest, BatchedDot) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule dot_add_multiply
+
+    xnn_fusion {
+      %lhs = f32[2,3,4,5] parameter(0)
+      %rhs = f32[2,3,5,6] parameter(1)
+      ROOT %dot = f32[2,3,4,6] dot(%lhs, %rhs),
+        lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
+        lhs_contracting_dims={3}, rhs_contracting_dims={2}
+    }
+
+    ENTRY entry {
+      %lhs = f32[2,3,4,5] parameter(0)
+      %rhs = f32[2,3,5,6] parameter(1)
+      ROOT %fusion = f32[2,3,4,6] fusion(%lhs, %rhs),
+        kind=kCustom, calls=xnn_fusion,
+        backend_config={"fusion_config": {kind: "__xnn_fusion"}}
+    })";
+
+  EXPECT_TRUE(RunAndCompare(kModuleStr, ErrorSpec{1e-7}));
+}
+
 TEST_F(XnnFusionTest, DotAddMultiply) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule dot_add_multiply
