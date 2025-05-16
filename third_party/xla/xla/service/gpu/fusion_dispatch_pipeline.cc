@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/transforms/fusion_block_level_rewriter.h"
 #include "xla/service/gpu/transforms/fusion_dynamic_memcpy_rewriter.h"
@@ -130,6 +131,7 @@ HloPassPipeline FusionDispatchPipeline(
   // Even though this is a single pass, we need to create a pipeline in order
   // to make sure the pass's run is recorded in the `HloModuleMetadata`.
   HloPassPipeline pipeline("fusion-dispatch-pipeline");
+  pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FusionBlockLevelRewriter>(device_description, shape_size_fn,
                                              std::move(try_rewrite_fusion_if));
   pipeline.AddPass<FusionDynamicMemcpyRewriter>();
