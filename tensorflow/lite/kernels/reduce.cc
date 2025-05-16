@@ -910,9 +910,10 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
   ruy::profiler::ScopeLabel label("Sum");
   const auto& input = op_context.input;
-  const bool eight_bit_quantized =
-      input->type == kTfLiteUInt8 || input->type == kTfLiteInt8;
-  if (eight_bit_quantized) {
+  const bool quantized = input->type == kTfLiteUInt8 ||
+                         input->type == kTfLiteInt8 ||
+                         input->type == kTfLiteInt16;
+  if (quantized) {
     const OpData* op_data = reinterpret_cast<const OpData*>(node->user_data);
     TfLiteTensor* temp_index;
     TF_LITE_ENSURE_OK(
@@ -939,6 +940,11 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
     }
     if (input->type == kTfLiteInt8) {
       return QuantizedMeanOrSum<int8_t, kernel_type>(
+          context, op_context, op_data, temp_index, resolved_axis, temp_sum,
+          /*compute_sum=*/true);
+    }
+    if (input->type == kTfLiteInt16) {
+      return QuantizedMeanOrSum<int16_t, kernel_type>(
           context, op_context, op_data, temp_index, resolved_axis, temp_sum,
           /*compute_sum=*/true);
     }
