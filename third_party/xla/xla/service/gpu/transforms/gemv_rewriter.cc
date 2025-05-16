@@ -53,7 +53,7 @@ absl::StatusOr<Layout> GetLayoutWithNewMinorMostDimension(
   if (!LayoutUtil::IsMonotonicWithDim0Major(layout)) {
     return absl::InvalidArgumentError("Layout is not normalized.");
   }
-  return LayoutUtil::MakeDescendingLayout(layout.minor_to_major_size() + 1);
+  return LayoutUtil::MakeDescendingLayout(layout.minor_to_major().size() + 1);
 }
 
 class GemvRewriterVisitor : public DfsHloRewriteVisitor {

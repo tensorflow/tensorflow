@@ -295,7 +295,7 @@ namespace {
 // `shape`.
 void SetFortranLayout(Shape* shape) {
   LayoutUtil::SetToDefaultLayout(shape);
-  int n = shape->mutable_layout()->minor_to_major_size();
+  int n = shape->mutable_layout()->minor_to_major().size();
   CHECK_GE(n, 2);
   std::swap(shape->mutable_layout()->mutable_minor_to_major()->at(0),
             shape->mutable_layout()->mutable_minor_to_major()->at(1));
@@ -622,7 +622,7 @@ absl::Status GpuLayoutAssignment::SetDotOperandLayoutToMinorContracting(
   Shape shape = instruction->operand(operand)->shape();
 
   if (shape.has_layout() &&
-      shape.layout().minor_to_major_size() >= contracting_dims.size()) {
+      shape.layout().minor_to_major().size() >= contracting_dims.size()) {
     // Check that the contracting dimensions are physically minor, i.e. check
     // that minor physical dimensions all point to contracting logical
     // dimensions.

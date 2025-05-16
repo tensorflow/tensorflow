@@ -218,7 +218,7 @@ HloInstruction* SplitKOperand(HloInstruction* operand,
   // Update the physical layout so the the physical layout is preserved (i.e.
   // the splitK dimension goes right before the contracting dimension, and all
   // remaining dimensions are kept).
-  if (new_shape.layout().minor_to_major_size() > 0) {
+  if (new_shape.layout().minor_to_major().size() > 0) {
     new_shape.mutable_layout()->clear_minor_to_major();
     for (int64_t dim_idx : old_shape.layout().minor_to_major()) {
       if (dim_idx >= contracting_dimension_idx) {
