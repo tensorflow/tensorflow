@@ -221,9 +221,7 @@ CompiledMemoryStatsProto CompiledMemoryStats::ToProto() const {
   proto.set_output_size_in_bytes(output_size_in_bytes);
   proto.set_alias_size_in_bytes(alias_size_in_bytes);
   proto.set_temp_size_in_bytes(temp_size_in_bytes);
-  if (buffer_assignment.has_value()) {
-    *proto.mutable_buffer_assignment() = *buffer_assignment;
-  }
+  proto.set_serialized_buffer_assignment(serialized_buffer_assignment);
   proto.set_host_generated_code_size_in_bytes(
       host_generated_code_size_in_bytes);
   proto.set_host_argument_size_in_bytes(host_argument_size_in_bytes);
@@ -241,9 +239,7 @@ CompiledMemoryStats CompiledMemoryStats::FromProto(
   stats.output_size_in_bytes = proto.output_size_in_bytes();
   stats.alias_size_in_bytes = proto.alias_size_in_bytes();
   stats.temp_size_in_bytes = proto.temp_size_in_bytes();
-  if (proto.has_buffer_assignment()) {
-    stats.buffer_assignment = proto.buffer_assignment();
-  }
+  stats.serialized_buffer_assignment = proto.serialized_buffer_assignment();
   stats.host_generated_code_size_in_bytes =
       proto.host_generated_code_size_in_bytes();
   stats.host_argument_size_in_bytes = proto.host_argument_size_in_bytes();

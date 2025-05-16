@@ -753,7 +753,7 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
     const BufferAssignmentProto* proto =
         executables_[0]->executable()->buffer_assignment_proto();
     if (proto != nullptr) {
-      memory_stats.buffer_assignment = *proto;
+      memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
     }
     memory_stats.PopulateBufferStatsFromAllocations(
         executables_[0]->executable()->GetAllocations());

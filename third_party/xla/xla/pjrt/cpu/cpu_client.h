@@ -416,7 +416,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
       return tsl::errors::FailedPrecondition(
           "cpu_executable_ has no buffer_assignment_proto.");
     }
-    memory_stats.buffer_assignment = *proto;
+    memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
     memory_stats.PopulateBufferStatsFromAllocations(
         cpu_executable_->GetAllocations());
     return memory_stats;

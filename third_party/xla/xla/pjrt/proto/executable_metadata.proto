@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package xla;
 
-import "xla/service/hlo.proto";
-
 // Mirror of xla::CompiledMemoryStats.
 message CompiledMemoryStatsProto {
   // Device default memory (e.g., HBM for GPU/TPU) usage stats.
@@ -20,7 +18,7 @@ message CompiledMemoryStatsProto {
   int64 host_alias_size_in_bytes = 10;
   int64 host_temp_size_in_bytes = 11;
 
-  xla.BufferAssignmentProto buffer_assignment = 12;
+  bytes serialized_buffer_assignment = 13;
 
-  reserved 6;
+  reserved 6, 12;
 }

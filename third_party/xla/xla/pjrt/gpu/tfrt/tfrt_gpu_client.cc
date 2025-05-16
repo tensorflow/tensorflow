@@ -547,40 +547,41 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
       ++transfers_in_flight_;
     }
 
-    auto copy_to_gpu =
-        [transfer_size, staging_buffer = std::move(staging_buffer), data,
-         sub_buffer = std::move(sub_buffer), buffer_index, is_last_transfer,
-         on_done = std::move(on_done), this]() mutable {
-          tsl::profiler::TraceMe traceme(
-              "TfrtGpuAsyncHostToDeviceTransferManager::"
-              "TransferRawDataToSubBuffer::"
-              "copy_to_gpu");
+    auto copy_to_gpu = [transfer_size,
+                        staging_buffer = std::move(staging_buffer), data,
+                        sub_buffer = std::move(sub_buffer), buffer_index,
+                        is_last_transfer, on_done = std::move(on_done),
+                        this]() mutable {
+      tsl::profiler::TraceMe traceme(
+          "TfrtGpuAsyncHostToDeviceTransferManager::"
+          "TransferRawDataToSubBuffer::"
+          "copy_to_gpu");
 
-          if (transfer_size != 0) {
-            if (staging_buffer != nullptr) {
-              std::memcpy(staging_buffer.get(), data, transfer_size);
-            }
+      if (transfer_size != 0) {
+        if (staging_buffer != nullptr) {
+          std::memcpy(staging_buffer.get(), data, transfer_size);
+        }
 
-            auto stream = device_->stream();
+        auto stream = device_->stream();
 
-            TF_CHECK_OK(stream->Memcpy(
-                &sub_buffer, staging_buffer ? staging_buffer.get() : data,
-                transfer_size))
-                << "Failed to copy data to GPU";
+        TF_CHECK_OK(stream->Memcpy(&sub_buffer,
+                                   staging_buffer ? staging_buffer.get() : data,
+                                   transfer_size))
+            << "Failed to copy data to GPU";
 
-            auto status = stream->DoHostCallback(
-                [buffer_index, is_last_transfer, on_done = std::move(on_done),
-                 this]() mutable {
-                  CleanUp(buffer_index, is_last_transfer, std::move(on_done));
-                });
+        auto status = stream->DoHostCallback([buffer_index, is_last_transfer,
+                                              on_done = std::move(on_done),
+                                              this]() mutable {
+          CleanUp(buffer_index, is_last_transfer, std::move(on_done));
+        });
 
-            if (!status.ok()) {
-              LOG(ERROR) << "Failed to do host callback for copy_to_gpu";
-            }
-          } else {
-            CleanUp(buffer_index, is_last_transfer, std::move(on_done));
-          }
-        };
+        if (!status.ok()) {
+          LOG(ERROR) << "Failed to do host callback for copy_to_gpu";
+        }
+      } else {
+        CleanUp(buffer_index, is_last_transfer, std::move(on_done));
+      }
+    };
     // Enqueue the transfer to the h2d thread.
     h2d_thread_->Schedule(std::move(copy_to_gpu));
     return absl::OkStatus();
@@ -3880,9 +3881,9 @@ TfrtGpuExecutable::Execute(
     // MaybeDumpHloSnapshot(gpu_executable_->module(), run_id,
     //                      argument_handles[0], {});
 
-    auto statusor = ExecuteHelper(
-        argument_handles[0], replica, partition, run_id, options,
-        returned_futures.has_value());
+    auto statusor =
+        ExecuteHelper(argument_handles[0], replica, partition, run_id, options,
+                      returned_futures.has_value());
 
     if (!statusor.ok()) {
       return std::move(statusor).status();
@@ -3923,9 +3924,9 @@ TfrtGpuExecutable::Execute(
           [this, gpu_device, replica, partition, i, &argument_handles, &run_id,
            &options, &returned_futures, &wrapped_results, &mu, &running,
            &failed, &first_failure_status] {
-            auto statusor = ExecuteHelper(
-                argument_handles[i], replica, partition, run_id, options,
-                returned_futures.has_value());
+            auto statusor =
+                ExecuteHelper(argument_handles[i], replica, partition, run_id,
+                              options, returned_futures.has_value());
             if (statusor.ok()) {
               wrapped_results[i] = std::move(statusor->buffers);
               if (returned_futures.has_value()) {
@@ -3985,10 +3986,10 @@ TfrtGpuExecutable::ExecuteSharded(
               << device->DebugString();
       TF_ASSIGN_OR_RETURN(
           auto result,
-          ExecuteHelper(
-              argument_handles, addressable_device_logical_ids_[i].replica,
-              addressable_device_logical_ids_[i].partition, run_id, options,
-              fill_future));
+          ExecuteHelper(argument_handles,
+                        addressable_device_logical_ids_[i].replica,
+                        addressable_device_logical_ids_[i].partition, run_id,
+                        options, fill_future));
       returned_future = std::move(result.future);
       return std::move(result.buffers);
     }
@@ -4023,12 +4024,10 @@ TfrtGpuExecutable::ExecutePortable(
   VLOG(1) << "ExecutePortable executes single-core portable executable "
           << name();
   TF_ASSIGN_OR_RETURN(
-      auto result,
-      ExecuteHelper(
-          argument_handles,
-          /*replica=*/0,
-          /*partition=*/0, run_id, options,
-          fill_future, tsl::down_cast<TfrtGpuDevice*>(device)));
+      auto result, ExecuteHelper(argument_handles,
+                                 /*replica=*/0,
+                                 /*partition=*/0, run_id, options, fill_future,
+                                 tsl::down_cast<TfrtGpuDevice*>(device)));
   returned_future = std::move(result.future);
   return std::move(result.buffers);
 }
@@ -4139,7 +4138,7 @@ absl::StatusOr<CompiledMemoryStats> TfrtGpuExecutable::GetCompiledMemoryStats()
   const BufferAssignmentProto* proto =
       executables_[0]->executable()->buffer_assignment_proto();
   if (proto != nullptr) {
-    memory_stats.buffer_assignment = *proto;
+    memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
   }
   memory_stats.PopulateBufferStatsFromAllocations(
       executables_[0]->executable()->GetAllocations());
