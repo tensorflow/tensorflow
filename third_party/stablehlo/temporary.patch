@@ -1,72 +1,64 @@
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -2635,6 +2635,38 @@
-                           inferredReturnTypes);
- }
- 
-+class FoldConstantCaseOp : public OpRewritePattern<CaseOp> {
-+ public:
-+  explicit FoldConstantCaseOp(MLIRContext* context)
-+      : OpRewritePattern<CaseOp>(context) {}
-+  LogicalResult matchAndRewrite(CaseOp op,
-+                                PatternRewriter& rewriter) const override {
-+    DenseIntElementsAttr branch;
-+    if (!matchPattern(op.getIndex(), m_Constant(&branch))) return failure();
-+
-+    int index = *branch.getValues<int>().begin();
-+    if (index >= op.getBranches().size() || index < 0) {
-+      return failure();
-+    }
-+
-+    Block &block = op.getBranches()[index].back();
-+    IRMapping mapping;
-+    for (auto &block_op : block.without_terminator()) {
-+      rewriter.clone(block_op, mapping);
-+    }
-+    rewriter.replaceOp(
-+        op, llvm::to_vector(llvm::map_range(
-+            block.getTerminator()->getOperands(),
-+            [&](Value v) { return mapping.lookupOrDefault(v); })));
-+      return success();
-+  }
-+};
-+
-+void CaseOp::getCanonicalizationPatterns(RewritePatternSet& results,
-+                                         MLIRContext* context) {
-+  results.add<FoldConstantCaseOp>(context);
-+}
-+
- //===----------------------------------------------------------------------===//
- // SliceOp
- //===----------------------------------------------------------------------===//
+@@ -511,12 +511,10 @@
+ void CustomCallOp::getEffects(
+     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
+         effects) {
+-  // Note: `has_side_effect` "defaults" to `false` but isn't required to exist.
+-  // This semantic contradiction means, in practical terms, that the attribute
+-  // won't exist by default but should be *treated* as `false` if missing.
+-  // `getHasSideEffect()` abstracts this nuance away and returns `false` by
+-  // default, whereas `getHasSideEffectAttr()` may return a null attribute.
+-  if (!getHasSideEffect()) return;
++  // CustomCall has "all possible effects" unless the has_side_effect is present
++  // and set to false.
++  auto hasSideEffect = getHasSideEffectAttr();
++  if (hasSideEffect && !hasSideEffect.getValue()) return;
+   effects.emplace_back(MemoryEffects::Allocate::get());
+   effects.emplace_back(MemoryEffects::Free::get());
+   effects.emplace_back(MemoryEffects::Write::get());
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
-@@ -1392,7 +1392,7 @@
-   );
+@@ -1161,7 +1161,8 @@
+ //===----------------------------------------------------------------------===//
  
-   let regions = (region VariadicRegion<SizedRegion<1>>:$branches /*case_i2*/);
--
-+  let hasCanonicalizer = 1;
-   let results = (outs Variadic<HLO_TensorOrPerAxisQuantizedTensorOrToken>);
+ def StableHLO_InfeedOp : StableHLO_Op<"infeed", [
+-      MemoryEffects<[MemRead<StableHLO_InfeedResource>]>,
++      MemoryEffects<[MemRead<StableHLO_InfeedResource>,
++                     MemWrite<StableHLO_InfeedResource>]>,
+     ]> {
+   let summary = "Infeed operation";
+   let description = [{
+@@ -1188,7 +1189,8 @@
+ 
+ def StableHLO_OutfeedOp : StableHLO_Op<"outfeed", [
+       DeclareOpInterfaceMethods<InferTypeOpInterface>,
+-      MemoryEffects<[MemWrite<StableHLO_OutfeedResource>]>,
++      MemoryEffects<[MemRead<StableHLO_OutfeedResource>,
++                     MemWrite<StableHLO_OutfeedResource>]>,
+     ]> {
+   let summary = "Outfeed operation";
+   let description = [{
+@@ -1214,7 +1216,8 @@
+ 
+ def StableHLO_SendOp : StableHLO_Op<"send", [
+       DeclareOpInterfaceMethods<InferTypeOpInterface>,
+-      MemoryEffects<[MemWrite<StableHLO_SendResource>]>,
++      MemoryEffects<[MemRead<StableHLO_SendResource>,
++                     MemWrite<StableHLO_SendResource>]>,
+     ]> {
+   let summary = "Send operation";
+   let description = [{
+@@ -1243,7 +1246,8 @@
  }
  
-diff --ruN a/stablehlo/stablehlo/tests/canonicalize.mlir b/stablehlo/stablehlo/tests/canonicalize.mlir
---- stablehlo/stablehlo/tests/canonicalize.mlir
-+++ stablehlo/stablehlo/tests/canonicalize.mlir
-@@ -0,0 +1,13 @@
-+// RUN: stablehlo-opt %s -pass-pipeline='builtin.module(func.func(canonicalize{test-convergence}))' -split-input-file -allow-unregistered-dialect | FileCheck %s
-+
-+func.func @fold_constant_case(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>) {
-+ %0 = "stablehlo.constant"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
-+ %1 = "stablehlo.case"(%0) ({
-+   "stablehlo.return"(%arg0) : (tensor<i32>) -> ()
-+ }, {
-+  "stablehlo.return"(%arg1) : (tensor<i32>) -> ()
-+ }) : (tensor<i32>) -> tensor<i32>
-+ return %1 : tensor<i32>
-+
-+// CHECK: return %arg1
-+}
+ def StableHLO_RecvOp : StableHLO_Op<"recv", [
+-      MemoryEffects<[MemRead<StableHLO_RecvResource>]>
++      MemoryEffects<[MemRead<StableHLO_RecvResource>,
++                     MemWrite<StableHLO_RecvResource>]>,
+     ]> {
+   let summary = "Recv operation";
+   let description = [{
 
