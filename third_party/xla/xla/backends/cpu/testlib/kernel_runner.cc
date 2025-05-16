@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/runtime/workgroup_dim.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/runtime_symbol_generator.h"
 #include "xla/service/hlo_module_config.h"
@@ -59,8 +60,9 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
           dynamic_cast<LlvmIrKernelSource*>(kernel_source.get())) {
     return Create(kernel_spec, std::move(*llvm_kernel_source),
                   std::move(compiler));
-  } else if (auto* mlir_kernel_source =
-                 dynamic_cast<MlirKernelSource*>(kernel_source.get())) {
+  }
+  if (auto* mlir_kernel_source =
+          dynamic_cast<MlirKernelSource*>(kernel_source.get())) {
     return Create(kernel_spec, std::move(*mlir_kernel_source),
                   std::move(compiler));
   }
@@ -82,8 +84,11 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
   TF_ASSIGN_OR_RETURN(XLA_CPU_Kernel * kernel_fn,
                       library->ResolveFunction<XLA_CPU_Kernel>(kernel_name));
 
-  Kernel::ThreadDim thread_dim = kernel_spec.thread_dim();
-  return KernelRunner(std::move(library), Kernel(1, kernel_fn), thread_dim);
+  // TODO(ezhulenev): Migrate KernelSpec to use WorkgroupDim.
+  WorkgroupDim workgroup_dim{kernel_spec.thread_dim().x,
+                             kernel_spec.thread_dim().y,
+                             kernel_spec.thread_dim().z};
+  return KernelRunner(std::move(library), Kernel(1, kernel_fn), workgroup_dim);
 }
 
 absl::StatusOr<KernelRunner> KernelRunner::Create(
@@ -97,10 +102,10 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
 }
 
 KernelRunner::KernelRunner(std::unique_ptr<FunctionLibrary> library,
-                           Kernel kernel, Kernel::ThreadDim thread_dim)
+                           Kernel kernel, WorkgroupDim workgroup_dim)
     : library_(std::move(library)),
       kernel_(std::move(kernel)),
-      thread_dim_(thread_dim) {}
+      workgroup_dim_(workgroup_dim) {}
 
 absl::Status KernelRunner::Call(absl::Span<const Argument> arguments) {
   std::vector<XLA_CPU_KernelArg> kernel_args;
@@ -108,7 +113,7 @@ absl::Status KernelRunner::Call(absl::Span<const Argument> arguments) {
     kernel_args.push_back({arg.data(), arg.size()});
   }
 
-  return kernel_.Launch(thread_dim_, kernel_args);
+  return kernel_.Launch(workgroup_dim_, kernel_args);
 }
 
 absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(

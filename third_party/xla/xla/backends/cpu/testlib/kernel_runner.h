@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
+#include "xla/runtime/workgroup_dim.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace xla::cpu {
@@ -59,11 +60,11 @@ class KernelRunner final : public xla::KernelRunner {
       JitCompiler compiler);
 
   KernelRunner(std::unique_ptr<FunctionLibrary> library, Kernel kernel,
-               Kernel::ThreadDim thread_dim);
+               WorkgroupDim workgroup_dim);
 
   std::unique_ptr<FunctionLibrary> library_;
   Kernel kernel_;
-  Kernel::ThreadDim thread_dim_;
+  WorkgroupDim workgroup_dim_;
 };
 
 absl::StatusOr<LlvmIrKernelSource> LowerToLlvm(

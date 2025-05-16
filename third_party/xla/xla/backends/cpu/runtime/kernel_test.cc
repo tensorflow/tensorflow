@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
+#include "xla/runtime/workgroup_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -46,11 +47,12 @@ static XLA_CPU_KernelError* AddI32(const XLA_CPU_KernelCallFrame* call_frame) {
   int32_t* rhs_ptr = reinterpret_cast<int32_t*>(rhs.data);
   int32_t* out_ptr = reinterpret_cast<int32_t*>(out.data);
 
-  const auto zstep = call_frame->thread_dims->x * call_frame->thread_dims->y;
-  const auto ystep = call_frame->thread_dims->x;
+  int64_t zstep = call_frame->workgroup_dim->x * call_frame->workgroup_dim->y;
+  int64_t ystep = call_frame->workgroup_dim->x;
 
-  uint64_t i = call_frame->thread->x + call_frame->thread->y * ystep +
-               call_frame->thread->z * zstep;
+  int64_t i = call_frame->workgroup_id->x +
+              call_frame->workgroup_id->y * ystep +
+              call_frame->workgroup_id->z * zstep;
   *(out_ptr + i) = *(lhs_ptr + i) + *(rhs_ptr + i);
 
   return nullptr;
@@ -68,7 +70,7 @@ TEST(KernelTest, InternalAddition1D) {
   Kernel::DeviceMemoryBase out_mem(out.data(), out.size() * sizeof(int32_t));
   std::vector<Kernel::DeviceMemoryBase> args = {lhs_mem, rhs_mem, out_mem};
 
-  TF_ASSERT_OK(kernel.Launch(Kernel::ThreadDim(4), args));
+  TF_ASSERT_OK(kernel.Launch(WorkgroupDim{4, 1, 1}, args));
 
   std::vector<int32_t> expected = {6, 8, 10, 12};
   EXPECT_EQ(out, expected);
@@ -87,7 +89,7 @@ TEST(KernelTest, InternalAddition3D) {
   Kernel::DeviceMemoryBase out_mem(out.data(), out.size() * sizeof(int32_t));
   std::vector<Kernel::DeviceMemoryBase> args = {lhs_mem, rhs_mem, out_mem};
 
-  TF_ASSERT_OK(kernel.Launch(Kernel::ThreadDim(2, 2, 3), args));
+  TF_ASSERT_OK(kernel.Launch(WorkgroupDim{2, 2, 3}, args));
 
   std::vector<int32_t> expected = {11, 13, 15, 17, 19, 21,
                                    23, 25, 27, 29, 31, 33};
@@ -110,7 +112,7 @@ TEST(KernelTest, LaunchAsync) {
   };
 
   Kernel host_kernel(/*arity=*/1, no_op);
-  auto event = host_kernel.Launch(Kernel::ThreadDim(4, 4, 4), {arg}, &device);
+  auto event = host_kernel.Launch(WorkgroupDim{4, 4, 4}, {arg}, &device);
 
   tsl::BlockUntilReady(event);
   EXPECT_TRUE(event.IsConcrete());
@@ -126,17 +128,15 @@ TEST(KernelTest, LaunchAsyncError) {
   // XLA_CPU_KernelError type is not defined so we simply return a non-nullptr
   // pointer to signal error to the runtime.
   auto* maybe_error = +[](const XLA_CPU_KernelCallFrame* call_frame) {
-    if (call_frame->thread->x == 2 && call_frame->thread->z == 2) {
+    if (call_frame->workgroup_id->x == 2 && call_frame->workgroup_id->z == 2) {
       return reinterpret_cast<XLA_CPU_KernelError*>(0xDEADBEEF);
-    } else {
-      return static_cast<XLA_CPU_KernelError*>(nullptr);
     }
+    return static_cast<XLA_CPU_KernelError*>(nullptr);
   };
 
   Kernel host_kernel(/*arity=*/0, maybe_error);
-  auto event =
-      host_kernel.Launch(Kernel::ThreadDim(4, 4, 4),
-                         absl::Span<const XLA_CPU_KernelArg>(), &device);
+  auto event = host_kernel.Launch(
+      WorkgroupDim{4, 4, 4}, absl::Span<const XLA_CPU_KernelArg>(), &device);
 
   tsl::BlockUntilReady(event);
   ASSERT_TRUE(event.IsError());
@@ -155,18 +155,18 @@ static XLA_CPU_KernelError* NoOp(const XLA_CPU_KernelCallFrame*) {
 }
 
 static void BM_KernelSyncLaunch(benchmark::State& state) {
-  int32_t tdim_x = state.range(0);
+  uint64_t dim_x = state.range(0);
 
   Kernel kernel(/*arity=*/0, NoOp);
   absl::Span<const XLA_CPU_KernelArg> args;
 
   for (auto _ : state) {
-    benchmark::DoNotOptimize(kernel.Launch(Kernel::ThreadDim(tdim_x), args));
+    benchmark::DoNotOptimize(kernel.Launch(WorkgroupDim{dim_x, 1, 1}, args));
   }
 }
 
 static void BM_KernelAsyncLaunch(benchmark::State& state) {
-  int32_t tdim_x = state.range(0);
+  uint64_t dim_x = state.range(0);
 
   auto thread_pool = std::make_shared<tsl::thread::ThreadPool>(
       tsl::Env::Default(), "benchmark", tsl::port::MaxParallelism());
@@ -177,7 +177,7 @@ static void BM_KernelAsyncLaunch(benchmark::State& state) {
   absl::Span<const XLA_CPU_KernelArg> args;
 
   for (auto _ : state) {
-    auto event = kernel.Launch(Kernel::ThreadDim(tdim_x), args, &device);
+    auto event = kernel.Launch(WorkgroupDim{dim_x, 1, 1}, args, &device);
     tsl::BlockUntilReady(event);
   }
 }

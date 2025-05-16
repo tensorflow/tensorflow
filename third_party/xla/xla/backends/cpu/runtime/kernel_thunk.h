@@ -38,8 +38,8 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/codegen/kernel_spec.h"
+#include "xla/runtime/workgroup_dim.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
@@ -55,8 +55,9 @@ class KernelThunkBase : public Thunk {
   virtual ~KernelThunkBase() = default;  // NOLINT: clang-tidy complains that
                                          // `override` should be used here.
   KernelThunkBase(Kind kind, Info info) : Thunk(kind, std::move(info)) {}
+
   virtual absl::string_view kernel_name() const = 0;
-  virtual const se::ThreadDim& thread_dim() const = 0;
+  virtual const WorkgroupDim& workgroup_dim() const = 0;
   virtual const std::optional<uint64_t>& min_alignment() const = 0;
 
   virtual absl::Span<const BufferAllocation::Slice> arguments_buffers()
@@ -84,7 +85,7 @@ class KernelThunk : public KernelThunkBase {
   BufferUses buffer_uses() const final;
 
   absl::string_view kernel_name() const final { return kernel_name_; }
-  const se::ThreadDim& thread_dim() const final { return thread_dim_; }
+  const WorkgroupDim& workgroup_dim() const final { return workgroup_dim_; }
   const std::optional<uint64_t>& min_alignment() const final {
     return min_alignment_;
   }
@@ -136,7 +137,7 @@ class KernelThunk : public KernelThunkBase {
               absl::Span<const BufferAllocation::Slice> arguments_buffers,
               absl::Span<const BufferAllocation::Slice> results_buffers,
               absl::flat_hash_set<int64_t> invariant_arguments,
-              std::string kernel_name, se::ThreadDim thread_dim,
+              std::string kernel_name, WorkgroupDim workgroup_dim,
               std::optional<uint64_t> min_alignment);
 
   absl::Status CheckInvariantBuffersMemory(const KernelArgs& kernel_args) const;
@@ -150,12 +151,12 @@ class KernelThunk : public KernelThunkBase {
   size_t num_kernel_args_;
 
   std::string kernel_name_;
-  se::ThreadDim thread_dim_;
+  WorkgroupDim workgroup_dim_;
   std::optional<uint64_t> min_alignment_;
 
-  // If `true`, host kernel will be called just once for a logical thread dim
-  // (1,1,1). This is a fast path for small host kernels that have just one
-  // logical thread dim.
+  // If `true`, host kernel will be called just once for a workgroup id
+  // (0, 0, 0). This is a fast path for small host kernels that have just one
+  // workgroup.
   bool call_once_;
 
   // Lazily loaded host kernel corresponding to `kernel_name_`.
@@ -195,7 +196,7 @@ class KernelThunk final : public internal::KernelThunk<> {
       Thunk::Info info,
       absl::Span<const BufferAllocation::Slice> arguments_buffers,
       absl::Span<const BufferAllocation::Slice> results_buffers,
-      std::string kernel_name, se::ThreadDim thread_dim,
+      std::string kernel_name, WorkgroupDim workgroup_dim,
       absl::flat_hash_set<int64_t> invariant_arguments,
       std::optional<uint64_t> min_alignment = std::nullopt);
 

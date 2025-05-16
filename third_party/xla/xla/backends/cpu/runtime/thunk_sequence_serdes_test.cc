@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/runtime/resource_use.h"
+#include "xla/runtime/workgroup_dim.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo.pb.h"
@@ -678,7 +679,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         {CreateBufferAllocationSlice(
             buffer_allocations_[buffer_allocations_.size() - 1])},
         /*kernel_name=*/"test",
-        /*thread_dim=*/se::ThreadDim(1),
+        /*workgroup_dim=*/WorkgroupDim{1},
         /*invariant_arguments=*/{0},
         /*min_alignment=*/8);
   }
@@ -1193,7 +1194,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   bool VerifyKernelThunkEquality(const KernelThunkBase& thunk_1,
                                  const KernelThunkBase& thunk_2) {
     return thunk_1.kernel_name() == thunk_2.kernel_name() &&
-           thunk_1.thread_dim() == thunk_2.thread_dim() &&
+           thunk_1.workgroup_dim() == thunk_2.workgroup_dim() &&
            thunk_1.min_alignment() == thunk_2.min_alignment() &&
            absl::c_equal(thunk_1.arguments_buffers(),
                          thunk_2.arguments_buffers(),

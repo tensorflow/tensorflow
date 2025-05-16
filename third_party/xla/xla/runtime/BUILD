@@ -134,6 +134,14 @@ cc_library(
 )
 
 cc_library(
+    name = "workgroup_dim",
+    hdrs = ["workgroup_dim.h"],
+    deps = [
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
     name = "device_id",
     hdrs = ["device_id.h"],
     deps = [
